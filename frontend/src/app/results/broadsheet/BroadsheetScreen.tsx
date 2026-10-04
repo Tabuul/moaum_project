@@ -7,7 +7,7 @@ import { loadCrest } from "@/lib/xlsx";
 import { colName, xlsx, type Cell } from "@/lib/xlsx-write";
 import { docSerial } from "@/lib/exportbrand";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const COLOUR = (points: number | null | undefined) => (points == null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
@@ -263,6 +263,41 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             ["Passed every course", String(sheet.passed), "var(--green-ink)", sheet.rows.length ? `${Math.round((100 * sheet.passed) / sheet.rows.length)}% of the level` : "—"],
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
+          {sheet.coverage ? (() => {
+            /* V318: the live coverage — the sheet fills as the course sheets are entered; every cell a registration expects is
+               counted, by course column and by candidate, so what is still out is named before the Board sits */
+            const c = sheet.coverage;
+            const complete = c.missing === 0 && c.cells > 0;
+            return (
+              <Panel title="Live coverage — results as they arrive" right={c.cells ? `${c.received} of ${c.cells} results in · ${c.percent}%` : "Nothing registered"}>
+                <Tiles cls="grid--4" items={[
+                  ["Results in", `${c.received} of ${c.cells}`, complete ? "var(--green-ink)" : c.received ? "var(--chrome)" : "var(--red-ink)", `${c.percent}% of every registration at this level`],
+                  ["Courses complete", `${c.coursesComplete} of ${c.coursesTotal}`, c.coursesComplete === c.coursesTotal && c.coursesTotal ? "var(--green-ink)" : null, "Every registered candidate has a mark or an outcome"],
+                  ["Candidates complete", `${c.candidatesComplete} of ${sheet.rows.filter((r) => !notRegistered(r)).length}`, null, c.candidates.length ? `${c.candidates.length} still missing a result` : "Nobody is waiting on a mark"],
+                  ["Sets published", `${c.setsPublished} of ${c.coursesTotal}`, c.setsPublished === c.coursesTotal && c.coursesTotal ? "var(--green-ink)" : null, "Past Senate, on the minute"],
+                ]} />
+                <DTable cols={["Course", "Stage", "Expected|mid", "Received|mid", "Missing|mid", "|num"]}
+                  rows={c.courses.map((x) => [
+                    <span key="c"><strong className="tnum">{x.courseCode}</strong><div className="sub2">{x.title}</div></span>,
+                    <Pil key="s" kind={x.stage === "PUBLISHED" ? "ok" : x.stage === "ENTRY" ? "bad" : x.stage === "NO_SHEET" ? "grey" : "info"}>{x.stage === "NO_SHEET" ? "No sheet yet" : STAGE_LABEL[x.stage]?.[0] ?? x.stage}</Pil>,
+                    <span className="tnum" key="e">{x.expected}</span>,
+                    <span className="tnum" key="r">{x.received}</span>,
+                    <span className={`tnum${x.missing ? " ink-red b700" : ""}`} key="m">{x.missing}</span>,
+                    x.sheetId ? <LinkBtn key="a" href={`/results/chain?sheet=${x.sheetId}`} kind="ghost">Open sheet</LinkBtn> : <span className="sub2" key="a">—</span>,
+                  ])}
+                  texts={c.courses.map((x) => `${x.courseCode} ${x.title} ${x.stage}`)} />
+                {c.candidates.length ? (
+                  <PBody>
+                    <div className="eyebrow">Candidates still missing a result · {c.candidates.length}</div>
+                    <div className="t-sm mt-1" style={{ lineHeight: 1.7 }}>
+                      {c.candidates.slice(0, 40).map((s) => <span key={s.studentId} style={{ display: "inline-block", marginRight: 14 }}><span className="tnum">{s.number}</span> {s.name} <span className="sub2 tnum">— {s.courses.join(", ")}</span></span>)}
+                      {c.candidates.length > 40 ? <span className="sub2">… and {c.candidates.length - 40} more</span> : null}
+                    </div>
+                  </PBody>
+                ) : null}
+              </Panel>
+            );
+          })() : null}
           {cov ? (
             <Panel title="Examination reporting sheet" right={<span className="row row--inline"><Btn kind="ghost" onClick={() => void exportExcel()}>Download Excel</Btn><Btn kind="primary" onClick={exportPdf}>Download PDF</Btn></span>}>
               <PBody>

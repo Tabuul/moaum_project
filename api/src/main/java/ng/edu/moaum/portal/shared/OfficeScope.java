@@ -25,6 +25,29 @@ public class OfficeScope {
      *  Department, the Examinations Officer, the SIWES Coordinator — and every lecturer, who belongs to one */
     private static final java.util.Set<String> DEPARTMENT_OFFICES = java.util.Set.of("hod", "exams", "siwes", "lecturer");
 
+    /** the offices held over one programme (V318): the Programme Examinations Officer, whose grant names the programme */
+    private static final java.util.Set<String> PROGRAMME_OFFICES = java.util.Set.of("exams");
+
+    /**
+     * The programme the acting Programme Examinations Officer holds, or null: the programme scope of
+     * their standing 'exams' grant (V318). The grant carries the register's code (V316); a name
+     * resolves to it too. An Examinations Officer granted over a department rather than a programme
+     * has no programme and is bound to the department as before.
+     */
+    public String actingProgramme() {
+        return AuditContextHolder.current().flatMap(c -> PROGRAMME_OFFICES.contains(c.actorOffice())
+                ? jdbc.sql("""
+                        SELECT p.code
+                          FROM iam.office_assignment a
+                          JOIN ref.programme p ON upper(btrim(p.code)) = upper(btrim(a.scope_id)) OR lower(btrim(p.name)) = lower(btrim(a.scope_id))
+                         WHERE a.person_id = :p AND a.office_code = :office AND a.scope_kind = 'programme'
+                           AND nullif(btrim(a.scope_id), '') IS NOT NULL
+                           AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                         ORDER BY a.valid_from DESC, p.archived LIMIT 1
+                        """).param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).optional()
+                : Optional.empty()).orElse(null);
+    }
+
     /** true when the acting office is the lecturer's */
     public boolean actingLecturer() {
         return AuditContextHolder.current().map(c -> "lecturer".equals(c.actorOffice())).orElse(false);
@@ -83,6 +106,13 @@ public class OfficeScope {
                                 AND nullif(btrim(scope_id), '') IS NOT NULL
                                 AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
                               ORDER BY valid_from DESC LIMIT 1),
+                            -- V318: an office granted over a programme (the Programme Examinations Officer) works in that programme's department
+                            (SELECT p.dept_code FROM iam.office_assignment a
+                              JOIN ref.programme p ON upper(btrim(p.code)) = upper(btrim(a.scope_id)) OR lower(btrim(p.name)) = lower(btrim(a.scope_id))
+                              WHERE a.person_id = :p AND a.office_code = :office AND a.scope_kind = 'programme'
+                                AND nullif(btrim(a.scope_id), '') IS NOT NULL
+                                AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                              ORDER BY a.valid_from DESC, p.archived LIMIT 1),
                             (SELECT scope_id FROM iam.office_assignment
                               WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department'
                                 AND nullif(btrim(scope_id), '') IS NOT NULL
@@ -151,6 +181,16 @@ public class OfficeScope {
         if (actingDepartmentOffice()) {
             String own = actingDept();
             if (own == null) own = "__none__";
+            // V318: a Programme Examinations Officer is held to their programme — another programme, in the
+            // same department or not, is refused, and an absent programme is filled in
+            String ownProg = actingProgramme();
+            if (ownProg != null) {
+                if (prog != null && !prog.equalsIgnoreCase(ownProg)) {
+                    throw new DomainRuleViolation("SCOPE_PROGRAMME", "That programme is not yours.",
+                            new DomainRuleViolation.Remedy("Your Examinations Officer grant names one programme; every desk reads that programme alone.", "You"));
+                }
+                prog = ownProg;
+            }
             if (dept != null && !dept.equalsIgnoreCase(own)) throw outside("department", "department");
             if (prog != null && !own.equalsIgnoreCase(String.valueOf(deptOfProgramme(prog)))) throw outside("programme", "department");
             String f = "__none__".equals(own) ? "__none__" : facultyOfDept(own);
@@ -184,8 +224,22 @@ public class OfficeScope {
         bound(null, dept, null);
     }
 
-    /** the offices that work within a single faculty */
-    private static final java.util.Set<String> FACULTY_OFFICES = java.util.Set.of("dean", "facultyofficer");
+    /** the offices that work within a single faculty: the Dean, the Faculty Officer and, since V318, the Faculty Examinations Officer */
+    private static final java.util.Set<String> FACULTY_OFFICES = java.util.Set.of("dean", "facultyofficer", "facultyexams");
+
+    /**
+     * True when a department, a programme or a faculty is within the acting office's bound (V318): the
+     * same test as {@link #bound(String, String, String)}, answered rather than thrown. An office bound
+     * to nothing (no scope resolves) is within nothing.
+     */
+    public boolean within(String fac, String dept, String prog) {
+        try {
+            Bound b = bound(fac, dept, prog);
+            return !"__none__".equals(b.fac()) && !"__none__".equals(b.dept());
+        } catch (DomainRuleViolation outside) {
+            return false;
+        }
+    }
 
     /** true when the acting office is bound to one faculty (Dean or Faculty Officer) */
     public boolean actingFacultyOffice() {
@@ -203,7 +257,7 @@ public class OfficeScope {
                         WITH raw AS (
                           SELECT COALESCE(
                             (SELECT scope_id FROM iam.office_assignment
-                              WHERE person_id = :p AND office_code IN ('dean','facultyofficer') AND scope_kind = 'faculty'
+                              WHERE person_id = :p AND office_code IN ('dean','facultyofficer','facultyexams') AND scope_kind = 'faculty'
                                 AND nullif(btrim(scope_id), '') IS NOT NULL
                                 AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
                               ORDER BY valid_from DESC LIMIT 1),

@@ -22,7 +22,7 @@ import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
 import { PgSchoolDashboard, PgSecretaryDashboard, type PgHome, type PgSecHome } from "./dashboards/PgSchool";
 import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
-import type { MySheet, SheetListing } from "@/lib/results";
+import type { MySheet, PipelineView, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +83,8 @@ export default async function DashboardPage() {
   const clinic = office === "services" ? await api<ClinicDesk>("/api/v1/health/desk") : null;
   /* the Exams Officer's home is the result-sheet pipeline in their scope (V013) */
   const examSheets = office && ["exams", "facultyexams"].includes(office) ? await api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`) : null;
+  /* V318: the pipeline monitor in the office's own scope, for the Head of Department and the examinations officers */
+  const pipeline = office && ["hod", "exams", "facultyexams"].includes(office) ? await api<PipelineView>(`/api/v1/results/pipeline?session=${encodeURIComponent(session)}`) : null;
   /* the Director of HR's home is the establishment and what waits on the directorate (V071-V076) */
   const hr = office === "hrm" ? await api<HrHome>("/api/v1/hr/dashboard") : null;
   /* the Dean's and the Faculty Officer's home is their faculty: registration, pipeline and at-risk by department */
@@ -125,11 +127,11 @@ export default async function DashboardPage() {
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} semester={teaching && teaching.ok ? teaching.data.openSemester ?? null : null} history={allocHistory && allocHistory.ok ? allocHistory.data : []} notices={myNotices && myNotices.ok ? myNotices.data : []} />
       ) : office === "hod" ? (
-        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
+        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
-        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
+        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
       ) : office === "hrm" ? (
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (

@@ -71,6 +71,12 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   const blank = roll.length - entered;
   const ready = atEntry && blank === 0 && dirty.length === 0;
   const own = actingOffice === "lecturer" || actingOffice === "exams" || actingOffice === "academic";
+  // V318: an entry by someone who does not teach the course is on the lecturer's behalf — the Programme Examinations Officer
+  // or the Academic Office uploading for a lecturer. It carries its reason; the record names the uploader beside the lecturer.
+  const onBehalf = own && (actingOffice === "exams" || actingOffice === "academic") && !detail.youTeach;
+  const [behalfReason, setBehalfReason] = useState("");
+  const behalfMissing = onBehalf && !behalfReason.trim();
+  const uploads = detail.uploads ?? [];
   // the sheet is back with the lecturer by a return when its latest decision is one; only then does a saved mark change
   const returned = detail.chain.length > 0 && detail.chain[detail.chain.length - 1].kind === "RETURN";
   const onRecord = (r: RollRow) => r.version !== null;
@@ -92,7 +98,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         const graded = d.outcome === "GRADED";
         return { studentId: r.studentId, ca: graded && d.ca !== "" ? Number(d.ca) : null, exam: graded && d.exam !== "" ? Number(d.exam) : null, outcome: d.outcome, reason: d.reason.trim() || null };
       }).filter((x) => x.outcome !== "GRADED" || (x.ca !== null && x.exam !== null));
-      const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/scores`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode}: ${scores.length} marks entered`) }, body: JSON.stringify({ scores }) });
+      const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/scores`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(onBehalf ? `${s.courseCode}: ${scores.length} marks entered on behalf of ${s.lecturer ?? "the lecturer"} — ${behalfReason.trim()}` : `${s.courseCode}: ${scores.length} marks entered`) }, body: JSON.stringify(onBehalf ? { scores, onBehalfReason: behalfReason.trim() } : { scores }) });
       if (!r.ok) {
         { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
@@ -112,7 +118,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode}: submitted and attested by the lecturer`) }, body: "{}" });
+      const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(onBehalf ? `${s.courseCode}: submitted on behalf of ${s.lecturer ?? "the lecturer"}` : `${s.courseCode}: submitted and attested by the lecturer`) }, body: JSON.stringify(onBehalf ? { comment: behalfReason.trim() } : {}) });
       if (!r.ok) {
         { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return;
@@ -262,9 +268,26 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
           <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=pdf`} title="The roll with total, grade and point, and a summary of performance — PDF">Marked sheet · PDF</a>
         </> : null}
         {atEntry && own ? <><Btn kind="ghost" onClick={() => file.current?.click()}>Upload a completed sheet</Btn><input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
-        {atEntry && own ? <Btn kind="primary" disabled={busy || !dirty.length || invalid.length > 0 || needReason.length > 0} onClick={() => void save()}>{busy ? "Saving…" : "Save the draft"}</Btn> : null}
-        {atEntry && own ? <Btn kind={ready ? "go" : "ghost"} disabled={busy || !(blank === 0) || invalid.length > 0 || needReason.length > 0} onClick={() => setAsk("submit")}>Submit and attest</Btn> : null}
+        {atEntry && own ? <Btn kind="primary" disabled={busy || !dirty.length || invalid.length > 0 || needReason.length > 0 || behalfMissing} onClick={() => void save()}>{busy ? "Saving…" : "Save the draft"}</Btn> : null}
+        {atEntry && own ? <Btn kind={ready ? "go" : "ghost"} disabled={busy || !(blank === 0) || invalid.length > 0 || needReason.length > 0 || behalfMissing} onClick={() => setAsk("submit")}>{onBehalf ? "Submit on the lecturer's behalf" : "Submit and attest"}</Btn> : null}
       </div>
+
+      {atEntry && onBehalf ? (
+        <Note kind="info" title={`You are entering marks on behalf of ${s.lecturer ?? "the lecturer"}`}>
+          <div className="t-sm" style={{ lineHeight: 1.6 }}>
+            {s.lecturer ?? "The lecturer"} remains the academic owner of this sheet. Every mark you write is recorded in your name as entered on their behalf, with the reason below beside it, and the sheet enters the chain at entry like any other: it still passes verification, the Departmental Board, the Faculty and Senate. If you submit it yourself, another person must verify it.
+          </div>
+          <div className="field mt-2" style={{ maxWidth: 640 }}>
+            <label htmlFor="behalf-reason">Why the lecturer is not entering the marks themselves <span className="ink-red">*</span></label>
+            <input id="behalf-reason" className="ctl" value={behalfReason} onChange={(e) => setBehalfReason(e.target.value)} placeholder="e.g. Lecturer on medical leave; marks received on the signed paper sheet on 12 March" autoComplete="off" />
+          </div>
+        </Note>
+      ) : null}
+      {uploads.length ? (
+        <Note kind="info" title={`${uploads.length} upload${uploads.length === 1 ? "" : "s"} on this sheet ${uploads.length === 1 ? "was" : "were"} made on the lecturer's behalf`}>
+          {uploads.map((u) => <div key={u.id} className="t-sm" style={{ lineHeight: 1.6 }}><b>{u.uploadedBy ?? "Unnamed"}</b> ({u.uploaderOffice}) on {new Date(u.uploadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · {u.rowsWritten} mark{u.rowsWritten === 1 ? "" : "s"} · on behalf of {u.owner ?? "the lecturer of record"} · “{u.reason}”</div>)}
+        </Note>
+      ) : null}
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {fileNote ? <Note kind={fileNote.kind} title={fileNote.title} action={fileNote.kind === "bad" && refused ? <Btn kind="ghost" onClick={validationReport}>Download Validation Report</Btn> : undefined}>{fileNote.lines.map((l, i) => <span className="blk" key={i}>{l}</span>)}</Note> : null}
@@ -368,9 +391,11 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       </Panel>
 
       {ask === "submit" ? (
-        <Modal title="Submit and attest" sub={`${s.courseCode} · ${roll.length} candidates`} onClose={() => setAsk(null)}
-          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not yet</Btn><span className="grow" /><Btn kind="go" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "I attest these marks"}</Btn></>}>
-          <p className="m-0" style={{ lineHeight: 1.6 }}>Every candidate on the roll carries a mark or an outcome. Attesting signs the sheet in your name and sends it to verification; it will not accept a further mark from you unless a desk returns it with a reason.</p>
+        <Modal title={onBehalf ? "Submit on the lecturer's behalf" : "Submit and attest"} sub={`${s.courseCode} · ${roll.length} candidates${onBehalf ? ` · on behalf of ${s.lecturer ?? "the lecturer"}` : ""}`} onClose={() => setAsk(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not yet</Btn><span className="grow" /><Btn kind="go" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : onBehalf ? "Submit on their behalf" : "I attest these marks"}</Btn></>}>
+          <p className="m-0" style={{ lineHeight: 1.6 }}>{onBehalf
+            ? `Every candidate on the roll carries a mark or an outcome. Submitting sends the sheet to verification in your name, on behalf of ${s.lecturer ?? "the lecturer"}, with your reason on the record: “${behalfReason.trim()}”. ${s.lecturer ?? "The lecturer"} remains its academic owner, and because you submitted it another person must verify it.`
+            : "Every candidate on the roll carries a mark or an outcome. Attesting signs the sheet in your name and sends it to verification; it will not accept a further mark from you unless a desk returns it with a reason."}</p>
         </Modal>
       ) : null}
     </>

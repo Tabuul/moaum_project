@@ -19,6 +19,8 @@ class ResultsRepository {
                    s.returned_times, o.lecturer_id, coalesce(es.kind, 'MAIN') AS sitting,
                    CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
                    (SELECT count(*) FROM assessment.sheet_candidates(s.id)) AS candidates,
+                   (SELECT count(*) FROM assessment.sheet_candidates(s.id) c
+                     WHERE EXISTS (SELECT 1 FROM assessment.score sc WHERE sc.sheet_id = s.id AND sc.student_id = c.student_id)) AS received,
                    (SELECT count(*) FROM assessment.held_script h WHERE h.sheet_id = s.id AND h.state = 'HELD') AS held_scripts,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED') AS graded,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
@@ -46,8 +48,7 @@ class ResultsRepository {
         return jdbc.sql(SHEET_SELECT + """
                  WHERE (:fac::text IS NULL OR d.faculty_code = :fac)
                    AND (:dept::text IS NULL OR c.dept_code = :dept)
-                   AND (:prog::text IS NULL OR EXISTS (SELECT 1 FROM catalogue.course_offer cf
-                                                        WHERE cf.course_code = c.code AND cf.programme_code = :prog))
+                   AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
                    AND (:course::text IS NULL OR o.course_code = :course)
                    AND (:session::text IS NULL OR o.session = :session)
                    AND (:sem::int IS NULL OR o.semester = :sem)
@@ -96,17 +97,232 @@ class ResultsRepository {
                 """).param("p", person).param("o", office).query(String.class).optional().orElse(null);
     }
 
-    long offeringsWithLecturer(String fac, String dept, String session, Integer sem, UUID mine) {
+    long offeringsWithLecturer(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
         return jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
                  WHERE o.lecturer_id IS NOT NULL
                    AND (:fac::text IS NULL OR d.faculty_code = :fac) AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
                    AND (:session::text IS NULL OR o.session = :session) AND (:sem::int IS NULL OR o.semester = :sem)
                    AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
                         OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
-                """).param("fac", fac).param("dept", dept).param("session", session).param("sem", sem).param("mine", mine)
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
                 .query(Long.class).single();
+    }
+
+    /* ── V318: the pipeline monitor ── */
+
+    /** the session in progress, or the latest one on the calendar */
+    String currentSession() {
+        return jdbc.sql("""
+                SELECT name FROM policy.academic_session
+                 ORDER BY (state = 'CURRENT') DESC, (current_date BETWEEN starts_on AND ends_on) DESC, starts_on DESC LIMIT 1
+                """).query(String.class).optional().orElse("2026/2027");
+    }
+
+    /** the offerings in scope for the period: all of them, and those with a lecturer (a sheet opens only over those) */
+    record OfferingsCount(long offerings, long withLecturer) {
+    }
+
+    OfferingsCount offeringsInScope(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
+        return jdbc.sql("""
+                SELECT count(*) AS offerings, count(*) FILTER (WHERE o.lecturer_id IS NOT NULL) AS with_lecturer
+                  FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+                  JOIN ref.department d ON d.code = c.dept_code
+                 WHERE (:fac::text IS NULL OR d.faculty_code = :fac) AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
+                   AND o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .query(OfferingsCount.class).single();
+    }
+
+    /** one sheet as the monitor reads it: the listing's row with its coverage, when it reached its stage, and the uploads on behalf */
+    record ProgressRow(UUID id, String courseCode, String courseTitle, int units, String deptCode, String deptName, String facultyCode,
+                       String facultyName, String session, int semester, String sitting, String stage, LocalDate dueOn, int returnedTimes,
+                       UUID lecturerId, String lecturer, long candidates, long received, long missing, long graded, long failed,
+                       long heldScripts, long uploadsOnBehalf, java.time.OffsetDateTime stageSince, UUID lastActor, String generalOffice) {
+    }
+
+    List<ProgressRow> progress(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
+        return jdbc.sql("""
+                SELECT s.id, o.course_code, c.title AS course_title, c.units, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
+                       o.session, o.semester, coalesce(es.kind, 'MAIN') AS sitting, s.stage, s.due_on, s.returned_times, o.lecturer_id,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
+                       cv.expected AS candidates, cv.received, cv.missing, cv.graded,
+                       (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
+                       (SELECT count(*) FROM assessment.held_script h WHERE h.sheet_id = s.id AND h.state = 'HELD') AS held_scripts,
+                       (SELECT count(*) FROM assessment.sheet_upload u WHERE u.sheet_id = s.id) AS uploads_on_behalf,
+                       assessment.sheet_stage_since(s.id) AS stage_since,
+                       (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
+                         ORDER BY dd.decided_at DESC LIMIT 1) AS last_actor,
+                       c.general_office
+                  FROM assessment.score_sheet s
+                  JOIN catalogue.offering o ON o.id = s.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  JOIN ref.department d ON d.code = c.dept_code
+                  JOIN ref.faculty f ON f.code = d.faculty_code
+                  LEFT JOIN assessment.exam_session es ON es.id = s.exam_session_id
+                  LEFT JOIN iam.person p ON p.id = o.lecturer_id
+                  CROSS JOIN LATERAL assessment.sheet_coverage(s.id) cv
+                 WHERE (:fac::text IS NULL OR d.faculty_code = :fac)
+                   AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
+                   AND o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
+                 ORDER BY f.name, d.name, o.course_code
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .query(ProgressRow.class).list();
+    }
+
+    /** an offering in scope with registered candidates and no sheet: no lecturer allocated, or the session not opened over it */
+    record NoSheetRow(UUID offeringId, String courseCode, String courseTitle, String deptName, String lecturer, long candidates, boolean noLecturer) {
+    }
+
+    List<NoSheetRow> offeringsWithoutSheet(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
+        return jdbc.sql("""
+                SELECT o.id AS offering_id, o.course_code, c.title AS course_title, d.name AS dept_name,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
+                       cand.n AS candidates, o.lecturer_id IS NULL AS no_lecturer
+                  FROM catalogue.offering o
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  JOIN ref.department d ON d.code = c.dept_code
+                  LEFT JOIN iam.person p ON p.id = o.lecturer_id
+                  CROSS JOIN LATERAL (SELECT count(*) AS n FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                                       WHERE e.offering_id = o.id AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')) cand
+                 WHERE NOT EXISTS (SELECT 1 FROM assessment.score_sheet s WHERE s.offering_id = o.id)
+                   AND cand.n > 0
+                   AND (:fac::text IS NULL OR d.faculty_code = :fac)
+                   AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
+                   AND o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
+                 ORDER BY d.name, o.course_code
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .query(NoSheetRow.class).list();
+    }
+
+    /** the last events on the record in scope: the chain's decisions and the uploads on behalf, newest first */
+    List<Sheets.TimelineEvent> timeline(String fac, String dept, String prog, String session, Integer sem, UUID mine, int limit) {
+        return jdbc.sql("""
+                WITH scoped AS (
+                    SELECT s.id, o.course_code
+                      FROM assessment.score_sheet s
+                      JOIN catalogue.offering o ON o.id = s.offering_id
+                      JOIN catalogue.course c ON c.code = o.course_code
+                      JOIN ref.department d ON d.code = c.dept_code
+                     WHERE (:fac::text IS NULL OR d.faculty_code = :fac)
+                       AND (:dept::text IS NULL OR c.dept_code = :dept)
+                       AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
+                       AND o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                       AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                            OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine)))
+                SELECT x.sheet_id, x.course_code, x.from_stage, x.to_stage, x.kind, x.actor_office,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS actor, x.comment, x.decided_at
+                  FROM (
+                    SELECT d.sheet_id, sc.course_code, d.from_stage, d.to_stage, d.kind, d.actor_office, d.actor_id, d.comment, d.decided_at
+                      FROM assessment.decision d JOIN scoped sc ON sc.id = d.sheet_id
+                    UNION ALL
+                    SELECT u.sheet_id, sc.course_code, 'ENTRY', 'ENTRY', 'UPLOAD_ON_BEHALF', u.uploader_office, u.uploaded_by,
+                           u.reason || ' (' || u.rows_written || ' mark' || CASE WHEN u.rows_written = 1 THEN '' ELSE 's' END || ')', u.uploaded_at
+                      FROM assessment.sheet_upload u JOIN scoped sc ON sc.id = u.sheet_id
+                  ) x
+                  LEFT JOIN iam.person p ON p.id = x.actor_id
+                 ORDER BY x.decided_at DESC
+                 LIMIT :limit
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .param("limit", limit).query(Sheets.TimelineEvent.class).list();
+    }
+
+    /** every programme and level in scope with an approved registration this period: the cells its broadsheet expects, the marks in, the sets published */
+    List<Sheets.ProgrammeLevel> programmeCoverage(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
+        return jdbc.sql("""
+                WITH sh AS (
+                    SELECT s.id, s.offering_id, s.stage
+                      FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
+                     WHERE o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                ), sc AS (
+                    SELECT sh.offering_id, ls.student_id FROM sh CROSS JOIN LATERAL assessment.latest_scores(sh.id) ls
+                )
+                SELECT st.programme_code, pr.name AS programme_name, pr.dept_code, d.name AS dept_name, r.level,
+                       count(DISTINCT r.student_id) AS students, count(*) AS cells,
+                       count(sc.student_id) AS received, count(*) - count(sc.student_id) AS missing,
+                       count(*) FILTER (WHERE sh.stage = 'PUBLISHED') AS published,
+                       CASE WHEN count(*) = 0 THEN 0 ELSE (100 * count(sc.student_id) / count(*))::int END AS percent
+                  FROM registration.course_registration r
+                  JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'
+                  JOIN people.student st ON st.id = r.student_id
+                  JOIN ref.programme pr ON pr.code = st.programme_code
+                  JOIN ref.department d ON d.code = pr.dept_code
+                  JOIN catalogue.offering o ON o.id = e.offering_id
+                  LEFT JOIN sh ON sh.offering_id = o.id
+                  LEFT JOIN sc ON sc.offering_id = o.id AND sc.student_id = r.student_id
+                 WHERE r.session = :session AND (:sem::int IS NULL OR r.semester = :sem) AND r.status IN ('APPROVED','LOCKED')
+                   AND (:fac::text IS NULL OR d.faculty_code = :fac)
+                   AND (:dept::text IS NULL OR pr.dept_code = :dept)
+                   AND (:prog::text IS NULL OR st.programme_code = :prog)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
+                 GROUP BY st.programme_code, pr.name, pr.dept_code, d.name, r.level
+                 ORDER BY d.name, pr.name, r.level
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .query(Sheets.ProgrammeLevel.class).list();
+    }
+
+    /** true when the sheet serves the programme: its course is offered to the programme, or a student of the programme is on its roll */
+    boolean sheetServesProgramme(UUID sheetId, String prog) {
+        return jdbc.sql("""
+                SELECT EXISTS (
+                  SELECT 1 FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
+                   WHERE s.id = :id
+                     AND catalogue.offering_serves(o.id, :p))
+                """).param("id", sheetId).param("p", prog).query(Boolean.class).single();
+    }
+
+    /** the uploads made on the lecturer's behalf on a sheet (V318), newest first */
+    List<Sheets.Upload> uploads(UUID sheetId) {
+        return jdbc.sql("""
+                SELECT u.id, u.uploaded_by AS uploaded_by_id,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS uploaded_by,
+                       u.uploader_office,
+                       CASE WHEN w.id IS NULL THEN NULL ELSE w.surname || ', ' || w.given_names END AS owner,
+                       u.reason, u.rows_written, u.uploaded_at
+                  FROM assessment.sheet_upload u
+                  LEFT JOIN iam.person p ON p.id = u.uploaded_by
+                  LEFT JOIN iam.person w ON w.id = u.owner_id
+                 WHERE u.sheet_id = :id ORDER BY u.uploaded_at DESC
+                """).param("id", sheetId).query(Sheets.Upload.class).list();
+    }
+
+    /** the record of an upload on behalf: refused by the database without a reason, or when the actor teaches the course */
+    UUID recordUploadOnBehalf(UUID sheetId, String reason, int rows) {
+        return jdbc.sql("SELECT assessment.record_upload_on_behalf(:s, :r, :n)").param("s", sheetId)
+                .param("r", reason, Types.VARCHAR).param("n", rows).query(UUID.class).single();
+    }
+
+    /** the lecturer of record is told of an upload made on their behalf (V318): an e-mail notice through the platform's
+     *  queue, when the lecturer has an address; nothing otherwise, and never a failure of the upload */
+    void tellLecturerOfUpload(UUID sheetId, UUID uploadId, String uploader, String office, String reason, int rows) {
+        jdbc.sql("""
+                SELECT platform.queue_notice('EMAIL', p.email,
+                           o.course_code || ': marks entered on your behalf',
+                           format('%s marks were entered on the score sheet of %s (%s, %s semester %s) on your behalf by %s (%s). Reason given: %s. '
+                                  || 'You remain the academic owner of the sheet; it passes verification, the Departmental Board, the Faculty and Senate as any other.',
+                                  :rows, o.course_code, o.session, o.semester, p.surname, :by, :office, :reason),
+                           'score_sheet', :sheet)
+                  FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id JOIN iam.person p ON p.id = o.lecturer_id
+                 WHERE s.id = :sheet AND nullif(btrim(coalesce(p.email, '')), '') IS NOT NULL
+                """).param("rows", rows).param("by", uploader == null ? "the office" : uploader).param("office", office)
+                .param("reason", reason).param("sheet", sheetId).query().listOfRows();
+    }
+
+    /** the acting person's name, for a notice */
+    String personName(UUID id) {
+        return jdbc.sql("SELECT surname || ', ' || given_names FROM iam.person WHERE id = :id").param("id", id).query(String.class).optional().orElse(null);
     }
 
     record Examiner(String secondExaminer, String senateMinute, java.time.OffsetDateTime publishedAt, String engineVersion) {
@@ -135,8 +351,12 @@ class ResultsRepository {
     List<Sheets.Mark> marks(UUID sheetId) {
         return jdbc.sql("""
                 SELECT l.student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names,
-                       l.ca, l.exam, l.total, l.grade, l.points, l.outcome, l.version, l.amended
+                       l.ca, l.exam, l.total, l.grade, l.points, l.outcome, l.version, l.amended,
+                       CASE WHEN w.id IS NULL THEN NULL ELSE w.surname || ', ' || w.given_names END AS entered_by,
+                       sc.entered_office, sc.on_behalf
                   FROM assessment.latest_scores(:id) l JOIN people.student st ON st.id = l.student_id
+                  JOIN assessment.score sc ON sc.sheet_id = :id AND sc.student_id = l.student_id AND sc.version = l.version
+                  LEFT JOIN iam.person w ON w.id = sc.entered_by
                  ORDER BY st.surname, st.other_names
                 """).param("id", sheetId).query(Sheets.Mark.class).list();
     }
@@ -158,12 +378,18 @@ class ResultsRepository {
     }
 
     void score(UUID sheetId, UUID studentId, int version, Integer ca, Integer exam, String outcome, String reason) {
+        score(sheetId, studentId, version, ca, exam, outcome, reason, null);
+    }
+
+    /** a version of a mark; with an on-behalf reason it is written as an entry on the lecturer's behalf (V318) — the
+     *  writer and their office are filled in by the record from the attributed transaction */
+    void score(UUID sheetId, UUID studentId, int version, Integer ca, Integer exam, String outcome, String reason, String onBehalfReason) {
         jdbc.sql("""
-                INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason)
-                VALUES (:s, :st, :v, :ca, :exam, :o, :r)
+                INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason, on_behalf, on_behalf_reason)
+                VALUES (:s, :st, :v, :ca, :exam, :o, :r, :b::text IS NOT NULL, :b)
                 """).param("s", sheetId).param("st", studentId).param("v", version)
                 .param("ca", ca, Types.INTEGER).param("exam", exam, Types.INTEGER).param("o", outcome)
-                .param("r", reason, Types.VARCHAR).update();
+                .param("r", reason, Types.VARCHAR).param("b", onBehalfReason, Types.VARCHAR).update();
     }
 
     String advance(UUID sheetId, String comment, String minute) {
@@ -318,7 +544,8 @@ class ResultsRepository {
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
-                       o.course_code, c.title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome
+                       o.course_code, c.title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
+                       cf.sheet_id
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id
                   JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'

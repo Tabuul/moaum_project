@@ -26,6 +26,8 @@ export interface SheetListed {
   returnedTimes: number;
   lecturer: string | null;
   candidates: number;
+  /** candidates on the roll with a mark or an outcome (V318) */
+  received?: number;
   failRate: number | null;
   mayAct: boolean;
   blockedForYou: boolean;
@@ -34,6 +36,57 @@ export interface SheetListed {
   /** scripts held from candidates not on the roll, waiting on registration (V240) */
   heldScripts: number;
 }
+
+/* ── V318: the pipeline monitor — the nine stages with their real counts, coverage, what is missing, what needs a desk ── */
+export interface StageCount { stage: string; label: string; desk: string; sheets: number; candidates: number }
+export interface PipelineCoverage {
+  offerings: number; withLecturer: number; withoutLecturer: number; sheets: number; expected: number; received: number; missing: number;
+  percent: number; published: number; publishedCandidates: number;
+}
+export interface SheetProgress {
+  id: string; courseCode: string; courseTitle: string; units: number; deptCode: string; deptName: string; facultyCode: string; facultyName: string;
+  session: string; semester: number; sitting: string; stage: string; desk: string; lecturer?: string | null; candidates: number; received: number;
+  missing: number; failRate?: number | null; stageSince?: string | null; daysAtStage?: number | null; dueOn?: string | null; daysLate?: number | null;
+  returnedTimes: number; heldScripts: number; uploadsOnBehalf: number; mayAct: boolean; blockedForYou: boolean; flags: string[];
+}
+export interface MissingCourse {
+  sheetId?: string | null; offeringId?: string | null; courseCode: string; courseTitle: string; deptName: string; lecturer?: string | null;
+  candidates: number; received: number; missing: number; why: "NOT_STARTED" | "PARTIAL" | "NO_LECTURER" | "NO_SHEET" | string;
+}
+export interface PipelineAlert { sheetId?: string | null; courseCode: string; deptName: string; stage?: string | null; kind: string; detail: string }
+export interface TimelineEvent {
+  sheetId: string; courseCode: string; fromStage: string; toStage: string; kind: "SUBMIT" | "ADVANCE" | "RETURN" | "UPLOAD_ON_BEHALF" | string;
+  actorOffice: string; actor?: string | null; comment?: string | null; decidedAt: string;
+}
+export interface ProgrammeLevel {
+  programmeCode: string; programmeName: string; deptCode: string; deptName: string; level: number; students: number; cells: number;
+  received: number; missing: number; published: number; percent: number;
+}
+export interface PipelineView {
+  session: string; semester?: number | null; fac?: string | null; dept?: string | null; prog?: string | null; desk: string; deskStage?: string | null;
+  stages: StageCount[]; coverage: PipelineCoverage; sheets: SheetProgress[]; missing: MissingCourse[]; alerts: PipelineAlert[];
+  attention: SheetProgress[]; timeline: TimelineEvent[]; programmes: ProgrammeLevel[];
+}
+/** an upload of marks made on the lecturer's behalf (V318) */
+export interface SheetUpload {
+  id: string; uploadedById: string; uploadedBy?: string | null; uploaderOffice: string; owner?: string | null; reason: string; rowsWritten: number; uploadedAt: string;
+}
+
+/** what a flag on a sheet means, and how loud it is */
+export const FLAG_LABEL: Record<string, [string, "bad" | "info" | "warn" | "ok" | "grey"]> = {
+  NOT_STARTED: ["No mark yet", "bad"],
+  PARTIAL: ["Partly entered", "warn"],
+  COMPLETE_NOT_SUBMITTED: ["Complete, not submitted", "warn"],
+  OVERDUE: ["Overdue", "bad"],
+  RETURNED: ["Returned", "warn"],
+  HIGH_FAIL: ["Fail rate over half", "bad"],
+  HELD_SCRIPTS: ["Held scripts", "info"],
+  ROLL_GREW: ["Roll grew after submission", "bad"],
+  STALLED: ["Stalled on a desk", "warn"],
+  ON_BEHALF: ["Uploaded on behalf", "info"],
+  EMPTY_ROLL: ["Nobody registered", "grey"],
+  NO_LECTURER: ["No lecturer", "bad"],
+};
 
 /** a script held from a candidate not on the roll (V240) */
 export interface HeldScript {
@@ -74,6 +127,10 @@ export interface Mark {
   outcome: string;
   version: number;
   amended: boolean;
+  /** who actually wrote this version, in which office, and whether on the lecturer's behalf (V318) */
+  enteredBy?: string | null;
+  enteredOffice?: string | null;
+  onBehalf?: boolean;
 }
 
 export interface SheetDetail {
@@ -84,6 +141,10 @@ export interface SheetDetail {
   engineVersion: string | null;
   chain: Decision[];
   marks: Mark[];
+  /** the uploads made on the lecturer's behalf (V318) */
+  uploads?: SheetUpload[];
+  /** whether the reader teaches the course — their entry is the lecturer's own, not on behalf (V318) */
+  youTeach?: boolean;
 }
 
 export interface ExamSession {
@@ -200,10 +261,18 @@ export interface RollRow {
 export interface GradeBand { grade: string; low: number; high: number; points: number }
 export interface ClassBand { clazz: string; low: number; high: number; ord: number }
 export interface BroadsheetMark { courseCode: string; stage: string; total: number | null; grade: string | null; points: number | null; outcome: string | null; counted: boolean }
-export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; cur: number; cue: number; points: number; gpa: number | null; pending: number; standing: string; tcr: number; tce: number; twgp: number; cgpa: number | null; lcgpa: number | null; carryovers: string[]; remarks: string; entryMode: string }
+export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; cur: number; cue: number; points: number; gpa: number | null; pending: number; standing: string; tcr: number; tce: number; twgp: number; cgpa: number | null; lcgpa: number | null; carryovers: string[]; remarks: string; entryMode: string; received?: number; missing?: number }
+/** V318: how far one course column of the broadsheet is */
+export interface BroadsheetCourseCoverage { courseCode: string; title: string; sheetId?: string | null; stage: string; expected: number; received: number; missing: number }
+/** V318: the live coverage of a broadsheet — every cell a registration expects, counted as the marks arrive */
+export interface BroadsheetCoverage {
+  cells: number; received: number; missing: number; percent: number; coursesComplete: number; coursesTotal: number; candidatesComplete: number;
+  setsPublished: number; courses: BroadsheetCourseCoverage[]; candidates: { studentId: string; number: string; name: string; courses: string[] }[];
+}
 export interface Broadsheet {
   programme: string; level: number; session: string; semester: number; courses: { courseCode: string; title: string; units: number; kind: string; level: number }[]; rows: BroadsheetRow[];
   meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
+  coverage?: BroadsheetCoverage;
 }
 export interface SenateFaculty { facultyCode: string; facultyName: string; sets: number; atSenate: number; published: number; outstanding: number; candidates: number }
 export interface SenateMinute { minute: string; firstPublishedAt: string; lastPublishedAt: string; sets: number; candidates: number }

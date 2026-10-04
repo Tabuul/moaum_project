@@ -163,6 +163,18 @@ class ResultsController {
         return service.sheet(id);
     }
 
+    /** V318: the pipeline monitor — the nine stages with their real counts in scope, the coverage (expected, received,
+     *  missing) counted from the rolls, the courses whose results are not in, what needs a desk, the timeline, and every
+     *  programme and level's broadsheet progress. The office's bound applies whatever the parameters say. */
+    @GetMapping("/pipeline")
+    @PreAuthorize(READERS)
+    Sheets.PipelineView pipeline(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                 @RequestParam(required = false) String prog, @RequestParam(required = false) String session,
+                                 @RequestParam(required = false) Integer sem) {
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        return service.pipeline(b.fac(), b.dept(), b.prog(), blank(session), sem);
+    }
+
     @PutMapping("/sheets/{id}/scores")
     @PreAuthorize(ENTRY)
     Map<String, Object> scores(@PathVariable UUID id, @Valid @RequestBody ResultsService.ScoresIn body) {

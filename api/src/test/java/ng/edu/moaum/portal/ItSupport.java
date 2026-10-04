@@ -141,4 +141,24 @@ final class ItSupport {
             return id;
         });
     }
+
+    /**
+     * A token for an office held over a scope (V316/V318): an invented person with a standing grant of the
+     * office over the department, programme or faculty named — the Head of Department over 'MTC', the
+     * Programme Examinations Officer over 'C00023', the Dean over 'SC'. The same office over the same scope
+     * is the same person on every run, so the chain's rule that no two consecutive stages are one person's
+     * holds between offices and not within one.
+     */
+    String officer(String office, String scopeKind, String scopeId) {
+        String tag = scopeId.replaceAll("[^A-Za-z0-9]", "");
+        UUID id = person("ZZ-" + office.toUpperCase() + "-" + tag, "ZZ" + office.toUpperCase() + tag);
+        db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                SELECT gen_random_uuid(), :p, :o, :k, :s, 'integration test', :p, current_date
+                 WHERE NOT EXISTS (SELECT 1 FROM iam.office_assignment a
+                                    WHERE a.person_id = :p AND a.office_code = :o AND a.scope_kind = :k AND upper(a.scope_id) = upper(:s)
+                                      AND (a.valid_to IS NULL OR a.valid_to >= current_date))
+                """).param("p", id).param("o", office).param("k", scopeKind).param("s", scopeId).update());
+        return TestTokens.token(id, List.of(office));
+    }
 }

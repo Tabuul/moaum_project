@@ -9,6 +9,8 @@ import { DTable } from "@/components/proto/DTable";
 import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 import { semesterName } from "@/lib/student-portal";
+import type { PipelineView } from "@/lib/results";
+import { PipelinePanel } from "@/components/results/PipelinePanel";
 
 export interface HodHome {
   resolved: boolean;
@@ -35,7 +37,7 @@ export interface HodHome {
   feesOwing?: number;
 }
 
-export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[] }) {
+export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = null }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[]; pipeline?: PipelineView | null }) {
   if (!home || !home.resolved) {
     return (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
@@ -141,14 +143,20 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
 
       <AllocationHistory rows={history} mode="department" session={home.session ?? ""} />
 
-      <Panel title="Result pipeline" right={`${sheets} sheet${sheets === 1 ? "" : "s"} not yet published`}>
-        <Tiles cls="grid--4" items={[
-          ["With lecturers (Entry)", String(pipe.entry), pipe.entry ? "var(--red-ink)" : "var(--green-ink)", "Marks not yet submitted", "/results/desk"],
-          ["In the approval chain", String(pipe.workflow), pipe.workflow ? "var(--chrome)" : null, "Dept → Faculty → Records", "/results/desk"],
-          ["Awaiting Senate", String(pipe.senate), pipe.senate ? "var(--chrome)" : null, "Ready for the minute"],
-          ["Published", String(pipe.published), "var(--green-ink)", "Released to students"],
-        ]} />
-      </Panel>
+      {pipeline ? (
+        /* V318: the department's result pipeline as the monitor reads it — every stage a real count and a link, the coverage
+           counted from the rolls, what waits at the Departmental Board, and every programme and level's live broadsheet */
+        <PipelinePanel view={pipeline} title={`Result pipeline · ${home.deptName} · ${home.session}`} />
+      ) : (
+        <Panel title="Result pipeline" right={`${sheets} sheet${sheets === 1 ? "" : "s"} not yet published`}>
+          <Tiles cls="grid--4" items={[
+            ["With lecturers (Entry)", String(pipe.entry), pipe.entry ? "var(--red-ink)" : "var(--green-ink)", "Marks not yet submitted", "/results/desk"],
+            ["In the approval chain", String(pipe.workflow), pipe.workflow ? "var(--chrome)" : null, "Dept → Faculty → Records", "/results/desk"],
+            ["Awaiting Senate", String(pipe.senate), pipe.senate ? "var(--chrome)" : null, "Ready for the minute"],
+            ["Published", String(pipe.published), "var(--green-ink)", "Released to students"],
+          ]} />
+        </Panel>
+      )}
 
       <div className="grid grid--2">
         <Panel title="At-risk students" right={`${home.probation ?? 0} on probation · ${carryovers} carrying a course`}>

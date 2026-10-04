@@ -31,6 +31,8 @@ class RefRepository {
         String hodDept = scope.actingDepartmentOffice() ? (scope.actingDept() == null ? "__none__" : scope.actingDept()) : null;
         String facOnly = scope.actingFacultyOffice() ? (scope.actingFaculty() == null ? "__none__" : scope.actingFaculty()) : null;
         java.util.UUID lecturer = scope.actingLecturer() ? scope.actorId() : null;
+        // V318: a Programme Examinations Officer sees the one programme their grant names
+        String progOnly = scope.actingProgramme();
 
         List<Structure.College> colleges = jdbc.sql("""
                 SELECT co.code, co.name, co.system, co.url FROM ref.college co
@@ -65,8 +67,10 @@ class RefRepository {
                                     WHERE co.programme_code = p.code
                                       AND (o.lecturer_id = :lect OR o.second_examiner_id = :lect
                                            OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :lect))))
+                   AND (:prog::text IS NULL OR p.code = :prog)
                  ORDER BY p.name""")
-                .param("dept", hodDept).param("fac", facOnly).param("lect", lecturer, java.sql.Types.OTHER).query(Structure.ProgrammeRow.class).list();
+                .param("dept", hodDept).param("fac", facOnly).param("lect", lecturer, java.sql.Types.OTHER).param("prog", progOnly)
+                .query(Structure.ProgrammeRow.class).list();
 
         Map<String, List<Structure.Programme>> byDept = new LinkedHashMap<>();
         for (Structure.ProgrammeRow p : programmes) {

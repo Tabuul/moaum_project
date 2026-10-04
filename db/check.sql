@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 160
+\set EXPECTED 162
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3971,6 +3971,58 @@ BEGIN
     PERFORM pg_temp.assert('A bounded office grant carries the register''s code: a department, programme or faculty typed by name is stored as its code, and an unknown name is refused',
         coalesce(s_dept = 'MTC' AND s_prog = 'C00023' AND s_fac = 'SC' AND r_unknown = 'OFFICE_SCOPE_UNKNOWN', false),
         format('department=%s programme=%s faculty=%s unknown=%s', s_dept, s_prog, s_fac, r_unknown));
+END $$;
+
+-- ── 161-162. V318: coverage is counted from the roll; an upload on behalf names its uploader and says why ──
+DO $$
+DECLARE sh uuid; o uuid; o2 uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid(); s1 uuid; up uuid;
+        lect uuid := gen_random_uuid(); officer uuid := gen_random_uuid();
+        v_exp bigint; v_rec bigint; v_mis bigint; v_gra bigint;
+        r_noreason text; r_teach text; r_blank text; v_by uuid; v_office text; v_owner uuid; e_by uuid; e_office text; e_behalf boolean;
+BEGIN
+    -- the sheet block 74 took through the chain: two on the roll, one graded and one absent — nothing missing
+    SELECT s.id, oo.id INTO sh, o FROM assessment.score_sheet s JOIN catalogue.offering oo ON oo.id = s.offering_id WHERE oo.course_code = 'ZZC 101';
+    SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+    SELECT expected, received, missing, graded INTO v_exp, v_rec, v_mis, v_gra FROM assessment.sheet_coverage(sh);
+    PERFORM pg_temp.assert('Coverage is counted from the roll: two candidates expected, two with a mark or an outcome, none missing, one graded',
+        v_exp = 2 AND v_rec = 2 AND v_mis = 0 AND v_gra = 1, format('expected=%s received=%s missing=%s graded=%s', v_exp, v_rec, v_mis, v_gra));
+
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number) VALUES (lect, 'CHECKLECT', 'Invented', 'P-V318-L'), (officer, 'CHECKEXAMS', 'Invented', 'P-V318-E');
+        -- a second sitting of the course with its lecturer, and a sheet at entry
+        INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id) VALUES (o2, 'ZZC 101', '9999/0000', 2, lect);
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh2, o2);
+        -- an upload on behalf without a reason is refused
+        BEGIN
+            PERFORM assessment.record_upload_on_behalf(sh2, NULL, 1);
+        EXCEPTION WHEN check_violation THEN r_noreason := split_part(SQLERRM, ':', 1); END;
+        -- the lecturer's own entry is not on anyone's behalf
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN
+            PERFORM assessment.record_upload_on_behalf(sh2, 'lecturer away', 1);
+        EXCEPTION WHEN check_violation THEN r_teach := split_part(SQLERRM, ':', 1); END;
+        -- the officer, with the reason: the record names the uploader, their office and the lecturer of record
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        up := assessment.record_upload_on_behalf(sh2, 'Lecturer on medical leave', 1);
+        SELECT uploaded_by, uploader_office, owner_id INTO v_by, v_office, v_owner FROM assessment.sheet_upload WHERE id = up;
+        -- a mark on behalf without its reason is refused by the table itself
+        BEGIN
+            INSERT INTO assessment.score (sheet_id, student_id, ca, exam, on_behalf) VALUES (sh2, s1, 30, 45, true);
+        EXCEPTION WHEN check_violation THEN r_blank := 'refused'; END;
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, on_behalf, on_behalf_reason) VALUES (sh2, s1, 30, 45, true, 'Lecturer on medical leave');
+        SELECT entered_by, entered_office, on_behalf INTO e_by, e_office, e_behalf FROM assessment.score WHERE sheet_id = sh2 AND student_id = s1;
+        RAISE EXCEPTION 'the V318 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('An upload on behalf says why and names its uploader: refused without a reason, refused from the lecturer, recorded with the officer, their office and the lecturer of record; the mark itself refuses on-behalf without a reason and carries who wrote it',
+        coalesce(r_noreason = 'RES_UPLOAD_ON_BEHALF_SAYS_WHY' AND r_teach = 'RES_NOT_ON_BEHALF' AND v_by = officer AND v_office = 'exams' AND v_owner = lect
+                 AND r_blank = 'refused' AND e_by = officer AND e_office = 'exams' AND e_behalf, false),
+        format('no reason=%s lecturer=%s by=%s office=%s owner=%s blank=%s entered_by=%s', r_noreason, r_teach, v_by = officer, v_office, v_owner = lect, r_blank, e_by = officer));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

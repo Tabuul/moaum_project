@@ -512,6 +512,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/exams", "icon": "flask", "label": "CBT Sessions", "badge": "!" },
           { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets", "badge": "6" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Monitoring" },
+          { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
           { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
           { "id": "t/approvals", "icon": "check", "label": "Verification Queue" },
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },

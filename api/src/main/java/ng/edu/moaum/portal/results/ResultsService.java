@@ -36,7 +36,11 @@ public class ResultsService {
     public record ScoreIn(@NotNull UUID studentId, Integer ca, Integer exam, String outcome, String reason) {
     }
 
-    public record ScoresIn(@NotNull List<ScoreIn> scores) {
+    /** the marks to write, and — when the writer does not teach the course (V318) — why they are entered on the lecturer's behalf */
+    public record ScoresIn(@NotNull List<ScoreIn> scores, String onBehalfReason) {
+        public ScoresIn(List<ScoreIn> scores) {
+            this(scores, null);
+        }
     }
 
     public record ExamSessionIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
@@ -294,8 +298,30 @@ public class ResultsService {
                 throw new AccessDeniedException(r.courseCode() + " is not allocated to you in " + r.session()
                         + "; a lecturer reaches only the score sheets of their own courses.");
             }
+            return r;
+        }
+        // V318: a desk bound to a programme, a department or a faculty reaches the sheets within it alone — the
+        // Programme Examinations Officer their programme's, the Head of Department their department's, the Faculty
+        // Examinations Officer, the Faculty Officer and the Dean their faculty's; Exams & Records the University's
+        if (scope.actingDepartmentOffice() || scope.actingFacultyOffice()) {
+            String prog = scope.actingProgramme();
+            boolean inScope = prog != null ? repo.sheetServesProgramme(id, prog) : scope.within(null, r.deptCode(), null);
+            if (!inScope) {
+                throw new AccessDeniedException(r.courseCode() + " is outside your " + (prog != null ? "programme" : scope.actingFacultyOffice() ? "faculty" : "department")
+                        + "; this office reaches only the score sheets within its own scope.");
+            }
         }
         return r;
+    }
+
+    /** V318: an entry by someone who does not teach the course is on the lecturer's behalf — the Programme Examinations
+     *  Officer or the Academic Office uploading for a lecturer. The GST and EPS offices enter their own courses as the
+     *  office (V314) and are not on anyone's behalf. */
+    private boolean onBehalf(UUID sheetId) {
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if (!"exams".equals(office) && !"academic".equals(office)) return false;
+        UUID me = scope.actorId();
+        return me == null || !repo.teaches(sheetId, me);
     }
 
     private Sheets.Listed listed(Sheets.Row r, AuditContext ctx) {
@@ -308,7 +334,7 @@ public class ResultsService {
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
                 r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
-                r.lecturer(), r.candidates(), failRate, mayAct, blocked, r.caMax(), r.heldScripts());
+                r.lecturer(), r.candidates(), r.received(), failRate, mayAct, blocked, r.caMax(), r.heldScripts());
     }
 
     private static String desk(String office) {
@@ -353,7 +379,7 @@ public class ResultsService {
                 entry++;
             }
         }
-        long expected = repo.offeringsWithLecturer(fac, dept, session, sem, mine);
+        long expected = repo.offeringsWithLecturer(fac, dept, prog, session, sem, mine);
         return new Sheets.Listing(new Sheets.Tiles(expected, approved, rows.size() - approved - entry, Math.max(entry, expected - rows.size() + entry)),
                 out, desk(ctx == null ? null : ctx.actorOffice()));
     }
@@ -362,8 +388,138 @@ public class ResultsService {
     public Sheets.Detail sheet(UUID id) {
         Sheets.Row r = own(id);
         ResultsRepository.Examiner x = repo.examiner(id);
+        UUID me = scope.actorId();
         return new Sheets.Detail(listed(r, AuditContextHolder.current().orElse(null)), x.secondExaminer(), x.senateMinute(),
-                x.publishedAt(), x.engineVersion(), repo.chain(id), repo.marks(id));
+                x.publishedAt(), x.engineVersion(), repo.chain(id), repo.marks(id), repo.uploads(id), me != null && repo.teaches(id, me));
+    }
+
+    /* ── V318: the pipeline monitor — the nine stages with their real counts, the coverage, and what needs a desk ── */
+
+    private static final List<String> STAGES = List.of("ENTRY", "VERIFICATION", "DEPT_BOARD", "FACULTY_SCRUTINY", "FACULTY_COMPILATION",
+            "FACULTY_BOARD", "RECORDS", "SENATE", "PUBLISHED");
+    private static final Map<String, String> STAGE_NAME = Map.of("ENTRY", "Entry", "VERIFICATION", "Verification", "DEPT_BOARD", "Departmental Board",
+            "FACULTY_SCRUTINY", "Faculty scrutiny", "FACULTY_COMPILATION", "Faculty compilation", "FACULTY_BOARD", "Faculty Board",
+            "RECORDS", "Exams & Records", "SENATE", "Senate", "PUBLISHED", "Published");
+    private static final Map<String, String> STAGE_DESK = Map.of("ENTRY", "Course lecturer", "VERIFICATION", "Programme Examinations Officer",
+            "DEPT_BOARD", "Head of Department", "FACULTY_SCRUTINY", "Faculty Examinations Officer", "FACULTY_COMPILATION", "Faculty Officer",
+            "FACULTY_BOARD", "Dean", "RECORDS", "Exams & Records", "SENATE", "Registrar, on the minute", "PUBLISHED", "The candidates");
+
+    /** the stage an office's own desk holds, for what needs its attention: the Programme Examinations Officer's is verification */
+    private static String deskStage(String office) {
+        if (office == null) return null;
+        for (String st : STAGES) {
+            if ("ENTRY".equals(st) && !List.of("lecturer", "gst", "eps").contains(office)) continue;
+            if (Sheets.DESK.getOrDefault(st, List.of()).contains(office)) return st;
+        }
+        return null;
+    }
+
+    @Transactional(readOnly = true)
+    public Sheets.PipelineView pipeline(String fac, String dept, String prog, String session, Integer sem) {
+        AuditContext ctx = AuditContextHolder.current().orElse(null);
+        String office = ctx == null ? null : ctx.actorOffice();
+        UUID mine = "lecturer".equals(office) ? ctx.actorId() : null;
+        if ("hod".equals(office)) {
+            String hodDept = repo.officeDepartment(ctx.actorId(), "hod");
+            fac = null;
+            dept = hodDept != null ? hodDept : "__none__";
+        }
+        if (session == null || session.isBlank()) {
+            session = repo.currentSession();
+        }
+        List<ResultsRepository.ProgressRow> rows = repo.progress(fac, dept, prog, session, sem, mine);
+        List<ResultsRepository.NoSheetRow> noSheet = repo.offeringsWithoutSheet(fac, dept, prog, session, sem, mine);
+        if ("gst".equals(office) || "eps".equals(office)) {
+            String general = office.toUpperCase();
+            rows = rows.stream().filter(r -> general.equals(r.generalOffice())).toList();
+            noSheet = List.of();
+        }
+        LocalDate today = LocalDate.now();
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        List<Sheets.Progress> sheets = new ArrayList<>();
+        List<Sheets.MissingCourse> missing = new ArrayList<>();
+        List<Sheets.Alert> alerts = new ArrayList<>();
+        long expected = 0, received = 0, missingMarks = 0, published = 0, publishedCandidates = 0;
+        Map<String, long[]> byStage = new LinkedHashMap<>();
+        for (String st : STAGES) byStage.put(st, new long[2]);
+        for (ResultsRepository.ProgressRow r : rows) {
+            expected += r.candidates();
+            received += r.received();
+            missingMarks += r.missing();
+            long[] c = byStage.computeIfAbsent(r.stage(), k -> new long[2]);
+            c[0]++;
+            c[1] += r.candidates();
+            if ("PUBLISHED".equals(r.stage())) {
+                published++;
+                publishedCandidates += r.candidates();
+            }
+            Integer daysLate = "ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(today)
+                    ? (int) ChronoUnit.DAYS.between(r.dueOn(), today) : null;
+            Integer daysAtStage = r.stageSince() == null ? null : (int) ChronoUnit.DAYS.between(r.stageSince(), now);
+            Integer failRate = r.graded() == 0 ? null : (int) Math.round(100.0 * r.failed() / r.graded());
+            boolean mayAct = office != null && Sheets.DESK.getOrDefault(r.stage(), List.of()).contains(office);
+            boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
+            List<String> flags = new ArrayList<>();
+            boolean atEntry = "ENTRY".equals(r.stage());
+            boolean done = "PUBLISHED".equals(r.stage());
+            if (atEntry && r.missing() > 0 && r.received() == 0) flags.add("NOT_STARTED");
+            if (atEntry && r.missing() > 0 && r.received() > 0) flags.add("PARTIAL");
+            if (atEntry && r.missing() == 0 && r.candidates() > 0) flags.add("COMPLETE_NOT_SUBMITTED");
+            if (daysLate != null && daysLate > 0) flags.add("OVERDUE");
+            if (r.returnedTimes() > 0 && !done) flags.add("RETURNED");
+            if (failRate != null && failRate > 50) flags.add("HIGH_FAIL");
+            if (r.heldScripts() > 0) flags.add("HELD_SCRIPTS");
+            if (!atEntry && !done && r.missing() > 0) flags.add("ROLL_GREW");
+            if (!atEntry && !done && daysAtStage != null && daysAtStage > 14) flags.add("STALLED");
+            if (r.uploadsOnBehalf() > 0) flags.add("ON_BEHALF");
+            if (r.candidates() == 0) flags.add("EMPTY_ROLL");
+            Sheets.Progress p = new Sheets.Progress(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptCode(), r.deptName(), r.facultyCode(),
+                    r.facultyName(), r.session(), r.semester(), r.sitting(), r.stage(), STAGE_DESK.get(r.stage()), r.lecturer(), r.candidates(),
+                    r.received(), r.missing(), failRate, r.stageSince(), daysAtStage, r.dueOn(), daysLate, r.returnedTimes(), r.heldScripts(),
+                    r.uploadsOnBehalf(), mayAct, blocked, flags);
+            sheets.add(p);
+            if (atEntry && r.missing() > 0) {
+                missing.add(new Sheets.MissingCourse(r.id(), null, r.courseCode(), r.courseTitle(), r.deptName(), r.lecturer(), r.candidates(),
+                        r.received(), r.missing(), r.received() == 0 ? "NOT_STARTED" : "PARTIAL"));
+            }
+            if (flags.contains("OVERDUE")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "OVERDUE",
+                    daysLate + " day" + (daysLate == 1 ? "" : "s") + " past " + r.dueOn() + "; " + r.missing() + " of " + r.candidates() + " still without a mark"));
+            if (flags.contains("COMPLETE_NOT_SUBMITTED")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "COMPLETE_NOT_SUBMITTED",
+                    "Every candidate has a mark or an outcome; the sheet has not been submitted and attested"));
+            if (flags.contains("RETURNED")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "RETURNED",
+                    "Returned " + (r.returnedTimes() == 1 ? "once" : r.returnedTimes() + " times") + " for correction"));
+            if (flags.contains("HIGH_FAIL")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "HIGH_FAIL",
+                    failRate + "% of the graded candidates failed"));
+            if (flags.contains("HELD_SCRIPTS")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "HELD_SCRIPTS",
+                    r.heldScripts() + " script" + (r.heldScripts() == 1 ? "" : "s") + " held from candidates not on the roll"));
+            if (flags.contains("ROLL_GREW")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "ROLL_GREW",
+                    r.missing() + " candidate" + (r.missing() == 1 ? "" : "s") + " joined the roll after submission and carry no mark"));
+            if (flags.contains("STALLED")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "STALLED",
+                    daysAtStage + " days at " + STAGE_NAME.get(r.stage()).toLowerCase() + " with " + STAGE_DESK.get(r.stage())));
+            if (flags.contains("ON_BEHALF")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "ON_BEHALF",
+                    r.uploadsOnBehalf() + " upload" + (r.uploadsOnBehalf() == 1 ? "" : "s") + " made on the lecturer's behalf"));
+        }
+        for (ResultsRepository.NoSheetRow n : noSheet) {
+            missing.add(new Sheets.MissingCourse(null, n.offeringId(), n.courseCode(), n.courseTitle(), n.deptName(), n.lecturer(), n.candidates(), 0,
+                    n.candidates(), n.noLecturer() ? "NO_LECTURER" : "NO_SHEET"));
+            missingMarks += n.candidates();
+            expected += n.candidates();
+            if (n.noLecturer()) alerts.add(new Sheets.Alert(null, n.courseCode(), n.deptName(), null, "NO_LECTURER",
+                    n.candidates() + " registered candidate" + (n.candidates() == 1 ? "" : "s") + " and no lecturer allocated, so no sheet can open"));
+        }
+        List<Sheets.StageCount> stages = new ArrayList<>();
+        for (String st : STAGES) {
+            long[] c = byStage.get(st);
+            stages.add(new Sheets.StageCount(st, STAGE_NAME.get(st), STAGE_DESK.get(st), c[0], c[1]));
+        }
+        ResultsRepository.OfferingsCount offerings = repo.offeringsInScope(fac, dept, prog, session, sem, mine);
+        int percent = expected == 0 ? 0 : (int) Math.round(100.0 * received / expected);
+        Sheets.Coverage coverage = new Sheets.Coverage(offerings.offerings(), offerings.withLecturer(), offerings.offerings() - offerings.withLecturer(),
+                rows.size(), expected, received, missingMarks, percent, published, publishedCandidates);
+        String myStage = deskStage(office);
+        List<Sheets.Progress> attention = sheets.stream().filter(p -> p.mayAct() && !p.blockedForYou() && (myStage == null || myStage.equals(p.stage()) || "ENTRY".equals(p.stage()) && "exams".equals(office))).toList();
+        return new Sheets.PipelineView(session, sem, fac, dept, prog, desk(office), myStage, stages, coverage, sheets, missing, alerts, attention,
+                repo.timeline(fac, dept, prog, session, sem, mine, 40), repo.programmeCoverage(fac, dept, prog, session, sem, mine));
     }
 
     /** A mark is never overwritten: a change appends a version with its reason. */
@@ -375,6 +531,16 @@ public class ResultsService {
                     + "; a mark changes by amendment with a reason, not by entry.",
                     new DomainRuleViolation.Remedy("Return the sheet to the lecturer, with the reason on the record.", "The desk holding it"));
         }
+        // V318: an entry by someone who does not teach the course is on the lecturer's behalf: it carries its reason, and the
+        // record names the actual uploader beside the lecturer of record. The lecturer remains the academic owner of the sheet.
+        boolean onBehalf = onBehalf(id);
+        String behalfReason = in.onBehalfReason() == null ? null : in.onBehalfReason().trim();
+        if (onBehalf && (behalfReason == null || behalfReason.isEmpty())) {
+            throw new DomainRuleViolation("RES_UPLOAD_ON_BEHALF_SAYS_WHY", "You do not teach " + r.courseCode()
+                    + "; marks you enter are on the lecturer's behalf and carry the reason.",
+                    new DomainRuleViolation.Remedy("Say why the lecturer is not entering the marks themselves (away, unwell, no access). It is written on the record beside your name, and the lecturer remains the sheet's academic owner.", "Programme Examinations Officer"));
+        }
+        if (!onBehalf) behalfReason = null;
         int written = 0;
         Boolean returned = null;
         int caMax = r.caMax(), examMax = 100 - r.caMax();
@@ -403,15 +569,39 @@ public class ResultsService {
                 throw new DomainRuleViolation("RES_AMENDMENT_SAYS_WHY", "An amended mark carries its reason.",
                         new DomainRuleViolation.Remedy("Say why the mark changes; the old value stays on the record.", "Course lecturer"));
             }
-            repo.score(id, s.studentId(), version, s.ca(), s.exam(), outcome, s.reason());
+            repo.score(id, s.studentId(), version, s.ca(), s.exam(), outcome, s.reason(), behalfReason);
             written++;
         }
-        return Map.of("id", id, "written", written);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", id);
+        out.put("written", written);
+        out.put("onBehalf", onBehalf);
+        if (onBehalf && written > 0) {
+            UUID upload = repo.recordUploadOnBehalf(id, behalfReason, written);
+            out.put("upload", upload);
+            out.put("owner", r.lecturer());
+            // the academic owner is told: who entered what on their behalf, and why
+            UUID me = scope.actorId();
+            repo.tellLecturerOfUpload(id, upload, me == null ? null : repo.personName(me),
+                    AuditContextHolder.current().map(AuditContext::actorOffice).orElse(""), behalfReason, written);
+        }
+        return out;
     }
 
     @Transactional
     public Map<String, Object> advance(UUID id, String comment, String minute) {
-        own(id);
+        Sheets.Row r = own(id);
+        // V318: a submission from entry by someone who does not teach the course is on the lecturer's behalf — it says why,
+        // and the chain records it so. The sheet then moves through every desk as any other; the person who submitted it
+        // cannot take the next stage (BR-006).
+        if ("ENTRY".equals(r.stage()) && onBehalf(id)) {
+            if (comment == null || comment.isBlank()) {
+                throw new DomainRuleViolation("RES_SUBMIT_ON_BEHALF_SAYS_WHY", "You do not teach " + r.courseCode()
+                        + "; submitting its sheet is on the lecturer's behalf and carries the reason.",
+                        new DomainRuleViolation.Remedy("Say why the lecturer is not attesting the sheet themselves. It goes on the record with your name; another person must verify it.", "Programme Examinations Officer"));
+            }
+            comment = "Submitted on behalf of " + (r.lecturer() == null ? "the lecturer" : r.lecturer()) + ": " + comment.trim();
+        }
         String next = repo.advance(id, comment, minute);
         return Map.of("id", id, "stage", next);
     }
@@ -541,6 +731,19 @@ public class ResultsService {
         long passed = 0;
         long carrying = 0;
         long pendingSets = cells.stream().filter(c -> !COUNTED.contains(c.stage())).map(Sheets.BroadsheetCell::courseCode).distinct().count();
+        /* V318: the live coverage — every cell a registration expects, and whether its mark is in yet (an outcome on the
+           latest version of the score); by course column and by candidate, so the sheet is read as it fills */
+        Map<String, long[]> courseCov = new LinkedHashMap<>();          // code → {expected, received}
+        Map<String, UUID> courseSheet = new LinkedHashMap<>();
+        Map<String, String> courseStage = new LinkedHashMap<>();
+        for (Sheets.BroadsheetCell c : cells) {
+            long[] cc = courseCov.computeIfAbsent(c.courseCode(), k -> new long[2]);
+            cc[0]++;
+            if (c.outcome() != null) cc[1]++;
+            if (c.sheetId() != null) courseSheet.putIfAbsent(c.courseCode(), c.sheetId());
+            courseStage.putIfAbsent(c.courseCode(), c.stage());
+        }
+        List<Sheets.BroadsheetMissing> missingCandidates = new ArrayList<>();
         for (Map.Entry<UUID, List<Sheets.BroadsheetCell>> e : byStudent.entrySet()) {
             List<Sheets.BroadsheetMark> marks = new ArrayList<>();
             int units = 0;
@@ -630,8 +833,15 @@ public class ResultsService {
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
                     : anyUnreleased ? "PENDING"
                     : "PASS";
+            int recd = (int) e.getValue().stream().filter(c -> c.outcome() != null).count();
+            int miss = e.getValue().size() - recd;
+            if (miss > 0) {
+                missingCandidates.add(new Sheets.BroadsheetMissing(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(),
+                        e.getValue().stream().filter(c -> c.outcome() == null).map(Sheets.BroadsheetCell::courseCode).sorted().toList()));
+            }
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
-                    cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks, first.entryMode()));
+                    cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks, first.entryMode(),
+                    recd, miss));
         }
         /* a student in the class with no approved registration for the semester is on the sheet with every course
            empty, no current figures, and the remark DID NOT REGISTER FOR THIS SEMESTER; the summary counts them as
@@ -642,13 +852,25 @@ public class ResultsService {
                     .map(code -> new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false)).toList();
             Sheets.Cumulative cum = repo.cumulative(m.studentId(), session, sem);
             rows.add(new Sheets.BroadsheetRow(m.studentId(), m.number(), m.surname() + ", " + m.otherNames(), marks, 0, 0, 0, BigDecimal.ZERO, null, 0,
-                    "Not registered", cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), List.of(), "DID NOT REGISTER FOR THIS SEMESTER", m.entryMode()));
+                    "Not registered", cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), List.of(), "DID NOT REGISTER FOR THIS SEMESTER", m.entryMode(),
+                    0, 0));
         }
         rows.sort(java.util.Comparator.comparing(Sheets.BroadsheetRow::name, String.CASE_INSENSITIVE_ORDER));
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
         List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level))).toList();
+        long cellsAll = cells.size();
+        long cellsIn = cells.stream().filter(c -> c.outcome() != null).count();
+        List<Sheets.BroadsheetCourseCoverage> courseCoverage = courseCov.entrySet().stream()
+                .map(x -> new Sheets.BroadsheetCourseCoverage(x.getKey(), courseTitle.get(x.getKey()), courseSheet.get(x.getKey()), courseStage.get(x.getKey()),
+                        x.getValue()[0], x.getValue()[1], x.getValue()[0] - x.getValue()[1])).toList();
+        missingCandidates.sort(java.util.Comparator.comparing(Sheets.BroadsheetMissing::name, String.CASE_INSENSITIVE_ORDER));
+        Sheets.BroadsheetCoverage coverage = new Sheets.BroadsheetCoverage(cellsAll, cellsIn, cellsAll - cellsIn,
+                cellsAll == 0 ? 0 : (int) Math.round(100.0 * cellsIn / cellsAll),
+                courseCoverage.stream().filter(x -> x.missing() == 0).count(), courseCoverage.size(),
+                byStudent.size() - missingCandidates.size(),
+                courseCoverage.stream().filter(x -> "PUBLISHED".equals(x.stage())).count(), courseCoverage, missingCandidates);
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
-                repo.gradeBands(), classes, repo.gradingInstrument());
+                repo.gradeBands(), classes, repo.gradingInstrument(), coverage);
     }
 
     /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */

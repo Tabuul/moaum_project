@@ -39,11 +39,24 @@ class ResultsIT {
 
     ItSupport it;
     String academic = ItSupport.token("academic");
+    /* V318: every desk bound to a scope acts from within it — the Head of Department over MTC, the Programme Examinations
+       Officer over the students' programme, the faculty desks over MTC's faculty; a desk with no scope reaches no sheet */
+    String hod;
+    String exams;
+    String dean;
+    String facultyExams;
+    String facultyOfficer;
 
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2094);
+        String faculty = jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = 'MTC'").query(String.class).single();
+        hod = it.officer("hod", "department", "MTC");
+        exams = it.officer("exams", "programme", "C00023");
+        dean = it.officer("dean", "faculty", faculty);
+        facultyExams = it.officer("facultyexams", "faculty", faculty);
+        facultyOfficer = it.officer("facultyofficer", "faculty", faculty);
     }
 
     @Test
@@ -76,7 +89,7 @@ class ResultsIT {
                             "entries", List.of(Map.of("offeringId", offeringId, "units", 18, "entryType", "CURRENT"))));
             if (reg.getStatusCode().value() == 200) {
                 // approval is the Head of Department's, one step
-                ResponseEntity<Map> ok = it.call(ItSupport.token("hod"), HttpMethod.POST,
+                ResponseEntity<Map> ok = it.call(hod, HttpMethod.POST,
                         "/api/v1/registration/course-registrations/" + reg.getBody().get("id") + "/approve", null);
                 assertThat(ok.getStatusCode().value()).as(String.valueOf(ok.getBody())).isEqualTo(200);
             }
@@ -131,20 +144,29 @@ class ResultsIT {
         // the same person does not take two consecutive stages
         assertThat(it.call(lect, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(422);
 
-        String exams = ItSupport.token("exams");
+        // V318: a desk outside the sheet's scope does not reach it — a Head of Department of another department, an Examinations
+        // Officer of another programme, and an officer whose grant names no scope at all
+        String otherProg = jdbc.sql("SELECT code FROM ref.programme WHERE dept_code <> 'MTC' AND NOT archived ORDER BY code LIMIT 1").query(String.class).single();
+        String otherDept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", otherProg).query(String.class).single();
+        assertThat(it.get(it.officer("hod", "department", otherDept), "/api/v1/results/sheets/" + sheet).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(it.officer("exams", "programme", otherProg), "/api/v1/results/sheets/" + sheet).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(ItSupport.token("hod"), "/api/v1/results/sheets/" + sheet).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("exams"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
+
         assertThat(it.call(exams, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getBody().get("stage")).isEqualTo("DEPT_BOARD");
 
         // returned, with the reason, back to entry
-        ResponseEntity<Map> back = it.call(ItSupport.token("hod"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/return",
+        ResponseEntity<Map> back = it.call(hod, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/return",
                 Map.of("comment", "two candidates recorded as absent had sat the paper"));
         assertThat(back.getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> detail = it.get(academic, "/api/v1/results/sheets/" + sheet);
         assertThat(((Map<?, ?>) detail.getBody().get("sheet")).get("returnedTimes")).isEqualTo(1);
 
-        // the whole chain, a fresh desk each time
+        // the whole chain, a fresh desk each time, each from within its own scope
+        Map<String, String> desks = Map.of("lecturer", lect, "exams", exams, "hod", hod, "facultyexams", facultyExams,
+                "facultyofficer", facultyOfficer, "dean", dean, "records", ItSupport.token("records"));
         for (String office : List.of("lecturer", "exams", "hod", "facultyexams", "facultyofficer", "dean", "records")) {
-            String desk = office.equals("lecturer") ? lect : ItSupport.token(office);   // the lecturer's desk is the course's own lecturer
-            ResponseEntity<Map> r = it.call(desk, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of());
+            ResponseEntity<Map> r = it.call(desks.get(office), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of());
             assertThat(r.getStatusCode().value()).as(office + ": " + r.getBody()).isEqualTo(200);
         }
         String registrar = ItSupport.token("registrar");

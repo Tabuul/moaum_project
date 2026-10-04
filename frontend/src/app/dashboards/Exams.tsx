@@ -1,14 +1,15 @@
 import type { Me } from "@/components/proto/Shell";
-import type { SheetListing, SheetListed } from "@/lib/results";
+import type { PipelineView, SheetListing, SheetListed } from "@/lib/results";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
+import { PipelinePanel } from "@/components/results/PipelinePanel";
 
 const bucket = (st: string) => st === "ENTRY" ? "entry" : st === "PUBLISHED" ? "published" : st === "SENATE" ? "senate" : "workflow";
 
 /** The Exams Officer's home: the result-sheet pipeline in their scope, the sheets still with lecturers to
  *  chase, and the result queries awaiting an answer — from the results module (V013). */
-export function ExamsDashboard({ me, listing, openQueries, session, history = [] }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string; history?: AllocationRow[] }) {
+export function ExamsDashboard({ me, listing, openQueries, session, history = [], pipeline = null }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string; history?: AllocationRow[]; pipeline?: PipelineView | null }) {
   const t = listing?.tiles;
   const sheets = listing?.sheets ?? [];
   const counts = { entry: 0, workflow: 0, senate: 0, published: 0 };
@@ -38,14 +39,20 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
         ["Senate approved", String(t?.senateApproved ?? 0), "var(--green-ink)", "Published to students"],
       ]} />
 
-      <Panel title="Result pipeline" right={`${sheets.length} sheet${sheets.length === 1 ? "" : "s"} in scope`}>
-        <Tiles cls="grid--4" items={[
-          ["With lecturers", String(counts.entry), counts.entry ? "var(--red-ink)" : "var(--green-ink)", "Marks not submitted", "/results/desk"],
-          ["In the approval chain", String(counts.workflow), counts.workflow ? "var(--chrome)" : null, "Verification → Records", "/results/desk"],
-          ["Awaiting Senate", String(counts.senate), counts.senate ? "var(--chrome)" : null, "Ready for the minute", "/results/senate"],
-          ["Published", String(counts.published), "var(--green-ink)", "Released to students"],
-        ]} />
-      </Panel>
+      {pipeline ? (
+        /* V318: the pipeline in the office's own scope — the programme for a Programme Examinations Officer, the faculty for a
+           Faculty Examinations Officer — with every stage a real count and a link, and the coverage counted from the rolls */
+        <PipelinePanel view={pipeline} title={`Result pipeline · ${session}`} />
+      ) : (
+        <Panel title="Result pipeline" right={`${sheets.length} sheet${sheets.length === 1 ? "" : "s"} in scope`}>
+          <Tiles cls="grid--4" items={[
+            ["With lecturers", String(counts.entry), counts.entry ? "var(--red-ink)" : "var(--green-ink)", "Marks not submitted", "/results/desk"],
+            ["In the approval chain", String(counts.workflow), counts.workflow ? "var(--chrome)" : null, "Verification → Records", "/results/desk"],
+            ["Awaiting Senate", String(counts.senate), counts.senate ? "var(--chrome)" : null, "Ready for the minute", "/results/senate"],
+            ["Published", String(counts.published), "var(--green-ink)", "Released to students"],
+          ]} />
+        </Panel>
+      )}
 
       <Panel title="Sheets still with lecturers" right={notSubmitted.length ? `${notSubmitted.length} to chase` : "None outstanding"}>
         {notSubmitted.length ? (

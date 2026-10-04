@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { RS_STAGES, STAGE_LABEL, type SheetDetail } from "@/lib/results";
 import { roleLabel, roleUnit } from "@/lib/offices";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Gate, Gates, Modal, Field, Step, TwoCol } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -28,8 +28,11 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
   const s = detail.sheet;
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [ask, setAsk] = useState<"return" | "minute" | null>(null);
+  const [ask, setAsk] = useState<"return" | "minute" | "behalf" | null>(null);
   const [text, setText] = useState("");
+  // V318: a submission from entry by someone who does not teach the course is on the lecturer's behalf and says why
+  const onBehalf = s.stage === "ENTRY" && !detail.youTeach && (actingOffice === "exams" || actingOffice === "academic");
+  const uploads = detail.uploads ?? [];
 
   async function post(path: string, body: unknown, reason: string) {
     setBusy(true);
@@ -59,10 +62,17 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
   /* the ladder: every decision as it was taken */
   const ladder: ["done" | "now" | "todo", string, string][] = [];
   ladder.push([detail.marks.length ? "done" : "todo", "Scores entered", detail.marks.length ? `${s.lecturer ?? "The lecturer"} · ${detail.marks.length} of ${s.candidates} marks` : "No marks yet"]);
+  /* the decisions and the uploads on behalf (V318), in the order they were taken */
+  const events: { at: string; what: string; sub: string }[] = [];
   for (const d of detail.chain) {
     const what = d.kind === "RETURN" ? `Returned by ${roleLabel(d.actorOffice)}` : d.kind === "SUBMIT" ? "Submitted for verification" : `${STAGE_LABEL[d.toStage]?.[0] ?? d.toStage}`;
-    ladder.push(["done", what, `${d.actor ?? roleLabel(d.actorOffice)} · ${when(d.decidedAt)}${d.comment ? ` · “${d.comment}”` : ""}`]);
+    events.push({ at: d.decidedAt, what, sub: `${d.actor ?? roleLabel(d.actorOffice)} · ${when(d.decidedAt)}${d.comment ? ` · “${d.comment}”` : ""}` });
   }
+  for (const u of uploads) {
+    events.push({ at: u.uploadedAt, what: `Marks uploaded on behalf of ${u.owner ?? s.lecturer ?? "the lecturer"}`, sub: `${u.uploadedBy ?? "Unnamed"} (${roleLabel(u.uploaderOffice)}) · ${when(u.uploadedAt)} · ${u.rowsWritten} mark${u.rowsWritten === 1 ? "" : "s"} · “${u.reason}”` });
+  }
+  events.sort((a, b) => a.at.localeCompare(b.at));
+  for (const e of events) ladder.push(["done", e.what, e.sub]);
   if (!published) ladder.push(["now", `${STAGE_LABEL[s.stage]?.[0] ?? s.stage}`, `With ${holder || roleLabel(need)}`]);
 
   return (
@@ -92,8 +102,9 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
           {s.candidates} students can now see their marks. Nothing on this sheet can be changed by anyone; a correction from this point is an amendment, which opens its own record and is reported to Senate at its next sitting. Minute <b>{detail.senateMinute}</b>.
         </Note>
       ) : mine && !s.blockedForYou ? (
-        <Note kind="info" title={`This stage is yours: ${RS_STAGES[st][2] || "Approve"}`} action={<>
-          <Btn kind="go" disabled={busy} onClick={() => (s.stage === "SENATE" ? setAsk("minute") : void post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, {}, `${s.courseCode}: ${RS_STAGES[st][2]}`))}>{RS_STAGES[st][2] || "Approve"}</Btn>{" "}
+        <Note kind="info" title={onBehalf ? `This sheet is at entry: you may submit it on ${s.lecturer ?? "the lecturer"}'s behalf` : `This stage is yours: ${RS_STAGES[st][2] || "Approve"}`} action={<>
+          {onBehalf ? <LinkBtn kind="primary" href={`/results/sheets/${s.id}`}>Enter marks on their behalf</LinkBtn> : null}
+          <Btn kind="go" disabled={busy} onClick={() => (s.stage === "SENATE" ? setAsk("minute") : onBehalf ? (setAsk("behalf"), setText("")) : void post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, {}, `${s.courseCode}: ${RS_STAGES[st][2]}`))}>{onBehalf ? "Submit on their behalf" : RS_STAGES[st][2] || "Approve"}</Btn>{" "}
           {s.stage !== "ENTRY" ? <Btn kind="urgent" disabled={busy} onClick={() => { setAsk("return"); setText(""); }}>Return to the lecturer</Btn> : null}
         </>}>
           Approving is a signature. Your name, the time and the exact figures you approved are written to the audit trail and cannot afterwards be edited or deleted by anyone, including the Directorate of ICT.
@@ -139,7 +150,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
 
       <Panel title="Marks on this sheet" right="CA and examination are recorded; total, grade and point are computed">
         <DTable
-          cols={["Student", "CA|mid", "Exam|mid", "Total|mid", "Grade|mid", "Point|mid", "Amended|num"]}
+          cols={["Student", "CA|mid", "Exam|mid", "Total|mid", "Grade|mid", "Point|mid", "Entered by", "Amended|num"]}
           rows={detail.marks.map((m) => [
             <Two key="s" a={`${m.surname}, ${m.otherNames}`} b={m.number} />,
             <span className="tnum" key="ca">{m.ca ?? "—"}</span>,
@@ -147,6 +158,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
             <b className="tnum" key="t">{m.total ?? m.outcome}</b>,
             m.grade ? <Pil kind={(m.points ?? 0) >= 4 ? "ok" : (m.points ?? 0) >= 1 ? "info" : "bad"} key="g">{m.grade}</Pil> : <span className="sub2" key="g">—</span>,
             <span className="tnum" key="p">{m.points ?? "—"}</span>,
+            <span className="sub2" key="by">{m.enteredBy ?? "—"}{m.onBehalf ? <> <Pil kind="info">on behalf</Pil></> : null}</span>,
             m.amended ? <Pil kind="bad" key="a">Amended — version {m.version}</Pil> : <span className="sub2" key="a">—</span>,
           ])}
           texts={detail.marks.map((m) => `${m.surname} ${m.otherNames} ${m.number}`)}
@@ -160,14 +172,18 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
       </Note>
 
       {ask ? (
-        <Modal title={ask === "return" ? "Return the sheet to the lecturer" : "Approve for Senate"} sub={ask === "return" ? "The reason goes on the record" : "Cite the Senate minute"} onClose={() => setAsk(null)}
+        <Modal title={ask === "return" ? "Return the sheet to the lecturer" : ask === "behalf" ? "Submit on the lecturer's behalf" : "Approve for Senate"}
+          sub={ask === "return" ? "The reason goes on the record" : ask === "behalf" ? `${s.lecturer ?? "The lecturer"} remains the academic owner; your reason goes on the record` : "Cite the Senate minute"} onClose={() => setAsk(null)}
           foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><span className="grow" /><Btn kind={ask === "return" ? "urgent" : "go"} disabled={!text.trim() || busy} onClick={async () => {
             const ok = ask === "return"
               ? await post(`/api/bff/api/v1/results/sheets/${s.id}/return`, { comment: text }, `${s.courseCode} returned`)
-              : await post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { minute: text }, `${s.courseCode} approved for Senate under ${text}`);
+              : ask === "behalf"
+                ? await post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { comment: text }, `${s.courseCode} submitted on behalf of ${s.lecturer ?? "the lecturer"}`)
+                : await post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { minute: text }, `${s.courseCode} approved for Senate under ${text}`);
             if (ok) setAsk(null);
-          }}>{ask === "return" ? "Return it" : "Approve and publish"}</Btn></>}>
-          <Field id="chain-text" label={ask === "return" ? "Why it is returned" : "Senate minute"} hint={ask === "return" ? "It re-enters the chain at verification." : "The result reaches the student under this minute."}>
+          }}>{ask === "return" ? "Return it" : ask === "behalf" ? "Submit on their behalf" : "Approve and publish"}</Btn></>}>
+          <Field id="chain-text" label={ask === "return" ? "Why it is returned" : ask === "behalf" ? "Why the lecturer is not submitting it themselves" : "Senate minute"}
+            hint={ask === "return" ? "It re-enters the chain at verification." : ask === "behalf" ? "It goes to verification in your name, on their behalf; another person must verify it." : "The result reaches the student under this minute."}>
             <input id="chain-text" className="ctl" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" placeholder={ask === "minute" ? "SEN/2026/…" : ""} />
           </Field>
         </Modal>
