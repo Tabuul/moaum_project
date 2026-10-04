@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 159
+\set EXPECTED 160
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3938,6 +3938,39 @@ BEGIN
                  AND n_notice >= 1 AND n_pop = 1 AND n_ent = 1, false),
         format('split=%s/%s unstated=%s unpaid=%s ent=%s other=%s choose=%s entitled=%s state=%s paid=%s after=%s entries=%s notices=%s population=%s/%s',
                split_gst, split_ent, r_unstated, r_unpaid, r_ent, r_other, r_choose, e.entitled, e.state, e.paid, r_paid, n_entries, n_notice, n_pop, n_ent));
+END $$;
+
+-- ── V316: a bounded office grant carries the register's code — a name resolves to it, an unknown name is refused ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); g1 uuid := gen_random_uuid(); g2 uuid := gen_random_uuid(); g3 uuid := gen_random_uuid();
+        s_dept text; s_prog text; s_fac text; r_unknown text := 'ALLOWED'; v_prog_name text; v_fac_name text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number) VALUES (who, 'CHECKSCOPE', 'Invented', 'P-V316');
+        SELECT name INTO v_prog_name FROM ref.programme WHERE code = 'C00023';
+        SELECT name INTO v_fac_name FROM ref.faculty WHERE code = 'SC';
+        -- typed as names: the Head of Department over the department's name, the Examinations Officer over the programme's name, the Dean over the faculty's name
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (g1, who, 'hod', 'department', 'mathematics and computer science', 'check', who, current_date),
+               (g2, who, 'exams', 'programme', v_prog_name, 'check', who, current_date),
+               (g3, who, 'dean', 'faculty', lower(v_fac_name), 'check', who, current_date);
+        SELECT scope_id INTO s_dept FROM iam.office_assignment WHERE id = g1;
+        SELECT scope_id INTO s_prog FROM iam.office_assignment WHERE id = g2;
+        SELECT scope_id INTO s_fac FROM iam.office_assignment WHERE id = g3;
+        -- a name the register does not know is refused
+        BEGIN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), who, 'hod', 'department', 'Department of Nowhere', 'check', who, current_date);
+        EXCEPTION WHEN check_violation THEN r_unknown := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V316 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A bounded office grant carries the register''s code: a department, programme or faculty typed by name is stored as its code, and an unknown name is refused',
+        coalesce(s_dept = 'MTC' AND s_prog = 'C00023' AND s_fac = 'SC' AND r_unknown = 'OFFICE_SCOPE_UNKNOWN', false),
+        format('department=%s programme=%s faculty=%s unknown=%s', s_dept, s_prog, s_fac, r_unknown));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
