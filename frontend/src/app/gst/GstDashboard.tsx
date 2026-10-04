@@ -118,6 +118,20 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
         </Note>
       ) : null}
       <Tiles items={tiles} />
+      {data.legacy && (Number(data.legacy.legacy_rows) > 0 || t.paid_legacy) ? (
+        <Panel title={`OLD-PORTAL GST PAYMENTS · ${data.session}`} right={<LinkBtn kind="ghost" size="sm" href={`/finance/legacy-gst?session=${encodeURIComponent(data.session)}`}>Reconciliation desk</LinkBtn>}>
+          <Tiles items={[
+            ["PAID IN THIS PORTAL", num(t.paid_current), null, "Gateway, bank or Bursary desk"],
+            ["PAID IN THE OLD PORTAL", num(t.paid_legacy), "var(--green-ink)", "Reconciled onto the ledger"],
+            ["RECONCILED RECORDS", num(data.legacy.reconciled), null, `of ${num(data.legacy.gst_rows)} old-portal GST rows`],
+            ["NOT PAID", num(t.unpaid), t.unpaid ? "var(--red-ink)" : null, "No payment on either portal"],
+            ["REQUIRES REVIEW", num(data.legacy.requires_review), data.legacy.requires_review ? "var(--red-ink)" : null, "Waiting on a Finance officer"],
+            ["UNMATCHED LEGACY PAYMENTS", num(data.legacy.unmatched), data.legacy.unmatched ? "var(--red-ink)" : null, "No reliable student"],
+            ["DUPLICATES", num(data.legacy.duplicates), null, "Entitlement already held"],
+            ["VARIANCE", naira(Number(data.legacy.variance)), Number(data.legacy.variance) ? "var(--red-ink)" : "var(--green-ink)", `${naira(Number(data.legacy.reconciled_amount))} of ${naira(Number(data.legacy.legacy_successful_amount))} reconciled`],
+          ]} />
+        </Panel>
+      ) : null}
       {cbt ? (
         <Panel title={`${word} CBT EXAMINATIONS · ${cbt.session}`} right={<span className="row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href={`${base}/question-bank`}>Question bank</LinkBtn><LinkBtn kind="primary" size="sm" href={`${base}/cbt?session=${encodeURIComponent(cbt.session)}`}>CBT examinations</LinkBtn></span>}>
           <Tiles items={[

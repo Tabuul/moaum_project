@@ -654,6 +654,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
+          { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },

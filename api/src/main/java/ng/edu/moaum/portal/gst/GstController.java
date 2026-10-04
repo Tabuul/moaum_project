@@ -213,6 +213,8 @@ class GstController {
                        count(*) FILTER (WHERE eps_registered) AS eps_registered,
                        count(*) FILTER (WHERE entitled AND NOT registered) AS paid_not_registered,
                        count(*) FILTER (WHERE registered AND NOT entitled) AS registered_unpaid,
+                       count(*) FILTER (WHERE entitled AND pay_source = 'LEGACY_PORTAL') AS paid_legacy,
+                       count(*) FILTER (WHERE entitled AND pay_source = 'CURRENT_PORTAL') AS paid_current,
                        count(*) FILTER (WHERE sex = 'M') AS male, count(*) FILTER (WHERE sex = 'F') AS female,
                        coalesce(sum(paid), 0) AS revenue,
                        coalesce(sum(CASE WHEN stated AND NOT entitled THEN fee - paid ELSE 0 END), 0) AS outstanding,
@@ -265,6 +267,8 @@ class GstController {
         out.put("byGender", byGender);
         out.put("courses", courses);
         out.put("results", Map.of("pending", pending, "submitted", submitted, "published", published, "activeCourses", active, "totalCourses", courses.size(), "registrations", registrations));
+        // V323: the old-portal GST payments reconciled for the session — what came in, what stands, what waits
+        out.put("legacy", jdbc.sql("SELECT * FROM finance.legacy_gst_summary(NULL, :s)").param("s", f.session()).query().singleRow());
         out.put("options", options(f));
         out.put("now", OffsetDateTime.now());
         return out;
@@ -288,7 +292,7 @@ class GstController {
                 )
                 SELECT r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
                        r.level, r.status, r.entry_mode, r.required, r.fee, r.stated, r.paid, r.entitled, r.pay_state, r.reference, r.paid_at,
-                       r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at,
+                       r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at, r.pay_source,
                        (SELECT string_agg(o.course_code, ', ' ORDER BY o.course_code)
                           FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code AND c.general_office = :office
@@ -571,7 +575,7 @@ class GstController {
     private static Map<String, Object> counts(Map<String, Object> g) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (String k : List.of("total", "required", "paid", "unpaid", "pending", "not_stated", "registered", "not_registered", "gst_registered", "eps_registered",
-                "paid_not_registered", "registered_unpaid", "male", "female", "course_registrations")) {
+                "paid_not_registered", "registered_unpaid", "paid_legacy", "paid_current", "male", "female", "course_registrations")) {
             row.put(k, g.getOrDefault(k, 0L));
         }
         row.put("revenue", g.getOrDefault("revenue", BigDecimal.ZERO));

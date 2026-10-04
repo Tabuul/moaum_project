@@ -9,6 +9,14 @@ export interface GstCounts {
   total: number; required: number; paid: number; unpaid: number; pending: number; not_stated: number; registered: number; not_registered: number;
   gst_registered: number; eps_registered: number; paid_not_registered: number; registered_unpaid: number; male: number; female: number;
   course_registrations: number; revenue: number; outstanding: number;
+  /** V323: of the paid, how many through this portal and how many reconciled from the old one */
+  paid_legacy?: number; paid_current?: number;
+}
+/** V323: the old-portal GST payments of a session as the reconciliation stands */
+export interface LegacySummary {
+  legacy_rows: number; successful: number; failed: number; gst_rows: number; unprocessed: number; matched: number; reconciled: number; requires_review: number; duplicates: number;
+  rejected: number; unmatched: number; legacy_amount: number; legacy_successful_amount: number; reconciled_amount: number; variance: number; legacy_students: number;
+  reconciled_students: number; entitled_students: number;
 }
 export interface GstGroup extends GstCounts {
   faculty_code?: string; faculty?: string; dept_code?: string; department?: string; programme_code?: string; programme?: string; level?: number; sex?: string | null;
@@ -36,6 +44,7 @@ export interface GstDashboardData {
   fee: { rules: GstFeeRule[]; setting: GstSetting }; totals: GstCounts;
   byLevel: GstGroup[]; byFaculty: GstGroup[]; byDepartment: GstGroup[]; byProgramme: GstGroup[]; byGender: GstGroup[];
   courses: GstCourseRow[]; results: { pending: number; submitted: number; published: number; activeCourses: number; totalCourses: number; registrations: number };
+  legacy?: LegacySummary | null;
   options: GstOptions; now: string;
 }
 export interface GstStudentRow {

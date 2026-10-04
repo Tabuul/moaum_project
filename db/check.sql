@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 168
+\set EXPECTED 170
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4201,6 +4201,81 @@ BEGIN
         coalesce(v_status = 'TERMINATED' AND v_score = 2 AND v_pct = 50 AND v_grade = 'C' AND v_passed AND v_events = 5 AND v_again = 2 AND v_versions = 1 AND r.version = 2 AND r.score = 2
                  AND v_student_hidden IS NULL AND v_results = 'PUBLISHED' AND v_student_sees = 50 AND v_sweep >= 1 AND v_sweep_status = 'TIME_EXPIRED', false),
         format('status=%s score=%s pct=%s grade=%s passed=%s events=%s again=%s versions=%s amended=%s hidden=%s results=%s sees=%s sweep=%s/%s', v_status, v_score, v_pct, v_grade, v_passed, v_events, v_again, v_versions, r.version, v_student_hidden, v_results, v_student_sees, v_sweep, v_sweep_status));
+END $$;
+
+-- ── 169-170. V323: an old-portal GST payment is staged once, matched by strong identifiers only, judged against THAT session's fee and the ledger,
+--                   written to the one ledger on apply with its old reference and date, never twice; the student then reads PAID from the old portal ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid(); sc uuid := gen_random_uuid(); imp uuid; r record; st record;
+        v_matched int; v_validated int; v_tx1 text; v_tx2 text; v_tx3 text; v_tx4 text; v_tx5 text; v_tx6 text; v_dup_in_file int; v_before text; v_after text; v_source text; v_legacy_ref text;
+        v_paid_at date; v_gate text; v_again int; v_ledger int; v_prev text; v_written_once text; v_steal text; v_sum record; v_relabel text; v_purpose text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9993/9994', date '9993-10-01', date '9994-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9992/9993', date '9992-10-01', date '9993-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM finance.state_gst_fee('9992/9993', 15000, NULL, NULL, NULL, NULL, current_date, NULL, who, 'bursar');
+        PERFORM finance.state_gst_fee('9993/9994', 20000, NULL, NULL, NULL, NULL, current_date, NULL, who, 'bursar');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 993', 'Check Legacy GST', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 993', 'C00023', 100, 'GST');
+        INSERT INTO people.student (id, admission_no, matric_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (sa, 'MOAUM/ADM/93/000001', 'MOAUM/CHK/93/0001', '93000001ZA', 'ZZCHKLEGA', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now()),
+            (sb, 'MOAUM/ADM/93/000002', 'MOAUM/CHK/93/0002', NULL, 'ZZCHKLEGB', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now()),
+            (sc, 'MOAUM/ADM/93/000003', 'MOAUM/CHK/93/0003', NULL, 'ZZCHKLEGC', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now());
+        -- C's money already on the ledger as school fees from the Old Fees History import
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (sc, '9993/9994', 'MOAUM-LEG-CHK930003-9993-9994', 'School fees (legacy)', 20000, '9993-09-16', '9993-09-16', who, 'Legacy', 'LEG-MOAUM-LEG-CHK930003-9993-9994', 'Imported from the old portal');
+        SELECT state INTO v_before FROM finance.gst_entitlement(sa, '9993/9994');
+        imp := (finance.legacy_gst_new_import('old.xlsx', '9993/9994', 'check')).id;
+        SELECT already_staged INTO v_dup_in_file FROM finance.legacy_gst_stage(imp, jsonb_build_array(
+            jsonb_build_object('transactionId', 'CHK-TX1', 'reference', 'CHK-OLD-1', 'matric', 'MOAUM/CHK/93/0001', 'jamb', '93000001ZA', 'paymentType', 'GST PAYMENT', 'amount', '20,000.00', 'paidAt', '15/09/9993', 'session', '9993/9994', 'status', 'SUCCESS'),
+            jsonb_build_object('transactionId', 'CHK-TX2', 'reference', 'CHK-OLD-2', 'matric', 'MOAUM/CHK/93/0002', 'paymentType', 'GST', 'amount', '20000', 'paidAt', '9993-09-16', 'session', '9993/9994', 'status', 'FAILED'),
+            jsonb_build_object('transactionId', 'CHK-TX3', 'reference', 'CHK-OLD-3', 'matric', 'MOAUM/CHK/93/0002', 'paymentType', 'GST', 'amount', '20000', 'paidAt', '9993-09-16', 'session', '9993/9994', 'status', 'REFUNDED'),
+            jsonb_build_object('transactionId', 'CHK-TX4', 'reference', 'CHK-OLD-4', 'matric', 'MOAUM/CHK/93/0001', 'paymentType', 'GST', 'amount', '15000', 'paidAt', '9992-10-02', 'session', '9992/9993', 'status', 'PAID'),
+            jsonb_build_object('transactionId', 'CHK-TX5', 'reference', 'CHK-OLD-5', 'matric', 'MOAUM/CHK/93/0003', 'paymentType', 'General Studies', 'amount', '20000', 'paidAt', '9993-09-16', 'session', '9993/9994', 'status', 'SUCCESS'),
+            jsonb_build_object('transactionId', 'CHK-TX6', 'reference', 'CHK-OLD-6', 'matric', 'MOAUM/CHK/93/0099', 'name', 'ZZCHKLEGB Invented', 'paymentType', 'GST', 'amount', '20000', 'session', '9993/9994', 'status', 'SUCCESS'),
+            jsonb_build_object('transactionId', 'CHK-TX1', 'reference', 'CHK-OLD-1', 'matric', 'MOAUM/CHK/93/0001', 'paymentType', 'GST', 'amount', '20000', 'session', '9993/9994', 'status', 'SUCCESS')));
+        v_matched := finance.legacy_gst_match(imp);
+        v_validated := finance.legacy_gst_validate(imp);
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') || '/' || coalesce(rc.match_method, '-') || '/' || coalesce(rc.fee_amount::text, '-') INTO v_tx1 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX1';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') INTO v_tx2 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX2';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') INTO v_tx3 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX3';
+        SELECT rc.status || '/' || coalesce(rc.fee_amount::text, '-') INTO v_tx4 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX4';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') INTO v_tx5 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX5';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') || '/' || jsonb_array_length(coalesce(rc.candidates, '[]')) INTO v_tx6 FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-TX6';
+        BEGIN
+            UPDATE finance.legacy_gst_payment SET amount = 1 WHERE source_transaction_id = 'CHK-TX1';
+            v_written_once := 'allowed';
+        EXCEPTION WHEN check_violation THEN v_written_once := split_part(SQLERRM, ':', 1); END;
+        -- applied: A reads PAID from the old portal, with the old reference and the old date; the gate opens; last session's payment stands for last session; twice changes nothing
+        SELECT reconciled INTO v_again FROM finance.legacy_gst_apply(imp);
+        SELECT state, source, legacy_reference, paid_at::date INTO v_after, v_source, v_legacy_ref, v_paid_at FROM finance.gst_entitlement(sa, '9993/9994');
+        SELECT state INTO v_prev FROM finance.gst_entitlement(sa, '9992/9993');
+        v_gate := registration.gst_gate(sa, '9993/9994', 'GST 993');
+        SELECT reconciled INTO v_ledger FROM finance.legacy_gst_apply(imp);
+        SELECT count(*) INTO v_ledger FROM finance.payment_reference WHERE student_id = sa AND purpose LIKE 'GST fee %' AND confirmed_at IS NOT NULL;
+        -- the officer: a row whose number names A cannot be moved onto B; C's row is relabelled from the school-fees row, one ledger row not two
+        BEGIN
+            PERFORM finance.legacy_gst_resolve((SELECT id FROM finance.legacy_gst_payment WHERE source_transaction_id = 'CHK-TX2'), 'MATCH', sa, 'guessing');
+            v_steal := 'allowed';
+        EXCEPTION WHEN check_violation THEN v_steal := split_part(SQLERRM, ':', 1); END;
+        SELECT status INTO v_relabel FROM finance.legacy_gst_resolve((SELECT id FROM finance.legacy_gst_payment WHERE source_transaction_id = 'CHK-TX5'), 'RELABEL', NULL, 'the narration says GST');
+        SELECT purpose INTO v_purpose FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHK930003-9993-9994';
+        SELECT * INTO v_sum FROM finance.legacy_gst_summary(imp, NULL);
+        RAISE EXCEPTION 'the V323 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('An old-portal GST payment is staged once (the file''s repeat is counted, not staged), matched by the matriculation number at high confidence, judged against THAT session''s fee (15,000 last session, 20,000 this one), the failed and the refunded rejected, the same money as school fees held for review, a row nobody''s number carries left unmatched with name suggestions only, and the raw row written once',
+        coalesce(v_dup_in_file = 1 AND v_matched = 6 AND v_tx1 = 'MATCHED/-/MATRIC_NO/20000.00' AND v_tx2 = 'REJECTED/PAYMENT_FAILED' AND v_tx3 = 'REJECTED/PAYMENT_REFUNDED'
+                 AND v_tx4 = 'MATCHED/15000.00' AND v_tx5 = 'REQUIRES_REVIEW/POSSIBLE_RELABEL' AND v_tx6 = 'UNMATCHED/STUDENT_NOT_FOUND/1' AND v_written_once = 'LEGACY_PAYMENT_WRITTEN_ONCE', false),
+        format('dup=%s matched=%s tx1=%s tx2=%s tx3=%s tx4=%s tx5=%s tx6=%s once=%s', v_dup_in_file, v_matched, v_tx1, v_tx2, v_tx3, v_tx4, v_tx5, v_tx6, v_written_once));
+    PERFORM pg_temp.assert('Applied, the student reads PAID from the old portal with the old reference and the old date, the registration gate opens, last session''s payment stands for last session, a second apply writes nothing, a payment is never moved onto a student its number does not name, and the school-fees row is relabelled rather than doubled',
+        coalesce(v_before = 'NOT_PAID' AND v_again = 2 AND v_after = 'PAID' AND v_source = 'LEGACY_PORTAL' AND v_legacy_ref = 'CHK-OLD-1' AND v_paid_at = date '9993-09-15' AND v_gate IS NULL AND v_prev = 'PAID'
+                 AND v_ledger = 2 AND v_steal = 'LEGACY_IDENTIFIER_CONFLICT' AND v_relabel = 'RECONCILED' AND v_purpose = 'GST fee 9993/9994' AND v_sum.reconciled = 3 AND v_sum.rejected = 2 AND v_sum.unmatched = 1, false),
+        format('before=%s applied=%s after=%s source=%s ref=%s paid=%s gate=%s prev=%s ledger=%s steal=%s relabel=%s purpose=%s sum=%s/%s/%s', v_before, v_again, v_after, v_source, v_legacy_ref, v_paid_at, v_gate, v_prev, v_ledger, v_steal, v_relabel, v_purpose, v_sum.reconciled, v_sum.rejected, v_sum.unmatched));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

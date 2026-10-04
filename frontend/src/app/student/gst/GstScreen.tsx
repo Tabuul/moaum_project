@@ -78,11 +78,15 @@ export function GstScreen({ s, gst }: { s: Me; gst: GstView }) {
         </Panel>
       ) : null}
       {e.entitled && e.reference ? (
-        <Panel title="GST fee" right={<Pil kind="ok">PAID</Pil>}>
+        <Panel title="GST fee" right={<span className="row row--inline row--tight"><Pil kind="ok">PAID</Pil>{e.source === "LEGACY_PORTAL" ? <Pil kind="info">Paid on the old portal</Pil> : null}</span>}>
           <PBody><KvGrid cls="grid--4" pairs={[
-            ["Payment reference", <span key="r" className="tnum">{e.reference}</span>], ["Payment date", onDay(e.paid_at)], ["Amount", <b key="a" className="tnum">{naira(Number(e.paid))}</b>],
+            ["Payment reference", <span key="r" className="tnum">{e.legacy_reference ?? e.reference}</span>], ["Payment date", onDay(e.paid_at)], ["Amount", <b key="a" className="tnum">{naira(Number(e.paid))}</b>],
+            ["Payment source", e.source === "LEGACY_PORTAL" ? "Old portal — reconciled, nothing to pay again" : e.channel ?? "This portal"],
             ["Receipt", <span key="x" className="row row--inline row--tight"><a className="btn btn--primary btn--sm" href={`/student/receipt/${encodeURIComponent(e.reference)}/pdf`} target="_blank" rel="noopener">View receipt</a><LinkBtn kind="ghost" size="sm" href="/student/register">Register courses</LinkBtn></span>],
-          ]} /></PBody>
+            ["Academic session", gst.session], ["GST registration", gstReg ? "Registered" : "Available"], ["EPS registration", epsReg ? "Registered" : e.covers_eps ? "Available" : "—"],
+          ]} />
+          {e.source === "LEGACY_PORTAL" ? <div className="sub2 mt-1">Your GST payment on the old portal{e.legacy_reference ? ` (${e.legacy_reference})` : ""} was verified and reconciled by the Bursary; it covers both GST and EPS for {gst.session}. You will not be asked to pay again.</div> : null}
+          </PBody>
         </Panel>
       ) : null}
 

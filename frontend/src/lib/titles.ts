@@ -628,6 +628,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Old fees history",
     "Clear returning students' past school-fees history from the old portal"
   ],
+  "t/legacygst": [
+    "Old GST payments",
+    "Old-portal GST payments staged as they were, matched to current students by strong identifiers, validated against that session's fee and reconciled into the GST/EPS entitlement; the exception queue and the totals that must agree"
+  ],
   "t/nelmatch": [
     "Unmatched remittances",
     "Money received that is not yet on a wallet"

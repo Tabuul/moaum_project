@@ -49,6 +49,8 @@ export interface GstEntitlement {
   required: boolean; stated: boolean; fee: number; covers_eps: boolean; paid: number; entitled: boolean;
   state: "PAID" | "NOT_PAID" | "PENDING" | "NOT_STATED" | "NOT_REQUIRED" | string;
   reference: string | null; receipt_no: string | null; paid_at: string | null; open_reference: string | null; open_amount: number | null; open_expires_at: string | null;
+  /** V323: where the payment that entitles the student came from, and the old portal's own reference when it was reconciled */
+  source?: "CURRENT_PORTAL" | "LEGACY_PORTAL" | null; channel?: string | null; legacy_reference?: string | null;
 }
 export interface GstCourseView {
   code: string; title: string; units: number; level: number; semester: number; general_office: "GST" | "EPS" | string; offering_id: string | null;
