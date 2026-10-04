@@ -62,6 +62,8 @@ Sign in as the 300-level student to see the results path from the student's end.
 | External Examiner         | `demo.extexaminer`        | An examiner's workspace (V254): projects assigned by the Academic Office, the assessment form; appointed for Economics |
 | University Administrator  | `demo.admin`              | The platform                 |
 | Super Administrator       | `demo.super`              | The platform                 |
+| GST Office (Director, General Studies) | `demo.gst`   | General Studies (V314/V322): the GST dashboard, students, courses, question bank, CBT examinations, live monitor, results |
+| EPS Office (Director, Entrepreneurship Studies) | `demo.eps` | Entrepreneurship Studies: the mirror desk on the same engine |
 
 ## Applicant
 
