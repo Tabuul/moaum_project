@@ -143,13 +143,15 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   }
 
   const pick = (m: RegistrationView["menu"][number], fixed: boolean, on: boolean, red = false) => (
-    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked}
-      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : undefined}
-      onClick={() => { if (fixed || locked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
+    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked}
+      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
+      title={m.gstLocked ? "Locked until the GST fee is paid" : undefined}
+      onClick={() => { if (fixed || locked || m.gstLocked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
       <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
+      {m.gstLocked ? <Pil kind="bad">GST fee required</Pil> : null}
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
   );
@@ -232,6 +234,12 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {carry.length ? (
         <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
           <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
+      ) : null}
+      {v.gst && !locked && v.gst.stated && !v.gst.entitled && Number(v.gst.fee) > 0 && v.menu.some((m) => m.gstLocked) ? (
+        <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
+          You are required to pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} before you can register GST/EPS courses. GST payment covers both GST and EPS requirements. Please complete your GST payment to continue with course registration.
+          {v.gst.state === "PENDING" ? " A reference is already open: pay against it and the courses unlock the moment the payment is confirmed." : ""}
+        </Note>
       ) : null}
       <Panel title={`${v.level} Level Core Courses`}>
         <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</PBody></Panel>

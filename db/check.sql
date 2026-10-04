@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 158
+\set EXPECTED 159
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3873,6 +3873,66 @@ BEGIN
                  AND n_ev = 3, false),
         format('default=%s closed=%s applicant=%s office=%s scheduled=%s reopened=%s msg=%s pub=%s/%s events=%s',
                st_default, st_closed, r_applicant, r_office, st_sched, st_reopen, msg, pub.state, pub.message, n_ev));
+END $$;
+
+-- ── V314: GST & EPS — the fee the Bursar states holds GST and EPS courses until the one confirmed payment lifts it ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); dept text; o_gst uuid := gen_random_uuid(); o_ent uuid := gen_random_uuid(); reg uuid; e record;
+        split_gst text; split_ent text; r_unstated text; r_unpaid text; r_ent text; r_other text; r_choose text; r_paid text; ref text;
+        n_notice int; n_pop int; n_ent int; n_entries int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/99/990314', 'MOAUM/CHK/99/0314', 'CHECKGST', 'Invented', 'C00061', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('GST 991', 'Check General Studies', 2, 1, 100, dept, 'GST', 'LIVE'),
+            ('ENT 991', 'Check Venture Creation', 2, 1, 100, dept, 'GST', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 991', 'C00061', 100, 'GST'), ('ENT 991', 'C00061', 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_gst, 'GST 991', '9999/0000', 1), (o_ent, 'ENT 991', '9999/0000', 1);
+        SELECT general_office INTO split_gst FROM catalogue.course WHERE code = 'GST 991';
+        SELECT general_office INTO split_ent FROM catalogue.course WHERE code = 'ENT 991';
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        INSERT INTO people.student_contact (student_id, email, phone) VALUES (st, 'check.gst@example.com', '08030000314');
+        -- no fee stated: nothing to pay, and no gate
+        r_unstated := coalesce(registration.gst_gate(st, '9999/0000', 'GST 991'), 'OPEN');
+        -- the Bursar states the fee: the GST course and the EPS course are held, another course is not
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee('9999/0000', 10000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+        r_unpaid := split_part(coalesce(registration.gst_gate(st, '9999/0000', 'GST 991'), 'OPEN'), ':', 1);
+        r_ent := split_part(coalesce(registration.gst_gate(st, '9999/0000', 'ENT 991'), 'OPEN'), ':', 1);
+        r_other := coalesce(registration.gst_gate(st, '9999/0000', 'CHK 101'), 'OPEN');
+        -- the registration itself refuses the GST course to the unpaid student
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        reg := registration.student_draft(st, '9999/0000', 1);
+        BEGIN
+            PERFORM registration.student_choose(reg, ARRAY[o_gst]);
+            r_choose := 'ALLOWED';
+        EXCEPTION WHEN check_violation THEN r_choose := split_part(SQLERRM, ':', 1); END;
+        -- the one payment, confirmed on the ledger: entitled, the gate lifts for GST and EPS alike, the student is told
+        ref := finance.new_gst_reference(st, '9999/0000');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment(ref, 'Bank transfer', 'check');
+        SELECT * INTO e FROM finance.gst_entitlement(st, '9999/0000');
+        r_paid := coalesce(registration.gst_gate(st, '9999/0000', 'GST 991'), 'OPEN');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM registration.student_choose(reg, ARRAY[o_gst, o_ent]);
+        SELECT count(*) INTO n_entries FROM registration.entry WHERE registration_id = reg AND entry_type = 'GST';
+        SELECT count(*) INTO n_notice FROM platform.notice WHERE about_kind = 'student' AND about_id = st AND subject ILIKE 'GST fee%';
+        SELECT count(*), count(*) FILTER (WHERE entitled AND gst_registered AND eps_registered AND pay_state = 'PAID')
+          INTO n_pop, n_ent FROM finance.gst_population('9999/0000', NULL) WHERE student_id = st;
+        RAISE EXCEPTION 'the V314 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('GST & EPS: the fee the Bursar states holds GST and EPS courses alone until the one confirmed payment lifts it, and the student is told',
+        coalesce(split_gst = 'GST' AND split_ent = 'EPS' AND r_unstated = 'OPEN' AND r_unpaid = 'GST_PAYMENT_REQUIRED' AND r_ent = 'GST_PAYMENT_REQUIRED' AND r_other = 'OPEN'
+                 AND r_choose = 'GST_PAYMENT_REQUIRED' AND e.entitled AND e.state = 'PAID' AND e.paid = 10000 AND r_paid = 'OPEN' AND n_entries = 2
+                 AND n_notice >= 1 AND n_pop = 1 AND n_ent = 1, false),
+        format('split=%s/%s unstated=%s unpaid=%s ent=%s other=%s choose=%s entitled=%s state=%s paid=%s after=%s entries=%s notices=%s population=%s/%s',
+               split_gst, split_ent, r_unstated, r_unpaid, r_ent, r_other, r_choose, e.entitled, e.state, e.paid, r_paid, n_entries, n_notice, n_pop, n_ent));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

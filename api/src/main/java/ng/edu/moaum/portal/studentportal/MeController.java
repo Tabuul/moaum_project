@@ -71,6 +71,18 @@ class MeController {
         return portal.receipt(id(auth), reference);
     }
 
+    /** GST & EPS (V314): the fee the Bursar stated, whether it is paid, the GST/EPS courses and their registration */
+    @GetMapping("/gst")
+    Map<String, Object> gst(Authentication auth, @RequestParam(required = false) String session) {
+        return portal.gst(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session);
+    }
+
+    /** the reference the GST fee is paid against, on the same ledger and gateway as every other payment */
+    @PostMapping("/gst/reference")
+    Map<String, Object> gstReference(Authentication auth, @RequestBody(required = false) NewReference body) {
+        return portal.newGstReference(id(auth), body == null ? null : body.session());
+    }
+
     @GetMapping("/registration")
     Map<String, Object> registration(Authentication auth, @RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
         return portal.registrationView(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);

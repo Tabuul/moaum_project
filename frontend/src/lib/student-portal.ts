@@ -41,10 +41,30 @@ export interface MenuItem {
   carryover: boolean; failed_in: string | null; lecturer: string | null;
   /** a course of an approved deferment, due since the return (V264): fixed on the form like a carry-over, never a failure */
   deferred?: boolean; deferred_from?: string | null;
+  /** V314: a GST/EPS course the unpaid GST fee locks, and the reason */
+  gstLocked?: boolean; gstGate?: string | null;
+}
+/** GST & EPS (V314): the fee the Bursar stated for the student and whether a confirmed payment covers it */
+export interface GstEntitlement {
+  required: boolean; stated: boolean; fee: number; covers_eps: boolean; paid: number; entitled: boolean;
+  state: "PAID" | "NOT_PAID" | "PENDING" | "NOT_STATED" | "NOT_REQUIRED" | string;
+  reference: string | null; receipt_no: string | null; paid_at: string | null; open_reference: string | null; open_amount: number | null; open_expires_at: string | null;
+}
+export interface GstCourseView {
+  code: string; title: string; units: number; level: number; semester: number; general_office: "GST" | "EPS" | string; offering_id: string | null;
+  registered: boolean; registration_status: string | null; result_stage: string | null;
+}
+/** what /api/v1/me/gst answers (V314) */
+export interface GstView {
+  session: string; entitlement: GstEntitlement; setting: { required_for_gst_eps: boolean; required_for_all: boolean; covers_eps: boolean };
+  references: { reference: string; receipt_no: string | null; amount: number; session: string; purpose: string; generated_at: string; expires_at: string; confirmed_at: string | null; channel: string | null }[];
+  courses: GstCourseView[]; reference?: string;
 }
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** V314: the GST fee's word on this student */
+  gst?: GstEntitlement;
   /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */
   window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean; portal?: PortalWindow };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */

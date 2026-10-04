@@ -27,11 +27,12 @@ class ResultsController {
     private static final String READERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records',"
             + "'OFFICE_dean','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_lecturer',"
-            + "'OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_gst','OFFICE_eps')";
     private static final String DESKS =
             "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_hod','OFFICE_facultyexams','OFFICE_facultyofficer',"
-            + "'OFFICE_dean','OFFICE_records','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic')";
-    private static final String ENTRY = "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_academic')";
+            + "'OFFICE_dean','OFFICE_records','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_gst','OFFICE_eps')";
+    /** V314: the GST and EPS offices enter and submit the sheets of their own courses */
+    private static final String ENTRY = "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_academic','OFFICE_gst','OFFICE_eps')";
     /** examination sessions are set up and opened by the Director of ICT alone, from Portal Management (moved there from
      *  the Academic Office and Exams & Records); every office that reads results still reads them and their monitor */
     private static final String EXAM_SESSIONS = "hasAuthority('OFFICE_ict')";

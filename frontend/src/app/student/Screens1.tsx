@@ -8,7 +8,7 @@
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import type { Me } from "@/lib/student-portal";
+import type { GstView, Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import type { StudentRecord } from "@/lib/student";
 import { Btn, Ico, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
@@ -124,7 +124,7 @@ function Quick({ icon, title, sub, href }: { icon: string; title: string; sub: s
     : <button type="button" className="tile" style={{ textAlign: "left", alignItems: "flex-start" }} disabled>{inner}</button>;
 }
 
-export function Dashboard({ s }: { s: Me }) {
+export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
   const f = s.fees;
   const cleared = f.clearsRegistration === true;
   const noScheme = f.clearsRegistration === null;
@@ -157,6 +157,25 @@ export function Dashboard({ s }: { s: Me }) {
           ]} /></PBody>
         </Panel>
       ) : null}
+      {gst && gst.entitlement.state !== "NOT_REQUIRED" ? (() => {
+        const e = gst.entitlement;
+        const unpaid = e.stated && !e.entitled && Number(e.fee) > 0;
+        const gstReg = gst.courses.some((c) => c.general_office !== "EPS" && c.registered);
+        const epsReg = gst.courses.some((c) => c.general_office === "EPS" && c.registered);
+        return (
+          <Panel title="GST & EPS" right={<Pil kind={e.entitled ? "ok" : unpaid ? "bad" : "grey"}>{e.entitled ? "PAID" : unpaid ? "NOT PAID" : e.state === "PENDING" ? "REFERENCE OPEN" : "NO FEE STATED"}</Pil>}>
+            <PBody>
+              <KvGrid cls="grid--4" pairs={[
+                ["GST fee", e.stated ? naira(Number(e.fee)) : "Not yet stated"],
+                ["GST registration", gstReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"],
+                ["EPS registration", epsReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"],
+                [unpaid ? "Pay" : "More", <LinkBtn key="g" kind={unpaid ? "primary" : "ghost"} size="sm" href={`/student/gst?session=${encodeURIComponent(gst.session)}`}>{unpaid ? "PAY GST FEE" : "GST & EPS"}</LinkBtn>],
+              ]} />
+              {unpaid ? <div className="sub2 mt-1">GST payment covers both GST and EPS requirements; your GST/EPS courses are locked on the registration form until it is confirmed.</div> : null}
+            </PBody>
+          </Panel>
+        );
+      })() : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
           Your CGPA stood at <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester at {adv.pronounced_level} level, still under 1.0 after the level&rsquo;s probation list. Senate&rsquo;s rule advises withdrawal from the programme. The decision is Senate&rsquo;s; your Head of Department will tell you of it. Until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.

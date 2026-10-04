@@ -32,6 +32,8 @@ export const OFFICE_LABELS: Record<string, string> = {
   super: "Super Administrator",
   pgschool: "Dean, Postgraduate School",
   pgsecretary: "Secretary, Postgraduate School",
+  gst: "Director, General Studies",
+  eps: "Director, Entrepreneurship Studies",
 };
 
 export function officeLabel(code: string | null | undefined): string {
@@ -58,6 +60,8 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   facultyexams: ["Faculty Exams Officer", "Faculty of Science"],
   facultyofficer: ["Faculty Officer", "Faculty of Science · Registry"],
   records: ["Exams & Records", "Exams & Records Department"],
+  gst: ["Director, General Studies", "General Studies Unit"],
+  eps: ["Director, Entrepreneurship Studies", "Entrepreneurship Studies Unit"],
   dregistrar: ["Deputy Registrar (Academic Affairs)", "Registry"],
   dvc: ["DVC (Academic)", "Deputy Vice-Chancellor, Academic"],
   super: ["Super Administrator", "Directorate of ICT"],

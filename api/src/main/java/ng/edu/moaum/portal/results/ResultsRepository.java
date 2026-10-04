@@ -23,7 +23,8 @@ class ResultsRepository {
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED') AS graded,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
                    (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
-                     ORDER BY dd.decided_at DESC LIMIT 1) AS last_actor
+                     ORDER BY dd.decided_at DESC LIMIT 1) AS last_actor,
+                   c.general_office
               FROM assessment.score_sheet s
               JOIN catalogue.offering o ON o.id = s.offering_id
               JOIN catalogue.course c ON c.code = o.course_code

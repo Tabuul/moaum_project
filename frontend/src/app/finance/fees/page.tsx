@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem } from "./FeeSchedule";
+import type { GstFeePage } from "@/lib/gst";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
     api<ApplicantFees>(`/api/v1/admissions/sessions/${session}/applicant-fees`),
     api<FeeItem[]>("/api/v1/finance/fee-items"),
   ]);
+  const gstFee = await api<GstFeePage>(`/api/v1/gst/fee?session=${encodeURIComponent(session)}`);
   const sessions = sessionsRes;
   return (
     <Shell route="t/feesetup" me={me.ok ? me.data : null}>
@@ -38,6 +40,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
           feeGroups={feeGroups.ok ? feeGroups.data : []}
           programmes={programmes.ok ? programmes.data : []}
           applicantFees={applicantFees.ok ? applicantFees.data : null}
+          gstFee={gstFee.ok ? gstFee.data : null}
           feeItems={feeItems.ok ? feeItems.data : []}
           sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}
           actingOffice={me.ok ? me.data.activeOffice : null}

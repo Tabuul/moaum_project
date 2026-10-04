@@ -880,6 +880,22 @@ export const TITLES: Record<string, [string, string]> = {
     "Research seminars",
     "Proposal and progress seminars, scheduled and held"
   ],
+  "t/gststudents": [
+    "GST Students",
+    "Every student required to take General Studies courses this session, with their GST payment, registration and result status"
+  ],
+  "t/gstcourses": [
+    "GST Courses",
+    "The General Studies courses on the catalogue, the session's offerings, their lecturers, registrations and score sheets"
+  ],
+  "t/epsstudents": [
+    "EPS Students",
+    "Every student entitled to Entrepreneurship Studies through the GST payment, with their registration and result status"
+  ],
+  "t/epscourses": [
+    "EPS Courses",
+    "The Entrepreneurship Studies courses on the catalogue, the session's offerings, their lecturers, registrations and score sheets"
+  ],
   "t/pgsenate": [
     "Results to Senate",
     "Computed results with Senate, and the awarded of the session"

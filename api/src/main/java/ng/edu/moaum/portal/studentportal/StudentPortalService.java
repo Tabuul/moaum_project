@@ -310,7 +310,17 @@ public class StudentPortalService {
         out.put("limit", limit);
         out.put("probation", standing);
         out.put("siwes", siwes != null);
-        out.put("menu", repo.menu(id, session, semester));
+        // V314: a GST/EPS course on the menu says whether the GST fee locks it, and why
+        List<Map<String, Object>> menu = repo.menu(id, session, semester);
+        for (Map<String, Object> m : menu) {
+            if ("GST".equals(m.get("kind")) || "GST".equals(m.get("basis"))) {
+                String gate = repo.gstGate(id, session, String.valueOf(m.get("course_code")));
+                m.put("gstLocked", gate != null);
+                m.put("gstGate", gate);
+            }
+        }
+        out.put("menu", menu);
+        out.put("gst", repo.gstEntitlement(id, session));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));
         out.put("status", s.status());
@@ -332,6 +342,28 @@ public class StudentPortalService {
         window.put("fresh", session.equals(s.entrySession()));
         window.put("portal", repo.windowState("COURSE_REGISTRATION", session, semester));   // V288
         out.put("window", window);
+        return out;
+    }
+
+    /** GST & EPS (V314): the fee stated for the student, the entitlement a confirmed payment grants, the references, the courses */
+    @Transactional(readOnly = true)
+    public Map<String, Object> gst(UUID id, String session) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("entitlement", repo.gstEntitlement(id, session));
+        out.put("setting", repo.gstSetting());
+        out.put("references", repo.gstReferences(id));
+        out.put("courses", repo.gstCourses(id, session));
+        return out;
+    }
+
+    /** the reference to pay the GST fee against: the stated fee, once; an open one is returned again rather than doubled */
+    @Transactional
+    public Map<String, Object> newGstReference(UUID id, String session) {
+        String ses = session == null || session.isBlank() ? sessionFor(id) : session;
+        String reference = repo.newGstReference(id, ses);
+        Map<String, Object> out = new LinkedHashMap<>(gst(id, ses));
+        out.put("reference", reference);
         return out;
     }
 

@@ -15,7 +15,7 @@ public final class Sheets {
 
     /** The desk each stage belongs to (proto/part28 CHAIN). */
     public static final Map<String, List<String>> DESK = Map.of(
-            "ENTRY", List.of("lecturer"),
+            "ENTRY", List.of("lecturer", "gst", "eps"),
             "VERIFICATION", List.of("exams"),
             "DEPT_BOARD", List.of("hod"),
             "FACULTY_SCRUTINY", List.of("facultyexams"),
@@ -40,7 +40,7 @@ public final class Sheets {
     public record Row(UUID id, String courseCode, String courseTitle, int units, String deptCode, String deptName,
                       String facultyCode, String facultyName, String session, int semester, String stage,
                       LocalDate dueOn, OffsetDateTime submittedAt, int returnedTimes, UUID lecturerId, String sitting, String lecturer,
-                      long candidates, long graded, long failed, UUID lastActor, int caMax, long heldScripts) {
+                      long candidates, long graded, long failed, UUID lastActor, int caMax, long heldScripts, String generalOffice) {
     }
 
     public record Listed(UUID id, String courseCode, String courseTitle, int units, String deptName, String facultyName,

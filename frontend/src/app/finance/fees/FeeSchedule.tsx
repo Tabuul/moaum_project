@@ -19,6 +19,8 @@ import { semesterText } from "@/lib/student-portal";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
+import { GstFeePanel } from "./GstFeePanel";
+import type { GstFeePage } from "@/lib/gst";
 
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
@@ -154,7 +156,7 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
   return rows;
 }
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null }: { gstFee?: GstFeePage | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -566,6 +568,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <Note kind="bad" title={`Every fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
         </Modal>
       ) : null}
+      <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>
         <PBody>
           <div className="sub2 mb-3">

@@ -1456,7 +1456,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School Fees — Pay First" }
+          { "id": "s/fees", "icon": "card", "label": "School Fees — Pay First" },
+          { "id": "s/gst", "icon": "card", "label": "GST & EPS" }
         ]
       },
       {
@@ -1900,6 +1901,68 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "gst": {
+    "label": "GST Office",
+    "home": "r/gst",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "r/gst", "icon": "home", "label": "Dashboard" },
+          { "id": "r/notices", "icon": "alert", "label": "Notifications" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "General Studies",
+        "items": [
+          { "id": "t/gststudents", "icon": "user", "label": "GST Students" },
+          { "id": "t/gstcourses", "icon": "book", "label": "GST Courses" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
+          { "id": "t/sheethistory", "icon": "doc", "label": "Score Sheet History" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "eps": {
+    "label": "EPS Office",
+    "home": "r/eps",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "r/eps", "icon": "home", "label": "Dashboard" },
+          { "id": "r/notices", "icon": "alert", "label": "Notifications" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Entrepreneurship Studies",
+        "items": [
+          { "id": "t/epsstudents", "icon": "user", "label": "EPS Students" },
+          { "id": "t/epscourses", "icon": "book", "label": "EPS Courses" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
+          { "id": "t/sheethistory", "icon": "doc", "label": "Score Sheet History" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]

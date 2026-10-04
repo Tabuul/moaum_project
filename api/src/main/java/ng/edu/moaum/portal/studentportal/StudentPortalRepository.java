@@ -525,6 +525,49 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount).param("p", purpose).query(String.class).single();
     }
 
+    /* ── GST & EPS (V314) ── */
+
+    Map<String, Object> gstEntitlement(UUID student, String session) {
+        return jdbc.sql("SELECT * FROM finance.gst_entitlement(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
+    }
+
+    Map<String, Object> gstSetting() {
+        return jdbc.sql("SELECT required_for_gst_eps, required_for_all, covers_eps FROM finance.gst_setting WHERE id = 1").query().singleRow();
+    }
+
+    String gstGate(UUID student, String session, String course) {
+        return jdbc.sql("SELECT registration.gst_gate(:s, :ses, :c)").param("s", student).param("ses", session).param("c", course).query(String.class).optional().orElse(null);
+    }
+
+    List<Map<String, Object>> gstReferences(UUID student) {
+        return jdbc.sql("""
+                SELECT r.reference, r.receipt_no, r.amount, r.session, r.purpose, r.generated_at, r.expires_at, r.confirmed_at, r.channel
+                  FROM finance.payment_reference r WHERE r.student_id = :s AND r.purpose LIKE 'GST fee %' ORDER BY r.generated_at DESC
+                """).param("s", student).query().listOfRows();
+    }
+
+    /** the GST/EPS courses the student's programme offers at their level, and whether each is offered, registered and marked this session */
+    List<Map<String, Object>> gstCourses(UUID student, String session) {
+        return jdbc.sql("""
+                SELECT c.code, c.title, c.units, c.level, c.semester, c.general_office, o.id AS offering_id,
+                       EXISTS (SELECT 1 FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
+                                WHERE cr.student_id = st.id AND cr.session = :ses AND e.offering_id = o.id) AS registered,
+                       (SELECT cr.status FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :ses AND cr.semester = c.semester) AS registration_status,
+                       sh.stage AS result_stage
+                  FROM people.student st
+                  JOIN catalogue.course_offer co ON co.programme_code = st.programme_code AND co.level = st.current_level
+                  JOIN catalogue.course c ON c.code = co.course_code AND c.kind = 'GST' AND c.state <> 'ENDED'
+                  LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :ses
+                  LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
+                 WHERE st.id = :s
+                 ORDER BY c.semester, c.code
+                """).param("s", student).param("ses", session).query().listOfRows();
+    }
+
+    String newGstReference(UUID student, String session) {
+        return jdbc.sql("SELECT finance.new_gst_reference(:s, :ses)").param("s", student).param("ses", session).query(String.class).single();
+    }
+
     List<Map<String, Object>> notices(UUID student) {
         return jdbc.sql("""
                 SELECT id, channel, recipient, subject, body, created_at, state, sent_at

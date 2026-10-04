@@ -282,6 +282,12 @@ public class ResultsService {
      *  address bar is refused the same way. */
     private Sheets.Row own(UUID id) {
         Sheets.Row r = repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        // V314: the GST office reaches GST sheets, the EPS office EPS sheets, and neither the other's
+        String general = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if (("gst".equals(general) || "eps".equals(general)) && !general.toUpperCase().equals(r.generalOffice())) {
+            throw new AccessDeniedException(r.courseCode() + " is not a " + general.toUpperCase() + " course; the " + general.toUpperCase()
+                    + " office reaches only the score sheets of its own courses.");
+        }
         if (scope.actingLecturer()) {
             UUID me = scope.actorId();
             if (me == null || !repo.teaches(id, me)) {
@@ -331,6 +337,11 @@ public class ResultsService {
             dept = hodDept != null ? hodDept : "__none__"; // no department grant → nothing to show
         }
         List<Sheets.Row> rows = repo.sheets(fac, dept, prog, course, session, sem, stage, mine);
+        // V314: the GST and EPS offices see the sheets of their own courses alone
+        if ("gst".equals(office) || "eps".equals(office)) {
+            String general = office.toUpperCase();
+            rows = rows.stream().filter(r -> general.equals(r.generalOffice())).toList();
+        }
         List<Sheets.Listed> out = new ArrayList<>();
         long approved = 0;
         long entry = 0;
