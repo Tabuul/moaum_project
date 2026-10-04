@@ -34,13 +34,35 @@ function orderRank(e: Entry): number {
   return t === "GST" ? 1 : t === "Core" ? 2 : 3;
 }
 
+/** print the branded course-form PDF (a proper print sheet) rather than window.print() of the web page, which the print
+ *  stylesheet blanks. Loads the PDF in a hidden iframe and prints it; opens it if blocked. */
+function printPdf(url: string) {
+  const f = document.createElement("iframe");
+  f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0";
+  f.src = url;
+  f.onload = () => {
+    try { f.contentWindow?.focus(); f.contentWindow?.print(); }
+    catch { window.open(url, "_blank", "noopener"); }
+    window.setTimeout(() => { try { document.body.removeChild(f); } catch { /* already gone */ } }, 60000);
+  };
+  document.body.appendChild(f);
+}
+
 function RegPanel({ r }: { r: Reg }) {
+  // the same course form the student downloads for the session — name, number, programme, level, passport, the courses,
+  // the verification code and the signature lines — issued for any approved registration, this session's or an earlier one
+  const issued = r.status === "APPROVED" || r.status === "LOCKED";
+  const pdfUrl = `/student/form/pdf?session=${encodeURIComponent(r.session)}&semester=${r.semester}`;
   return (
     <Panel
       title={`${r.session} · ${SEM(r.semester)} semester`}
       right={<span className="row row--inline">
         <span className="sub2">{r.level} Level · {r.units} units</span>
         <Pil kind={REG_PILL[r.status] ?? "grey"}>{r.status}</Pil>
+        {issued ? <>
+          <a href={pdfUrl} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download PDF</a>
+          <Btn kind="ghost" onClick={() => printPdf(pdfUrl)}>Print</Btn>
+        </> : null}
       </span>}>
       {r.entries.length ? (
         <DTable cols={["Course code", "Course title", "Lecturer", "Unit|mid", "Type|mid", "Status|mid"]} rows={[...r.entries].sort((a, b) => orderRank(a) - orderRank(b) || a.courseCode.localeCompare(b.courseCode)).map((e) => {
@@ -55,7 +77,7 @@ function RegPanel({ r }: { r: Reg }) {
           ];
         })} />
       ) : <PBody><div className="sub2">No course on this registration.</div></PBody>}
-      <PBody><div className="sub2">Submitted {day(r.submitted_at)} · approved {day(r.approved_at)}</div></PBody>
+      <PBody><div className="sub2">Submitted {day(r.submitted_at)} · approved {day(r.approved_at)}{issued ? " · the course form above carries every detail of this registration, as the Head of Department approved it" : " · the course form is issued once the registration is approved"}</div></PBody>
     </Panel>
   );
 }
