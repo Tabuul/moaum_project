@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 162
+\set EXPECTED 163
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4023,6 +4023,41 @@ BEGIN
         coalesce(r_noreason = 'RES_UPLOAD_ON_BEHALF_SAYS_WHY' AND r_teach = 'RES_NOT_ON_BEHALF' AND v_by = officer AND v_office = 'exams' AND v_owner = lect
                  AND r_blank = 'refused' AND e_by = officer AND e_office = 'exams' AND e_behalf, false),
         format('no reason=%s lecturer=%s by=%s office=%s owner=%s blank=%s entered_by=%s', r_noreason, r_teach, v_by = officer, v_office, v_owner = lect, r_blank, e_by = officer));
+END $$;
+
+-- ── 163. V319: a grant is amended with its reason, its scope normalised, and an ended grant is left as it was ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); g1 uuid := gen_random_uuid(); g2 uuid := gen_random_uuid();
+        r_noreason text; r_ended text; o_after text; s_after text; v_prog_name text; v_reason text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number) VALUES (who, 'CHECKAMEND', 'Invented', 'P-V319');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to)
+        VALUES (g1, who, 'hod', 'department', 'MTC', 'check', who, current_date, NULL),
+               (g2, who, 'exams', 'programme', 'C00023', 'check', who, current_date - 30, current_date - 1);
+        -- without a reason, refused
+        BEGIN
+            PERFORM iam.amend_grant(g1, 'exams', 'programme', 'C00023', 'check', NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_noreason := split_part(SQLERRM, ':', 1); END;
+        -- the office and the scope change in place, the scope typed as a name and stored as the register's code
+        SELECT name INTO v_prog_name FROM ref.programme WHERE code = 'C00023';
+        PERFORM iam.amend_grant(g1, 'exams', 'programme', v_prog_name, 'Registrar memo REG/2026/400', NULL, NULL,
+                                'granted as Head of Department in error; the letter appoints an Examinations Officer');
+        SELECT office_code, scope_id INTO o_after, s_after FROM iam.office_assignment WHERE id = g1;
+        v_reason := current_setting('moaum.reason', true);
+        -- an ended grant stays as it was
+        BEGIN
+            PERFORM iam.amend_grant(g2, 'exams', 'programme', 'C00023', 'check', NULL, NULL, 'too late');
+        EXCEPTION WHEN check_violation THEN r_ended := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V319 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A grant is amended with its reason: refused without one, the office and the scope changed in place with the scope as the register''s code, the reason on the audit context, and an ended grant left as it was',
+        coalesce(r_noreason = 'IAM_AMEND_SAYS_WHY' AND o_after = 'exams' AND s_after = 'C00023' AND v_reason LIKE 'grant amended:%' AND r_ended = 'IAM_GRANT_ENDED', false),
+        format('no reason=%s office=%s scope=%s reason=%s ended=%s', r_noreason, o_after, s_after, left(v_reason, 30), r_ended));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

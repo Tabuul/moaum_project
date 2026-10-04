@@ -45,6 +45,15 @@ class AccountsController {
     public record EndGrant(LocalDate on, @NotBlank String reason) {
     }
 
+    /** V319: what an amendment of a live grant changes — never the person — and why */
+    public record AmendGrant(@NotBlank String officeCode,
+                             @NotBlank @jakarta.validation.constraints.Pattern(regexp = "institution|college|faculty|department|programme|course|unit|platform|level") String scopeKind,
+                             String scopeId,
+                             @NotBlank @jakarta.validation.constraints.Size(max = 400) String instrument,
+                             LocalDate validFrom, LocalDate validTo,
+                             @NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
+    }
+
     public record Rows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
     }
 
@@ -225,6 +234,33 @@ class AccountsController {
     @PreAuthorize(CREDENTIALS)
     Map<String, Object> credential(@PathVariable UUID id, @Valid @RequestBody SetCredential body) {
         return auth.setCredential(id, body.username(), body.password());
+    }
+
+    /** V319: a live grant amended in place — the office, the scope, the instrument, the dates — with the reason on the
+     *  record. The person is never changed: a grant to the wrong person is ended and made again. */
+    @PutMapping("/persons/{id}/office-assignments/{grant}")
+    @PreAuthorize(GRANTORS)
+    @Transactional
+    GrantRow amend(@PathVariable UUID id, @PathVariable UUID grant, @Valid @RequestBody AmendGrant body) {
+        boolean theirs = jdbc.sql("SELECT EXISTS (SELECT 1 FROM iam.office_assignment WHERE id = :g AND person_id = :p)")
+                .param("g", grant).param("p", id).query(Boolean.class).single();
+        if (!theirs) {
+            throw new ng.edu.moaum.portal.shared.NotFound("office assignment", grant);
+        }
+        jdbc.sql("SELECT iam.amend_grant(:g, :o, :k, :s, :i, :f, :t, :r)")
+                .param("g", grant).param("o", body.officeCode().trim()).param("k", body.scopeKind().trim())
+                .param("s", body.scopeId() == null || body.scopeId().isBlank() ? null : body.scopeId().trim(), java.sql.Types.VARCHAR)
+                .param("i", body.instrument().trim())
+                .param("f", body.validFrom(), java.sql.Types.DATE).param("t", body.validTo(), java.sql.Types.DATE)
+                .param("r", body.reason().trim()).query().listOfRows();
+        return jdbc.sql("""
+                SELECT a.id, a.person_id, p.surname, p.given_names, p.staff_number, a.office_code, o.label, a.scope_kind, a.scope_id,
+                       a.instrument, a.granted_by,
+                       (SELECT g.surname || ', ' || g.given_names FROM iam.person g WHERE g.id = a.granted_by) AS granted_by_name,
+                       a.valid_from, a.valid_to
+                  FROM iam.office_assignment a JOIN iam.person p ON p.id = a.person_id JOIN ref.office o ON o.code = a.office_code
+                 WHERE a.id = :g
+                """).param("g", grant).query(GrantRow.class).single();
     }
 
     @PostMapping("/persons/{id}/office-assignments/{grant}/end")

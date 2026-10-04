@@ -125,6 +125,39 @@ class ApiIT {
                 .retrieve().toEntity(Map.class);
         assertThat(read.getStatusCode().value()).isEqualTo(200);
         assertThat((List<?>) read.getBody().get("officeAssignments")).hasSize(1);
+
+        // V319: a grant made in error is amended in place — the office and the scope changed, the scope stored as the
+        // register's code, the reason required — and the record keeps one grant, not a false one beside a new one
+        String grantId = String.valueOf(granted.getBody().get("id"));
+        ResponseEntity<Map> noReason = client.put().uri("/api/v1/iam/persons/" + id + "/office-assignments/" + grantId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("officeCode", "hod", "scopeKind", "department", "scopeId", "mathematics and computer science",
+                        "instrument", "Letter REG/ADM/2026/014 of 1 September 2026", "reason", " "))
+                .retrieve().toEntity(Map.class);
+        assertThat(noReason.getStatusCode().value()).isEqualTo(400);
+        ResponseEntity<Map> amended = client.put().uri("/api/v1/iam/persons/" + id + "/office-assignments/" + grantId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("officeCode", "hod", "scopeKind", "department", "scopeId", "mathematics and computer science",
+                        "instrument", "Letter REG/ADM/2026/014 of 1 September 2026", "reason", "granted to the Academic Office in error; the letter appoints a Head of Department"))
+                .retrieve().toEntity(Map.class);
+        assertThat(amended.getStatusCode().value()).as(String.valueOf(amended.getBody())).isEqualTo(200);
+        assertThat(amended.getBody().get("officeCode")).isEqualTo("hod");
+        assertThat(amended.getBody().get("scopeId")).isEqualTo("MTC");
+        ResponseEntity<Map> again = client.get().uri("/api/v1/iam/persons/" + id)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .retrieve().toEntity(Map.class);
+        assertThat((List<?>) again.getBody().get("officeAssignments")).hasSize(1);
+        // a grant that is not this person's is not found
+        assertThat(client.put().uri("/api/v1/iam/persons/" + registrar + "/office-assignments/" + grantId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("officeCode", "hod", "scopeKind", "department", "scopeId", "MTC", "instrument", "x", "reason", "y"))
+                .retrieve().toEntity(Map.class).getStatusCode().value()).isEqualTo(404);
     }
 
     @Test
