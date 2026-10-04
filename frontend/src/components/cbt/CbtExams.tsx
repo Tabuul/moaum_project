@@ -1,0 +1,156 @@
+"use client";
+/** The office's CBT examinations (V322): the sitting's figures, every examination of the session with its state and counts, and the
+ *  form that creates one over an offering of the office's own courses. A click opens the examination; an open one has its live monitor. */
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
+import { reasonHeader } from "@/lib/reason";
+import { notify, notifyProblem } from "@/components/proto/Toast";
+import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
+import { Field, Modal } from "@/components/proto/blocks";
+import type { Problem } from "@/lib/api";
+import { EXAM_WORD, RESULTS_WORD, num, whenAt, type CbtExamList, type CbtOffice } from "@/lib/cbt";
+
+const SEM = (n: number | null | undefined) => (n == null ? "Whole session" : n === 1 ? "First semester" : n === 2 ? "Second semester" : "Third semester");
+
+/** a datetime-local value from an ISO instant, in the browser's zone */
+export const localInput = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+export const isoOf = (local: string) => (local ? new Date(local).toISOString() : null);
+
+export interface ExamForm {
+  title: string; instructions: string; durationMinutes: string; selection: "FIXED" | "RANDOM"; totalQuestions: string; randomizeQuestions: boolean; randomizeOptions: boolean;
+  passMark: string; attemptLimit: string; securityMode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB"; violationLimit: string; violationAction: "WARN" | "SUBMIT" | "TERMINATE";
+  secondSession: "CONTINUE" | "DENY"; startsAt: string; endsAt: string;
+}
+export const EMPTY_FORM: ExamForm = {
+  title: "", instructions: "", durationMinutes: "60", selection: "FIXED", totalQuestions: "0", randomizeQuestions: true, randomizeOptions: false, passMark: "40", attemptLimit: "1",
+  securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "",
+};
+export const formBody = (f: ExamForm) => ({
+  title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes) || 60, totalQuestions: Number(f.totalQuestions) || 0,
+  selection: f.selection, randomizeQuestions: f.randomizeQuestions, randomizeOptions: f.randomizeOptions, passMark: Number(f.passMark) || 0, attemptLimit: Number(f.attemptLimit) || 1,
+  securityMode: f.securityMode, venue: f.venue, violationLimit: Number(f.violationLimit) || 0, violationAction: f.violationAction, secondSession: f.secondSession,
+  startsAt: isoOf(f.startsAt), endsAt: isoOf(f.endsAt),
+});
+
+/** the configuration fields, shared by the create form and the setup tab */
+export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean }) {
+  const dis = !!locked;
+  return (
+    <>
+      <div className="grid grid--2">
+        <Field id="x-title" label="Examination title" required><input id="x-title" className="ctl" value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. GST 101 First Semester CBT" /></Field>
+        <Field id="x-dur" label="Duration (minutes)" required><input id="x-dur" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.durationMinutes} onChange={(e) => set({ durationMinutes: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+      </div>
+      <div className="grid grid--2">
+        <Field id="x-start" label="Opens" required hint="Candidates may start from this moment"><input id="x-start" type="datetime-local" className="ctl" value={f.startsAt} onChange={(e) => set({ startsAt: e.target.value })} /></Field>
+        <Field id="x-end" label="Closes" required hint="No start after this; an attempt still running ends here"><input id="x-end" type="datetime-local" className="ctl" value={f.endsAt} onChange={(e) => set({ endsAt: e.target.value })} /></Field>
+      </div>
+      <div className="grid grid--4">
+        <Field id="x-sel" label="Question selection"><select id="x-sel" className="ctl" disabled={dis} value={f.selection} onChange={(e) => set({ selection: e.target.value as ExamForm["selection"] })}><option value="FIXED">Fixed paper (the questions chosen)</option><option value="RANDOM">Random: N drawn from the pool</option></select></Field>
+        <Field id="x-n" label="Questions drawn" hint={f.selection === "RANDOM" ? "Per candidate, from the pool" : "Set by the paper"}><input id="x-n" className="ctl tnum" inputMode="numeric" disabled={dis || f.selection !== "RANDOM"} value={f.totalQuestions} onChange={(e) => set({ totalQuestions: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+        <Field id="x-pass" label="Pass mark (%)"><input id="x-pass" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.passMark} onChange={(e) => set({ passMark: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
+        <Field id="x-att" label="Attempts allowed"><input id="x-att" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.attemptLimit} onChange={(e) => set({ attemptLimit: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+      </div>
+      <div className="grid grid--4">
+        <Field id="x-rq" label="Question order"><select id="x-rq" className="ctl" disabled={dis} value={f.randomizeQuestions ? "1" : "0"} onChange={(e) => set({ randomizeQuestions: e.target.value === "1" })}><option value="1">Shuffled per candidate</option><option value="0">As the paper lists them</option></select></Field>
+        <Field id="x-ro" label="Option order"><select id="x-ro" className="ctl" disabled={dis} value={f.randomizeOptions ? "1" : "0"} onChange={(e) => set({ randomizeOptions: e.target.value === "1" })}><option value="0">As authored</option><option value="1">Shuffled per candidate</option></select></Field>
+        <Field id="x-sec" label="Security mode" hint={f.securityMode === "SECURE" ? "Requires the approved secure/kiosk CBT environment" : "Browser monitoring: tabs, focus, fullscreen, network"}><select id="x-sec" className="ctl" disabled={dis} value={f.securityMode} onChange={(e) => set({ securityMode: e.target.value as ExamForm["securityMode"] })}><option value="STANDARD">Standard web CBT</option><option value="SECURE">Secure CBT / kiosk</option></select></Field>
+        <Field id="x-venue" label="Venue"><select id="x-venue" className="ctl" disabled={dis} value={f.venue} onChange={(e) => set({ venue: e.target.value as ExamForm["venue"] })}><option value="REMOTE">Remote CBT</option><option value="LAB">CBT laboratory</option></select></Field>
+      </div>
+      <div className="grid grid--3">
+        <Field id="x-vl" label="Violations allowed" hint="Tab switches, focus losses, fullscreen exits, a second sign-in"><input id="x-vl" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.violationLimit} onChange={(e) => set({ violationLimit: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+        <Field id="x-va" label="Over the limit"><select id="x-va" className="ctl" disabled={dis} value={f.violationAction} onChange={(e) => set({ violationAction: e.target.value as ExamForm["violationAction"] })}><option value="WARN">Final warning only; the record stands</option><option value="SUBMIT">Submit the attempt automatically</option><option value="TERMINATE">Terminate the attempt</option></select></Field>
+        <Field id="x-ss" label="A second sign-in"><select id="x-ss" className="ctl" disabled={dis} value={f.secondSession} onChange={(e) => set({ secondSession: e.target.value as ExamForm["secondSession"] })}><option value="CONTINUE">Continue the attempt there; the first screen is replaced</option><option value="DENY">Refuse the second screen</option></select></Field>
+      </div>
+      <Field id="x-instr" label="Instructions to candidates" hint="Shown before the start, under the University's standard instructions"><textarea id="x-instr" className="ctl" rows={3} value={f.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
+    </>
+  );
+}
+
+export function CbtExams({ data, base, office, canManage }: { data: CbtExamList; base: string; office: CbtOffice; canManage: boolean }) {
+  const go = useQueryNav();
+  const router = useRouter();
+  const [creating, setCreating] = useState(false);
+  const [offering, setOffering] = useState("");
+  const [f, setF] = useState<ExamForm>(EMPTY_FORM);
+  const [busy, setBusy] = useState(false);
+  const rows = data.rows;
+  const open = rows.filter((r) => r.live_state === "OPEN").length;
+  const upcoming = rows.filter((r) => r.live_state === "UPCOMING" || r.live_state === "SCHEDULED").length;
+  const completed = rows.filter((r) => r.live_state === "COMPLETED").length;
+  const writing = rows.reduce((n, r) => n + Number(r.writing), 0);
+  const q = (patch: Record<string, string>) => {
+    const p = new URLSearchParams();
+    const session = patch.session ?? data.session;
+    const semester = "semester" in patch ? patch.semester : data.semester == null ? "" : String(data.semester);
+    if (session) p.set("session", session);
+    if (semester) p.set("semester", semester);
+    return `${base}/cbt?${p.toString()}`;
+  };
+
+  async function create() {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/cbt/exams", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Create the CBT examination ${f.title}`) }, body: JSON.stringify({ office, offeringId: offering, ...formBody(f) }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      notify(`${j.reference} created as a draft`);
+      router.push(`${base}/cbt/${j.id}`);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <PageHead title={`${office} CBT Examinations`} description={`The computer-based examinations of the ${office} office for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.`}
+        actions={<span className="row row--inline row--tight">
+          <label htmlFor="cx-session" className="sub2">Session</label>
+          <select id="cx-session" className="ctl" value={data.session} onChange={(e) => go(q({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
+          <label htmlFor="cx-sem" className="sub2">Semester</label>
+          <select id="cx-sem" className="ctl" value={data.semester == null ? "" : String(data.semester)} onChange={(e) => go(q({ semester: e.target.value }))}><option value="">Whole session</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select>
+          {canManage ? <Btn kind="primary" onClick={() => { setF({ ...EMPTY_FORM }); setOffering(data.offerings[0]?.id ?? ""); setCreating(true); }}>Create examination</Btn> : null}
+        </span>} />
+      <Tiles items={[
+        ["EXAMINATIONS", num(rows.length), null, `${data.session} · ${SEM(data.semester).toLowerCase()}`],
+        ["OPEN NOW", num(open), open ? "var(--green-ink)" : null, `${num(writing)} candidate${writing === 1 ? "" : "s"} writing`],
+        ["UPCOMING", num(upcoming), null, "Scheduled or published, not yet open"],
+        ["COMPLETED", num(completed), null, `${num(rows.filter((r) => r.results_state === "PUBLISHED").length)} with results published`],
+      ]} />
+      <Panel title={`${office} examinations · ${data.session}`} right={<span className="sub2">{rows.length} examination{rows.length === 1 ? "" : "s"}</span>}>
+        {rows.length ? (
+          <DTable pageSize={25} cols={["Reference", "Examination", "Course", "Window", "State|mid", "Candidates|num", "Started|num", "Writing|num", "Scored|num", "Results|mid", "|num"]} rows={rows.map((r) => [
+            <span key="r" className="tnum">{r.reference}</span>,
+            <span key="t"><b>{r.title}</b><div className="sub2">{r.duration_minutes} min · {r.selection === "RANDOM" ? `${r.total_questions} of ${r.pool_size} drawn` : `${r.pool_size} questions`} · {r.security_mode === "SECURE" ? "secure/kiosk" : "standard web"} · {r.venue === "LAB" ? "CBT lab" : "remote"}</div></span>,
+            <span key="c"><b className="tnum">{r.course_code}</b><div className="sub2">{r.course_title}</div></span>,
+            <span key="w" className="sub2 tnum">{r.starts_at ? `${whenAt(r.starts_at)} → ${whenAt(r.ends_at)}` : "Not yet dated"}</span>,
+            <Pil key="s" kind={(EXAM_WORD[r.live_state] ?? ["", "grey"])[1]}>{(EXAM_WORD[r.live_state] ?? [r.live_state])[0]}</Pil>,
+            <span key="n" className="tnum">{num(r.candidates)}</span>, <span key="st" className="tnum">{num(r.started)}</span>,
+            <span key="wr" className={`tnum${Number(r.writing) ? " b600" : ""}`}>{num(r.writing)}</span>, <span key="sc" className="tnum">{num(r.scored)}</span>,
+            <Pil key="rs" kind={(RESULTS_WORD[r.results_state] ?? ["", "grey"])[1]}>{(RESULTS_WORD[r.results_state] ?? [r.results_state])[0]}</Pil>,
+            <span key="a" className="row row--inline row--tight">{r.live_state === "OPEN" ? <LinkBtn kind="go" size="sm" href={`${base}/cbt/${r.id}/monitor`}>Monitor</LinkBtn> : null}<LinkBtn kind="primary" size="sm" href={`${base}/cbt/${r.id}`}>Open</LinkBtn></span>,
+          ])} texts={rows.map((r) => `${r.reference} ${r.title} ${r.course_code} ${r.live_state}`)} />
+        ) : <PBody><div className="sub2">No examination for {data.session}{data.semester ? ` ${SEM(data.semester).toLowerCase()}` : ""} yet.{canManage ? " Create one over an offering of the office's courses." : ""}</div></PBody>}
+      </Panel>
+      {!data.offerings.length ? <Note kind="info" title={`No ${office} course is offered in ${data.session}`}>An examination is created over an offering; offer the course for the session on {office} Courses first.</Note> : null}
+
+      {creating ? (
+        <Modal title="Create a CBT examination" sub={`${office} · ${data.session}`} wide onClose={() => setCreating(false)}
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || !offering || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
+          <Field id="x-off" label="Course offering" required hint="One of the office's courses offered this session; the paper is drawn from that course's question bank">
+            <select id="x-off" className="ctl" value={offering} onChange={(e) => setOffering(e.target.value)}>
+              {data.offerings.map((o) => <option key={o.id} value={o.id}>{o.course_code} — {o.title} · semester {o.semester} · {o.questions} active question{o.questions === 1 ? "" : "s"}</option>)}
+            </select>
+          </Field>
+          <ExamFields f={f} set={(p) => setF({ ...f, ...p })} />
+          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only students registered on the offering whose GST fee is paid (where the Bursar&rsquo;s rule requires it) can sit it; the server judges that at the start, not the button.</div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}

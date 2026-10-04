@@ -334,10 +334,6 @@ export const TITLES: Record<string, [string, string]> = {
     "Biodata changes",
     "Requests that need evidence"
   ],
-  "s/cbt": [
-    "Examination",
-    "CSC 311 · Algorithms & Complexity"
-  ],
   "s/notifications": [
     "Notifications",
     "Messages from the University"
@@ -887,6 +883,26 @@ export const TITLES: Record<string, [string, string]> = {
   "t/gstcourses": [
     "GST Courses",
     "The General Studies courses on the catalogue, the session's offerings, their lecturers, registrations and score sheets"
+  ],
+  "t/gstbank": [
+    "GST Question Bank",
+    "The GST courses' question banks — multiple choice, true/false and multiple select, tagged by topic and difficulty; the keys never leave the server"
+  ],
+  "t/gstcbt": [
+    "GST CBT Examinations",
+    "Computer-based examinations created, scheduled, published, monitored live and scored the moment a candidate submits; results reviewed, approved and published"
+  ],
+  "t/epsbank": [
+    "EPS Question Bank",
+    "The EPS courses' question banks on the same engine as GST"
+  ],
+  "t/epscbt": [
+    "EPS CBT Examinations",
+    "Computer-based examinations on the same engine as GST, created, monitored and scored here"
+  ],
+  "s/cbt": [
+    "GST CBT Examinations",
+    "Your computer-based examinations: when they open, whether you may sit, the instructions to acknowledge, the examination itself, and your published results"
   ],
   "t/epsstudents": [
     "EPS Students",

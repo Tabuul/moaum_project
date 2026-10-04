@@ -1484,7 +1484,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/courses", "icon": "book", "label": "My Courses" },
           { "id": "s/timetable", "icon": "cal", "label": "Timetable" },
           { "id": "s/attendance", "icon": "check", "label": "Attendance" },
-          { "id": "s/exams", "icon": "cap", "label": "Examinations" }
+          { "id": "s/exams", "icon": "cap", "label": "Examinations" },
+          { "id": "s/cbt", "icon": "cap", "label": "GST CBT Examinations" }
         ]
       },
       {
@@ -1928,6 +1929,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/gststudents", "icon": "user", "label": "GST Students" },
           { "id": "t/gstcourses", "icon": "book", "label": "GST Courses" },
+          { "id": "t/gstbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/gstcbt", "icon": "cap", "label": "CBT Examinations" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/sheethistory", "icon": "doc", "label": "Score Sheet History" }
         ]
@@ -1959,6 +1962,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/epsstudents", "icon": "user", "label": "EPS Students" },
           { "id": "t/epscourses", "icon": "book", "label": "EPS Courses" },
+          { "id": "t/epsbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/epscbt", "icon": "cap", "label": "CBT Examinations" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/sheethistory", "icon": "doc", "label": "Score Sheet History" }
         ]

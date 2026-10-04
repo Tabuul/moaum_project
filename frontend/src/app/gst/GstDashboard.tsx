@@ -12,10 +12,11 @@ import { Donut, GroupBars, HBars, VZ } from "@/components/proto/vz";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { notifyProblem } from "@/components/proto/Toast";
 import { OFFICE_WORD, QUICK, STAGE_WORD, dayOf, gstQuery, naira, num, pct, type GstDashboardData, type GstFilters, type GstGroup } from "@/lib/gst";
+import { EXAM_WORD, whenAt, type CbtSummary } from "@/lib/cbt";
 
 const SEM = (n: number | string | null | undefined) => (n == null || n === "" ? "Whole session" : n === 1 || n === "1" ? "First semester" : n === 2 || n === "2" ? "Second semester" : "Third semester");
 
-export function GstDashboard({ data, filters, base, actingOffice }: { data: GstDashboardData; filters: GstFilters; base: string; actingOffice: string | null }) {
+export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data: GstDashboardData; filters: GstFilters; base: string; actingOffice: string | null; cbt?: CbtSummary | null }) {
   const go = useQueryNav();
   const [busy, setBusy] = useState(false);
   const o = data.office;
@@ -117,6 +118,29 @@ export function GstDashboard({ data, filters, base, actingOffice }: { data: GstD
         </Note>
       ) : null}
       <Tiles items={tiles} />
+      {cbt ? (
+        <Panel title={`${word} CBT EXAMINATIONS · ${cbt.session}`} right={<span className="row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href={`${base}/question-bank`}>Question bank</LinkBtn><LinkBtn kind="primary" size="sm" href={`${base}/cbt?session=${encodeURIComponent(cbt.session)}`}>CBT examinations</LinkBtn></span>}>
+          <Tiles items={[
+            ["UPCOMING CBT EXAMS", num(cbt.summary.upcoming), null, `${num(cbt.summary.draft)} in draft`],
+            ["ACTIVE CBT EXAMS", num(cbt.summary.open), cbt.summary.open ? "var(--green-ink)" : null, "Open now"],
+            ["COMPLETED CBT EXAMS", num(cbt.summary.completed), null, `${num(cbt.summary.exams)} in all`],
+            ["STUDENTS WRITING NOW", num(cbt.summary.writing), cbt.summary.writing ? "var(--green-ink)" : null, "Attempts in progress"],
+            ["SCORES RECEIVED", num(cbt.summary.scores), null, "Automatic, at submission"],
+            ["RESULTS PENDING", num(cbt.summary.results_pending), cbt.summary.results_pending ? "var(--red-ink)" : null, "Completed, not yet published"],
+            ["RESULTS PUBLISHED", num(cbt.summary.results_published), "var(--green-ink)", "Visible to students"],
+            ["CBT CANDIDATES", num(cbt.summary.candidates), null, "Registered on examined offerings"],
+          ]} />
+          {cbt.next.length ? (
+            <DTable cols={["Reference", "Examination", "Course", "Window", "State|mid", "Writing|num", "|num"]} rows={cbt.next.map((x) => [
+              <span key="r" className="tnum">{x.reference}</span>, <b key="t">{x.title}</b>, <span key="c" className="tnum">{x.course_code}</span>,
+              <span key="w" className="sub2 tnum">{x.starts_at ? `${whenAt(x.starts_at)} → ${whenAt(x.ends_at)}` : "Not dated"}</span>,
+              <Pil key="s" kind={(EXAM_WORD[x.live_state] ?? ["", "grey"])[1]}>{(EXAM_WORD[x.live_state] ?? [x.live_state])[0]}</Pil>,
+              <span key="n" className="tnum">{num(x.writing)}</span>,
+              <span key="a" className="row row--inline row--tight">{x.live_state === "OPEN" ? <LinkBtn kind="go" size="sm" href={`${base}/cbt/${x.id}/monitor`}>Live monitor</LinkBtn> : null}<LinkBtn kind="ghost" size="sm" href={`${base}/cbt/${x.id}`}>Open</LinkBtn></span>,
+            ])} />
+          ) : <PBody><div className="sub2">No examination scheduled or open for {cbt.session}.</div></PBody>}
+        </Panel>
+      ) : null}
 
       <Panel title="FILTERS" right={<span className="row row--inline row--tight">{filtered ? <Btn kind="ghost" size="sm" onClick={() => go(withFilter({ fac: "", dept: "", prog: "", level: "", sex: "", status: "", course: "", payment: "", registration: "" }))}>Clear the filters</Btn> : null}<LinkBtn kind="primary" size="sm" href={studentsHref()}>Students found: {num(t.total)}</LinkBtn></span>}>
         <PBody>

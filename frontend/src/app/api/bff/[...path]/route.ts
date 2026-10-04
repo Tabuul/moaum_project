@@ -9,7 +9,7 @@ import { SESSION_COOKIE } from "@/lib/session";
  * versioned API is reachable through it, and only the headers the API
  * understands are forwarded.
  */
-const FORWARDED_HEADERS = ["content-type", "accept", "x-correlation-id", "x-active-office", "x-reason", "idempotency-key"];
+const FORWARDED_HEADERS = ["content-type", "accept", "x-correlation-id", "x-active-office", "x-reason", "idempotency-key", "x-attempt-token"];
 
 async function forward(request: NextRequest, path: string[]): Promise<NextResponse> {
   if (path[0] !== "api" || path[1] !== "v1") {

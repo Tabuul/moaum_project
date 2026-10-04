@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 166
+\set EXPECTED 168
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4107,6 +4107,100 @@ BEGIN
         coalesce(r1.reference ~ '^ALLOC/9999-0000/\d{5}$' AND r1.uploaded_by = who AND r1.uploader_office = 'hod' AND r2.id = r1.id AND r2.reference = r1.reference
                  AND r3.id <> r1.id AND r3.reference > r1.reference, false),
         format('first=%s again=%s next=%s', r1.reference, r2.reference, r3.reference));
+END $$;
+
+-- ── 167-168. V322: a CBT attempt is the server's — eligibility judged at the start, the second sign-in by policy, the paper drawn by a seed,
+--                   the score in one transaction and never twice, the violation policy applied, the result a version with its reason ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); off uuid := gen_random_uuid(); ex assessment.cbt_exam; a assessment.cbt_attempt; a2 assessment.cbt_attempt; r assessment.cbt_result;
+        q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid(); q3 uuid := gen_random_uuid(); reg uuid; ref text;
+        r_unpublished text; r_unregistered text; r_unpaid text; r_paid text; r_limit text; r_old_token text; r_publish_empty text;
+        tok1 uuid; tok2 uuid; ev jsonb; v_status text; v_score numeric; v_pct numeric; v_grade text; v_passed boolean; v_events int; v_again numeric; v_versions int; v_sweep int; v_sweep_status text;
+        v_live text; v_results text; v_student_sees numeric; v_student_hidden numeric; v_key_leak int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9995/9996', date '9995-10-01', date '9996-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 995', 'Check General Studies', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 995', 'C00023', 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 995', '9995/9996', 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/95/000995', 'MOAUM/CHK/95/995', 'ZZCHECKCBT', 'Invented', 'C00023', 'UTME', '9995/9996', 100, 100, 'ACTIVE', now());
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES (q1, 'GST 995', 'one of four', '["a","b","c","d"]', 2, 'MCQ', 1), (q2, 'GST 995', 'true or false', '["True","False"]', 0, 'TRUE_FALSE', 1);
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, answers, kind, marks) VALUES (q3, 'GST 995', 'several', '["a","b","c","d"]', 0, ARRAY[3, 1], 'MULTI', 2);
+        -- the key is kept as a sorted array whatever the kind, and never appears in what a paper carries (the question ids only)
+        SELECT count(*) INTO v_key_leak FROM assessment.question WHERE id IN (q1, q2, q3) AND NOT (answers = ARRAY[answer] OR (kind = 'MULTI' AND answers = ARRAY[1, 3]));
+        ex := assessment.cbt_new_exam('GST', off, 'Check CBT', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'TERMINATE', 'CONTINUE', now() - interval '1 minute', now() + interval '2 hours');
+        r_unpublished := split_part(assessment.cbt_eligibility(ex.id, st), ':', 1);
+        BEGIN
+            PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        EXCEPTION WHEN check_violation THEN r_publish_empty := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2), (ex.id, q3, 3);
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        SELECT assessment.cbt_live_state(e) INTO v_live FROM assessment.cbt_exam e WHERE e.id = ex.id;
+        r_unregistered := split_part(assessment.cbt_eligibility(ex.id, st), ':', 1);
+        reg := registration.student_draft(st, '9995/9996', 1);
+        PERFORM registration.student_choose(reg, ARRAY[off]);
+        UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        PERFORM finance.state_gst_fee('9995/9996', 5000, NULL, NULL, NULL, NULL, current_date, NULL, who, 'bursar');
+        r_unpaid := split_part(assessment.cbt_eligibility(ex.id, st), ':', 1);
+        ref := finance.new_gst_reference(st, '9995/9996');
+        PERFORM finance.confirm_payment(ref, 'CARD', 'check');
+        r_paid := coalesce(assessment.cbt_eligibility(ex.id, st), 'ELIGIBLE');
+        -- the attempt: started, opened again (the token rotates, the second sign-in is on the record), the old screen refused
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        a := assessment.cbt_start(ex.id, st, '10.0.0.1', 'check');
+        tok1 := a.token;
+        a2 := assessment.cbt_start(ex.id, st, '10.0.0.2', 'check');
+        tok2 := a2.token;
+        BEGIN
+            PERFORM assessment.cbt_touch(a.id, tok1);
+        EXCEPTION WHEN check_violation THEN r_old_token := split_part(SQLERRM, ':', 1); END;
+        -- answers: two right, one wrong; one violation over the limit of one (the second sign-in counted) terminates and scores at once
+        PERFORM assessment.cbt_save_answers(a.id, tok2, jsonb_build_array(jsonb_build_object('q', q1, 'a', jsonb_build_array(2)), jsonb_build_object('q', q2, 'a', jsonb_build_array(0)), jsonb_build_object('q', q3, 'a', jsonb_build_array(1))));
+        ev := assessment.cbt_record_events(a.id, tok2, '[{"kind":"TAB_SWITCH"}]'::jsonb, '10.0.0.2');
+        SELECT status, score, percentage, grade, passed INTO v_status, v_score, v_pct, v_grade, v_passed FROM assessment.cbt_attempt WHERE id = a.id;
+        SELECT count(*) INTO v_events FROM assessment.cbt_event WHERE attempt_id = a.id AND kind IN ('STARTED', 'MULTIPLE_LOGIN', 'SESSION_REPLACED', 'TAB_SWITCH', 'TERMINATED');
+        -- finalised once: a second finalisation changes nothing
+        PERFORM assessment.cbt_finalize(a.id, 'SUBMITTED', 'again');
+        SELECT score INTO v_again FROM assessment.cbt_attempt WHERE id = a.id;
+        SELECT count(*) INTO v_versions FROM assessment.cbt_result WHERE attempt_id = a.id;
+        r_limit := split_part(coalesce(assessment.cbt_eligibility(ex.id, st), 'ELIGIBLE'), ':', 1);
+        -- the office: results hidden from the student until published; an amendment is a version with its reason
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        SELECT x.percentage INTO v_student_hidden FROM assessment.cbt_student_exams(st, '9995/9996') x WHERE x.exam_id = ex.id;
+        PERFORM assessment.cbt_exam_action(ex.id, 'close', NULL);
+        PERFORM assessment.cbt_exam_action(ex.id, 'complete', NULL);
+        PERFORM assessment.cbt_results_action(ex.id, 'review');
+        r := assessment.cbt_amend_result(a.id, 2, 'SCORED', 'check: a key corrected');
+        PERFORM assessment.cbt_results_action(ex.id, 'approve');
+        PERFORM assessment.cbt_results_action(ex.id, 'publish');
+        SELECT x.results_state INTO v_results FROM assessment.cbt_exam x WHERE x.id = ex.id;
+        SELECT x.percentage INTO v_student_sees FROM assessment.cbt_student_exams(st, '9995/9996') x WHERE x.exam_id = ex.id;
+        -- the clock: an attempt left past its end is finalised by the sweep
+        UPDATE assessment.cbt_exam SET state = 'PUBLISHED', ends_at = now() + interval '1 hour', attempt_limit = 2 WHERE id = ex.id;
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        a2 := assessment.cbt_start(ex.id, st, '10.0.0.1', 'check');
+        UPDATE assessment.cbt_attempt SET ends_at = now() - interval '1 minute' WHERE id = a2.id;
+        v_sweep := assessment.cbt_sweep();
+        SELECT status INTO v_sweep_status FROM assessment.cbt_attempt WHERE id = a2.id;
+        RAISE EXCEPTION 'the V322 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A CBT attempt is the server''s: not eligible unpublished, the paper refused empty, refused unregistered, held on the GST fee and freed by the confirmed payment; a second sign-in rotates the token and the old screen is refused; the attempt limit holds',
+        coalesce(v_key_leak = 0 AND r_unpublished = 'CBT_EXAM_NOT_OPEN' AND r_publish_empty = 'CBT_PAPER_EMPTY' AND v_live = 'OPEN' AND r_unregistered = 'CBT_COURSE_NOT_REGISTERED'
+                 AND r_unpaid = 'GST_PAYMENT_REQUIRED' AND r_paid = 'ELIGIBLE' AND tok1 <> tok2 AND r_old_token = 'CBT_SESSION_REPLACED' AND r_limit = 'CBT_ATTEMPT_LIMIT', false),
+        format('leak=%s unpublished=%s empty=%s live=%s unreg=%s unpaid=%s paid=%s rotated=%s old=%s limit=%s', v_key_leak, r_unpublished, r_publish_empty, v_live, r_unregistered, r_unpaid, r_paid, tok1 <> tok2, r_old_token, r_limit));
+    PERFORM pg_temp.assert('The score is one transaction and never twice: the violation policy terminates over the limit and scores at once (2 of 4, 50%, C, passed at the pass mark), the events are on the record, a second finalisation changes nothing; the result is hidden from the student until published, an amendment is version 2 with its reason, and the sweep finalises an attempt past its end',
+        coalesce(v_status = 'TERMINATED' AND v_score = 2 AND v_pct = 50 AND v_grade = 'C' AND v_passed AND v_events = 5 AND v_again = 2 AND v_versions = 1 AND r.version = 2 AND r.score = 2
+                 AND v_student_hidden IS NULL AND v_results = 'PUBLISHED' AND v_student_sees = 50 AND v_sweep >= 1 AND v_sweep_status = 'TIME_EXPIRED', false),
+        format('status=%s score=%s pct=%s grade=%s passed=%s events=%s again=%s versions=%s amended=%s hidden=%s results=%s sees=%s sweep=%s/%s', v_status, v_score, v_pct, v_grade, v_passed, v_events, v_again, v_versions, r.version, v_student_hidden, v_results, v_student_sees, v_sweep, v_sweep_status));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

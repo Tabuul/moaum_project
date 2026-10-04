@@ -58,6 +58,19 @@ final class ItSupport {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(Map.class);
     }
 
+    /** a call with extra headers (V322: the examination screen's attempt token) */
+    @SuppressWarnings("rawtypes")
+    ResponseEntity<Map> callWith(String token, HttpMethod method, String path, Object body, Map<String, String> headers) {
+        RestClient.RequestBodySpec spec = client.method(method).uri(path)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON);
+        for (Map.Entry<String, String> h : headers.entrySet()) {
+            spec = spec.header(h.getKey(), h.getValue());
+        }
+        return (body == null ? spec : spec.body(body)).retrieve().toEntity(Map.class);
+    }
+
     /** a read of bytes (a PDF, an image): the status and the body as they came */
     ResponseEntity<byte[]> getBytes(String token, String path) {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(byte[].class);
