@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 165
+\set EXPECTED 166
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4087,6 +4087,26 @@ BEGIN
         format('rows=%s blank=%s mail=%s motto=%s audited=%s', n, r_blank, r_mail, v_motto, audited));
     PERFORM pg_temp.assert('A document the portal issues is on the record in the actor''s name, its kind in capitals',
         coalesce(v_actor = who AND v_kind = 'RECEIPT_DOWNLOADED', false), format('actor=%s kind=%s', v_actor = who, v_kind));
+END $$;
+
+-- ── 166. V321: a bulk allocation import is recorded under a reference numbered in the session, and the same key never records twice ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); k uuid := gen_random_uuid(); r1 catalogue.allocation_import; r2 catalogue.allocation_import; r3 catalogue.allocation_import;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        r1 := catalogue.record_allocation_import(k, 'allocations.xlsx', '9999/0000', 1, 'MTC', 10, 8, 7, 1, 3, 2, 1, 'COMPLETED_WITH_ERRORS', '{"allowOverload":false}'::jsonb, '[]'::jsonb);
+        r2 := catalogue.record_allocation_import(k, 'allocations.xlsx', '9999/0000', 1, 'MTC', 10, 8, 7, 1, 3, 2, 1, 'COMPLETED_WITH_ERRORS', '{}'::jsonb, '[]'::jsonb);
+        r3 := catalogue.record_allocation_import(gen_random_uuid(), 'more.xlsx', '9999/0000', 2, 'MTC', 1, 1, 1, 0, 0, 0, 0, 'COMPLETED', '{}'::jsonb, '[]'::jsonb);
+        RAISE EXCEPTION 'the V321 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A bulk allocation import is recorded under a reference numbered in the session, in the uploader''s name; the same key answers with the record already made, and the next import takes the next number',
+        coalesce(r1.reference ~ '^ALLOC/9999-0000/\d{5}$' AND r1.uploaded_by = who AND r1.uploader_office = 'hod' AND r2.id = r1.id AND r2.reference = r1.reference
+                 AND r3.id <> r1.id AND r3.reference > r1.reference, false),
+        format('first=%s again=%s next=%s', r1.reference, r2.reference, r3.reference));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

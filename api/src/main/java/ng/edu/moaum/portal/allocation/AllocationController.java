@@ -32,10 +32,44 @@ class AllocationController {
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
+    private final AllocationImportService imports;
 
-    AllocationController(JdbcClient jdbc, OfficeScope scope) {
+    AllocationController(JdbcClient jdbc, OfficeScope scope, AllocationImportService imports) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.imports = imports;
+    }
+
+    /* ── V321: bulk course allocation from a spreadsheet — validated first, imported on confirmation ── */
+
+    public record ImportIn(@NotNull List<AllocationImportService.RowIn> rows, AllocationImportService.Options options, String fileName, UUID importKey) {
+    }
+
+    /** every row judged against the register; nothing written */
+    @PostMapping("/import/validate")
+    @PreAuthorize(ALLOCATORS)
+    AllocationImportService.Validation validateImport(@RequestBody ImportIn body) {
+        return imports.validate(body.rows(), body.options());
+    }
+
+    /** the valid rows written in one transaction through the same allocation every desk uses; a repeated key answers
+     *  with the record already made */
+    @PostMapping("/import")
+    @PreAuthorize(ALLOCATORS)
+    AllocationImportService.ImportResult doImport(@RequestBody ImportIn body) {
+        return imports.importRows(body.importKey(), body.fileName(), body.rows(), body.options());
+    }
+
+    @GetMapping("/imports")
+    @PreAuthorize(ALLOCATORS)
+    List<Map<String, Object>> importHistory(@RequestParam(defaultValue = "100") int limit) {
+        return imports.history(limit);
+    }
+
+    @GetMapping("/imports/{id}")
+    @PreAuthorize(ALLOCATORS)
+    Map<String, Object> importRecord(@PathVariable UUID id) {
+        return imports.one(id);
     }
 
     public record Assign(@NotNull UUID lecturer, UUID secondExaminer, Boolean overload) {

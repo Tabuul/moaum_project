@@ -14,6 +14,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
+import { BulkUpload, type ImportRecord } from "./BulkUpload";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
@@ -28,9 +30,9 @@ const MAX_UNITS = 12;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 
-export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem }: {
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false }: {
   depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
-  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null;
+  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean;
 }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -221,6 +223,15 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
           ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
         ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semName(semester).toLowerCase()} semester{level ? `, ${level} level` : ""}. A course appears here once it is offered to the programme for the session and its registration is opened.</div></PBody>}
       </Panel>
+
+      <div className="row mt-1">
+        <Btn kind="ghost" onClick={() => void brandedXlsx("Teaching allocation", ["Course code", "Course", "Level", "Units", "Registered", "Lead lecturer", "Co-lecturers", "Second examiner"],
+          offerings.map((o) => [o.course_code, o.title, o.level, o.units, o.registered, o.lecturer ?? "", cos(o).map((c) => c.name).join("; "), o.second_examiner ?? ""]),
+          { sheetName: "Allocation", sub: `${deptName} · ${session} · ${semName(semester)} semester${level ? ` · ${level} level` : ""}`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semName(semester)} semester`]] })
+          .then((b) => downloadBlob(b, `allocation-${dept}-${session.replace("/", "-")}-${semester}.xlsx`))}>Download Excel</Btn>
+      </div>
+
+      <BulkUpload dept={dept} deptName={deptName} session={session} semester={semester} imports={imports} canImport={canImport} />
 
       <Note kind="info" title="Assigning the lead lecturer does four things at once">
         It opens the course space and enrols the registered students, creates the score sheet in the lead lecturer&rsquo;s name, opens the attendance register, and releases the course to the timetable. A co-lecturer teaches the same course and enters scores on that sheet. The second examiner is set now, not at examination time, because the person who enters the marks may not be the one who verifies them.

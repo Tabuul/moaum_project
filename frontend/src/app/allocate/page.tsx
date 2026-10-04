@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Allocate, type Offering, type Lecturer, type Dept } from "./Allocate";
+import type { ImportRecord } from "./BulkUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
         api<Lecturer[]>(`/api/v1/allocation/lecturers?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}`),
       ])
     : [null, null];
+  // V321: the bulk imports this desk may see
+  const imports = await api<ImportRecord[]>("/api/v1/allocation/imports?limit=50");
 
   return (
     <Shell route="r/allocate" me={me.ok ? me.data : null}>
@@ -42,6 +45,8 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
           offerings={offerings && offerings.ok ? offerings.data : []}
           lecturers={lecturers && lecturers.ok ? lecturers.data : []}
           problem={offerings && !offerings.ok ? offerings.problem : null}
+          imports={imports.ok ? imports.data : []}
+          canImport={!!me.ok && ["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super"].includes(me.data.activeOffice ?? "")}
         />
       )}
     </Shell>
