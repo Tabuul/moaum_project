@@ -83,7 +83,7 @@ export function certificatePdf(s: Statement, t: Template | null, verifyUrl: stri
   // the QR and the reference beside the seal
   qr(p, 200, 108, 74, verifyUrl);
   p.text(284, 168, "Verify this certificate", 8, true, INK);
-  p.text(284, 157, clean(verifyUrl.replace(/^https?:\/\//, "")).slice(0, 48), 7, false, MUTED);
+  p.text(284, 157, "Scan the code, or enter the verification code on the portal", 7, false, MUTED);
   p.text(284, 146, `Verification code`, 7.5, false, MUTED);
   p.text(284, 135, clean((s as unknown as { verificationCode?: string }).verificationCode ?? ""), 8.5, true, INK);
   p.text(284, 122, `Certificate ${clean(s.number)}`, 7.5, false, MUTED);
@@ -198,7 +198,7 @@ export function transcriptPdf(s: Statement, t: Template | null, verifyUrl: strin
   last.text(L, 84, clean(t?.signatory_name ?? "The Registrar"), 9, true, INK);
   last.text(L, 73, clean(t?.signatory_title ?? "Registrar").toUpperCase(), 7.5, false, MUTED);
   last.text(L + 200, 84, `Verification code ${clean(verificationCode)}`, 8, true, INK);
-  last.text(L + 200, 73, clean(verifyUrl.replace(/^https?:\/\//, "")).slice(0, 60), 7, false, MUTED);
+  last.text(L + 200, 73, "Scan the code, or enter the verification code on the portal", 7, false, MUTED);
   last.text(L, 48, clean(t?.footer ?? "Not valid without the verification reference."), 7.5, false, MUTED);
   for (const pg of pages) pg.text(L, 36, `${clean(s.holder)} · ${clean(s.matricNo)} · ${clean(s.number)}`, 6.5, false, MUTED);
   return pdf(pages, `${title} ${s.number}`);

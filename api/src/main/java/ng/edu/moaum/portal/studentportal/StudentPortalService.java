@@ -459,6 +459,14 @@ public class StudentPortalService {
             }
         }
         BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
+        // the level the student held in each semester (V330), so a past statement reads at its own level, not today's
+        Map<String, Integer> levels = new java.util.HashMap<>();
+        java.util.function.BiFunction<String, Object, Integer> levelOf = (ses, sem) -> {
+            int m = sem == null ? 1 : ((Number) sem).intValue();
+            return levels.computeIfAbsent(ses + "|" + m, k -> { Integer l = repo.levelIn(id, ses, m); return l == null ? s.currentLevel() : l; });
+        };
+        for (Map<String, Object> row : rows) row.put("level", levelOf.apply(String.valueOf(row.get("session")), row.get("semester")));
+        for (Map<String, Object> g : gpa) g.put("level", levelOf.apply(String.valueOf(g.get("session")), g.get("semester")));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());

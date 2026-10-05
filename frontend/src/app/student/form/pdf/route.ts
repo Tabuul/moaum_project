@@ -117,8 +117,7 @@ export async function GET(request: NextRequest) {
   const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
   p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
-  p.text(qx, qy - qDim - 23, verifyUrl.replace(/^https?:\/\//, ""), 6.5, false, [0.1, 0.25, 0.4]);
-  p.text(qx, qy - qDim - 34, `Check code  ${code}`, 8, true, [0.3, 0.3, 0.3]);
+  p.text(qx, qy - qDim - 23, `Check code  ${code}`, 8, true, [0.3, 0.3, 0.3]);
 
   // ── signatures: Head of Department / Level Coordinator, and Dean of Faculty ──
   const sigW = 264, sigX2 = A4.w - L - sigW, dateX = sigX2 + sigW - 54;

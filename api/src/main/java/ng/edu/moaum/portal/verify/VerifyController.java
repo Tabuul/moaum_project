@@ -271,11 +271,10 @@ class VerifyController {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> stu = jdbc.sql("""
                 SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
-                       coalesce((SELECT e.level FROM people.enrolment e WHERE e.student_id = s.id AND e.session = :session LIMIT 1),
-                                s.current_level) AS level
+                       people.level_in(s.id, :session, :sem) AS level
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
                  WHERE upper(s.matric_no) = upper(:m) LIMIT 1
-                """).param("m", matric).param("session", session).query().listOfRows();
+                """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();
         if (stu.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> s = stu.get(0);
         if (c == null || !resultToken(String.valueOf(s.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {

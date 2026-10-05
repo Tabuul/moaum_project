@@ -38,6 +38,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   const rows = x.rows.filter((c) => c.session === session && c.semester === semester && c.published);
   if (!rows.length) return NextResponse.json({ status: 409, title: "Nothing published", detail: "No result is published for this semester." }, { status: 409 });
   const sem = x.semesters.find((s) => s.session === session && s.semester === semester);
+  // the level the student was at in that semester (V330) — a 2023/2024 statement reads 100 Level for a student now at 300
+  const level = sem?.level ?? rows[0]?.level ?? x.level;
 
   const p = new Page();
   const L = 56;
@@ -51,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
 
   // ── candidate block: two columns ──────────────────────────────────────────
   const meta: [string, string][][] = [
-    [["Name", clean(x.name)], ["Programme", clean(`${x.programme} · ${x.level} Level`)]],
+    [["Name", clean(x.name)], ["Programme", clean(`${x.programme} · ${level} Level`)]],
     [["Matriculation number", x.matricNo ?? "—"], ["Session", `${session} · ${semesterName(semester)} semester`]],
   ];
   for (const line of meta) {
@@ -144,7 +146,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   const dx = qx + qDim + 20;
   p.text(dx, qy - 4, "DETAILS OF THE QR CODE", 7, false, [0.42, 0.42, 0.42]);
   const ty = p.paragraph(dx, qy - 18, "Scanning opens the University's own record for this statement on the portal: the candidate, the published grades, the semester and cumulative GPA, the class of standing and the Senate approval date. The result is verified against the register, not by the appearance of this sheet; a grade that is not on a published sheet is not on this statement.", R - dx, 8.5);
-  p.text(dx, ty - 2, `${verifyUrl.replace(/^https?:\/\//, "")}   ·   Check code ${code}`, 7.5, false, [0.1, 0.25, 0.4]);
+  p.text(dx, ty - 2, `Check code ${code}`, 7.5, true, [0.1, 0.25, 0.4]);
 
   p.rule(L, 44, R, 44, 0.5, 0.8);
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())}`, 7.5, false, [0.45, 0.45, 0.45]);

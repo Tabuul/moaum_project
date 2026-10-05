@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 177
+\set EXPECTED 178
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4668,6 +4668,42 @@ BEGIN
         AND r_legacy LIKE 'COURSE_CARRIED: ZZQ 903 is named on 1 old-portal result%'
         AND out2 = 'ENDED' AND st2 = 'ENDED' AND out4 = 'REMOVED' AND gone4,
         format('gone1=%s offers=%s fk=%s kept2=%s legacy=%s out2=%s st2=%s out4=%s gone4=%s', gone1, n_offers, r_fk, kept2, r_legacy, out2, st2, out4, gone4));
+END $$;
+
+-- ── 178. V330: the level a student was at in a session is the registration's, else the enrolment's, else carried forward from entry — never today's level on a past record ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); prog text; s1 text; s2 text; s3 text; v_reg int; v_reg2 int; v_enrol int; v_carry int; v_now int; v_future int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        SELECT code INTO prog FROM ref.programme ORDER BY code LIMIT 1;
+        -- three consecutive sessions on the calendar, the earliest the entry session
+        s1 := '2170/2171'; s2 := '2171/2172'; s3 := '2172/2173';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+        VALUES (gen_random_uuid(), s1, '2170-10-01', '2171-09-30'), (gen_random_uuid(), s2, '2171-10-01', '2172-09-30'), (gen_random_uuid(), s3, '2172-10-01', '2173-09-30');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/96/960178', 'MOAUM/CHK/20/0178', 'CHECKLEVEL', 'Student', prog, 'UTME', s1, 100, 300, 'ACTIVE', now());
+        -- the register's own word: an approved registration at 100 level in the entry session; 200 in the next
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES (gen_random_uuid(), st, s1, 2, 100, 'APPROVED', now(), now(), who);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES (gen_random_uuid(), st, s2, 1, 200, 'APPROVED', now(), now(), who);
+        v_reg := people.level_in(st, s1, 2);
+        v_reg2 := people.level_in(st, s2, 2);          -- the session's other semester reads the session's registration
+        -- the third session has no registration: the enrolment answers
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, s3, 300);
+        v_enrol := people.level_in(st, s3, 1);
+        -- a session with neither: the entry level carried forward from the entry session
+        DELETE FROM people.enrolment WHERE student_id = st;
+        v_carry := people.level_in(st, s3, 1);
+        -- the current level is the last resort only: a session before entry, with no record, falls to it
+        v_now := (SELECT current_level FROM people.student WHERE id = st);
+        RAISE EXCEPTION 'the V330 level check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The level a student was at in a session is the registration''s (100 in the entry session, 200 the next, the session''s other semester reading the same), else the enrolment''s (300), else the entry level carried forward a session at a time (300), and never today''s level on a past record',
+        v_reg = 100 AND v_reg2 = 200 AND v_enrol = 300 AND v_carry = 300 AND v_now = 300,
+        format('reg=%s reg2=%s enrol=%s carry=%s now=%s', v_reg, v_reg2, v_enrol, v_carry, v_now));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -32,7 +32,9 @@ export interface Fees {
   reference?: string;
 }
 export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number;
-  cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null }
+  cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null;
+  /** the level the student was at in that semester (V330), not today's */
+  level?: number }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
 export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null }
@@ -83,6 +85,8 @@ export interface ResultRow {
   published: boolean; published_at: string | null; senate_minute: string | null;
   ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null; outcome: string | null;
   lecturer?: string | null;
+  /** the level the student was at in that semester (V330) */
+  level?: number;
 }
 export interface Results {
   name: string; matricNo: string; programme: string; level: number; rows: ResultRow[]; semesters: Semester[];

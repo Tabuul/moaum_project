@@ -85,7 +85,7 @@ export async function GET(req: Request) {
   const cell = 1.7, qDim = size * cell, qx = A4.w - L - qDim, qy = y + 6;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy + qDim - (rr + 1) * cell, cell, cell, 0);
 
-  p.text(L, 52, `Verify at ${origin}/verify/pg-offer with the application number and code ${code}`, 7.5, false, [0.4, 0.4, 0.4]);
+  p.text(L, 52, `Scan the code to verify this offer, or enter the application number and the code ${code} on the portal`, 7.5, false, [0.4, 0.4, 0.4]);
   p.text(L, 40, `${clean(s.name)} · ${s.applicationNo} · generated ${today()}`, 7.5, false, [0.5, 0.5, 0.5]);
 
   const bytes = finishPdf([p], `Offer of admission ${s.applicationNo}`, "LETTER");

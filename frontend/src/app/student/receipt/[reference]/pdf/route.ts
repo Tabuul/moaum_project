@@ -104,8 +104,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   const textW = qx - L - 16;
   let ty = p.paragraph(L, qy - 14, "Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary's ledger.", textW, 9);
   ty -= 6;
-  // just the host, small — the QR carries the full address, so the long path is not printed
-  p.text(L, ty, `Verify at ${url.replace(/^https?:\/\//, "").split("/")[0]}`, 7, false, [0.4, 0.4, 0.4]); ty -= 12;
+  // the QR carries the address; nothing of it is printed
   p.text(L, ty, `Check code  ${token}`, 8.5, true);
   y = Math.min(ty, qy - qDim) - 22;
 

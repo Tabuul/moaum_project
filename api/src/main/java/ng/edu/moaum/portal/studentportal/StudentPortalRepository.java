@@ -403,6 +403,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM assessment.student_gpa(:s)").param("s", student).query().listOfRows();
     }
 
+    /** the level the student was at in a session and semester (V330): the registration's, else the enrolment's, else carried from entry */
+    Integer levelIn(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT people.level_in(:s, :n, :m)").param("s", student).param("n", session).param("m", semester).query(Integer.class).optional().orElse(null);
+    }
+
     List<Map<String, Object>> carryovers(UUID student) {
         return jdbc.sql("SELECT * FROM registration.carryovers(:s)").param("s", student).query().listOfRows();
     }

@@ -60,7 +60,7 @@ export function defermentLetter(d: DefermentFull, verifyUrl: string): Uint8Array
   const qr = qrMatrix(verifyUrl);
   const cell = 2.2, size = qr.size * cell, qx = A4.w - L - size, qy = 60;
   for (let r = 0; r < qr.size; r++) for (let c = 0; c < qr.size; c++) if (qr.dark[r * qr.size + c]) p.fill(qx + c * cell, qy + (qr.size - 1 - r) * cell, cell, cell, 0);
-  p.text(L, 46, `Verify: ${clean(verifyUrl)}`, 8, false, [0.4, 0.4, 0.4]);
+  p.text(L, 46, "Scan the code to verify this letter against the University's record", 8, false, [0.4, 0.4, 0.4]);
   p.text(L, 36, `Deferment ${clean(d.reference)} · generated ${day(new Date().toISOString())}`, 8, false, [0.4, 0.4, 0.4]);
   return pdf([p], `Deferment ${d.reference}`);
 }

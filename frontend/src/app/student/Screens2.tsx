@@ -171,7 +171,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
         </div>
         <div className="row" style={{ gap: "var(--s-4)", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
           <div className="kv grow" style={{ minWidth: 200 }}><span className="k">Verification</span><span className="v tnum">{r.receipt_no}</span><span className="sub2">Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary&rsquo;s ledger.{token ? ` Check code ${token}.` : ""}</span>
-            {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 tnum ink-chrome" style={{ overflowWrap: "anywhere" }}>{verifyUrl.replace(/^https?:\/\//, "")}</a> : null}</div>
+            {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 ink-chrome">Open the verification page</a> : null}</div>
           {qr ? (
             <div style={{ textAlign: "center" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
