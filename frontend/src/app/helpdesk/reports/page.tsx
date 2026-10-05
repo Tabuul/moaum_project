@@ -2,7 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Agent, Category } from "@/lib/helpdesk";
-import type { Stats } from "../Desk";
+import type { Stats } from "../DeskStats";
 import { Reports } from "./Reports";
 
 export const dynamic = "force-dynamic";

@@ -6,7 +6,7 @@ import { csv, download } from "@/lib/results";
 import { Btn, LinkBtn, PageHead, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { PRIORITY, STATUS, hours, type Agent, type Category } from "@/lib/helpdesk";
-import type { Stats } from "../Desk";
+import type { Stats } from "../DeskStats";
 
 interface Filters { from: string; to: string; category: string; priority: string; agent: string; faculty: string; department: string }
 

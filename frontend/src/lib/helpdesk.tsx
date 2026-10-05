@@ -94,7 +94,22 @@ export function dueWords(iso: string | null | undefined, settled: boolean): stri
   const span = abs < 3600e3 ? `${Math.max(1, Math.round(abs / 60e3))} min` : abs < 48 * 3600e3 ? `${Math.round(abs / 3600e3)} h` : `${Math.round(abs / 86400e3)} d`;
   return ms < 0 ? `Overdue by ${span}` : `Due in ${span}`;
 }
-export interface Activity { id: string; at: string; actor_kind: string; actor_name: string; action: string; from_value: string | null; to_value: string | null; detail: string | null; internal: boolean; ticket_id: string; number: string; subject: string; status: string; priority: string }
+export interface Activity { id: string; at: string; actor_kind: string; actor_name: string; action: string; from_value: string | null; to_value: string | null; detail: string | null; internal: boolean; ticket_id: string; number: string; subject: string; status: string; priority: string; queue_code?: string | null }
+/** what needs attention now, within the reader's scope, and the reader's own share — from /api/v1/helpdesk/counts */
+export interface Counts {
+  open: number; new: number; unassigned: number; urgent: number; critical: number; escalated: number; overdue: number; waiting: number;
+  mine: number; mine_new: number; mine_in_progress: number; mine_waiting: number; mine_escalated: number; mine_overdue: number;
+  latest_new: string | null; at: string; head: boolean;
+}
+/** a moment in words relative to now: "just now", "3 min ago", "2 h ago", "4 d ago" */
+export function ago(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60e3) return "just now";
+  if (ms < 3600e3) return `${Math.round(ms / 60e3)} min ago`;
+  if (ms < 48 * 3600e3) return `${Math.round(ms / 3600e3)} h ago`;
+  return `${Math.round(ms / 86400e3)} d ago`;
+}
 export const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 export const hours = (h: number | null | undefined) => (h == null ? "—" : Number(h) < 48 ? `${Number(h).toFixed(1)} h` : `${(Number(h) / 24).toFixed(1)} d`);
 

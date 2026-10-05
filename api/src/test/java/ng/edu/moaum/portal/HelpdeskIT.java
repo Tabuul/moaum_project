@@ -98,10 +98,13 @@ class HelpdeskIT {
         String number = String.valueOf(path(made.getBody(), "number"));
         assertThat(number).matches("TICK-\\d{4}-\\d{5}");
 
-        // the requester was told, and the desk too
-        Long notices = jdbc.sql("SELECT count(*) FROM platform.notice WHERE recipient IN ('zzhd@example.edu', 'agent@example.edu') AND subject LIKE '%' || :n || '%'")
+        // the requester was told, and the desk too: the agent the routing chose when one is posted on the queue (V328), otherwise every agent
+        Long toRequester = jdbc.sql("SELECT count(*) FROM platform.notice WHERE recipient = 'zzhd@example.edu' AND subject LIKE '%' || :n || '%'")
                 .param("n", number).query(Long.class).single();
-        assertThat(notices).isGreaterThanOrEqualTo(2L);
+        assertThat(toRequester).isGreaterThanOrEqualTo(1L);
+        Long toDesk = jdbc.sql("SELECT count(*) FROM platform.notice WHERE recipient <> 'zzhd@example.edu' AND about_kind = 'person' AND subject LIKE '%' || :n || '%'")
+                .param("n", number).query(Long.class).single();
+        assertThat(toDesk).isGreaterThanOrEqualTo(1L);
 
         // another student cannot read it; the public page needs the right email
         assertThat(it.get(otherToken, "/api/v1/helpdesk/my/tickets/" + id).getStatusCode().value()).isEqualTo(404);

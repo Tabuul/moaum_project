@@ -323,10 +323,12 @@ class HelpdeskController {
                               @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to,
                               @RequestParam(required = false) String faculty, @RequestParam(required = false) String department,
                               @RequestParam(required = false) String queue, @RequestParam(required = false) String office,
+                              @RequestParam(defaultValue = "false") boolean overdue, @RequestParam(defaultValue = "false") boolean escalated,
                               @RequestParam(defaultValue = "updated") String sort, @RequestParam(defaultValue = "desc") String dir,
                               @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         int sz = Math.max(1, Math.min(size, 100));
         int pg = Math.max(1, page);
+        // the desk's order of attention: priority first, then the most recently touched; every other sort falls back to it
         String order = switch (sort) {
             case "created" -> "t.created_at";
             case "priority" -> PRIORITY_RANK;
@@ -337,9 +339,12 @@ class HelpdeskController {
             default -> "t.updated_at";
         };
         String direction = "asc".equalsIgnoreCase(dir) ? "ASC" : "DESC";
+        String then = "priority".equals(sort) ? "t.updated_at DESC" : "t.created_at DESC";
         List<String> statuses = status == null || status.isBlank() || "all".equalsIgnoreCase(status) ? List.of()
                 : "open".equalsIgnoreCase(status) ? List.of("SUBMITTED", "OPENED", "IN_PROGRESS", "REOPENED", "WAITING_FOR_STUDENT", "WAITING_FOR_OFFICE")
                 : "waiting".equalsIgnoreCase(status) ? List.of("WAITING_FOR_STUDENT", "WAITING_FOR_OFFICE")
+                : "new".equalsIgnoreCase(status) ? List.of("SUBMITTED")
+                : "active".equalsIgnoreCase(status) ? List.of("OPENED", "IN_PROGRESS", "REOPENED")
                 : List.of(status.toUpperCase().split(","));
         boolean unassigned = "none".equalsIgnoreCase(agent);
         UUID agentId = agent == null || agent.isBlank() || unassigned ? null : "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
@@ -358,6 +363,8 @@ class HelpdeskController {
                    AND (:dep::text IS NULL OR t.department_code = :dep)
                    AND (:queue::text IS NULL OR t.queue_code = :queue)
                    AND (:office::text IS NULL OR t.escalated_office = :office)
+                   AND (NOT :overdue OR (t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()))
+                   AND (NOT :escalated OR (t.status NOT IN ('RESOLVED','CLOSED') AND (t.escalated_to IS NOT NULL OR t.escalated_office IS NOT NULL)))
                    AND (:head OR helpdesk.can_view(:me, t.id))
                 """;
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
@@ -369,9 +376,10 @@ class HelpdeskController {
                 .param("fac", faculty == null || faculty.isBlank() ? null : faculty, Types.VARCHAR).param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR)
                 .param("queue", queue == null || queue.isBlank() ? null : queue.trim().toUpperCase(), Types.VARCHAR)
                 .param("office", office == null || office.isBlank() ? null : office.trim().toLowerCase(), Types.VARCHAR)
+                .param("overdue", overdue).param("escalated", escalated)
                 .param("head", head(auth)).param("me", me(auth));
         List<Map<String, Object>> rows = with.apply(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, t.id,") + where
-                + " ORDER BY %s %s, t.created_at DESC LIMIT :n OFFSET :o".formatted(order, direction))
+                + " ORDER BY %s %s, %s LIMIT :n OFFSET :o".formatted(order, direction, then))
                 .param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue();
         if (rows.isEmpty() && pg > 1) {
@@ -380,6 +388,36 @@ class HelpdeskController {
         rows.forEach(r -> r.remove("total"));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows); out.put("total", total); out.put("page", pg); out.put("size", sz);
+        return out;
+    }
+
+    /** what needs attention now, cheaply: the open tickets within the reader's scope counted by the states the desk acts on,
+     *  and the reader's own share — one pass over open tickets, no analytics, so the ticket workspace never waits for the figures */
+    @GetMapping("/counts")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    Map<String, Object> counts(Authentication auth) {
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("""
+                SELECT count(*) AS open,
+                       count(*) FILTER (WHERE t.status = 'SUBMITTED') AS new,
+                       count(*) FILTER (WHERE t.assigned_to IS NULL) AS unassigned,
+                       count(*) FILTER (WHERE t.priority IN ('URGENT','CRITICAL')) AS urgent,
+                       count(*) FILTER (WHERE t.priority = 'CRITICAL') AS critical,
+                       count(*) FILTER (WHERE t.escalated_to IS NOT NULL OR t.escalated_office IS NOT NULL) AS escalated,
+                       count(*) FILTER (WHERE helpdesk.due_at(t.created_at, t.priority) < now()) AS overdue,
+                       count(*) FILTER (WHERE t.status IN ('WAITING_FOR_STUDENT','WAITING_FOR_OFFICE')) AS waiting,
+                       count(*) FILTER (WHERE t.assigned_to = :me) AS mine,
+                       count(*) FILTER (WHERE t.assigned_to = :me AND t.status IN ('SUBMITTED','OPENED')) AS mine_new,
+                       count(*) FILTER (WHERE t.assigned_to = :me AND t.status IN ('IN_PROGRESS','REOPENED')) AS mine_in_progress,
+                       count(*) FILTER (WHERE t.assigned_to = :me AND t.status IN ('WAITING_FOR_STUDENT','WAITING_FOR_OFFICE')) AS mine_waiting,
+                       count(*) FILTER (WHERE t.escalated_to = :me OR (t.assigned_to = :me AND t.escalated_office IS NOT NULL)) AS mine_escalated,
+                       count(*) FILTER (WHERE t.assigned_to = :me AND helpdesk.due_at(t.created_at, t.priority) < now()) AS mine_overdue,
+                       max(t.created_at) FILTER (WHERE t.status = 'SUBMITTED') AS latest_new,
+                       now() AS at
+                  FROM helpdesk.ticket t
+                 WHERE t.status NOT IN ('RESOLVED','CLOSED') AND (:head OR helpdesk.can_view(:me, t.id))
+                """).param("head", head(auth)).param("me", me(auth)).query().singleRow());
+        out.put("head", head(auth));
         return out;
     }
 

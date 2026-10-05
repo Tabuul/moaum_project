@@ -152,6 +152,28 @@ Refusal codes: `HELPDESK_REASON_REQUIRED`, `HELPDESK_TRANSFER_SAME`, `HELPDESK_T
   business or the office's internal answer.
 - The Head of ICT Support Desk has its own menu (`helpdeskhead`); the office label is on `offices.ts`.
 
+## 4a. The desk, ticket-first (October 2026)
+
+The desk screen (`/helpdesk`) was rearranged so that what needs attention comes first and the figures last; nothing
+underneath it changed. The order is now: the search and the filters (status, priority, category, queue, agent,
+faculty, department, dates — long lists are searchable selects); the counts that filter the list in place (New,
+Unassigned, Urgent, Escalated, Overdue, Waiting, All open, and for an agent their own New, Assigned, In progress,
+Waiting, Escalated, Overdue); the ticket queue itself, sorted by priority then by the latest touch, with S/N first,
+New / Unassigned / Overdue / Escalated / With-office marks that are words not colours, relative times, the SLA, and
+Take / Assign / Open on every row (Assign opens a dialog whose agents are read against that ticket, the eligible
+first); then the operations (the queues' load, for a head the agents' load, the last acts); then the statistics,
+folded until opened, remembered on the browser.
+
+Loading follows the same order: the queue, the counts and the filter lists are read first and rendered at once; the
+operations and the statistics are an async server component streamed in behind a Suspense boundary, so a slow or
+failed analytics query never delays or hides a ticket ("Statistics are temporarily unavailable"). Every list is
+paged, filtered and searched on the server. A minute-by-minute poll of the counts tells the officer when a new
+ticket has arrived since the page loaded, with a button to refresh the queue.
+
+API additions, both additive: `GET /api/v1/helpdesk/counts` (one pass over the open tickets within the reader's
+scope, with the reader's own share) and, on `GET /tickets`, `overdue=true`, `escalated=true`, `status=new|active`
+and the priority sort's secondary order by last update. Scope is the same `helpdesk.can_view` as everywhere else.
+
 ## 5. Security and audit
 - Support access is never administrative authority: no endpoint here writes to finance, results, registration or the
   register; the office's answer is a comment, and the office acts on its own desk as always.

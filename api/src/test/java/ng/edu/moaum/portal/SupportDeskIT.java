@@ -67,11 +67,17 @@ class SupportDeskIT {
         otherStudent = it.student("ZZSDOTHER", otherProgramme, null, "MOAUM/MTC/95/9812", 300);
         studentToken = TestTokens.token(student, List.of("student"));
         otherToken = TestTokens.token(otherStudent, List.of("student"));
-        // a clean slate for these people: earlier runs' postings ended, nothing held
+        // a clean slate for these people: earlier runs' postings ended, nothing held, and the invented students' earlier tickets
+        // closed (a requester may hold ten open tickets at most — a shared database fills that over repeated runs)
         it.db(() -> {
             jdbc.sql("UPDATE iam.person SET email = lower(surname) || '@example.edu' WHERE id IN (:a, :b, :c, :d)").param("a", headId).param("b", facultyAgentId).param("c", bursaryAgentId).param("d", bursarId).update();
             jdbc.sql("UPDATE helpdesk.agent_assignment SET active = false WHERE person_id IN (:a, :b) AND active").param("a", facultyAgentId).param("b", bursaryAgentId).update();
             jdbc.sql("UPDATE helpdesk.ticket SET assigned_to = NULL WHERE assigned_to IN (:a, :b) AND status NOT IN ('RESOLVED','CLOSED')").param("a", facultyAgentId).param("b", bursaryAgentId).update();
+            for (UUID s : List.of(student, otherStudent)) {
+                for (UUID t : jdbc.sql("SELECT id FROM helpdesk.ticket WHERE requester_kind = 'STUDENT' AND requester_id = :s AND status <> 'CLOSED'").param("s", s).query(UUID.class).list()) {
+                    jdbc.sql("SELECT helpdesk.transition(:t, 'CLOSED', 'REQUESTER', :s, 'Invented, Student', 'Closed before the next test run')").param("t", t).param("s", s).query().singleRow();
+                }
+            }
             return null;
         });
         // the Head posts the faculty agent on ICT Support for the student's faculty, and the Bursary agent University-wide on Bursary Support
@@ -153,6 +159,21 @@ class SupportDeskIT {
         ResponseEntity<Map> seen = it.get(studentToken, "/api/v1/helpdesk/my/tickets/" + t1);
         assertThat(path(seen.getBody(), "queue")).isEqualTo("Bursary Support");
         assertThat(((List<Map>) path(seen.getBody(), "timeline"))).extracting(e -> e.get("action")).contains("TRANSFERRED").doesNotContain("ROUTED", "QUEUED");
+        // the desk's counts (the ticket-first desk): within scope — the faculty agent's new tickets exclude the other faculty's; the Head's include both; the desk's questions filter the queue
+        ResponseEntity<Map> headCounts = it.get(head, "/api/v1/helpdesk/counts");
+        assertThat(headCounts.getStatusCode().value()).as(String.valueOf(headCounts.getBody())).isEqualTo(200);
+        assertThat(((Number) path(headCounts.getBody(), "unassigned")).longValue()).isGreaterThanOrEqualTo(1L);
+        assertThat(path(headCounts.getBody(), "head")).isEqualTo(true);
+        ResponseEntity<Map> agentCounts = it.get(facultyAgent, "/api/v1/helpdesk/counts");
+        assertThat(agentCounts.getStatusCode().value()).isEqualTo(200);
+        assertThat(path(agentCounts.getBody(), "head")).isEqualTo(false);
+        assertThat(((Number) path(agentCounts.getBody(), "open")).longValue()).isLessThan(((Number) path(headCounts.getBody(), "open")).longValue());
+        ResponseEntity<Map> unassignedOnly = it.get(head, "/api/v1/helpdesk/tickets?status=open&agent=none&sort=priority&size=100");
+        assertThat(((List<Map>) path(unassignedOnly.getBody(), "rows"))).allSatisfy(r -> assertThat(r.get("assigned_to")).isNull());
+        assertThat(((List<Map>) path(unassignedOnly.getBody(), "rows"))).extracting(r -> String.valueOf(r.get("id"))).contains(t2);
+        ResponseEntity<Map> escalatedOnly = it.get(head, "/api/v1/helpdesk/tickets?status=open&escalated=true&size=100");
+        assertThat(((List<Map>) path(escalatedOnly.getBody(), "rows"))).allSatisfy(r -> assertThat(Boolean.TRUE.equals(r.get("escalated")) || r.get("escalated_office") != null).isTrue());
+        assertThat(it.get(studentToken, "/api/v1/helpdesk/counts").getStatusCode().value()).isEqualTo(403);
         // the queues and the workload answer the Head; an agent reads only their own load
         ResponseEntity<List> queues = it.callList(head, HttpMethod.GET, "/api/v1/helpdesk/queues", null);
         assertThat((List<Map>) queues.getBody()).extracting(q -> q.get("code")).contains("ICT_SUPPORT", "BURSARY_SUPPORT");
