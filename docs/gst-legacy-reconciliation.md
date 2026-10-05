@@ -26,6 +26,33 @@ was built, and what the reconciliation totals say.
 So: not a filter bug, not a session mix-up, not a cache. The old-portal GST payments were never brought into the
 ledger, and the import that exists could not have brought them in correctly.
 
+### A2. What the Bursary's export actually carries (found 5 October 2026; fixed by V326)
+
+The file the Bursary loads is the old portal's payment export ("paymentRECENT with pay_item", 326,181 rows). Its
+columns are Matriculation Number, Session, Semester (**First / Second / Session**), Level, Amount,
+**Purpose/Payment Item**, Payment Date, Channel, Reference. The item column says what each payment was for:
+SCHOOL FEES 149,357 rows, POST UTME APPLICATION 48,217, **GST FEES 46,306** (11,441 of them dated 2026 for
+2025/2026, amounts ₦4,000 and ₦2,000), ACCEPTANCE LETTER 27,093, ADMISSION CHECKING 25,844, SIWES, hostel,
+e-wallet, PG application… The Old Fees History screen matched columns by keyword and had no keyword for the item
+column, so the importer saw no purpose and filed **every** row as "School fees (legacy)"; it also read a semester
+only as a digit, so "First" and "Second" both became the whole-session reference and the second semester's school
+fees were dropped as duplicates.
+
+V326 makes the import read the export as it is:
+
+- the screen carries the item column as the row's `purpose` (and the old reference and channel onto the note);
+- an item the GST type map knows (GST, GNS, General Studies, EPS) is recorded as **`GST fee <session>`** for the
+  session the row names — the purpose `finance.gst_entitlement` counts — so the student's GST gate opens and the GST
+  desk reads PAID from the old portal (`source = LEGACY_PORTAL`); any other explicit item is its own purpose;
+- a semester reads as First/1st/1, Second/2nd/2; Session, Full or blank is the whole session;
+- a row already on the ledger from the earlier upload — the GST money as whole-session school fees — is
+  **corrected in place** when the export is loaded again: relabelled to the GST fee, or given its semester. One row,
+  never two; the amount is never touched; loading the export twice changes nothing (property 173).
+
+**What the Bursary does on Railway:** Finance → Old Fees History → upload the same export again. The GST rows are
+relabelled or added, the GST desk and every student's GST gate read PAID at once, and the reconciliation desk below
+(section C onward) remains for an export that carries only GST transactions with gateway identifiers.
+
 ## B. Legacy payment source
 
 | | |

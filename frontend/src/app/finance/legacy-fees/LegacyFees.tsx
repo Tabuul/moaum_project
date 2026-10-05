@@ -11,7 +11,7 @@ import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-interface Row { matric: string; session: string; semester: string; level: string; amount: string; paidOn: string; receiptNo: string; note: string }
+import { legacyFeeKind, legacyFeeRows, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
 const MAY = ["bursar", "super", "admin"];
 
 export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
@@ -31,11 +31,11 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
   function downloadTemplate() {
     const blob = buildXlsx(
-      ["Matriculation Number", "Session", "Semester", "Level", "Amount Paid", "Paid On", "Receipt No", "Note"],
+      ["Matriculation Number", "Session", "Semester", "Level", "Amount Paid", "Purpose / Payment Item", "Paid On", "Receipt No", "Note"],
       [
-        ["MOAUM/CSC/22/0001", "2022/2023", "1", "100", "85000", "2022-11-04", "OLD-000123", "School fees"],
-        ["MOAUM/CSC/22/0001", "2022/2023", "2", "", "", "2023-03-12", "", "School fees, cleared in full (amount left blank)"],
-        ["MOAUM/CSC/22/0001", "2022/2023", "", "", "15000", "2022-11-20", "OLD-000456", "GST payment"],
+        ["MOAUM/CSC/22/0001", "2022/2023", "First", "100", "85000", "SCHOOL FEES", "2022-11-04", "OLD-000123", ""],
+        ["MOAUM/CSC/22/0001", "2022/2023", "Second", "", "", "SCHOOL FEES", "2023-03-12", "", "Cleared in full (amount left blank)"],
+        ["MOAUM/CSC/22/0001", "2022/2023", "Session", "", "4000", "GST FEES", "2022-11-20", "OLD-000456", ""],
       ],
       "Old fees history",
     );
@@ -58,17 +58,13 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setPreview(null);
     try {
       const grid = await xlsxRows(await file.arrayBuffer());
-      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
-      const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
-      const ci = { matric: at(["matric", "reg"]), session: at(["session"]), sem: at(["semester", "sem"]), level: at(["level"]), amount: at(["amount"]), paidOn: at(["paid on", "date"]), receipt: at(["receipt"]), note: at(["note"]) };
+      /* V326: the columns are matched by keyword in lib/legacy-fees — the old portal's export (Purpose/Payment Item,
+         Payment Date, Channel, Reference) reads as well as the template */
+      const { columns: ci, rows } = legacyFeeRows(grid);
       if (ci.matric < 0 || ci.session < 0) {
         setProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." }); notifyProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." });
         return;
       }
-      const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-      const rows = grid.slice(1)
-        .filter((r) => g(r, ci.matric) && /^[0-9]{4}\/[0-9]{4}$/.test(g(r, ci.session)))
-        .map((r) => ({ matric: g(r, ci.matric), session: g(r, ci.session), semester: g(r, ci.sem), level: g(r, ci.level), amount: g(r, ci.amount), paidOn: g(r, ci.paidOn), receiptNo: g(r, ci.receipt), note: g(r, ci.note) }));
       if (!rows.length) { setProblem({ status: 400, title: "No fee rows were found in that file.", detail: "Each row needs a matriculation number and a session (YYYY/YYYY)." }); notifyProblem({ status: 400, title: "No fee rows were found in that file.", detail: "Each row needs a matriculation number and a session (YYYY/YYYY)." }); return; }
       setPreview(rows);
     } catch {
@@ -190,8 +186,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         A returning student brought over from the old portal owes every past session the University has a fee schedule
         for, because the new portal knows only its own confirmed payments. Upload what each student already paid, by
         session and (optionally) semester. Give the <b>amount paid</b>, or leave it blank to mean <b>cleared in full</b> —
-        the past session then settles and the arrears clear. The <b>Note</b> says what the payment was for: blank or &ldquo;school fees&rdquo; is school fees; a note naming another purpose (GST, hostel, transcript…) is recorded under that purpose and does not clear school-fee arrears. A blank amount is priced at the level the student was at <i>in that session</i> (or the Level column, if given). The <b>Paid On</b> date is kept as the payment&rsquo;s date (13/03/2023, 2023-03-13, 13-Mar-2023 and Excel dates are read). A row already on record (same student, session, semester and purpose) is skipped and reported, never overwritten,
-        its amount is never changed (only a wrong paid date or purpose on an old-portal record is corrected, and counted), and every record is on the audit spine in your name.
+        the past session then settles and the arrears clear. The <b>Purpose / Payment Item</b> column (as the old portal exports it) says what each payment was for: <b>GST FEES</b> is recorded as the GST fee for that session, which clears the student&rsquo;s GST gate and shows as paid on the GST desk; SCHOOL FEES is school fees; any other item (admission checking, acceptance, hostel…) is recorded under that item and does not clear school-fee arrears. Without that column, the <b>Note</b> is read the same way, but only when it names another purpose. A blank amount is priced at the level the student was at <i>in that session</i> (or the Level column, if given). The <b>Paid On</b> date is kept as the payment&rsquo;s date (13/03/2023, 2023-03-13, 13-Mar-2023 and Excel dates are read). A row already on record (same student, session, semester and purpose) is skipped and reported, never overwritten,
+        its amount is never changed (a record loaded before from an export that could not say its semester or its item is corrected in place, and counted), and every record is on the audit spine in your name. Loading the same export again is safe: nothing doubles.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
 
@@ -204,7 +200,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
           </div>
-          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (1/2, optional), Level (optional; otherwise worked out for that session), Amount Paid (blank = cleared in full), Paid On, Receipt No and Note (what it was for; optional). Columns are matched by name, so an old-portal export with those columns can be uploaded as-is.</div>
+          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (First/Second/1/2, or Session for the whole session; optional), Level (optional; otherwise worked out for that session), Amount (blank = cleared in full), Purpose / Payment Item (SCHOOL FEES, GST FEES, …), Paid On / Payment Date, Reference / Receipt No, Channel and Note (optional). Columns are matched by name, so the old portal&rsquo;s payment export can be uploaded as-is.</div>
         </PBody>
       </Panel>
 
@@ -224,7 +220,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
             ["No such student", String(result.no_student ?? 0), (result.no_student ?? 0) ? "var(--red-ink)" : null, "Import the students first"],
             ["Nothing to settle", String(result.no_due ?? 0), null, "No amount and no fee schedule"],
             ["Already on record", String(result.duplicates ?? 0), (result.duplicates ?? 0) ? "var(--red-ink)" : null, "Skipped, not overwritten"],
-            ["Corrected", String(result.corrected ?? 0), (result.corrected ?? 0) ? "var(--green-ink)" : null, "Date or purpose fixed on a record already imported"],
+            ["Corrected", String(result.corrected ?? 0), (result.corrected ?? 0) ? "var(--green-ink)" : null, "Date, semester or purpose fixed on a record already imported"],
             ["No usable date", String(result.undated ?? 0), (result.undated ?? 0) ? "var(--red-ink)" : null, "Loaded, dated today"],
           ]} />
           {(result.duplicates ?? 0) > 0 ? (
@@ -241,10 +237,10 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           <PBody>
             <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl--data">
-                <thead><tr><th>Matric</th><th>Session</th><th>Sem</th><th>Amount</th><th>Paid on</th></tr></thead>
+                <thead><tr><th>Matric</th><th>Session</th><th>Sem</th><th>Amount</th><th>For</th><th>Paid on</th></tr></thead>
                 <tbody>
                   {preview.slice(0, 200).map((r, i) => (
-                    <tr key={i}><td className="tnum">{r.matric}</td><td className="tnum">{r.session}</td><td className="tnum">{r.semester || "—"}</td><td className="tnum">{r.amount || "cleared in full"}</td><td className="sub2">{r.paidOn || "—"}</td></tr>
+                    <tr key={i}><td className="tnum">{r.matric}</td><td className="tnum">{r.session}</td><td className="tnum">{r.semester || "—"}</td><td className="tnum">{r.amount || "cleared in full"}</td><td className="sub2">{legacyFeeKind(r) === "GST" ? <b>GST fee</b> : r.purpose || r.note || "School fees"}</td><td className="sub2">{r.paidOn || "—"}</td></tr>
                   ))}
                 </tbody>
               </table>

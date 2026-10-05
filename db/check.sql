@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 172
+\set EXPECTED 173
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4340,6 +4340,54 @@ BEGIN
         format('refused=%s/%s none=%s/%s grant=%s/%s/%s/%s ended=%s/%s lecturer=%s/%s/%s live=%s',
                r_kind, r_blank, s0.reason, s0.resolved_code, s1.reason, s1.scope_id, s1.resolved_code, s1.source,
                s2.reason, s2.resolved_code, s3.reason, s3.resolved_code, s3.source, v_live));
+END $$;
+
+-- ── 173. V326: the Old Fees History import reads the old portal's payment item — a GST payment is the GST fee, a semester reads as First/Second, a row filed as school fees before is corrected, not doubled ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); sd uuid := gen_random_uuid(); res record; again record;
+        v_state text; v_source text; v_gst_ref text; v_gst_purpose text; v_school int; v_sems text; v_base_left int; v_other text; v_sem_words text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9995/9996', date '9995-10-01', date '9996-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (sd, 'MOAUM/ADM/95/000001', 'MOAUM/CHK/95/0001', 'ZZCHKLEGD', 'Invented', 'C00023', 'UTME', '9995/9996', 100, 100, 'ACTIVE', now());
+        -- what an earlier upload of the same export left: the GST money as whole-session school fees, because the screen could not read the item
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (sd, '9995/9996', 'MOAUM-LEG-MOAUMCHK950001-9995-9996', 'School fees (legacy)', 4000, '9996-02-01', '9996-02-01', who, 'Legacy', 'LEG-MOAUM-LEG-MOAUMCHK950001-9995-9996', 'Imported from the old portal');
+        -- the export, read with its item column
+        SELECT * INTO res FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'First',   'amount', '4000',  'purpose', 'GST FEES',           'paidOn', '9996-02-01', 'receiptNo', '2019470000000001', 'channel', 'Interswitch'),
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'First',   'amount', '24510', 'purpose', 'SCHOOL FEES',        'paidOn', '9995-11-10', 'receiptNo', '2019470000000002', 'channel', 'Old Record'),
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'Second',  'amount', '24510', 'purpose', 'SCHOOL FEES',        'paidOn', '9996-03-02', 'receiptNo', '2019470000000003', 'channel', 'Old Record'),
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'Session', 'amount', '2000',  'purpose', 'ADMISSION CHECKING', 'paidOn', '9995-10-03', 'receiptNo', '2019470000000004', 'channel', 'Interswitch'),
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'First',   'amount', '4000',  'purpose', 'GST FEES',           'paidOn', '9996-02-01', 'receiptNo', '2019470000000001', 'channel', 'Interswitch')));   -- the same transaction listed twice
+        SELECT state, source INTO v_state, v_source FROM finance.gst_entitlement(sd, '9995/9996');
+        SELECT reference, purpose INTO v_gst_ref, v_gst_purpose FROM finance.payment_reference WHERE student_id = sd AND purpose LIKE 'GST fee %' ORDER BY reference LIMIT 1;
+        SELECT count(*), string_agg(right(reference, 2), ',' ORDER BY reference) INTO v_school, v_sems FROM finance.payment_reference WHERE student_id = sd AND purpose LIKE 'School fees (legacy)%';
+        SELECT count(*) INTO v_base_left FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK950001-9995-9996';
+        SELECT purpose INTO v_other FROM finance.payment_reference WHERE student_id = sd AND reference LIKE '%-ADMISSIONCHECKING';
+        -- the same export again: nothing doubles, nothing is lost
+        SELECT * INTO again FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'First',  'amount', '4000',  'purpose', 'GST FEES',    'paidOn', '9996-02-01'),
+            jsonb_build_object('matric', 'MOAUM/CHK/95/0001', 'session', '9995/9996', 'semester', 'Second', 'amount', '24510', 'purpose', 'SCHOOL FEES', 'paidOn', '9996-03-02')));
+        v_sem_words := finance.legacy_semester('First') || '/' || finance.legacy_semester('2nd') || '/' || finance.legacy_semester('Semester 1') || '/' || coalesce(finance.legacy_semester('Session')::text, 'whole') || '/' || coalesce(finance.legacy_semester('')::text, 'whole');
+        RAISE EXCEPTION 'the V326 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The Old Fees History import reads the payment item: a GST FEES row is the GST fee the gate counts (the row filed as school fees before is relabelled, not doubled), First/Second semesters each keep their school fees, another item is its own purpose, and the export loaded twice changes nothing',
+        v_state = 'PAID' AND v_source = 'LEGACY_PORTAL'
+        AND v_gst_ref = 'MOAUM-LEG-MOAUMCHK950001-9995-9996-S1-GST' AND v_gst_purpose = 'GST fee 9995/9996'
+        AND v_school = 2 AND v_sems = 'S1,S2' AND v_base_left = 0
+        AND v_other = 'ADMISSION CHECKING (legacy)'
+        AND res.rows = 5 AND res.cleared = 3 AND res.corrected = 1 AND res.duplicates = 1
+        AND again.cleared = 0 AND again.corrected = 0 AND again.duplicates = 2
+        AND v_sem_words = '1/2/1/whole/whole',
+        format('state=%s/%s gst=%s/%s school=%s/%s base_left=%s other=%s first=%s/%s/%s/%s again=%s/%s/%s sems=%s',
+               v_state, v_source, v_gst_ref, v_gst_purpose, v_school, v_sems, v_base_left, v_other,
+               res.cleared, res.corrected, res.duplicates, res.rows, again.cleared, again.corrected, again.duplicates, v_sem_words));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
