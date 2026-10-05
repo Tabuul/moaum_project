@@ -85,7 +85,8 @@ class ScopeStateIT {
         assertThat(s.getBody().get("source")).isEqualTo("OFFICE_GRANT");
         assertThat(s.getBody().get("reason")).isNull();
         assertThat(((Map<String, Object>) s.getBody().get("grant")).get("scopeId")).isEqualTo("MTC");
-        ResponseEntity<Map> d = asOffice(hod, "hod", "/api/v1/hod/dashboard");
+        // the desk itself (the staff list: it needs no clearance scheme, which a fresh database has not yet)
+        ResponseEntity<Map> d = asOffice(hod, "hod", "/api/v1/hod/staff");
         assertThat(d.getStatusCode().value()).as(String.valueOf(d.getBody())).isEqualTo(200);
         assertThat(d.getBody().get("resolved")).isEqualTo(true);
         assertThat(d.getBody().get("dept")).isEqualTo("MTC");
@@ -118,7 +119,7 @@ class ScopeStateIT {
         assertThat(s.getBody().get("source")).isEqualTo("LECTURER_GRANT");
         assertThat(s.getBody().get("reason")).isEqualTo("SCOPE_ENDED");
         assertThat(((Map<String, Object>) s.getBody().get("grant")).get("scopeId")).isEqualTo(code);
-        ResponseEntity<Map> d = asOffice(hod, "hod", "/api/v1/hod/dashboard");
+        ResponseEntity<Map> d = asOffice(hod, "hod", "/api/v1/hod/staff");
         assertThat(d.getStatusCode().value()).as(String.valueOf(d.getBody())).isEqualTo(200);
         assertThat(d.getBody().get("dept")).isEqualTo("MTC");
 

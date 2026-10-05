@@ -74,5 +74,5 @@ cannot say which one.
 ## Tests
 
 `db/check.sql` property 172 (refusals; the state through no grant, the grant, an ended department, the lecturer fallback);
-`ScopeStateIT` (the refusal over the API, the state and the Head of Department's dashboard through the grant and through
+`ScopeStateIT` (the refusal over the API, the state and the Head of Department's staff desk through the grant and through
 the lecturer fallback).
