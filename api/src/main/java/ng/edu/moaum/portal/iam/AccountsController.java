@@ -35,8 +35,10 @@ class AccountsController {
                             boolean mustChange, java.time.OffsetDateTime lastSignInAt, java.time.OffsetDateTime lockedUntil, long liveOffices) {
     }
 
+    /** {@code scopeLive} (V325): the live register entry the scope resolves to, or null when it names nothing live —
+     *  the console marks such a grant, since the desk it scopes reads nothing from it */
     public record GrantRow(UUID id, UUID personId, String surname, String givenNames, String staffNumber, String officeCode, String label,
-                           String scopeKind, String scopeId, String instrument, UUID grantedBy, String grantedByName, LocalDate validFrom, LocalDate validTo) {
+                           String scopeKind, String scopeId, String scopeLive, String instrument, UUID grantedBy, String grantedByName, LocalDate validFrom, LocalDate validTo) {
     }
 
     public record SetCredential(@NotBlank String username, @NotBlank String password) {
@@ -221,6 +223,7 @@ class AccountsController {
     List<GrantRow> grants(@RequestParam(defaultValue = "false") boolean ended) {
         return jdbc.sql("""
                 SELECT a.id, a.person_id, p.surname, p.given_names, p.staff_number, a.office_code, o.label, a.scope_kind, a.scope_id,
+                       iam.live_scope_code(a.scope_kind, a.scope_id) AS scope_live,
                        a.instrument, a.granted_by,
                        (SELECT g.surname || ', ' || g.given_names FROM iam.person g WHERE g.id = a.granted_by) AS granted_by_name,
                        a.valid_from, a.valid_to
@@ -255,6 +258,7 @@ class AccountsController {
                 .param("r", body.reason().trim()).query().listOfRows();
         return jdbc.sql("""
                 SELECT a.id, a.person_id, p.surname, p.given_names, p.staff_number, a.office_code, o.label, a.scope_kind, a.scope_id,
+                       iam.live_scope_code(a.scope_kind, a.scope_id) AS scope_live,
                        a.instrument, a.granted_by,
                        (SELECT g.surname || ', ' || g.given_names FROM iam.person g WHERE g.id = a.granted_by) AS granted_by_name,
                        a.valid_from, a.valid_to

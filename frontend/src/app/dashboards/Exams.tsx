@@ -1,4 +1,6 @@
 import type { Me } from "@/components/proto/Shell";
+import { ScopeNotice } from "@/components/ScopeNotice";
+import type { OfficeScopeState } from "@/lib/office-scope";
 import type { PipelineView, SheetListing, SheetListed } from "@/lib/results";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -9,7 +11,7 @@ const bucket = (st: string) => st === "ENTRY" ? "entry" : st === "PUBLISHED" ? "
 
 /** The Exams Officer's home: the result-sheet pipeline in their scope, the sheets still with lecturers to
  *  chase, and the result queries awaiting an answer — from the results module (V013). */
-export function ExamsDashboard({ me, listing, openQueries, session, history = [], pipeline = null }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string; history?: AllocationRow[]; pipeline?: PipelineView | null }) {
+export function ExamsDashboard({ me, listing, openQueries, session, history = [], pipeline = null, scope = null }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string; history?: AllocationRow[]; pipeline?: PipelineView | null; scope?: OfficeScopeState | null }) {
   const t = listing?.tiles;
   const sheets = listing?.sheets ?? [];
   const counts = { entry: 0, workflow: 0, senate: 0, published: 0 };
@@ -18,6 +20,7 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
   const q = openQueries ?? 0;
   return (
     <>
+      <ScopeNotice scope={scope} what="desk" />
       {q ? (
         <Note kind="bad" title={`${q} result quer${q === 1 ? "y" : "ies"} awaiting an answer`} action={<LinkBtn kind="urgent" href="/results/queries">Answer queries</LinkBtn>}>
           A student has questioned a published mark. Each is routed to the department that owns the course and answered on the record; the corrected mark flows back through the chain.

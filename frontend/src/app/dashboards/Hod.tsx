@@ -1,6 +1,8 @@
 /** rHod — the Head of Department's home, scoped to their own department: what waits on them
  *  (registrations to approve, offerings without a lecturer) and the size of the department. */
 import Link from "next/link";
+import { ScopeNotice } from "@/components/ScopeNotice";
+import type { OfficeScopeState } from "@/lib/office-scope";
 import type { Me } from "@/components/proto/Shell";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { StatsPanel } from "@/components/stats/StatsPanel";
@@ -37,9 +39,10 @@ export interface HodHome {
   feesOwing?: number;
 }
 
-export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = null }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[]; pipeline?: PipelineView | null }) {
+export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = null, scope = null }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[]; pipeline?: PipelineView | null; scope?: OfficeScopeState | null }) {
   if (!home || !home.resolved) {
-    return (
+    /* V325: the scope state says exactly why — what the grant holds and what is wrong with it */
+    return scope && !scope.resolved ? <ScopeNotice scope={scope} /> : (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
         The dashboard is scoped to your department, and the portal cannot tell which one this office holds. Ask the
         Registry to set the department on your Head-of-Department assignment, then this fills in.
@@ -59,6 +62,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = 
   const carryovers = home.carryoverStudents ?? 0;
   return (
     <>
+      <ScopeNotice scope={scope} />
       <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
       <FinancePanel />
       {approvals ? (

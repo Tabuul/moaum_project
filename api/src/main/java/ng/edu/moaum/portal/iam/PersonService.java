@@ -76,7 +76,8 @@ public class PersonService {
                 blankToNull(scopeId), instrument.trim(), AuditContextHolder.required().actorId(),
                 validFrom == null ? LocalDate.now() : validFrom, validTo);
         persons.insert(grant);
-        return grant;
+        // the record's own words: the scope is stored as the register's code (V316), which is what the caller is told
+        return persons.assignment(grant.id()).orElse(grant);
     }
 
     private static String blankToNull(String s) {

@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 171
+\set EXPECTED 172
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -361,8 +361,8 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'registrar', true);
     BEGIN
         INSERT INTO iam.office_assignment
-            (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
-        VALUES (gen_random_uuid(), v_p, 'hod', 'department', '   ',
+            (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), v_p, 'hod', 'department', 'MTC', '   ',   -- V325: a department office carries its department
                 gen_random_uuid(), current_date);
     EXCEPTION WHEN check_violation OR not_null_violation THEN ok := true;
     END;
@@ -1563,9 +1563,9 @@ BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'registrar', true);
     INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (v_p, 'CHECK/V017', 'CHECKSIGNIN', 'Invented');
-    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from, valid_to)
-    VALUES (v_g, v_p, 'dean', 'faculty', 'check', gen_random_uuid(), current_date - 30, current_date - 1),
-           (gen_random_uuid(), v_p, 'hod', 'department', 'check', gen_random_uuid(), current_date, NULL);
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to)
+    VALUES (v_g, v_p, 'dean', 'faculty', 'SC', 'check', gen_random_uuid(), current_date - 30, current_date - 1),   -- V325: a bounded office carries its bound
+           (gen_random_uuid(), v_p, 'hod', 'department', 'MTC', 'check', gen_random_uuid(), current_date, NULL);
     SELECT count(*) INTO n FROM iam.live_offices(v_p);
     PERFORM pg_temp.assert('A token carries only the offices held today',
         n = 1 AND (SELECT office_code FROM iam.live_offices(v_p)) = 'hod',
@@ -4292,6 +4292,54 @@ BEGIN
                assessment.cbt_marks_for('MULTI', k, ARRAY[1, 3], 2, false), assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, false), assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, true),
                assessment.cbt_marks_for('MULTI', k, ARRAY[1, 2], 2, true), assessment.cbt_marks_for('MULTI', k, ARRAY[0, 1, 2, 3], 2, true), assessment.cbt_marks_for('MULTI', ARRAY[0, 1, 2], ARRAY[0, 1], 3, true),
                assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[1], 1, true), assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[2], 1, true), assessment.cbt_marks_for('MULTI', k, NULL, 2, true)));
+END $$;
+
+-- ── 172. V325: a bounded office is granted with its bound, and a desk explains the scope it reads ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); r_kind text; r_blank text; s0 record; s1 record; s2 record; s3 record; v_live text := 'unset';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number) VALUES (who, 'CHECKBOUND', 'Invented', 'P-V325');
+        -- a Head of Department over the University, and one over a department with none chosen: refused, the remedy in the hint
+        BEGIN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), who, 'hod', 'institution', NULL, 'check', who, current_date);
+        EXCEPTION WHEN check_violation THEN r_kind := split_part(SQLERRM, ':', 1); END;
+        BEGIN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), who, 'hod', 'department', '  ', 'check', who, current_date);
+        EXCEPTION WHEN check_violation THEN r_blank := split_part(SQLERRM, ':', 1); END;
+        -- no live grant: the state says so
+        SELECT * INTO s0 FROM iam.office_scope_state(who, 'hod');
+        -- granted over a department by its name: the code is stored and the desk reads it through the grant
+        INSERT INTO ref.department (code, name, faculty_code) VALUES ('ZZV325', 'CHECK DEPARTMENT V325', 'SC');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), who, 'hod', 'department', 'check department v325', 'check', who, current_date);
+        SELECT * INTO s1 FROM iam.office_scope_state(who, 'hod');
+        -- the department ends: the grant no longer answers, and the state says why
+        UPDATE ref.department SET ended_on = current_date - 1 WHERE code = 'ZZV325';
+        SELECT * INTO s2 FROM iam.office_scope_state(who, 'hod');
+        -- a lecturer grant over MTC: the desk reads MTC through it, and still says what is wrong with the office's own grant
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), who, 'lecturer', 'department', 'MTC', 'check', who, current_date);
+        SELECT * INTO s3 FROM iam.office_scope_state(who, 'hod');
+        v_live := iam.live_scope_code('department', 'ZZV325');
+        RAISE EXCEPTION 'the V325 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A bounded office is granted with its bound, chosen from the register, and a desk explains the scope it reads: no grant, the grant, the grant''s department ended, the lecturer grant answering instead',
+        r_kind = 'OFFICE_SCOPE_REQUIRED' AND r_blank = 'OFFICE_SCOPE_REQUIRED'
+        AND s0.bound_kind = 'department' AND s0.reason = 'NO_LIVE_GRANT' AND s0.resolved_code IS NULL
+        AND s1.reason IS NULL AND s1.scope_id = 'ZZV325' AND s1.resolved_code = 'ZZV325' AND s1.source = 'OFFICE_GRANT'
+        AND s2.reason = 'SCOPE_ENDED' AND s2.resolved_code IS NULL
+        AND s3.reason = 'SCOPE_ENDED' AND s3.resolved_code = 'MTC' AND s3.source = 'LECTURER_GRANT'
+        AND v_live IS NULL AND iam.acting_department(who, 'hod') IS NULL,
+        format('refused=%s/%s none=%s/%s grant=%s/%s/%s/%s ended=%s/%s lecturer=%s/%s/%s live=%s',
+               r_kind, r_blank, s0.reason, s0.resolved_code, s1.reason, s1.scope_id, s1.resolved_code, s1.source,
+               s2.reason, s2.resolved_code, s3.reason, s3.resolved_code, s3.source, v_live));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

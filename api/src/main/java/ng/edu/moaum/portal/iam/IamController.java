@@ -32,10 +32,28 @@ class IamController {
 
     private final PersonService people;
     private final WaitingRepository waiting;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    IamController(PersonService people, WaitingRepository waiting) {
+    IamController(PersonService people, WaitingRepository waiting, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.people = people;
         this.waiting = waiting;
+        this.scope = scope;
+    }
+
+    /** V325: the acting office's scope, explained — what the grant holds, what the desk reads, and when the grant
+     *  did not answer, why. Any signed-in office may ask about its own. */
+    @GetMapping("/me/scope")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    Map<String, Object> myScope() {
+        Map<String, Object> out = scope.explain();
+        if (out == null) {
+            Map<String, Object> none = new LinkedHashMap<>();
+            none.put("office", null);
+            none.put("bounded", false);
+            none.put("resolved", false);
+            return none;
+        }
+        return out;
     }
 
     /** The current principal: who, acting as what, with which offices available. */

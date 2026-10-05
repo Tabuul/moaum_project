@@ -1,4 +1,6 @@
 import type { Me } from "@/components/proto/Shell";
+import { ScopeNotice } from "@/components/ScopeNotice";
+import type { OfficeScopeState } from "@/lib/office-scope";
 import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
@@ -16,10 +18,11 @@ export interface DeanHome {
  *  offerings without a lecturer, and the students at risk. Serves the Dean and Faculty Officer at faculty
  *  scope, and the Provost and College Secretary at College scope — same view, labelled by `role` and
  *  `scopeNoun`. When `scopeNoun` is "college", the `faculty`/`facultyName` fields carry the College. */
-export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }: { me: Me | null; home: DeanHome | null; role?: string; scopeNoun?: string }) {
+export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", scope = null }: { me: Me | null; home: DeanHome | null; role?: string; scopeNoun?: string; scope?: OfficeScopeState | null }) {
   const Scope = scopeNoun.charAt(0).toUpperCase() + scopeNoun.slice(1);
   if (!home || !home.resolved) {
-    return (
+    /* V325: the scope state says exactly why — what the grant holds and what is wrong with it */
+    return scope && !scope.resolved ? <ScopeNotice scope={scope} /> : (
       <Note kind="bad" title={`Your ${role} office is not tied to a ${scopeNoun} yet`}>
         This dashboard is scoped to your {scopeNoun}, and the portal cannot tell which one this office holds. Ask the
         Registry to set the {scopeNoun} on your {role} assignment, then this fills in.
@@ -34,6 +37,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
   const needLect = home.offeringsNeedLecturer ?? 0;
   return (
     <>
+      <ScopeNotice scope={scope} />
       {needLect ? (
         <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<LinkBtn kind="primary" href="/allocate">Teaching allocation</LinkBtn>}>
           A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.

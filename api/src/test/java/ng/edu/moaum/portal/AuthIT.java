@@ -65,8 +65,8 @@ class AuthIT {
         String username = "zza-0001-" + UUID.randomUUID().toString().substring(0, 6);
         it.db(() -> {
             jdbc.sql("""
-                    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
-                    VALUES (gen_random_uuid(), :p, 'dean', 'faculty', 'AuthIT: test grant', :by, current_date)
+                    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                    VALUES (gen_random_uuid(), :p, 'dean', 'faculty', 'SC', 'AuthIT: test grant', :by, current_date)
                     ON CONFLICT DO NOTHING
                     """).param("p", person).param("by", UUID.randomUUID()).update();
             return null;

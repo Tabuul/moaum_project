@@ -40,6 +40,17 @@ class PersonRepository {
                 .param("id", id).param("email", email, Types.VARCHAR).param("phone", phone, Types.VARCHAR).update();
     }
 
+    /** one grant as the record holds it — the scope as the register's code once the trigger has resolved it (V316/V325) */
+    java.util.Optional<OfficeAssignment> assignment(UUID id) {
+        return jdbc.sql("""
+                SELECT id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to
+                  FROM iam.office_assignment WHERE id = :id
+                """)
+                .param("id", id)
+                .query(OfficeAssignment.class)
+                .optional();
+    }
+
     List<OfficeAssignment> assignments(UUID personId) {
         return jdbc.sql("""
                 SELECT id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to

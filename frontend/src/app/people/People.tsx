@@ -42,6 +42,8 @@ export interface GrantRow {
   label: string;
   scopeKind: string;
   scopeId: string | null;
+  /** V325: the live register entry the scope resolves to, or null when it names nothing live */
+  scopeLive?: string | null;
   instrument: string;
   grantedByName: string | null;
   validFrom: string;
@@ -64,6 +66,11 @@ export interface StructureLite {
 export interface CourseLite { code: string; title: string; deptCode?: string | null; deptName?: string | null; level?: number | null }
 /** the scopes that name one thing — chosen from the register, never typed */
 const NEEDS_ID = new Set(["college", "faculty", "department", "programme", "course", "level"]);
+/** the scopes the register answers for (V325): a grant over one of these that resolves to nothing live is marked */
+const REGISTER_KINDS = new Set(["college", "faculty", "department", "programme"]);
+/** V325: what a bounded office may be bounded to — its desk is scoped to it, so the console offers nothing else */
+const OFFICE_BOUNDS: Record<string, string[]> = { hod: ["department"], siwes: ["department"], exams: ["programme", "department"], dean: ["faculty"], facultyofficer: ["faculty"], facultyexams: ["faculty"] };
+const boundsFor = (office: string): string[] => OFFICE_BOUNDS[office] ?? Object.keys(BOUND);
 const SCOPE_HINT: Record<string, string> = {
   institution: "The whole University: nothing to choose.", platform: "The platform itself: nothing to choose.", unit: "Name the unit, e.g. Library, Security, Health Centre.",
   college: "Choose the College.", faculty: "Choose the faculty.", department: "Choose the department.", programme: "Choose the programme.", course: "Choose the course.", level: "Choose the level.",
@@ -148,8 +155,8 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
      and the amendment modals (V319) */
   const grantFields = (
           <div className="grid grid--3 rfgrid">
-            <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: o?.scope_kind ?? f.scopeKind, scopeId: "" }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
-            <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value, scopeId: "" })}>{Object.entries(BOUND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: OFFICE_BOUNDS[e.target.value]?.[0] ?? o?.scope_kind ?? f.scopeKind, scopeId: "" }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
+            <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value, scopeId: "" })}>{boundsFor(f.office).map((k) => <option key={k} value={k}>{BOUND[k] ?? k}</option>)}</select></Field>
             <Field id="gr-id" label="Which one" required={NEEDS_ID.has(f.scopeKind)} hint={SCOPE_HINT[f.scopeKind] ?? "Chosen from the register, never typed."}>
               {NEEDS_ID.has(f.scopeKind) ? (
                 SCOPE_OPTIONS[f.scopeKind]?.length
@@ -217,7 +224,7 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
             <strong key="n">{g.surname}, {g.givenNames}</strong>,
             <span className="tnum" key="s">{g.staffNumber ?? "—"}</span>,
             <span key="o">{g.label}</span>,
-            <span className="sub2" key="b">{scopeLabel(g.scopeKind, g.scopeId)}</span>,
+            <span className="sub2" key="b">{scopeLabel(g.scopeKind, g.scopeId)}{REGISTER_KINDS.has(g.scopeKind) && g.scopeId && !g.scopeLive ? <> <Pil kind="bad" title="The desk this grant scopes reads nothing from it: amend the grant and choose from the register">not on the register</Pil></> : null}</span>,
             <span className="sub2" key="g">{g.grantedByName ?? g.instrument}</span>,
             <span className="tnum" key="f">{day(g.validFrom)}</span>,
             g.validTo ? <span className="tnum ink-red" key="t">{day(g.validTo)}</span> : <span className="sub2" key="t">—</span>,

@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { ScopeNotice } from "@/components/ScopeNotice";
+import type { OfficeScopeState } from "@/lib/office-scope";
 import { PlatformDashboard } from "./dashboards/Platform";
 import { AcademicDashboard } from "./dashboards/Academic";
 import { RegistrarDashboard } from "./dashboards/Registrar";
@@ -76,6 +78,10 @@ export default async function DashboardPage() {
   const openQueries = rq && rq.ok ? rq.data.length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* V325: for a desk bound to a department or a faculty, the scope explained — what the grant holds, what the desk
+     reads and through which source, and when the grant did not answer, why */
+  const scopeState = office && ["hod", "exams", "facultyexams", "siwes", "dean", "facultyofficer"].includes(office) ? await api<OfficeScopeState>("/api/v1/iam/me/scope") : null;
+  const scope = scopeState && scopeState.ok ? scopeState.data : null;
   /* the history of teaching allocation: the lecturer's own; the department's for the Head and the Examinations Officer */
   const allocHistory = office === "lecturer" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=me")
     : office === "hod" || office === "exams" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=department") : null;
@@ -116,6 +122,7 @@ export default async function DashboardPage() {
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null} sub={sub}>
       {!me.ok ? <ProblemNotice problem={me.problem} /> : null}
+      {office === "siwes" ? <ScopeNotice scope={scope} /> : null}
       {office && PLATFORM.has(office) ? (
         <PlatformDashboard me={me.ok ? me.data : null} />
       ) : office && ACADEMIC.has(office) ? (
@@ -127,15 +134,15 @@ export default async function DashboardPage() {
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} semester={teaching && teaching.ok ? teaching.data.openSemester ?? null : null} history={allocHistory && allocHistory.ok ? allocHistory.data : []} notices={myNotices && myNotices.ok ? myNotices.data : []} />
       ) : office === "hod" ? (
-        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
+        <HodDashboard scope={scope} me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
-        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
+        <ExamsDashboard scope={scope} me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
       ) : office === "hrm" ? (
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (
-        <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} />
+        <DeanDashboard scope={scope} me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} />
       ) : office === "facultyofficer" ? (
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} role="Faculty Officer" />
       ) : office === "security" ? (

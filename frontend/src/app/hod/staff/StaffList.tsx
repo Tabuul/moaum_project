@@ -2,14 +2,16 @@
 
 /** t/deptstaff — the HOD's own department's academic staff: names and ranks, no payroll. Read-only. */
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { ScopeNotice } from "@/components/ScopeNotice";
+import type { OfficeScopeState } from "@/lib/office-scope";
 import { DTable } from "@/components/proto/DTable";
 
 interface Staff { name: string; pno: string | null; present_rank: string | null; sex: string | null; employment: string | null; teaches: boolean }
 export interface DeptStaff { resolved: boolean; dept?: string; deptName?: string; staff?: Staff[] }
 
-export function StaffList({ data }: { data: DeptStaff }) {
+export function StaffList({ data, scope = null }: { data: DeptStaff; scope?: OfficeScopeState | null }) {
   if (!data.resolved) {
-    return (
+    return scope && !scope.resolved ? <ScopeNotice scope={scope} what="list" /> : (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
         The list is scoped to your department, and the portal cannot tell which one this office holds. Ask the Registry to
         set the department on your Head-of-Department assignment.

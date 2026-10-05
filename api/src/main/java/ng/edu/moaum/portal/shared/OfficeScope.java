@@ -65,6 +65,47 @@ public class OfficeScope {
                 : Optional.empty()).orElse(null);
     }
 
+    /** The acting office's scope, explained (V325): what its newest live grant holds, what the desk resolved to and
+     *  through which source, and when the grant itself did not answer, the one reason — for the dashboards and
+     *  Users &amp; Roles to show. Null when there is no acting office; {@code bounded=false} for an office that
+     *  is not held over a department or a faculty. */
+    public java.util.Map<String, Object> explain() {
+        return AuditContextHolder.current().map(c -> {
+            java.util.Map<String, Object> row = jdbc.sql("SELECT * FROM iam.office_scope_state(:p, :office)")
+                    .param("p", c.actorId()).param("office", c.actorOffice()).query().listOfRows().stream().findFirst().orElse(java.util.Map.of());
+            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("office", c.actorOffice());
+            Object kind = row.get("bound_kind");
+            out.put("bounded", kind != null);
+            out.put("kind", kind);
+            out.put("resolved", row.get("resolved_code") != null);
+            out.put("code", row.get("resolved_code"));
+            out.put("name", row.get("resolved_name"));
+            out.put("source", row.get("source"));
+            out.put("reason", row.get("reason"));
+            out.put("programmeCode", row.get("programme_code"));
+            out.put("programmeName", row.get("programme_name"));
+            if (row.get("grant_id") != null) {
+                java.util.Map<String, Object> grant = new java.util.LinkedHashMap<>();
+                grant.put("id", row.get("grant_id"));
+                grant.put("scopeKind", row.get("scope_kind"));
+                grant.put("scopeId", row.get("scope_id"));
+                grant.put("validFrom", day(row.get("valid_from")));
+                grant.put("validTo", day(row.get("valid_to")));
+                grant.put("instrument", row.get("instrument"));
+                out.put("grant", grant);
+            } else {
+                out.put("grant", null);
+            }
+            return out;
+        }).orElse(null);
+    }
+
+    /** a date column read as a row map, as the calendar day it is (never a timestamp shifted by the zone) */
+    private static Object day(Object v) {
+        return v instanceof java.sql.Date d ? d.toLocalDate() : v;
+    }
+
     /** true when the request is being made in the Head-of-Department office */
     public boolean actingHod() {
         return AuditContextHolder.current().map(c -> "hod".equals(c.actorOffice())).orElse(false);
@@ -94,38 +135,15 @@ public class OfficeScope {
      * department scope; failing that, the person's home department as a lecturer (every teacher is on
      * the establishment scoped to their department, V135/V137); failing that, the home department on
      * their staff record. The grant may hold the department code OR its name — either resolves to the
-     * code. The fallbacks mean an office created without a department scope still works.
+     * code. Each source is tried in turn and the first that resolves to a LIVE department wins (V325:
+     * iam.acting_department), so a grant whose scope has since ended does not hide the rest; the fallbacks
+     * mean an office created without a department scope still works. {@link #explain()} says which source
+     * answered, and why the grant itself did not.
      */
     public String actingDept() {
         return AuditContextHolder.current().flatMap(c -> DEPARTMENT_OFFICES.contains(c.actorOffice())
-                ? jdbc.sql("""
-                        WITH raw AS (
-                          SELECT COALESCE(
-                            (SELECT scope_id FROM iam.office_assignment
-                              WHERE person_id = :p AND office_code = :office AND scope_kind = 'department'
-                                AND nullif(btrim(scope_id), '') IS NOT NULL
-                                AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                              ORDER BY valid_from DESC LIMIT 1),
-                            -- V318: an office granted over a programme (the Programme Examinations Officer) works in that programme's department
-                            (SELECT p.dept_code FROM iam.office_assignment a
-                              JOIN ref.programme p ON upper(btrim(p.code)) = upper(btrim(a.scope_id)) OR lower(btrim(p.name)) = lower(btrim(a.scope_id))
-                              WHERE a.person_id = :p AND a.office_code = :office AND a.scope_kind = 'programme'
-                                AND nullif(btrim(a.scope_id), '') IS NOT NULL
-                                AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
-                              ORDER BY a.valid_from DESC, p.archived LIMIT 1),
-                            (SELECT scope_id FROM iam.office_assignment
-                              WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department'
-                                AND nullif(btrim(scope_id), '') IS NOT NULL
-                                AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                              ORDER BY valid_from DESC LIMIT 1),
-                            (SELECT home_department FROM hrm.staff_record
-                              WHERE person_id = :p AND nullif(btrim(home_department), '') IS NOT NULL LIMIT 1)
-                          ) AS v)
-                        SELECT d.code FROM ref.department d, raw
-                         WHERE raw.v IS NOT NULL AND d.ended_on IS NULL
-                           AND (upper(btrim(d.code)) = upper(btrim(raw.v)) OR lower(btrim(d.name)) = lower(btrim(raw.v)))
-                         LIMIT 1
-                        """).param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).optional()
+                ? jdbc.sql("SELECT iam.acting_department(:p, :office)")
+                        .param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).optional()
                 : Optional.empty()).orElse(null);
     }
 
@@ -253,22 +271,8 @@ public class OfficeScope {
      */
     public String actingFaculty() {
         return AuditContextHolder.current().flatMap(c -> FACULTY_OFFICES.contains(c.actorOffice())
-                ? jdbc.sql("""
-                        WITH raw AS (
-                          SELECT COALESCE(
-                            (SELECT scope_id FROM iam.office_assignment
-                              WHERE person_id = :p AND office_code IN ('dean','facultyofficer','facultyexams') AND scope_kind = 'faculty'
-                                AND nullif(btrim(scope_id), '') IS NOT NULL
-                                AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                              ORDER BY valid_from DESC LIMIT 1),
-                            (SELECT d.faculty_code FROM hrm.staff_record sr JOIN ref.department d ON d.code = sr.home_department
-                              WHERE sr.person_id = :p AND nullif(btrim(sr.home_department), '') IS NOT NULL LIMIT 1)
-                          ) AS v)
-                        SELECT f.code FROM ref.faculty f, raw
-                         WHERE raw.v IS NOT NULL
-                           AND (upper(btrim(f.code)) = upper(btrim(raw.v)) OR lower(btrim(f.name)) = lower(btrim(raw.v)))
-                         LIMIT 1
-                        """).param("p", c.actorId()).query(String.class).optional()
+                ? jdbc.sql("SELECT iam.acting_faculty(:p, :office)")
+                        .param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).optional()
                 : Optional.empty()).orElse(null);
     }
 
