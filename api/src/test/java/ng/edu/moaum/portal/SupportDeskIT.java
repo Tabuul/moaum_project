@@ -63,8 +63,8 @@ class SupportDeskIT {
         // the first student's faculty, and a programme of another faculty for the second
         faculty = jdbc.sql("SELECT faculty_code FROM ref.programme WHERE code = 'C00023'").query(String.class).single();
         String otherProgramme = jdbc.sql("SELECT code FROM ref.programme WHERE faculty_code <> :f ORDER BY code LIMIT 1").param("f", faculty).query(String.class).single();
-        student = it.student("ZZSDSTUDENT", "C00023", null, "MOAUM/MTC/95/9801", 300);
-        otherStudent = it.student("ZZSDOTHER", otherProgramme, null, "MOAUM/MTC/95/9802", 300);
+        student = it.student("ZZSDSTUDENT", "C00023", null, "MOAUM/MTC/95/9811", 300);
+        otherStudent = it.student("ZZSDOTHER", otherProgramme, null, "MOAUM/MTC/95/9812", 300);
         studentToken = TestTokens.token(student, List.of("student"));
         otherToken = TestTokens.token(otherStudent, List.of("student"));
         // a clean slate for these people: earlier runs' postings ended, nothing held
@@ -108,7 +108,7 @@ class SupportDeskIT {
     @Test
     void aTicketIsRoutedToThePostedAgentWhoSeesOnlyTheirScopeAndATransferMovesTheOneTicket() {
         // routed on submission: the student's faculty has a posted agent, so the ticket is theirs at once
-        String t1 = login(studentToken, "MOAUM/MTC/95/9801");
+        String t1 = login(studentToken, "MOAUM/MTC/95/9811");
         ResponseEntity<Map> read = it.get(head, "/api/v1/helpdesk/tickets/" + t1);
         assertThat(read.getStatusCode().value()).as(String.valueOf(read.getBody())).isEqualTo(200);
         assertThat(path(read.getBody(), "queue_code")).isEqualTo("ICT_SUPPORT");
@@ -116,7 +116,7 @@ class SupportDeskIT {
         List<Map> history = (List<Map>) path(read.getBody(), "timeline");
         assertThat(history).extracting(e -> e.get("action")).contains("ROUTED", "ASSIGNED");
         // the other faculty has no posted agent on ICT Support: queued for the Head, nobody's
-        String t2 = login(otherToken, "MOAUM/MTC/95/9802");
+        String t2 = login(otherToken, "MOAUM/MTC/95/9812");
         ResponseEntity<Map> read2 = it.get(head, "/api/v1/helpdesk/tickets/" + t2);
         assertThat(path(read2.getBody(), "assigned_to")).isNull();
         assertThat(((List<Map>) path(read2.getBody(), "timeline"))).extracting(e -> e.get("action")).contains("QUEUED");
@@ -232,7 +232,7 @@ class SupportDeskIT {
         assertThat(badScope.getStatusCode().value()).isEqualTo(422);
         assertThat(path(badScope.getBody(), "code")).isEqualTo("HELPDESK_SCOPE_UNKNOWN");
         // a ticket routed to the faculty agent; the Head takes them off the desk; the ticket is back on its queue with no agent, on the record
-        String t = login(studentToken, "MOAUM/MTC/95/9801");
+        String t = login(studentToken, "MOAUM/MTC/95/9811");
         assertThat(String.valueOf(path(it.get(head, "/api/v1/helpdesk/tickets/" + t).getBody(), "assigned_to"))).isEqualTo(facultyAgentId.toString());
         ResponseEntity<Map> off = it.call(head, HttpMethod.POST, "/api/v1/helpdesk/admin/agents/" + facultyAgentId + "/deactivate", Map.of("reason", "Transferred out of the Directorate"));
         assertThat(off.getStatusCode().value()).as(String.valueOf(off.getBody())).isEqualTo(200);
