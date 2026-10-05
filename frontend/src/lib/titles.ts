@@ -47,6 +47,10 @@ export const TITLES: Record<string, [string, string]> = {
     "ICT Support Settings",
     "Categories, SLAs, the quiet spell"
   ],
+  "t/cohorts": [
+    "Student Cohorts",
+    "Current, graduated, spillover, review"
+  ],
   "t/helpdeskagents": [
     "Support Agents & Queues",
     "Postings, queues, routing"

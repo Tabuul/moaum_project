@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 178
+\set EXPECTED 179
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4704,6 +4704,91 @@ BEGIN
     PERFORM pg_temp.assert('The level a student was at in a session is the registration''s (100 in the entry session, 200 the next, the session''s other semester reading the same), else the enrolment''s (300), else the entry level carried forward a session at a time (300), and never today''s level on a past record',
         v_reg = 100 AND v_reg2 = 200 AND v_enrol = 300 AND v_carry = 300 AND v_now = 300,
         format('reg=%s reg2=%s enrol=%s carry=%s now=%s', v_reg, v_reg2, v_enrol, v_carry, v_now));
+END $$;
+
+-- ── 179. V331: a student's standing is computed from the register, never from the matriculation year — a cancelled session merged carries its entrants, the Senate's award graduates, the programme's end with the record incomplete is spillover within the limit and review beyond it, and history is untouched ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+        r record; msg text; v uuid; k int; n_dec int;
+        v_eff text; v_after text; v_elapsed int; r_cur text; r_merge text;
+        pa record; pb record; pc record; pd record; pe record; dry record; wet record; c_status text; r_grad text; pe2 record; v_max int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+          (gen_random_uuid(), '2169/2170', '2169-10-01', '2170-09-30', 'CLOSED'), (gen_random_uuid(), '2170/2171', '2170-10-01', '2171-09-30', 'CLOSED'),
+          (gen_random_uuid(), '2171/2172', '2171-10-01', '2172-09-30', 'CLOSED'), (gen_random_uuid(), '2172/2173', '2172-10-01', '2173-09-30', 'CLOSED'),
+          (gen_random_uuid(), '2173/2174', '2173-10-01', '2174-09-30', 'CLOSED'), (gen_random_uuid(), '2174/2175', '2174-10-01', '2175-09-30', 'CLOSED'),
+          (gen_random_uuid(), '2175/2176', '2175-10-01', '2176-09-30', 'PLANNED'), (gen_random_uuid(), '2176/2177', '2176-10-01', '2177-09-30', 'PLANNED');
+        UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2175/01' WHERE name = '2175/2176';
+        PERFORM policy.merge_session('2171/2172', '2172/2173', 'Session cancelled by Senate; cohort merged', 'SEN/2172/04');
+        v_eff := policy.effective_session('2171/2172'); v_after := policy.session_after('2172/2173', 3); v_elapsed := policy.sessions_elapsed('2172/2173', '2175/2176');
+        BEGIN UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = '2171/2172'; EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_cur := split_part(msg, ':', 1); END;
+        BEGIN PERFORM policy.merge_session('2175/2176', '2176/2177', 'x', NULL); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_merge := split_part(msg, ':', 1); END;
+        SELECT code INTO prog FROM ref.programme WHERE final_level = 400 ORDER BY code LIMIT 1;
+        -- A: entered in the cancelled session, matric /71/, four years, registered every session, 400 level and registered now
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (a, 'MOAUM/ADM/71/710179', 'MOAUM/CHK/71/000179', 'CHECKCOHORTA', 'Student', prog, 'UTME', '2171/2172', 100, 400, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES
+          (gen_random_uuid(), a, '2172/2173', 1, 100, 'APPROVED', now(), now(), who), (gen_random_uuid(), a, '2175/2176', 1, 400, 'APPROVED', now(), now(), who);
+        -- B: entered 2172/2173, matric /72/, enrolled now
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (b, 'MOAUM/ADM/72/720179', 'MOAUM/CHK/72/000179', 'CHECKCOHORTB', 'Student', prog, 'UTME', '2172/2173', 100, 400, 'ACTIVE', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), b, '2175/2176', 400);
+        -- C: entered 2170/2171, award approved by Senate, still ACTIVE on the record
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (c, 'MOAUM/ADM/70/700179', 'MOAUM/CHK/70/000179', 'CHECKCOHORTC', 'Student', prog, 'UTME', '2170/2171', 100, 400, 'ACTIVE', now());
+        INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet, senate_state, senate_minute) VALUES (gen_random_uuid(), c, '2174/2175', 3.8, 'B.Sc.', NULL, 'APPROVED', 'SEN/2175/09');
+        -- D: entered 2170/2171, no award, registered now: spillover year 1
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (d, 'MOAUM/ADM/70/700180', 'MOAUM/CHK/70/000180', 'CHECKCOHORTD', 'Student', prog, 'UTME', '2170/2171', 100, 400, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES (gen_random_uuid(), d, '2175/2176', 1, 400, 'APPROVED', now(), now(), who);
+        -- E: entered 2169/2170, nothing since 2170/2171: beyond the limit once the limit is one
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (e, 'MOAUM/ADM/69/690179', 'MOAUM/CHK/69/000179', 'CHECKCOHORTE', 'Student', prog, 'UTME', '2169/2170', 100, 400, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES (gen_random_uuid(), e, '2170/2171', 1, 200, 'APPROVED', now(), now(), who);
+        SELECT * INTO pa FROM people.academic_position WHERE student_id = a;
+        SELECT * INTO pb FROM people.academic_position WHERE student_id = b;
+        SELECT * INTO pc FROM people.academic_position WHERE student_id = c;
+        SELECT * INTO pd FROM people.academic_position WHERE student_id = d;
+        SELECT * INTO pe FROM people.academic_position WHERE student_id = e;
+        -- the Senate's awards reconciled in bulk: counted first, then C graduated, nobody else moved
+        SELECT * INTO dry FROM people.apply_cohort_rule('R1', NULL, 'CHK-179', true);
+        SELECT * INTO wet FROM people.apply_cohort_rule('R1', NULL, 'CHK-179', false);
+        SELECT status INTO c_status FROM people.student WHERE id = c;
+        -- nobody is graduated by hand; a decision on evidence is recorded; a cohort corrected on evidence moves the expected completion
+        BEGIN PERFORM people.decide_cohort(d, 'GRADUATED', 'He must have finished'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_grad := split_part(msg, ':', 1); END;
+        v := people.decide_cohort(d, 'ACTIVE', 'Spillover confirmed: two courses outstanding, registered this session', 'CHK-179');
+        SELECT count(*) INTO n_dec FROM people.cohort_decision WHERE student_id = d AND batch_ref = 'CHK-179';
+        PERFORM policy.set_max_spillover(1);
+        SELECT * INTO pe2 FROM people.academic_position WHERE student_id = e;
+        PERFORM people.set_cohort_override(e, '2173/2174', 'Re-admitted into 200 level in 2173/2174 on the Senate list');
+        SELECT max_spillover_years INTO v_max FROM policy.progression_setting;
+        SELECT count(*) INTO k FROM people.student WHERE surname LIKE 'CHECKCOHORT%' AND matric_no LIKE 'MOAUM/CHK/%' AND entry_session IN ('2169/2170','2170/2171','2171/2172','2172/2173');
+        SELECT effective_cohort, cohort_source, expected_completion, spillover_years INTO r FROM people.academic_position WHERE student_id = e;
+        RAISE EXCEPTION 'the V331 cohort check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A student''s standing is computed from the register, never from the matriculation year: a cancelled session merged carries its entrants (A is ACTIVE at 400 in the merged cohort, expected to complete now, like B who entered the merged-into session), the Senate''s approved award graduates C in one counted act, D beyond the programme''s length with the record incomplete is a validated spillover student, E beyond the limit is for review, nobody is graduated by hand, a decision and a cohort correction are recorded, and every matriculation number and entry session stays',
+        v_eff = '2172/2173' AND v_after = '2175/2176' AND v_elapsed = 3 AND r_cur = 'SESSION_CANCELLED' AND r_merge = 'SESSION_MERGE_CURRENT'
+        AND pa.effective_cohort = '2172/2173' AND pa.cohort_source = 'MERGED' AND pa.jamb_year = 2171 AND pa.matric_year = 2071 AND pa.expected_completion = '2175/2176' AND pa.spillover_years = 0 AND pa.classification = 'ACTIVE' AND pa.rule = 'R3' AND pa.confidence = 'VALIDATED' AND pa.computed_level = 400
+        AND pb.effective_cohort = '2172/2173' AND pb.cohort_source = 'ENTRY' AND pb.classification = 'ACTIVE' AND pb.expected_completion = '2175/2176'
+        AND pc.classification = 'GRADUATED' AND pc.rule = 'R1' AND pc.confidence = 'VALIDATED' AND pc.proposed_status = 'GRADUATED' AND 'APPROVED_NOT_GRADUATED' = ANY(pc.issues)
+        AND pd.classification = 'SPILLOVER' AND pd.spillover_years = 1 AND pd.spillover_state = 'SPILLOVER_YEAR_1' AND pd.confidence = 'VALIDATED' AND pd.proposed_status = 'ACTIVE'
+        AND pe.classification = 'SPILLOVER' AND pe.spillover_years = 2 AND pe.confidence = 'LIKELY'
+        AND dry.considered = 1 AND dry.applied = 0 AND wet.applied = 1 AND c_status = 'GRADUATED'
+        AND r_grad = 'COHORT_GRADUATION_SENATE' AND n_dec = 1
+        AND pe2.classification = 'SPILLOVER_LIMIT_REACHED' AND pe2.confidence = 'REVIEW' AND v_max = 1
+        AND r.effective_cohort = '2173/2174' AND r.cohort_source = 'OVERRIDE' AND r.spillover_years = 0 AND r.expected_completion = '2176/2177'
+        AND k = 5,
+        format('eff=%s after=%s elapsed=%s cur=%s merge=%s | A=%s/%s/%s/%s/%s/%s/%s/%s | B=%s/%s/%s | C=%s/%s/%s/%s | D=%s/%s/%s/%s | E=%s/%s/%s | dry=%s/%s wet=%s c=%s grad=%s dec=%s | E2=%s/%s max=%s | over=%s/%s/%s/%s | kept=%s',
+               v_eff, v_after, v_elapsed, r_cur, r_merge, pa.effective_cohort, pa.cohort_source, pa.jamb_year, pa.matric_year, pa.expected_completion, pa.spillover_years, pa.classification, pa.confidence,
+               pb.effective_cohort, pb.classification, pb.expected_completion, pc.classification, pc.rule, pc.confidence, pc.proposed_status, pd.classification, pd.spillover_years, pd.spillover_state, pd.confidence,
+               pe.classification, pe.spillover_years, pe.confidence, dry.considered, dry.applied, wet.applied, c_status, r_grad, n_dec, pe2.classification, pe2.confidence, v_max,
+               r.effective_cohort, r.cohort_source, r.spillover_years, r.expected_completion, k));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

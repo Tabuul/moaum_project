@@ -102,6 +102,9 @@ export interface Me {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;
   programmeCode: string; programme: string; faculty: string; department: string; entryMode: string; entrySession: string;
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
+  /** where the student stands (V331): the cohort that carries them, the expected completion, the spillover — the entry session stays history */
+  jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | string | null; durationYears?: number | null;
+  expectedCompletion?: string | null; spilloverState?: string | null; spilloverYears?: number | null; classification?: string | null;
   /** the JAMB number an entrant signs in with until the matriculation number is issued, the sign-in they use now, and where they stand on the admission lifecycle (V282) */
   jambRegNo?: string | null; loginId?: string | null; lifecycle?: string | null;
   contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null };

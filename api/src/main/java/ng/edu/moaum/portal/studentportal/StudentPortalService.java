@@ -132,6 +132,18 @@ public class StudentPortalService {
         v.put("status", s.status());
         v.put("curriculumVersion", s.curriculumVersion());
         v.put("session", session);
+        // V331: where the student stands — the cohort that carries them (the entry session, or the session it was merged into), the
+        // expected completion, and the spillover; the entry session and the matriculation number above stay what history made them
+        repo.academicPosition(id).ifPresent(pos -> {
+            v.put("jambYear", pos.get("jamb_year"));
+            v.put("effectiveCohort", pos.get("effective_cohort"));
+            v.put("cohortSource", pos.get("cohort_source"));
+            v.put("durationYears", pos.get("duration_years"));
+            v.put("expectedCompletion", pos.get("expected_completion"));
+            v.put("spilloverState", pos.get("spillover_state"));
+            v.put("spilloverYears", pos.get("spillover_years"));
+            v.put("classification", pos.get("classification"));
+        });
         v.put("contact", repo.contact(id));
         v.put("passportDocumentId", repo.passportDocument(s.candidateId()).orElse(null));
         v.put("hasPhoto", repo.hasPassport(id));

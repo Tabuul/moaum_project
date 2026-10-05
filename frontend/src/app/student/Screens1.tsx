@@ -78,9 +78,13 @@ function StudentDetails({ s }: { s: Me }) {
               <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
               <Pil kind="info">{s.level} Level</Pil>
               <Pil kind="grey">{s.entryMode} · {s.entrySession}</Pil>
+              {s.effectiveCohort && s.effectiveCohort !== s.entrySession ? <Pil kind="grey" title={s.cohortSource === "MERGED" ? `${s.entrySession} was merged into ${s.effectiveCohort}; your entry session stays ${s.entrySession}` : "Cohort set by the Registry"}>Cohort {s.effectiveCohort}</Pil> : null}
+              {s.spilloverState && s.spilloverState.startsWith("SPILLOVER") ? <Pil kind="warn">{s.spilloverState === "SPILLOVER_LIMIT_REACHED" ? "Spillover limit reached" : `Spillover year ${s.spilloverYears ?? ""}`}</Pil> : null}
             </div>
             <div className="mt-3" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2px var(--s-4)" }}>
-              {([["Matriculation number", s.matricNo], ["Admission number", s.admissionNo], jamb ? ["JAMB registration number", jamb] : null, ["CGPA", s.cgpa != null ? String(s.cgpa) : null]].filter(Boolean) as [string, string | null][]).map(([k, val]) => val ? (
+              {([["Matriculation number", s.matricNo], ["Admission number", s.admissionNo], jamb ? ["JAMB registration number", jamb] : null, ["CGPA", s.cgpa != null ? String(s.cgpa) : null],
+                 s.jambYear ? ["Entry / JAMB year", String(s.jambYear)] : null, ["Current session", s.session],
+                 s.expectedCompletion ? ["Expected completion", s.expectedCompletion] : null].filter(Boolean) as [string, string | null][]).map(([k, val]) => val ? (
                 <div key={k} className="kv"><span className="k">{k}</span><span className="v tnum">{val}</span></div>
               ) : null)}
             </div>

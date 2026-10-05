@@ -403,6 +403,12 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM assessment.student_gpa(:s)").param("s", student).query().listOfRows();
     }
 
+    /** where the student stands (V331): the cohort, the expected completion, the spillover, as computed on the register */
+    java.util.Optional<Map<String, Object>> academicPosition(UUID student) {
+        return jdbc.sql("SELECT jamb_year, effective_cohort, cohort_source, duration_years, expected_completion, spillover_state, spillover_years, classification FROM people.academic_position WHERE student_id = :s")
+                .param("s", student).query().listOfRows().stream().findFirst();
+    }
+
     /** the level the student was at in a session and semester (V330): the registration's, else the enrolment's, else carried from entry */
     Integer levelIn(UUID student, String session, int semester) {
         return jdbc.sql("SELECT people.level_in(:s, :n, :m)").param("s", student).param("n", session).param("m", semester).query(Integer.class).optional().orElse(null);

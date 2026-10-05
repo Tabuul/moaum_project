@@ -578,6 +578,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -873,7 +874,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
           { "id": "t/publish", "icon": "bell", "label": "Publication" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation Records" }
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
         ]
       },
       {
@@ -941,6 +943,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
@@ -989,7 +992,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation" }
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
         ]
       },
       {
@@ -1069,6 +1073,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Administration",
         "items": [
           { "id": "t/users", "icon": "user", "label": "Users & Roles" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
@@ -1128,6 +1133,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
@@ -1207,7 +1213,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/students", "icon": "cap", "label": "Student Records" }
+          { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
         ]
       },
       {
@@ -1352,7 +1359,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
-          { "id": "t/students", "icon": "cap", "label": "Student Records" }
+          { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
         ]
       },
       {
