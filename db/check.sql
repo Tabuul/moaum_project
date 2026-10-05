@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 179
+\set EXPECTED 180
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4789,6 +4789,60 @@ BEGIN
                pb.effective_cohort, pb.classification, pb.expected_completion, pc.classification, pc.rule, pc.confidence, pc.proposed_status, pd.classification, pd.spillover_years, pd.spillover_state, pd.confidence,
                pe.classification, pe.spillover_years, pe.confidence, dry.considered, dry.applied, wet.applied, c_status, r_grad, n_dec, pe2.classification, pe2.confidence, v_max,
                r.effective_cohort, r.cohort_source, r.spillover_years, r.expected_completion, k));
+END $$;
+
+-- ── 180. V332: one course is offered to many programmes across departments without a second record — the owner's programme bound at once, another department's by its approval, the code renamed and the title edited with the identity and every binding kept, a binding ended kept on the record, and a structure upload binding another department's course without rewriting it ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); d_a text; d_b text; p_a text; p_b text; v_id uuid; v_id2 uuid; v_id3 uuid; pr uuid; msg text;
+        r_dup text; r_exists text; r_ended text; n_off int; n_off2 int; n_hist int; v_src text; v_out text; v_state text; n_prop int;
+        v_title text; v_units int; v_basis text; imp record; v_new text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        -- two live departments in different faculties, each with an active programme
+        SELECT d.code, p.code INTO d_a, p_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
+        SELECT d.code, p.code INTO d_b, p_b FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL AND d.faculty_code <> (SELECT faculty_code FROM ref.department WHERE code = d_a) ORDER BY d.code, p.code LIMIT 1;
+        PERFORM catalogue.create_course('ZZQ 332', 'Data Structures', 3, 1, 200, d_a, 'Core');
+        SELECT id INTO v_id FROM catalogue.course WHERE code = 'ZZQ 332';
+        PERFORM catalogue.bind_offer('ZZQ 332', p_a, 200, 'Core', NULL, 'COURSE');
+        pr := catalogue.propose_offer('ZZQ 332', p_b, 200, 'Borrowed', NULL, 'Taken by the other programme', d_a);
+        BEGIN PERFORM catalogue.propose_offer('ZZQ 332', p_b, 200, 'Borrowed', NULL, NULL, d_a); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_dup := split_part(msg, ':', 1); END;
+        v_out := catalogue.decide_offer_proposal(pr, true, 'Approved at the board');
+        SELECT count(*) INTO n_off FROM catalogue.course_offer WHERE course_code = 'ZZQ 332';
+        SELECT source INTO v_src FROM catalogue.course_offer WHERE course_code = 'ZZQ 332' AND programme_code = p_b;
+        BEGIN PERFORM catalogue.propose_offer('ZZQ 332', p_b, 200, 'Borrowed', NULL, NULL, d_a); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_exists := split_part(msg, ':', 1); END;
+        -- the course edited and renamed is the same course; its bindings and its proposal follow
+        PERFORM catalogue.update_course('ZZQ 332', 'Data Structures and Algorithms', 4, 1, 200, 'Core');
+        v_new := catalogue.rename_course('ZZQ 332', 'zzq333');
+        SELECT id, title, units INTO v_id2, v_title, v_units FROM catalogue.course WHERE code = v_new;
+        SELECT count(*) INTO n_off2 FROM catalogue.course_offer WHERE course_code = v_new;
+        SELECT count(*) INTO n_prop FROM catalogue.offer_proposal WHERE course_code = v_new AND state = 'APPROVED';
+        -- a binding ended is kept on the record; an ended course is not offered
+        v_state := catalogue.unbind_offer(v_new, p_b, 200, 'Dropped from the structure');
+        SELECT count(*) INTO n_hist FROM catalogue.course_offer_history WHERE course_code = v_new AND programme_code = p_b;
+        PERFORM catalogue.end_course(v_new);
+        BEGIN PERFORM catalogue.bind_offer(v_new, p_b, 200, 'Borrowed', NULL, 'COURSE'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_ended := split_part(msg, ':', 1); END;
+        -- a structure upload that names another department's course binds it, and leaves its title and units to its owner
+        PERFORM catalogue.create_course('ZZQ 334', 'Owned Elsewhere', 2, 2, 300, d_a, 'Core');
+        SELECT * INTO imp FROM catalogue.import_courses(p_b, jsonb_build_array(jsonb_build_object('code', 'ZZQ 334', 'title', 'Rewritten Title', 'units', '9', 'level', '300', 'semester', '2', 'status', 'C')), NULL);
+        SELECT title, units INTO v_title, v_units FROM catalogue.course WHERE code = 'ZZQ 334';
+        SELECT basis INTO v_basis FROM catalogue.course_offer WHERE course_code = 'ZZQ 334' AND programme_code = p_b;
+        SELECT id INTO v_id3 FROM catalogue.course WHERE code = 'ZZQ 334';
+        RAISE EXCEPTION 'the V332 offering check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('One course is offered to many programmes across departments without a second record: the owner''s programme bound at once, another department''s by its approval (a repeat proposal and a proposal of what is offered refused), the code renamed and the title edited with the identity and both bindings kept, a binding ended kept on the record, an ended course refused, and a structure upload binding another department''s course as Borrowed without rewriting it',
+        d_a IS NOT NULL AND d_b IS NOT NULL AND d_a <> d_b
+        AND r_dup = 'CAT_PROPOSAL_PENDING' AND v_out = 'APPROVED' AND n_off = 2 AND v_src = 'PROPOSAL' AND r_exists = 'CAT_OFFER_EXISTS'
+        AND v_new = 'ZZQ 333' AND v_id2 = v_id AND n_off2 = 2 AND n_prop = 1
+        AND v_state = 'REMOVED' AND n_hist = 1 AND r_ended = 'CAT_ENDED'
+        AND imp.existing = 1 AND imp.courses = 0 AND imp.offers = 1 AND v_title = 'Owned Elsewhere' AND v_units = 2 AND v_basis = 'Borrowed' AND v_id3 IS NOT NULL,
+        format('depts=%s/%s dup=%s decided=%s offers=%s src=%s exists=%s | renamed=%s same_id=%s offers2=%s prop=%s | unbind=%s hist=%s ended=%s | import existing=%s courses=%s offers=%s title=%s units=%s basis=%s',
+               d_a, d_b, r_dup, v_out, n_off, v_src, r_exists, v_new, (v_id2 = v_id), n_off2, n_prop, v_state, n_hist, r_ended, imp.existing, imp.courses, imp.offers, v_title, v_units, v_basis));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

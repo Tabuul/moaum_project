@@ -3,20 +3,25 @@ import Link from "next/link";
 
 /** tDeptCourses — proto/part…: the department's catalogue, a new course (into BOARD state,
  *  the Board and Senate make it live), and ending a course with a date rather than deleting it. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
+import { PROPOSAL_STATE, type Directory, type Exists, type Proposal } from "@/lib/catalogue";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
+  /** the course's identity (V332): unchanged by an edit of its code, title or units */
+  id?: string;
+  /** proposals of this course to other departments' programmes still awaiting them (V332) */
+  pending?: number;
   code: string; title: string; units: number; semester: number; level: number; kind: string;
   state: string; ended_on: string | null; lecturer: string | null; offered: boolean; curriculum: string | null;
   programmes: string[];
@@ -31,6 +36,7 @@ export interface Programme { code: string; name: string }
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
 };
+/* the Note's action slot takes the existing-course buttons (V332) */
 const KINDS = ["Core", "Required", "Elective", "GST"];
 /** how a kind reads on the desk: the Registry's word for Core is "Core Courses" */
 const KIND_LABEL: Record<string, string> = { Core: "Core Courses" };
@@ -40,11 +46,44 @@ const LEVELS = [100, 200, 300, 400, 500, 600];
 const SPLITS: [number, string][] = [[40, "CA 40 / Exam 60"], [30, "CA 30 / Exam 70"]];
 const splitLabel = (caMax: number) => `CA ${caMax} / Exam ${100 - caMax}`;
 
-export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" });
+  /* V332: the programmes that offer the new course — the department's own bound at once, another department's proposed to it */
+  const [own, setOwn] = useState<string[]>([]);
+  const [extra, setExtra] = useState<{ programme: string; name: string; dept: string; deptName: string }[]>([]);
+  const [pickDept, setPickDept] = useState("");
+  const [pickProgs, setPickProgs] = useState<string[]>([]);
+  const [why, setWhy] = useState("");
+  const [found, setFound] = useState<Exists | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ownProgs: { code: string; name: string; category?: string | null }[] = directory ? directory.programmes.filter((p) => p.dept_code === dept) : programmes;
+  /* the programmes ticked by default: those the level belongs to — postgraduate programmes for 700 Level and above, the rest below */
+  const defaultTicked = (level: string) => ownProgs.filter((p) => !p.category || (Number(level) >= 700) === (p.category === "POST GRADUATE")).map((p) => p.code);
+  const otherDepts = (directory?.departments ?? []).filter((d) => d.code !== dept);
+  const pickable = (directory?.programmes ?? []).filter((p) => p.dept_code === pickDept && !extra.some((x) => x.programme === p.code));
+  const direct = Boolean(directory?.central);
+  function check(code: string, title: string, level: string) {
+    if (timer.current) clearTimeout(timer.current);
+    if (code.trim().length < 4 && title.trim().length < 6) { setFound(null); return; }
+    timer.current = setTimeout(() => {
+      void fetch(`/api/bff/api/v1/catalogue/courses/exists?code=${encodeURIComponent(code.trim() || "-")}&title=${encodeURIComponent(title.trim())}&level=${encodeURIComponent(level)}`).then(async (r) => {
+        if (!r.ok) return;
+        setFound((await r.json().catch(() => null)) as Exists | null);
+      });
+    }, 300);
+  }
+  async function adoptExisting(code: string) {
+    let n = 0;
+    for (const pr of own) {
+      const j = await send(`/courses/${encodeURIComponent(code)}/offers`, { programme: pr, level: Number(f.level) }, `${code} offered to ${pr}`);
+      if (!j) break;
+      n += 1;
+    }
+    if (n) { setSaid(`${code} offered to ${n} programme${n === 1 ? "" : "s"} — no second course was made`); setAdd(false); }
+  }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -139,13 +178,42 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           <div className="row ml-auto">
             {filtered ? <Btn kind="ghost" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</Btn> : null}
             {waiting ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</Btn> : null}
-            <Btn kind="primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setAdd(true); }}>+ New course</Btn>
+            <Btn kind="primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setOwn(defaultTicked("100")); setExtra([]); setPickDept(""); setPickProgs([]); setWhy(""); setFound(null); setAdd(true); }}>+ New course</Btn>
           </div>
         </div>
       </div>
 
       {said ? <Note kind="ok" title={said}>It goes to the Faculty Board, then to Senate &mdash; the department cannot make it live. Until Senate resolves it, no student can register for it and no score sheet exists.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
+
+      {proposals?.toDecide.length ? (
+        <Panel title="Courses proposed to your programmes" right={`${proposals.toDecide.length} awaiting your decision · another department asks that your programme offer its course`}>
+          <DTable pageSize={0} noPrint cols={["Course", "Owner", "To programme", "Level|mid", "Basis|mid", "Proposed", "|num"]} rows={proposals.toDecide.map((p) => [
+            <span key="c"><b className="tnum">{p.course_code}</b> {p.course_title}<div className="sub2">{p.units} units</div></span>,
+            <span key="o" className="sub2">{p.course_dept_name ?? p.course_dept}</span>,
+            <span key="p">{p.programme}<div className="sub2 tnum">{p.programme_code}</div></span>,
+            <span key="l" className="tnum">{p.level}</span>, <span key="b" className="sub2">{p.basis}</span>,
+            <span key="w" className="sub2">{p.proposed_by ?? ""}{p.reason ? <div>{p.reason}</div> : null}</span>,
+            <span key="a" className="row row--inline row--tight row--right">
+              <Btn kind="primary" size="sm" disabled={busy} onClick={() => void send(`/offer-proposals/${p.id}/approve`, { note: window.prompt("A note for the record (optional)") ?? "" }, `${p.course_code} approved for ${p.programme_code}`).then((j) => { if (j) setSaid(`${p.course_code} now offered to ${p.programme_code} at ${p.level} level`); })}>Approve</Btn>
+              <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const n = window.prompt("Why is it rejected?"); if (n !== null) void send(`/offer-proposals/${p.id}/reject`, { note: n }, `${p.course_code} declined for ${p.programme_code}`); }}>Reject</Btn>
+              <LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(p.course_code ?? "")}`}>Course</LinkBtn>
+            </span>,
+          ])} />
+        </Panel>
+      ) : null}
+      {proposals?.mine.length ? (
+        <Panel title="Your proposals to other departments" right="A course of yours offered to another department's programme waits for that department">
+          <DTable pageSize={0} noPrint cols={["Course", "To programme", "Department", "Level|mid", "State|mid", "Decision", "|num"]} rows={proposals.mine.map((p) => [
+            <span key="c"><b className="tnum">{p.course_code}</b> {p.course_title}</span>,
+            <span key="p">{p.programme}<div className="sub2 tnum">{p.programme_code}</div></span>, <span key="d" className="sub2">{p.dept ?? p.dept_code}</span>,
+            <span key="l" className="tnum">{p.level}</span>,
+            <Pil key="s" kind={PROPOSAL_STATE[p.state]?.[0] ?? "grey"}>{PROPOSAL_STATE[p.state]?.[1] ?? p.state}</Pil>,
+            <span key="n" className="sub2">{p.decided_by ?? ""}{p.decision_note ? <div>{p.decision_note}</div> : null}</span>,
+            <span key="a" className="row row--inline row--tight row--right">{p.state === "PENDING" ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm("Withdraw this proposal?")) void send(`/offer-proposals/${p.id}/cancel`, {}, `Proposal of ${p.course_code} to ${p.programme_code} withdrawn`); }}>Withdraw</Btn> : null}</span>,
+          ])} />
+        </Panel>
+      ) : null}
 
       <Tiles items={[
         ["Courses owned", String(courses.length), null, depts.find((d) => d.code === dept)?.name ?? dept],
@@ -208,7 +276,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         {shown.length ? (
           <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "CA / Exam|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
-            <span key="t">{c.title}{c.bindings && c.bindings.length ? <div className="sub2 row" style={{ marginTop: 2, gap: "var(--s-1)" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill t-xs" style={{ textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2 ink-red" style={{ marginTop: 2 }}>Not bound to any programme — no student sees it at registration</div>}</span>,
+            <span key="t">{c.title}{c.pending ? <span className="sub2 ink-amber"> · {c.pending} proposal{c.pending === 1 ? "" : "s"} awaiting a department</span> : null}{c.bindings && c.bindings.length ? <div className="sub2 row" style={{ marginTop: 2, gap: "var(--s-1)" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill t-xs" style={{ textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2 ink-red" style={{ marginTop: 2 }}>Not bound to any programme — no student sees it at registration</div>}</span>,
             <span className="tnum" key="u">{c.units}</span>,
             <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
@@ -227,6 +295,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2 ink-red" key="lec">Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
             <div key="a" className="row row--tight row--right">
+              <LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(c.code)}`}>Details</LinkBtn>
               {c.state === "ENDED" ? (
                 <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live and re-enters registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} restored — Live again`); }); }}>Restore</Btn>
               ) : (
@@ -244,20 +313,67 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       </Panel>
 
       {add ? (
-        <Modal title="New course" sub={`For ${depts.find((d) => d.code === dept)?.name ?? dept}`} onClose={() => setAdd(false)}
+        <Modal title="New course" sub={`For ${depts.find((d) => d.code === dept)?.name ?? dept} — one course, offered to the programmes you tick`} wide onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
-            <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim()} onClick={async () => { const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind }, `New course ${f.code}`); if (j) { setSaid(`${j.code} created — at the Faculty Board`); setAdd(false); } }}>Create</Btn></>}>
+            <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim() || Boolean(found?.byCode)} onClick={async () => {
+              const offers = [...own.map((p) => ({ programme: p, level: Number(f.level) })), ...extra.map((x) => ({ programme: x.programme, level: Number(f.level), reason: why.trim() || null }))];
+              const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind, offers }, `New course ${f.code}`);
+              if (j) { setSaid(`${String(j.code)} created — at the Faculty Board · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""}`); setAdd(false); }
+            }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">
-            <Field id="nc-code" label="Code" hint="Three letters, a space, three digits — e.g. CSC 311"><input id="nc-code" className="ctl tnum" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="CSC 311" autoComplete="off" /></Field>
+            <Field id="nc-code" label="Code" hint="Three letters, a space, three digits — e.g. CSC 311"><input id="nc-code" className="ctl tnum" value={f.code} onChange={(e) => { setF({ ...f, code: e.target.value }); check(e.target.value, f.title, f.level); }} placeholder="CSC 311" autoComplete="off" /></Field>
             <Field id="nc-units" label="Units"><input id="nc-units" className="ctl tnum" value={f.units} inputMode="numeric" onChange={(e) => setF({ ...f, units: e.target.value })} /></Field>
           </div>
-          <Field id="nc-title" label="Title"><input id="nc-title" className="ctl" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Algorithms and Complexity" autoComplete="off" /></Field>
+          <Field id="nc-title" label="Title"><input id="nc-title" className="ctl" value={f.title} onChange={(e) => { setF({ ...f, title: e.target.value }); check(f.code, e.target.value, f.level); }} placeholder="Algorithms and Complexity" autoComplete="off" /></Field>
           <div className="grid grid--3">
-            <Field id="nc-level" label="Level"><select id="nc-level" className="ctl" value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}</select></Field>
+            <Field id="nc-level" label="Level"><select id="nc-level" className="ctl" value={f.level} onChange={(e) => { setF({ ...f, level: e.target.value }); setOwn(defaultTicked(e.target.value)); check(f.code, f.title, e.target.value); }}>{LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}</select></Field>
             <Field id="nc-sem" label="Semester"><select id="nc-sem" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option></select></Field>
             <Field id="nc-kind" label="Kind"><select id="nc-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}</select></Field>
           </div>
+          {found?.byCode ? (
+            <Note kind="bad" title={`${found.byCode.code} already exists`} action={<span className="row row--inline row--tight"><LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(found.byCode.code)}`}>Open the course</LinkBtn>{own.length ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => void adoptExisting(found.byCode!.code)}>Offer it to my programme{own.length === 1 ? "" : "s"} instead</Btn> : null}</span>}>
+              {found.byCode.title} · {found.byCode.dept_name ?? found.byCode.dept_code} · {found.byCode.level} Level · {STATE[found.byCode.state]?.[1] ?? found.byCode.state} · offered to {found.byCode.programmes ?? 0} programme{found.byCode.programmes === 1 ? "" : "s"}. A code is one course across the University: use the existing course and add your programme as an offering rather than creating a second record.
+            </Note>
+          ) : found?.byTitle.length ? (
+            <Note kind="info" title="A course with this title already exists">
+              {found.byTitle.map((c) => `${c.code} (${c.dept_name ?? c.dept_code}, ${c.level} Level)`).join("; ")}. If it is the same course, open it and add your programme as an offering instead of creating another; a different course with the same title is allowed.
+            </Note>
+          ) : null}
+          <div className="eyebrow mt-3">Course owner</div>
+          <div className="sub2 mb-2">{depts.find((d) => d.code === dept)?.name ?? dept} — sets the score sheet and answers a query on a mark. Another department offering the course does not change its owner.</div>
+          <div className="eyebrow">Programmes offering this course</div>
+          {ownProgs.length ? ownProgs.map((p) => (
+            <label key={p.code} className="row row--inline row--tight" style={{ marginRight: 16 }}>
+              <input type="checkbox" checked={own.includes(p.code)} onChange={(e) => setOwn(e.target.checked ? [...own, p.code] : own.filter((x) => x !== p.code))} /> {p.name} <span className="sub2 tnum">{p.code}</span>
+            </label>
+          )) : <div className="sub2">No active programme in this department; bind the course from a programme&rsquo;s structure later.</div>}
+          {extra.length ? (
+            <div className="mt-2">
+              {extra.map((x) => (
+                <span key={x.programme} className="chip row row--inline" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-pill)", padding: "3px 6px 3px 12px", marginRight: 8 }}>
+                  {x.name} <span className="sub2">· {x.deptName}{direct ? "" : " · awaits that department"}</span>
+                  <button className="btn btn--ghost btn--sm" onClick={() => setExtra(extra.filter((y) => y.programme !== x.programme))} aria-label={`Remove ${x.name}`}>Remove</button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="row row--end mt-2">
+            <Field id="nc-dept" label="+ Add Department / Programme" style={{ flex: "2 1 260px" }} hint={direct ? "Bound at once" : "Another department's programme: its Head, its Dean or the Academic Office approves before students see it"}>
+              <SearchSelect id="nc-dept" value={pickDept} placeholder="Search a department…" options={otherDepts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => { setPickDept(v); setPickProgs([]); }} />
+            </Field>
+            {pickDept ? (
+              <div style={{ flex: "3 1 320px" }}>
+                {pickable.length ? pickable.map((p) => (
+                  <label key={p.code} className="row row--inline row--tight" style={{ marginRight: 12 }}>
+                    <input type="checkbox" checked={pickProgs.includes(p.code)} onChange={(e) => setPickProgs(e.target.checked ? [...pickProgs, p.code] : pickProgs.filter((x) => x !== p.code))} /> {p.name}
+                  </label>
+                )) : <div className="sub2">No further active programme in this department.</div>}
+              </div>
+            ) : null}
+            {pickDept && pickProgs.length ? <Btn kind="secondary" onClick={() => { const dn = otherDepts.find((d) => d.code === pickDept)?.name ?? pickDept; setExtra([...extra, ...pickProgs.map((c) => ({ programme: c, name: pickable.find((p) => p.code === c)?.name ?? c, dept: pickDept, deptName: dn }))]); setPickDept(""); setPickProgs([]); }}>Add {pickProgs.length}</Btn> : null}
+          </div>
+          {extra.length && !direct ? <Field id="nc-why" label="Why those programmes should offer it" hint="Goes to each department's Head"><input id="nc-why" className="ctl" value={why} onChange={(e) => setWhy(e.target.value)} maxLength={2000} /></Field> : null}
         </Modal>
       ) : null}
     </>

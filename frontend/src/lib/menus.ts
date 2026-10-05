@@ -103,6 +103,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation", "badge": "3" },
           { "id": "t/deptcourses", "icon": "book", "label": "Department Courses", "badge": "2" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "4" },
           { "id": "t/approvals", "icon": "check", "label": "Departmental Approvals" },
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
@@ -579,6 +580,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -876,6 +878,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
         ]
       },
       {
@@ -944,6 +947,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
@@ -994,6 +998,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
         ]
       },
       {
@@ -1074,6 +1079,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/users", "icon": "user", "label": "Users & Roles" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
@@ -1134,6 +1140,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
@@ -1215,6 +1222,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
         ]
       },
       {
@@ -1361,6 +1369,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
         ]
       },
       {

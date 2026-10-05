@@ -58,6 +58,22 @@ final class ItSupport {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(Map.class);
     }
 
+    /** a GET whose path variables and query values the builder encodes (V332: course codes and titles carry spaces) */
+    @SuppressWarnings("rawtypes")
+    ResponseEntity<Map> get(String token, java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI> uri) {
+        return client.get().uri(uri).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(Map.class);
+    }
+
+    /** a call whose path variables and query values the builder encodes */
+    @SuppressWarnings("rawtypes")
+    ResponseEntity<Map> call(String token, HttpMethod method, java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI> uri, Object body) {
+        RestClient.RequestBodySpec spec = client.method(method).uri(uri)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON);
+        return (body == null ? spec : spec.body(body)).retrieve().toEntity(Map.class);
+    }
+
     /** a call with extra headers (V322: the examination screen's attempt token) */
     @SuppressWarnings("rawtypes")
     ResponseEntity<Map> callWith(String token, HttpMethod method, String path, Object body, Map<String, String> headers) {

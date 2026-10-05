@@ -39,11 +39,13 @@ class CatalogueController {
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final OfferAuthority authority;
 
-    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope) {
+    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope, OfferAuthority authority) {
         this.jdbc = jdbc;
         this.json = json;
         this.scope = scope;
+        this.authority = authority;
     }
 
     /** the department an HOD request is confined to, or null for any other office (no confinement) */
@@ -62,9 +64,14 @@ class CatalogueController {
         }
     }
 
+    /** V332: a course is created with the programmes that offer it — the owner's own bound at once, another department's proposed */
+    public record FirstOffer(@NotBlank @Size(max = 12) String programme, @NotNull @Min(100) @Max(900) Integer level,
+                             @Size(max = 12) String basis, @Size(max = 12) String track, @Size(max = 2000) String reason) {
+    }
+
     public record NewCourse(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 120) String title,
                             @NotNull @Min(0) Integer units, @NotNull Integer semester, @NotNull Integer level,
-                            @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
+                            @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind, @Valid List<FirstOffer> offers) {
     }
 
     public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 12) String curriculum) {
@@ -260,7 +267,8 @@ class CatalogueController {
         dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
         List<Map<String, Object>> rows = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
-                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
+                SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
+                       (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
                          WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
@@ -326,7 +334,7 @@ class CatalogueController {
         Map<String, Object> programme = jdbc.sql("""
                 SELECT p.code, p.name, p.dept_code, d.name AS dept_name, p.faculty_code FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code WHERE p.code = :p
                 """).param("p", p).query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("programme", prog));
-        List<Map<String, Object>> tracks = jdbc.sql("SELECT code, name FROM policy.curriculum_track ORDER BY code").query().listOfRows();
+        List<Map<String, Object>> tracks = jdbc.sql("SELECT code, label AS name FROM policy.curriculum_track ORDER BY ord, code").query().listOfRows();   // V332: the track carries a label, not a name
         return Map.of("programme", programme, "rows", rows, "limits", limits, "tracks", tracks);
     }
 
@@ -609,7 +617,19 @@ class CatalogueController {
                 .param("c", body.code()).param("t", body.title()).param("u", body.units()).param("s", body.semester())
                 .param("l", body.level()).param("d", body.dept()).param("k", body.kind())
                 .query(String.class).single();
-        return Map.of("code", code, "state", "BOARD");
+        // V332: the one course, offered to its first programmes — the owner's bound now, another department's proposed to it
+        List<Map<String, Object>> outcomes = new java.util.ArrayList<>();
+        for (FirstOffer o : body.offers() == null ? List.<FirstOffer>of() : body.offers()) {
+            outcomes.add(authority.offer(code, body.dept().trim().toUpperCase(), o.programme(), o.level(), o.basis(), o.track(), o.reason()));
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("code", code);
+        out.put("id", jdbc.sql("SELECT id FROM catalogue.course WHERE code = :c").param("c", code).query(java.util.UUID.class).single());
+        out.put("state", "BOARD");
+        out.put("bound", outcomes.stream().filter(x -> "BOUND".equals(x.get("outcome"))).count());
+        out.put("proposed", outcomes.stream().filter(x -> "PROPOSED".equals(x.get("outcome"))).count());
+        out.put("offers", outcomes);
+        return out;
     }
 
     @PostMapping("/courses/{code}/end")

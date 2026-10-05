@@ -162,9 +162,12 @@ class AllocationController {
                        CASE WHEN lp.id IS NULL THEN NULL ELSE concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), '')) END AS lecturer,
                        o.second_examiner_id,
                        CASE WHEN sp.id IS NULL THEN NULL ELSE concat_ws(', ', nullif(btrim(sp.surname), ''), nullif(btrim(sp.given_names), '')) END AS second_examiner,
-                       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.lecturer_id, 'name', concat_ws(', ', nullif(btrim(tp.surname), ''), nullif(btrim(tp.given_names), ''))) ORDER BY tp.surname)
-                                   FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.lecturer_id, 'name', concat_ws(', ', nullif(btrim(tp.surname), ''), nullif(btrim(tp.given_names), '')), 'programme_code', t.programme_code, 'programme', pr.name) ORDER BY tp.surname)
+                                   FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id LEFT JOIN ref.programme pr ON pr.code = t.programme_code
                                   WHERE t.offering_id = o.id), '[]'::jsonb) AS co_lecturers,
+                       coalesce((SELECT jsonb_agg(DISTINCT jsonb_build_object('code', co.programme_code, 'name', pr.name))
+                                   FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code
+                                  WHERE co.course_code = o.course_code), '[]'::jsonb) AS programmes,
                        EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet
                   FROM catalogue.offering o
                   JOIN catalogue.course c ON c.code = o.course_code
@@ -181,6 +184,9 @@ class AllocationController {
         for (Map<String, Object> row : rows) {
             Object cl = row.get("co_lecturers");
             row.put("co_lecturers", CO.readValue(cl == null ? "[]" : cl.toString(),
+                    new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+            Object pg = row.get("programmes");
+            row.put("programmes", CO.readValue(pg == null ? "[]" : pg.toString(),
                     new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
         }
         return rows;
@@ -283,7 +289,8 @@ class AllocationController {
         return Map.of("offering", offering, "allocated", true);
     }
 
-    public record Teacher(@NotNull UUID lecturer) {
+    /** V332: a co-lecturer may be posted to one programme's group of the offering (the programme must carry the course) */
+    public record Teacher(@NotNull UUID lecturer, String programme) {
     }
 
     /** add a co-lecturer who also teaches the course and enters scores on the shared sheet */
@@ -293,15 +300,23 @@ class AllocationController {
     Map<String, Object> addTeacher(@PathVariable UUID offering, @RequestBody Teacher body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
+        String group = body.programme() == null || body.programme().isBlank() ? null : body.programme().trim().toUpperCase();
+        if (group != null && jdbc.sql("""
+                SELECT count(*) FROM catalogue.offering o JOIN catalogue.course_offer co ON co.course_code = o.course_code
+                 WHERE o.id = :o AND co.programme_code = :p
+                """).param("o", offering).param("p", group).query(Long.class).single() == 0) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ALLOC_GROUP", "That programme does not offer this course; a co-lecturer is posted to a programme that carries it.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Offer the course to the programme first, or post the co-lecturer to every programme.", "Head of Department"));
+        }
         Integer n = jdbc.sql("""
-                INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by)
-                SELECT :o, :lec, :by
+                INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by, programme_code)
+                SELECT :o, :lec, :by, :g
                  WHERE NOT EXISTS (SELECT 1 FROM catalogue.offering WHERE id = :o AND lecturer_id = :lec)
-                ON CONFLICT (offering_id, lecturer_id) DO NOTHING
+                ON CONFLICT (offering_id, lecturer_id) DO UPDATE SET programme_code = EXCLUDED.programme_code
                 RETURNING 1
                 """).param("o", offering).param("lec", body.lecturer())
-                .param("by", scope.actorId(), Types.OTHER).query(Integer.class).optional().orElse(0);
-        return Map.of("offering", offering, "lecturer", body.lecturer(), "added", n > 0);
+                .param("by", scope.actorId(), Types.OTHER).param("g", group, Types.VARCHAR).query(Integer.class).optional().orElse(0);
+        return Map.of("offering", offering, "lecturer", body.lecturer(), "added", n > 0, "programme", group == null ? "" : group);
     }
 
     /** remove a co-lecturer (the lead is changed by re-assigning, not here) */

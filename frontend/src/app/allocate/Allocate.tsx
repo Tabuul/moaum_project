@@ -19,11 +19,13 @@ import { BulkUpload, type ImportRecord } from "./BulkUpload";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
-export interface CoLecturer { id: string; name: string }
+export interface CoLecturer { id: string; name: string; programme_code?: string | null; programme?: string | null }
 export interface Offering {
   id: string; course_code: string; title: string; units: number; level: number; allocated_on: string | null; registered: number;
   lecturer_id: string | null; lecturer: string | null; second_examiner_id: string | null; second_examiner: string | null;
   co_lecturers: CoLecturer[]; sheet: boolean;
+  /** the programmes that offer the course (V332): a co-lecturer may be posted to one programme's group */
+  programmes?: { code: string; name: string }[];
 }
 
 const MAX_UNITS = 12;
@@ -41,6 +43,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   const [second, setSecond] = useState("");
   const [co, setCo] = useState<CoLecturer[]>([]);
   const [addCoId, setAddCoId] = useState("");
+  const [addCoProg, setAddCoProg] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -129,11 +132,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     if (!open || !addCoId) return;
     setBusy(true);
     try {
-      const ok = await call(`/${open.id}/teachers`, "POST", { lecturer: addCoId }, `Co-lecturer added to ${open.course_code}`);
+      const group = (open.programmes ?? []).find((p) => p.code === addCoProg) ?? null;
+      const ok = await call(`/${open.id}/teachers`, "POST", { lecturer: addCoId, programme: addCoProg || null }, `Co-lecturer added to ${open.course_code}${group ? ` for ${group.name}` : ""}`);
       if (!ok) return;
       const who = list.find((l) => l.id === addCoId);
-      if (who && !co.some((c) => c.id === who.id)) setCo([...co, { id: who.id, name: who.name }]);
+      if (who && !co.some((c) => c.id === who.id)) setCo([...co, { id: who.id, name: who.name, programme_code: group?.code ?? null, programme: group?.name ?? null }]);
       setAddCoId("");
+      setAddCoProg("");
       router.refresh();
     } finally { setBusy(false); }
   }
@@ -290,7 +295,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             <div className="row mb-2">
               {co.map((c) => (
                 <span key={c.id} className="chip row row--inline" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-pill)", padding: "3px 6px 3px 12px" }}>
-                  {c.name}
+                  {c.name}{c.programme ? <span className="sub2"> · {c.programme}</span> : null}
                   <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => void removeCoLecturer(c.id)} aria-label={`Remove ${c.name}`}>Remove</button>
                 </span>
               ))}
@@ -300,6 +305,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             <div style={{ flex: "1 1 240px" }}><Field id="al-co" label="Add a co-lecturer">
               <SearchSelect id="al-co" value={addCoId} placeholder="Search a lecturer…"
                 options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setAddCoId} /></Field></div>
+            {(open.programmes ?? []).length > 1 ? (
+              <div style={{ flex: "1 1 200px" }}><Field id="al-co-prog" label="Teaches" hint="One programme's group, or every programme">
+                <select id="al-co-prog" className="ctl" value={addCoProg} onChange={(e) => setAddCoProg(e.target.value)}>
+                  <option value="">Every programme</option>
+                  {(open.programmes ?? []).map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+                </select></Field></div>
+            ) : null}
             <Btn kind="primary" disabled={busy || !addCoId} onClick={() => void addCoLecturer()}>{busy ? "Adding…" : "Add co-lecturer"}</Btn>
           </div>
           {!open.lecturer_id ? <div className="sub2 ink-muted mt-2">Tip: save the lead first, then co-lecturers are added to the same course.</div> : null}

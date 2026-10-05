@@ -165,7 +165,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
         if (!g) { g = { programme: pc, curriculum: ["CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU"].includes(cur.replace(/[- ]/g, "_")) ? cur.replace(/[- ]/g, "_") : curriculum, rows: [] }; groups.set(key, g); }
         g.rows.push(row);
       }
-      const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0 };
+      const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0, existing: 0 };
       let firstErr: string | null = null;
       let done = 0;
       const notRegistered: { programme: string; rows: number }[] = [];
@@ -185,15 +185,15 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           setUnregistered(notRegistered);
           return;
         }
-        const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null };
-        totals.courses += Number(c.courses ?? 0); totals.offers += Number(c.offers ?? 0);
+        const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null; existing?: number };
+        totals.courses += Number(c.courses ?? 0); totals.offers += Number(c.offers ?? 0); totals.existing += Number(c.existing ?? 0);
         totals.bad_code += Number(c.bad_code ?? 0); totals.skipped += Number(c.skipped ?? 0);
         if (!firstErr && c.first_error) firstErr = c.first_error;
         done += 1;
       }
       setUnregistered(notRegistered);
       const skippedRows = notRegistered.reduce((s, x) => s + x.rows, 0);
-      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
+      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} named another department's course and bound it to the programme as it is, without a second record` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
       notify(`Course structure loaded · ${totals.courses} courses`);
       setPreview(null);
       if (programme) void viewLoaded();

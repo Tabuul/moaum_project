@@ -310,6 +310,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Programme structure",
     "What each programme offers at each level, and the binding of a course into it"
   ],
+  "t/allcourses": [
+    "All Courses",
+    "Every course within your scope, with the programmes that offer it — one course, however many programmes carry it"
+  ],
   "t/courseupload": [
     "Upload course structure",
     "A programme's CCMAS courses, from the document"
