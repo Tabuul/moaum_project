@@ -131,3 +131,16 @@ of Department will see "+ Add Department / Programme" on the new-course form and
 begin to flow when a Head offers a course beyond their department. Departments that have been creating a second code
 for a course another department owns should instead open the existing course and add their programme, and may fold
 the duplicates they already carry through the duplicate desk.
+
+## 9. Codes written without the hyphen (V333)
+
+The old portal's uploads carried the University's prefixed codes with the hyphen dropped: MOAUCHM 101 for MOAU-CHM 101,
+BSUGEO 413 for BSU-GEO 413. The Department Courses desk now lists them under "Codes written without the hyphen" with
+the code each should read, what the wrong code carries, and a Rename on each row; "Fix N codes" corrects every one
+whose corrected code is free in one act. A rename is V332's: the course keeps its identity and every registration,
+result, offering and binding follows the new code. Where the corrected code is already another course, the two are the
+same course under two codes and the row says so: the wrong one is ended or removed on the duplicates desk, never merged
+blindly. `catalogue.rename_course` now accepts every form the catalogue keys (CSC 311; MOAU-CHM 101), normalising case
+and spacing; a prefix is known when the catalogue already carries it hyphenated or it is one of the University's own
+(MOAU, MOAUM, MOUA, BSU, FBSU). Property 181 and `CourseOfferingIT` cover it. Railway carried one such code at the time
+(BSUGEO 413); the AWS portal, fed by uploads, is where the rest are expected.

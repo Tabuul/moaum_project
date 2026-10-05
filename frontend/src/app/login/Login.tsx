@@ -10,7 +10,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Btn, Ico, LinkBtn, Note, PageHead } from "@/components/proto/ui";
+import { Btn, Ico, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
@@ -28,9 +28,9 @@ function whoIs(id: string): string {
   return "A member of staff, on the staff number";
 }
 
-export function Login({ next, sso, ssoProblem = null, applications = null }: {
+export function Login({ next, sso, ssoProblem = null }: {
   next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
-  /** V312: which application windows the Director of ICT has open; a button shows only for an open one */
+  /** V312: which application windows are open — no longer shown here: the sign-in page is for signing in alone, and applicants reach their application pages directly */
   applications?: { postUtme: boolean; postgraduate: boolean } | null;
 }) {
   const router = useRouter();
@@ -82,9 +82,9 @@ export function Login({ next, sso, ssoProblem = null, applications = null }: {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
-          <PageHead title="Sign in" description="One door for students, staff and applicants. The portal opens on your own side once it knows who you are." />
+          <PageHead title="Sign in" />
           <div className="field">
-            <label htmlFor="uid">Your number or email address</label>
+            <label htmlFor="uid">Username</label>
             <input id="uid" value={uid} placeholder="MOAUM/CSC/23/1487 · MOAUM/STF/1142 · 202699168863AH" autoComplete="username" onChange={(e) => setUid(e.target.value)} />
             <div className="hint">{who || "Students: the matriculation number. Staff: the staff number or email. Applicants: the JAMB or application number, or the email you registered with."}</div>
           </div>
@@ -113,26 +113,6 @@ export function Login({ next, sso, ssoProblem = null, applications = null }: {
           <div className="login-help">
             <Link href="/login/forgot">Forgot your password?</Link>
             <Link href="/login/first">First account</Link>
-          </div>
-          {applications?.postUtme ? (
-            <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
-              <LinkBtn kind="ghost" href="/apply">Post UTME Registration</LinkBtn>
-              <div className="hint" style={{ textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
-            </div>
-          ) : null}
-          {applications?.postgraduate ? (
-            <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
-              <LinkBtn kind="ghost" href="/pg/apply">Postgraduate application</LinkBtn>
-              <div className="hint" style={{ textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
-            </div>
-          ) : null}
-          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
-            <LinkBtn kind="ghost" href="/verify">Verify a payment or receipt</LinkBtn>
-            <div className="hint" style={{ textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
-          </div>
-          <div className="notice notice--info mt-2">
-            <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />
-            <p>Five failed attempts lock an account for fifteen minutes. {sso?.enabled ? "Staff sign in through the University's single sign-on, which asks for a second step." : "Staff and privileged accounts will also complete a second step when single sign-on is connected."}</p>
           </div>
         </form>
       </div>

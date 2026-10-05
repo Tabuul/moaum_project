@@ -49,7 +49,7 @@ class CourseOfferingIT {
         academic = ItSupport.token("academic");
         // the shared CI database may carry this test's course from an earlier run; nothing hangs on it, so it goes
         it.db(() -> {
-            for (String c : List.of(CODE, RENAMED)) {
+            for (String c : List.of(CODE, RENAMED, "MOAUZZO 903", "MOAU-ZZO 903")) {
                 if (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", c).query(Long.class).single() > 0) {
                     jdbc.sql("SELECT catalogue.remove_course(:c)").param("c", c).query().singleRow();
                 }
@@ -124,5 +124,30 @@ class CourseOfferingIT {
         ResponseEntity<Map> direct = it.call(academic, HttpMethod.POST, b -> b.path("/api/v1/catalogue/courses/{c}/offers").build(RENAMED), Map.of("programme", OTHER_PROG, "level", 300, "basis", "Elective"));
         assertThat(direct.getStatusCode().value()).as(String.valueOf(direct.getBody())).isEqualTo(200);
         assertThat(direct.getBody().get("outcome")).isEqualTo("BOUND");
+    }
+
+    @Test
+    void aCodeUploadedWithoutItsHyphenIsCorrectedInPlace() {
+        // the old portal's upload wrote the prefix without its hyphen; the catalogue kept it
+        it.db(() -> {
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('MOAUZZO 903', 'Numerical Methods (IT)', 2, 1, 300, :d, 'Core', 'LIVE')").param("d", OWN_DEPT).update();
+            jdbc.sql("SELECT catalogue.bind_offer('MOAUZZO 903', :p, 300, 'Core', NULL, 'IMPORT')").param("p", OWN_PROG).query().singleRow();
+            return null;
+        });
+        String id = jdbc.sql("SELECT id::text FROM catalogue.course WHERE code = 'MOAUZZO 903'").query(String.class).single();
+        // the desk lists it with the code it should read; the other department's Head does not see it
+        ResponseEntity<List> fixes = it.getList(hodOwn, "/api/v1/catalogue/code-fixes");
+        assertThat(fixes.getStatusCode().value()).isEqualTo(200);
+        Map fix = ((List<Map>) fixes.getBody()).stream().filter(f -> "MOAUZZO 903".equals(f.get("code"))).findFirst().orElseThrow();
+        assertThat(fix.get("proposed")).isEqualTo("MOAU-ZZO 903");
+        assertThat(fix.get("twin_exists")).isEqualTo(false);
+        assertThat(((List<Map>) it.getList(hodOther, "/api/v1/catalogue/code-fixes").getBody())).extracting(f -> f.get("code")).doesNotContain("MOAUZZO 903");
+        // corrected in one act: the same course, the binding still on it
+        ResponseEntity<Map> applied = it.call(hodOwn, HttpMethod.POST, "/api/v1/catalogue/code-fixes/apply", Map.of());
+        assertThat(applied.getStatusCode().value()).as(String.valueOf(applied.getBody())).isEqualTo(200);
+        assertThat(((Number) applied.getBody().get("renamed")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.sql("SELECT id::text FROM catalogue.course WHERE code = 'MOAU-ZZO 903'").query(String.class).single()).isEqualTo(id);
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_offer WHERE course_code = 'MOAU-ZZO 903' AND programme_code = :p").param("p", OWN_PROG).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = 'MOAUZZO 903'").query(Long.class).single()).isEqualTo(0L);
     }
 }

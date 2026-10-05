@@ -31,6 +31,8 @@ export interface Course {
   bindings?: { programme_code: string; programme: string; level: number; basis: string; track: string | null }[];
 }
 export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
+/** a code written without the hyphen after its prefix, and the code it should read (V333) */
+export interface CodeFix { code: string; proposed: string; title: string; state: string; twin_exists: boolean; offers: number; offerings: number; carried: number }
 export interface Programme { code: string; name: string }
 
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
@@ -46,7 +48,7 @@ const LEVELS = [100, 200, 300, 400, 500, 600];
 const SPLITS: [number, string][] = [[40, "CA 40 / Exam 60"], [30, "CA 30 / Exam 70"]];
 const splitLabel = (caMax: number) => `CA ${caMax} / Exam ${100 - caMax}`;
 
-export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null, codeFixes = [] }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null; codeFixes?: CodeFix[] }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
@@ -221,6 +223,30 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         ["Awaiting approval", String(waiting), waiting ? "var(--chrome)" : null, "Board or Senate"],
         ["Live, no lecturer", String(noLec), noLec ? "var(--red-ink)" : null, noLec ? "No score sheet can open" : "All allocated"],
       ]} />
+
+      {codeFixes.length ? (
+        <Panel title="Codes written without the hyphen" right={`${codeFixes.length} to correct · the old portal dropped the hyphen after the prefix`}>
+          <PBody>
+            <div className="sub2 mb-2">A prefixed code reads <b>MOAU-CHM 101</b>, not MOAUCHM 101. Renaming corrects the code in place: the course keeps its identity, and every registration, result, offering and binding on it follows. Where the corrected code is <b>already another course</b>, the two are the same course under two codes: end or remove the wrong one on the duplicates desk below, or on its details page.</div>
+            <DTable pageSize={0} noPrint cols={["Code|mid", "Should read|mid", "Title", "Carries", "|num"]} rows={codeFixes.map((x) => [
+              <b key="c" className="tnum ink-red">{x.code}</b>,
+              <b key="p" className="tnum">{x.proposed}</b>,
+              <span key="t">{x.title}<div className="sub2">{STATE[x.state]?.[1] ?? x.state}</div></span>,
+              <span key="k" className="sub2">{x.offers} binding{x.offers === 1 ? "" : "s"} · {x.offerings} offering{x.offerings === 1 ? "" : "s"} · {x.carried} registration{x.carried === 1 ? "" : "s"}/result{x.carried === 1 ? "" : "s"}</span>,
+              <span key="a" className="row row--inline row--tight row--right">
+                {x.twin_exists ? <Pil kind="warn">{x.proposed} exists — a duplicate</Pil> : <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Rename ${x.code} to ${x.proposed}? Everything on the course follows the new code.`)) void send(`/courses/${encodeURIComponent(x.code)}/rename`, { code: x.proposed }, `${x.code} renamed to ${x.proposed}`).then((j) => { if (j) setSaid(`${x.code} now reads ${x.proposed}`); }); }}>Rename</Btn>}
+                <LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(x.code)}`}>Details</LinkBtn>
+              </span>,
+            ])} />
+            {codeFixes.some((x) => !x.twin_exists) ? (
+              <div className="row row--base mt-3">
+                <Btn kind="primary" disabled={busy} onClick={() => { const n = codeFixes.filter((x) => !x.twin_exists).length; if (window.confirm(`Correct ${n} code${n === 1 ? "" : "s"} in one act? Each course keeps its identity and everything on it; a code whose corrected form is already another course is left for the duplicates desk.`)) void send(`/code-fixes/apply?dept=${encodeURIComponent(dept)}`, {}, `Corrected the codes written without the hyphen in ${dept}`).then((j) => { if (j) setSaid(`${String(j.renamed ?? 0)} code(s) corrected${Number(j.twins ?? 0) ? ` · ${String(j.twins)} left as duplicates of a code that already exists` : ""}`); }); }}>{busy ? "Working…" : `Fix ${codeFixes.filter((x) => !x.twin_exists).length} code${codeFixes.filter((x) => !x.twin_exists).length === 1 ? "" : "s"}`}</Btn>
+                <span className="sub2">Renames where the corrected code is free; the rest stay listed with the reason.</span>
+              </div>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
       {toEnd.length ? (
         <Panel title="Duplicate courses" right={`${toEnd.length} to end or remove · the same course under more than one code`}>

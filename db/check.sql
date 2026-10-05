@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 180
+\set EXPECTED 181
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4843,6 +4843,44 @@ BEGIN
         AND imp.existing = 1 AND imp.courses = 0 AND imp.offers = 1 AND v_title = 'Owned Elsewhere' AND v_units = 2 AND v_basis = 'Borrowed' AND v_id3 IS NOT NULL,
         format('depts=%s/%s dup=%s decided=%s offers=%s src=%s exists=%s | renamed=%s same_id=%s offers2=%s prop=%s | unbind=%s hist=%s ended=%s | import existing=%s courses=%s offers=%s title=%s units=%s basis=%s',
                d_a, d_b, r_dup, v_out, n_off, v_src, r_exists, v_new, (v_id2 = v_id), n_off2, n_prop, v_state, n_hist, r_ended, imp.existing, imp.courses, imp.offers, v_title, v_units, v_basis));
+END $$;
+
+-- ── 181. V333: a course code written without its hyphen is corrected in place — proposed from the known prefixes, renamed where the corrected code is free with the identity and every binding kept, left where the corrected code is another course already, and a code of neither form refused ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); d_a text; p_a text; msg text; v_id uuid; v_id2 uuid; n_fix int; v_prop text; v_twin boolean; r_bad text; r_taken text;
+        n_renamed int; n_twin int; n_off int; v_norm1 text; v_norm2 text; v_norm3 text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        SELECT d.code, p.code INTO d_a, p_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
+        -- uploaded as the old portal wrote them: the hyphen dropped
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+          ('MOAUCHM 181', 'Physical Chemistry I', 3, 1, 100, d_a, 'Core', 'LIVE'),
+          ('BSUGEO 181', 'Map Reading', 2, 2, 100, d_a, 'Core', 'LIVE'),
+          ('BSU-GEO 181', 'Map Reading', 2, 2, 100, d_a, 'Core', 'LIVE');
+        PERFORM catalogue.bind_offer('MOAUCHM 181', p_a, 100, 'Core', NULL, 'IMPORT');
+        SELECT id INTO v_id FROM catalogue.course WHERE code = 'MOAUCHM 181';
+        SELECT count(*) INTO n_fix FROM catalogue.code_fixes(d_a) WHERE code IN ('MOAUCHM 181', 'BSUGEO 181');
+        SELECT proposed INTO v_prop FROM catalogue.code_fixes(d_a) WHERE code = 'MOAUCHM 181';
+        SELECT twin_exists INTO v_twin FROM catalogue.code_fixes(d_a) WHERE code = 'BSUGEO 181';
+        SELECT count(*) FILTER (WHERE outcome = 'RENAMED'), count(*) FILTER (WHERE outcome = 'TWIN_EXISTS') INTO n_renamed, n_twin
+          FROM catalogue.apply_code_fixes(d_a) WHERE code IN ('MOAUCHM 181', 'BSUGEO 181');
+        SELECT id INTO v_id2 FROM catalogue.course WHERE code = 'MOAU-CHM 181';
+        SELECT count(*) INTO n_off FROM catalogue.course_offer WHERE course_code = 'MOAU-CHM 181';
+        BEGIN PERFORM catalogue.rename_course('BSUGEO 181', 'bad code!'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_bad := split_part(msg, ':', 1); END;
+        BEGIN PERFORM catalogue.rename_course('BSUGEO 181', 'BSU-GEO 181'); EXCEPTION WHEN unique_violation THEN r_taken := 'TAKEN'; END;
+        v_norm1 := catalogue.normal_code('moau - chm  101'); v_norm2 := catalogue.normal_code('csc311'); v_norm3 := catalogue.normal_code('CSC 309/CMP 441');
+        RAISE EXCEPTION 'the V333 code-fix check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A course code written without its hyphen is corrected in place: proposed from the known prefixes, renamed where the corrected code is free with the identity and the binding kept, left as a twin where the corrected code is another course already, a code of neither form refused, and every accepted form normalised',
+        n_fix = 2 AND v_prop = 'MOAU-CHM 181' AND v_twin = true AND n_renamed = 1 AND n_twin = 1 AND v_id2 = v_id AND n_off = 1
+        AND r_bad = 'CAT_CODE' AND r_taken = 'TAKEN' AND v_norm1 = 'MOAU-CHM 101' AND v_norm2 = 'CSC 311' AND v_norm3 = 'CSC 309/CMP 441',
+        format('fixes=%s proposed=%s twin=%s renamed=%s twins=%s same_id=%s offers=%s bad=%s taken=%s norm=%s/%s/%s',
+               n_fix, v_prop, v_twin, n_renamed, n_twin, (v_id2 = v_id), n_off, r_bad, r_taken, v_norm1, v_norm2, v_norm3));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

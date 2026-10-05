@@ -213,7 +213,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
             const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/rename`, { code: rename.trim() }, `${c.code} renamed`);
             if (j) { setRename(null); router.replace(`/catalogue/course?code=${encodeURIComponent(String(j.code))}`); }
           }}>Rename</Btn></>}>
-          <Field id="rn-code" label="New code" hint="Three letters, a space, three digits — e.g. CSC 201"><input id="rn-code" className="ctl tnum" value={rename} onChange={(e) => setRename(e.target.value)} maxLength={20} autoComplete="off" /></Field>
+          <Field id="rn-code" label="New code" hint="CSC 201, or a prefix with its hyphen — MOAU-CHM 101"><input id="rn-code" className="ctl tnum" value={rename} onChange={(e) => setRename(e.target.value)} maxLength={20} autoComplete="off" /></Field>
         </Modal>
       ) : null}
     </>

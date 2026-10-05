@@ -419,6 +419,35 @@ class CourseOfferingController {
         return Map.of("id", id, "state", "CANCELLED");
     }
 
+    /* ── codes written without the hyphen after their prefix (V333) ── */
+
+    /** a department's codes written without the hyphen, each with the code it should read */
+    @GetMapping("/code-fixes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> codeFixes(@RequestParam(required = false) String dept) {
+        return jdbc.sql("SELECT * FROM catalogue.code_fixes(:d) ORDER BY code").param("d", scope.deptWithin(blank(dept)), Types.VARCHAR).query().listOfRows();
+    }
+
+    /** rename every one whose corrected code is free; one whose corrected code is another course already is left for the duplicates desk */
+    @PostMapping("/code-fixes/apply")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> applyCodeFixes(@RequestParam(required = false) String dept) {
+        String d = scope.deptWithin(blank(dept));
+        if (d == null) {
+            throw new DomainRuleViolation("CAT_DEPT", "Codes are corrected a department at a time.",
+                    new DomainRuleViolation.Remedy("Choose the department whose codes to correct.", "Head of Department"));
+        }
+        List<Map<String, Object>> outcomes = jdbc.sql("SELECT * FROM catalogue.apply_code_fixes(:d)").param("d", d).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dept", d);
+        out.put("renamed", outcomes.stream().filter(o -> "RENAMED".equals(o.get("outcome"))).count());
+        out.put("twins", outcomes.stream().filter(o -> "TWIN_EXISTS".equals(o.get("outcome"))).count());
+        out.put("outcomes", outcomes);
+        return out;
+    }
+
     /* ── editing the course keeps it the same course ── */
 
     public record Edit(@NotBlank @Size(max = 120) String title, @NotNull @Min(0) @Max(12) Integer units, @NotNull @Min(1) @Max(3) Integer semester,
