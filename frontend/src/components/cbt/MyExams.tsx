@@ -104,6 +104,7 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
             <li>Do not attempt to open another window.</li>
             <li>Your activity is monitored.</li>
             <li>Violations are recorded. {open.violation_limit} {open.violation_limit === 1 ? "is" : "are"} allowed; beyond that {open.violation_action === "TERMINATE" ? "your examination is terminated" : open.violation_action === "SUBMIT" ? "your examination is submitted automatically" : "a final warning is issued and the record stands"} according to University policy.</li>
+            <li>{open.partial_credit ? "On a multiple-select question each correct option you choose earns a share of the marks and each wrong one costs a share; a question never scores below zero." : "A multiple-select question earns its marks only when exactly the correct options are chosen."}</li>
             <li>Your answers are saved as you go. If your connection drops, remain on the screen while it reconnects; the clock keeps running on the server.</li>
             <li>The examination ends at the end of your time, or at the close of the window, whichever is earlier; whatever you have answered is submitted and scored.</li>
           </ul>

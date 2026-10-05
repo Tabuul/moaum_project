@@ -27,7 +27,7 @@ export interface CbtStats {
 export interface PaperQuestion { id: string; topic: string | null; kind: string; stem: string; difficulty: string; bank_marks: number; paper_marks: number | null; marks: number; ordinal: number; active: boolean; options: number }
 export interface CbtExam extends Omit<CbtExamRow, "candidates" | "started" | "writing" | "scored"> {
   office: CbtOffice; offering_id: string; instructions: string | null; randomize_questions: boolean; randomize_options: boolean; attempt_limit: number;
-  violation_limit: number; violation_action: "WARN" | "SUBMIT" | "TERMINATE"; second_session: "CONTINUE" | "DENY"; results_approved_at: string | null; results_published_at: string | null;
+  violation_limit: number; violation_action: "WARN" | "SUBMIT" | "TERMINATE"; second_session: "CONTINUE" | "DENY"; partial_credit: boolean; results_approved_at: string | null; results_published_at: string | null;
   created_at: string; created_by_name: string | null; created_office: string | null; closed_at: string | null; cancelled_at: string | null; cancel_reason: string | null;
   units: number; course_level: number; ca_max: number; pool_marks: number; paper_problem: string | null; has_sheet: boolean; sheet_stage: string | null;
   paper: PaperQuestion[]; bank: { topic: string; active: number; total: number; marks: number }[]; counts: CbtCounts; stats: CbtStats;
@@ -83,13 +83,13 @@ export interface MyExam {
   live_state: LiveState; starts_at: string; ends_at: string; duration_minutes: number; questions: number; security_mode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB";
   attempt_limit: number; violation_limit: number; violation_action: string; eligibility: string | null; attempts: number; attempt_id: string | null; attempt_status: AttemptStatus | null;
   attempt_ends_at: string | null; submitted_at: string | null; result_published: boolean; score: number | null; max_marks: number | null; percentage: number | null;
-  grade: string | null; passed: boolean | null; pass_mark: number; outcome: string | null;
+  grade: string | null; passed: boolean | null; pass_mark: number; outcome: string | null; partial_credit?: boolean;
 }
 export interface MyExams { session: string; rows: MyExam[]; now: string }
 export interface RoomQuestion { n: number; id: string; kind: "MCQ" | "TRUE_FALSE" | "MULTI"; stem: string; marks: number; options: { i: number; text: string }[] }
 export interface Room {
   attempt: { id: string; number: number; status: AttemptStatus; started_at: string; ends_at: string; submitted_at: string | null; answered: number; violations: number; max_marks: number; questions: number };
-  exam: { id: string; reference: string; title: string; course_code: string; course_title: string; session: string; semester: number; duration_minutes: number; randomize_options: boolean; security_mode: string; venue: string; violation_limit: number; violation_action: string; instructions: string | null; live_state: LiveState };
+  exam: { id: string; reference: string; title: string; course_code: string; course_title: string; session: string; semester: number; duration_minutes: number; randomize_options: boolean; security_mode: string; venue: string; violation_limit: number; violation_action: string; instructions: string | null; live_state: LiveState; partial_credit?: boolean };
   questions: RoomQuestion[]; answers: Record<string, number[]>; now: string;
 }
 

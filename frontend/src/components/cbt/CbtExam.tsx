@@ -34,7 +34,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     ...EMPTY_FORM, title: exam.title, instructions: exam.instructions ?? "", durationMinutes: String(exam.duration_minutes), selection: exam.selection, totalQuestions: String(exam.total_questions),
     randomizeQuestions: exam.randomize_questions, randomizeOptions: exam.randomize_options, passMark: String(exam.pass_mark), attemptLimit: String(exam.attempt_limit),
     securityMode: exam.security_mode, venue: exam.venue, violationLimit: String(exam.violation_limit), violationAction: exam.violation_action, secondSession: exam.second_session,
-    startsAt: localInput(exam.starts_at), endsAt: localInput(exam.ends_at),
+    startsAt: localInput(exam.starts_at), endsAt: localInput(exam.ends_at), partialCredit: exam.partial_credit,
   }));
   const [ask, setAsk] = useState<{ action: string; title: string; text: string; reason: boolean } | null>(null);
   const [reason, setReason] = useState("");
@@ -78,7 +78,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
   return (
     <>
       <PageHead eyebrow={<span className="tnum">{exam.reference} · {exam.session} · semester {exam.semester}</span>} title={exam.title}
-        description={<span><b className="tnum">{exam.course_code}</b> {exam.course_title} · {exam.duration_minutes} minutes · {exam.selection === "RANDOM" ? `${exam.total_questions} questions drawn from ${num(exam.pool_size)}` : `${num(exam.pool_size)} questions`} · {num(exam.pool_marks)} marks · pass mark {pct1(exam.pass_mark)} · {exam.security_mode === "SECURE" ? "secure/kiosk CBT" : "standard web CBT"} · {exam.venue === "LAB" ? "CBT laboratory" : "remote"}</span>}
+        description={<span><b className="tnum">{exam.course_code}</b> {exam.course_title} · {exam.duration_minutes} minutes · {exam.selection === "RANDOM" ? `${exam.total_questions} questions drawn from ${num(exam.pool_size)}` : `${num(exam.pool_size)} questions`} · {num(exam.pool_marks)} marks · pass mark {pct1(exam.pass_mark)} · {exam.partial_credit ? "partial credit on multiple-select" : "all-or-nothing marking"} · {exam.security_mode === "SECURE" ? "secure/kiosk CBT" : "standard web CBT"} · {exam.venue === "LAB" ? "CBT laboratory" : "remote"}</span>}
         actions={<span className="row row--inline row--tight">
           <Pil kind={(EXAM_WORD[live] ?? ["", "grey"])[1]}>{(EXAM_WORD[live] ?? [live])[0]}</Pil>
           <Pil kind={(RESULTS_WORD[exam.results_state] ?? ["", "grey"])[1]}>Results: {(RESULTS_WORD[exam.results_state] ?? [exam.results_state])[0].toLowerCase()}</Pil>

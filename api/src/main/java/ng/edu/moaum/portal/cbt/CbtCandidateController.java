@@ -147,7 +147,7 @@ class CbtCandidateController {
         Map<String, Object> a = jdbc.sql("SELECT * FROM assessment.cbt_touch(:a, :t)").param("a", id).param("t", token(token)).query().singleRow();
         Map<String, Object> e = jdbc.sql("""
                 SELECT e.id, e.reference, e.title, e.course_code, c.title AS course_title, e.session, e.semester, e.duration_minutes, e.randomize_options, e.security_mode, e.venue,
-                       e.violation_limit, e.violation_action, e.instructions, assessment.cbt_live_state(e) AS live_state
+                       e.violation_limit, e.violation_action, e.instructions, e.partial_credit, assessment.cbt_live_state(e) AS live_state
                   FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code WHERE e.id = :e
                 """).param("e", exam).query().singleRow();
         Object[] idsObj = (Object[]) jdbcArray(a.get("question_ids"));

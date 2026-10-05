@@ -259,7 +259,7 @@ export function ExamRoom({ attemptId }: { attemptId: string }) {
         <section className="card" style={{ padding: 20 }}>
           {q ? (
             <>
-              <div className="sub2 tnum">Question {q.n} of {questions.length} · {q.marks} mark{q.marks === 1 ? "" : "s"} · {q.kind === "MULTI" ? "select every correct option" : q.kind === "TRUE_FALSE" ? "true or false" : "select one option"}</div>
+              <div className="sub2 tnum">Question {q.n} of {questions.length} · {q.marks} mark{q.marks === 1 ? "" : "s"} · {q.kind === "MULTI" ? (room.exam.partial_credit ? "select every correct option · each right one earns a share, each wrong one costs a share" : "select every correct option · marks only for exactly the right set") : q.kind === "TRUE_FALSE" ? "true or false" : "select one option"}</div>
               <div style={{ fontSize: 18, margin: "12px 0 16px", whiteSpace: "pre-wrap" }}>{q.stem}</div>
               <div style={{ display: "grid", gap: 8 }}>
                 {q.options.map((o, idx) => {

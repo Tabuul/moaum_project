@@ -346,6 +346,39 @@ class CbtExamIT {
     }
 
     @Test
+    void partialCreditMarksAMultipleSelectQuestionByItsRule() {
+        List<UUID> paper = paper();
+        OffsetDateTime now = OffsetDateTime.now();
+        Map<String, Object> body = examBody("Partial credit CBT", now.minusMinutes(1), now.plusHours(2), 2, "WARN", "CONTINUE");
+        body.put("partialCredit", true);
+        ResponseEntity<Map> created = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams", body);
+        assertThat(created.getStatusCode().value()).as(String.valueOf(created.getBody())).isEqualTo(200);
+        assertThat(created.getBody().get("partial_credit")).isEqualTo(true);
+        UUID exam = UUID.fromString(String.valueOf(created.getBody().get("id")));
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/paper", Map.of("questions", paper.stream().map(q -> Map.of("id", q)).toList())).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/publish", Map.of()).getBody().get("state")).isEqualTo("PUBLISHED");
+        register(s, student);
+        ResponseEntity<Map> started = it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of());
+        assertThat(started.getStatusCode().value()).as(String.valueOf(started.getBody())).isEqualTo(200);
+        String attempt = String.valueOf(started.getBody().get("attemptId"));
+        String token = String.valueOf(started.getBody().get("token"));
+        ResponseEntity<Map> room = it.callWith(student, HttpMethod.GET, "/api/v1/me/cbt/attempts/" + attempt, null, tok(token));
+        assertThat(m(room.getBody().get("exam")).get("partial_credit")).isEqualTo(true);
+        List<Map<String, Object>> questions = l(room.getBody().get("questions"));
+        UUID multi = UUID.fromString(String.valueOf(questions.stream().filter(q -> "MULTI".equals(q.get("kind"))).findFirst().orElseThrow().get("id")));
+        // one of the two right options, nothing wrong: half the question's two marks; everything else left blank
+        it.callWith(student, HttpMethod.PUT, "/api/v1/me/cbt/attempts/" + attempt + "/answers", Map.of("answers", List.of(Map.of("q", multi, "a", List.of(1)))), tok(token));
+        ResponseEntity<Map> submitted = it.callWith(student, HttpMethod.POST, "/api/v1/me/cbt/attempts/" + attempt + "/submit", Map.of(), tok(token));
+        assertThat(submitted.getBody().get("status")).isEqualTo("SUBMITTED");
+        Map<String, Object> cand = m(it.get(gst, "/api/v1/cbt/exams/" + exam + "/candidates/" + s).getBody().get("candidate"));
+        assertThat(new BigDecimal(String.valueOf(cand.get("score")))).as("1 of 5: half of the multiple-select question's 2 marks").isEqualByComparingTo("1");
+        assertThat(new BigDecimal(String.valueOf(cand.get("percentage")))).isEqualByComparingTo("20");
+        // the same answer on an all-or-nothing paper earns nothing: the rule is the examination's
+        assertThat(jdbc.sql("SELECT assessment.cbt_marks_for('MULTI', ARRAY[1,3], ARRAY[1], 2, false)").query(BigDecimal.class).single()).isEqualByComparingTo("0");
+        assertThat(jdbc.sql("SELECT assessment.cbt_marks_for('MULTI', ARRAY[1,3], ARRAY[0,1,2,3], 2, true)").query(BigDecimal.class).single()).as("select everything earns nothing").isEqualByComparingTo("0");
+    }
+
+    @Test
     void aSecondSignInFollowsThePolicyAndTheClockFinalisesWhatTheBrowserAbandoned() {
         List<UUID> paper = paper();
         UUID exam = publishedExam("Third CBT", 1, "TERMINATE", "CONTINUE", paper);

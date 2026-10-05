@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 170
+\set EXPECTED 171
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4276,6 +4276,22 @@ BEGIN
         coalesce(v_before = 'NOT_PAID' AND v_again = 2 AND v_after = 'PAID' AND v_source = 'LEGACY_PORTAL' AND v_legacy_ref = 'CHK-OLD-1' AND v_paid_at = date '9993-09-15' AND v_gate IS NULL AND v_prev = 'PAID'
                  AND v_ledger = 2 AND v_steal = 'LEGACY_IDENTIFIER_CONFLICT' AND v_relabel = 'RECONCILED' AND v_purpose = 'GST fee 9993/9994' AND v_sum.reconciled = 3 AND v_sum.rejected = 2 AND v_sum.unmatched = 1, false),
         format('before=%s applied=%s after=%s source=%s ref=%s paid=%s gate=%s prev=%s ledger=%s steal=%s relabel=%s purpose=%s sum=%s/%s/%s', v_before, v_again, v_after, v_source, v_legacy_ref, v_paid_at, v_gate, v_prev, v_ledger, v_steal, v_relabel, v_purpose, v_sum.reconciled, v_sum.rejected, v_sum.unmatched));
+END $$;
+
+-- ── 171. V324: a multiple-select question is marked by the examination's rule — all or nothing, or partial credit that never goes below zero ──
+DO $$
+DECLARE k int[] := ARRAY[1, 3];
+BEGIN
+    PERFORM pg_temp.assert('A multiple-select question earns its marks for exactly the key; with partial credit each right option earns a share and each wrong one costs a share, never below zero, and select-everything earns nothing; a single-answer question is never partial',
+        assessment.cbt_marks_for('MULTI', k, ARRAY[1, 3], 2, false) = 2 AND assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, false) = 0
+        AND assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, true) = 1 AND assessment.cbt_marks_for('MULTI', k, ARRAY[1, 2], 2, true) = 0
+        AND assessment.cbt_marks_for('MULTI', k, ARRAY[0, 1, 2, 3], 2, true) = 0 AND assessment.cbt_marks_for('MULTI', ARRAY[0, 1, 2], ARRAY[0, 1], 3, true) = 2
+        AND assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[1], 1, true) = 0 AND assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[2], 1, true) = 1
+        AND assessment.cbt_marks_for('MULTI', k, NULL, 2, true) = 0,
+        format('exact=%s off=%s half=%s mixed=%s all=%s two-of-three=%s mcq=%s/%s blank=%s',
+               assessment.cbt_marks_for('MULTI', k, ARRAY[1, 3], 2, false), assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, false), assessment.cbt_marks_for('MULTI', k, ARRAY[1], 2, true),
+               assessment.cbt_marks_for('MULTI', k, ARRAY[1, 2], 2, true), assessment.cbt_marks_for('MULTI', k, ARRAY[0, 1, 2, 3], 2, true), assessment.cbt_marks_for('MULTI', ARRAY[0, 1, 2], ARRAY[0, 1], 3, true),
+               assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[1], 1, true), assessment.cbt_marks_for('MCQ', ARRAY[2], ARRAY[2], 1, true), assessment.cbt_marks_for('MULTI', k, NULL, 2, true)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

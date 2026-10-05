@@ -93,6 +93,15 @@ them into 422 with the code: `CBT_EXAM_NOT_OPEN`, `CBT_COURSE_NOT_REGISTERED`, `
   heartbeat every 30 s, the tab hidden / window blurred / fullscreen exited / connection lost / copy and paste /
   context menu reported, the warning and final-warning dialogs, a second-sign-in screen, the ended screen.
 
+### Partial credit (V324)
+
+Each examination says how a multiple-select question is marked. **All or nothing** (the default, and how every
+paper set before V324 scores): the marks only when the chosen options are exactly the key. **Partial credit**:
+each correctly chosen option earns marks ÷ |key|, each wrongly chosen option costs the same, and the question
+never scores below zero, so partial knowledge counts and selecting everything earns nothing. The rule is one
+pure function, `assessment.cbt_marks_for`, read by `cbt_finalize` from the examination; the office sets it on
+the examination's setup, the student reads it in the instructions and on each multiple-select question.
+
 ### The bank from a spreadsheet
 
 On a course's bank, **Import questions from a spreadsheet**: a template with worked examples (Topic, Question,

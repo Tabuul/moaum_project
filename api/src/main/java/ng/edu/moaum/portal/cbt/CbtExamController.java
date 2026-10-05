@@ -65,13 +65,13 @@ class CbtExamController {
     public record ExamIn(@NotBlank String office, @NotNull UUID offeringId, @NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions,
                          Integer durationMinutes, Integer totalQuestions, String selection, Boolean randomizeQuestions, Boolean randomizeOptions,
                          BigDecimal passMark, Integer attemptLimit, String securityMode, String venue, Integer violationLimit, String violationAction,
-                         String secondSession, OffsetDateTime startsAt, OffsetDateTime endsAt) {
+                         String secondSession, OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit) {
     }
 
     public record ExamEdit(@NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions, Integer durationMinutes, Integer totalQuestions,
                            String selection, Boolean randomizeQuestions, Boolean randomizeOptions, BigDecimal passMark, Integer attemptLimit,
                            String securityMode, String venue, Integer violationLimit, String violationAction, String secondSession,
-                           OffsetDateTime startsAt, OffsetDateTime endsAt) {
+                           OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit) {
     }
 
     public record PaperQuestion(@NotNull UUID id, Integer marks) {
@@ -218,14 +218,14 @@ class CbtExamController {
         String o = office(in.office());
         manage(o);
         UUID id = jdbc.sql("""
-                SELECT (assessment.cbt_new_exam(:o, :off, :t, :i, :d, :n, :sel, :rq, :ro, :pm, :al, :sec, :v, :vl, :va, :ss, :sa, :ea)).id
+                SELECT (assessment.cbt_new_exam(:o, :off, :t, :i, :d, :n, :sel, :rq, :ro, :pm, :al, :sec, :v, :vl, :va, :ss, :sa, :ea, :pc)).id
                 """)
                 .param("o", o).param("off", in.offeringId()).param("t", in.title()).param("i", in.instructions(), Types.VARCHAR)
                 .param("d", in.durationMinutes(), Types.INTEGER).param("n", in.totalQuestions(), Types.INTEGER).param("sel", in.selection(), Types.VARCHAR)
                 .param("rq", in.randomizeQuestions(), Types.BOOLEAN).param("ro", in.randomizeOptions(), Types.BOOLEAN).param("pm", in.passMark(), Types.NUMERIC)
                 .param("al", in.attemptLimit(), Types.INTEGER).param("sec", in.securityMode(), Types.VARCHAR).param("v", in.venue(), Types.VARCHAR)
                 .param("vl", in.violationLimit(), Types.INTEGER).param("va", in.violationAction(), Types.VARCHAR).param("ss", in.secondSession(), Types.VARCHAR)
-                .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE)
+                .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("pc", in.partialCredit(), Types.BOOLEAN)
                 .query(UUID.class).single();
         return exam(id);
     }
@@ -277,7 +277,7 @@ class CbtExamController {
                        selection = coalesce(upper(:sel), selection), randomize_questions = coalesce(:rq, randomize_questions), randomize_options = coalesce(:ro, randomize_options),
                        pass_mark = coalesce(:pm, pass_mark), attempt_limit = coalesce(:al, attempt_limit), security_mode = coalesce(upper(:sec), security_mode),
                        venue = coalesce(upper(:v), venue), violation_limit = coalesce(:vl, violation_limit), violation_action = coalesce(upper(:va), violation_action),
-                       second_session = coalesce(upper(:ss), second_session), starts_at = :sa, ends_at = :ea
+                       second_session = coalesce(upper(:ss), second_session), starts_at = :sa, ends_at = :ea, partial_credit = coalesce(:pc, partial_credit)
                  WHERE id = :id
                 """)
                 .param("t", in.title().trim()).param("i", blank(in.instructions()), Types.VARCHAR)
@@ -285,7 +285,7 @@ class CbtExamController {
                 .param("rq", in.randomizeQuestions(), Types.BOOLEAN).param("ro", in.randomizeOptions(), Types.BOOLEAN).param("pm", in.passMark(), Types.NUMERIC)
                 .param("al", in.attemptLimit(), Types.INTEGER).param("sec", in.securityMode(), Types.VARCHAR).param("v", in.venue(), Types.VARCHAR)
                 .param("vl", in.violationLimit(), Types.INTEGER).param("va", in.violationAction(), Types.VARCHAR).param("ss", in.secondSession(), Types.VARCHAR)
-                .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("id", id).update();
+                .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("pc", in.partialCredit(), Types.BOOLEAN).param("id", id).update();
         return exam(id);
     }
 

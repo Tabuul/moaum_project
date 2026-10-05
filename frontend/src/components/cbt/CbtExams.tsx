@@ -26,17 +26,17 @@ export const isoOf = (local: string) => (local ? new Date(local).toISOString() :
 export interface ExamForm {
   title: string; instructions: string; durationMinutes: string; selection: "FIXED" | "RANDOM"; totalQuestions: string; randomizeQuestions: boolean; randomizeOptions: boolean;
   passMark: string; attemptLimit: string; securityMode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB"; violationLimit: string; violationAction: "WARN" | "SUBMIT" | "TERMINATE";
-  secondSession: "CONTINUE" | "DENY"; startsAt: string; endsAt: string;
+  secondSession: "CONTINUE" | "DENY"; startsAt: string; endsAt: string; partialCredit: boolean;
 }
 export const EMPTY_FORM: ExamForm = {
   title: "", instructions: "", durationMinutes: "60", selection: "FIXED", totalQuestions: "0", randomizeQuestions: true, randomizeOptions: false, passMark: "40", attemptLimit: "1",
-  securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "",
+  securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "", partialCredit: false,
 };
 export const formBody = (f: ExamForm) => ({
   title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes) || 60, totalQuestions: Number(f.totalQuestions) || 0,
   selection: f.selection, randomizeQuestions: f.randomizeQuestions, randomizeOptions: f.randomizeOptions, passMark: Number(f.passMark) || 0, attemptLimit: Number(f.attemptLimit) || 1,
   securityMode: f.securityMode, venue: f.venue, violationLimit: Number(f.violationLimit) || 0, violationAction: f.violationAction, secondSession: f.secondSession,
-  startsAt: isoOf(f.startsAt), endsAt: isoOf(f.endsAt),
+  startsAt: isoOf(f.startsAt), endsAt: isoOf(f.endsAt), partialCredit: f.partialCredit,
 });
 
 /** the configuration fields, shared by the create form and the setup tab */
@@ -58,8 +58,9 @@ export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Parti
         <Field id="x-pass" label="Pass mark (%)"><input id="x-pass" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.passMark} onChange={(e) => set({ passMark: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
         <Field id="x-att" label="Attempts allowed"><input id="x-att" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.attemptLimit} onChange={(e) => set({ attemptLimit: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
       </div>
-      <div className="grid grid--4">
+      <div className="grid grid--5">
         <Field id="x-rq" label="Question order"><select id="x-rq" className="ctl" disabled={dis} value={f.randomizeQuestions ? "1" : "0"} onChange={(e) => set({ randomizeQuestions: e.target.value === "1" })}><option value="1">Shuffled per candidate</option><option value="0">As the paper lists them</option></select></Field>
+        <Field id="x-pc" label="Multiple-select marking" hint={f.partialCredit ? "Each right option earns a share, each wrong one costs a share, never below zero" : "The marks only for exactly the right options"}><select id="x-pc" className="ctl" disabled={dis} value={f.partialCredit ? "1" : "0"} onChange={(e) => set({ partialCredit: e.target.value === "1" })}><option value="0">All or nothing</option><option value="1">Partial credit</option></select></Field>
         <Field id="x-ro" label="Option order"><select id="x-ro" className="ctl" disabled={dis} value={f.randomizeOptions ? "1" : "0"} onChange={(e) => set({ randomizeOptions: e.target.value === "1" })}><option value="0">As authored</option><option value="1">Shuffled per candidate</option></select></Field>
         <Field id="x-sec" label="Security mode" hint={f.securityMode === "SECURE" ? "Requires the approved secure/kiosk CBT environment" : "Browser monitoring: tabs, focus, fullscreen, network"}><select id="x-sec" className="ctl" disabled={dis} value={f.securityMode} onChange={(e) => set({ securityMode: e.target.value as ExamForm["securityMode"] })}><option value="STANDARD">Standard web CBT</option><option value="SECURE">Secure CBT / kiosk</option></select></Field>
         <Field id="x-venue" label="Venue"><select id="x-venue" className="ctl" disabled={dis} value={f.venue} onChange={(e) => set({ venue: e.target.value as ExamForm["venue"] })}><option value="REMOTE">Remote CBT</option><option value="LAB">CBT laboratory</option></select></Field>
