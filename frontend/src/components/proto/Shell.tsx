@@ -175,6 +175,7 @@ export const ROUTES: Record<string, string> = {
   "t/legacygst": "/finance/legacy-gst",
   "t/nelmatch": "/finance/nelfund?tab=match",
   "t/nelstatus": "/finance/nelfund?tab=status",
+  "t/nellegacy": "/finance/nelfund?tab=legacy",
   "s/courses": "/student/courses",
   "t/lms": "/lms",
   "r/upload": "/lms?tab=upload",

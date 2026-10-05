@@ -664,6 +664,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/fundsources", "icon": "card", "label": "Funding Sources" },
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
+          { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
           { "id": "t/nelmatch", "icon": "swap", "label": "Match a Remittance" },
           { "id": "t/pv", "icon": "doc", "label": "Payment Vouchers", "badge": "1" },
           { "id": "t/payroll", "icon": "card", "label": "Payroll", "badge": "3" },

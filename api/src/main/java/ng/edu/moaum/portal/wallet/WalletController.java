@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -54,7 +55,11 @@ class WalletController {
     }
 
     public record WithdrawIn(String session, BigDecimal amount, @NotBlank @Size(max = 120) String bank,
-                             @NotBlank @Size(max = 40) String accountNo, @NotBlank @Size(max = 160) String accountName) {
+                             @NotBlank @Size(max = 40) String accountNo, @NotBlank @Size(max = 160) String accountName, @Size(max = 40) String source) {
+    }
+
+    /** V327: the wallet policy — the order the sources settle a charge in, whether a top-up may exceed the shortfall, which natures may be refunded */
+    public record PolicyIn(List<String> applyOrder, Boolean topupOverShortfall, List<String> refundNatures) {
     }
 
     public record PayIn(@Size(max = 60) String ref) {
@@ -94,7 +99,7 @@ class WalletController {
     @PostMapping("/api/v1/me/wallet/withdrawal")
     @PreAuthorize("hasAuthority('OFFICE_student')")
     Map<String, Object> withdraw(Authentication auth, @Valid @RequestBody WithdrawIn body) {
-        return service.requestWithdrawal(student(auth), body.session(), body.amount(), body.bank(), body.accountNo(), body.accountName());
+        return service.requestWithdrawal(student(auth), body.session(), body.amount(), body.bank(), body.accountNo(), body.accountName(), body.source());
     }
 
     /* ── the Bursary ── */
@@ -108,6 +113,33 @@ class WalletController {
     /** a student's wallet ledger, by matriculation or admission number — the Bursary's and the audit directorate's read.
      *  The number is a query parameter, not a path segment: a matriculation number carries slashes, and an encoded
      *  slash (%2F) in a path is rejected by the request firewall as a bad request. */
+    /** V327: the Bursary's figures over the funded population — received, funded, applied, remaining, refundable, refunds, old-portal money, who is short */
+    @GetMapping("/api/v1/nelfund/figures")
+    @PreAuthorize(READERS)
+    Map<String, Object> figures(@RequestParam(required = false) String session) {
+        return service.figures(session);
+    }
+
+    /** V327: the funded population, a page at a time: ALL, SHORTFALL, TOPUP, REFUNDABLE, PAID_BEFORE_FUND, REFUND_PENDING, LEGACY, OUTSTANDING */
+    @GetMapping("/api/v1/nelfund/students")
+    @PreAuthorize(READERS)
+    Map<String, Object> students(@RequestParam(required = false) String session, @RequestParam(required = false) String q,
+                                 @RequestParam(required = false) String filter, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size) {
+        return service.students(session, q, filter, page, size);
+    }
+
+    @GetMapping("/api/v1/nelfund/policy")
+    @PreAuthorize(READERS)
+    Map<String, Object> policy() {
+        return service.policy();
+    }
+
+    @PutMapping("/api/v1/nelfund/policy")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_super')")
+    Map<String, Object> setPolicy(@RequestBody PolicyIn in) {
+        return service.setPolicy(in.applyOrder(), in.topupOverShortfall(), in.refundNatures());
+    }
+
     @GetMapping("/api/v1/nelfund/student/statement")
     @PreAuthorize(READERS)
     Map<String, Object> studentLedger(@RequestParam String number, @RequestParam(required = false) String session) {

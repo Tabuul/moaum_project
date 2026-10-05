@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 173
+\set EXPECTED 175
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2571,9 +2571,9 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'academic', true);
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
     VALUES (s3, 'MOAUM/ADM/99/990120', 'MOAUM/CHK/99/0120', 'CHECKFUND', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
-    -- a scholarship (a grant) of 150,000 credited by the Bursary, tagged with its source
+    -- the Fund's 150,000 (a loan) credited by the Bursary, tagged with its source — V327: a leftover grant is never refunded to the student, a leftover loan is
     PERFORM set_config('moaum.actor_office', 'bursar', true);
-    v_entry := finance.credit_wallet(s3, '9999/0000', 150000, 'CHECK scholarship', 'SCHOLARSHIP');
+    v_entry := finance.credit_wallet(s3, '9999/0000', 150000, 'CHECK NELFUND remittance', 'NELFUND');
     -- not yet clear: the 100,000 charge is outstanding, so a withdrawal is refused
     BEGIN PERFORM finance.request_withdrawal(s3, '9999/0000', NULL, 'Bank', '0123456789', 'CHECKFUND Invented'); EXCEPTION WHEN OTHERS THEN ok_early := true; END;
     -- the student applies the wallet to clear the fee; 50,000 is left over
@@ -2595,7 +2595,7 @@ BEGIN
     SELECT * INTO w FROM finance.wallet_withdrawal WHERE id = w.id;
     PERFORM pg_temp.assert('Funding carries its source (NELFUND is a loan), a credit is tagged, and a wallet balance withdraws to a bank only after fees clear, capped, and under two people',
         (SELECT nature FROM finance.funding_source WHERE code = 'NELFUND') = 'LOAN'
-        AND (SELECT source_code FROM finance.wallet_entry WHERE id = v_entry) = 'SCHOLARSHIP'
+        AND (SELECT source_code FROM finance.wallet_entry WHERE id = v_entry) = 'NELFUND'
         AND ok_early AND elig.eligible AND v_bal = 50000 AND ok_over AND ok_samepay
         AND w.state = 'PAID' AND finance.wallet_balance(s3) = 0,
         format('early_refused=%s eligible=%s bal=%s over_refused=%s samepay_refused=%s state=%s final=%s',
@@ -4388,6 +4388,143 @@ BEGIN
         format('state=%s/%s gst=%s/%s school=%s/%s base_left=%s other=%s first=%s/%s/%s/%s again=%s/%s/%s sems=%s',
                v_state, v_source, v_gst_ref, v_gst_purpose, v_school, v_sems, v_base_left, v_other,
                res.cleared, res.corrected, res.duplicates, res.rows, again.cleared, again.corrected, again.duplicates, v_sem_words));
+END $$;
+
+-- ── 174. V327: the wallet keeps every naira to its source — a top-up only for the shortfall, the charge settled source by source, a refund only of the Fund's money that arrived after the fees were paid, never a grant ──
+DO $$
+DECLARE s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); who uuid := gen_random_uuid(); two uuid := gen_random_uuid(); three uuid := gen_random_uuid();
+        e1 record; e2 record; e3 record; r_above text; r_none text; r_src text; r_nosrc text; r_over text; ref1 text; ref2 text; v_exp1 boolean; v_apply text; pos record;
+        v_nel_applied numeric; v_self_applied numeric; v_avail numeric; w record; wd finance.wallet_withdrawal; v_nel_after numeric; v_grant numeric; v_bal numeric; v_refunded numeric; v_note text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s1, 'MOAUM/ADM/99/990174', 'MOAUM/CHK/99/0174', 'CHECKSOURCE', 'Invented One', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+            (s2, 'MOAUM/ADM/99/990175', 'MOAUM/CHK/99/0175', 'CHECKSOURCE', 'Invented Two', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+            (s3, 'MOAUM/ADM/99/990176', 'MOAUM/CHK/99/0176', 'CHECKSOURCE', 'Invented Three', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        -- a hand credit of no source is refused
+        BEGIN PERFORM finance.credit_wallet(s3, '9999/0000', 10000, 'a credit from nowhere'); EXCEPTION WHEN check_violation THEN r_nosrc := split_part(SQLERRM, ':', 1); END;
+        -- s1: the Fund remits 60,000 against a charge of 100,000 — the shortfall is 40,000, and a top-up is for exactly that
+        PERFORM finance.credit_wallet(s1, '9999/0000', 60000, 'NELFUND remittance NLF/9999/174', 'NELFUND');
+        SELECT * INTO e1 FROM finance.topup_eligibility(s1, '9999/0000');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        BEGIN ref1 := finance.wallet_topup_reference(s1, '9999/0000', 50000); EXCEPTION WHEN check_violation THEN r_above := split_part(SQLERRM, ':', 1); END;
+        ref1 := finance.wallet_topup_reference(s1, '9999/0000', NULL);
+        ref2 := finance.wallet_topup_reference(s1, '9999/0000', 40000);   -- a second request retires the first
+        SELECT expires_at <= now() INTO v_exp1 FROM finance.payment_reference WHERE reference = ref1;
+        SELECT note INTO v_note FROM finance.payment_reference WHERE reference = ref2;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment(ref2, 'WebPAY', 'check: the top-up paid');
+        SELECT * INTO e2 FROM finance.topup_eligibility(s1, '9999/0000');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        BEGIN PERFORM finance.wallet_topup_reference(s1, '9999/0000', 1000); EXCEPTION WHEN check_violation THEN r_none := split_part(SQLERRM, ':', 1); END;
+        -- applied: the loan first, then the student's own money; each source's share on its own entry
+        v_apply := finance.apply_wallet(s1, '9999/0000', NULL);
+        SELECT * INTO pos FROM finance.position(s1, '9999/0000');
+        SELECT coalesce(sum(amount) FILTER (WHERE source_code = 'NELFUND'), 0), coalesce(sum(amount) FILTER (WHERE source_code = 'SELF'), 0)
+          INTO v_nel_applied, v_self_applied FROM finance.wallet_entry WHERE student_id = s1 AND kind = 'APPLIED' AND reference = v_apply;
+        SELECT coalesce(sum(available), 0) INTO v_avail FROM finance.wallet_balances(s1);
+        SELECT * INTO e3 FROM finance.topup_eligibility(s1, '9998/9999');
+        -- s2 pays the whole charge personally; then the Fund's 100,000 lands, and a 20,000 scholarship with it
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment(finance.new_reference(s2, '9999/0000', 100000, NULL), 'WebPAY', 'check: paid personally');
+        PERFORM finance.credit_wallet(s2, '9999/0000', 100000, 'NELFUND remittance NLF/9999/175', 'NELFUND');
+        PERFORM finance.credit_wallet(s2, '9999/0000', 20000, 'State scholarship', 'SCHOLARSHIP');
+        SELECT * INTO w FROM finance.withdrawal_eligibility(s2, '9999/0000');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        BEGIN PERFORM finance.request_withdrawal(s2, '9999/0000', 150000, 'Check Bank', '0123456789', 'CHECKSOURCE INVENTED TWO', 'NELFUND'); EXCEPTION WHEN check_violation THEN r_over := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.request_withdrawal(s2, '9999/0000', 20000, 'Check Bank', '0123456789', 'CHECKSOURCE INVENTED TWO', 'SCHOLARSHIP'); EXCEPTION WHEN check_violation THEN r_src := split_part(SQLERRM, ':', 1); END;
+        wd := finance.request_withdrawal(s2, '9999/0000', NULL, 'Check Bank', '0123456789', 'CHECKSOURCE INVENTED TWO', NULL);
+        PERFORM set_config('moaum.actor_id', two::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        wd := finance.approve_withdrawal(wd.id);
+        PERFORM set_config('moaum.actor_id', three::text, true);
+        wd := finance.pay_withdrawal(wd.id, 'TRF-CHECK-174');
+        SELECT coalesce(sum(available) FILTER (WHERE source_code = 'NELFUND'), 0), coalesce(sum(refunded) FILTER (WHERE source_code = 'NELFUND'), 0), coalesce(sum(available) FILTER (WHERE source_code = 'SCHOLARSHIP'), 0)
+          INTO v_nel_after, v_refunded, v_grant FROM finance.wallet_balances(s2);
+        v_bal := finance.wallet_balance(s2);
+        RAISE EXCEPTION 'the V327 wallet check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The wallet keeps every naira to its source: a top-up is refused above the shortfall and when nothing is short, an earlier top-up reference is retired, the charge settles loan first then own money on separate entries, a credit of no source is refused, and a refund is of the Fund''s money that arrived after the fees were paid — never the scholarship',
+        r_nosrc = 'WALLET_SOURCE_REQUIRED'
+        AND e1.allowed AND e1.reason = 'ALLOWED' AND e1.due = 100000 AND e1.outstanding = 100000 AND e1.wallet_available = 60000 AND e1.nelfund_available = 60000 AND e1.shortfall = 40000 AND e1.max_topup = 40000
+        AND r_above = 'WALLET_TOPUP_ABOVE_SHORTFALL' AND ref1 LIKE 'MOAUM-FEE-%' AND v_exp1 AND v_note LIKE 'Shortfall top-up: fees 100000%'
+        AND NOT e2.allowed AND e2.reason = 'NO_SHORTFALL' AND e2.wallet_available = 100000 AND r_none = 'WALLET_TOPUP_NOT_REQUIRED'
+        AND pos.paid = 100000 AND pos.paid_in_full AND v_nel_applied = 60000 AND v_self_applied = 40000 AND v_avail = 0
+        AND NOT e3.allowed AND e3.reason = 'NO_CHARGE_STATED'
+        AND w.eligible AND w.nelfund_refundable = 100000 AND w.self_refundable = 0 AND w.grant_held = 20000 AND w.nelfund_after_settlement
+        AND r_over = 'WALLET_REFUND_ABOVE_REFUNDABLE' AND r_src = 'WALLET_REFUND_SOURCE'
+        AND wd.state = 'PAID' AND wd.source_code = 'NELFUND' AND wd.amount = 100000
+        AND v_nel_after = 0 AND v_refunded = 100000 AND v_grant = 20000 AND v_bal = 20000,
+        format('nosrc=%s e1=%s/%s/%s/%s/%s above=%s exp1=%s note=%s e2=%s/%s none=%s pos=%s/%s applied=%s/%s avail=%s e3=%s w=%s/%s/%s/%s/%s over=%s src=%s wd=%s/%s/%s after=%s/%s/%s bal=%s',
+               r_nosrc, e1.reason, e1.due, e1.wallet_available, e1.shortfall, e1.max_topup, r_above, v_exp1, left(v_note, 40), e2.reason, e2.wallet_available, r_none, pos.paid, pos.paid_in_full,
+               v_nel_applied, v_self_applied, v_avail, e3.reason, w.eligible, w.nelfund_refundable, w.self_refundable, w.grant_held, w.nelfund_after_settlement, r_over, r_src,
+               wd.state, wd.source_code, wd.amount, v_nel_after, v_refunded, v_grant, v_bal));
+END $$;
+
+-- ── 175. V327: the old portal's NELFUND payments are staged once, matched by identifiers never by name, posted to the wallet once for the session they name, and what cannot be reconciled waits for an officer ──
+DO $$
+DECLARE s5 uuid := gen_random_uuid(); s6 uuid := gen_random_uuid(); s7 uuid := gen_random_uuid(); who uuid := gen_random_uuid(); imp uuid; imp2 uuid; st record; st2 record; ap record; ap2 record;
+        r1 text; r2 text; r3 text; r4 text; r5 text; v_cands int; v_credited numeric; v_session text; v_origin text; v_legacy_ref text; r_conflict text; rc4 finance.legacy_nelfund_reconciliation; ap3 record; v_s6 numeric; v_summary record;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9997/9998', date '9997-10-01', date '9998-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s5, 'MOAUM/ADM/97/000005', 'MOAUM/CHK/97/0005', '97000005ZB', 'ZZCHKNELA', 'Invented', 'C00023', 'UTME', '9997/9998', 100, 100, 'ACTIVE', now()),
+            (s6, 'MOAUM/ADM/97/000006', 'MOAUM/CHK/97/0006', '97000006ZB', 'ZZCHKNELB', 'Invented', 'C00023', 'UTME', '9997/9998', 100, 100, 'ACTIVE', now()),
+            (s7, 'MOAUM/ADM/97/000007', 'MOAUM/CHK/97/0007', '97000007ZB', 'ZZCHKNELC', 'Invented', 'C00023', 'UTME', '9997/9998', 100, 100, 'ACTIVE', now());
+        imp := (finance.legacy_nelfund_new_import('nelfund-old.xlsx', '9997/9998', 'check')).id;
+        SELECT * INTO st FROM finance.legacy_nelfund_stage(imp, jsonb_build_array(
+            jsonb_build_object('reference', 'NEL-1', 'matric', 'MOAUM/CHK/97/0005', 'amount', '150,000.00', 'paidAt', '20/11/9997', 'session', '9997/9998', 'status', 'SUCCESS'),
+            jsonb_build_object('reference', 'NEL-2', 'matric', 'MOAUM/CHK/97/0005', 'amount', '50000', 'paidAt', '9997-12-01', 'session', '9997/9998', 'status', 'FAILED'),
+            jsonb_build_object('reference', 'NEL-3', 'matric', 'MOAUM/CHK/97/0006', 'jamb', '97000007ZB', 'amount', '80000', 'paidAt', '9997-12-02', 'session', '9997/9998', 'status', 'PAID'),
+            jsonb_build_object('reference', 'NEL-4', 'name', 'ZZCHKNELB Invented', 'amount', '90000', 'paidAt', '9997-12-03', 'session', '9997/9998', 'status', 'SUCCESS'),
+            jsonb_build_object('reference', 'NEL-5', 'matric', 'MOAUM/CHK/97/0005', 'amount', '70000', 'paidAt', '9998-03-01', 'status', 'SUCCESS'),
+            jsonb_build_object('reference', 'NEL-1', 'matric', 'MOAUM/CHK/97/0005', 'amount', '150000', 'session', '9997/9998', 'status', 'SUCCESS')));
+        PERFORM finance.legacy_nelfund_match(imp);
+        PERFORM finance.legacy_nelfund_validate(imp);
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') || '/' || coalesce(rc.match_method, '-') INTO r1 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-1';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') INTO r2 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-2';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') INTO r3 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-3';
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-'), jsonb_array_length(coalesce(rc.candidates, '[]')) INTO r4, v_cands FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-4';
+        SELECT rc.status || '/' || coalesce(p.session, '-') INTO r5 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-5';
+        SELECT * INTO ap FROM finance.legacy_nelfund_apply(imp);
+        SELECT * INTO ap2 FROM finance.legacy_nelfund_apply(imp);   -- twice changes nothing
+        SELECT rc.status || '/' || coalesce(rc.reason_code, '-') || '/' || coalesce(rc.match_method, '-') INTO r1 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-1';
+        SELECT rc.status || '/' || coalesce(p.session, '-') INTO r5 FROM finance.legacy_nelfund_payment p JOIN finance.legacy_nelfund_reconciliation rc ON rc.payment_id = p.id WHERE p.source_reference = 'NEL-5';
+        SELECT coalesce(sum(credited), 0) INTO v_credited FROM finance.wallet_balances_session(s5, '9997/9998') WHERE source_code = 'NELFUND';
+        SELECT e.session, e.origin, e.legacy_reference INTO v_session, v_origin, v_legacy_ref FROM finance.wallet_statement(s5) e WHERE e.legacy_reference = 'NEL-1';
+        -- the same file again: nothing is staged twice
+        imp2 := (finance.legacy_nelfund_new_import('nelfund-old.xlsx', '9997/9998', 'check again')).id;
+        SELECT * INTO st2 FROM finance.legacy_nelfund_stage(imp2, jsonb_build_array(
+            jsonb_build_object('reference', 'NEL-1', 'matric', 'MOAUM/CHK/97/0005', 'amount', '150000', 'session', '9997/9998', 'status', 'SUCCESS'),
+            jsonb_build_object('reference', 'NEL-5', 'matric', 'MOAUM/CHK/97/0005', 'amount', '70000', 'session', '9997/9998', 'status', 'SUCCESS')));
+        -- the officer: the ambiguous row cannot be moved past its identifiers; the name-only row is matched on evidence and then posted
+        BEGIN PERFORM finance.legacy_nelfund_resolve((SELECT id FROM finance.legacy_nelfund_payment WHERE source_reference = 'NEL-3'), 'MATCH', s6, 'guessing'); EXCEPTION WHEN check_violation THEN r_conflict := split_part(SQLERRM, ':', 1); END;
+        rc4 := finance.legacy_nelfund_resolve((SELECT id FROM finance.legacy_nelfund_payment WHERE source_reference = 'NEL-4'), 'MATCH', s6, 'identity confirmed with the old portal''s receipt in hand');
+        SELECT * INTO ap3 FROM finance.legacy_nelfund_apply(imp);
+        SELECT coalesce(sum(credited), 0) INTO v_s6 FROM finance.wallet_balances_session(s6, '9997/9998') WHERE source_code = 'NELFUND';
+        SELECT * INTO v_summary FROM finance.legacy_nelfund_summary(imp, NULL);
+        RAISE EXCEPTION 'the V327 legacy check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('Old-portal NELFUND payments are staged once (the file''s repeat and a second upload stage nothing), matched by identifiers only (a name is a suggestion, two students a review), a failed payment is never credited, a session is read from the row or its date and kept on the credit, posting is once, and an officer resolves on evidence but never past the identifiers',
+        st.total_rows = 6 AND st.staged = 5 AND st.already_staged = 1
+        AND r1 = 'POSTED/-/MATRIC_NO' AND r2 = 'REJECTED/PAYMENT_FAILED' AND r3 = 'REQUIRES_REVIEW/AMBIGUOUS_STUDENT' AND r4 = 'UNMATCHED/STUDENT_NOT_FOUND' AND v_cands = 1 AND r5 = 'POSTED/9997/9998'
+        AND ap.posted = 2 AND ap.amount = 220000 AND ap2.posted = 0 AND v_credited = 220000 AND v_session = '9997/9998' AND v_origin = 'OLD_PORTAL' AND v_legacy_ref = 'NEL-1'
+        AND st2.staged = 0 AND st2.already_staged = 2
+        AND r_conflict = 'LEGACY_IDENTIFIER_CONFLICT' AND rc4.status = 'MATCHED' AND rc4.match_method = 'MANUAL' AND ap3.posted = 1 AND v_s6 = 90000
+        AND v_summary.posted = 3 AND v_summary.rejected = 1 AND v_summary.requires_review = 1 AND v_summary.amount_posted = 310000,
+        format('stage=%s/%s/%s r1=%s r2=%s r3=%s r4=%s/%s r5=%s apply=%s/%s again=%s credited=%s session=%s origin=%s ref=%s stage2=%s/%s conflict=%s rc4=%s/%s ap3=%s s6=%s summary=%s/%s/%s/%s',
+               st.total_rows, st.staged, st.already_staged, r1, r2, r3, r4, v_cands, r5, ap.posted, ap.amount, ap2.posted, v_credited, v_session, v_origin, v_legacy_ref, st2.staged, st2.already_staged,
+               r_conflict, rc4.status, rc4.match_method, ap3.posted, v_s6, v_summary.posted, v_summary.rejected, v_summary.requires_review, v_summary.amount_posted));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

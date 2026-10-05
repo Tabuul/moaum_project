@@ -41,17 +41,67 @@ public class WalletService {
         out.put("status", repo.status(student).orElse(null));
         out.put("eligibility", repo.eligibility(student, session));
         out.put("withdrawal", repo.myWithdrawal(student).orElse(null));
+        // V327: every naira to its source, the top-up only for a shortfall, the refund only of what may be refunded
+        out.put("balances", repo.balances(student));
+        out.put("sessionBalances", repo.balancesSession(student, session));
+        out.put("topup", repo.topupEligibility(student, session));
         return out;
     }
 
     @Transactional
     public Map<String, Object> requestWithdrawal(UUID student, String sessionAsked, BigDecimal amount,
-                                                 String bank, String accountNo, String accountName) {
+                                                 String bank, String accountNo, String accountName, String source) {
         if (bank == null || bank.isBlank() || accountNo == null || accountNo.isBlank() || accountName == null || accountName.isBlank()) {
             throw new DomainRuleViolation("WAL_BANK", "A withdrawal names the bank, the account number and the account name.",
                     new DomainRuleViolation.Remedy("Enter your own bank account details.", "You"));
         }
-        return repo.requestWithdrawal(student, session(sessionAsked), amount, bank.trim(), accountNo.trim(), accountName.trim());
+        return repo.requestWithdrawal(student, session(sessionAsked), amount, bank.trim(), accountNo.trim(), accountName.trim(),
+                source == null || source.isBlank() ? null : source.trim().toUpperCase());
+    }
+
+    /** V327: the Bursary's figures and the funded population, a page at a time */
+    @Transactional(readOnly = true)
+    public Map<String, Object> figures(String sessionAsked) {
+        String session = session(sessionAsked);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("figures", repo.figures(session));
+        out.put("policy", repo.policy());
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> students(String sessionAsked, String q, String filter, int page, int size) {
+        String session = session(sessionAsked);
+        int sz = Math.max(1, Math.min(size, 500)); int pg = Math.max(1, page);
+        String qq = q == null || q.isBlank() ? null : q.trim();
+        String f = filter == null || filter.isBlank() ? "ALL" : filter.trim().toUpperCase();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("filter", f);
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("total", repo.studentRowCount(session, qq, f));
+        out.put("rows", repo.studentRows(session, qq, f, sz, (pg - 1) * sz));
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> policy() {
+        return repo.policy();
+    }
+
+    @Transactional
+    public Map<String, Object> setPolicy(List<String> order, Boolean over, List<String> refund) {
+        if (order != null && (order.size() != 3 || !order.containsAll(List.of("LOAN", "GRANT", "SELF")))) {
+            throw new DomainRuleViolation("WAL_POLICY_ORDER", "The order names each of LOAN, GRANT and SELF once.",
+                    new DomainRuleViolation.Remedy("Say which nature settles a charge first, second and last.", "Bursar"));
+        }
+        if (refund != null && refund.contains("GRANT")) {
+            throw new DomainRuleViolation("WAL_POLICY_REFUND", "A grant is never refunded to the student through the wallet.",
+                    new DomainRuleViolation.Remedy("A scholarship or a sponsor's money goes back to its giver by the Bursary's own refund, not from the student's wallet.", "Bursar"));
+        }
+        return repo.setPolicy(order == null ? null : String.join(",", order), over, refund == null ? null : String.join(",", refund));
     }
 
     @Transactional

@@ -34,6 +34,45 @@ class WalletRepository {
         return jdbc.sql("SELECT * FROM finance.wallet_statement(:s)").param("s", student).query().listOfRows();
     }
 
+    /** V327: the wallet by source — credited, applied, reversed, refunded, held for a pending refund, available */
+    List<Map<String, Object>> balances(UUID student) {
+        return jdbc.sql("SELECT * FROM finance.wallet_balances(:s)").param("s", student).query().listOfRows();
+    }
+
+    List<Map<String, Object>> balancesSession(UUID student, String session) {
+        return jdbc.sql("SELECT * FROM finance.wallet_balances_session(:s, :n)").param("s", student).param("n", session).query().listOfRows();
+    }
+
+    /** V327: whether a top-up is allowed for the session and why not otherwise, with the whole calculation */
+    Map<String, Object> topupEligibility(UUID student, String session) {
+        return jdbc.sql("SELECT * FROM finance.topup_eligibility(:s, :n)").param("s", student).param("n", session).query().singleRow();
+    }
+
+    /** V327: the policy the Bursar keeps */
+    Map<String, Object> policy() {
+        return jdbc.sql("SELECT apply_order::text AS apply_order, topup_over_shortfall, refund_natures::text AS refund_natures, updated_at, updated_office FROM finance.wallet_setting WHERE one").query().singleRow();
+    }
+
+    Map<String, Object> setPolicy(String order, Boolean over, String refund) {
+        return jdbc.sql("SELECT apply_order::text AS apply_order, topup_over_shortfall, refund_natures::text AS refund_natures, updated_at, updated_office FROM finance.set_wallet_policy(CASE WHEN :o::text IS NULL THEN NULL ELSE string_to_array(:o, ',') END, :v, CASE WHEN :r::text IS NULL THEN NULL ELSE string_to_array(:r, ',') END)")
+                .param("o", order, Types.VARCHAR).param("v", over, Types.BOOLEAN).param("r", refund, Types.VARCHAR).query().singleRow();
+    }
+
+    /** V327: the Bursary's figures over the funded population of a session */
+    Map<String, Object> figures(String session) {
+        return jdbc.sql("SELECT * FROM finance.nelfund_desk_figures(:n)").param("n", session).query().singleRow();
+    }
+
+    List<Map<String, Object>> studentRows(String session, String q, String filter, int limit, int offset) {
+        return jdbc.sql("SELECT * FROM finance.nelfund_student_rows(:n, :q, :f) LIMIT :l OFFSET :o")
+                .param("n", session).param("q", q, Types.VARCHAR).param("f", filter, Types.VARCHAR).param("l", limit).param("o", offset).query().listOfRows();
+    }
+
+    long studentRowCount(String session, String q, String filter) {
+        return jdbc.sql("SELECT count(*) FROM finance.nelfund_student_rows(:n, :q, :f)")
+                .param("n", session).param("q", q, Types.VARCHAR).param("f", filter, Types.VARCHAR).query(Long.class).single();
+    }
+
     Map<String, Object> position(UUID student, String session) {
         return jdbc.sql("SELECT * FROM finance.position(:s, :n)").param("s", student).param("n", session).query().singleRow();
     }
@@ -85,15 +124,15 @@ class WalletRepository {
         return jdbc.sql("SELECT * FROM finance.withdrawal_eligibility(:s, :n)").param("s", student).param("n", session).query().singleRow();
     }
 
-    Map<String, Object> requestWithdrawal(UUID student, String session, BigDecimal amount, String bank, String acctNo, String acctName) {
-        return jdbc.sql("SELECT * FROM finance.request_withdrawal(:s, :n, :a, :b, :no, :nm)")
+    Map<String, Object> requestWithdrawal(UUID student, String session, BigDecimal amount, String bank, String acctNo, String acctName, String source) {
+        return jdbc.sql("SELECT * FROM finance.request_withdrawal(:s, :n, :a, :b, :no, :nm, :src)")
                 .param("s", student).param("n", session).param("a", amount, Types.NUMERIC)
-                .param("b", bank).param("no", acctNo).param("nm", acctName).query().singleRow();
+                .param("b", bank).param("no", acctNo).param("nm", acctName).param("src", source, Types.VARCHAR).query().singleRow();
     }
 
     Optional<Map<String, Object>> myWithdrawal(UUID student) {
         return jdbc.sql("""
-                SELECT id, session, amount, bank_name, account_no, account_name, state, reason,
+                SELECT id, session, amount, coalesce(source_code, 'NELFUND') AS source_code, bank_name, account_no, account_name, state, reason,
                        requested_at, decided_at, paid_at, paid_ref
                   FROM finance.wallet_withdrawal WHERE student_id = :s ORDER BY requested_at DESC LIMIT 1
                 """).param("s", student).query().listOfRows().stream().findFirst();

@@ -186,6 +186,10 @@ export const TITLES: Record<string, [string, string]> = {
     "NELFUND applicants",
     "Approved, not approved, and still with the Fund"
   ],
+  "t/nellegacy": [
+    "Old NELFUND payments",
+    "The old portal's NELFUND payments reconciled onto the wallets — staged once, matched by identifiers, posted for the session they name",
+  ],
   "t/feesetup": [
     "Fee Setup and Schedule",
     "Set the approved fees, and see the versioned schedule"

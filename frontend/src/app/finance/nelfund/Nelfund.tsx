@@ -7,7 +7,11 @@ import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { parseRows, type NelfundDesk, type FundingReport } from "@/lib/wallet";
+import { parseRows, type NelfundDesk, type FundingReport, type NelfundFigures, type NelfundStudentRow, type WalletPolicy } from "@/lib/wallet";
+import type { NelfundLegacyPage } from "@/lib/legacy-nelfund";
+import { NelfundOverview } from "@/components/nelfund/NelfundOverview";
+import { NelfundStudents } from "@/components/nelfund/NelfundStudents";
+import { LegacyNelfund } from "@/components/nelfund/LegacyNelfund";
 import { buildXlsx, xlsxRows } from "@/lib/xlsx";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -21,7 +25,10 @@ const LKIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT
 
 const NAT: Record<string, [string, "ok" | "info" | "grey"]> = { LOAN: ["Loan", "info"], GRANT: ["Grant", "ok"], SELF: ["Own money", "grey"] };
 
-export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: NelfundDesk; report: FundingReport | null; tab: string; sessions: string[]; actingOffice: string | null }) {
+export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null, students = null, legacy = null }: {
+  d: NelfundDesk; report: FundingReport | null; tab: string; sessions: string[]; actingOffice: string | null;
+  figures?: { figures: NelfundFigures; policy: WalletPolicy } | null; students?: { rows: NelfundStudentRow[]; total: number; page: number; size: number; filter: string; q: string } | null; legacy?: NelfundLegacyPage | null;
+}) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const bursary = ["bursar", "admin", "super"].includes(actingOffice ?? "");
@@ -110,13 +117,18 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
         <Field id="nf-s" label="Session">
           <select id="nf-s" className="ctl" style={{ minWidth: 160 }} value={d.session} onChange={(e) => go(tab, e.target.value)}>{(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
         <Tabs
-          items={[["batches", "NELFUND remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"], ["withdrawals", `Withdrawals${waiting ? ` (${waiting})` : ""}`], ["sources", "Sources"], ["report", "Report"]].map(([k, l]) => ({ id: k, label: l }))}
+          items={[["overview", "Overview"], ["students", "Students"], ["batches", "NELFUND remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"], ["withdrawals", `Refunds${waiting ? ` (${waiting})` : ""}`], ["legacy", "Old portal"], ["sources", "Sources"], ["report", "Report"]].map(([k, l]) => ({ id: k, label: l }))}
           value={tab}
           onChange={(k) => go(k)}
         />
       </div></div>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
+
+      {tab === "overview" ? (figures ? <NelfundOverview figures={figures.figures} policy={figures.policy} session={d.session} canSet={["bursar", "super"].includes(actingOffice ?? "")} onStudents={(f) => queryNav(`/finance/nelfund?tab=students&session=${encodeURIComponent(d.session)}&filter=${f}`)} /> : <Note kind="info" title="Loading the figures…">The figures are computed over the funded population of {d.session}.</Note>) : null}
+      {tab === "students" ? (students ? <NelfundStudents rows={students.rows} total={Number(students.total)} page={Number(students.page)} size={Number(students.size)} filter={students.filter} q={students.q} session={d.session}
+        onNav={(p) => queryNav(`/finance/nelfund?tab=students&session=${encodeURIComponent(d.session)}&filter=${encodeURIComponent(p.filter ?? students.filter)}&q=${encodeURIComponent(p.q ?? students.q)}&page=${p.page ?? 1}`)} /> : null) : null}
+      {tab === "legacy" ? (legacy ? <LegacyNelfund data={legacy} canAct={bursary} session={d.session} /> : null) : null}
 
       {tab === "batches" ? (
         <>
