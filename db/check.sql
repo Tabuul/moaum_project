@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 176
+\set EXPECTED 177
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4622,6 +4622,52 @@ BEGIN
         format('offices=%s queues=%s rules=%s t1=%s/%s t2=%s/%s t3=%s/%s scope=%s noreason=%s transfer=%s/%s tickets=%s office=%s st3=%s/%s notoffice=%s after=%s/%s internal=%s wait=%s/%s reply=%s/%s swept=%s t2=%s/%s off=%s/%s hours=%s events=%s',
                n_offices, n_queues, n_rules, q1, a1 = a, q2, a2 = b, q3, a3 = c, v_scope, r_noreason, q1b, a1b = c, n_tickets, r_office, st3, o3, r_notoffice, st3b, o3b = c, n_internal,
                st2, w2, st2b, w2b, n_swept, st2c, a2c IS NULL, n_off, n_c, v_hours, ev));
+END $$;
+
+-- ── 177. V329: a course nothing carries is removed outright, with its offers and empty offerings; one a record carries is refused and ended instead ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_dept text; v_prog text; v_sess text; v_off uuid; msg text;
+        gone1 boolean; r_fk text; r_legacy text; kept2 boolean; o record; out2 text; out4 text; st2 text; gone4 boolean; n_offers int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT d.code, p.code INTO v_dept, v_prog FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code ORDER BY d.code, p.code LIMIT 1;
+        SELECT name INTO v_sess FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+        -- a bare course: removed outright, its programme offer with it
+        PERFORM catalogue.create_course('ZZQ 901', 'Check removal one', 3, 1, 100, v_dept, 'Core');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZQ 901', v_prog, 100, 'Core');
+        PERFORM catalogue.remove_course('ZZQ 901');
+        gone1 := NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZZQ 901');
+        SELECT count(*) INTO n_offers FROM catalogue.course_offer WHERE course_code = 'ZZQ 901';
+        -- a course with a timetabled offering: refused by the key that carries it
+        PERFORM catalogue.create_course('ZZQ 902', 'Check removal two', 3, 1, 100, v_dept, 'Core');
+        v_off := gen_random_uuid();
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_off, 'ZZQ 902', v_sess, 1);
+        INSERT INTO assessment.exam_timetable (offering_id, held_on, starts_at, ends_at, venue) VALUES (v_off, current_date + 30, '09:00', '11:00', 'Check Hall');
+        BEGIN PERFORM catalogue.remove_course('ZZQ 902'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_fk := msg; END;
+        kept2 := EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZZQ 902' AND state <> 'ENDED') AND EXISTS (SELECT 1 FROM catalogue.offering WHERE id = v_off);
+        -- a course an old-portal result names by code: refused too
+        PERFORM catalogue.create_course('ZZQ 903', 'Check removal three', 3, 1, 100, v_dept, 'Core');
+        INSERT INTO assessment.legacy_result_holding (session, semester, matric, course_code, raw) VALUES (v_sess, 1, 'MOAUM/CHK/00/0177', 'ZZQ 903', '{}'::jsonb);
+        BEGIN PERFORM catalogue.remove_course('ZZQ 903'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_legacy := msg; END;
+        -- the list: the carried one is ended, the bare one removed, each reported
+        PERFORM catalogue.create_course('ZZQ 904', 'Check removal four', 3, 1, 100, v_dept, 'Core');
+        FOR o IN SELECT * FROM catalogue.remove_or_end(ARRAY['ZZQ 902', 'ZZQ 904']) LOOP
+            IF o.code = 'ZZQ 902' THEN out2 := o.outcome; ELSIF o.code = 'ZZQ 904' THEN out4 := o.outcome; END IF;
+        END LOOP;
+        SELECT state INTO st2 FROM catalogue.course WHERE code = 'ZZQ 902';
+        gone4 := NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZZQ 904');
+        RAISE EXCEPTION 'the V329 removal check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A course nothing carries is removed outright with its programme offer; one with a timetabled offering or an old-portal result is refused (COURSE_CARRIED) and kept whole; the list removes the bare and ends the carried, reporting each',
+        gone1 AND n_offers = 0
+        AND r_fk LIKE 'COURSE_CARRIED: ZZQ 902 is carried by the examination timetable%' AND kept2
+        AND r_legacy LIKE 'COURSE_CARRIED: ZZQ 903 is named on 1 old-portal result%'
+        AND out2 = 'ENDED' AND st2 = 'ENDED' AND out4 = 'REMOVED' AND gone4,
+        format('gone1=%s offers=%s fk=%s kept2=%s legacy=%s out2=%s st2=%s out4=%s gone4=%s', gone1, n_offers, r_fk, kept2, r_legacy, out2, st2, out4, gone4));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -519,6 +519,22 @@ class CatalogueController {
         return Map.of("ended", ended, "dept", scope.scopedDept(dept));
     }
 
+    /** V329: the duplicate codes removed outright where nothing carries them, and ended where a record does;
+     *  the keeper of each group is untouched; what happened to each code is returned */
+    @PostMapping("/duplicates/remove")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> removeDuplicates(@RequestParam String dept) {
+        String d = scope.scopedDept(dept);
+        List<String> codes = jdbc.sql(DUPLICATES_CTE + "SELECT code FROM grp WHERE n > 1 AND rnk > 1 ORDER BY level, semester, norm_title, rnk")
+                .param("dept", d).query(String.class).list();
+        List<Map<String, Object>> outcomes = codes.isEmpty() ? List.of()
+                : jdbc.sql("SELECT * FROM catalogue.remove_or_end(string_to_array(:codes, E'\\n'))").param("codes", String.join("\n", codes)).query().listOfRows();
+        long removed = outcomes.stream().filter(o -> "REMOVED".equals(o.get("outcome"))).count();
+        long ended = outcomes.stream().filter(o -> "ENDED".equals(o.get("outcome"))).count();
+        return Map.of("dept", d, "removed", removed, "ended", ended, "outcomes", outcomes);
+    }
+
     /** every course offered to a programme, level by level — the view for the course-upload desk */
     @GetMapping("/offered")
     @PreAuthorize(READERS)
@@ -602,6 +618,21 @@ class CatalogueController {
     Map<String, Object> end(@PathVariable String code) {
         jdbc.sql("SELECT catalogue.end_course(:c)").param("c", code).query().singleRow();
         return Map.of("code", code, "state", "ENDED");
+    }
+
+    /** V329: a course removed outright — only when nothing carries it (no registration, result, score sheet, timetable,
+     *  question bank, deferment or old-portal result); otherwise the database refuses with COURSE_CARRIED and the course
+     *  is ended instead. For a code that never existed: a second upload of the same course, a mistyped code. */
+    @DeleteMapping("/courses/{code}")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> remove(@PathVariable String code) {
+        String c = code.trim().toUpperCase();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
+        assertHodOwns(dept);                                // an HOD removes only their own department's courses
+        jdbc.sql("SELECT catalogue.remove_course(:c)").param("c", c).query().singleRow();
+        return Map.of("code", c, "removed", true);
     }
 
     /** create the current-session offering for a live course, so it appears in registration at once.

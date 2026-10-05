@@ -84,11 +84,11 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
     queryNav(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
   }
 
-  async function send(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
+  async function send(path: string, body: unknown, reason: string, method: "POST" | "DELETE" = "POST"): Promise<Record<string, unknown> | null> {
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
@@ -155,23 +155,30 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       ]} />
 
       {toEnd.length ? (
-        <Panel title="Duplicate courses" right={`${toEnd.length} to end · the same course under more than one code`}>
+        <Panel title="Duplicate courses" right={`${toEnd.length} to end or remove · the same course under more than one code`}>
           <PBody>
-            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept; ending the others removes them from future registration (they stay on any transcript that already carries them).</div>
+            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept. A duplicate code that nothing carries — no registration, result or timetable — can be <b>removed completely</b>; one that a record already carries is <b>ended</b> instead and stays on the transcripts that carry it.</div>
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
-                <div className="row mt-1">
+                <div className="row row--base mt-1">
                   {g.codes.map((c) => (
-                    <span key={c.code} className="tnum t-sm">
-                      {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : <span className="ink-red" style={{ textDecoration: "line-through" }}>{c.code}</span>}
+                    <span key={c.code} className="tnum t-sm row row--inline row--tight">
+                      {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : (
+                        <>
+                          <span className="ink-red" style={{ textDecoration: "line-through" }}>{c.code}</span>
+                          <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue, with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
+                        </>
+                      )}
                     </span>
                   ))}
                 </div>
               </div>
             ))}
-            <div className="mt-3">
-              <Btn kind="urgent" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. This can be undone by the Board/Senate if needed.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
+            <div className="row row--base mt-3">
+              <Btn kind="urgent" disabled={busy} onClick={() => { if (window.confirm(`Remove ${toEnd.length} duplicate code${toEnd.length === 1 ? "" : "s"} completely? Each is deleted where nothing carries it, and ended where a registration, result or timetable does. The cleanest code in each group is kept.`)) void send(`/duplicates/remove?dept=${encodeURIComponent(dept)}`, {}, `Removed the duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.removed ?? 0)} duplicate code(s) removed completely, ${String(j.ended ?? 0)} ended because a record carries them`); }); }}>{busy ? "Working…" : `Remove ${toEnd.length} duplicate${toEnd.length === 1 ? "" : "s"} completely`}</Btn>
+              <Btn kind="secondary" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. This can be undone by the Board/Senate if needed.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
+              <span className="sub2">Remove deletes the code outright; End keeps it on the record with a date.</span>
             </div>
           </PBody>
         </Panel>
@@ -230,6 +237,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                   <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>
                 </>
               )}
+              <Btn kind="ghost" disabled={busy} title="Delete the course outright; only possible when no registration, result or timetable carries it" onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
             </div>,
           ])} texts={shown.map((c) => `${c.code} ${c.title} ${kindLabel(c.kind)}`)} />
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
