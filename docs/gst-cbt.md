@@ -93,6 +93,19 @@ them into 422 with the code: `CBT_EXAM_NOT_OPEN`, `CBT_COURSE_NOT_REGISTERED`, `
   heartbeat every 30 s, the tab hidden / window blurred / fullscreen exited / connection lost / copy and paste /
   context menu reported, the warning and final-warning dialogs, a second-sign-in screen, the ended screen.
 
+### The bank from a spreadsheet
+
+On a course's bank, **Import questions from a spreadsheet**: a template with worked examples (Topic, Question,
+Option A … H or one Options column split on `|` or `;`, Correct Answer, Kind, Difficulty, Marks, Explanation),
+the file's columns mapped by name, every row judged on the server (`POST /api/v1/cbt/questions/import`):
+the key read as a letter, a 1-based number, several letters for a multiple-select question, or the option's own
+text; the kind as given or implied (several keys → MULTI, True/False alone → TRUE_FALSE, else MCQ); errors
+named per row (`STEM_REQUIRED`, `OPTIONS_TOO_FEW`, `OPTIONS_REPEAT`, `ANSWER_REQUIRED`, `ANSWER_INVALID`,
+`KIND_INVALID`, `TRUE_FALSE_OPTIONS`, `DIFFICULTY_INVALID`, `MARKS_INVALID`); the same question twice in the
+file and a question already in the bank (by its text) skipped, never added twice. "Check the file" writes
+nothing; "Import" writes only the valid rows, in the author's name, and the error report carries the original
+row numbers. The GST and EPS offices import into their own courses only (`QuestionImportIT`).
+
 ## E. Security boundary — stated plainly
 
 Standard browser CBT monitoring can detect many browser-level events, but a normal web application cannot

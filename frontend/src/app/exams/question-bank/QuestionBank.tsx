@@ -13,6 +13,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { QuestionImport } from "@/components/cbt/QuestionImport";
 
 export interface Course { code: string; title: string; questions: number; total?: number; general_office?: string | null; kind?: string }
 export interface Question { id: string; course_code: string; topic: string | null; stem: string; options: string[]; answer: number; answers: number[] | null; kind: string; difficulty: string; marks: number; active: boolean; explanation?: string | null; authored_by?: string | null; authored_at?: string; updated_at?: string | null; on_papers?: number }
@@ -146,6 +147,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         ) : <PBody><div className="sub2">No question in this course&rsquo;s bank yet.</div></PBody>}
       </Panel>
 
+      {may ? <QuestionImport course={course} courseTitle={courses.find((c) => c.code === course)?.title} /> : null}
       {may ? (
         <Panel title="Author a question" right={`Added to ${course}`}>
           <PBody>
