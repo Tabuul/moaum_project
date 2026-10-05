@@ -66,9 +66,19 @@ export function TicketView({ t }: { t: Ticket }) {
           {t.closure_reason ?? "The ticket is closed."}{t.resolution_summary ? <span className="blk mt-2"><b>Resolution:</b> {t.resolution_summary}</span> : null}
           <span className="blk sub2 mt-2">A closed ticket takes no more updates. If the problem returns, raise a new ticket and quote this number.</span>
         </Note>
+      ) : t.status === "WAITING_FOR_STUDENT" ? (
+        <Note kind="bad" title="The support desk needs something from you">
+          {(() => { const w = [...(t.timeline ?? [])].reverse().find((e) => e.action === "WAITING"); return w?.detail ? <span className="blk"><b>{w.detail}</b></span> : null; })()}
+          <span className="blk mt-2">Reply below, or attach what was asked for; work resumes the moment you do. Waiting since {when(t.waiting_since)}.</span>
+        </Note>
+      ) : t.status === "WAITING_FOR_OFFICE" ? (
+        <Note kind="info" title={`Referred to ${t.office ?? "a University office"} for a decision`}>
+          The support desk has put your ticket to {t.office ?? "the responsible office"}, which decides what support cannot. You will be told when the answer comes back
+          {t.agent ? <> to <b>{t.agent}</b></> : null}. Add anything the office should know below.
+        </Note>
       ) : (
-        <Note kind="info" title={t.status === "SUBMITTED" ? "Waiting for the ICT desk to open it" : t.status === "OPENED" ? "The ICT desk has opened your ticket" : t.status === "REOPENED" ? "Reopened; the desk will pick it up again" : "The ICT desk is working on it"}>
-          {t.agent ? <>With <b>{t.agent}</b> since {when(t.assigned_at)}. </> : "Not yet assigned to an agent. "}
+        <Note kind="info" title={t.status === "SUBMITTED" ? "Waiting for the support desk to open it" : t.status === "OPENED" ? "The support desk has opened your ticket" : t.status === "REOPENED" ? "Reopened; the desk will pick it up again" : "The support desk is working on it"}>
+          {t.agent ? <>With <b>{t.agent}</b>{t.queue ? <> on the {t.queue} queue</> : null} since {when(t.assigned_at)}. </> : <>{t.queue ? <>On the <b>{t.queue}</b> queue, not yet with an agent. </> : "Not yet assigned to an agent. "}</>}
           You will be told by email at each turn. Add anything the desk should know below.
         </Note>
       )}

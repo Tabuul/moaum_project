@@ -19,6 +19,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * The configured quiet spell: when the Director has set a number of days, a resolved ticket the requester
  * has not answered closes itself after them, on the record, and the requester is told. Nothing happens
  * while the setting is empty, which is how it ships.
+ * The same hourly pass (V328) returns to its queue any open ticket held by an agent who has left, lost the
+ * office or is on leave, so no ticket is ever lost with a person; the Head of ICT Support Desk is told.
  */
 @Component
 class AutoCloser {
@@ -53,6 +55,16 @@ class AutoCloser {
             if (closed != null && !closed.isEmpty()) LOG.info("helpdesk: {} resolved ticket(s) closed after the configured quiet spell", closed.size());
         } catch (RuntimeException e) {
             LOG.warn("helpdesk auto-close did not run: {}", e.getMessage());
+        }
+        try {
+            List<UUID> returned = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "helpdesk: tickets of an unavailable agent returned to the queue", null, null), () -> tx.execute(status -> {
+                List<UUID> ids = jdbc.sql("SELECT * FROM helpdesk.sweep_inactive_agents()").query(UUID.class).list();
+                notifier.returned(ids);
+                return ids;
+            }));
+            if (returned != null && !returned.isEmpty()) LOG.info("helpdesk: {} open ticket(s) returned to the queue from an unavailable agent", returned.size());
+        } catch (RuntimeException e) {
+            LOG.warn("helpdesk agent sweep did not run: {}", e.getMessage());
         }
     }
 }

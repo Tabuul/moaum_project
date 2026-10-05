@@ -38,7 +38,7 @@ export default async function MyTicketsPage() {
           <DTable cols={["Ticket", "Subject", "Category", "Status|mid", "Priority|mid", "Raised|mid", "Last updated|mid", "|num"]} rows={rows.map((t) => [
             <Link key="n" className="lnk tnum b600" href={`/tickets/${t.id}`}>{t.number}</Link>,
             <span key="s"><strong>{t.subject}</strong>{t.agent ? <div className="sub2">With {t.agent}</div> : null}</span>,
-            <span key="c" className="sub2">{t.category}</span>,
+            <span key="c" className="sub2">{t.category}{t.queue ? <div>{t.queue}</div> : null}</span>,
             <StatusPil key="st" status={t.status} />,
             <PriorityPil key="p" priority={t.priority} />,
             <span key="r" className="tnum sub2">{when(t.created_at)}</span>,

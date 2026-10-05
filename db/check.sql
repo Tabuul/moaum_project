@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 175
+\set EXPECTED 176
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -298,7 +298,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 37, n || ' offices (35 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290 and the GST and EPS offices V314; the applicant V021 and the student V026)');
+                           n = 38, n || ' offices (36 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314 and the Head of ICT Support Desk V328; the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -4525,6 +4525,103 @@ BEGIN
         format('stage=%s/%s/%s r1=%s r2=%s r3=%s r4=%s/%s r5=%s apply=%s/%s again=%s credited=%s session=%s origin=%s ref=%s stage2=%s/%s conflict=%s rc4=%s/%s ap3=%s s6=%s summary=%s/%s/%s/%s',
                st.total_rows, st.staged, st.already_staged, r1, r2, r3, r4, v_cands, r5, ap.posted, ap.amount, ap2.posted, v_credited, v_session, v_origin, v_legacy_ref, st2.staged, st2.already_staged,
                r_conflict, rc4.status, rc4.match_method, ap3.posted, v_s6, v_summary.posted, v_summary.rejected, v_summary.requires_review, v_summary.amount_posted));
+END $$;
+
+-- ── 176. V328: the support desk across the University — a ticket routed to its queue and to the posted agent who covers it, scope enforced, a transfer that never duplicates, an escalation only to the queue's office, a wait ended by the requester's reply, and no ticket left with an agent who is gone ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); head uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); bur uuid := gen_random_uuid();
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); t1 uuid; t2 uuid; t3 uuid; prog text; msg text;
+        q1 text; a1 uuid; q2 text; a2 uuid; q3 text; a3 uuid; v_scope text; r_noreason text; q1b text; a1b uuid; n_tickets int; r_office text; st3 text; o3 text;
+        r_notoffice text; st3b text; o3b uuid; n_internal int; st2 text; w2 boolean; st2b text; w2b boolean; n_swept int; st2c text; a2c uuid; n_off int; n_c int;
+        v_hours numeric; ev text; n_queues int; n_rules int; n_offices int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        SELECT code INTO prog FROM ref.programme ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (head, 'MOAUM/CHK/0176', 'CHECKHEAD', 'Desk'), (a, 'MOAUM/CHK/0177', 'CHECKAGENT', 'Faculty'),
+               (b, 'MOAUM/CHK/0178', 'CHECKAGENT', 'Global'), (c, 'MOAUM/CHK/0179', 'CHECKAGENT', 'Bursary'), (bur, 'MOAUM/CHK/0180', 'CHECKBURSAR', 'Office');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), head, 'helpdeskhead', 'platform', NULL, 'check', who, current_date),
+            (gen_random_uuid(), a, 'ictagent', 'platform', NULL, 'check', who, current_date),
+            (gen_random_uuid(), b, 'ictagent', 'platform', NULL, 'check', who, current_date),
+            (gen_random_uuid(), c, 'ictagent', 'platform', NULL, 'check', who, current_date),
+            (gen_random_uuid(), bur, 'bursar', 'platform', NULL, 'check', who, current_date);
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, assigned_by, reason) VALUES
+            (a, 'ICT_SUPPORT', 'FACULTY', 'AC', head, 'check'), (b, 'ICT_SUPPORT', 'GLOBAL', NULL, head, 'check'), (c, 'BURSARY_SUPPORT', 'GLOBAL', NULL, head, 'check');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (s1, 'MOAUM/ADM/97/970176', 'MOAUM/CHK/20/0176', 'CHECKDESK', 'One', prog, 'UTME', '2020/2021', 100, 300, 'ACTIVE', now()),
+               (s2, 'MOAUM/ADM/97/970177', 'MOAUM/CHK/20/0177', 'CHECKDESK', 'Two', prog, 'UTME', '2020/2021', 100, 300, 'ACTIVE', now());
+        SELECT count(*) INTO n_queues FROM helpdesk.queue WHERE active;
+        SELECT count(*) INTO n_rules FROM helpdesk.routing_rule WHERE active;
+        SELECT count(*) INTO n_offices FROM ref.office WHERE code = 'helpdeskhead';
+
+        -- a login problem from the Faculty of Agriculture goes to the ICT Support queue and to the agent posted to that faculty, before the University-wide one
+        t1 := helpdesk.submit('STUDENT', s1, 'CHECKDESK, One', 'MOAUM/CHK/20/0176', 'd1@example.edu', '08011111111', 'CSC', 'AC', 'LOGIN', 'Cannot log in', 'The portal says my password is wrong though I reset it.',
+                              '{"account_type":"Student","username":"MOAUM/CHK/20/0176","error":"Password refused"}'::jsonb);
+        q1 := helpdesk.route(t1);
+        SELECT assigned_to INTO a1 FROM helpdesk.ticket WHERE id = t1;
+        -- the same problem from another faculty goes to the University-wide agent
+        t2 := helpdesk.submit('STUDENT', s2, 'CHECKDESK, Two', 'MOAUM/CHK/20/0177', 'd2@example.edu', '08022222222', 'ENG', 'ES', 'LOGIN', 'Cannot log in either', 'Same problem, another faculty.',
+                              '{"account_type":"Student","username":"MOAUM/CHK/20/0177","error":"Password refused"}'::jsonb);
+        q2 := helpdesk.route(t2);
+        SELECT assigned_to INTO a2 FROM helpdesk.ticket WHERE id = t2;
+        -- a payment problem goes to the Bursary's queue
+        t3 := helpdesk.submit('STUDENT', s1, 'CHECKDESK, One', 'MOAUM/CHK/20/0176', 'd1@example.edu', '08011111111', 'CSC', 'AC', 'PAYMENT', 'Payment not reflecting', 'I paid on Monday and the portal still says unpaid.',
+                              '{"payment_reference":"MOAUM-X","payment_date":"2020-01-01","payment_type":"School fees","amount":"50000"}'::jsonb);
+        q3 := helpdesk.route(t3);
+        SELECT assigned_to INTO a3 FROM helpdesk.ticket WHERE id = t3;
+        -- scope: the faculty agent sees their faculty's ticket, not the other faculty's nor the Bursary's; the Bursary agent the converse; the Head everything
+        v_scope := format('%s%s%s%s%s%s', helpdesk.can_view(a, t1), helpdesk.can_view(a, t2), helpdesk.can_view(a, t3), helpdesk.can_view(c, t3), helpdesk.can_view(c, t1),
+                          helpdesk.can_view(head, t1) AND helpdesk.can_view(head, t2) AND helpdesk.can_view(head, t3));
+        -- a transfer says why, moves the same ticket, and routes it to an agent of the new queue
+        BEGIN PERFORM helpdesk.transfer(t1, 'BURSARY_SUPPORT', head, ''); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_noreason := split_part(msg, ':', 1); END;
+        PERFORM helpdesk.transfer(t1, 'BURSARY_SUPPORT', head, 'It is a payment problem after all');
+        SELECT queue_code, assigned_to INTO q1b, a1b FROM helpdesk.ticket WHERE id = t1;
+        SELECT count(*) INTO n_tickets FROM helpdesk.ticket WHERE requester_id = s1 AND category_id = (SELECT id FROM helpdesk.category WHERE code = 'LOGIN');
+        -- an escalation goes only to the queue's office or the Director of ICT; the office answers, and only the office
+        BEGIN PERFORM helpdesk.escalate_to_office(t3, 'academic', c, 'Please decide'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_office := split_part(msg, ':', 1); END;
+        PERFORM helpdesk.escalate_to_office(t3, 'bursar', c, 'The payment is on the bank statement but not the ledger; the Bursary decides');
+        SELECT status, escalated_office INTO st3, o3 FROM helpdesk.ticket WHERE id = t3;
+        BEGIN PERFORM helpdesk.office_answer(t3, a, 'I am not the Bursar', true); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notoffice := split_part(msg, ':', 1); END;
+        PERFORM helpdesk.office_answer(t3, bur, 'Matched to the ledger by the Bursary; tell the student the receipt is reissued.', true);
+        SELECT status, assigned_to INTO st3b, o3b FROM helpdesk.ticket WHERE id = t3;
+        SELECT count(*) INTO n_internal FROM helpdesk.ticket_comment WHERE ticket_id = t3 AND internal AND author_name LIKE '%(Bursar)';
+        -- waiting on the requester ends with their reply
+        PERFORM helpdesk.transition(t2, 'OPENED', 'AGENT', b, 'CHECKAGENT, Global', NULL);
+        PERFORM helpdesk.transition(t2, 'IN_PROGRESS', 'AGENT', b, 'CHECKAGENT, Global', NULL);
+        PERFORM helpdesk.transition(t2, 'WAITING_FOR_STUDENT', 'AGENT', b, 'CHECKAGENT, Global', 'Send a screenshot of the error');
+        SELECT status, waiting_since IS NOT NULL INTO st2, w2 FROM helpdesk.ticket WHERE id = t2;
+        PERFORM helpdesk.comment(t2, 'REQUESTER', s2, 'CHECKDESK, Two', false, 'Here is the screenshot, attached.');
+        SELECT status, waiting_since IS NULL INTO st2b, w2b FROM helpdesk.ticket WHERE id = t2;
+        -- an agent on leave holds nothing: the sweep returns their open ticket to the queue
+        UPDATE helpdesk.agent_assignment SET availability = 'ON_LEAVE' WHERE person_id = b;
+        SELECT count(*) INTO n_swept FROM helpdesk.sweep_inactive_agents();
+        SELECT status, assigned_to INTO st2c, a2c FROM helpdesk.ticket WHERE id = t2;
+        -- the Head takes an agent off the desk: every open ticket with them returns
+        n_off := helpdesk.deactivate_agent(c, head, 'Transferred out of the ICT unit');
+        SELECT count(*) INTO n_c FROM helpdesk.agent_assignment WHERE person_id = c AND active;
+        -- a critical ticket is due within its own SLA
+        PERFORM helpdesk.set_priority(t1, 'CRITICAL', head);
+        v_hours := round(EXTRACT(EPOCH FROM (helpdesk.due_at(now(), 'CRITICAL') - now())) / 3600);
+        SELECT string_agg(action, ',' ORDER BY at) INTO ev FROM helpdesk.ticket_event WHERE ticket_id = t1;
+        RAISE EXCEPTION 'the V328 support desk check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The support desk across the University: the Head of ICT Support Desk is an office, the queues and the routing rules are seeded, a ticket is routed to its queue and to the agent posted to its faculty before the University-wide one, a payment problem goes to the Bursary''s queue, an agent sees only what their postings cover and the Head everything, a transfer says why and moves the one ticket to an agent of the new queue, an escalation goes only to the queue''s office or the Director of ICT and only that office answers (internally, back to the agent), a wait on the requester ends with their reply, an agent on leave or taken off the desk holds nothing, and a critical ticket is due within its own hours',
+        n_offices = 1 AND n_queues >= 11 AND n_rules >= 17
+        AND q1 = 'ICT_SUPPORT' AND a1 = a AND q2 = 'ICT_SUPPORT' AND a2 = b AND q3 = 'BURSARY_SUPPORT' AND a3 = c
+        AND v_scope = 'tfftft'
+        AND r_noreason = 'HELPDESK_REASON_REQUIRED' AND q1b = 'BURSARY_SUPPORT' AND a1b = c AND n_tickets = 1
+        AND r_office = 'HELPDESK_ESCALATION_OFFICE' AND st3 = 'WAITING_FOR_OFFICE' AND o3 = 'bursar' AND r_notoffice = 'HELPDESK_NOT_THE_OFFICE' AND st3b = 'IN_PROGRESS' AND o3b = c AND n_internal = 1
+        AND st2 = 'WAITING_FOR_STUDENT' AND w2 AND st2b = 'IN_PROGRESS' AND w2b
+        AND n_swept = 1 AND st2c = 'OPENED' AND a2c IS NULL
+        AND n_off = 2 AND n_c = 0 AND v_hours = 4
+        AND ev = 'SUBMITTED,ROUTED,ASSIGNED,TRANSFERRED,ASSIGNED,RETURNED,PRIORITY_CHANGED',
+        format('offices=%s queues=%s rules=%s t1=%s/%s t2=%s/%s t3=%s/%s scope=%s noreason=%s transfer=%s/%s tickets=%s office=%s st3=%s/%s notoffice=%s after=%s/%s internal=%s wait=%s/%s reply=%s/%s swept=%s t2=%s/%s off=%s/%s hours=%s events=%s',
+               n_offices, n_queues, n_rules, q1, a1 = a, q2, a2 = b, q3, a3 = c, v_scope, r_noreason, q1b, a1b = c, n_tickets, r_office, st3, o3, r_notoffice, st3b, o3b = c, n_internal,
+               st2, w2, st2b, w2b, n_swept, st2c, a2c IS NULL, n_off, n_c, v_hours, ev));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

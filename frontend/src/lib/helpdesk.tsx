@@ -9,6 +9,8 @@ export interface TicketRow {
   category_code: string; category: string; requester_kind: "STUDENT" | "STAFF"; requester_name: string; requester_number: string | null; requester_email: string | null;
   department_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null;
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
+  /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */
+  queue_code: string | null; queue: string | null; escalated_office: string | null; office: string | null; waiting_since: string | null;
 }
 export interface Comment { id: string; author_kind: "REQUESTER" | "AGENT" | "SYSTEM"; author_name: string; internal: boolean; body: string; created_at: string }
 export interface Attachment { id: string; comment_id: string | null; uploaded_kind: string; uploader_name: string; filename: string; content_type: string; bytes: number; internal: boolean; uploaded_at: string }
@@ -21,21 +23,63 @@ export interface Ticket extends Omit<TicketRow, "attachments"> {
   resolved_by_name: string | null; resolution_summary: string | null; resolution_details: string | null;
   closed_by_kind: string | null; closed_by_name: string | null; closure_reason: string | null;
   comments: Comment[]; attachments: Attachment[]; timeline: Event[];
+  /** V328, the desk's view only: where the ticket may be escalated — the queue's office for a decision, the Director of ICT for a fault */
+  escalation_offices?: { code: string; label: string; technical: boolean }[];
 }
 export interface Field { key: string; label: string; type: "text" | "date" | "number" | "select" | "session" | "semester" | "level"; required?: boolean; options?: string[]; hint?: string }
 export interface Category { id: string; code: string; name: string; description: string | null; suggested_priority: string; fields: string; attachment_hint: string | null; active?: boolean; ordinal?: number; tickets?: number }
 export interface Profile { kind: "STUDENT" | "STAFF"; name: string; number: string | null; email: string | null; phone: string | null; department: string | null; departmentCode: string | null; faculty: string | null; facultyCode: string | null; programme: string | null; openTickets: number }
-export interface Agent { id: string; name: string; staff_number: string | null; reachable: boolean; offices: string; director: boolean; open: number }
+export interface Agent {
+  id: string; name: string; staff_number: string | null; reachable: boolean; offices: string; director: boolean; open: number;
+  /** V328: the Head or the Director; the queues and scopes the person is posted on; and, against a ticket, whether the routing would choose them */
+  head?: boolean; queues?: string | null; scopes?: string | null; availability?: string | null; eligible?: boolean; posted?: boolean;
+}
+/** V328: a support queue with its load, as /api/v1/helpdesk/queues gives it */
+export interface Queue {
+  code: string; name: string; office_code: string | null; office: string | null; active: boolean; agents: number; available_agents: number;
+  open: number; unassigned: number; in_progress: number; waiting_student: number; waiting_office: number; overdue: number; critical: number; resolved_week: number;
+  description?: string | null; ordinal?: number; supervisor?: string | null;
+}
+/** V328: an agent's posting on a queue within a scope */
+export interface Posting {
+  id: string; person_id: string; name: string; staff_number: string | null; email: string | null; left_the_university: boolean; holds_office: boolean;
+  queue_code: string; queue: string; scope_kind: string; scope_ref: string | null; scope_name: string; is_primary: boolean; active: boolean; availability: string;
+  effective_from: string; effective_to: string | null; assigned_by: string | null; reason: string | null; created_at: string; updated_at: string; open: number;
+}
+export interface RoutingRule {
+  id: string; category_code: string; category: string; faculty_code: string | null; faculty: string | null; department_code: string | null; department: string | null;
+  queue_code: string; queue: string; strategy: string; priority_floor: string | null; active: boolean; created_at: string;
+}
+export interface Workload {
+  person_id: string; name: string; staff_number: string | null; queues: string | null; availability: string; scopes: string | null;
+  open: number; in_progress: number; waiting: number; overdue: number; critical: number; resolved_today: number; resolved_week: number; avg_resolution_hours: number | null;
+}
+/** the offices that see every ticket and run the desk: the Head of ICT Support Desk, the Director of ICT, the administrators (V328) */
+export const HEADS = ["helpdeskhead", "ict", "admin", "super"];
+export const SCOPE_KINDS: Record<string, string> = { GLOBAL: "The University", FACULTY: "A faculty", COLLEGE: "A college", DEPARTMENT: "A department", OFFICE: "An office" };
+export const AVAILABILITY: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
+  AVAILABLE: ["Available", "ok"], BUSY: ["Busy", "warn"], AWAY: ["Away", "grey"], OFFLINE: ["Offline", "grey"], ON_LEAVE: ["On leave", "bad"],
+};
+export const STRATEGY: Record<string, [string, string]> = {
+  FACULTY_AGENT_FIRST: ["Faculty agent first", "An agent posted to the ticket's faculty, college or department before a University-wide one; then the least loaded"],
+  OFFICE_AGENT_FIRST: ["Office agent first", "An agent posted to an office before any other; then the least loaded"],
+  LEAST_LOADED: ["Least loaded", "The eligible agent with the fewest open tickets"],
+  ROUND_ROBIN: ["Round robin", "The eligible agent assigned longest ago"],
+  MANUAL: ["Manual", "Queued for the Head of ICT Support Desk to assign"],
+  QUEUE_ONLY: ["Queue only", "Left on the queue for its agents to take"],
+};
 
 export const STATUS: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
-  SUBMITTED: ["Submitted", "info"], OPENED: ["Opened", "info"], IN_PROGRESS: ["In progress", "warn"], RESOLVED: ["Resolved", "ok"], CLOSED: ["Closed", "grey"], REOPENED: ["Reopened", "bad"],
+  SUBMITTED: ["Submitted", "info"], OPENED: ["Opened", "info"], IN_PROGRESS: ["In progress", "warn"], WAITING_FOR_STUDENT: ["Waiting for requester", "warn"], WAITING_FOR_OFFICE: ["With an office", "warn"],
+  RESOLVED: ["Resolved", "ok"], CLOSED: ["Closed", "grey"], REOPENED: ["Reopened", "bad"],
 };
 export const PRIORITY: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
-  LOW: ["Low", "grey"], NORMAL: ["Normal", "info"], HIGH: ["High", "warn"], URGENT: ["Urgent", "bad"],
+  LOW: ["Low", "grey"], NORMAL: ["Normal", "info"], HIGH: ["High", "warn"], URGENT: ["Urgent", "bad"], CRITICAL: ["Critical", "bad"],
 };
 export const ACTION: Record<string, string> = {
   SUBMITTED: "Ticket submitted", OPENED: "Ticket opened", STATUS_CHANGED: "Status changed", ASSIGNED: "Assigned", REASSIGNED: "Reassigned", ESCALATED: "Escalated",
   PRIORITY_CHANGED: "Priority changed", INTERNAL_NOTE: "Internal note", UPDATE: "Update", RESOLUTION: "Resolution added", REOPENED: "Reopened", CLOSED: "Closed", ATTACHMENT: "Attachment added",
+  ROUTED: "Routed to a queue", QUEUED: "Queued, no agent", TRANSFERRED: "Transferred", WAITING: "Waiting on the requester", ESCALATED_TO_OFFICE: "Escalated to an office", OFFICE_ANSWERED: "The office answered", RETURNED: "Returned to the queue",
 };
 export const statusWord = (s: string) => STATUS[s]?.[0] ?? s;
 export const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -76,8 +120,9 @@ export function PriorityPil({ priority }: { priority: string }) {
 }
 
 /** the ticket's history as a timeline: a mark, what happened, who, when */
-const DESK_ONLY = new Set(["INTERNAL_NOTE", "ESCALATED", "PRIORITY_CHANGED"]);
-const DESK_DETAIL = new Set(["ASSIGNED", "REASSIGNED"]);
+const DESK_ONLY = new Set(["INTERNAL_NOTE", "ESCALATED", "PRIORITY_CHANGED", "ROUTED", "QUEUED", "RETURNED", "ESCALATED_TO_OFFICE", "OFFICE_ANSWERED"]);
+const DESK_DETAIL = new Set(["ASSIGNED", "REASSIGNED", "TRANSFERRED"]);
+const ARROWED = new Set(["ASSIGNED", "REASSIGNED", "ESCALATED", "ROUTED", "QUEUED", "TRANSFERRED", "ESCALATED_TO_OFFICE", "OFFICE_ANSWERED", "RETURNED"]);
 
 export function Timeline({ events, showInternal = true }: { events: Event[]; showInternal?: boolean }) {
   // the requester's and the public view never carry the desk's own business, whatever the data holds
@@ -90,7 +135,8 @@ export function Timeline({ events, showInternal = true }: { events: Event[]; sho
         const title = ACTION[e.action] ?? e.action;
         const change = e.action === "STATUS_CHANGED" || e.action === "OPENED" || e.action === "REOPENED" || e.action === "CLOSED" || e.action === "RESOLUTION"
           ? [e.from_value, e.to_value].filter(Boolean).map((v) => statusWord(v!)).join(" → ")
-          : e.action === "ASSIGNED" || e.action === "REASSIGNED" || e.action === "ESCALATED" ? [e.from_value, e.to_value].filter(Boolean).join(" → ")
+          : e.action === "WAITING" ? statusWord("WAITING_FOR_STUDENT")
+          : ARROWED.has(e.action) ? [e.from_value, e.to_value].filter(Boolean).join(" → ")
           : e.action === "PRIORITY_CHANGED" ? [e.from_value, e.to_value].filter(Boolean).map((v) => PRIORITY[v!]?.[0] ?? v).join(" → ") : "";
         return (
           <li key={e.id ?? i} className={`hist__it hist__it--${kind}`}>

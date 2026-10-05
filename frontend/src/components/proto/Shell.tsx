@@ -188,6 +188,8 @@ export const ROUTES: Record<string, string> = {
   "t/helpdesk": "/helpdesk",
   "t/helpdeskreports": "/helpdesk/reports",
   "t/helpdesksettings": "/helpdesk/settings",
+  "t/helpdeskagents": "/helpdesk/agents",
+  "t/helpdeskoffice": "/helpdesk/office",
   /* external examiners (V254): the examiner's workspace, and the desk */
   "x/dashboard": "/examiner",
   "x/projects": "/examiner/projects",
@@ -316,6 +318,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/helpdesk": ["ICT Support Desk", "The queue, the figures, and each ticket's every act on the record"],
   "t/helpdeskreports": ["ICT Support Reports", "Tickets by date, category, status, unit, requester and agent; response and resolution times"],
   "t/helpdesksettings": ["ICT Support Settings", "The categories and what each asks for, the SLA by priority, the quiet spell"],
+  "t/helpdeskagents": ["Support Agents, Queues & Routing", "Who is posted where, the queues and their load, and where each category of problem goes"],
+  "t/helpdeskoffice": ["Support Escalations", "Tickets the support desk has referred to your office for a decision"],
   "x/dashboard": ["Examiner Workspace", "The projects assigned to you, their deadlines, and what has gone in"],
   "x/projects": ["My Assigned Projects", "Every project the University has sent you"],
   "x/pending": ["Pending Reviews", "Assessments not yet submitted"],

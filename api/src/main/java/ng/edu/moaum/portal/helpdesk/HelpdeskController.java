@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.auth.PasswordResetService;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -27,6 +28,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -41,23 +43,35 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The ICT support desk (V251) under /api/v1/helpdesk.
+ * The ICT support desk (V251, across the University V328) under /api/v1/helpdesk.
  *   /my/…       the requester — any student or member of staff signed in — raises, reads, answers, confirms, reopens, withdraws
- *   /tickets/…  the desk — ICT Support Agents, the Director of ICT, the administrators — the queue, the ticket, the acts on it
- *   /admin/…    the Director — categories, SLAs, the quiet spell
+ *   /tickets/…  the desk — ICT Support Agents, the Head of ICT Support Desk, the Director of ICT, the administrators — the queue,
+ *               the ticket, the acts on it; an agent within the scope of their postings (helpdesk.can_view), a head everywhere
+ *   /queues, /workload   the queues and the agents' load
+ *   /office/…   a University office a ticket was escalated to — it reads the ticket and answers it
+ *   /admin/…    the Head and the Director — categories, SLAs, the quiet spell, the queues, the routing rules, the agents' postings
  *   /track      the public page — a ticket number and the email it was raised with
- * A requester sees only their own tickets and never an internal note; the desk sees everything.
+ * A requester sees only their own tickets and never an internal note; support access is never administrative authority.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk")
 class HelpdeskController {
 
-    private static final String AGENTS = "hasAnyAuthority('OFFICE_ictagent','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    private static final String DIRECTOR = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String AGENTS = "hasAnyAuthority('OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String DIRECTOR = "hasAnyAuthority('OFFICE_helpdeskhead','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String REQUESTER = "isAuthenticated() and !hasAnyAuthority('OFFICE_applicant','OFFICE_pgapplicant')";
+    private static final String OFFICER = "isAuthenticated() and !hasAnyAuthority('OFFICE_student','OFFICE_applicant','OFFICE_pgapplicant')";
+    private static final Set<String> HEADS = Set.of("OFFICE_helpdeskhead", "OFFICE_ict", "OFFICE_admin", "OFFICE_super");
     private static final long MAX_BYTES = 5L * 1024 * 1024;
     private static final Set<String> TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
-    private static final Set<String> PRIORITIES = Set.of("LOW", "NORMAL", "HIGH", "URGENT");
+    private static final Set<String> PRIORITIES = Set.of("LOW", "NORMAL", "HIGH", "URGENT", "CRITICAL");
+    private static final Set<String> SCOPES = Set.of("GLOBAL", "FACULTY", "COLLEGE", "DEPARTMENT", "OFFICE");
+    private static final Set<String> AVAILABILITY = Set.of("AVAILABLE", "BUSY", "AWAY", "OFFLINE", "ON_LEAVE");
+    private static final Set<String> STRATEGIES = Set.of("ROUND_ROBIN", "LEAST_LOADED", "MANUAL", "QUEUE_ONLY", "FACULTY_AGENT_FIRST", "OFFICE_AGENT_FIRST");
+    private static final String PRIORITY_RANK = "CASE t.priority WHEN 'CRITICAL' THEN 5 WHEN 'URGENT' THEN 4 WHEN 'HIGH' THEN 3 WHEN 'NORMAL' THEN 2 ELSE 1 END";
+    private static final String SLA_ORDER = "ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'NORMAL' THEN 3 ELSE 4 END";
+    /** what the requester and the public never see of the desk's own business */
+    private static final String DESK_ACTIONS = "'INTERNAL_NOTE','ESCALATED','PRIORITY_CHANGED','ROUTED','QUEUED','RETURNED','ESCALATED_TO_OFFICE','OFFICE_ANSWERED'";
     private static final Set<String> FIELD_TYPES = Set.of("text", "date", "number", "select", "session", "semester", "level");
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
@@ -67,22 +81,26 @@ class HelpdeskController {
                    c.code AS category_code, c.name AS category, t.requester_kind, t.requester_name, t.requester_number, t.requester_email,
                    t.department_code, d.name AS department, t.faculty_code, f.name AS faculty,
                    t.assigned_to, helpdesk.person_name(t.assigned_to) AS agent, t.escalated_to IS NOT NULL AS escalated,
+                   t.queue_code, qu.name AS queue, t.escalated_office, oo.label AS office, t.waiting_since,
                    helpdesk.due_at(t.created_at, t.priority) AS due_at,
                    (t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()) AS overdue,
                    (t.first_response_at IS NULL AND t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.response_due_at(t.created_at, t.priority) < now()) AS response_overdue,
                    (SELECT count(*) FROM helpdesk.ticket_attachment a WHERE a.ticket_id = t.id AND NOT a.internal) AS attachments
               FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
               LEFT JOIN ref.department d ON d.code = t.department_code LEFT JOIN ref.faculty f ON f.code = t.faculty_code
+              LEFT JOIN helpdesk.queue qu ON qu.code = t.queue_code LEFT JOIN ref.office oo ON oo.code = t.escalated_office
             """;
 
     private final FileObjects files;
     private final JdbcClient jdbc;
     private final TicketNotifier notifier;
+    private final PasswordResetService resets;
 
-    HelpdeskController(FileObjects files, JdbcClient jdbc, TicketNotifier notifier) {
+    HelpdeskController(FileObjects files, JdbcClient jdbc, TicketNotifier notifier, PasswordResetService resets) {
         this.jdbc = jdbc;
         this.files = files;
         this.notifier = notifier;
+        this.resets = resets;
     }
 
     /* ── who is asking ── */
@@ -195,6 +213,8 @@ class HelpdeskController {
                 .param("e", email, Types.VARCHAR).param("ph", phone, Types.VARCHAR).param("d", w.departmentCode(), Types.VARCHAR).param("f", w.facultyCode(), Types.VARCHAR)
                 .param("c", body.category()).param("s", body.subject().trim()).param("desc", body.description().trim()).param("j", JSON.writeValueAsString(details))
                 .query(UUID.class).single();
+        // V328: routed to its queue by the category's rule, and to an available agent whose scope covers it — or queued for the Head
+        jdbc.sql("SELECT helpdesk.route(:t)").param("t", id).query(String.class).single();
         notifier.submitted(id);
         String number = jdbc.sql("SELECT number FROM helpdesk.ticket WHERE id = :id").param("id", id).query(String.class).single();
         return Map.of("id", id, "number", number, "status", "SUBMITTED");
@@ -293,7 +313,7 @@ class HelpdeskController {
 
     /* ── the desk ── */
 
-    /** the queue: searched, filtered, sorted, paged on the server */
+    /** the queue: searched, filtered, sorted, paged on the server; an agent sees only what their postings cover (V328) */
     @GetMapping("/tickets")
     @PreAuthorize(AGENTS)
     @Transactional(readOnly = true)
@@ -302,27 +322,29 @@ class HelpdeskController {
                               @RequestParam(required = false) String priority, @RequestParam(required = false) String agent,
                               @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to,
                               @RequestParam(required = false) String faculty, @RequestParam(required = false) String department,
+                              @RequestParam(required = false) String queue, @RequestParam(required = false) String office,
                               @RequestParam(defaultValue = "updated") String sort, @RequestParam(defaultValue = "desc") String dir,
                               @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         int sz = Math.max(1, Math.min(size, 100));
         int pg = Math.max(1, page);
         String order = switch (sort) {
             case "created" -> "t.created_at";
-            case "priority" -> "CASE t.priority WHEN 'URGENT' THEN 4 WHEN 'HIGH' THEN 3 WHEN 'NORMAL' THEN 2 ELSE 1 END";
+            case "priority" -> PRIORITY_RANK;
             case "status" -> "t.status";
             case "number" -> "t.number";
             case "due" -> "helpdesk.due_at(t.created_at, t.priority)";
+            case "queue" -> "t.queue_code";
             default -> "t.updated_at";
         };
         String direction = "asc".equalsIgnoreCase(dir) ? "ASC" : "DESC";
         List<String> statuses = status == null || status.isBlank() || "all".equalsIgnoreCase(status) ? List.of()
-                : "open".equalsIgnoreCase(status) ? List.of("SUBMITTED", "OPENED", "IN_PROGRESS", "REOPENED")
+                : "open".equalsIgnoreCase(status) ? List.of("SUBMITTED", "OPENED", "IN_PROGRESS", "REOPENED", "WAITING_FOR_STUDENT", "WAITING_FOR_OFFICE")
+                : "waiting".equalsIgnoreCase(status) ? List.of("WAITING_FOR_STUDENT", "WAITING_FOR_OFFICE")
                 : List.of(status.toUpperCase().split(","));
-        UUID agentId = null;
         boolean unassigned = "none".equalsIgnoreCase(agent);
-        if (agent != null && !agent.isBlank() && !unassigned) agentId = "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
+        UUID agentId = agent == null || agent.isBlank() || unassigned ? null : "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
         String like = q == null || q.isBlank() ? null : "%" + q.trim() + "%";
-        List<Map<String, Object>> rows = jdbc.sql(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, t.id,") + """
+        String where = """
                  WHERE (:like::text IS NULL OR t.number ILIKE :like OR t.subject ILIKE :like OR t.requester_name ILIKE :like OR t.requester_number ILIKE :like
                         OR t.requester_email ILIKE :like OR t.details->>'payment_reference' ILIKE :like OR t.details->>'username' ILIKE :like)
                    AND (:nst = 0 OR t.status = ANY(string_to_array(:st, ',')))
@@ -334,33 +356,26 @@ class HelpdeskController {
                    AND (:to::date IS NULL OR t.created_at < :to + 1)
                    AND (:fac::text IS NULL OR t.faculty_code = :fac)
                    AND (:dep::text IS NULL OR t.department_code = :dep)
-                 ORDER BY %s %s, t.created_at DESC
-                 LIMIT :n OFFSET :o
-                """.formatted(order, direction))
+                   AND (:queue::text IS NULL OR t.queue_code = :queue)
+                   AND (:office::text IS NULL OR t.escalated_office = :office)
+                   AND (:head OR helpdesk.can_view(:me, t.id))
+                """;
+        java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
                 .param("like", like, Types.VARCHAR).param("nst", statuses.size()).param("st", String.join(",", statuses))
                 .param("cat", category == null || category.isBlank() ? null : category.toUpperCase(), Types.VARCHAR)
                 .param("pri", priority == null || priority.isBlank() ? null : priority.toUpperCase(), Types.VARCHAR)
                 .param("unassigned", unassigned).param("agent", agentId, Types.OTHER)
                 .param("from", from, Types.DATE).param("to", to, Types.DATE)
                 .param("fac", faculty == null || faculty.isBlank() ? null : faculty, Types.VARCHAR).param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR)
+                .param("queue", queue == null || queue.isBlank() ? null : queue.trim().toUpperCase(), Types.VARCHAR)
+                .param("office", office == null || office.isBlank() ? null : office.trim().toLowerCase(), Types.VARCHAR)
+                .param("head", head(auth)).param("me", me(auth));
+        List<Map<String, Object>> rows = with.apply(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, t.id,") + where
+                + " ORDER BY %s %s, t.created_at DESC LIMIT :n OFFSET :o".formatted(order, direction))
                 .param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue();
         if (rows.isEmpty() && pg > 1) {
-            total = jdbc.sql("""
-                    SELECT count(*) FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
-                     WHERE (:like::text IS NULL OR t.number ILIKE :like OR t.subject ILIKE :like OR t.requester_name ILIKE :like OR t.requester_number ILIKE :like
-                            OR t.requester_email ILIKE :like OR t.details->>'payment_reference' ILIKE :like OR t.details->>'username' ILIKE :like)
-                       AND (:nst = 0 OR t.status = ANY(string_to_array(:st, ',')))
-                       AND (:cat::text IS NULL OR c.code = :cat) AND (:pri::text IS NULL OR t.priority = :pri)
-                       AND (NOT :unassigned OR t.assigned_to IS NULL) AND (:agent::uuid IS NULL OR t.assigned_to = :agent)
-                       AND (:from::date IS NULL OR t.created_at >= :from) AND (:to::date IS NULL OR t.created_at < :to + 1)
-                       AND (:fac::text IS NULL OR t.faculty_code = :fac) AND (:dep::text IS NULL OR t.department_code = :dep)
-                    """).param("like", like, Types.VARCHAR).param("nst", statuses.size()).param("st", String.join(",", statuses))
-                    .param("cat", category == null || category.isBlank() ? null : category.toUpperCase(), Types.VARCHAR)
-                    .param("pri", priority == null || priority.isBlank() ? null : priority.toUpperCase(), Types.VARCHAR)
-                    .param("unassigned", unassigned).param("agent", agentId, Types.OTHER).param("from", from, Types.DATE).param("to", to, Types.DATE)
-                    .param("fac", faculty == null || faculty.isBlank() ? null : faculty, Types.VARCHAR).param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR)
-                    .query(Long.class).single();
+            total = with.apply("SELECT count(*) FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id" + where).query(Long.class).single();
         }
         rows.forEach(r -> r.remove("total"));
         Map<String, Object> out = new LinkedHashMap<>();
@@ -374,14 +389,17 @@ class HelpdeskController {
     @Transactional(readOnly = true)
     Map<String, Object> stats(Authentication auth, @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to,
                               @RequestParam(required = false) String category, @RequestParam(required = false) String priority,
-                              @RequestParam(required = false) String agent, @RequestParam(required = false) String faculty, @RequestParam(required = false) String department) {
+                              @RequestParam(required = false) String agent, @RequestParam(required = false) String faculty, @RequestParam(required = false) String department,
+                              @RequestParam(required = false) String queue) {
         String where = """
                  WHERE (:from::date IS NULL OR t.created_at >= :from) AND (:to::date IS NULL OR t.created_at < :to + 1)
                    AND (:cat::text IS NULL OR c.code = :cat) AND (:pri::text IS NULL OR t.priority = :pri)
                    AND (:agent::uuid IS NULL OR t.assigned_to = :agent) AND (NOT :none OR t.assigned_to IS NULL)
                    AND (:fac::text IS NULL OR t.faculty_code = :fac) AND (:dep::text IS NULL OR t.department_code = :dep)
+                   AND (:queue::text IS NULL OR t.queue_code = :queue)
+                   AND (:head OR helpdesk.can_view(:me, t.id))
                 """;
-        String base = "FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id LEFT JOIN ref.faculty f ON f.code = t.faculty_code LEFT JOIN ref.department d ON d.code = t.department_code" + where;
+        String base = "FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id LEFT JOIN ref.faculty f ON f.code = t.faculty_code LEFT JOIN ref.department d ON d.code = t.department_code LEFT JOIN helpdesk.queue qu ON qu.code = t.queue_code" + where;
         boolean unassignedOnly = "none".equalsIgnoreCase(agent);
         UUID agentId = agent == null || agent.isBlank() || unassignedOnly ? null : "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
@@ -390,7 +408,9 @@ class HelpdeskController {
                 .param("pri", priority == null || priority.isBlank() ? null : priority.toUpperCase(), Types.VARCHAR)
                 .param("agent", agentId, Types.OTHER).param("none", unassignedOnly)
                 .param("fac", faculty == null || faculty.isBlank() ? null : faculty, Types.VARCHAR)
-                .param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR);
+                .param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR)
+                .param("queue", queue == null || queue.isBlank() ? null : queue.trim().toUpperCase(), Types.VARCHAR)
+                .param("head", head(auth)).param("me", me(auth));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("totals", with.apply("""
                 SELECT count(*) AS total,
@@ -400,9 +420,12 @@ class HelpdeskController {
                        count(*) FILTER (WHERE t.status = 'REOPENED') AS reopened,
                        count(*) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
                        count(*) FILTER (WHERE t.status = 'CLOSED') AS closed,
+                       count(*) FILTER (WHERE t.status = 'WAITING_FOR_STUDENT') AS waiting_student,
+                       count(*) FILTER (WHERE t.status = 'WAITING_FOR_OFFICE') AS waiting_office,
                        count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED')) AS open,
                        count(*) FILTER (WHERE t.assigned_to IS NULL AND t.status NOT IN ('RESOLVED','CLOSED')) AS unassigned,
-                       count(*) FILTER (WHERE t.priority IN ('HIGH','URGENT') AND t.status NOT IN ('RESOLVED','CLOSED')) AS high,
+                       count(*) FILTER (WHERE t.priority IN ('HIGH','URGENT','CRITICAL') AND t.status NOT IN ('RESOLVED','CLOSED')) AS high,
+                       count(*) FILTER (WHERE t.priority = 'CRITICAL' AND t.status NOT IN ('RESOLVED','CLOSED')) AS critical,
                        count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()) AS overdue,
                        count(*) FILTER (WHERE t.first_response_at IS NULL AND t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.response_due_at(t.created_at, t.priority) < now()) AS response_overdue,
                        count(*) FILTER (WHERE t.escalated_to IS NOT NULL AND t.status NOT IN ('RESOLVED','CLOSED')) AS escalated,
@@ -419,6 +442,14 @@ class HelpdeskController {
         out.put("byFaculty", with.apply("SELECT coalesce(f.name, 'Not stated') AS key, count(*) AS n " + base + " GROUP BY f.name ORDER BY n DESC LIMIT 20").query().listOfRows());
         out.put("byDepartment", with.apply("SELECT coalesce(d.name, 'Not stated') AS key, count(*) AS n " + base + " GROUP BY d.name ORDER BY n DESC LIMIT 20").query().listOfRows());
         out.put("byRequesterKind", with.apply("SELECT t.requester_kind AS key, count(*) AS n " + base + " GROUP BY t.requester_kind ORDER BY n DESC").query().listOfRows());
+        out.put("byQueue", with.apply("""
+                SELECT coalesce(qu.name, 'No queue') AS key, t.queue_code, count(*) AS n,
+                       count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED')) AS open,
+                       count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED') AND t.assigned_to IS NULL) AS unassigned,
+                       count(*) FILTER (WHERE t.status IN ('WAITING_FOR_STUDENT','WAITING_FOR_OFFICE')) AS waiting,
+                       count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()) AS overdue,
+                       round(avg(EXTRACT(EPOCH FROM (t.resolved_at - t.created_at)) / 3600) FILTER (WHERE t.resolved_at IS NOT NULL)::numeric, 1) AS avg_resolution_hours
+                """ + base + " GROUP BY qu.name, t.queue_code, qu.ordinal ORDER BY qu.ordinal NULLS LAST, n DESC").query().listOfRows());
         out.put("byAgent", with.apply("""
                 SELECT coalesce(helpdesk.person_name(t.assigned_to), 'Unassigned') AS key, t.assigned_to AS agent_id, count(*) AS n,
                        count(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED')) AS open,
@@ -433,37 +464,64 @@ class HelpdeskController {
                        (SELECT count(*) """ + base + " AND t.closed_at >= m AND t.closed_at < m + interval '1 month') AS closed" + """
                   FROM generate_series(date_trunc('month', now()) - interval '11 months', date_trunc('month', now()), interval '1 month') m ORDER BY m
                 """).query().listOfRows());
-        out.put("sla", jdbc.sql("SELECT priority, first_response_hours, resolution_hours FROM helpdesk.sla ORDER BY CASE priority WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'NORMAL' THEN 3 ELSE 4 END").query().listOfRows());
+        out.put("sla", jdbc.sql("SELECT priority, first_response_hours, resolution_hours FROM helpdesk.sla " + SLA_ORDER).query().listOfRows());
         return out;
     }
 
-    /** what happened on the desk lately, across every ticket: the last acts, newest first */
+    /** what happened on the desk lately, across every ticket the reader may see: the last acts, newest first */
     @GetMapping("/activity")
     @PreAuthorize(AGENTS)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> activity(@RequestParam(defaultValue = "25") int limit) {
+    List<Map<String, Object>> activity(Authentication auth, @RequestParam(defaultValue = "25") int limit) {
         return jdbc.sql("""
                 SELECT e.id, e.at, e.actor_kind, e.actor_name, e.action, e.from_value, e.to_value, e.detail, e.internal,
-                       t.id AS ticket_id, t.number, t.subject, t.status, t.priority
+                       t.id AS ticket_id, t.number, t.subject, t.status, t.priority, t.queue_code
                   FROM helpdesk.ticket_event e JOIN helpdesk.ticket t ON t.id = e.ticket_id
+                 WHERE (:head OR helpdesk.can_view(:me, t.id))
                  ORDER BY e.at DESC LIMIT :n
-                """).param("n", Math.max(1, Math.min(limit, 100))).query().listOfRows();
+                """).param("n", Math.max(1, Math.min(limit, 100))).param("head", head(auth)).param("me", me(auth)).query().listOfRows();
     }
 
-    /** the people the desk can give a ticket to: agents and the Director, with their open load */
+    /** the people the desk can give a ticket to: agents, the Head and the Director, with their postings and open load; against a
+     *  ticket, which of them the routing would choose — an eligible agent is posted on its queue and covers its faculty or department */
     @GetMapping("/agents")
     @PreAuthorize(AGENTS)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> agents() {
+    List<Map<String, Object>> agents(@RequestParam(required = false) UUID ticket) {
         return jdbc.sql("""
                 SELECT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number, p.email IS NOT NULL AS reachable,
                        string_agg(DISTINCT o.label, ', ' ORDER BY o.label) AS offices,
                        bool_or(a.office_code = 'ict') AS director,
-                       (SELECT count(*) FROM helpdesk.ticket t WHERE t.assigned_to = p.id AND t.status NOT IN ('RESOLVED','CLOSED')) AS open
+                       bool_or(a.office_code IN ('helpdeskhead','ict')) AS head,
+                       (SELECT count(*) FROM helpdesk.ticket t WHERE t.assigned_to = p.id AND t.status NOT IN ('RESOLVED','CLOSED')) AS open,
+                       (SELECT string_agg(DISTINCT q.name, ', ' ORDER BY q.name) FROM helpdesk.agent_assignment aa JOIN helpdesk.queue q ON q.code = aa.queue_code
+                         WHERE aa.person_id = p.id AND aa.active) AS queues,
+                       (SELECT string_agg(DISTINCT CASE WHEN aa.scope_kind = 'GLOBAL' THEN 'The University' ELSE initcap(lower(aa.scope_kind)) || ' ' || aa.scope_ref END, ', ')
+                          FROM helpdesk.agent_assignment aa WHERE aa.person_id = p.id AND aa.active) AS scopes,
+                       (SELECT aa.availability FROM helpdesk.agent_assignment aa WHERE aa.person_id = p.id AND aa.active ORDER BY aa.is_primary DESC, aa.created_at LIMIT 1) AS availability,
+                       (:t::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM helpdesk.eligible_agents(:t) e WHERE e.person_id = p.id)) AS eligible,
+                       (:t::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM helpdesk.eligible_agents(:t) e WHERE e.person_id = p.id AND e.posted)) AS posted
                   FROM iam.person p JOIN iam.office_assignment a ON a.person_id = p.id JOIN ref.office o ON o.code = a.office_code
-                 WHERE a.office_code IN ('ictagent','ict') AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date) AND p.ended_on IS NULL
-                 GROUP BY p.id, p.surname, p.given_names, p.staff_number, p.email ORDER BY director, p.surname, p.given_names
-                """).query().listOfRows();
+                 WHERE a.office_code IN ('ictagent','helpdeskhead','ict') AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date) AND p.ended_on IS NULL
+                 GROUP BY p.id, p.surname, p.given_names, p.staff_number, p.email ORDER BY 12 DESC, 13 DESC, director, p.surname, p.given_names
+                """).param("t", ticket, Types.OTHER).query().listOfRows();
+    }
+
+    /** the queues and their load: agents posted and available, open, unassigned, waiting, overdue (V328) */
+    @GetMapping("/queues")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> queues() {
+        return jdbc.sql("SELECT * FROM helpdesk.queue_workload()").query().listOfRows();
+    }
+
+    /** the agents' workload: a head reads every agent's, an agent their own */
+    @GetMapping("/workload")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> workload(Authentication auth, @RequestParam(required = false) String queue) {
+        return jdbc.sql("SELECT * FROM helpdesk.agent_workload(:q) w WHERE :head OR w.person_id = :me")
+                .param("q", queue == null || queue.isBlank() ? null : queue.trim().toUpperCase(), Types.VARCHAR).param("head", head(auth)).param("me", me(auth)).query().listOfRows();
     }
 
     /** the ticket in full; the first agent to read a submitted ticket opens it (§8), and that is recorded */
@@ -471,7 +529,7 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> ticket(Authentication auth, @PathVariable UUID id) {
-        requireTicket(id);
+        requireVisible(auth, id);
         Boolean opened = jdbc.sql("SELECT helpdesk.open_ticket(:t, :a)").param("t", id).param("a", me(auth)).query(Boolean.class).single();
         if (Boolean.TRUE.equals(opened)) notifier.statusChanged(id);
         return detail(id, true);
@@ -484,7 +542,7 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> assign(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Assign body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         UUID before = jdbc.sql("SELECT assigned_to FROM helpdesk.ticket WHERE id = :id").param("id", id).query(UUID.class).optional().orElse(null);
         jdbc.sql("SELECT helpdesk.assign(:t, :a, :by, :r)").param("t", id).param("a", body.agentId()).param("by", me(auth)).param("r", body.reason(), Types.VARCHAR).query().singleRow();
         notifier.assigned(id, body.agentId(), before != null);
@@ -494,15 +552,15 @@ class HelpdeskController {
     public record Status(@NotBlank String status, @Size(max = 2000) String reason) {
     }
 
-    /** start work, close on a reason, reopen on a reason — the desk's transitions */
+    /** start work, wait on the requester (on a reason), resume, close on a reason, reopen on a reason — the desk's transitions */
     @PostMapping("/tickets/{id}/status")
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> status(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Status body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         String to = body.status().trim().toUpperCase();
-        if (!Set.of("OPENED", "IN_PROGRESS", "CLOSED", "REOPENED").contains(to)) {
-            throw new DomainRuleViolation("HELPDESK_STATUS", "The desk moves a ticket to opened, in progress, closed or reopened; a resolution is recorded through Resolve.",
+        if (!Set.of("OPENED", "IN_PROGRESS", "WAITING_FOR_STUDENT", "CLOSED", "REOPENED").contains(to)) {
+            throw new DomainRuleViolation("HELPDESK_STATUS", "The desk moves a ticket to opened, in progress, waiting for the requester, closed or reopened; a resolution is recorded through Resolve, an office through Escalate to Office.",
                     new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
         }
         jdbc.sql("SELECT helpdesk.transition(:t, :to, 'AGENT', :a, :n, :r)").param("t", id).param("to", to).param("a", me(auth)).param("n", myName(auth))
@@ -510,6 +568,7 @@ class HelpdeskController {
         switch (to) {
             case "CLOSED" -> notifier.closed(id);
             case "REOPENED" -> { notifier.reopened(id, body.reason() == null ? "" : body.reason().trim(), true); notifier.statusChanged(id); }
+            case "WAITING_FOR_STUDENT" -> notifier.waiting(id, body.reason() == null ? "" : body.reason().trim());
             default -> notifier.statusChanged(id);
         }
         return Map.of("id", id, "status", to);
@@ -522,24 +581,75 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> priority(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Priority body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         String p = body.priority().trim().toUpperCase();
-        if (!PRIORITIES.contains(p)) throw new DomainRuleViolation("HELPDESK_PRIORITY", "A priority is low, normal, high or urgent.", new DomainRuleViolation.Remedy("Choose one of the four.", "Directorate of ICT"));
+        if (!PRIORITIES.contains(p)) throw new DomainRuleViolation("HELPDESK_PRIORITY", "A priority is low, normal, high, urgent or critical.", new DomainRuleViolation.Remedy("Choose one of the five.", "Directorate of ICT"));
         jdbc.sql("SELECT helpdesk.set_priority(:t, :p, :by)").param("t", id).param("p", p).param("by", me(auth)).query().singleRow();
+        if ("CRITICAL".equals(p)) notifier.critical(id, me(auth));
         return Map.of("id", id, "priority", p);
     }
 
     public record Escalate(@NotNull UUID toPersonId, @NotBlank @Size(max = 2000) String reason) {
     }
 
+    /** escalation to a person of the desk: a senior agent, the Head, the Director */
     @PostMapping("/tickets/{id}/escalate")
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> escalate(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Escalate body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         jdbc.sql("SELECT helpdesk.escalate(:t, :to, :by, :r)").param("t", id).param("to", body.toPersonId()).param("by", me(auth)).param("r", body.reason().trim()).query().singleRow();
         notifier.escalated(id, body.toPersonId(), body.reason().trim());
         return Map.of("id", id, "escalatedTo", body.toPersonId());
+    }
+
+    public record Transfer(@NotBlank @Size(max = 40) String queue, @NotBlank @Size(max = 2000) String reason) {
+    }
+
+    /** V328: the same ticket moved to another queue on a reason — never a second ticket; routed again to an agent there, or queued */
+    @PostMapping("/tickets/{id}/transfer")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> transfer(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Transfer body) {
+        requireVisible(auth, id);
+        Map<String, Object> before = jdbc.sql("SELECT coalesce(q.name, 'no queue') AS queue FROM helpdesk.ticket t LEFT JOIN helpdesk.queue q ON q.code = t.queue_code WHERE t.id = :id").param("id", id).query().singleRow();
+        jdbc.sql("SELECT helpdesk.transfer(:t, :q, :by, :r)").param("t", id).param("q", body.queue().trim().toUpperCase()).param("by", me(auth)).param("r", body.reason().trim()).query().singleRow();
+        Map<String, Object> after = jdbc.sql("SELECT t.queue_code, q.name AS queue, t.assigned_to FROM helpdesk.ticket t JOIN helpdesk.queue q ON q.code = t.queue_code WHERE t.id = :id").param("id", id).query().singleRow();
+        notifier.transferred(id, (String) before.get("queue"), (String) after.get("queue"), body.reason().trim(), (UUID) after.get("assigned_to"));
+        return Map.of("id", id, "queue", after.get("queue_code"), "assignedTo", after.get("assigned_to") == null ? "" : after.get("assigned_to"));
+    }
+
+    public record EscalateOffice(@NotBlank @Size(max = 40) String office, @NotBlank @Size(max = 2000) String reason) {
+    }
+
+    /** V328: a policy or administrative decision goes to the queue's office; a technical fault to the Director of ICT; the ticket waits on them */
+    @PostMapping("/tickets/{id}/escalate-office")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> escalateOffice(Authentication auth, @PathVariable UUID id, @Valid @RequestBody EscalateOffice body) {
+        requireVisible(auth, id);
+        String office = body.office().trim().toLowerCase();
+        jdbc.sql("SELECT helpdesk.escalate_to_office(:t, :o, :by, :r)").param("t", id).param("o", office).param("by", me(auth)).param("r", body.reason().trim()).query().singleRow();
+        notifier.escalatedToOffice(id, office, body.reason().trim());
+        return Map.of("id", id, "office", office, "status", "WAITING_FOR_OFFICE");
+    }
+
+    /** V328: the secure reset, through the portal's own door — a one-hour link to the address on the requester's account; the desk never sees a password */
+    @PostMapping("/tickets/{id}/password-reset")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> passwordReset(Authentication auth, @PathVariable UUID id, jakarta.servlet.http.HttpServletRequest request) {
+        requireVisible(auth, id);
+        Map<String, Object> t = jdbc.sql("SELECT status, requester_kind, requester_number, requester_email, requester_name FROM helpdesk.ticket WHERE id = :id").param("id", id).query().singleRow();
+        if ("CLOSED".equals(t.get("status"))) throw new DomainRuleViolation("HELPDESK_CLOSED", "A closed ticket takes no further act.", new DomainRuleViolation.Remedy("Reopen it first.", "Directorate of ICT"));
+        String identifier = t.get("requester_number") != null && !String.valueOf(t.get("requester_number")).isBlank() ? String.valueOf(t.get("requester_number")) : (String) t.get("requester_email");
+        if (identifier == null || identifier.isBlank()) throw new DomainRuleViolation("HELPDESK_NO_IDENTIFIER", "The ticket names no account to reset.", new DomainRuleViolation.Remedy("Ask the requester for their matriculation or staff number.", "Directorate of ICT"));
+        resets.forgot(identifier, request.getRemoteAddr());
+        String said = "A password reset link has been sent to the email address (and phone, where one is held) on your account. It is valid for one hour. "
+                + "Open it to choose a new password; the desk never sees or sets your password.";
+        jdbc.sql("SELECT helpdesk.comment(:t, 'AGENT', :a, :n, false, :b)").param("t", id).param("a", me(auth)).param("n", myName(auth)).param("b", said).query(UUID.class).single();
+        notifier.agentUpdate(id, said);
+        return Map.of("id", id, "sent", true);
     }
 
     public record Resolve(@NotBlank @Size(max = 300) String summary, @NotBlank @Size(max = 8000) String details) {
@@ -549,7 +659,7 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> resolve(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Resolve body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         jdbc.sql("SELECT helpdesk.resolve(:t, :a, :s, :d)").param("t", id).param("a", me(auth)).param("s", body.summary().trim()).param("d", body.details().trim()).query().singleRow();
         notifier.resolved(id);
         return Map.of("id", id, "status", "RESOLVED");
@@ -563,7 +673,7 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> note(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Note body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         boolean internal = Boolean.TRUE.equals(body.internal());
         UUID c = jdbc.sql("SELECT helpdesk.comment(:t, 'AGENT', :a, :n, :i, :b)").param("t", id).param("a", me(auth)).param("n", myName(auth)).param("i", internal)
                 .param("b", body.body().trim()).query(UUID.class).single();
@@ -575,16 +685,66 @@ class HelpdeskController {
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> deskAttach(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Upload body) {
-        requireTicket(id);
+        requireVisible(auth, id);
         return store(id, "AGENT", me(auth), myName(auth), body, Boolean.TRUE.equals(body.internal()));
     }
 
     @GetMapping("/tickets/{id}/attachments/{att}/content")
     @PreAuthorize(AGENTS)
     @Transactional(readOnly = true)
-    ResponseEntity<byte[]> deskContent(@PathVariable UUID id, @PathVariable UUID att) {
-        requireTicket(id);
+    ResponseEntity<byte[]> deskContent(Authentication auth, @PathVariable UUID id, @PathVariable UUID att) {
+        requireVisible(auth, id);
         return content(id, att, true);
+    }
+
+    /* ── a University office the ticket waits on (V328) ── */
+
+    /** the tickets escalated to an office the reader holds, and those they answered before */
+    @GetMapping("/office/tickets")
+    @PreAuthorize(OFFICER)
+    @Transactional(readOnly = true)
+    Map<String, Object> officeTickets(Authentication auth) {
+        List<String> offices = offices(auth);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("offices", jdbc.sql("SELECT code, label FROM ref.office WHERE code = ANY(string_to_array(:o, ',')) ORDER BY label").param("o", String.join(",", offices)).query().listOfRows());
+        out.put("waiting", jdbc.sql(ROW + " WHERE t.escalated_office = ANY(string_to_array(:o, ',')) AND t.status NOT IN ('CLOSED') ORDER BY t.escalated_at").param("o", String.join(",", offices)).query().listOfRows());
+        out.put("answered", jdbc.sql(ROW + """
+                 WHERE t.escalated_office IS NULL AND EXISTS (SELECT 1 FROM helpdesk.ticket_event e WHERE e.ticket_id = t.id AND e.action = 'OFFICE_ANSWERED' AND e.actor_id = :me)
+                 ORDER BY t.updated_at DESC LIMIT 50
+                """).param("me", me(auth)).query().listOfRows());
+        return out;
+    }
+
+    @GetMapping("/office/tickets/{id}")
+    @PreAuthorize(OFFICER)
+    @Transactional(readOnly = true)
+    Map<String, Object> officeTicket(Authentication auth, @PathVariable UUID id) {
+        requireOffice(auth, id);
+        return detail(id, true);
+    }
+
+    @GetMapping("/office/tickets/{id}/attachments/{att}/content")
+    @PreAuthorize(OFFICER)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> officeContent(Authentication auth, @PathVariable UUID id, @PathVariable UUID att) {
+        requireOffice(auth, id);
+        return content(id, att, true);
+    }
+
+    public record Answer(@NotBlank @Size(max = 8000) String body, Boolean internal) {
+    }
+
+    /** the office's decision: an instruction to the agent (internal unless the office says otherwise); the ticket returns to the agent */
+    @PostMapping("/office/tickets/{id}/answer")
+    @PreAuthorize(OFFICER)
+    @Transactional
+    Map<String, Object> officeAnswer(Authentication auth, @PathVariable UUID id, @Valid @RequestBody Answer body) {
+        requireOffice(auth, id);
+        boolean internal = body.internal() == null || body.internal();
+        UUID c = jdbc.sql("SELECT helpdesk.office_answer(:t, :by, :b, :i)").param("t", id).param("by", me(auth)).param("b", body.body().trim()).param("i", internal).query(UUID.class).single();
+        notifier.officeAnswered(id, me(auth));
+        if (!internal) notifier.agentUpdate(id, excerpt(body.body()));
+        return Map.of("id", c, "ticket", id, "internal", internal);
     }
 
     /* ── the Director: categories, SLAs, the quiet spell ── */
@@ -673,8 +833,255 @@ class HelpdeskController {
     @Transactional(readOnly = true)
     Map<String, Object> settings() {
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT auto_close_days, notify_agents_on_new FROM helpdesk.setting WHERE row_no").query().singleRow());
-        out.put("sla", jdbc.sql("SELECT priority, first_response_hours, resolution_hours FROM helpdesk.sla ORDER BY CASE priority WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'NORMAL' THEN 3 ELSE 4 END").query().listOfRows());
+        out.put("sla", jdbc.sql("SELECT priority, first_response_hours, resolution_hours FROM helpdesk.sla " + SLA_ORDER).query().listOfRows());
         return out;
+    }
+
+    /* ── the Head and the Director: the queues, the routing rules, the agents' postings (V328) ── */
+
+    @GetMapping("/admin/queues")
+    @PreAuthorize(DIRECTOR)
+    @Transactional(readOnly = true)
+    Map<String, Object> adminQueues() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("queues", jdbc.sql("""
+                SELECT w.*, q.description, q.ordinal, helpdesk.person_name(q.supervisor) AS supervisor FROM helpdesk.queue_workload() w JOIN helpdesk.queue q ON q.code = w.code
+                """).query().listOfRows());
+        out.put("offices", jdbc.sql("SELECT code, label FROM ref.office WHERE code NOT IN ('student','applicant','pgapplicant','extexaminer','lecturer') ORDER BY label").query().listOfRows());
+        return out;
+    }
+
+    public record QueueIn(@Size(max = 40) String code, @NotBlank @Size(max = 120) String name, @Size(max = 500) String description, @Size(max = 40) String officeCode,
+                          @Min(1) @Max(999) Integer ordinal, Boolean active) {
+    }
+
+    private void checkOffice(String office) {
+        if (office == null) return;
+        Boolean ok = jdbc.sql("SELECT true FROM ref.office WHERE code = :c").param("c", office).query(Boolean.class).optional().orElse(false);
+        if (!ok) throw new DomainRuleViolation("HELPDESK_OFFICE_UNKNOWN", "No office is coded " + office + ".", new DomainRuleViolation.Remedy("Choose the office from the list.", "Directorate of ICT"));
+    }
+
+    @PostMapping("/admin/queues")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> newQueue(@Valid @RequestBody QueueIn body) {
+        String code = body.code() == null || body.code().isBlank() ? body.name().trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "") : body.code().trim().toUpperCase();
+        if (!code.matches("[A-Z][A-Z0-9_]{1,40}")) throw new DomainRuleViolation("HELPDESK_QUEUE_CODE", "A queue code is letters, digits and underscores, starting with a letter.", new DomainRuleViolation.Remedy("Give a short code such as HOSTEL_SUPPORT.", "Directorate of ICT"));
+        String office = body.officeCode() == null || body.officeCode().isBlank() ? null : body.officeCode().trim().toLowerCase();
+        checkOffice(office);
+        if (jdbc.sql("SELECT true FROM helpdesk.queue WHERE code = :c").param("c", code).query(Boolean.class).optional().orElse(false)) {
+            throw new DomainRuleViolation("HELPDESK_QUEUE_EXISTS", "A queue is coded " + code + " already.", new DomainRuleViolation.Remedy("Edit that queue, or choose another code.", "Directorate of ICT"));
+        }
+        jdbc.sql("INSERT INTO helpdesk.queue (code, name, description, office_code, ordinal, active) VALUES (:c, :n, :d, :o, :ord, :a)")
+                .param("c", code).param("n", body.name().trim()).param("d", body.description(), Types.VARCHAR).param("o", office, Types.VARCHAR)
+                .param("ord", body.ordinal() == null ? 100 : body.ordinal()).param("a", body.active() == null || body.active()).update();
+        return Map.of("code", code);
+    }
+
+    @PutMapping("/admin/queues/{code}")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> editQueue(@PathVariable String code, @Valid @RequestBody QueueIn body) {
+        String office = body.officeCode() == null || body.officeCode().isBlank() ? null : body.officeCode().trim().toLowerCase();
+        checkOffice(office);
+        int n = jdbc.sql("UPDATE helpdesk.queue SET name = :n, description = :d, office_code = :o, ordinal = :ord, active = :a WHERE code = :c")
+                .param("c", code.trim().toUpperCase()).param("n", body.name().trim()).param("d", body.description(), Types.VARCHAR).param("o", office, Types.VARCHAR)
+                .param("ord", body.ordinal() == null ? 100 : body.ordinal()).param("a", body.active() == null || body.active()).update();
+        if (n == 0) throw new NotFound("queue", code);
+        return Map.of("code", code.trim().toUpperCase(), "updated", n);
+    }
+
+    @GetMapping("/admin/routing")
+    @PreAuthorize(DIRECTOR)
+    @Transactional(readOnly = true)
+    Map<String, Object> routing() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rules", jdbc.sql("""
+                SELECT r.id, r.category_code, c.name AS category, r.faculty_code, f.name AS faculty, r.department_code, d.name AS department,
+                       r.queue_code, q.name AS queue, r.strategy, r.priority_floor, r.active, r.created_at
+                  FROM helpdesk.routing_rule r JOIN helpdesk.category c ON c.code = r.category_code JOIN helpdesk.queue q ON q.code = r.queue_code
+                  LEFT JOIN ref.faculty f ON f.code = r.faculty_code LEFT JOIN ref.department d ON d.code = r.department_code
+                 ORDER BY r.active DESC, c.ordinal, c.name, (r.department_code IS NOT NULL) DESC, (r.faculty_code IS NOT NULL) DESC, r.created_at
+                """).query().listOfRows());
+        out.put("categories", jdbc.sql("SELECT code, name, active FROM helpdesk.category ORDER BY active DESC, ordinal, name").query().listOfRows());
+        out.put("queues", jdbc.sql("SELECT code, name, active FROM helpdesk.queue ORDER BY active DESC, ordinal, name").query().listOfRows());
+        out.put("unrouted", jdbc.sql("""
+                SELECT c.code, c.name FROM helpdesk.category c WHERE c.active
+                   AND NOT EXISTS (SELECT 1 FROM helpdesk.routing_rule r WHERE r.category_code = c.code AND r.active AND r.faculty_code IS NULL AND r.department_code IS NULL)
+                 ORDER BY c.ordinal, c.name
+                """).query().listOfRows());
+        return out;
+    }
+
+    public record RuleIn(@NotBlank @Size(max = 40) String categoryCode, @Size(max = 20) String facultyCode, @Size(max = 20) String departmentCode,
+                         @NotBlank @Size(max = 40) String queueCode, @NotBlank String strategy, String priorityFloor, Boolean active) {
+    }
+
+    private RuleIn checkRule(RuleIn body) {
+        String strategy = body.strategy().trim().toUpperCase();
+        if (!STRATEGIES.contains(strategy)) throw new DomainRuleViolation("HELPDESK_STRATEGY", "A strategy is faculty agent first, office agent first, least loaded, round robin, manual or queue only.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
+        String floor = body.priorityFloor() == null || body.priorityFloor().isBlank() ? null : body.priorityFloor().trim().toUpperCase();
+        if (floor != null && !PRIORITIES.contains(floor)) throw new DomainRuleViolation("HELPDESK_PRIORITY", "A priority is low, normal, high, urgent or critical.", new DomainRuleViolation.Remedy("Choose one of the five.", "Directorate of ICT"));
+        if (!jdbc.sql("SELECT true FROM helpdesk.category WHERE code = :c").param("c", body.categoryCode().trim().toUpperCase()).query(Boolean.class).optional().orElse(false)) {
+            throw new DomainRuleViolation("HELPDESK_CATEGORY_UNKNOWN", "No category is coded " + body.categoryCode() + ".", new DomainRuleViolation.Remedy("Choose the category from the list.", "Directorate of ICT"));
+        }
+        if (!jdbc.sql("SELECT true FROM helpdesk.queue WHERE code = :c").param("c", body.queueCode().trim().toUpperCase()).query(Boolean.class).optional().orElse(false)) {
+            throw new DomainRuleViolation("HELPDESK_QUEUE_UNKNOWN", "No queue is coded " + body.queueCode() + ".", new DomainRuleViolation.Remedy("Choose the queue from the list.", "Directorate of ICT"));
+        }
+        String fac = body.facultyCode() == null || body.facultyCode().isBlank() ? null : body.facultyCode().trim().toUpperCase();
+        String dep = body.departmentCode() == null || body.departmentCode().isBlank() ? null : body.departmentCode().trim().toUpperCase();
+        if (fac != null && !jdbc.sql("SELECT true FROM ref.faculty WHERE code = :c").param("c", fac).query(Boolean.class).optional().orElse(false)) throw new DomainRuleViolation("HELPDESK_SCOPE_UNKNOWN", "No faculty is coded " + fac + ".", new DomainRuleViolation.Remedy("Choose the faculty from the list.", "Directorate of ICT"));
+        if (dep != null && !jdbc.sql("SELECT true FROM ref.department WHERE code = :c").param("c", dep).query(Boolean.class).optional().orElse(false)) throw new DomainRuleViolation("HELPDESK_SCOPE_UNKNOWN", "No department is coded " + dep + ".", new DomainRuleViolation.Remedy("Choose the department from the list.", "Directorate of ICT"));
+        return new RuleIn(body.categoryCode().trim().toUpperCase(), fac, dep, body.queueCode().trim().toUpperCase(), strategy, floor, body.active() == null || body.active());
+    }
+
+    @PostMapping("/admin/routing")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> newRule(@Valid @RequestBody RuleIn in) {
+        RuleIn r = checkRule(in);
+        UUID id = jdbc.sql("""
+                INSERT INTO helpdesk.routing_rule (category_code, faculty_code, department_code, queue_code, strategy, priority_floor, active)
+                VALUES (:c, :f, :d, :q, :s, :p, :a) RETURNING id
+                """).param("c", r.categoryCode()).param("f", r.facultyCode(), Types.VARCHAR).param("d", r.departmentCode(), Types.VARCHAR).param("q", r.queueCode())
+                .param("s", r.strategy()).param("p", r.priorityFloor(), Types.VARCHAR).param("a", r.active()).query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
+    @PutMapping("/admin/routing/{id}")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> editRule(@PathVariable UUID id, @Valid @RequestBody RuleIn in) {
+        RuleIn r = checkRule(in);
+        int n = jdbc.sql("""
+                UPDATE helpdesk.routing_rule SET category_code = :c, faculty_code = :f, department_code = :d, queue_code = :q, strategy = :s, priority_floor = :p, active = :a WHERE id = :id
+                """).param("id", id).param("c", r.categoryCode()).param("f", r.facultyCode(), Types.VARCHAR).param("d", r.departmentCode(), Types.VARCHAR).param("q", r.queueCode())
+                .param("s", r.strategy()).param("p", r.priorityFloor(), Types.VARCHAR).param("a", r.active()).update();
+        if (n == 0) throw new NotFound("routing rule", id);
+        return Map.of("id", id, "updated", n);
+    }
+
+    /** every posting, live and ended, with the person, the queue, the scope, the availability and the load */
+    @GetMapping("/admin/agents")
+    @PreAuthorize(DIRECTOR)
+    @Transactional(readOnly = true)
+    Map<String, Object> adminAgents() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("postings", jdbc.sql("""
+                SELECT a.id, a.person_id, helpdesk.person_name(a.person_id) AS name, p.staff_number, p.email, p.ended_on IS NOT NULL AS left_the_university,
+                       helpdesk.is_agent(a.person_id) AS holds_office,
+                       a.queue_code, q.name AS queue, a.scope_kind, a.scope_ref,
+                       CASE a.scope_kind WHEN 'FACULTY' THEN (SELECT name FROM ref.faculty WHERE code = a.scope_ref) WHEN 'DEPARTMENT' THEN (SELECT name FROM ref.department WHERE code = a.scope_ref)
+                            WHEN 'COLLEGE' THEN (SELECT name FROM ref.college WHERE code = a.scope_ref) WHEN 'OFFICE' THEN (SELECT label FROM ref.office WHERE code = a.scope_ref) ELSE 'The University' END AS scope_name,
+                       a.is_primary, a.active, a.availability, a.effective_from, a.effective_to, helpdesk.person_name(a.assigned_by) AS assigned_by, a.reason, a.created_at, a.updated_at,
+                       (SELECT count(*) FROM helpdesk.ticket t WHERE t.assigned_to = a.person_id AND t.status NOT IN ('RESOLVED','CLOSED')) AS open
+                  FROM helpdesk.agent_assignment a JOIN iam.person p ON p.id = a.person_id JOIN helpdesk.queue q ON q.code = a.queue_code
+                 ORDER BY a.active DESC, p.surname, p.given_names, q.ordinal
+                """).query().listOfRows());
+        out.put("candidates", jdbc.sql("""
+                SELECT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number, p.email,
+                       string_agg(DISTINCT o.label, ', ' ORDER BY o.label) AS offices,
+                       (SELECT count(*) FROM helpdesk.agent_assignment aa WHERE aa.person_id = p.id AND aa.active) AS postings
+                  FROM iam.person p JOIN iam.office_assignment a ON a.person_id = p.id JOIN ref.office o ON o.code = a.office_code
+                 WHERE a.office_code IN ('ictagent','helpdeskhead','ict') AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date) AND p.ended_on IS NULL
+                 GROUP BY p.id, p.surname, p.given_names, p.staff_number, p.email ORDER BY p.surname, p.given_names
+                """).query().listOfRows());
+        out.put("queues", jdbc.sql("SELECT code, name, active FROM helpdesk.queue ORDER BY active DESC, ordinal, name").query().listOfRows());
+        out.put("workload", jdbc.sql("SELECT * FROM helpdesk.agent_workload(NULL)").query().listOfRows());
+        return out;
+    }
+
+    public record PostingIn(@NotNull UUID personId, @NotBlank @Size(max = 40) String queueCode, String scopeKind, @Size(max = 40) String scopeRef, Boolean isPrimary,
+                            String availability, LocalDate effectiveFrom, LocalDate effectiveTo, @Size(max = 500) String reason) {
+    }
+
+    /** a person who holds the ICT Support Agent office (or the Head's, or the Director's) placed on a queue within a scope; never anyone else */
+    @PostMapping("/admin/agents")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> post(Authentication auth, @Valid @RequestBody PostingIn body) {
+        boolean agent = jdbc.sql("SELECT helpdesk.is_agent(:p) AND EXISTS (SELECT 1 FROM iam.person WHERE id = :p AND ended_on IS NULL)").param("p", body.personId()).query(Boolean.class).single();
+        if (!agent) {
+            throw new DomainRuleViolation("HELPDESK_NOT_AN_AGENT", "Only a person who holds the ICT Support Agent office is posted to a queue; support access comes from that office, never from a posting.",
+                    new DomainRuleViolation.Remedy("Grant the person the ICT Support Agent office under Users & Roles first.", "Directorate of ICT"));
+        }
+        String queue = body.queueCode().trim().toUpperCase();
+        if (!jdbc.sql("SELECT true FROM helpdesk.queue WHERE code = :c AND active").param("c", queue).query(Boolean.class).optional().orElse(false)) {
+            throw new DomainRuleViolation("HELPDESK_QUEUE_UNKNOWN", "No active queue is coded " + queue + ".", new DomainRuleViolation.Remedy("Choose the queue from the list.", "Directorate of ICT"));
+        }
+        String kind = body.scopeKind() == null || body.scopeKind().isBlank() ? "GLOBAL" : body.scopeKind().trim().toUpperCase();
+        if (!SCOPES.contains(kind)) throw new DomainRuleViolation("HELPDESK_SCOPE", "A scope is the University, a faculty, a college, a department or an office.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
+        String ref = "GLOBAL".equals(kind) ? null : body.scopeRef() == null ? "" : body.scopeRef().trim();
+        if (ref != null) {
+            if ("OFFICE".equals(kind)) ref = ref.toLowerCase(); else ref = ref.toUpperCase();
+            String table = switch (kind) { case "FACULTY" -> "ref.faculty"; case "DEPARTMENT" -> "ref.department"; case "COLLEGE" -> "ref.college"; default -> "ref.office"; };
+            if (ref.isBlank() || !jdbc.sql("SELECT true FROM " + table + " WHERE code = :c").param("c", ref).query(Boolean.class).optional().orElse(false)) {
+                throw new DomainRuleViolation("HELPDESK_SCOPE_UNKNOWN", "The " + kind.toLowerCase() + " " + ref + " is not on the register.", new DomainRuleViolation.Remedy("Choose it from the list.", "Directorate of ICT"));
+            }
+        }
+        String availability = body.availability() == null || body.availability().isBlank() ? "AVAILABLE" : body.availability().trim().toUpperCase();
+        if (!AVAILABILITY.contains(availability)) throw new DomainRuleViolation("HELPDESK_AVAILABILITY", "Availability is available, busy, away, offline or on leave.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
+        if (jdbc.sql("SELECT true FROM helpdesk.agent_assignment WHERE person_id = :p AND queue_code = :q AND scope_kind = :k AND coalesce(scope_ref, '') = coalesce(:r, '') AND active")
+                .param("p", body.personId()).param("q", queue).param("k", kind).param("r", ref, Types.VARCHAR).query(Boolean.class).optional().orElse(false)) {
+            throw new DomainRuleViolation("HELPDESK_POSTED_ALREADY", "The person is posted on that queue in that scope already.", new DomainRuleViolation.Remedy("Edit the posting instead.", "Directorate of ICT"));
+        }
+        UUID id = jdbc.sql("""
+                INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, is_primary, availability, effective_from, effective_to, assigned_by, reason)
+                VALUES (:p, :q, :k, :r, :prim, :av, coalesce(:from, current_date), :to, :by, :why) RETURNING id
+                """).param("p", body.personId()).param("q", queue).param("k", kind).param("r", ref, Types.VARCHAR).param("prim", Boolean.TRUE.equals(body.isPrimary()))
+                .param("av", availability).param("from", body.effectiveFrom(), Types.DATE).param("to", body.effectiveTo(), Types.DATE).param("by", me(auth)).param("why", body.reason(), Types.VARCHAR)
+                .query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
+    public record PostingEdit(String availability, Boolean active, Boolean isPrimary, LocalDate effectiveTo, @Size(max = 500) String reason) {
+    }
+
+    /** availability, dates, primacy, or the end of a posting; an agent made unavailable holds nothing — their open tickets return to the queue */
+    @PutMapping("/admin/agents/{id}")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> editPosting(Authentication auth, @PathVariable UUID id, @Valid @RequestBody PostingEdit body) {
+        String availability = body.availability() == null || body.availability().isBlank() ? null : body.availability().trim().toUpperCase();
+        if (availability != null && !AVAILABILITY.contains(availability)) throw new DomainRuleViolation("HELPDESK_AVAILABILITY", "Availability is available, busy, away, offline or on leave.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
+        int n = jdbc.sql("""
+                UPDATE helpdesk.agent_assignment SET availability = coalesce(:av, availability), active = coalesce(:a, active), is_primary = coalesce(:prim, is_primary),
+                       effective_to = CASE WHEN :a = false THEN least(coalesce(effective_to, current_date), current_date) ELSE coalesce(:to, effective_to) END,
+                       reason = CASE WHEN :why::text IS NULL THEN reason ELSE :why END
+                 WHERE id = :id
+                """).param("id", id).param("av", availability, Types.VARCHAR).param("a", body.active(), Types.BOOLEAN).param("prim", body.isPrimary(), Types.BOOLEAN)
+                .param("to", body.effectiveTo(), Types.DATE).param("why", body.reason(), Types.VARCHAR).update();
+        if (n == 0) throw new NotFound("posting", id);
+        List<UUID> returned = jdbc.sql("SELECT * FROM helpdesk.sweep_inactive_agents()").query(UUID.class).list();
+        if (!returned.isEmpty()) notifier.returned(returned);
+        return Map.of("id", id, "updated", n, "returned", returned.size());
+    }
+
+    public record Why(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** the Head takes an agent off the desk: every posting ended, every open ticket back on its queue, the Head told */
+    @PostMapping("/admin/agents/{person}/deactivate")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> deactivate(Authentication auth, @PathVariable UUID person, @Valid @RequestBody Why body) {
+        List<UUID> held = jdbc.sql("SELECT id FROM helpdesk.ticket WHERE assigned_to = :p AND status NOT IN ('RESOLVED','CLOSED')").param("p", person).query(UUID.class).list();
+        Integer n = jdbc.sql("SELECT helpdesk.deactivate_agent(:p, :by, :r)").param("p", person).param("by", me(auth)).param("r", body.reason().trim()).query(Integer.class).single();
+        if (!held.isEmpty()) notifier.returned(held);
+        return Map.of("personId", person, "returned", n);
+    }
+
+    public record Reassign(@NotNull UUID toPersonId, @NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** every open ticket with one agent moved to another, on a reason */
+    @PostMapping("/admin/agents/{person}/reassign")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> reassign(Authentication auth, @PathVariable UUID person, @Valid @RequestBody Reassign body) {
+        Integer n = jdbc.sql("SELECT helpdesk.reassign_open(:from, :to, :by, :r)").param("from", person).param("to", body.toPersonId()).param("by", me(auth)).param("r", body.reason().trim()).query(Integer.class).single();
+        if (n > 0) notifier.bulkAssigned(body.toPersonId(), n, body.reason().trim());
+        return Map.of("from", person, "to", body.toPersonId(), "moved", n);
     }
 
     public record SlaIn(@NotBlank String priority, @Min(1) @Max(720) int firstResponseHours, @Min(1) @Max(2160) int resolutionHours) {
@@ -744,7 +1151,8 @@ class HelpdeskController {
                 SELECT e.at, e.action, e.from_value, e.to_value,
                        CASE WHEN e.actor_kind = 'REQUESTER' THEN 'You' WHEN e.actor_kind = 'SYSTEM' THEN 'The portal' ELSE 'ICT Support' END AS actor,
                        CASE WHEN e.action IN ('SUBMITTED','OPENED','STATUS_CHANGED','RESOLUTION','REOPENED','CLOSED') THEN e.detail ELSE NULL END AS detail
-                  FROM helpdesk.ticket_event e WHERE e.ticket_id = :t AND NOT e.internal AND e.action NOT IN ('INTERNAL_NOTE','ATTACHMENT','ASSIGNED','REASSIGNED','ESCALATED','PRIORITY_CHANGED')
+                  FROM helpdesk.ticket_event e WHERE e.ticket_id = :t AND NOT e.internal AND e.action NOT IN ('ATTACHMENT','ASSIGNED','REASSIGNED',""" + DESK_ACTIONS + """
+                )
                  ORDER BY e.at
                 """).param("t", id).query().listOfRows());
         return out;
@@ -783,6 +1191,40 @@ class HelpdeskController {
         if (!ok) throw new NotFound("ticket", ticket);
     }
 
+    /** the Head of ICT Support Desk, the Director of ICT and the administrators see and act everywhere */
+    private static boolean head(Authentication auth) {
+        for (GrantedAuthority a : auth.getAuthorities()) if (HEADS.contains(a.getAuthority())) return true;
+        return false;
+    }
+
+    /** scope, enforced where it counts (V328): an agent reaches a ticket only when helpdesk.can_view says their postings cover it, or it is with them */
+    private void requireVisible(Authentication auth, UUID ticket) {
+        requireTicket(ticket);
+        if (head(auth)) return;
+        Boolean ok = jdbc.sql("SELECT helpdesk.can_view(:me, :t)").param("me", me(auth)).param("t", ticket).query(Boolean.class).single();
+        if (!Boolean.TRUE.equals(ok)) {
+            throw new AccessDeniedException("That ticket is outside your support scope: it is on a queue you are not posted to, or in a faculty or department your posting does not cover.");
+        }
+    }
+
+    /** the offices the token carries, as office codes */
+    private static List<String> offices(Authentication auth) {
+        List<String> out = new ArrayList<>();
+        for (GrantedAuthority a : auth.getAuthorities()) if (a.getAuthority().startsWith("OFFICE_")) out.add(a.getAuthority().substring(7));
+        return out;
+    }
+
+    /** an office reaches a ticket that waits on it, or one it answered before; the Head and the Director reach any */
+    private void requireOffice(Authentication auth, UUID ticket) {
+        requireTicket(ticket);
+        if (head(auth)) return;
+        Boolean ok = jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM helpdesk.ticket t WHERE t.id = :t AND t.escalated_office = ANY(string_to_array(:o, ',')))
+                    OR EXISTS (SELECT 1 FROM helpdesk.ticket_event e WHERE e.ticket_id = :t AND e.action = 'OFFICE_ANSWERED' AND e.actor_id = :me)
+                """).param("t", ticket).param("o", String.join(",", offices(auth))).param("me", me(auth)).query(Boolean.class).single();
+        if (!Boolean.TRUE.equals(ok)) throw new AccessDeniedException("The ticket does not wait on an office you hold.");
+    }
+
     /** the ticket, its category's fields, what was said, the evidence and the history; the desk sees the internal parts */
     private Map<String, Object> detail(UUID id, boolean desk) {
         Map<String, Object> t = jdbc.sql(ROW.replace("SELECT t.id,", """
@@ -796,6 +1238,13 @@ class HelpdeskController {
         Map<String, Object> out = new LinkedHashMap<>(t);
         if (!desk) {
             for (String k : List.of("requester_id", "assigned_by", "assigned_by_name", "escalated_to", "escalated_to_name", "escalated_by_name", "escalated_at", "escalation_reason", "escalated")) out.remove(k);
+        } else {
+            // V328: what the ticket may be escalated to — the queue's office for a decision, the Director of ICT for a technical fault
+            out.put("escalation_offices", jdbc.sql("""
+                    SELECT o.code, o.label, o.code = 'ict' AS technical FROM ref.office o
+                     WHERE o.code = 'ict' OR o.code = (SELECT q.office_code FROM helpdesk.ticket t JOIN helpdesk.queue q ON q.code = t.queue_code WHERE t.id = :t)
+                     ORDER BY technical, o.label
+                    """).param("t", id).query().listOfRows());
         }
         out.put("comments", jdbc.sql("""
                 SELECT id, author_kind, author_name, internal, body, created_at FROM helpdesk.ticket_comment WHERE ticket_id = :t AND (:desk OR NOT internal) ORDER BY created_at
@@ -808,7 +1257,8 @@ class HelpdeskController {
                 SELECT id, at, actor_kind, actor_name, action, from_value, to_value,
                        CASE WHEN :desk OR action NOT IN ('ASSIGNED','REASSIGNED') THEN detail END AS detail, internal
                   FROM helpdesk.ticket_event
-                 WHERE ticket_id = :t AND (:desk OR (NOT internal AND action NOT IN ('INTERNAL_NOTE','ESCALATED','PRIORITY_CHANGED')))
+                 WHERE ticket_id = :t AND (:desk OR (NOT internal AND action NOT IN (""" + DESK_ACTIONS + """
+                )))
                  ORDER BY at
                 """).param("t", id).param("desk", desk).query().listOfRows());
         return out;

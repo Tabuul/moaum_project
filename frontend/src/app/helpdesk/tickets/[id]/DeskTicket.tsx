@@ -11,11 +11,11 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, readBase64, when, type Agent, type Ticket } from "@/lib/helpdesk";
+import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, readBase64, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
 
-type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | null;
+type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | "transfer" | "office" | "wait" | "reset" | null;
 
-export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: Agent[] }) {
+export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: string; head: boolean; agents: Agent[]; queues: Queue[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -30,8 +30,16 @@ export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: A
   const [reason, setReason] = useState("");
   const [summary, setSummary] = useState(t.resolution_summary ?? "");
   const [details, setDetails] = useState(t.resolution_details ?? "");
+  const [queueTo, setQueueTo] = useState("");
+  const [officeTo, setOfficeTo] = useState("");
   const closed = t.status === "CLOSED";
+  const settled = closed || t.status === "RESOLVED";
+  const waiting = t.status === "WAITING_FOR_STUDENT" || t.status === "WAITING_FOR_OFFICE";
   const mine = t.assigned_to === me;
+  // the assign list: the agents the routing would choose first — posted on this queue and covering this faculty or department
+  const ranked = [...agents].sort((a, b) => Number(!!b.posted) - Number(!!a.posted) || Number(!!b.eligible) - Number(!!a.eligible) || Number(a.open) - Number(b.open) || a.name.localeCompare(b.name));
+  const describe = (a: Agent) => `${a.name} · ${a.queues ?? a.offices}${a.scopes ? ` (${a.scopes})` : ""} · ${a.open} open${a.availability && a.availability !== "AVAILABLE" ? ` · ${AVAILABILITY[a.availability]?.[0] ?? a.availability}` : ""}${a.reachable ? "" : " · no email"}`;
+  const offices = t.escalation_offices ?? [];
 
   async function call(path: string, body: unknown, reason: string): Promise<boolean> {
     setBusy(true); setProblem(null);
@@ -53,26 +61,32 @@ export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: A
 
   return (
     <>
-      <PageHead eyebrow={`${t.category} · raised ${when(t.created_at)}`} title={t.number} description={t.subject}
+      <PageHead eyebrow={`${t.category}${t.queue ? ` · ${t.queue} queue` : ""} · raised ${when(t.created_at)}`} title={t.number} description={t.subject}
         actions={<>
           <StatusPil status={t.status} /><PriorityPil priority={t.priority} />
           {t.overdue ? <Pil kind="bad">Overdue</Pil> : t.response_overdue ? <Pil kind="warn">No response yet</Pil> : null}
           {t.escalated ? <Pil kind="warn">Escalated</Pil> : null}
+          {t.office ? <Pil kind="warn">With {t.office}</Pil> : null}
           <LinkBtn href="/helpdesk">The Queue</LinkBtn>
         </>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       {!closed ? (
-        <Panel title="Act on the ticket" right={t.agent ? `With ${t.agent}${mine ? " (you)" : ""} since ${when(t.assigned_at)}` : "Not assigned"}>
+        <Panel title="Act on the ticket" right={t.agent ? `With ${t.agent}${mine ? " (you)" : ""} since ${when(t.assigned_at)}` : t.queue ? `Queued on ${t.queue}, with no agent` : "Not assigned"}>
           <PBody>
             <div className="row">
               {!mine ? <Btn kind="primary" disabled={busy} onClick={() => void call("/assign", { agentId: me }, `${t.number}: taken by you`)}>{t.agent ? "Take It Over" : "Accept the Ticket"}</Btn> : null}
               <Btn kind="secondary" disabled={busy} onClick={() => { setAgent(t.assigned_to ?? ""); setDialog("assign"); }}>{t.agent ? "Reassign" : "Assign to an Agent"}</Btn>
               {t.status === "OPENED" || t.status === "REOPENED" ? <Btn kind="primary" disabled={busy} onClick={() => void call("/status", { status: "IN_PROGRESS" }, `${t.number}: work started`)}>Start Work</Btn> : null}
+              {waiting ? <Btn kind="primary" disabled={busy} onClick={() => void call("/status", { status: "IN_PROGRESS" }, `${t.number}: work resumed`)}>Resume Work</Btn> : null}
               {t.status === "IN_PROGRESS" ? <Btn kind="go" disabled={busy} onClick={() => setDialog("resolve")}>Resolve</Btn> : null}
+              {t.status === "IN_PROGRESS" ? <Btn kind="secondary" disabled={busy} onClick={() => setDialog("wait")}>Wait for the Requester</Btn> : null}
               {t.status === "RESOLVED" ? <Btn kind="go" disabled={busy} onClick={() => void call("/status", { status: "CLOSED", reason: "Closed by the desk after the resolution" }, `${t.number}: closed`)}>Close as Resolved</Btn> : null}
               {t.status === "RESOLVED" ? <Btn kind="ghost" disabled={busy} onClick={() => setDialog("reopen")}>Reopen</Btn> : null}
-              <Btn kind="ghost" disabled={busy} onClick={() => { setAgent(""); setDialog("escalate"); }}>Escalate</Btn>
+              {!settled ? <Btn kind="ghost" disabled={busy} onClick={() => { setQueueTo(""); setDialog("transfer"); }}>Transfer to a Queue</Btn> : null}
+              {!settled && t.status !== "WAITING_FOR_OFFICE" ? <Btn kind="ghost" disabled={busy} onClick={() => { setOfficeTo(offices[0]?.code ?? ""); setDialog("office"); }}>Escalate to an Office</Btn> : null}
+              <Btn kind="ghost" disabled={busy} onClick={() => { setAgent(""); setDialog("escalate"); }}>Escalate to a Person</Btn>
+              {t.requester_number || t.requester_email ? <Btn kind="ghost" disabled={busy} onClick={() => setDialog("reset")}>Send Password Reset Link</Btn> : null}
               <select className="ctl" value={t.priority} disabled={busy} onChange={(e) => void call("/priority", { priority: e.target.value }, `${t.number}: priority ${PRIORITY[e.target.value]?.[0] ?? e.target.value}`)} aria-label="Priority">
                 {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]} priority</option>)}
               </select>
@@ -82,7 +96,10 @@ export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: A
             <div className="sub2 mt-2">
               {t.status === "SUBMITTED" ? "Just opened by you. " : ""}
               Due {when(t.due_at)} by the {PRIORITY[t.priority]?.[0].toLowerCase() ?? ""} SLA{t.first_response_at ? `; first response ${when(t.first_response_at)}` : `; first response due ${when(t.response_due_at)}`}.
-              {t.escalated_to_name ? ` Escalated to ${t.escalated_to_name} by ${t.escalated_by_name} on ${when(t.escalated_at)}: ${t.escalation_reason}.` : ""}
+              {t.escalated_to_name ? ` Escalated to ${t.escalated_to_name} by ${t.escalated_by_name} on ${when(t.escalated_at)}: ${(t.escalation_reason ?? "").replace(/\.\s*$/, "")}.` : ""}
+              {t.office ? ` Waiting on ${t.office} since ${when(t.waiting_since)}, put there by ${t.escalated_by_name}: ${(t.escalation_reason ?? "").replace(/\.\s*$/, "")}. The office answers from its own Support Escalations page; the ticket then returns here.` : ""}
+              {t.status === "WAITING_FOR_STUDENT" ? ` Waiting on the requester since ${when(t.waiting_since)}; their reply resumes the work by itself.` : ""}
+              {!head && !t.queue ? " This ticket is on no queue yet." : ""}
             </div>
           </PBody>
         </Panel>
@@ -168,27 +185,71 @@ export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: A
       </Panel>
 
       {dialog === "assign" ? (
-        <Modal title={t.agent ? `Reassign ${t.number}` : `Assign ${t.number}`} sub="To an ICT Support Agent or the Director" onClose={closeDialog}
+        <Modal title={t.agent ? `Reassign ${t.number}` : `Assign ${t.number}`} sub="To an ICT Support Agent, the Head of ICT Support Desk or the Director" onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy || !agent || agent === t.assigned_to} onClick={async () => { if (await call("/assign", { agentId: agent, reason: reason.trim() || null }, `${t.number}: ${t.agent ? "reassigned" : "assigned"} to ${agents.find((a) => a.id === agent)?.name ?? "an agent"}`)) closeDialog(); }}>{t.agent ? "Reassign" : "Assign"}</Btn></>}>
           <div className="stack">
-            <Field id="hd-agent" label="Agent" required>
+            <Field id="hd-agent" label="Agent" required hint={ranked.some((a) => a.eligible) ? "The agents the routing would choose are listed first: posted on this queue, covering this faculty or department, available." : "No posted agent covers this ticket; any agent of the desk may take it."}>
               <select id="hd-agent" className="ctl" value={agent} onChange={(e) => setAgent(e.target.value)}>
                 <option value="">Choose…</option>
-                {agents.map((a) => <option key={a.id} value={a.id}>{a.name} · {a.offices} · {a.open} open{a.reachable ? "" : " · no email"}</option>)}
+                {ranked.map((a) => <option key={a.id} value={a.id}>{a.posted ? "Posted here · " : a.eligible ? "Eligible · " : ""}{describe(a)}</option>)}
               </select>
             </Field>
             <Field id="hd-assign-reason" label="Note" hint="Optional; goes on the history"><input id="hd-assign-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></Field>
           </div>
         </Modal>
       ) : null}
+      {dialog === "transfer" ? (
+        <Modal title={`Transfer ${t.number} to another queue`} sub="The same ticket, the same number: it leaves this queue for one that handles the matter, and is routed to an agent there" onClose={closeDialog}
+          foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy || !queueTo || queueTo === t.queue_code || reason.trim().length < 5} onClick={async () => { if (await call("/transfer", { queue: queueTo, reason: reason.trim() }, `${t.number}: transferred to ${queues.find((q) => q.code === queueTo)?.name ?? queueTo}`)) closeDialog(); }}>Transfer</Btn></>}>
+          <div className="stack">
+            <Field id="hd-queue-to" label="Queue" required>
+              <select id="hd-queue-to" className="ctl" value={queueTo} onChange={(e) => setQueueTo(e.target.value)}>
+                <option value="">Choose…</option>
+                {queues.filter((q) => q.code !== t.queue_code).map((q) => <option key={q.code} value={q.code}>{q.name}{q.office ? ` · decided by ${q.office}` : ""} · {q.available_agents} of {q.agents} agent{q.agents === 1 ? "" : "s"} available</option>)}
+              </select>
+            </Field>
+            <Field id="hd-transfer-reason" label="Why" required hint="Goes on the history; the requester is told the ticket has moved"><textarea id="hd-transfer-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} /></Field>
+          </div>
+        </Modal>
+      ) : null}
+      {dialog === "office" ? (
+        <Modal title={`Escalate ${t.number} to an office`} sub="A policy or administrative decision goes to the office responsible for this queue; a technical fault to the Director of ICT. The ticket waits for the office's answer." onClose={closeDialog}
+          foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="urgent" disabled={busy || !officeTo || reason.trim().length < 5} onClick={async () => { if (await call("/escalate-office", { office: officeTo, reason: reason.trim() }, `${t.number}: escalated to ${offices.find((o) => o.code === officeTo)?.label ?? officeTo}`)) closeDialog(); }}>Escalate to the Office</Btn></>}>
+          <div className="stack">
+            <Field id="hd-office-to" label="Office" required>
+              <select id="hd-office-to" className="ctl" value={officeTo} onChange={(e) => setOfficeTo(e.target.value)}>
+                <option value="">Choose…</option>
+                {offices.map((o) => <option key={o.code} value={o.code}>{o.label}{o.technical ? " · a technical fault" : " · a decision support cannot take"}</option>)}
+              </select>
+            </Field>
+            <Field id="hd-office-reason" label="What the office must decide" required hint="The office reads this first; say what was found and what you need from them"><textarea id="hd-office-reason" className="ctl" rows={4} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} /></Field>
+            <div className="sub2">Support access is never administrative authority: the office changes what support cannot, and its answer comes back to you on the ticket.</div>
+          </div>
+        </Modal>
+      ) : null}
+      {dialog === "wait" ? (
+        <Modal title={`Wait for the requester on ${t.number}`} sub="The requester is told what is needed; their reply brings the ticket back to in progress by itself" onClose={closeDialog}
+          foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy || reason.trim().length < 5} onClick={async () => { if (await call("/status", { status: "WAITING_FOR_STUDENT", reason: reason.trim() }, `${t.number}: waiting on the requester`)) closeDialog(); }}>Wait for the Requester</Btn></>}>
+          <Field id="hd-wait-reason" label="What the requester should send or confirm" required><textarea id="hd-wait-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} /></Field>
+        </Modal>
+      ) : null}
+      {dialog === "reset" ? (
+        <Modal title={`Send a password reset link for ${t.number}`} sub="Through the portal's own secure door: a one-hour link goes to the email address and phone on the requester's account. No password is shown or set by the desk." onClose={closeDialog}
+          foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={async () => { if (await call("/password-reset", {}, `${t.number}: password reset link sent to the requester`)) closeDialog(); }}>Send the Link</Btn></>}>
+          <div className="stack">
+            <KvGrid cls="grid--2" pairs={[["Account", <span key="a" className="tnum">{t.requester_number ?? t.requester_email}</span>], ["Email on record", t.requester_email ?? "—"]]} />
+            <div className="sub2">The requester is told on the ticket that the link was sent, and the act goes on the history in your name.</div>
+          </div>
+        </Modal>
+      ) : null}
       {dialog === "escalate" ? (
-        <Modal title={`Escalate ${t.number}`} sub="To a senior agent or the Director of ICT, on a reason; they are told" onClose={closeDialog}
+        <Modal title={`Escalate ${t.number} to a person`} sub="To a senior agent, the Head of ICT Support Desk or the Director of ICT, on a reason; they are told" onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="urgent" disabled={busy || !agent || agent === me || reason.trim().length < 5} onClick={async () => { if (await call("/escalate", { toPersonId: agent, reason: reason.trim() }, `${t.number}: escalated to ${agents.find((a) => a.id === agent)?.name ?? ""}`)) closeDialog(); }}>Escalate</Btn></>}>
           <div className="stack">
             <Field id="hd-esc-to" label="Escalate to" required>
               <select id="hd-esc-to" className="ctl" value={agent === me ? "" : agent} onChange={(e) => setAgent(e.target.value)}>
                 <option value="">Choose…</option>
-                {agents.filter((a) => a.id !== me).sort((a, b) => Number(b.director) - Number(a.director)).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.director ? "Director of ICT" : a.offices}</option>)}
+                {agents.filter((a) => a.id !== me).sort((a, b) => Number(!!b.head) - Number(!!a.head)).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.director ? "Director of ICT" : a.offices}</option>)}
               </select>
             </Field>
             <Field id="hd-esc-reason" label="Reason" required><textarea id="hd-esc-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} /></Field>

@@ -339,6 +339,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "t/profile", "icon": "user", "label": "My Profile" }
         ]
       }
@@ -385,6 +386,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -618,6 +620,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -687,6 +690,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -721,6 +725,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -754,6 +759,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -891,6 +897,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -1073,7 +1080,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Governance" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
-          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
         ]
       },
       {
@@ -1165,6 +1173,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -1255,12 +1264,14 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
-          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
         ]
       },
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -1391,7 +1402,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
-          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
         ]
       },
       {
@@ -1940,6 +1952,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
@@ -1974,6 +1987,29 @@ export const MENUS: Record<string, Menu> = {
         "name": "Me",
         "items": [
           { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "helpdeskhead": {
+    "label": "Head of ICT Support Desk",
+    "home": "t/helpdesk",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
+          { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]

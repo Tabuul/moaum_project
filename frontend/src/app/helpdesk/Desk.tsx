@@ -10,20 +10,21 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
-import { ACTION, PRIORITY, PriorityPil, STATUS, StatusPil, dueWords, hours, statusWord, when, type Activity, type Agent, type Category, type TicketRow } from "@/lib/helpdesk";
+import { ACTION, PRIORITY, PriorityPil, STATUS, StatusPil, dueWords, hours, statusWord, when, type Activity, type Agent, type Category, type Queue, type TicketRow } from "@/lib/helpdesk";
 
 export interface Stats {
-  totals: { total: number; submitted: number; opened: number; in_progress: number; reopened: number; resolved: number; closed: number; open: number; unassigned: number; high: number; overdue: number; response_overdue: number; escalated: number; avg_first_response_hours: number | null; avg_resolution_hours: number | null; avg_closure_hours: number | null; resolved_in_sla: number; ever_resolved: number; mine_open: number };
+  totals: { total: number; submitted: number; opened: number; in_progress: number; reopened: number; resolved: number; closed: number; waiting_student?: number; waiting_office?: number; open: number; unassigned: number; high: number; critical?: number; overdue: number; response_overdue: number; escalated: number; avg_first_response_hours: number | null; avg_resolution_hours: number | null; avg_closure_hours: number | null; resolved_in_sla: number; ever_resolved: number; mine_open: number };
   byStatus: { key: string; n: number }[]; byCategory: { key: string; n: number; open: number }[]; byPriority: { key: string; n: number }[];
   byFaculty: { key: string; n: number }[]; byDepartment: { key: string; n: number }[]; byRequesterKind: { key: string; n: number }[];
   byAgent: { key: string; agent_id: string | null; n: number; open: number; done: number; overdue: number; avg_resolution_hours: number | null }[];
+  byQueue?: { key: string; queue_code: string | null; n: number; open: number; unassigned: number; waiting: number; overdue: number; avg_resolution_hours: number | null }[];
   monthly: { key: string; created: number; resolved: number; closed: number }[];
   sla: { priority: string; first_response_hours: number; resolution_hours: number }[];
 }
-interface Filters { q: string; status: string; category: string; priority: string; agent: string; from: string; to: string; sort: string; dir: string; size: string }
+interface Filters { q: string; status: string; category: string; priority: string; agent: string; queue: string; from: string; to: string; sort: string; dir: string; size: string }
 
-export function Desk({ me, director, queue, stats, categories, agents, filters, mine, activity }: {
-  me: string; director: boolean; queue: { rows: TicketRow[]; total: number; page: number; size: number }; stats: Stats | null; categories: Category[]; agents: Agent[]; filters: Filters;
+export function Desk({ me, director, queue, stats, categories, agents, queues, filters, mine, activity }: {
+  me: string; director: boolean; queue: { rows: TicketRow[]; total: number; page: number; size: number }; stats: Stats | null; categories: Category[]; agents: Agent[]; queues: Queue[]; filters: Filters;
   mine: { rows: TicketRow[]; total: number }; activity: Activity[];
 }) {
   const go = useQueryNav();
@@ -45,8 +46,9 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
   }
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "desc" ? "asc" : "desc" });
   const arrow = (key: string) => (filters.sort === key ? (filters.dir === "asc" ? " ↑" : " ↓") : "");
-  const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.from || filters.to || filters.status !== "open");
+  const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.queue || filters.from || filters.to || filters.status !== "open");
   const settled = (r: TicketRow) => r.status === "RESOLVED" || r.status === "CLOSED";
+  const liveQueues = queues.filter((x) => x.active);
 
   /** take a ticket straight from the queue: assigned to you, opened if it was only submitted */
   async function take(r: TicketRow) {
@@ -61,8 +63,9 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
 
   return (
     <>
-      <PageHead title="ICT Support Desk" description="What students and staff have reported, where each ticket stands, and who has it."
+      <PageHead title="ICT Support Desk" description={director ? "Every ticket across the University's support queues: where each stands, who has it, and what waits on whom." : "The tickets of the queues you are posted on, within your scope: where each stands and who has it."}
         actions={<>
+          {director ? <LinkBtn href="/helpdesk/agents">Agents, Queues and Routing</LinkBtn> : null}
           {director ? <LinkBtn href="/helpdesk/reports">Reports and Analytics</LinkBtn> : null}
           {director ? <LinkBtn href="/helpdesk/settings">Categories and SLAs</LinkBtn> : null}
           <LinkBtn href="/tickets">My Own Tickets</LinkBtn>
@@ -72,16 +75,32 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
           <Tiles items={[
             ["Total tickets", String(n(t.total)), null, `${n(t.closed)} closed · ${n(t.resolved)} resolved`],
             ["New", String(n(t.submitted)), n(t.submitted) ? "var(--red-ink)" : null, "Submitted, not yet opened", "/helpdesk?status=SUBMITTED"],
-            ["Opened", String(n(t.opened)), null, "Read by the desk, not yet in hand", "/helpdesk?status=OPENED"],
-            ["In progress", String(n(t.in_progress) + n(t.reopened)), null, `${n(t.reopened)} reopened`, "/helpdesk?status=IN_PROGRESS,REOPENED"],
+            ["In hand", String(n(t.opened) + n(t.in_progress) + n(t.reopened)), null, `${n(t.opened)} opened · ${n(t.in_progress)} in progress · ${n(t.reopened)} reopened`, "/helpdesk?status=OPENED,IN_PROGRESS,REOPENED"],
+            ["Waiting", String(n(t.waiting_student) + n(t.waiting_office)), n(t.waiting_office) ? "var(--amber-ink)" : null, `${n(t.waiting_student)} on the requester · ${n(t.waiting_office)} on an office`, "/helpdesk?status=waiting"],
           ]} />
           <Tiles items={[
-            ["Unassigned", String(n(t.unassigned)), n(t.unassigned) ? "var(--amber-ink)" : null, "Open, with no agent", "/helpdesk?agent=none"],
-            ["High priority", String(n(t.high)), n(t.high) ? "var(--red-ink)" : null, "High or urgent, still open", "/helpdesk?sort=priority"],
+            ["Unassigned", String(n(t.unassigned)), n(t.unassigned) ? "var(--amber-ink)" : null, "Open, with no agent — queued", "/helpdesk?agent=none"],
+            ["High priority", String(n(t.high)), n(t.high) ? "var(--red-ink)" : null, `${n(t.critical)} critical · high, urgent or critical, still open`, "/helpdesk?sort=priority"],
             ["Overdue", String(n(t.overdue)), n(t.overdue) ? "var(--red-ink)" : null, `${n(t.response_overdue)} past first response · ${n(t.escalated)} escalated`],
             ["Average resolution", hours(t.avg_resolution_hours), null, `First response ${hours(t.avg_first_response_hours)} · ${n(t.ever_resolved) ? Math.round((100 * n(t.resolved_in_sla)) / n(t.ever_resolved)) + "% within SLA" : "no resolutions yet"}`],
           ]} />
         </>
+      ) : null}
+
+      {liveQueues.length ? (
+        <Panel title="The queues" right={director ? <LinkBtn href="/helpdesk/agents?tab=queues" size="sm">Configure</LinkBtn> : "The queues you are posted on, and the desk's"}>
+          <DTable pageSize={0} cols={["Queue", "Office that decides", "Agents|mid", "Open|mid", "Unassigned|mid", "Waiting|mid", "Overdue|mid", "Critical|mid", "|num"]} rows={liveQueues.map((x) => [
+            <span key="q"><Link className="lnk b600" href={`/helpdesk?queue=${x.code}`}>{x.name}</Link></span>,
+            <span key="o" className="sub2">{x.office ?? "—"}</span>,
+            <span key="a" className={`tnum${!n(x.available_agents) && n(x.open) ? " ink-red" : ""}`}>{n(x.available_agents)}<span className="sub2"> of {n(x.agents)}</span></span>,
+            <span key="n" className="tnum">{n(x.open)}</span>,
+            <span key="u" className={`tnum${n(x.unassigned) ? " ink-amber b600" : ""}`}>{n(x.unassigned)}</span>,
+            <span key="w" className="tnum">{n(x.waiting_student) + n(x.waiting_office)}</span>,
+            <span key="v" className={`tnum${n(x.overdue) ? " ink-red b600" : ""}`}>{n(x.overdue)}</span>,
+            <span key="c" className={`tnum${n(x.critical) ? " ink-red b600" : ""}`}>{n(x.critical)}</span>,
+            <LinkBtn key="g" href={`/helpdesk?queue=${x.code}${n(x.unassigned) ? "&agent=none" : ""}`} size="sm">{n(x.unassigned) ? "Unassigned" : "Open"}</LinkBtn>,
+          ])} />
+        </Panel>
       ) : null}
 
       {mine.rows.length ? (
@@ -108,7 +127,14 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
               <option value="open">All open</option>
               {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
               <option value="IN_PROGRESS,REOPENED">In progress or reopened</option>
+              <option value="waiting">Waiting (requester or office)</option>
               <option value="all">Everything</option>
+            </select>
+          </Field>
+          <Field id="hd-queue" label="Queue" style={{ flex: "1 1 170px" }}>
+            <select id="hd-queue" className="ctl" value={filters.queue} onChange={(e) => nav({ queue: e.target.value })}>
+              <option value="">Any</option>
+              {queues.map((x) => <option key={x.code} value={x.code}>{x.name}{x.active ? "" : " (inactive)"}</option>)}
             </select>
           </Field>
           <Field id="hd-cat" label="Category" style={{ flex: "1 1 160px" }}>
@@ -140,11 +166,11 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
         </div>
       </form>
 
-      <Panel title="The queue" right={`${queue.total} ticket${queue.total === 1 ? "" : "s"}${filters.status === "open" ? " open" : ""}`}>
+      <Panel title={filters.queue ? `${queues.find((x) => x.code === filters.queue)?.name ?? filters.queue} queue` : "The queue"} right={`${queue.total} ticket${queue.total === 1 ? "" : "s"}${filters.status === "open" ? " open" : ""}`}>
         <PBody>
           <div className="row row--base">
             <span className="sub2">Sort by</span>
-            {[["updated", "Updated"], ["created", "Raised"], ["priority", "Priority"], ["status", "Status"], ["due", "Due"], ["number", "Number"]].map(([k, l]) => (
+            {[["updated", "Updated"], ["created", "Raised"], ["priority", "Priority"], ["status", "Status"], ["due", "Due"], ["queue", "Queue"], ["number", "Number"]].map(([k, l]) => (
               <Btn key={k} kind={filters.sort === k ? "primary" : "ghost"} size="sm" onClick={() => sortBy(k)}>{l}{arrow(k)}</Btn>
             ))}
           </div>
@@ -153,8 +179,8 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
           <DTable pageSize={0} cols={["Ticket", "Requester", "Category", "Subject", "Priority|mid", "Status|mid", "Agent", "Due|mid", "Raised|mid", "|num"]} rows={queue.rows.map((r) => [
             <span key="n"><Link className="lnk tnum b600" href={`/helpdesk/tickets/${r.id}`}>{r.number}</Link>{r.overdue ? <div><Pil kind="bad">Overdue</Pil></div> : r.response_overdue ? <div><Pil kind="warn">No response yet</Pil></div> : null}</span>,
             <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {r.requester_kind === "STUDENT" ? "Student" : "Staff"}</div></span>,
-            <span key="c" className="sub2">{r.category}</span>,
-            <span key="s">{r.subject}{r.escalated ? <div><Pil kind="warn">Escalated</Pil></div> : null}</span>,
+            <span key="c" className="sub2">{r.category}{r.queue ? <div>{r.queue}</div> : null}</span>,
+            <span key="s">{r.subject}{r.escalated ? <div><Pil kind="warn">Escalated</Pil></div> : null}{r.office ? <div><Pil kind="warn">With {r.office}</Pil></div> : null}</span>,
             <PriorityPil key="p" priority={r.priority} />,
             <StatusPil key="st" status={r.status} />,
             <span key="a" className={r.agent ? "" : "sub2"}>{r.agent ?? "Unassigned"}{r.assigned_to === me ? <div><Pil kind="info">You</Pil></div> : null}</span>,
@@ -182,8 +208,8 @@ export function Desk({ me, director, queue, stats, categories, agents, filters, 
       <Panel title="Lately on the desk" right={activity.length ? "The last acts on every ticket, newest first" : "Nothing yet"}>
         {activity.length ? (
           <DTable pageSize={0} cols={["When|mid", "Ticket", "What", "By"]} rows={activity.map((a) => {
-            const change = ["STATUS_CHANGED", "OPENED", "REOPENED", "CLOSED", "RESOLUTION"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).map((v) => statusWord(v!)).join(" → ")
-              : ["ASSIGNED", "REASSIGNED", "ESCALATED"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).join(" → ")
+            const change = ["STATUS_CHANGED", "OPENED", "REOPENED", "CLOSED", "RESOLUTION", "WAITING"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).map((v) => statusWord(v!)).join(" → ")
+              : ["ASSIGNED", "REASSIGNED", "ESCALATED", "ROUTED", "QUEUED", "TRANSFERRED", "ESCALATED_TO_OFFICE", "OFFICE_ANSWERED", "RETURNED"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).join(" → ")
               : a.action === "PRIORITY_CHANGED" ? [a.from_value, a.to_value].filter(Boolean).map((v) => PRIORITY[v!]?.[0] ?? v).join(" → ") : "";
             return [
               <span key="w" className="tnum sub2">{when(a.at)}</span>,

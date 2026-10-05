@@ -47,6 +47,14 @@ export const TITLES: Record<string, [string, string]> = {
     "ICT Support Settings",
     "Categories, SLAs, the quiet spell"
   ],
+  "t/helpdeskagents": [
+    "Support Agents & Queues",
+    "Postings, queues, routing"
+  ],
+  "t/helpdeskoffice": [
+    "Support Escalations",
+    "Tickets referred to your office"
+  ],
   "s/dashboard": [
     "Dashboard",
     "2026/2027 session · First semester"
