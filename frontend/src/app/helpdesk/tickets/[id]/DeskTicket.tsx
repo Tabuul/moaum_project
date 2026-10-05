@@ -128,7 +128,8 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
                 ["Department", t.department ?? "—"],
                 ["Faculty", t.faculty ?? "—"],
               ]} />
-              {t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
+              {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn></div>
+              : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
             </div>
           </PBody>
         </Panel>

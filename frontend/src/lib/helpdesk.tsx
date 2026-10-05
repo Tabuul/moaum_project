@@ -17,6 +17,8 @@ export interface Attachment { id: string; comment_id: string | null; uploaded_ki
 export interface Event { id?: string; at: string; actor_kind?: string; actor_name?: string; actor?: string; action: string; from_value: string | null; to_value: string | null; detail: string | null; internal?: boolean }
 export interface Ticket extends Omit<TicketRow, "attachments"> {
   description: string; details: string; fields: string; attachment_hint: string | null; requester_phone: string | null;
+  /** V334: the student (or staff) record behind the requester, for the support desk's student screen */
+  requester_id?: string | null;
   assigned_by_name: string | null; assigned_at: string | null;
   escalated_to_name: string | null; escalated_by_name: string | null; escalated_at: string | null; escalation_reason: string | null;
   opened_at: string | null; opened_by_name: string | null; first_response_at: string | null; in_progress_at: string | null; response_due_at: string | null;
@@ -45,6 +47,8 @@ export interface Posting {
   id: string; person_id: string; name: string; staff_number: string | null; email: string | null; left_the_university: boolean; holds_office: boolean;
   queue_code: string; queue: string; scope_kind: string; scope_ref: string | null; scope_name: string; is_primary: boolean; active: boolean; availability: string;
   effective_from: string; effective_to: string | null; assigned_by: string | null; reason: string | null; created_at: string; updated_at: string; open: number;
+  /** V334: the student-record capabilities the Head granted with the posting, comma-separated */
+  capabilities?: string | null;
 }
 export interface RoutingRule {
   id: string; category_code: string; category: string; faculty_code: string | null; faculty: string | null; department_code: string | null; department: string | null;

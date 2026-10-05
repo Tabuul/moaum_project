@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 181
+\set EXPECTED 182
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4881,6 +4881,55 @@ BEGIN
         AND r_bad = 'CAT_CODE' AND r_taken = 'TAKEN' AND v_norm1 = 'MOAU-CHM 101' AND v_norm2 = 'CSC 311' AND v_norm3 = 'CSC 309/CMP 441',
         format('fixes=%s proposed=%s twin=%s renamed=%s twins=%s same_id=%s offers=%s bad=%s taken=%s norm=%s/%s/%s',
                n_fix, v_prop, v_twin, n_renamed, n_twin, (v_id2 = v_id), n_off, r_bad, r_taken, v_norm1, v_norm2, v_norm3));
+END $$;
+
+-- ── 182. V334: a support agent reaches the students their postings' scopes cover and does only what the Head granted — a posting carries only known capabilities, a person's are the union of their live postings', an office-scoped posting reaches no student, and every support act is written with its reason and filed on the ticket named ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid; d_a text; p_a text; f_a text; d_b text; p_b text; st_a uuid := gen_random_uuid(); st_b uuid := gen_random_uuid();
+        q text; msg text; r_caps text; sees_a boolean; sees_b boolean; sees_none boolean; caps text[]; words text; r_reason text; v_act uuid; n_ev int; n_act int; v_ins boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        SELECT d.code, p.code, d.faculty_code INTO d_a, p_a, f_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false) WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
+        SELECT d.code, p.code INTO d_b, p_b FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL AND d.faculty_code <> f_a ORDER BY d.code, p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (st_a, 'MOAUM/ADM/82/820182', 'MOAUM/CHK/82/000182', 'CHECKSUPPORTA', 'Student', p_a, 'UTME', '2082/2083', 100, 100, 'ACTIVE', now()),
+          (st_b, 'MOAUM/ADM/82/820183', 'MOAUM/CHK/82/000183', 'CHECKSUPPORTB', 'Student', p_b, 'UTME', '2082/2083', 100, 100, 'ACTIVE', now());
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKAGENT', 'Support') RETURNING id INTO agent;
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        -- a posting carries only known capabilities
+        BEGIN
+            INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'FACULTY', f_a, ARRAY['VIEW_STUDENT', 'DELETE_EVERYTHING']);
+        EXCEPTION WHEN check_violation THEN r_caps := 'REFUSED';
+        END;
+        -- an office-scoped posting reaches no student; a faculty posting reaches its own students
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'OFFICE', 'bursar', ARRAY['VIEW_STUDENT']);
+        sees_none := helpdesk.agent_may_see_student(agent, st_a);
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'FACULTY', f_a, ARRAY['VIEW_STUDENT', 'EDIT_CONTACT']);
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities, effective_from, effective_to) VALUES (agent, q, 'DEPARTMENT', d_b, ARRAY['MANAGE_REGISTRATION'], current_date - 10, current_date - 1);
+        sees_a := helpdesk.agent_may_see_student(agent, st_a);
+        sees_b := helpdesk.agent_may_see_student(agent, st_b);
+        caps := helpdesk.agent_capabilities(agent);
+        SELECT s.words INTO words FROM helpdesk.agent_student_scope(agent) s;
+        -- a support act says why, and is filed on the ticket named
+        PERFORM set_config('moaum.actor_id', agent::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        BEGIN PERFORM helpdesk.record_support_action(st_a, NULL, 'CONTACT_EDITED', 'mobile', '08011111111', '08022222222', '  '); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        v_act := helpdesk.record_support_action(st_a, NULL, 'CONTACT_EDITED', 'mobile', '08011111111', '08022222222', 'The student reported a wrong number');
+        SELECT count(*) INTO n_act FROM helpdesk.support_action WHERE student_id = st_a AND agent_id = agent AND action = 'CONTACT_EDITED';
+        v_ins := EXISTS (SELECT 1 FROM people.student_photo WHERE student_id = st_a);
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_by, reason) VALUES (st_a, '\x00'::bytea, 'image/jpeg', 1, agent, 'replaced');
+        SELECT count(*) INTO n_ev FROM people.student_photo WHERE student_id = st_a;
+        RAISE EXCEPTION 'the V334 support check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A support agent reaches the students their postings'' scopes cover and does only what the Head granted: a posting with an unknown capability is refused, an office-scoped posting reaches no student, a faculty posting reaches its own student and not another faculty''s, a person''s capabilities are the union of their live postings'' (an ended posting counts for nothing), the scope reads in words, a support act without a reason is refused and one with it is on the ledger, and a replacement photograph is kept',
+        r_caps = 'REFUSED' AND sees_none = false AND sees_a = true AND sees_b = false AND caps = ARRAY['EDIT_CONTACT', 'VIEW_STUDENT'] AND words IS NOT NULL
+        AND r_reason = 'SUPPORT_REASON' AND v_act IS NOT NULL AND n_act = 1 AND v_ins = false AND n_ev = 1,
+        format('caps_refused=%s none=%s a=%s b=%s caps=%s words=%s reason=%s act=%s n=%s photo=%s/%s', r_caps, sees_none, sees_a, sees_b, caps, words, r_reason, v_act IS NOT NULL, n_act, v_ins, n_ev));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

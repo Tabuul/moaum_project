@@ -5,6 +5,7 @@
  *              Only a person who holds the ICT Support Agent office can be posted: support access comes from that office.
  *    Queues  — the support queues and the University office each answers to (its escalation office); deactivated, never deleted.
  *    Routing — where each category of problem goes, optionally per faculty or department, and how the agent is chosen. */
+import { CAPABILITIES } from "@/lib/support";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -19,7 +20,7 @@ import { AVAILABILITY, PRIORITY, SCOPE_KINDS, STRATEGY, dayOf, hours, type Posti
 import type { AgentsData, QueuesData, RoutingData, Structure } from "./page";
 
 type Tab = "agents" | "queues" | "routing";
-interface PostDraft { personId: string; queueCode: string; scopeKind: string; scopeRef: string; isPrimary: boolean; availability: string; effectiveFrom: string; effectiveTo: string; reason: string }
+interface PostDraft { capabilities: string[]; personId: string; queueCode: string; scopeKind: string; scopeRef: string; isPrimary: boolean; availability: string; effectiveFrom: string; effectiveTo: string; reason: string }
 interface QueueDraft { isNew: boolean; code: string; name: string; description: string; officeCode: string; ordinal: string; active: boolean }
 interface RuleDraft { id: string | null; categoryCode: string; facultyCode: string; departmentCode: string; queueCode: string; strategy: string; priorityFloor: string; active: boolean }
 
@@ -58,12 +59,12 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
   const departments = structure.faculties.flatMap((f) => f.departments.map((d) => ({ ...d, faculty: f.name })));
   const scopeName = (p: Posting) => (p.scope_kind === "GLOBAL" ? "The University" : `${SCOPE_KINDS[p.scope_kind] ?? p.scope_kind}: ${p.scope_name ?? p.scope_ref}`);
 
-  const newPost = () => setPost({ personId: "", queueCode: queues.queues.find((q) => q.active)?.code ?? "", scopeKind: "GLOBAL", scopeRef: "", isPrimary: false, availability: "AVAILABLE", effectiveFrom: "", effectiveTo: "", reason: "" });
+  const newPost = () => setPost({ capabilities: [], personId: "", queueCode: queues.queues.find((q) => q.active)?.code ?? "", scopeKind: "GLOBAL", scopeRef: "", isPrimary: false, availability: "AVAILABLE", effectiveFrom: "", effectiveTo: "", reason: "" });
   async function savePost() {
     if (!post) return;
     const who = agents.candidates.find((c) => c.id === post.personId)?.name ?? "the agent";
     const q = queues.queues.find((x) => x.code === post.queueCode)?.name ?? post.queueCode;
-    if (await call("POST", "/agents", { personId: post.personId, queueCode: post.queueCode, scopeKind: post.scopeKind, scopeRef: post.scopeKind === "GLOBAL" ? null : post.scopeRef.trim(), isPrimary: post.isPrimary, availability: post.availability, effectiveFrom: post.effectiveFrom || null, effectiveTo: post.effectiveTo || null, reason: post.reason.trim() || null },
+    if (await call("POST", "/agents", { capabilities: post.capabilities, personId: post.personId, queueCode: post.queueCode, scopeKind: post.scopeKind, scopeRef: post.scopeKind === "GLOBAL" ? null : post.scopeRef.trim(), isPrimary: post.isPrimary, availability: post.availability, effectiveFrom: post.effectiveFrom || null, effectiveTo: post.effectiveTo || null, reason: post.reason.trim() || null },
       `${who} posted on ${q}`)) setPost(null);
   }
   const newQueue = () => setQd({ isNew: true, code: "", name: "", description: "", officeCode: "", ordinal: "100", active: true });
@@ -231,6 +232,16 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
                   <select id="ag-ref" className="ctl" value={post.scopeRef} onChange={(e) => setPost({ ...post, scopeRef: e.target.value })}><option value="">Choose…</option>{(structure.colleges ?? []).map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
                 </Field>
               ) : null}
+            </div>
+            <div>
+              <div className="eyebrow">Student records this posting may work on</div>
+              <div className="sub2 mb-1">Nothing by default. Each capability is granted here and enforced by the server on every call; status, programme, matriculation, results and money are never among them.</div>
+              {Object.entries(CAPABILITIES).map(([code, [label, hint]]) => (
+                <label key={code} className="row row--tight" style={{ cursor: "pointer", alignItems: "flex-start", marginBottom: 4 }}>
+                  <input type="checkbox" className="chk" checked={post.capabilities.includes(code)} onChange={(e) => setPost({ ...post, capabilities: e.target.checked ? [...post.capabilities, code] : post.capabilities.filter((c) => c !== code) })} />
+                  <span><b>{label}</b><div className="sub2">{hint}</div></span>
+                </label>
+              ))}
             </div>
             <div className="row">
               <Field id="ag-av" label="Availability" style={{ flex: "1 1 150px" }}>

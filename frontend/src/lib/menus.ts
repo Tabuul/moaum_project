@@ -1090,6 +1090,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/dr", "icon": "box", "label": "Backups & Recovery" },
           { "id": "t/governance", "icon": "scale", "label": "Governance" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+{ "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -1278,6 +1279,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+{ "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -1418,6 +1420,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+{ "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -2018,6 +2021,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+{ "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -2041,6 +2045,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+{ "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

@@ -120,6 +120,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
         actions={<>
           {head ? <LinkBtn href="/helpdesk/agents">Agents, Queues and Routing</LinkBtn> : null}
           {head ? <LinkBtn href="/helpdesk/reports">Reports and Analytics</LinkBtn> : null}
+          <LinkBtn href="/helpdesk/students" kind="secondary">Student Support</LinkBtn>
           <LinkBtn href="/tickets">My Own Tickets</LinkBtn>
         </>} />
 

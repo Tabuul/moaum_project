@@ -149,6 +149,12 @@ class StudentPortalRepository {
         if (studentId == null) {
             return Optional.empty();
         }
+        // V334: a photograph replaced on the portal (by the support desk) stands before the admission's
+        Optional<byte[]> replaced = jdbc.sql("SELECT content, object_id FROM people.student_photo WHERE student_id = :s").param("s", studentId)
+                .query().listOfRows().stream().findFirst().map(r -> files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id")));
+        if (replaced.isPresent()) {
+            return replaced;
+        }
         Optional<byte[]> doc = jdbc.sql("""
                 SELECT b.content, b.object_id FROM people.student s
                   JOIN admissions.application a ON a.candidate_id = s.candidate_id
@@ -180,7 +186,8 @@ class StudentPortalRepository {
             return false;
         }
         return Boolean.TRUE.equals(jdbc.sql("""
-                SELECT EXISTS (SELECT 1 FROM people.student s
+                SELECT EXISTS (SELECT 1 FROM people.student_photo ph WHERE ph.student_id = :s)
+                    OR EXISTS (SELECT 1 FROM people.student s
                           JOIN admissions.application a ON a.candidate_id = s.candidate_id
                           JOIN admissions.application_document d ON d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
                          WHERE s.id = :s)

@@ -1012,6 +1012,7 @@ class HelpdeskController {
                        CASE a.scope_kind WHEN 'FACULTY' THEN (SELECT name FROM ref.faculty WHERE code = a.scope_ref) WHEN 'DEPARTMENT' THEN (SELECT name FROM ref.department WHERE code = a.scope_ref)
                             WHEN 'COLLEGE' THEN (SELECT name FROM ref.college WHERE code = a.scope_ref) WHEN 'OFFICE' THEN (SELECT label FROM ref.office WHERE code = a.scope_ref) ELSE 'The University' END AS scope_name,
                        a.is_primary, a.active, a.availability, a.effective_from, a.effective_to, helpdesk.person_name(a.assigned_by) AS assigned_by, a.reason, a.created_at, a.updated_at,
+                       array_to_string(a.capabilities, ',') AS capabilities,
                        (SELECT count(*) FROM helpdesk.ticket t WHERE t.assigned_to = a.person_id AND t.status NOT IN ('RESOLVED','CLOSED')) AS open
                   FROM helpdesk.agent_assignment a JOIN iam.person p ON p.id = a.person_id JOIN helpdesk.queue q ON q.code = a.queue_code
                  ORDER BY a.active DESC, p.surname, p.given_names, q.ordinal
@@ -1030,7 +1031,25 @@ class HelpdeskController {
     }
 
     public record PostingIn(@NotNull UUID personId, @NotBlank @Size(max = 40) String queueCode, String scopeKind, @Size(max = 40) String scopeRef, Boolean isPrimary,
-                            String availability, LocalDate effectiveFrom, LocalDate effectiveTo, @Size(max = 500) String reason) {
+                            String availability, LocalDate effectiveFrom, LocalDate effectiveTo, @Size(max = 500) String reason, List<String> capabilities) {
+    }
+
+    /** V334: the student-record capabilities a posting may carry; anything else is refused here and by the database */
+    private static final Set<String> CAPABILITIES = Set.of("VIEW_STUDENT", "EDIT_CONTACT", "EDIT_PERSONAL", "EDIT_FAMILY", "EDIT_PHOTO", "REQUEST_CHANGE",
+            "VIEW_PAYMENTS", "VIEW_DOCUMENTS", "MANAGE_REGISTRATION", "EXPORT_STUDENTS");
+
+    private static String capabilities(List<String> in) {
+        if (in == null) return null;
+        List<String> out = new java.util.ArrayList<>();
+        for (String c : in) {
+            String k = c == null ? "" : c.trim().toUpperCase();
+            if (!CAPABILITIES.contains(k)) {
+                throw new DomainRuleViolation("HELPDESK_CAPABILITY", "A posting carries only the student-record capabilities the desk defines; " + k + " is not one.",
+                        new DomainRuleViolation.Remedy("Tick the capabilities from the list.", "Head of ICT Support Desk"));
+            }
+            if (!out.contains(k)) out.add(k);
+        }
+        return String.join(",", out);
     }
 
     /** a person who holds the ICT Support Agent office (or the Head's, or the Director's) placed on a queue within a scope; never anyone else */
@@ -1063,16 +1082,17 @@ class HelpdeskController {
                 .param("p", body.personId()).param("q", queue).param("k", kind).param("r", ref, Types.VARCHAR).query(Boolean.class).optional().orElse(false)) {
             throw new DomainRuleViolation("HELPDESK_POSTED_ALREADY", "The person is posted on that queue in that scope already.", new DomainRuleViolation.Remedy("Edit the posting instead.", "Directorate of ICT"));
         }
+        String caps = capabilities(body.capabilities());
         UUID id = jdbc.sql("""
-                INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, is_primary, availability, effective_from, effective_to, assigned_by, reason)
-                VALUES (:p, :q, :k, :r, :prim, :av, coalesce(:from, current_date), :to, :by, :why) RETURNING id
+                INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, is_primary, availability, effective_from, effective_to, assigned_by, reason, capabilities)
+                VALUES (:p, :q, :k, :r, :prim, :av, coalesce(:from, current_date), :to, :by, :why, string_to_array(coalesce(:caps, ''), ',')) RETURNING id
                 """).param("p", body.personId()).param("q", queue).param("k", kind).param("r", ref, Types.VARCHAR).param("prim", Boolean.TRUE.equals(body.isPrimary()))
-                .param("av", availability).param("from", body.effectiveFrom(), Types.DATE).param("to", body.effectiveTo(), Types.DATE).param("by", me(auth)).param("why", body.reason(), Types.VARCHAR)
+                .param("av", availability).param("from", body.effectiveFrom(), Types.DATE).param("to", body.effectiveTo(), Types.DATE).param("by", me(auth)).param("caps", caps, Types.VARCHAR).param("why", body.reason(), Types.VARCHAR)
                 .query(UUID.class).single();
         return Map.of("id", id);
     }
 
-    public record PostingEdit(String availability, Boolean active, Boolean isPrimary, LocalDate effectiveTo, @Size(max = 500) String reason) {
+    public record PostingEdit(String availability, Boolean active, Boolean isPrimary, LocalDate effectiveTo, @Size(max = 500) String reason, List<String> capabilities) {
     }
 
     /** availability, dates, primacy, or the end of a posting; an agent made unavailable holds nothing — their open tickets return to the queue */
@@ -1082,13 +1102,15 @@ class HelpdeskController {
     Map<String, Object> editPosting(Authentication auth, @PathVariable UUID id, @Valid @RequestBody PostingEdit body) {
         String availability = body.availability() == null || body.availability().isBlank() ? null : body.availability().trim().toUpperCase();
         if (availability != null && !AVAILABILITY.contains(availability)) throw new DomainRuleViolation("HELPDESK_AVAILABILITY", "Availability is available, busy, away, offline or on leave.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
+        String caps = capabilities(body.capabilities());
         int n = jdbc.sql("""
                 UPDATE helpdesk.agent_assignment SET availability = coalesce(:av, availability), active = coalesce(:a, active), is_primary = coalesce(:prim, is_primary),
                        effective_to = CASE WHEN :a = false THEN least(coalesce(effective_to, current_date), current_date) ELSE coalesce(:to, effective_to) END,
-                       reason = CASE WHEN :why::text IS NULL THEN reason ELSE :why END
+                       reason = CASE WHEN :why::text IS NULL THEN reason ELSE :why END,
+                       capabilities = CASE WHEN :caps::text IS NULL THEN capabilities ELSE string_to_array(:caps, ',') END, updated_at = now()
                  WHERE id = :id
                 """).param("id", id).param("av", availability, Types.VARCHAR).param("a", body.active(), Types.BOOLEAN).param("prim", body.isPrimary(), Types.BOOLEAN)
-                .param("to", body.effectiveTo(), Types.DATE).param("why", body.reason(), Types.VARCHAR).update();
+                .param("to", body.effectiveTo(), Types.DATE).param("why", body.reason(), Types.VARCHAR).param("caps", caps, Types.VARCHAR).update();
         if (n == 0) throw new NotFound("posting", id);
         List<UUID> returned = jdbc.sql("SELECT * FROM helpdesk.sweep_inactive_agents()").query(UUID.class).list();
         if (!returned.isEmpty()) notifier.returned(returned);

@@ -56,7 +56,7 @@ public class StudentService {
 
     /** The whole record, assembled from the modules that own each part of it. */
     @Transactional(readOnly = true)
-    StudentRecord record(UUID id, String session) {
+    public StudentRecord record(UUID id, String session) {
         StudentRow row = students.student(id).orElseThrow(() -> new NotFound("student", id));
         return new StudentRecord(row,
                 students.biodata(id),
@@ -77,7 +77,7 @@ public class StudentService {
      * refusal says where the correction is actually made.
      */
     @Transactional
-    BiodataWritten writeBiodata(UUID id, String field, BiodataIn in) {
+    public BiodataWritten writeBiodata(UUID id, String field, BiodataIn in) {
         students.student(id).orElseThrow(() -> new NotFound("student", id));
         String tier = students.tierOf(field).orElseThrow(() -> new NotFound("biodata field", field));
         String value = in.value().trim();
