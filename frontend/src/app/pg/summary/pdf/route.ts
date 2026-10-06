@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import {A4, Page, jpegSize} from "@/lib/pdf-write";
+import { A4, Page, jpegSize, textWidth } from "@/lib/pdf-write";
+import { docLabel } from "@/lib/pg-documents";
 import { crestImage } from "@/lib/pdf-crest";
 
 import { loadInstitution } from "@/lib/document/institution-server";
@@ -16,7 +17,7 @@ interface PgMe {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
   email: string; phone: string | null; entryLevel: number; programme: string; award: string | null;
   faculty: string; department: string; submittedAt: string | null; feeConfirmedAt: string | null;
-  biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null };
+  biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null; nationality?: string | null; contactAddress?: string | null };
   prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
   proposal: { title: string | null; text: string | null };
   referees: Ref[]; priorDegrees: Deg[]; documents: Doc[];
@@ -54,10 +55,11 @@ export async function GET() {
   const cx = A4.w / 2;
   let y = A4.h - 44;
   if (crest) p.jpeg(cx - 20, y - 40, 40, 40, crest);
+  // the University, the School in bold beneath it, and the heading — each centred on the page by its measured width
   p.textCenter(cx, y - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  p.textCenter(cx, y - 68, "School of Postgraduate Studies", 9, false, [0.35, 0.35, 0.35]);
-  p.textCenter(cx, y - 84, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
-  y -= 100;
+  p.textCenter(cx, y - 71, "School of Postgraduate Studies", 11.5, true, [0.12, 0.12, 0.12]);
+  p.textCenter(cx, y - 89, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
+  y -= 104;
   p.rule(L, y, A4.w - L, y, 1, 0.2);
   y -= 20;
 
@@ -93,6 +95,23 @@ export async function GET() {
     }
     if (line) out.push(line);
     return out.length ? out : ["—"];
+  };
+  /** a labelled value too long for one line (the contact address), wrapped to the measured width beside its label */
+  const rowLong = (k: string, v: string) => {
+    const words = clean(v).split(" ").filter(Boolean);
+    const max = W - 120;
+    const out: string[] = [];
+    let line = "";
+    for (const w of words) {
+      const next = line ? `${line} ${w}` : w;
+      if (line && textWidth(next, 10, true) > max) { out.push(line); line = w; } else line = next;
+    }
+    if (line) out.push(line);
+    if (!out.length) out.push("—");
+    room(15 * out.length);
+    p.text(L, y, k.toUpperCase(), 7, false, GREY);
+    out.forEach((t, i) => p.text(L + 120, y - i * 13, t, 10, true));
+    y -= 15 + (out.length - 1) * 13;
   };
   /** a ruled table: a shaded header, every cell wrapped to its column, S/N first, the header repeated on a new page */
   const table = (cols: { h: string; w: number }[], rows: string[][]) => {
@@ -139,10 +158,12 @@ export async function GET() {
   row("Name", `${s.surname}, ${s.otherNames}`);
   row("Sex", s.biodata.sex === "F" ? "Female" : s.biodata.sex === "M" ? "Male" : "—");
   row("Date of birth", day(s.biodata.dateOfBirth));
+  row("Nationality", s.biodata.nationality ?? "—");
   row("State of origin", s.biodata.stateOfOrigin ?? "—");
   row("LGA", s.biodata.lga ?? "—");
   row("Email", s.email);
   row("Phone", s.phone ?? "—");
+  rowLong("Contact address", s.biodata.contactAddress ?? "—");
 
   const degs: Deg[] = (s.priorDegrees && s.priorDegrees.length)
     ? s.priorDegrees
@@ -175,7 +196,14 @@ export async function GET() {
   y -= 10;
   p.rule(L, y, A4.w - L, y, 0.5, 0.6);
   y -= 12;
-  p.text(L, y, `Documents on file: ${(s.documents || []).map((d) => d.kind.replace("_", " ").toLowerCase()).join(", ") || "none"}.`, 8, false, [0.45, 0.45, 0.45]);
+  // the documents on file by their names, the passport first, wrapped to the page
+  const docs = [...(s.documents || [])].sort((a, b) => (a.kind === "PASSPORT" ? -1 : b.kind === "PASSPORT" ? 1 : 0)).map((d) => docLabel(d.kind));
+  let note = "";
+  for (const w of `Documents on file: ${docs.join(", ") || "none"}.`.split(" ")) {
+    const next = note ? `${note} ${w}` : w;
+    if (note && textWidth(next, 8) > W) { p.text(L, y, note, 8, false, GREY); y -= 11; note = w; } else note = next;
+  }
+  if (note) p.text(L, y, note, 8, false, GREY);
   // the standard footer (finishPdf) carries the generation date, the reference and the page numbers
 
   const bytes = finishPdf(pages, `Application summary ${s.applicationNo}`, "FORM");

@@ -13,7 +13,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, LinkBtn, Note } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { STATES, lgasOf } from "@/lib/nigeria";
+import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number }
 interface Applied { application_no: string; reference: string; amount: number }
@@ -76,7 +76,7 @@ function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: strin
 
 export function PgApply() {
   const [progs, setProgs] = useState<Prog[]>([]);
-  const [f, setF] = useState<Record<string, string>>({});
+  const [f, setF] = useState<Record<string, string>>({ nationality: "Nigerian" });
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
@@ -89,6 +89,8 @@ export function PgApply() {
 
   const [step, setStep] = useState(1);
   const chosen = useMemo(() => progs.find((p) => p.code === f.programme), [progs, f.programme]);
+  const nationality = f.nationality === "Other" ? (f.nationalityOther ?? "") : (f.nationality ?? "");
+  const nigerian = f.nationality === "Nigerian";
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   function chooseProgramme(code: string) { setF({ ...f, programme: code }); }
 
@@ -99,6 +101,8 @@ export function PgApply() {
     if (step === 2) {
       if (!f.surname?.trim() || !f.otherNames?.trim()) { setProblem({ status: 400, title: "Your surname and other names are required." }); notifyProblem({ status: 400, title: "Your surname and other names are required." }); return; }
       if (!f.email?.trim()) { setProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); notifyProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); return; }
+      if (!nationality.trim()) { setProblem({ status: 400, title: "Your nationality is required." }); notifyProblem({ status: 400, title: "Your nationality is required." }); return; }
+      if ((f.contactAddress ?? "").trim().length < 5) { setProblem({ status: 400, title: "Your contact address is required." }); notifyProblem({ status: 400, title: "Your contact address is required." }); return; }
     }
     setStep((n) => Math.min(STEPS.length, n + 1));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -115,9 +119,9 @@ export function PgApply() {
     setBusy(true);
     try {
       // the academic record (first degree, other qualifications, referees) is supplied in the portal after payment
-      const { password2: _pw2, ...rest } = f; // the confirm-password stays in the browser
-      void _pw2;
-      const body = { ...rest };
+      const { password2: _pw2, nationalityOther: _other, ...rest } = f; // the confirm-password stays in the browser
+      void _pw2; void _other;
+      const body = { ...rest, nationality: nationality.trim() || null, contactAddress: (f.contactAddress ?? "").trim() || null };
       const r = await fetch("/api/bff/api/v1/pg/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -172,14 +176,25 @@ export function PgApply() {
               <Field id="otherNames" label="Other names"><input id="otherNames" className="ctl" value={f.otherNames ?? ""} onChange={set("otherNames")} autoComplete="given-name" /></Field>
               <Field id="sex" label="Sex"><select id="sex" className="ctl" value={f.sex ?? ""} onChange={set("sex")}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select></Field>
               <Field id="dob" label="Date of birth"><input id="dob" type="date" className="ctl" value={f.dob ?? ""} onChange={set("dob")} /></Field>
-              <Field id="state" label="State of origin">
-                <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })}>
+              <Field id="nationality" label="Nationality">
+                {/* a state of origin and LGA are a Nigerian's; another nationality clears them */}
+                <select id="nationality" className="ctl" value={f.nationality ?? ""}
+                        onChange={(e) => setF({ ...f, nationality: e.target.value, ...(e.target.value === "Nigerian" ? {} : { state: "", lga: "" }) })}>
+                  <option value="">— Select your nationality —</option>
+                  {NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </Field>
+              {f.nationality === "Other" ? (
+                <Field id="nationalityOther" label="Your nationality"><input id="nationalityOther" className="ctl" value={f.nationalityOther ?? ""} onChange={set("nationalityOther")} maxLength={80} placeholder="e.g. Ugandan" /></Field>
+              ) : <div />}
+              <Field id="state" label="State of origin" hint={nigerian ? undefined : "For Nigerian applicants"}>
+                <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })} disabled={!nigerian}>
                   <option value="">— Select a state —</option>
                   {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Field>
               <Field id="lga" label="Local government">
-                <select id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} disabled={!f.state}>
+                <select id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} disabled={!nigerian || !f.state}>
                   <option value="">{f.state ? "— Select an LGA —" : "Select a state first"}</option>
                   {lgasOf(f.state ?? "").map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
@@ -187,6 +202,9 @@ export function PgApply() {
               <Field id="email" label="Email"><input id="email" type="email" className="ctl" value={f.email ?? ""} onChange={set("email")} autoComplete="email" /></Field>
               <Field id="phone" label="Phone"><input id="phone" className="ctl" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" /></Field>
             </div>
+            <Field id="contactAddress" label="Contact address" hint="Where letters can reach you: house number, street, town or city, state">
+              <textarea id="contactAddress" className="ctl" rows={3} maxLength={300} value={f.contactAddress ?? ""} onChange={set("contactAddress")} autoComplete="street-address" />
+            </Field>
           </>
         ) : null}
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Page, escapePdf, jpegSize, pdf } from "./pdf-write.ts";
+import { Page, escapePdf, jpegSize, pdf, textWidth } from "./pdf-write.ts";
 
 test("a document is a PDF with its pages, fonts and a cross-reference table that points where it says", () => {
   const p = new Page();
@@ -30,4 +30,14 @@ test("a JPEG's size is read from its frame header", () => {
     0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x68, 0x00, 0x54, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01]);
   assert.deepEqual(jpegSize(jpg), { width: 84, height: 104 });
   assert.equal(jpegSize(new Uint8Array([0x89, 0x50, 0x4e, 0x47])), null);
+});
+
+test("a line is measured by Helvetica's own widths, so a heading in capitals is centred on the point given", () => {
+  // AFM: A 722 · P 667 · L 611 · I 278 · space 278 (Helvetica-Bold); a word in capitals is wider than its count of characters
+  assert.equal(textWidth("APPLICATION SUMMARY", 12, true), 146.664);
+  assert.equal(textWidth("il", 10), 4.44);
+  assert.equal(textWidth("Master’s", 10), textWidth("Master's", 10));
+  const p = new Page().textCenter(297.5, 700, "APPLICATION SUMMARY", 12, true);
+  const x = Number(/ ([\d.]+) 700\.00 Td \(APPLICATION SUMMARY\)/.exec(p.ops.join(" "))?.[1]);
+  assert.equal(x, Number((297.5 - 146.664 / 2).toFixed(2)));
 });

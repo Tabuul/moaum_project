@@ -33,7 +33,7 @@ interface Me {
   /** once admitted: the student record the applicant has become */
   student?: { admission_no: string; matric_no: string | null; status: string } | null;
   decisionLocked?: boolean; checkingConfirmedAt: string | null; acceptanceConfirmedAt: string | null;
-  biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null };
+  biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null; nationality?: string | null; contactAddress?: string | null };
   prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
   proposal: { title: string | null; text: string | null };
   referees: Referee[]; priorDegrees: PriorDegree[]; documents: DocMeta[];
@@ -305,9 +305,11 @@ export function PgPortal() {
             <KvGrid cls="grid--2" pairs={[
               ["Surname", me.surname], ["Other names", me.otherNames],
               ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
-              ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["State of origin", val(me.biodata.stateOfOrigin)],
-              ["LGA", val(me.biodata.lga)], ["Email", me.email], ["Phone", val(me.phone)],
+              ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["Nationality", val(me.biodata.nationality)],
+              ["State of origin", val(me.biodata.stateOfOrigin)], ["LGA", val(me.biodata.lga)],
+              ["Email", me.email], ["Phone", val(me.phone)],
             ]} />
+            <KvGrid cls="grid--1" pairs={[["Contact address", val(me.biodata.contactAddress)]]} />
             {me.research || me.proposal.title ? (
               <>
                 <div className="sub2 eyebrow eyebrow--gap">Research proposal</div>

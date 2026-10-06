@@ -73,6 +73,7 @@ class PgApplyController {
     public record ApplyIn(@NotBlank @Size(max = 80) String surname, @Size(max = 120) String otherNames,
                           @Size(max = 10) String sex, @Size(max = 10) String dob,
                           @Size(max = 80) String state, @Size(max = 80) String lga,
+                          @Size(max = 80) String nationality, @Size(max = 300) String contactAddress,
                           @NotBlank @Email @Size(max = 160) String email, @Size(max = 20) String phone,
                           @NotBlank @Size(min = 6, max = 100) String password, @NotBlank String programme,
                           @Size(max = 200) String priorInstitution, @Size(max = 120) String priorAward,
@@ -103,6 +104,8 @@ class PgApplyController {
         form.put("dob", body.dob());
         form.put("state", body.state());
         form.put("lga", body.lga());
+        form.put("nationality", body.nationality());
+        form.put("contactAddress", body.contactAddress());
         form.put("email", body.email());
         form.put("phone", body.phone());
         form.put("passwordHash", encoder.encode(body.password()));

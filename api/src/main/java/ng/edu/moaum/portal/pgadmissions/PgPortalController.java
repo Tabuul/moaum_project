@@ -247,6 +247,7 @@ class PgPortalController {
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,
                        p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
+                       p.nationality, p.contact_address,
                        g.code AS programme_code, g.name AS programme_name, g.pg_award, g.pg_research,
                        f.name AS faculty_name, d.name AS department_name, a.session
                   FROM admissions.pg_application a
@@ -322,6 +323,8 @@ class PgPortalController {
         bio.put("dateOfBirth", a.get("date_of_birth"));
         bio.put("stateOfOrigin", a.get("state_of_origin"));
         bio.put("lga", a.get("lga"));
+        bio.put("nationality", a.get("nationality"));
+        bio.put("contactAddress", a.get("contact_address"));
         out.put("biodata", bio);
         Map<String, Object> prior = new LinkedHashMap<>();
         prior.put("institution", a.get("prior_institution"));

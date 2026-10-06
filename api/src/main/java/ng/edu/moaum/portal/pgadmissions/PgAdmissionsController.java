@@ -418,7 +418,7 @@ class PgAdmissionsController {
         List<Map<String, Object>> found = jdbc.sql("""
                 SELECT a.id, a.application_no, a.session, a.state, a.entry_level, a.programme_code,
                        g.name AS programme_name, g.pg_award, g.pg_research,
-                       p.surname, p.other_names, p.sex, p.date_of_birth, p.state_of_origin, p.lga, p.email, p.phone,
+                       p.surname, p.other_names, p.sex, p.date_of_birth, p.state_of_origin, p.lga, p.nationality, p.contact_address, p.email, p.phone,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,
                        a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.dept_note,

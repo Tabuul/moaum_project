@@ -14,6 +14,7 @@ import { Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { docLabel } from "@/lib/pg-documents";
 
 export interface PgRow {
   id: string; application_no: string; state: string; entry_level: number; programme_code: string;
@@ -30,7 +31,7 @@ const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMM
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
 interface HistoryRow { kind: string; note: string | null; at: string; actor: string | null; actor_office: string | null }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[] }
+interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[] }
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Application opened", SUBMITTED: "Submitted", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", REFERENCE_RECEIVED: "Reference received",
   DEPT_RECOMMENDED: "Department recommended", DEPT_DECLINED: "Department declined", FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Faculty declined",
@@ -160,10 +161,12 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         <Kv k="Other names" v={a.other_names} />
         <Kv k="Sex" v={sexLabel(a.sex)} />
         <Kv k="Date of birth" v={fmtDate(a.date_of_birth)} />
+        <Kv k="Nationality" v={a.nationality ?? "—"} />
         <Kv k="State of origin" v={a.state_of_origin ?? "—"} />
         <Kv k="LGA" v={a.lga ?? "—"} />
         <Kv k="Email" v={a.email} />
         <Kv k="Phone" v={a.phone ?? "—"} />
+        <Kv k="Contact address" v={a.contact_address ?? "—"} />
       </Section>
 
       <Section title="Institutions attended">
@@ -210,22 +213,35 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       <Section title="Documents">
         {otherDocs.length || passport ? (
           <div className="stack">
-            <div className="row mb-1">
+            <div className="row row--base">
+              <span className="sub2">{(passport ? 1 : 0) + otherDocs.length} file{(passport ? 1 : 0) + otherDocs.length === 1 ? "" : "s"} uploaded{passport ? ", with the passport photograph" : ""}</span>
+              <span className="grow" />
               <Btn kind="primary" onClick={() => setViewing({ url: `/api/bff/api/v1/pg/applications/${id}/documents.pdf`, title: "All documents — one PDF", image: false })}>View all as one PDF</Btn>
-              <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download</a>
+              <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download all</a>
             </div>
-            {passport ? (
-              <div className="sub2 row">
-                <span>passport — {passport.filename}</span>
-                <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(passport.id), title: `Passport — ${passport.filename}`, image: true })}>View</Btn>
-              </div>
-            ) : null}
-            {otherDocs.map((x) => (
-              <div key={x.id} className="sub2 row">
-                <span>{x.kind.replace(/_/g, " ").toLowerCase()} — {x.filename}</span>
-                <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(x.id), title: `${x.kind.replace(/_/g, " ").toLowerCase()} — ${x.filename}`, image: false })}>View PDF</Btn>
-              </div>
-            ))}
+            <div className="tablewrap" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+              <table className="tbl tbl--data">
+                <thead>
+                  <tr><th style={{ width: 48 }}>S/N</th><th>Document</th><th>File name</th><th style={{ width: 170 }}>Uploaded</th><th style={{ width: 110 }} /></tr>
+                </thead>
+                <tbody>
+                  {[...(passport ? [passport] : []), ...otherDocs].map((x, i) => {
+                    const image = x.kind === "PASSPORT";
+                    return (
+                      <tr key={x.id}>
+                        <td className="tnum">{i + 1}</td>
+                        <td className="b600">{docLabel(x.kind)}</td>
+                        <td className="sub2" style={{ wordBreak: "break-all" }}>{x.filename}</td>
+                        <td className="sub2 tnum">{fmtWhen(x.uploaded_at)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(x.id), title: `${docLabel(x.kind)} — ${x.filename}`, image })}>{image ? "View" : "View PDF"}</Btn>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : <div className="sub2">No documents uploaded yet.</div>}
       </Section>

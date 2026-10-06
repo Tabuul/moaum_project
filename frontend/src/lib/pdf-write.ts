@@ -99,10 +99,13 @@ export class Page {
     return yy;
   }
 
-  /** centred styled text about the point x; F1/F4 regular, F2/F3/F5 bold widths */
+  /** centred styled text about the point x: Helvetica (F1, F2) measured by its character widths; the Times faces
+   *  approximated from the character count */
   textCenterStyled(cx: number, y: number, s: string, size: number, o: { font?: "F1" | "F2" | "F3" | "F4" | "F5"; colour?: [number, number, number] } = {}): this {
-    const bold = o.font === "F2" || o.font === "F3" || o.font === "F5";
-    const w = s.length * size * (bold ? 0.52 : 0.47);
+    const font = o.font ?? "F1";
+    const w = font === "F1" || font === "F2"
+      ? textWidth(s, size, font === "F2")
+      : s.length * size * (font === "F4" ? 0.47 : 0.52);
     return this.textStyled(cx - w / 2, y, s, size, o);
   }
 
@@ -121,9 +124,10 @@ export class Page {
     return y;
   }
 
-  /** centred text about the point x; width is approximated from the character count (Helvetica) */
+  /** centred text about the point x, measured by Helvetica's own character widths (capitals are wider than a
+   *  count of characters allows, so a heading in capitals now sits on the centre and not to its right) */
   textCenter(cx: number, y: number, s: string, size = 10, bold = false, colour: [number, number, number] = [0, 0, 0]): this {
-    const w = s.length * size * (bold ? 0.54 : 0.5);
+    const w = textWidth(s, size, bold);
     return this.text(cx - w / 2, y, s, size, bold, colour);
   }
 
@@ -202,6 +206,44 @@ export class Page {
     this.ops.push(`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /${name} Do Q`);
     return this;
   }
+}
+
+/* Helvetica and Helvetica-Bold advance widths (Adobe's AFM, thousandths of the size) for the printable ASCII
+ * characters, space (32) to tilde (126) */
+const HELVETICA = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+const HELVETICA_BOLD = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+  975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+  333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+  611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+/** the width in points of a string set in Helvetica (or Helvetica-Bold) at a size — the characters as escapePdf
+ *  writes them: curly quotes as straight ones, dashes as hyphens, the ellipsis as three stops, the naira as "NGN " */
+export function textWidth(s: string, size: number, bold = false): number {
+  const table = bold ? HELVETICA_BOLD : HELVETICA;
+  const of = (c: number) => (c >= 32 && c <= 126 ? table[c - 32] : 556);
+  let units = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 32;
+    if (c === 0x2019 || c === 0x2018) units += of(39);
+    else if (c === 0x201c || c === 0x201d) units += of(34);
+    else if (c === 0x2013 || c === 0x2014) units += of(45);
+    else if (c === 0x2026) units += 3 * of(46);
+    else if (c === 0x20a6) units += of(78) + of(71) + of(78) + of(32);
+    else if (c === 0xb7 || c === 0x2022) units += 278;
+    else units += of(c);
+  }
+  return (units * size) / 1000;
 }
 
 export function escapePdf(s: string): string {

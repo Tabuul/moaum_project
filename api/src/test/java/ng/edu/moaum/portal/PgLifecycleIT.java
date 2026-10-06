@@ -63,6 +63,7 @@ class PgLifecycleIT {
         Map<String, Object> form = new java.util.LinkedHashMap<>();
         form.put("surname", "ZZPGCANDIDATE"); form.put("otherNames", "Lifecycle"); form.put("sex", "F"); form.put("dob", "1995-04-12");
         form.put("state", "Benue"); form.put("lga", "Makurdi"); form.put("email", email); form.put("phone", "08012345678");
+        form.put("nationality", "Nigerian"); form.put("contactAddress", "No. 5 Gboko Road," + (char) 10 + "  Makurdi,  Benue State");
         form.put("password", password); form.put("programme", programme);
         form.put("priorInstitution", "Benue State University"); form.put("priorAward", "B.Sc. Computer Science"); form.put("priorClass", "Second Class Upper");
         form.put("priorCgpa", "4.10"); form.put("priorYear", "2019");
@@ -90,6 +91,10 @@ class PgLifecycleIT {
         ResponseEntity<Map> me = it.get(applicant, "/api/v1/pg/me");
         assertThat(me.getStatusCode().value()).isEqualTo(200);
         assertThat((List<?>) me.getBody().get("history")).hasSizeGreaterThanOrEqualTo(3);
+        // the nationality and contact address given on the form (V336), the address on one line
+        Map<String, Object> bio = (Map<String, Object>) me.getBody().get("biodata");
+        assertThat(bio.get("nationality")).isEqualTo("Nigerian");
+        assertThat(bio.get("contactAddress")).isEqualTo("No. 5 Gboko Road, Makurdi, Benue State");
         assertThat(it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=ACCEPTANCE", null).getStatusCode().value()).isEqualTo(422);
         assertThat(it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=CHECKING", null).getStatusCode().value()).isEqualTo(422);
 
