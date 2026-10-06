@@ -63,7 +63,7 @@ class JupebFeesController {
         out.put("sessions", jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC").query(String.class).list());
         out.put("own", jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.fee_setting WHERE session = :s)").param("s", s).query(Boolean.class).single());
         out.put("rule", jdbc.sql("""
-                SELECT f.session, f.application_fee, f.first_percent, f.allow_full, f.activation, f.indigene_state, f.updated_at, f.updated_office,
+                SELECT f.session, f.application_fee, f.checking_fee, f.acceptance_fee, f.first_percent, f.allow_full, f.activation, f.indigene_state, f.updated_at, f.updated_office,
                        p.surname || ', ' || p.given_names AS updated_by
                   FROM jupeb.fee_setting_of(:s) f LEFT JOIN iam.person p ON p.id = f.updated_by
                 """).param("s", s).query().singleRow());
@@ -77,7 +77,7 @@ class JupebFeesController {
                   FROM ref.faculty f LEFT JOIN jupeb.fee_category fc ON fc.faculty_code = f.code ORDER BY f.name
                 """).query().listOfRows());
         out.put("history", jdbc.sql("""
-                SELECT session, application_fee, first_percent, allow_full, activation, indigene_state, updated_at, updated_office FROM jupeb.fee_setting ORDER BY session DESC
+                SELECT session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_at, updated_office FROM jupeb.fee_setting ORDER BY session DESC
                 """).query().listOfRows());
         return out;
     }
@@ -87,6 +87,7 @@ class JupebFeesController {
     }
 
     public record Rule(@NotBlank String session, @NotNull @DecimalMin("0") @DecimalMax("10000000") BigDecimal applicationFee,
+                       @NotNull @DecimalMin("0") @DecimalMax("10000000") BigDecimal checkingFee, @NotNull @DecimalMin("0") @DecimalMax("10000000") BigDecimal acceptanceFee,
                        @NotNull @DecimalMin("1") @DecimalMax("100") BigDecimal firstPercent, boolean allowFull,
                        @NotBlank @Pattern(regexp = "FIRST_INSTALMENT|FULL") String activation, @NotBlank @Size(max = 60) String indigeneState,
                        @NotNull @Size(min = 4, max = 4) List<@Valid SchoolFee> schoolFees) {
@@ -110,12 +111,13 @@ class JupebFeesController {
         }
         var ctx = AuditContextHolder.required();
         jdbc.sql("""
-                INSERT INTO jupeb.fee_setting (session, application_fee, first_percent, allow_full, activation, indigene_state, updated_by, updated_office)
-                VALUES (:s, :af, :fp, :full, :act, :st, :by, :office)
-                ON CONFLICT (session) DO UPDATE SET application_fee = EXCLUDED.application_fee, first_percent = EXCLUDED.first_percent, allow_full = EXCLUDED.allow_full,
+                INSERT INTO jupeb.fee_setting (session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_by, updated_office)
+                VALUES (:s, :af, :cf, :acf, :fp, :full, :act, :st, :by, :office)
+                ON CONFLICT (session) DO UPDATE SET application_fee = EXCLUDED.application_fee, checking_fee = EXCLUDED.checking_fee, acceptance_fee = EXCLUDED.acceptance_fee,
+                       first_percent = EXCLUDED.first_percent, allow_full = EXCLUDED.allow_full,
                        activation = EXCLUDED.activation, indigene_state = EXCLUDED.indigene_state, updated_by = EXCLUDED.updated_by,
                        updated_office = EXCLUDED.updated_office, updated_at = now()
-                """).param("s", s).param("af", b.applicationFee()).param("fp", b.firstPercent()).param("full", b.allowFull()).param("act", b.activation())
+                """).param("s", s).param("af", b.applicationFee()).param("cf", b.checkingFee()).param("acf", b.acceptanceFee()).param("fp", b.firstPercent()).param("full", b.allowFull()).param("act", b.activation())
                 .param("st", b.indigeneState().trim()).param("by", ctx.actorId()).param("office", ctx.actorOffice(), Types.VARCHAR).update();
         for (SchoolFee f : b.schoolFees()) {
             jdbc.sql("""

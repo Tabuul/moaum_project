@@ -32,8 +32,11 @@ export interface ApplicationsPage {
 
 /** V337: postgraduate admission status checking is the School's own window, beside its application */
 const PG_CHECKING = "POSTGRADUATE_ADMISSION_STATUS_CHECKING";
-const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application" };
-const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application" };
+/** V342: JUPEB admission status checking, beside the JUPEB application */
+const JUPEB_CHECKING = "JUPEB_ADMISSION_STATUS_CHECKING";
+const CHECKING = new Set([PG_CHECKING, JUPEB_CHECKING]);
+const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking" };
+const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
@@ -97,7 +100,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
     const [word, kind] = STATE[w.state] ?? [w.state, "grey"];
     const live = page.liveSessions[w.type];
     const noun = NOUN[w.type];
-    const checking = w.type === PG_CHECKING;
+    const checking = CHECKING.has(w.type);
     return (
       <Panel key={w.type} title={`${WORD[w.type].toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>
@@ -114,7 +117,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           <KvGrid cls="grid--3" pairs={[
             ["Opens", w.state === "CLOSED" ? "—" : w.opens_at ? when(w.opens_at) : w.configured ? "Immediately" : "—"], ["Closes", w.state === "CLOSED" ? "Closed now" : w.closes_at ? `${when(w.closes_at)} · ${remaining(w.closes_at, page.now)}` : w.configured ? "No closing date" : "—"],
             ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : "Not configured: open"], ["Reason", w.reason ?? "—"],
-            ["Scope", "Whole admission exercise of the session"], checking ? ["Who checks", "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
+            ["Scope", "Whole admission exercise of the session"], checking ? ["Who checks", w.type === JUPEB_CHECKING ? "JUPEB applicants of the session who submitted with the application fee confirmed" : "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
           ]} />
           {live && live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>The rule shown here governs {session}. To open or close what applicants meet today, choose {live} above.</Note> : null}
           {may ? (
@@ -142,7 +145,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{ACTION_WORD[e.action] ?? e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
           <span key="r" className="sub2">{e.reason ?? ""}</span>, <span key="w" className="sub2">{e.officer ?? ""}{e.office ? ` (${e.office})` : ""}</span>, <span key="t" className="tnum sub2">{when(e.at)}</span>,
-        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {w.type === "JUPEB_APPLICATION" ? "closed" : "open"} by default.</div></PBody>}
+        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {w.type === "JUPEB_APPLICATION" || w.type === JUPEB_CHECKING ? "closed" : "open"} by default.</div></PBody>}
       </Panel>
     );
   };
@@ -176,7 +179,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           {problem ? <ProblemNotice problem={problem} /> : null}
           {act.action === "CLOSE" ? (
             <Note kind="bad" title={`Are you sure you want to close ${WORD[act.type]} for ${session}?`}>
-              {act.type === PG_CHECKING
+              {CHECKING.has(act.type)
                 ? <>It takes effect the moment you confirm. No new checking fee is taken and no applicant reads an admission status until it is reopened; an applicant who has accepted an offer continues. A checking fee already paid stands. Nothing is deleted.</>
                 : <>It takes effect the moment you confirm. No new {NOUN[act.type]} can be started until it is reopened; the login page hides the button and {acting.path} shows your closure message. Applicants who already registered sign in and continue as before. Nothing is deleted.</>}
             </Note>

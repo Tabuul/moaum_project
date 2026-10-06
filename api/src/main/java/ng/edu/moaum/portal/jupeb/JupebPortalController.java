@@ -131,16 +131,23 @@ class JupebPortalController {
         return mine(auth);
     }
 
-    public record Choice(@NotBlank @Pattern(regexp = "(?i)SCIENCE|ARTS", message = "Science or Arts") String stream) {
+    public record Choice(@NotBlank @Pattern(regexp = "(?i)SCIENCE|NON[-_ ]?SCIENCE|ARTS", message = "Science or Non-Science") String stream,
+                         @Size(max = 60) String combination) {
     }
 
-    /** V341: Science or Arts, while the application is a draft or returned */
+    /** Science or Non-Science (V341, V342; an older page's ARTS is Non-Science) */
+    static String stream(String raw) {
+        String s = raw.trim().toUpperCase().replaceAll("[- ]", "_");
+        return "SCIENCE".equals(s) ? "SCIENCE" : "NON_SCIENCE";
+    }
+
+    /** the programme, Science or Non-Science, and one offered combination of it, while the application is a draft or returned (V342) */
     @PutMapping("/choice")
     @Transactional
     Map<String, Object> choice(Authentication auth, @Valid @RequestBody Choice c) {
         UUID app = me(auth);
         requireEditable(app);
-        jdbc.sql("UPDATE jupeb.application SET stream = :s WHERE id = :id").param("s", c.stream().trim().toUpperCase()).param("id", app).update();
+        jdbc.sql("SELECT jupeb.choose(:id, :s, :c)").param("id", app).param("s", stream(c.stream())).param("c", c.combination(), Types.VARCHAR).query().listOfRows();
         return mine(auth);
     }
 
@@ -151,7 +158,8 @@ class JupebPortalController {
                         @NotBlank @Pattern(regexp = "A1|B2|B3|C4|C5|C6|D7|E8|F9|AR") String grade) {
     }
 
-    public record Olevel(@NotNull @Size(max = 24) List<@Valid Grade> grades) {
+    /** V342: the sittings declared (one or two) and every subject of each */
+    public record Olevel(@Min(1) @Max(2) Integer sittings, @NotNull @Size(max = 24) List<@Valid Grade> grades) {
     }
 
     @PutMapping("/olevel")
@@ -160,7 +168,12 @@ class JupebPortalController {
         UUID app = me(auth);
         requireEditable(app);
         Set<String> seen = new java.util.HashSet<>();
+        int declared = body.sittings() == null ? (int) body.grades().stream().mapToInt(Grade::sitting).distinct().count() : body.sittings();
         for (Grade g : body.grades()) {
+            if (g.sitting() > Math.max(declared, 1)) {
+                throw new DomainRuleViolation("JUPEB_OLEVEL_SITTINGS", "A result of sitting " + g.sitting() + " is entered, but you declared " + (declared == 1 ? "one sitting" : declared + " sittings") + ".",
+                        new DomainRuleViolation.Remedy("Declare two sittings, or remove the second sitting's results.", "You"));
+            }
             if (!seen.add(g.sitting() + "|" + g.subject().trim().toUpperCase())) {
                 throw new DomainRuleViolation("JUPEB_OLEVEL_TWICE", g.subject().trim() + " appears twice in sitting " + g.sitting() + ".",
                         new DomainRuleViolation.Remedy("Enter each subject once per sitting.", "You"));
@@ -170,12 +183,15 @@ class JupebPortalController {
                         new DomainRuleViolation.Remedy("Enter the year you sat the examination.", "You"));
             }
         }
+        jdbc.sql("UPDATE jupeb.application SET olevel_sittings = :n WHERE id = :id").param("n", declared == 0 ? null : declared, Types.INTEGER).param("id", app).update();
         jdbc.sql("DELETE FROM jupeb.olevel WHERE application_id = :id").param("id", app).update();
         for (Grade g : body.grades()) {
             jdbc.sql("INSERT INTO jupeb.olevel (application_id, sitting, exam_type, exam_number, exam_year, subject, grade) VALUES (:a, :s, :t, :n, :y, :sub, :g)")
                     .param("a", app).param("s", g.sitting()).param("t", g.examType()).param("n", blank(g.examNumber()), Types.VARCHAR)
                     .param("y", g.examYear(), Types.INTEGER).param("sub", g.subject().trim()).param("g", g.grade()).update();
         }
+        // a sitting no longer declared takes its O'Level document with it
+        jdbc.sql("DELETE FROM jupeb.document WHERE application_id = :id AND kind = 'OLEVEL_RESULT' AND sitting > :n").param("id", app).param("n", Math.max(declared, 1)).update();
         return mine(auth);
     }
 
@@ -184,14 +200,28 @@ class JupebPortalController {
     public record DocumentIn(@NotBlank @Size(max = 200) String filename, @NotBlank @Size(max = 100) String contentType, @NotBlank String base64) {
     }
 
+    /** the sitting an O'Level result is uploaded for (one of those declared); any other document has none */
+    private Integer sittingOf(UUID app, String kind, Integer sitting) {
+        if (!"OLEVEL_RESULT".equals(kind)) return null;
+        int declared = jdbc.sql("SELECT coalesce(olevel_sittings, 1) FROM jupeb.application WHERE id = :id").param("id", app).query(Integer.class).single();
+        int s = sitting == null ? 1 : sitting;
+        if (s < 1 || s > declared) {
+            throw new DomainRuleViolation("JUPEB_DOC_SITTING", "Each O'Level result is uploaded for one of the sittings you declared (" + declared + ").",
+                    new DomainRuleViolation.Remedy("Upload the first sitting's result, and the second's if you declared two.", "You"));
+        }
+        return s;
+    }
+
     @PostMapping("/documents/{kind}")
     @Transactional
-    Map<String, Object> upload(Authentication auth, @PathVariable String kind, @Valid @RequestBody DocumentIn body) {
+    Map<String, Object> upload(Authentication auth, @PathVariable String kind, @RequestParam(required = false) Integer sitting, @Valid @RequestBody DocumentIn body) {
         UUID app = me(auth);
         String k = kind.trim().toUpperCase();
         Map<String, Object> dk = jdbc.sql("SELECT code, image FROM jupeb.document_kind WHERE code = :k AND active").param("k", k).query().listOfRows().stream().findFirst()
                 .orElseThrow(() -> new NotFound("document kind", k));
-        String current = jdbc.sql("SELECT status FROM jupeb.document WHERE application_id = :a AND kind = :k").param("a", app).param("k", k).query(String.class).optional().orElse(null);
+        Integer sit = sittingOf(app, k, sitting);
+        String current = jdbc.sql("SELECT status FROM jupeb.document WHERE application_id = :a AND kind = :k AND coalesce(sitting, 0) = coalesce(:s, 0)")
+                .param("a", app).param("k", k).param("s", sit, Types.INTEGER).query(String.class).optional().orElse(null);
         // a draft or returned application takes any document; afterwards only one the office asked to be replaced
         boolean replacing = "REJECTED".equals(current) || "REPLACEMENT_REQUIRED".equals(current);
         if (!replacing) requireEditable(app);
@@ -215,23 +245,29 @@ class JupebPortalController {
             throw new DomainRuleViolation("JUPEB_DOC_TYPE", "The file's contents are not the " + ct + " its name claims.",
                     new DomainRuleViolation.Remedy("Upload the original PDF, JPEG or PNG.", "You"));
         }
-        List<UUID> old = jdbc.sql("SELECT object_id FROM jupeb.document WHERE application_id = :a AND kind = :k AND object_id IS NOT NULL").param("a", app).param("k", k).query(UUID.class).list();
+        List<UUID> old = jdbc.sql("SELECT object_id FROM jupeb.document WHERE application_id = :a AND kind = :k AND coalesce(sitting, 0) = coalesce(:s, 0) AND object_id IS NOT NULL")
+                .param("a", app).param("k", k).param("s", sit, Types.INTEGER).query(UUID.class).list();
         UUID oid = files.store("jupeb.document", app, body.filename().trim(), ct, content);
+        // an O'Level result carries its sitting's examination body and year, from the results entered for that sitting
         UUID doc = jdbc.sql("""
-                INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes, object_id)
-                VALUES (:a, :k, :fn, :ct, :sz, :o)
-                ON CONFLICT (application_id, kind) DO UPDATE SET filename = EXCLUDED.filename, content_type = EXCLUDED.content_type, size_bytes = EXCLUDED.size_bytes,
-                       object_id = EXCLUDED.object_id, status = 'UPLOADED', review_note = NULL, reviewed_by = NULL, reviewed_at = NULL, uploaded_at = now()
+                INSERT INTO jupeb.document (application_id, kind, sitting, exam_body, exam_year, filename, content_type, size_bytes, object_id)
+                VALUES (:a, :k, :s,
+                        (SELECT o.exam_type FROM jupeb.olevel o WHERE o.application_id = :a AND o.sitting = :s LIMIT 1),
+                        (SELECT o.exam_year FROM jupeb.olevel o WHERE o.application_id = :a AND o.sitting = :s LIMIT 1),
+                        :fn, :ct, :sz, :o)
+                ON CONFLICT (application_id, kind, (coalesce(sitting, 0))) DO UPDATE SET filename = EXCLUDED.filename, content_type = EXCLUDED.content_type,
+                       size_bytes = EXCLUDED.size_bytes, object_id = EXCLUDED.object_id, exam_body = EXCLUDED.exam_body, exam_year = EXCLUDED.exam_year,
+                       status = 'UPLOADED', review_note = NULL, reviewed_by = NULL, reviewed_at = NULL, uploaded_at = now()
                 RETURNING id
-                """).param("a", app).param("k", k).param("fn", body.filename().trim()).param("ct", ct).param("sz", content.length).param("o", oid, Types.OTHER)
-                .query(UUID.class).single();
+                """).param("a", app).param("k", k).param("s", sit, Types.INTEGER).param("fn", body.filename().trim()).param("ct", ct).param("sz", content.length)
+                .param("o", oid, Types.OTHER).query(UUID.class).single();
         jdbc.sql("DELETE FROM jupeb.document_blob WHERE document_id = :d").param("d", doc).update();
         if (oid == null) {
             jdbc.sql("INSERT INTO jupeb.document_blob (document_id, bytes) VALUES (:d, :b)").param("d", doc).param("b", content, Types.BINARY).update();
         }
         old.stream().filter(o -> !o.equals(oid)).forEach(files::forget);
         if (replacing) {
-            jdbc.sql("SELECT jupeb.app_event(:a, 'DOCUMENT_REPLACED', :n)").param("a", app).param("n", k + " replaced as the JUPEB Office asked").query().listOfRows();
+            jdbc.sql("SELECT jupeb.app_event(:a, 'DOCUMENT_REPLACED', :n)").param("a", app).param("n", k + (sit == null ? "" : " (sitting " + sit + ")") + " replaced as the JUPEB Office asked").query().listOfRows();
         }
         return mine(auth);
     }
@@ -248,10 +284,11 @@ class JupebPortalController {
 
     @DeleteMapping("/documents/{kind}")
     @Transactional
-    Map<String, Object> remove(Authentication auth, @PathVariable String kind) {
+    Map<String, Object> remove(Authentication auth, @PathVariable String kind, @RequestParam(required = false) Integer sitting) {
         UUID app = me(auth);
         requireEditable(app);
-        List<UUID> old = jdbc.sql("DELETE FROM jupeb.document WHERE application_id = :a AND kind = :k RETURNING object_id").param("a", app).param("k", kind.trim().toUpperCase())
+        List<UUID> old = jdbc.sql("DELETE FROM jupeb.document WHERE application_id = :a AND kind = :k AND coalesce(sitting, 0) = coalesce(:s, 0) RETURNING object_id")
+                .param("a", app).param("k", kind.trim().toUpperCase()).param("s", "OLEVEL_RESULT".equalsIgnoreCase(kind.trim()) ? (sitting == null ? 1 : sitting) : null, Types.INTEGER)
                 .query(UUID.class).list();
         if (old.isEmpty()) throw new NotFound("document", kind);
         old.stream().filter(java.util.Objects::nonNull).forEach(files::forget);
@@ -260,8 +297,10 @@ class JupebPortalController {
 
     @GetMapping("/documents/{kind}/content")
     @Transactional(readOnly = true)
-    ResponseEntity<byte[]> content(Authentication auth, @PathVariable String kind) {
-        return JupebDocuments.stream(jdbc, files, me(auth), kind);
+    ResponseEntity<byte[]> content(Authentication auth, @PathVariable String kind, @RequestParam(required = false) Integer sitting,
+                                   @RequestParam(required = false) String format) {
+        String k = kind.trim().toUpperCase();
+        return JupebDocuments.stream(jdbc, files, me(auth), k, "OLEVEL_RESULT".equals(k) ? (sitting == null ? 1 : sitting) : null, "jpeg".equalsIgnoreCase(format));
     }
 
     /* ── paying: the amount is the server's, never the page's ── */
@@ -271,7 +310,7 @@ class JupebPortalController {
     Map<String, Object> feeReference(Authentication auth, @RequestParam String kind) {
         UUID app = me(auth);
         String k = kind.trim().toUpperCase();
-        if (!Set.of("APPLICATION", "SCHOOL_FIRST", "SCHOOL_SECOND", "SCHOOL_FULL").contains(k)) throw new NotFound("fee", k);
+        if (!Set.of("APPLICATION", "STATUS_CHECKING", "ACCEPTANCE", "SCHOOL_FIRST", "SCHOOL_SECOND", "SCHOOL_FULL").contains(k)) throw new NotFound("fee", k);
         String ref = jdbc.sql("SELECT jupeb.new_fee_reference(:a, :k)").param("a", app).param("k", k).query(String.class).single();
         return jdbc.sql("SELECT reference, kind, amount, expires_at, confirmed_at FROM jupeb.fee_reference WHERE reference = :r").param("r", ref).query().singleRow();
     }
@@ -297,6 +336,26 @@ class JupebPortalController {
         jdbc.sql("SELECT jupeb.register_subjects(:a, :a, :c)").param("a", app).param("c", body == null ? null : body.combination(), Types.OTHER)
                 .query(Integer.class).single();
         return mine(auth);
+    }
+
+    /* ── the student's own attendance (V342): subject by subject, from the University's attendance engine ── */
+
+    @GetMapping("/attendance")
+    @Transactional(readOnly = true)
+    Map<String, Object> attendance(Authentication auth, @RequestParam(required = false) String session) {
+        UUID app = me(auth);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("subjects", jdbc.sql("""
+                SELECT m.session, m.semester, s.code, s.title, m.total, m.present, m.absent, m.late, m.excused, m.rate, m.min_percent, m.verdict
+                  FROM attendance.member_summary('JUPEB', :a, :s) m JOIN jupeb.subject s ON s.id = m.subject_ref
+                 ORDER BY m.session DESC, m.semester, s.title
+                """).param("a", app).param("s", blank(session), Types.VARCHAR).query().listOfRows());
+        out.put("recent", jdbc.sql("""
+                SELECT r.held_on, r.session, r.semester, s.code, s.title, k.status, k.marked_time::text AS marked_time, k.remarks
+                  FROM attendance.mark k JOIN attendance.register r ON r.id = k.register_id JOIN jupeb.subject s ON s.id = r.subject_ref
+                 WHERE r.context = 'JUPEB' AND k.member_ref = :a ORDER BY r.held_on DESC, s.title LIMIT 200
+                """).param("a", app).query().listOfRows());
+        return out;
     }
 
     /* ── support: the University's desk, the JUPEB queue ── */

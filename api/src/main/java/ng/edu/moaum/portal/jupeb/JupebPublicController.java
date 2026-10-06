@@ -92,7 +92,7 @@ class JupebPublicController {
         out.put("window", Map.of("state", w.state(), "open", w.open(), "message", w.open() || w.message() == null ? "" : w.message(),
                 "opensAt", w.opensAt() == null ? "" : w.opensAt().toString(), "closesAt", w.closesAt() == null ? "" : w.closesAt().toString()));
         out.put("applicationFee", jdbc.sql("SELECT application_fee FROM jupeb.fee_setting_of(:s)").param("s", w.session()).query(java.math.BigDecimal.class).single());
-        out.put("streams", List.of(Map.of("code", "SCIENCE", "label", "Science"), Map.of("code", "ARTS", "label", "Arts")));
+        out.put("streams", List.of(Map.of("code", "SCIENCE", "label", "Science"), Map.of("code", "NON_SCIENCE", "label", "Non-Science")));
         out.put("documents", jdbc.sql("SELECT code, label, required, image FROM jupeb.document_kind WHERE active ORDER BY ord, label").query().listOfRows());
         return out;
     }
@@ -104,7 +104,7 @@ class JupebPublicController {
                           @NotBlank @Email @Size(max = 160) String email,
                           @NotBlank @Pattern(regexp = "^0[0-9]{10}$", message = "an eleven-digit Nigerian number, e.g. 08012345678") String phone,
                           @NotBlank @Size(min = MIN_PASSWORD, max = 100) String password,
-                          @NotBlank @Pattern(regexp = "(?i)SCIENCE|ARTS", message = "Science or Arts") String stream) {
+                          @NotBlank @Pattern(regexp = "(?i)SCIENCE|NON[-_ ]?SCIENCE|ARTS", message = "Science or Non-Science") String stream) {
     }
 
     /** apply: the account, the application numbered for life, and the application fee's reference */
@@ -128,14 +128,18 @@ class JupebPublicController {
         form.put("email", body.email());
         form.put("phone", body.phone());
         form.put("passwordHash", encoder.encode(body.password()));
-        form.put("stream", body.stream().trim().toUpperCase());
+        form.put("stream", JupebPortalController.stream(body.stream()));
         String j = json.writeValueAsString(form);
         try {
             return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB application", null, null),
                     () -> tx.execute(st -> jdbc.sql("SELECT * FROM jupeb.apply(:j::jsonb)").param("j", j).query().singleRow()));
         } catch (org.springframework.dao.DuplicateKeyException raced) {
-            throw new DomainRuleViolation("JUPEB_APP_EXISTS", "A JUPEB application already exists for this email.",
-                    new DomainRuleViolation.Remedy("Sign in with this email to continue it.", "You"));
+            /* only the account's email is the applicant's to fix; any other duplicate is the portal's and is not dressed as theirs */
+            if (String.valueOf(raced.getMessage()).contains("ux_jupeb_account_email")) {
+                throw new DomainRuleViolation("JUPEB_APP_EXISTS", "A JUPEB application already exists for this email.",
+                        new DomainRuleViolation.Remedy("Sign in with this email to continue it.", "You"));
+            }
+            throw raced;
         }
     }
 

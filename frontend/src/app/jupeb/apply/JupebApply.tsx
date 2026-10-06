@@ -2,7 +2,7 @@
 
 /**
  * The public JUPEB application (V339): the few things the University needs to open an application — who the candidate is
- * (names, sex, date of birth, NIN), how to reach them (email, phone), the programme — Science or Arts (V341) — and a password.
+ * (names, sex, date of birth, NIN), how to reach them (email, phone), the programme — Science or Non-Science (V341, V342) — and a password. The subject combination is chosen after signing in.
  * The candidate then signs in, pays the application fee (the amount is the Bursary's, stated by the server) and continues the
  * biodata, O'Level and documents on their dashboard before submitting. The subject combination is chosen at subject
  * registration, once the school fee has activated the student.
@@ -46,7 +46,7 @@ export function JupebApply() {
     if (!/^[0-9]{11}$/.test(f.nin ?? "")) return fail("Your NIN is the eleven digits on your NIN slip.");
     if (!f.email?.trim()) return fail("Your email is required — you sign in with it.");
     if (!/^0[0-9]{10}$/.test(f.phone ?? "")) return fail("Your phone is an eleven-digit number, e.g. 08012345678.");
-    if (!f.stream) return fail("Choose your programme: Science or Arts.");
+    if (!f.stream) return fail("Choose your programme: Science or Non-Science.");
     if ((f.password ?? "").length < 8) return fail("Choose a password of at least eight characters.");
     if (f.password !== f.password2) return fail("The two passwords do not match.");
     setBusy(true);
@@ -103,8 +103,8 @@ export function JupebApply() {
         <Section title="Your programme" />
         <Field id="stream" label="Programme" required>
           <select id="stream" className="ctl" value={f.stream ?? ""} onChange={set("stream")}>
-            <option value="">— Science or Arts —</option>
-            {(opts?.streams ?? [{ code: "SCIENCE", label: "Science" }, { code: "ARTS", label: "Arts" }]).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
+            <option value="">— Science or Non-Science —</option>
+            {(opts?.streams ?? [{ code: "SCIENCE", label: "Science" }, { code: "NON_SCIENCE", label: "Non-Science" }]).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
           </select>
         </Field>
 

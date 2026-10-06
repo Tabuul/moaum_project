@@ -397,6 +397,8 @@ public class PaymentsService {
             case "PG_CHECKING" -> "postgraduate checking fee";
             case "PG_APPLICATION" -> "postgraduate application fee";
             case "JUPEB_APPLICATION" -> "JUPEB application fee";
+            case "JUPEB_STATUS_CHECKING" -> "JUPEB admission status checking fee";
+            case "JUPEB_ACCEPTANCE" -> "JUPEB acceptance fee";
             case "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "JUPEB school fees";
             default -> "application fee";
         };
@@ -409,7 +411,7 @@ public class PaymentsService {
             case "ACCEPTANCE" -> "/applicant/accept";
             case "CHECKING" -> "/applicant/admission";
             case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> "/pg/portal";
-            case "JUPEB_APPLICATION", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "/jupeb/portal";
+            case "JUPEB_APPLICATION", "JUPEB_STATUS_CHECKING", "JUPEB_ACCEPTANCE", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "/jupeb/portal";
             default -> "/applicant/fee";
         };
     }
@@ -890,7 +892,7 @@ public class PaymentsService {
                     () -> tx.execute(st -> switch (r.kind()) {
                         case "FEES" -> repo.confirmStudent(reference, channel, note);
                         case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> repo.confirmPg(reference, channel);
-                        case "JUPEB_APPLICATION", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> repo.confirmJupeb(reference, channel);
+                        case "JUPEB_APPLICATION", "JUPEB_STATUS_CHECKING", "JUPEB_ACCEPTANCE", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> repo.confirmJupeb(reference, channel);
                         default -> repo.confirm(reference, channel, note);
                     }));
             outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";

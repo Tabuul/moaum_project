@@ -10,36 +10,48 @@ export interface Combination {
   id: string; code: string; name: string; area: string | null; description: string | null; eligibility_notes: string | null; active: boolean;
   subject1_code: string; subject1: string; subject2_code: string; subject2: string; subject3_code: string; subject3: string;
   leads_to: string[]; applications: number;
+  /** V342: offered while it and its three subjects are active; which programme it suits */
+  offered: boolean; subjects_not_offered: string[]; science: boolean; non_science: boolean;
 }
 export interface Olevel { sitting: number; exam_type: string; exam_number: string | null; exam_year: number | null; subject: string; grade: string }
 export interface Doc {
-  kind: string; label: string; required: boolean; image: boolean; id: string | null; filename: string | null; content_type: string | null; size_bytes: number | null;
-  status: string | null; review_note: string | null; reviewed_at: string | null; uploaded_at: string | null;
+  kind: string; sitting: number | null; label: string; required: boolean; image: boolean; id: string | null; filename: string | null; content_type: string | null; size_bytes: number | null;
+  status: string | null; review_note: string | null; reviewed_at: string | null; uploaded_at: string | null; exam_body: string | null; exam_year: number | null;
 }
+/** the guided application (V342): each step, whether complete, and what to correct field by field */
+export interface StepProblem { field: string; message: string }
+export interface Steps { steps: { step: "PERSONAL" | "OLEVEL" | "DOCUMENTS" | "PROGRAMME" | "REVIEW"; ok: boolean; problems: StepProblem[] }[]; current: string; complete: boolean }
+export interface StatusChecking { valid: boolean; window_state: string; window_open: boolean; paid: boolean; paid_at: string | null; may_pay: boolean; may_check: boolean; accepted: boolean; status: string | null }
 export interface Fees {
   category: string; indigene: boolean; total: number | null; first_percent: number; first_amount: number | null; second_amount: number | null; allow_full: boolean;
   first_paid: boolean; second_paid: boolean; full_paid: boolean; paid: number; outstanding: number; status: string; frozen: boolean;
 }
 export interface FeeRef { kind: string; reference: string; amount: number; semester: number | null; expires_at: string; confirmed_at: string | null; channel: string | null; created_at: string }
-export interface Registered { code: string; title: string; registered_at: string; grade?: string | null; points?: number | null }
+export interface Registered { code: string; title: string; registered_at: string; grade?: string | null; points?: number | null; units?: { code: string; title: string }[] }
 export interface JEvent { kind: string; note: string | null; at: string; actor_office?: string | null; actor_name?: string | null }
 export interface Candidate {
   id: string; session: string; application_no: string; surname: string; first_name: string; middle_name: string | null; sex: string | null; date_of_birth: string | null;
   nin: string | null; email: string; phone: string | null; nationality: string | null; state_of_origin: string | null; lga: string | null; contact_address: string | null;
   permanent_address: string | null; home_town: string | null; guardian_name: string | null; guardian_phone: string | null; guardian_address: string | null;
   next_of_kin_name: string | null; next_of_kin_phone: string | null; next_of_kin_relationship: string | null;
-  /** V341: SCIENCE or ARTS, chosen on the application */
+  /** V341, V342: SCIENCE or NON_SCIENCE, chosen on the application */
   stream: string | null;
   programme_code: string | null; programme_name: string | null; department_name: string | null; faculty_code: string | null; faculty_name: string | null;
   combination_id: string | null; combination_code: string | null; combination_name: string | null; combination_area: string | null;
   state: string; fee_confirmed_at: string | null; submitted_at: string | null; return_note: string | null; returned_at: string | null;
   eligibility_note: string | null; eligibility_decided_at: string | null; admission_ref: string | null; admission_note: string | null; admission_decided_at: string | null;
   activated_at: string | null; class_id: string | null; class_name: string | null; subjects_registered_at: string | null; exam_no: string | null; exam_no_assigned_at: string | null;
+  olevel_sittings: number | null; checking_paid_at: string | null; accepted_at: string | null; has_passport: boolean;
   screening_state: string | null; screening_venue: string | null; screening_at: string | null; screening_reason: string | null; screening_decided_at: string | null;
   created_at: string; updated_at: string; editable: boolean; application_fee: number;
   subjects: Subject[]; olevel: Olevel[]; olevelCheck: { credits: number; english: boolean; mathematics: boolean; sittings: number; ok: boolean; reasons: string[] };
-  documents: Doc[]; missing: string[]; fees: Fees; feeRule: { application_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
-  references: FeeRef[]; screeningSetting: { screening_required: boolean; screening_venue: string | null; screening_starts_on: string | null; screening_ends_on: string | null; screening_instructions: string | null };
+  documents: Doc[]; missing: string[]; steps: Steps; statusChecking: StatusChecking;
+  /** absent from the candidate's view until they may read their admission status */
+  fees?: Fees;
+  feeRule: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
+  references: FeeRef[];
+  screeningSetting: { screening_required: boolean; screening_venue: string | null; screening_starts_on: string | null; screening_ends_on: string | null; screening_instructions: string | null; exam_month: string | null };
+  gradePoint?: { points: number; bonus: number; total: number; out_of: number; graded: number; registered: number; passed_all: boolean };
   resultsPublished: boolean; registered: Registered[]; events: JEvent[];
   examNoHistory?: { old_no: string | null; new_no: string; reason: string | null; source: string; batch_ref: string | null; changed_office: string | null; changed_at: string; changed_by_name: string | null }[];
   resultChanges?: { code: string; old_grade: string | null; new_grade: string; reason: string; batch_ref: string | null; changed_at: string }[];
@@ -49,11 +61,12 @@ export interface Candidate {
 
 export const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft — not yet submitted", SUBMITTED: "Submitted — with the JUPEB Office", RETURNED: "Returned to you for correction",
+  UNDER_REVIEW: "Under review — check your admission status when checking opens",
   ELIGIBLE: "Found eligible — awaiting the admission decision", INELIGIBLE: "Not eligible", ADMITTED: "Admitted", NOT_ADMITTED: "Not admitted",
   PENDING: "Admission decision pending", STUDENT: "JUPEB student — active", COMPLETED: "Results published", WITHDRAWN: "Withdrawn",
 };
 export const STATE_SHORT: Record<string, string> = {
-  DRAFT: "Draft", SUBMITTED: "Submitted", RETURNED: "Returned", ELIGIBLE: "Eligible", INELIGIBLE: "Not eligible", ADMITTED: "Admitted",
+  DRAFT: "Draft", SUBMITTED: "Submitted", RETURNED: "Returned", UNDER_REVIEW: "Under review", ELIGIBLE: "Eligible", INELIGIBLE: "Not eligible", ADMITTED: "Admitted",
   NOT_ADMITTED: "Not admitted", PENDING: "Pending", STUDENT: "Student", COMPLETED: "Completed", WITHDRAWN: "Withdrawn",
 };
 export function stateKind(s: string | null | undefined): "grey" | "info" | "ok" | "bad" | "warn" {
@@ -72,12 +85,12 @@ export const SCREENING_LABEL: Record<string, string> = {
   PENDING: "Awaiting screening", SCHEDULED: "Scheduled", IN_PROGRESS: "In progress", CLEARED: "Cleared", NOT_CLEARED: "Not cleared", CORRECTION_REQUIRED: "Correction required",
 };
 export const FEE_KIND: Record<string, string> = {
-  APPLICATION: "Application fee", SCHOOL_FIRST: "School fees — first semester", SCHOOL_SECOND: "School fees — second semester", SCHOOL_FULL: "School fees — full payment",
+  APPLICATION: "Application fee", STATUS_CHECKING: "Admission status checking fee", ACCEPTANCE: "Acceptance fee", SCHOOL_FIRST: "School fees — first semester", SCHOOL_SECOND: "School fees — second semester", SCHOOL_FULL: "School fees — full payment",
 };
 export const EVENT_LABEL: Record<string, string> = {
   CREATED: "Application started", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", SUBMITTED: "Submitted", RETURNED: "Returned for correction",
   ELIGIBLE: "Found eligible", INELIGIBLE: "Found not eligible", ADMITTED: "Admitted", NOT_ADMITTED: "Not admitted", PENDING: "Admission pending",
-  SCHOOL_FEE_CONFIRMED: "School fee confirmed", STUDENT: "Activated as a JUPEB student", SUBJECTS_REGISTERED: "Subjects registered",
+  SCHOOL_FEE_CONFIRMED: "School fee confirmed", STATUS_CHECKING_CONFIRMED: "Status checking fee confirmed", ACCEPTANCE_CONFIRMED: "Admission accepted", STUDENT: "Activated as a JUPEB student", SUBJECTS_REGISTERED: "Subjects registered",
   EXAM_NO_ASSIGNED: "Examination number assigned", COMPLETED: "Results published", RESULT_CORRECTED: "Result corrected", CLASS: "Class",
   DOCUMENT_VERIFIED: "Document verified", DOCUMENT_REJECTED: "Document rejected", DOCUMENT_REPLACEMENT_REQUIRED: "Document to be replaced",
   DOCUMENT_UNDER_REVIEW: "Document under review", DOCUMENT_REPLACED: "Document replaced",
@@ -93,9 +106,13 @@ export const OLEVEL_SUBJECTS = [
   "Yoruba", "Tiv", "Marketing", "Insurance", "Office Practice", "Book Keeping", "Animal Husbandry", "Fisheries", "Physical Education", "Health Education",
 ];
 
-/** V341: the programme a JUPEB candidate is in — Science or Arts; the school fee's OTHER category is the Arts fee */
-export const streamLabel = (s: string | null | undefined) => (s === "SCIENCE" ? "Science" : s === "ARTS" ? "Arts" : "—");
-export const feeCategoryLabel = (c: string | null | undefined) => (c === "SCIENCE" ? "Science" : c === "OTHER" ? "Arts" : "—");
+/** V341, V342: the programme a JUPEB candidate is in — Science or Non-Science (an older ARTS reads as Non-Science); OTHER is the Non-Science fee */
+export const streamLabel = (s: string | null | undefined) => (s === "SCIENCE" ? "Science" : s === "NON_SCIENCE" || s === "ARTS" ? "Non-Science" : "—");
+export const feeCategoryLabel = (c: string | null | undefined) => (c === "SCIENCE" ? "Science" : c === "OTHER" ? "Non-Science" : "—");
+/** the admission status as status checking returns it (V342) */
+export const ADMISSION_STATUS: Record<string, [string, "ok" | "bad" | "info" | "warn"]> = {
+  ADMITTED: ["Admitted", "ok"], NOT_ADMITTED: ["Not admitted", "bad"], PENDING: ["Pending", "warn"], PROCESSING: ["Processing", "info"], REQUIRES_REVIEW: ["Requires review", "warn"],
+};
 
 export const naira = (n: number | string | null | undefined) => (n == null || n === "" ? "—" : "₦" + Number(n).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 }));
 export const day = (v: string | null | undefined) => {

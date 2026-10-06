@@ -64,7 +64,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
-          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
+          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" },
+          { "id": "jupeb/attendance", "icon": "check", "label": "JUPEB Attendance" }
         ]
       },
       {
@@ -1694,6 +1695,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "jupeb/catalogue", "icon": "book", "label": "Subjects & Combinations" },
           { "id": "jupeb/classes", "icon": "user", "label": "Classes" },
+          { "id": "jupeb/attendance", "icon": "check", "label": "Attendance" },
           { "id": "jupeb/examination", "icon": "upload", "label": "Examination Numbers" },
           { "id": "jupeb/results", "icon": "chart", "label": "Results" }
         ]

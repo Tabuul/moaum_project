@@ -16,13 +16,13 @@ import { jcall, naira, when } from "@/lib/jupeb";
 
 interface Fees {
   session: string; currentSession: string; sessions: string[]; own: boolean;
-  rule: { session: string; application_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null; updated_by: string | null };
+  rule: { session: string; application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null; updated_by: string | null };
   schoolFees: { category: string; indigene: boolean; amount: number; own: boolean }[];
   faculties: { code: string; name: string; category: string; stated: boolean }[];
-  history: { session: string; application_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null }[];
+  history: { session: string; application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null }[];
 }
 
-const FEE_LABEL = (c: string, i: boolean) => `${c === "SCIENCE" ? "Science" : "Arts"} · ${i ? "indigene" : "non-indigene"}`;
+const FEE_LABEL = (c: string, i: boolean) => `${c === "SCIENCE" ? "Science" : "Non-Science"} · ${i ? "indigene" : "non-indigene"}`;
 
 export function JupebFees({ canWrite }: { canWrite: boolean }) {
   const [session, setSession] = useState("");
@@ -38,7 +38,7 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
       setD(r.data);
       const x = r.data.rule;
       const sf = Object.fromEntries(r.data.schoolFees.map((s) => [`${s.category}_${s.indigene}`, String(Number(s.amount))]));
-      setF({ applicationFee: String(Number(x.application_fee)), firstPercent: String(Number(x.first_percent)), allowFull: x.allow_full ? "yes" : "no", activation: x.activation, indigeneState: x.indigene_state, ...sf });
+      setF({ applicationFee: String(Number(x.application_fee)), checkingFee: String(Number(x.checking_fee)), acceptanceFee: String(Number(x.acceptance_fee)), firstPercent: String(Number(x.first_percent)), allowFull: x.allow_full ? "yes" : "no", activation: x.activation, indigeneState: x.indigene_state, ...sf });
     });
     return () => { live = false; };
   }, [session, tick]);
@@ -49,7 +49,7 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
     try {
       const schoolFees = [["OTHER", true], ["SCIENCE", true], ["OTHER", false], ["SCIENCE", false]].map(([c, i]) => ({ category: c, indigene: i, amount: Number(f[`${c}_${i}`] || 0) }));
       const r = await jcall("/api/v1/jupeb/fees", "PUT", {
-        session: target, applicationFee: Number(f.applicationFee), firstPercent: Number(f.firstPercent), allowFull: f.allowFull === "yes", activation: f.activation, indigeneState: f.indigeneState, schoolFees,
+        session: target, applicationFee: Number(f.applicationFee), checkingFee: Number(f.checkingFee), acceptanceFee: Number(f.acceptanceFee), firstPercent: Number(f.firstPercent), allowFull: f.allowFull === "yes", activation: f.activation, indigeneState: f.indigeneState, schoolFees,
       }, `JUPEB fees for ${target === "*" ? "every session" : target}`);
       if (!r.ok) { notifyProblem(r.problem); return; }
       notify("The JUPEB fees are saved. Fees already charged keep their amounts."); setTick((t) => t + 1);
@@ -73,6 +73,8 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
         <PBody>
           <div className="grid grid--3">
             <Field id="jf-app" label="Application fee (₦)"><input id="jf-app" className="ctl tnum" inputMode="decimal" value={f.applicationFee ?? ""} onChange={(e) => setF({ ...f, applicationFee: e.target.value })} disabled={ro} /></Field>
+            <Field id="jf-chk" label="Admission status checking fee (₦)" hint="Paid once, while ICT has checking open"><input id="jf-chk" className="ctl tnum" inputMode="decimal" value={f.checkingFee ?? ""} onChange={(e) => setF({ ...f, checkingFee: e.target.value })} disabled={ro} /></Field>
+            <Field id="jf-acc" label="Acceptance fee (₦)" hint="The acceptance letter follows its confirmation"><input id="jf-acc" className="ctl tnum" inputMode="decimal" value={f.acceptanceFee ?? ""} onChange={(e) => setF({ ...f, acceptanceFee: e.target.value })} disabled={ro} /></Field>
             <Field id="jf-pct" label="First semester share (%)" hint={`Second semester: ${Math.max(0, 100 - pct)}%`}><input id="jf-pct" className="ctl tnum" inputMode="decimal" value={f.firstPercent ?? ""} onChange={(e) => setF({ ...f, firstPercent: e.target.value })} disabled={ro} /></Field>
             <Field id="jf-full" label="Full payment at once"><select id="jf-full" className="ctl" value={f.allowFull} onChange={(e) => setF({ ...f, allowFull: e.target.value })} disabled={ro}><option value="yes">Allowed</option><option value="no">Not allowed</option></select></Field>
             <Field id="jf-act" label="A student is activated by"><select id="jf-act" className="ctl" value={f.activation} onChange={(e) => setF({ ...f, activation: e.target.value })} disabled={ro}><option value="FIRST_INSTALMENT">The first instalment</option><option value="FULL">The full fee</option></select></Field>
@@ -89,8 +91,8 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
         </PBody>
       </Panel>
       <Panel title="Rules on record">
-        <PBody><DTable pageSize={10} cols={["Session", "Application fee|num", "First share|num", "Full payment", "Activation", "Indigene state", "Changed"]}
-          rows={d.history.map((h) => [h.session === "*" ? "Default" : h.session, naira(h.application_fee), `${Number(h.first_percent)}%`, h.allow_full ? "Allowed" : "No", h.activation === "FULL" ? "Full fee" : "First instalment", h.indigene_state, when(h.updated_at)])} /></PBody>
+        <PBody><DTable pageSize={10} cols={["Session", "Application fee|num", "Checking fee|num", "Acceptance fee|num", "First share|num", "Full payment", "Activation", "Indigene state", "Changed"]}
+          rows={d.history.map((h) => [h.session === "*" ? "Default" : h.session, naira(h.application_fee), naira(h.checking_fee), naira(h.acceptance_fee), `${Number(h.first_percent)}%`, h.allow_full ? "Allowed" : "No", h.activation === "FULL" ? "Full fee" : "First instalment", h.indigene_state, when(h.updated_at)])} /></PBody>
       </Panel>
     </>
   );

@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 186
+\set EXPECTED 187
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5093,14 +5093,18 @@ BEGIN
         VALUES (acc1, ses, 'JUPEB/APP/2093/900001', 'CHECKONE', 'Candidate', 'zz.check1@example.com', prog, comb, 'Benue', 'ADMITTED') RETURNING id INTO app1;
         INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at, exam_no)
         VALUES (acc2, ses, 'JUPEB/APP/2093/900002', 'CHECKTWO', 'Candidate', 'zz.check2@example.com', prog, comb, 'Lagos', 'STUDENT', now(), 'ZZCHK-0002') RETURNING id INTO app2;
-        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, subject, grade) VALUES
-            (app1, 1, 'WAEC', 'English Language', 'C6'), (app1, 1, 'WAEC', 'Mathematics', 'C5'), (app1, 1, 'WAEC', 'Physics', 'B3'), (app1, 1, 'WAEC', 'Chemistry', 'C4');
+        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, exam_number, exam_year, subject, grade) VALUES
+            (app1, 1, 'WAEC', '4250001001', 2091, 'English Language', 'C6'), (app1, 1, 'WAEC', '4250001001', 2091, 'Mathematics', 'C5'),
+            (app1, 1, 'WAEC', '4250001001', 2091, 'Physics', 'B3'), (app1, 1, 'WAEC', '4250001001', 2091, 'Chemistry', 'C4');
         ok4 := (SELECT k.ok FROM jupeb.olevel_check(app1) k);
-        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, subject, grade) VALUES (app1, 2, 'NECO', 'Biology', 'A1');
+        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, exam_number, exam_year, subject, grade) VALUES (app1, 2, 'NECO', '1010002002', 2092, 'Biology', 'A1');
         ok5 := (SELECT k.ok FROM jupeb.olevel_check(app1) k);
         UPDATE jupeb.olevel SET grade = 'D7' WHERE application_id = app1 AND subject = 'English Language';
         noeng := (SELECT NOT k.ok AND NOT k.english FROM jupeb.olevel_check(app1) k);
         SELECT * INTO sf FROM jupeb.school_fees(app1);
+        /* V342: an admitted candidate's school fees follow the confirmed acceptance fee */
+        INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at, confirmed_at, channel)
+        VALUES (app1, 'ACCEPTANCE', 'ZZCHK-ACC-0001', 15000, ses, now() + interval '1 day', now(), 'check');
         BEGIN PERFORM jupeb.new_fee_reference(app1, 'SCHOOL_SECOND'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_order := split_part(msg, ':', 1); END;
         ref1 := jupeb.new_fee_reference(app1, 'SCHOOL_FIRST');
         amt1 := (SELECT amount FROM jupeb.fee_reference WHERE reference = ref1);
@@ -5129,7 +5133,7 @@ BEGIN
                r_taken, imp->>'review', held, r_reason));
 END $$;
 
--- ── 186. V341: JUPEB — Science or Arts: the applicant's stream decides the school fee (Arts pays the other fee); a draft without a stream is incomplete; a student registers a combination of their own stream, chosen at registration ──
+-- ── 186. V341 (V342): JUPEB — Science or Non-Science (V341's Arts): the applicant's stream decides the school fee (Non-Science pays the other fee); a draft without a stream is incomplete; a student registers a combination of their own stream ──
 DO $$
 DECLARE who uuid := gen_random_uuid(); acc uuid; app uuid; s1 uuid; s2 uuid; s3 uuid; s4 uuid; c_sci uuid; c_art uuid; msg text;
         cat text; total numeric; miss boolean; r_choose text; r_stream text; n_reg int; held uuid; ses text := '2092/2093';
@@ -5146,8 +5150,8 @@ BEGIN
         INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.stream@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
         INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state)
         VALUES (acc, ses, 'JUPEB/APP/2092/900001', 'CHECKSTREAM', 'Candidate', 'zz.check.stream@example.com', 'Benue', 'DRAFT') RETURNING id INTO app;
-        miss := 'Science or Arts' = ANY(jupeb.missing(app));
-        UPDATE jupeb.application SET stream = 'ARTS', state = 'STUDENT' WHERE id = app;
+        miss := 'Choose Science or Non-Science' = ANY(jupeb.missing(app));
+        UPDATE jupeb.application SET stream = 'NON_SCIENCE', state = 'STUDENT' WHERE id = app;
         SELECT f.category, f.total INTO cat, total FROM jupeb.school_fees(app) f;
         BEGIN PERFORM jupeb.register_subjects(app, who); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_choose := split_part(msg, ':', 1); END;
         BEGIN PERFORM jupeb.register_subjects(app, who, c_sci); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_stream := split_part(msg, ':', 1); END;
@@ -5157,9 +5161,106 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('JUPEB Science or Arts: a draft without a stream is incomplete; Arts with Benue pays the indigene other fee (NGN 180,000); a student must choose a combination of their own stream to register its three subjects',
+    PERFORM pg_temp.assert('JUPEB Science or Non-Science: a draft without a stream is incomplete; Non-Science with Benue pays the indigene other fee (NGN 180,000); a student must choose a combination of their own stream to register its three subjects',
         miss AND cat = 'OTHER' AND total = 180000 AND r_choose = 'JUPEB_COMBINATION_CHOOSE' AND r_stream = 'JUPEB_COMBINATION_STREAM' AND n_reg = 3 AND held = c_art,
         format('missing=%s fee=%s/%s choose=%s stream=%s reg=%s held=%s', miss, cat, total, r_choose, r_stream, n_reg, held = c_art));
+END $$;
+
+-- ── 187. V342: JUPEB — admission status checking is closed until opened and paid once (₦1,000) before any decision shows; the acceptance fee (₦15,000) follows an ADMITTED status and precedes school fees; an accepted admission cannot be withdrawn; two declared sittings need two O'Level documents; the grade point is out of 16 with a point for passing all three (X counts nothing); the Board's 46 combinations are seeded; a subject or combination not offered cannot be chosen and its holder is told; attendance corrections need a reason and a locked register is closed; no minimum, no verdict ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc uuid; app uuid; s1 uuid; s2 uuid; s3 uuid; comb uuid; ses text := jupeb.current_session(); msg text;
+        win text; d_chk numeric; d_acc numeric; masked boolean; r_closed text; ref_chk text; amt_chk numeric; r_once text; seen text; r_acc_early text; r_school text;
+        ref_acc text; amt_acc numeric; accepted boolean; r_withdraw text; docs_short boolean; docs_full boolean; gp1 record; gp2 record;
+        n_seed int; n_sci int; r_choose_off text; told int; prog_msg text; reg uuid; r_reason text; r_locked text; n_changes int; verdict text; rate numeric;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'ZZCHECK', 'Attendance');
+        win := (SELECT w.state FROM policy.window_state('JUPEB_ADMISSION_STATUS_CHECKING', ses, NULL) w);
+        d_chk := (jupeb.fee_setting_of(ses)).checking_fee;
+        d_acc := (jupeb.fee_setting_of(ses)).acceptance_fee;
+        n_seed := (SELECT count(*) FROM jupeb.combination WHERE code ~ '^SC-0[0-4][0-9]$' AND jupeb.combination_offered(id));
+        n_sci := (SELECT count(*) FROM jupeb.combination WHERE code ~ '^SC-' AND jupeb.combination_suits(area, 'SCIENCE'));
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV1', 'Check V One') RETURNING id INTO s1;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV2', 'Check V Two') RETURNING id INTO s2;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV3', 'Check V Three') RETURNING id INTO s3;
+        INSERT INTO jupeb.combination (code, name, subject1, subject2, subject3, area) VALUES ('ZZVCOMB', 'Check V', s1, s2, s3, 'Science') RETURNING id INTO comb;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v342@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, sex, date_of_birth, nin, phone, state_of_origin, lga, contact_address,
+                                       next_of_kin_name, next_of_kin_phone, olevel_sittings, state)
+        VALUES (acc, ses, 'JUPEB/APP/2091/900001', 'CHECKV', 'Candidate', 'zz.check.v342@example.com', 'F', '2007-01-01', '12345678901', '08012345678', 'Benue', 'Makurdi', '1 Road',
+                'Kin', '08011111111', 2, 'DRAFT') RETURNING id INTO app;
+        PERFORM jupeb.choose(app, 'SCIENCE', 'ZZVCOMB');
+        -- the office stops offering a subject of the chosen combination: the candidate is told, and the programme step asks again
+        told := (SELECT o.told FROM jupeb.set_offered('SUBJECT', ARRAY['zzv2'], false, who) o);
+        BEGIN PERFORM jupeb.choose(app, 'SCIENCE', 'ZZVCOMB'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_choose_off := split_part(msg, ':', 1); END;
+        prog_msg := (SELECT p->>'message' FROM jsonb_array_elements(jupeb.step_status(app)->'steps') st, jsonb_array_elements(st->'problems') p WHERE st->>'step' = 'PROGRAMME' LIMIT 1);
+        PERFORM jupeb.set_offered('SUBJECT', ARRAY['ZZV2'], true, who);
+        -- two sittings: both results, each its own document
+        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, exam_number, exam_year, subject, grade) VALUES
+            (app, 1, 'WAEC', '4250009001', 2090, 'English Language', 'C5'), (app, 1, 'WAEC', '4250009001', 2090, 'Mathematics', 'B3'),
+            (app, 1, 'WAEC', '4250009001', 2090, 'Physics', 'C6'), (app, 1, 'WAEC', '4250009001', 2090, 'Chemistry', 'C4'),
+            (app, 2, 'NECO', '1010009002', 2090, 'Biology', 'B2');
+        INSERT INTO jupeb.document (application_id, kind, sitting, filename, content_type, size_bytes) VALUES (app, 'OLEVEL_RESULT', 1, 'waec.pdf', 'application/pdf', 10);
+        INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes)
+        SELECT app, k.code, k.code || '.pdf', 'application/pdf', 10 FROM jupeb.document_kind k WHERE k.required AND k.active AND k.code <> 'OLEVEL_RESULT';
+        docs_short := (SELECT NOT (st->>'ok')::boolean FROM jsonb_array_elements(jupeb.step_status(app)->'steps') st WHERE st->>'step' = 'DOCUMENTS');
+        INSERT INTO jupeb.document (application_id, kind, sitting, filename, content_type, size_bytes) VALUES (app, 'OLEVEL_RESULT', 2, 'neco.pdf', 'application/pdf', 10);
+        docs_full := (SELECT (st->>'ok')::boolean FROM jsonb_array_elements(jupeb.step_status(app)->'steps') st WHERE st->>'step' = 'DOCUMENTS');
+        UPDATE jupeb.application SET fee_confirmed_at = now() WHERE id = app;
+        PERFORM jupeb.submit(app);
+        PERFORM jupeb.decide_eligibility(app, true, NULL, NULL);
+        PERFORM jupeb.decide_admission(app, 'ADMITTED', 'Welcome', NULL);
+        -- the decision is not readable, and checking not payable, until the Director of ICT opens checking
+        masked := (SELECT NOT c.may_check AND NOT c.may_pay FROM jupeb.status_checking(app) c);
+        BEGIN PERFORM jupeb.new_fee_reference(app, 'STATUS_CHECKING'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_closed := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.new_fee_reference(app, 'ACCEPTANCE'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_acc_early := split_part(msg, ':', 1); END;
+        PERFORM policy.window_act('JUPEB_ADMISSION_STATUS_CHECKING', ses, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', who, 'ict');
+        ref_chk := jupeb.new_fee_reference(app, 'STATUS_CHECKING');
+        amt_chk := (SELECT amount FROM jupeb.fee_reference WHERE reference = ref_chk);
+        PERFORM jupeb.confirm_fee(ref_chk, 'check');
+        BEGIN PERFORM jupeb.new_fee_reference(app, 'STATUS_CHECKING'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_once := split_part(msg, ':', 1); END;
+        seen := (SELECT c.status FROM jupeb.status_checking(app) c WHERE c.may_check);
+        BEGIN PERFORM jupeb.new_fee_reference(app, 'SCHOOL_FIRST'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_school := split_part(msg, ':', 1); END;
+        ref_acc := jupeb.new_fee_reference(app, 'ACCEPTANCE');
+        amt_acc := (SELECT amount FROM jupeb.fee_reference WHERE reference = ref_acc);
+        PERFORM jupeb.confirm_fee(ref_acc, 'check');
+        accepted := (SELECT c.accepted FROM jupeb.status_checking(app) c);
+        BEGIN PERFORM jupeb.decide_admission(app, 'NOT_ADMITTED', 'withdrawn', NULL); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_withdraw := split_part(msg, ':', 1); END;
+        -- results: A, B, C is 12 + 1 of 16; an absence (X) earns nothing and no point is added
+        UPDATE jupeb.application SET state = 'STUDENT' WHERE id = app;
+        PERFORM jupeb.register_subjects(app, who);
+        INSERT INTO jupeb.result (application_id, subject_id, grade, points) VALUES (app, s1, 'A', 5), (app, s2, 'B', 4), (app, s3, 'C', 3);
+        SELECT * INTO gp1 FROM jupeb.grade_point(app);
+        UPDATE jupeb.result SET grade = 'X', points = 0 WHERE application_id = app AND subject_id = s3;
+        SELECT * INTO gp2 FROM jupeb.grade_point(app);
+        -- attendance: a correction needs its reason; a locked register is closed to the instructor; no minimum, no verdict
+        INSERT INTO attendance.instructor (context, session, subject_ref, person_id) VALUES ('JUPEB', ses, s1, who);
+        reg := attendance.open_register('JUPEB', ses, 1, s1, NULL, current_date, 'Check', who);
+        PERFORM attendance.save_marks(reg, jsonb_build_array(jsonb_build_object('member', app, 'status', 'PRESENT')), NULL, who, false);
+        BEGIN PERFORM attendance.save_marks(reg, jsonb_build_array(jsonb_build_object('member', app, 'status', 'LATE')), NULL, who, false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        PERFORM attendance.save_marks(reg, jsonb_build_array(jsonb_build_object('member', app, 'status', 'LATE')), 'arrived late, recorded wrongly', who, false);
+        n_changes := (SELECT count(*) FROM attendance.mark_change WHERE register_id = reg AND reason IS NOT NULL);
+        PERFORM attendance.lock_register(reg, who, true, NULL);
+        BEGIN PERFORM attendance.save_marks(reg, jsonb_build_array(jsonb_build_object('member', app, 'status', 'ABSENT')), 'again', who, false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_locked := split_part(msg, ':', 1); END;
+        SELECT m.verdict, m.rate INTO verdict, rate FROM attendance.member_summary('JUPEB', app, ses) m LIMIT 1;
+        RAISE EXCEPTION 'the V342 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V342: status checking closed until opened, ₦1,000 once, before any decision shows; acceptance ₦15,000 after ADMITTED and before school fees; accepted admission kept; two sittings two documents; grade point 13/16, X nothing; 46 combinations seeded; a disabled subject withdraws its combinations and tells the holder; attendance corrections need a reason, a locked register is closed, no minimum no verdict',
+        win = 'CLOSED' AND d_chk = 1000 AND d_acc = 15000 AND masked AND r_closed = 'JUPEB_CHECKING_CLOSED' AND r_acc_early = 'JUPEB_ACCEPTANCE_NOT_YET'
+        AND amt_chk = 1000 AND ref_chk LIKE 'MOAUM-JUPEBCHK-' || substr(ses, 1, 4) || '-%' AND r_once = 'JUPEB_FEE_PAID' AND seen = 'ADMITTED' AND r_school = 'JUPEB_ACCEPTANCE_FIRST' AND amt_acc = 15000 AND accepted
+        AND r_withdraw = 'JUPEB_ADMISSION_PAID' AND docs_short AND docs_full
+        AND gp1.total = 13 AND gp1.out_of = 16 AND gp1.bonus = 1 AND gp2.total = 9 AND gp2.bonus = 0
+        AND n_seed = 46 AND n_sci = 14 AND told = 1 AND r_choose_off = 'JUPEB_COMBINATION' AND prog_msg LIKE 'ZZVCOMB is no longer offered%'
+        AND r_reason = 'ATT_REASON' AND n_changes = 1 AND r_locked = 'ATT_LOCKED' AND verdict IS NULL AND rate = 100,
+        format('win=%s fees=%s/%s masked=%s closed=%s acc_early=%s chk=%s once=%s seen=%s school=%s acc=%s accepted=%s withdraw=%s docs=%s/%s gp=%s/%s+%s,%s+%s seed=%s sci=%s told=%s choose=%s prog=%s reason=%s changes=%s locked=%s verdict=%s rate=%s',
+               win, d_chk, d_acc, masked, r_closed, r_acc_early, amt_chk, r_once, seen, r_school, amt_acc, accepted, r_withdraw, docs_short, docs_full,
+               gp1.total, gp1.out_of, gp1.bonus, gp2.total, gp2.bonus, n_seed, n_sci, told, r_choose_off, prog_msg, r_reason, n_changes, r_locked, verdict, rate));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

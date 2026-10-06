@@ -35,6 +35,24 @@ export interface DocumentMeta {
   watermark?: string | null;
   /** an organisational line under the University: "Faculty of Science · Department of Mathematics" */
   unit?: string | null;
+  /** the applicant's or student's passport photograph (a JPEG), at the top right of the letterhead; null with `photoBox` draws a placeholder */
+  photo?: Image | null;
+  /** keep a passport-sized space even without a photograph, with a placeholder in it */
+  photoBox?: boolean;
+}
+
+/** the passport container: a standard photo's proportions (35 × 45), the image fitted without distortion */
+const PHOTO_W = 70, PHOTO_H = 90;
+function drawPhoto(p: Page, x: number, top: number, photo: Image | null | undefined): void {
+  p.box(x, top - PHOTO_H, PHOTO_W, PHOTO_H, 0.55);
+  if (photo && photo.width > 0 && photo.height > 0) {
+    const scale = Math.min((PHOTO_W - 4) / photo.width, (PHOTO_H - 4) / photo.height);
+    const w = photo.width * scale, h = photo.height * scale;
+    p.jpeg(x + (PHOTO_W - w) / 2, top - PHOTO_H + (PHOTO_H - h) / 2, w, h, photo);
+  } else {
+    p.text(x + 12, top - PHOTO_H / 2 + 3, "PASSPORT", 7.5, true, MUTED);
+    p.text(x + 10, top - PHOTO_H / 2 - 7, "PHOTOGRAPH", 7, false, MUTED);
+  }
 }
 
 const clean = (s: unknown) => String(s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
@@ -61,20 +79,24 @@ export function drawHeader(p: Page, inst: Institution, profile: DocumentProfile,
   const box = 54;
   let y = top;
   const textX = logo ? L + box + 12 : L;
+  const withPhoto = !!meta.photo || !!meta.photoBox;
+  /* the passport sits at the top right; the letterhead's text stops short of it */
+  const textR = withPhoto ? R - PHOTO_W - 12 : R;
+  if (withPhoto) drawPhoto(p, R - PHOTO_W, top, meta.photo);
   if (logo) {
     const ratio = logo.width && logo.height ? logo.width / logo.height : 1;
     const lw = ratio >= 1 ? box : box * ratio, lh = ratio >= 1 ? box / ratio : box;
     p.jpeg(L + (box - lw) / 2, top - box + (box - lh) / 2, lw, lh, logo);
   }
-  p.text(textX, y - 13, fit(nameUpper(inst), R - textX, 12.5), 12.5, true, CHROME);
+  p.text(textX, y - 13, fit(nameUpper(inst), textR - textX, 12.5), 12.5, true, CHROME);
   y -= 13;
-  if (inst.motto) { y -= 13; p.textStyled(textX, y, fit(`"${clean(inst.motto)}"`, R - textX, 9), 9, { font: "F5", colour: MUTED }); }
+  if (inst.motto) { y -= 13; p.textStyled(textX, y, fit(`"${clean(inst.motto)}"`, textR - textX, 9), 9, { font: "F5", colour: MUTED }); }
   const addr = addressLine(inst);
-  if (addr) { y -= 12; p.text(textX, y, fit(clean(addr), R - textX, 8), 8, false, MUTED); }
+  if (addr) { y -= 12; p.text(textX, y, fit(clean(addr), textR - textX, 8), 8, false, MUTED); }
   const contact = contactLine(inst);
-  if (contact) { y -= 11; p.text(textX, y, fit(clean(contact), R - textX, 8), 8, false, MUTED); }
-  if (meta.unit) { y -= 12; p.text(textX, y, fit(clean(meta.unit).toUpperCase(), R - textX, 8.5), 8.5, true, INK); }
-  y = Math.min(y, top - box) - 8;
+  if (contact) { y -= 11; p.text(textX, y, fit(clean(contact), textR - textX, 8), 8, false, MUTED); }
+  if (meta.unit) { y -= 12; p.text(textX, y, fit(clean(meta.unit).toUpperCase(), textR - textX, 8.5), 8.5, true, INK); }
+  y = Math.min(y, top - box, withPhoto ? top - PHOTO_H : top) - 8;
   p.rule(L, y, R, y, 1.2, 0.12);
   y -= 20;
   const title = documentTitle(profile, meta.title);

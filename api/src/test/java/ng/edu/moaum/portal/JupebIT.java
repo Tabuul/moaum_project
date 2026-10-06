@@ -38,7 +38,21 @@ class JupebIT {
 
     static final String WINDOW = "JUPEB_APPLICATION";
     static final byte[] PDF = "%PDF-1.4\n% a JUPEB test document\n%%EOF\n".getBytes();
-    static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R'};
+    static final String CHECKING = "JUPEB_ADMISSION_STATUS_CHECKING";
+    /** a real (tiny) PNG, so the passport converts to the JPEG the documents embed */
+    static final byte[] PNG = png();
+
+    private static byte[] png() {
+        try {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(4, 5, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            img.setRGB(1, 1, 0xFF336699);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", out);
+            return out.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Value("${local.server.port}")
     int port;
@@ -79,8 +93,8 @@ class JupebIT {
     /** the session as every other run expects it: the JUPEB window closed (its default), no session fee rule, results unpublished, the faculty's category as it was */
     private void clean() {
         it.db(() -> {
-            jdbc.sql("DELETE FROM policy.portal_window_event WHERE window_type = :t AND session = :s").param("t", WINDOW).param("s", session).update();
-            jdbc.sql("DELETE FROM policy.portal_window WHERE window_type = :t AND session = :s").param("t", WINDOW).param("s", session).update();
+            jdbc.sql("DELETE FROM policy.portal_window_event WHERE window_type IN (:t, :c) AND session = :s").param("t", WINDOW).param("c", CHECKING).param("s", session).update();
+            jdbc.sql("DELETE FROM policy.portal_window WHERE window_type IN (:t, :c) AND session = :s").param("t", WINDOW).param("c", CHECKING).param("s", session).update();
             jdbc.sql("DELETE FROM jupeb.school_fee WHERE session = :s").param("s", session).update();
             jdbc.sql("DELETE FROM jupeb.fee_setting WHERE session = :s").param("s", session).update();
             jdbc.sql("DELETE FROM jupeb.setting WHERE session = :s").param("s", session).update();
@@ -145,6 +159,8 @@ class JupebIT {
         Map<String, Object> rule = new LinkedHashMap<>();
         rule.put("session", session);
         rule.put("applicationFee", 15000);
+        rule.put("checkingFee", 1000);
+        rule.put("acceptanceFee", 15000);
         rule.put("firstPercent", 70);
         rule.put("allowFull", true);
         rule.put("activation", "FIRST_INSTALMENT");
@@ -166,6 +182,8 @@ class JupebIT {
         String number = String.valueOf(applied.get("application_no"));
         assertThat(number).matches("^JUPEB/APP/" + session.substring(0, 4) + "/\\d{6}$");
         assertThat(new BigDecimal(String.valueOf(applied.get("amount")))).isEqualByComparingTo("15000");
+        // the reference carries the session's year: the count restarts each session and must not collide (V342)
+        assertThat(String.valueOf(applied.get("reference"))).startsWith("MOAUM-JUPEBAPP-" + session.substring(0, 4) + "-");
         assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)))).isEqualTo("JUPEB_APP_EXISTS");
 
         // ── signed in on the application number; the token reaches this candidate's record only ──
@@ -180,6 +198,8 @@ class JupebIT {
         Map<String, Object> mine = ok(it.get(me, "/api/v1/jupeb/me"));
         assertThat(mine.get("state")).isEqualTo("DRAFT");
         assertThat((List<String>) mine.get("missing")).anyMatch(m -> m.contains("application fee"));
+        // the guided application starts on the first incomplete step
+        assertThat(((Map<String, Object>) mine.get("steps")).get("current")).isEqualTo("PERSONAL");
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null))).isEqualTo("JUPEB_INCOMPLETE");
 
         // the application fee: the same live reference, confirmed by the Bursar from the teller — never by the JUPEB Office
@@ -204,16 +224,46 @@ class JupebIT {
         bio.put("nextOfKinRelationship", "Mother");
         ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", bio));
 
-        // ── the O'Level: five credits with English and Mathematics, in at most two sittings ──
+        // ── the O'Level: five credits with English and Mathematics, in the sittings declared (at most two) ──
         List<Map<String, Object>> four = List.of(grade(1, "English Language", "C5"), grade(1, "Mathematics", "B3"), grade(1, "Physics", "C6"),
                 grade(1, "Chemistry", "C4"), grade(1, "Biology", "D7"));
-        Map<String, Object> check = (Map<String, Object>) ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("grades", four))).get("olevelCheck");
+        Map<String, Object> check = (Map<String, Object>) ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("sittings", 1, "grades", four))).get("olevelCheck");
         assertThat(check.get("ok")).isEqualTo(false);
         List<Map<String, Object>> five = new java.util.ArrayList<>(four);
         five.add(grade(2, "Biology", "B2"));
-        check = (Map<String, Object>) ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("grades", five))).get("olevelCheck");
+        // a second sitting's results under one declared sitting are refused; two declared, the combined result holds
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("sittings", 1, "grades", five)))).isEqualTo("JUPEB_OLEVEL_SITTINGS");
+        mine = ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("sittings", 2, "grades", five)));
+        check = (Map<String, Object>) mine.get("olevelCheck");
         assertThat(check.get("ok")).isEqualTo(true);
         assertThat(((Number) check.get("credits")).intValue()).isEqualTo(5);
+        assertThat(((Number) check.get("sittings")).intValue()).isEqualTo(2);
+
+        // ── the programme and a subject combination the University offers for it (V342) ──
+        assertThat((List<String>) mine.get("missing")).anyMatch(m -> m.contains("subject combination"));
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/choice", Map.of("stream", "SCIENCE", "combination", "SC-001")))).isEqualTo("JUPEB_COMBINATION_STREAM");
+        // the JUPEB Office stops offering a combination: nobody chooses it; it comes back when reactivated — nothing is deleted
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/combinations/offered", Map.of("codes", List.of(comb), "offered", false)))).isEqualTo(403);
+        Map<String, Object> off = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/combinations/offered", Map.of("codes", List.of(comb), "offered", false, "reason", "Not this session")));
+        assertThat(((Number) off.get("changed")).intValue()).isEqualTo(1);
+        assertThat((List<Map<String, Object>>) off.get("combinations")).anySatisfy(c -> {
+            assertThat(c.get("code")).isEqualTo(comb);
+            assertThat(c.get("offered")).isEqualTo(false);
+        });
+        assertThat((List<Map<String, Object>>) ok(it.get(me, "/api/v1/jupeb/me")).get("combinations")).noneMatch(c -> comb.equals(c.get("code")));
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/choice", Map.of("stream", "SCIENCE", "combination", comb)))).isEqualTo("JUPEB_COMBINATION");
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/combinations/offered", Map.of("codes", List.of("ZZNOSUCH" + tag), "offered", true))))
+                .isEqualTo("JUPEB_UNKNOWN_COMBINATION");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/combinations/offered", Map.of("codes", List.of(comb), "offered", true)));
+        mine = ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/choice", Map.of("stream", "SCIENCE", "combination", comb)));
+        assertThat(mine.get("combination_code")).isEqualTo(comb);
+        assertThat((List<String>) mine.get("missing")).noneMatch(m -> m.contains("subject combination"));
+        // a subject not offered withdraws every combination holding it; the candidate who chose one is told, and must choose again
+        off = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/subjects/offered", Map.of("codes", List.of("ZZP" + tag), "offered", false)));
+        assertThat(((Number) off.get("told")).intValue()).isEqualTo(1);
+        assertThat((List<String>) ok(it.get(me, "/api/v1/jupeb/me")).get("missing")).anyMatch(m -> m.contains(comb + " is no longer offered"));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/subjects/offered", Map.of("codes", List.of("ZZP" + tag), "offered", true)));
+        assertThat((List<String>) ok(it.get(me, "/api/v1/jupeb/me")).get("missing")).noneMatch(m -> m.contains("no longer offered"));
 
         // ── the documents: what a file claims to be is checked; each is read back only by its owner and the office ──
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/NIN", doc("nin.pdf", "application/pdf", "not a pdf".getBytes()))))
@@ -223,7 +273,20 @@ class JupebIT {
         }
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/PASSPORT", doc("passport.pdf", "application/pdf", PDF)))).isEqualTo("JUPEB_DOC_TYPE");
         mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/PASSPORT", doc("passport.png", "image/png", PNG)));
+        // two sittings declared: the second sitting's own result is still missing, and is a document of its own
+        assertThat((List<String>) mine.get("missing")).anyMatch(m -> m.contains("second sitting"));
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/OLEVEL_RESULT?sitting=3", doc("x.pdf", "application/pdf", PDF)))).isEqualTo("JUPEB_DOC_SITTING");
+        byte[] secondSitting = "%PDF-1.4\n% the second sitting\n%%EOF\n".getBytes();
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/OLEVEL_RESULT?sitting=2", doc("neco.pdf", "application/pdf", secondSitting)));
         assertThat((List<String>) mine.get("missing")).isEmpty();
+        assertThat(((Map<String, Object>) mine.get("steps")).get("current")).isEqualTo("REVIEW");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.document WHERE application_id = :a AND kind = 'OLEVEL_RESULT'").param("a", app).query(Integer.class).single()).isEqualTo(2);
+        assertThat(it.getBytes(me, "/api/v1/jupeb/me/documents/OLEVEL_RESULT/content?sitting=2").getBody()).isEqualTo(secondSitting);
+        // the passport, as the JPEG the documents embed
+        byte[] jpeg = it.getBytes(me, "/api/v1/jupeb/me/documents/PASSPORT/content?format=jpeg").getBody();
+        assertThat(jpeg).isNotNull();
+        assertThat(jpeg[0] & 0xFF).isEqualTo(0xFF);
+        assertThat(jpeg[1] & 0xFF).isEqualTo(0xD8);
         assertThat(it.getBytes(me, "/api/v1/jupeb/me/documents/NIN/content").getBody()).isEqualTo(PDF);
         assertThat(it.getBytes(office, "/api/v1/jupeb/office/applications/" + app + "/documents/NIN/content").getBody()).isEqualTo(PDF);
 
@@ -252,9 +315,33 @@ class JupebIT {
         Map<String, Object> commit = new LinkedHashMap<>(bulk);
         commit.put("commit", true);
         ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/admission/bulk", commit));
+
+        // ── admission status checking: the decision is not shown until the checking fee is paid while checking is open ──
+        mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("state")).isEqualTo("UNDER_REVIEW");
+        assertThat(mine.get("admission_ref")).isNull();
+        assertThat(mine).doesNotContainKey("fees");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=STATUS_CHECKING", null))).isEqualTo("JUPEB_CHECKING_CLOSED");
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/portal-windows/" + CHECKING, Map.of("session", session, "action", "OPEN")));
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=ACCEPTANCE", null))).isEqualTo("JUPEB_ACCEPTANCE_NOT_YET");
+        Map<String, Object> chk = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=STATUS_CHECKING", null));
+        assertThat(new BigDecimal(String.valueOf(chk.get("amount")))).isEqualByComparingTo("1000");
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + chk.get("reference") + "/confirm", teller));
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=STATUS_CHECKING", null))).isEqualTo("JUPEB_FEE_PAID");
         mine = ok(it.get(me, "/api/v1/jupeb/me"));
         assertThat(mine.get("state")).isEqualTo("ADMITTED");
+        assertThat(((Map<String, Object>) mine.get("statusChecking")).get("status")).isEqualTo("ADMITTED");
         assertThat(String.valueOf(mine.get("admission_ref"))).startsWith("JUPEB/ADM/");
+
+        // ── acceptance: ₦15,000, before the school fees; then the acceptance can no longer be withdrawn ──
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_FIRST", null))).isEqualTo("JUPEB_ACCEPTANCE_FIRST");
+        Map<String, Object> acc = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=ACCEPTANCE", null));
+        assertThat(new BigDecimal(String.valueOf(acc.get("amount")))).isEqualByComparingTo("15000");
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + acc.get("reference") + "/confirm", teller));
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/admission", Map.of("decision", "NOT_ADMITTED"))))
+                .isEqualTo("JUPEB_ADMISSION_PAID");
+        mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("accepted_at")).isNotNull();
 
         // ── the school fee: Science (the Bursary's faculty), indigene (Benue): ₦195,000, 70% then 30% ──
         Map<String, Object> fees = (Map<String, Object>) mine.get("fees");
@@ -280,11 +367,11 @@ class JupebIT {
         Map<String, Object> second = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null));
         assertThat(new BigDecimal(String.valueOf(second.get("amount")))).isEqualByComparingTo("58500");
 
-        // ── the student chooses a combination of their stream (V341), and registers its three subjects, no other ──
-        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null))).isEqualTo("JUPEB_COMBINATION_CHOOSE");
-        UUID combId = jdbc.sql("SELECT id FROM jupeb.combination WHERE code = :c").param("c", comb).query(UUID.class).single();
+        // ── the student registers the combination chosen on the application — or another offered one of their stream (V341, V342) ──
+        UUID nonScience = jdbc.sql("SELECT id FROM jupeb.combination WHERE code = 'SC-001'").query(UUID.class).single();
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", Map.of("combination", nonScience)))).isEqualTo("JUPEB_COMBINATION_STREAM");
         assertThat((List<Map<String, Object>>) mine.get("combinations")).anySatisfy(c -> assertThat(c.get("code")).isEqualTo(comb));
-        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", Map.of("combination", combId)));
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));
         assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("code"))
                 .containsExactlyInAnyOrder("ZZM" + tag, "ZZP" + tag, "ZZC" + tag);
         ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));
@@ -330,11 +417,13 @@ class JupebIT {
 
         // ── the trail: every step on the candidate's own timeline, and each told by email ──
         assertThat((List<Map<String, Object>>) detail.get("events")).extracting(e -> e.get("kind"))
-                .contains("CREATED", "APPLICATION_FEE_CONFIRMED", "SUBMITTED", "RETURNED", "ELIGIBLE", "ADMITTED", "SCHOOL_FEE_CONFIRMED", "STUDENT", "SUBJECTS_REGISTERED", "EXAM_NO_ASSIGNED");
+                .contains("CREATED", "APPLICATION_FEE_CONFIRMED", "SUBMITTED", "RETURNED", "ELIGIBLE", "ADMITTED", "STATUS_CHECKING_CONFIRMED", "ACCEPTANCE_CONFIRMED",
+                          "SCHOOL_FEE_CONFIRMED", "STUDENT", "SUBJECTS_REGISTERED", "EXAM_NO_ASSIGNED");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL'").param("a", app).query(Integer.class).single()).isGreaterThanOrEqualTo(8);
     }
 
     private static Map<String, Object> grade(int sitting, String subject, String grade) {
-        return Map.of("sitting", sitting, "examType", sitting == 1 ? "WAEC" : "NECO", "examYear", 2024, "subject", subject, "grade", grade);
+        return Map.of("sitting", sitting, "examType", sitting == 1 ? "WAEC" : "NECO", "examNumber", sitting == 1 ? "4251234001" : "1012345678", "examYear", 2024,
+                "subject", subject, "grade", grade);
     }
 }

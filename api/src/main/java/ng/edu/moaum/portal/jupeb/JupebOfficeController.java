@@ -82,6 +82,8 @@ class JupebOfficeController {
         out.put("session", s);
         out.put("sessions", sessions());
         out.put("window", jdbc.sql("SELECT state, opens_at, closes_at FROM policy.window_state('JUPEB_APPLICATION', :s, NULL)").param("s", s).query().singleRow());
+        out.put("checkingWindow", jdbc.sql("SELECT state, opens_at, closes_at FROM policy.window_state('JUPEB_ADMISSION_STATUS_CHECKING', :s, NULL)").param("s", s).query().singleRow());
+        out.put("feeRule", jdbc.sql("SELECT application_fee, checking_fee, acceptance_fee, first_percent FROM jupeb.fee_setting_of(:s)").param("s", s).query().singleRow());
         out.put("counts", jdbc.sql("""
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS today,
@@ -98,7 +100,12 @@ class JupebOfficeController {
                        count(*) FILTER (WHERE subjects_registered_at IS NOT NULL) AS registered,
                        count(*) FILTER (WHERE exam_no IS NOT NULL) AS exam_numbers,
                        count(*) FILTER (WHERE state = 'COMPLETED') AS completed,
-                       count(*) FILTER (WHERE screening_state IN ('PENDING', 'SCHEDULED', 'IN_PROGRESS', 'CORRECTION_REQUIRED')) AS screening_open
+                       count(*) FILTER (WHERE screening_state IN ('PENDING', 'SCHEDULED', 'IN_PROGRESS', 'CORRECTION_REQUIRED')) AS screening_open,
+                       count(*) FILTER (WHERE screening_state = 'CLEARED') AS screening_cleared,
+                       count(*) FILTER (WHERE jupeb.paid_at(id, 'STATUS_CHECKING') IS NOT NULL) AS checking_paid,
+                       count(*) FILTER (WHERE jupeb.paid_at(id, 'ACCEPTANCE') IS NOT NULL) AS accepted,
+                       count(*) FILTER (WHERE stream = 'SCIENCE') AS science,
+                       count(*) FILTER (WHERE stream IN ('NON_SCIENCE', 'ARTS')) AS non_science
                   FROM jupeb.application WHERE session = :s
                 """).param("s", s).query().singleRow());
         out.put("money", jdbc.sql("""
@@ -109,10 +116,10 @@ class JupebOfficeController {
                 SELECT c.code, c.name, count(a.id) AS applications, count(a.id) FILTER (WHERE a.state IN ('ADMITTED', 'STUDENT', 'COMPLETED')) AS admitted,
                        count(a.id) FILTER (WHERE a.state IN ('STUDENT', 'COMPLETED')) AS students
                   FROM jupeb.combination c LEFT JOIN jupeb.application a ON a.combination_id = c.id AND a.session = :s
-                 GROUP BY c.code, c.name HAVING count(a.id) > 0 OR bool_or(c.active) ORDER BY count(a.id) DESC, c.code
+                 GROUP BY c.id, c.code, c.name HAVING count(a.id) > 0 OR jupeb.combination_offered(c.id) ORDER BY count(a.id) DESC, c.code
                 """).param("s", s).query().listOfRows());
         out.put("byStream", jdbc.sql("""
-                SELECT coalesce(initcap(a.stream), 'Not stated') AS stream, count(*) AS applications,
+                SELECT CASE WHEN a.stream = 'SCIENCE' THEN 'Science' WHEN a.stream IN ('NON_SCIENCE', 'ARTS') THEN 'Non-Science' ELSE 'Not stated' END AS stream, count(*) AS applications,
                        count(*) FILTER (WHERE a.state IN ('ADMITTED', 'STUDENT', 'COMPLETED')) AS admitted,
                        count(*) FILTER (WHERE a.state IN ('STUDENT', 'COMPLETED')) AS students
                   FROM jupeb.application a WHERE a.session = :s GROUP BY 1 ORDER BY count(*) DESC
@@ -137,7 +144,8 @@ class JupebOfficeController {
                    a.nin, a.state_of_origin, a.lga, a.stream, a.programme_code, g.name AS programme_name, f.name AS faculty_name, c.code AS combination_code, c.name AS combination_name,
                    a.state, a.fee_confirmed_at, a.submitted_at, a.admission_ref, a.admission_decided_at, a.exam_no, a.screening_state, cl.name AS class_name,
                    a.subjects_registered_at, a.activated_at, sf.category AS fee_category, sf.indigene, sf.total AS school_fee, sf.paid AS school_fee_paid,
-                   sf.outstanding AS school_fee_outstanding, sf.status AS school_fee_status, a.created_at, count(*) OVER () AS total_rows
+                   sf.outstanding AS school_fee_outstanding, sf.status AS school_fee_status, a.created_at,
+                   jupeb.paid_at(a.id, 'STATUS_CHECKING') AS checking_paid_at, jupeb.paid_at(a.id, 'ACCEPTANCE') AS accepted_at, count(*) OVER () AS total_rows
               FROM jupeb.application a
               LEFT JOIN ref.programme g ON g.code = a.programme_code
               LEFT JOIN ref.faculty f ON f.code = g.faculty_code
@@ -203,9 +211,11 @@ class JupebOfficeController {
     @GetMapping("/applications/{id}/documents/{kind}/content")
     @PreAuthorize(READ)
     @Transactional(readOnly = true)
-    ResponseEntity<byte[]> document(@PathVariable UUID id, @PathVariable String kind) {
+    ResponseEntity<byte[]> document(@PathVariable UUID id, @PathVariable String kind, @RequestParam(required = false) Integer sitting,
+                                    @RequestParam(required = false) String format) {
         requireApp(id);
-        return JupebDocuments.stream(jdbc, files, id, kind);
+        String k = kind.trim().toUpperCase();
+        return JupebDocuments.stream(jdbc, files, id, k, "OLEVEL_RESULT".equals(k) ? (sitting == null ? 1 : sitting) : null, "jpeg".equalsIgnoreCase(format));
     }
 
     public record Review(@NotBlank @Pattern(regexp = "UNDER_REVIEW|VERIFIED|REJECTED|REPLACEMENT_REQUIRED") String status, @Size(max = 600) String note) {
@@ -214,18 +224,20 @@ class JupebOfficeController {
     @PostMapping("/applications/{id}/documents/{kind}/review")
     @PreAuthorize(WRITE)
     @Transactional
-    Map<String, Object> review(@PathVariable UUID id, @PathVariable String kind, @Valid @RequestBody Review body) {
+    Map<String, Object> review(@PathVariable UUID id, @PathVariable String kind, @RequestParam(required = false) Integer sitting, @Valid @RequestBody Review body) {
         requireApp(id);
         boolean needsNote = Set.of("REJECTED", "REPLACEMENT_REQUIRED").contains(body.status());
         if (needsNote && (body.note() == null || body.note().isBlank())) {
             throw new DomainRuleViolation("JUPEB_REASON", "Say what is wrong with the document, so the candidate can replace it.",
                     new DomainRuleViolation.Remedy("Write the reason and decide again.", "JUPEB Office"));
         }
-        int n = jdbc.sql("UPDATE jupeb.document SET status = :st, review_note = :n, reviewed_by = :by, reviewed_at = now() WHERE application_id = :a AND kind = upper(btrim(:k))")
+        Integer sit = "OLEVEL_RESULT".equalsIgnoreCase(kind.trim()) ? (sitting == null ? 1 : sitting) : null;
+        int n = jdbc.sql("UPDATE jupeb.document SET status = :st, review_note = :n, reviewed_by = :by, reviewed_at = now() WHERE application_id = :a AND kind = upper(btrim(:k)) AND coalesce(sitting, 0) = coalesce(:s, 0)")
                 .param("st", body.status()).param("n", body.note() == null || body.note().isBlank() ? null : body.note().trim(), Types.VARCHAR)
-                .param("by", actor()).param("a", id).param("k", kind).update();
+                .param("by", actor()).param("a", id).param("k", kind).param("s", sit, Types.INTEGER).update();
         if (n == 0) throw new NotFound("document", kind);
-        String label = jdbc.sql("SELECT label FROM jupeb.document_kind WHERE code = upper(btrim(:k))").param("k", kind).query(String.class).single();
+        String label = jdbc.sql("SELECT label FROM jupeb.document_kind WHERE code = upper(btrim(:k))").param("k", kind).query(String.class).single()
+                + (sit == null ? "" : sit == 1 ? " (first sitting)" : " (second sitting)");
         jdbc.sql("SELECT jupeb.app_event(:a, :kind, :note)").param("a", id).param("kind", "DOCUMENT_" + body.status())
                 .param("note", label + (body.note() == null || body.note().isBlank() ? "" : " — " + body.note().trim())).query().listOfRows();
         if (needsNote) {
@@ -499,11 +511,70 @@ class JupebOfficeController {
         return subjects();
     }
 
+    public record Unit(@NotBlank @Pattern(regexp = "^[A-Za-z]{2,5} ?[0-9]{3}$", message = "a code like BIO 001") String code, @NotBlank @Size(max = 160) String title) {
+    }
+
+    public record Units(@NotNull @Size(max = 12) List<@Valid Unit> units) {
+    }
+
+    /** a subject's course units (BIO 001: General Biology …), printed in the note of the statement of result (V342) */
+    @GetMapping("/subjects/{code}/units")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> units(@PathVariable String code) {
+        return jdbc.sql("""
+                SELECT u.code, u.title, u.ord FROM jupeb.subject_unit u JOIN jupeb.subject s ON s.id = u.subject_id
+                 WHERE upper(s.code) = upper(btrim(:c)) ORDER BY u.ord, u.code
+                """).param("c", code).query().listOfRows();
+    }
+
+    @PutMapping("/subjects/{code}/units")
+    @PreAuthorize(WRITE)
+    @Transactional
+    List<Map<String, Object>> saveUnits(@PathVariable String code, @Valid @RequestBody Units body) {
+        UUID subject = jdbc.sql("SELECT id FROM jupeb.subject WHERE upper(code) = upper(btrim(:c))").param("c", code).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("JUPEB subject", code));
+        Set<String> seen = new java.util.HashSet<>();
+        for (Unit u : body.units()) {
+            if (!seen.add(u.code().trim().toUpperCase().replaceAll("\\s+", " "))) {
+                throw new DomainRuleViolation("JUPEB_UNIT_TWICE", u.code() + " appears twice.", new DomainRuleViolation.Remedy("List each course unit once.", "JUPEB Office"));
+            }
+        }
+        jdbc.sql("DELETE FROM jupeb.subject_unit WHERE subject_id = :s").param("s", subject).update();
+        int ord = 1;
+        for (Unit u : body.units()) {
+            String c = u.code().trim().toUpperCase().replaceAll("^([A-Z]+) ?([0-9]{3})$", "$1 $2");
+            jdbc.sql("INSERT INTO jupeb.subject_unit (subject_id, code, title, ord) VALUES (:s, :c, :t, :o)").param("s", subject).param("c", c).param("t", u.title().trim()).param("o", ord++).update();
+        }
+        return units(code);
+    }
+
     @GetMapping("/combinations")
     @PreAuthorize(READ)
     @Transactional(readOnly = true)
     List<Map<String, Object>> combinations() {
         return view.combinations(false);
+    }
+
+    public record OfferedIn(@NotNull @Size(min = 1, max = 100) List<@NotBlank @Size(max = 40) String> codes, boolean offered, @Size(max = 500) String reason) {
+    }
+
+    /** V342: the JUPEB Office disables the subjects or combinations the University does not offer, and reactivates them —
+     *  nothing is deleted; a candidate holding a combination that stops being offered, before registering, is told */
+    @PostMapping("/{kind:subjects|combinations}/offered")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> setOffered(@PathVariable String kind, @Valid @RequestBody OfferedIn body) {
+        String why = body.reason() == null || body.reason().isBlank() ? null : body.reason().trim();
+        jdbc.sql("SELECT set_config('moaum.reason', :r, true)")
+                .param("r", (body.offered() ? "JUPEB: offered again" : "JUPEB: not offered") + (why == null ? "" : ": " + why)).query().listOfRows();
+        Map<String, Object> r = jdbc.sql("SELECT changed, told FROM jupeb.set_offered(:k, :c, :o, :by)")
+                .param("k", "subjects".equals(kind) ? "SUBJECT" : "COMBINATION").param("c", body.codes().toArray(String[]::new))
+                .param("o", body.offered()).param("by", actor()).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("subjects", subjects());
+        out.put("combinations", view.combinations(false));
+        return out;
     }
 
     /** one combination, entered on the desk: the same judgement the import makes, for one row */
@@ -536,17 +607,17 @@ class JupebOfficeController {
         out.put("own", jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.setting WHERE session = :s)").param("s", s).query(Boolean.class).single());
         out.put("setting", jdbc.sql("""
                 SELECT application_prefix, screening_required, screening_venue, screening_starts_on::text AS screening_starts_on, screening_ends_on::text AS screening_ends_on,
-                       screening_instructions, results_published_at
+                       screening_instructions, results_published_at, exam_month
                   FROM jupeb.setting_of(:s)
                 """).param("s", s).query().singleRow());
         out.put("documentKinds", jdbc.sql("SELECT code, label, required, image, active, ord FROM jupeb.document_kind ORDER BY ord, label").query().listOfRows());
-        out.put("fees", jdbc.sql("SELECT application_fee, first_percent, allow_full, activation, indigene_state FROM jupeb.fee_setting_of(:s)").param("s", s).query().singleRow());
+        out.put("fees", jdbc.sql("SELECT application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state FROM jupeb.fee_setting_of(:s)").param("s", s).query().singleRow());
         return out;
     }
 
     public record SettingIn(@NotBlank String session, @NotBlank @Pattern(regexp = "^[A-Z][A-Z0-9/-]{1,20}$") String applicationPrefix,
                             boolean screeningRequired, @Size(max = 200) String screeningVenue, LocalDate screeningStartsOn, LocalDate screeningEndsOn,
-                            @Size(max = 2000) String screeningInstructions) {
+                            @Size(max = 2000) String screeningInstructions, @Size(max = 40) String examMonth) {
     }
 
     @PutMapping("/settings")
@@ -559,13 +630,14 @@ class JupebOfficeController {
             throw new DomainRuleViolation("JUPEB_SCREENING_DATES", "Screening ends before it starts.", new DomainRuleViolation.Remedy("Correct the dates.", "JUPEB Office"));
         }
         jdbc.sql("""
-                INSERT INTO jupeb.setting (session, application_prefix, screening_required, screening_venue, screening_starts_on, screening_ends_on, screening_instructions, updated_by)
-                VALUES (:s, :p, :r, :v, :a, :e, :i, :by)
+                INSERT INTO jupeb.setting (session, application_prefix, screening_required, screening_venue, screening_starts_on, screening_ends_on, screening_instructions, exam_month, updated_by)
+                VALUES (:s, :p, :r, :v, :a, :e, :i, :m, :by)
                 ON CONFLICT (session) DO UPDATE SET application_prefix = EXCLUDED.application_prefix, screening_required = EXCLUDED.screening_required,
                        screening_venue = EXCLUDED.screening_venue, screening_starts_on = EXCLUDED.screening_starts_on, screening_ends_on = EXCLUDED.screening_ends_on,
-                       screening_instructions = EXCLUDED.screening_instructions, updated_by = EXCLUDED.updated_by, updated_at = now()
+                       screening_instructions = EXCLUDED.screening_instructions, exam_month = EXCLUDED.exam_month, updated_by = EXCLUDED.updated_by, updated_at = now()
                 """).param("s", s).param("p", b.applicationPrefix()).param("r", b.screeningRequired()).param("v", b.screeningVenue(), Types.VARCHAR)
                 .param("a", b.screeningStartsOn(), Types.DATE).param("e", b.screeningEndsOn(), Types.DATE).param("i", b.screeningInstructions(), Types.VARCHAR)
+                .param("m", b.examMonth() == null || b.examMonth().isBlank() ? null : b.examMonth().trim().toUpperCase(), Types.VARCHAR)
                 .param("by", actor()).update();
         return settings("*".equals(s) ? null : s);
     }

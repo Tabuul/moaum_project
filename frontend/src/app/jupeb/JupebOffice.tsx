@@ -19,7 +19,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, naira, readSheet, stateKind, streamLabel, when,
-  type Candidate, type Combination,
+  type Candidate, type Combination, type Doc,
 } from "@/lib/jupeb";
 
 const STATES = ["DRAFT", "SUBMITTED", "RETURNED", "ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED", "STUDENT", "COMPLETED"];
@@ -43,6 +43,8 @@ function SessionPick({ sessions, value, onChange }: { sessions: SessionRow[]; va
 
 interface Dash {
   session: string; sessions: SessionRow[]; window: { state: string; opens_at: string | null; closes_at: string | null };
+  checkingWindow: { state: string; opens_at: string | null; closes_at: string | null };
+  feeRule: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number };
   counts: Record<string, number>; money: { kind: string; paid: number; amount: number }[];
   byCombination: { code: string; name: string; applications: number; admitted: number; students: number }[];
   byStream: { stream: string; applications: number; admitted: number; students: number }[]; tickets: number; resultsPublished: boolean;
@@ -69,19 +71,33 @@ export function JupebDashboard() {
     <>
       <PageHead title="JUPEB Office" description={`The JUPEB programme for ${d.session}: applications, admission, students, examination numbers and results.`}
         actions={<SessionPick sessions={d.sessions} value={d.session} onChange={setSession} />} />
-      <Note kind={d.window.state === "OPEN" ? "ok" : "info"} title={`JUPEB application window: ${d.window.state.toLowerCase()}`}>
-        The Director of ICT opens and closes it on Portal Windows.{d.window.closes_at ? ` Closes ${when(d.window.closes_at)}.` : ""}
-      </Note>
+      <div className="grid grid--2">
+        <Note kind={d.window.state === "OPEN" ? "ok" : "info"} title={`JUPEB application window: ${d.window.state.toLowerCase()}`}>
+          The Director of ICT opens and closes it on Portal Windows.{d.window.closes_at ? ` Closes ${when(d.window.closes_at)}.` : ""}
+        </Note>
+        <Note kind={d.checkingWindow.state === "OPEN" ? "ok" : "info"} title={`Admission status checking: ${d.checkingWindow.state.toLowerCase()}`}>
+          Candidates pay {naira(d.feeRule.checking_fee)} once to see their status while it is open; the Director of ICT opens it on Portal Windows.{d.checkingWindow.closes_at ? ` Closes ${when(d.checkingWindow.closes_at)}.` : ""}
+        </Note>
+      </div>
       <Tiles items={[
-        ["Applications", c.total, null, `${c.today} today`, q("")],
+        ["Applications", c.total, null, `${c.today} today · ${c.science} Science · ${c.non_science} Non-Science`, q("")],
         ["Application fee paid", c.fee_paid, null, naira(total("APPLICATION"))],
         ["Awaiting review", c.submitted, null, `${c.returned} returned to applicants`, q("SUBMITTED")],
         ["Eligible", c.eligible, null, `${c.ineligible} not eligible`, q("ELIGIBLE")],
         ["Admitted", c.admitted, "var(--green-ink)", `${c.not_admitted} not admitted · ${c.pending} pending`, q("ADMITTED,STUDENT,COMPLETED")],
+        ["Checked their status", c.checking_paid, null, naira(total("STATUS_CHECKING"))],
+        ["Accepted admission", c.accepted, null, naira(total("ACCEPTANCE"))],
+        ["Screening cleared", c.screening_cleared, null, `${c.screening_open} still in screening`],
         ["Active students", c.students, null, `${c.registered} registered subjects`, q("STUDENT,COMPLETED")],
         ["Examination numbers", c.exam_numbers, null, "issued by the Board", "/jupeb/examination"],
         ["School fees received", naira(total("SCHOOL")), null, d.resultsPublished ? "results published" : `${c.completed} completed`, "/jupeb/payments"],
       ]} />
+      <Panel title="Payments by fee">
+        <PBody><DTable noPrint pageSize={0} cols={["Fee", "Payments|num", "Amount received|num"]} rows={[
+          ...d.money.map((m) => [FEE_KIND[m.kind] ?? m.kind, m.paid, naira(m.amount)]),
+          [<b key="t">Total</b>, d.money.reduce((n, m) => n + Number(m.paid), 0), <b key="a">{naira(d.money.reduce((n, m) => n + Number(m.amount), 0))}</b>],
+        ]} /></PBody>
+      </Panel>
       <div className="grid grid--2">
         <Panel title="By combination">
           <PBody><DTable pageSize={10} cols={["Code", "Combination", "Applications|num", "Admitted|num", "Students|num"]} texts={d.byCombination.map((r) => `${r.code} ${r.name}`)}
@@ -105,6 +121,7 @@ interface AppRow {
   state_of_origin: string | null; lga: string | null; stream: string | null; combination_code: string | null; state: string;
   fee_confirmed_at: string | null; submitted_at: string | null; admission_ref: string | null; exam_no: string | null; screening_state: string | null; class_name: string | null;
   fee_category: string | null; indigene: boolean | null; school_fee: number | null; school_fee_paid: number; school_fee_outstanding: number; school_fee_status: string; created_at: string;
+  checking_paid_at: string | null; accepted_at: string | null;
 }
 interface AppList { session: string; total: number; page: number; size: number; rows: AppRow[] }
 interface BulkRow { application_id: string; application_no: string; name: string; state: string; ok: boolean; reason: string | null }
@@ -139,9 +156,9 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
     if (!r.ok) { notifyProblem(r.problem); return; }
     const blob = await brandedXlsx(`JUPEB applications — ${r.data.session}`,
       ["Application No", "Name", "Sex", "Date of birth", "Phone", "Email", "NIN", "State of origin", "LGA", "Programme", "Combination", "Status",
-        "Application fee", "Submitted", "Admission ref", "Fee category", "Indigene", "School fee", "Paid", "Outstanding", "Screening", "Class", "JUPEB exam no"],
+        "Application fee", "Submitted", "Admission ref", "Status checked", "Accepted", "Fee category", "Indigene", "School fee", "Paid", "Outstanding", "Screening", "Class", "JUPEB exam no"],
       r.data.rows.map((a) => [a.application_no, a.name, a.sex, a.date_of_birth, a.phone, a.email, a.nin, a.state_of_origin, a.lga, streamLabel(a.stream),
-        a.combination_code, STATE_SHORT[a.state] ?? a.state, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.admission_ref, feeCategoryLabel(a.fee_category),
+        a.combination_code, STATE_SHORT[a.state] ?? a.state, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.admission_ref, day(a.checking_paid_at), day(a.accepted_at), feeCategoryLabel(a.fee_category),
         a.indigene == null ? "" : a.indigene ? "Yes" : "No", a.school_fee, a.school_fee_paid, a.school_fee_outstanding, a.screening_state, a.class_name, a.exam_no]),
       { sheetName: "Applications", serial: docSerial("JUPEB"), meta: Object.entries(filters).filter(([, v]) => v).map(([k, v]) => [k, v] as [string, string]) });
     downloadBlob(blob, `jupeb-applications-${r.data.session.replace("/", "-")}.xlsx`);
@@ -180,7 +197,7 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
             <Field id="f-scr" label="Screening"><select id="f-scr" className="ctl" value={filters.screening} onChange={(e) => set("screening", e.target.value)}>
               <option value="">All</option>{Object.entries(SCREENING_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
             <Field id="f-stream" label="Programme"><select id="f-stream" className="ctl" value={filters.stream ?? ""} onChange={(e) => set("stream", e.target.value)}>
-              <option value="">All</option><option value="SCIENCE">Science</option><option value="ARTS">Arts</option></select></Field>
+              <option value="">All</option><option value="SCIENCE">Science</option><option value="NON_SCIENCE">Non-Science</option></select></Field>
             <Field id="f-q" label="Search" hint="Name, application or exam number, email, phone, NIN"><input id="f-q" className="ctl" value={filters.q} onChange={(e) => set("q", e.target.value)} /></Field>
           </div>
         </PBody>
@@ -196,13 +213,13 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
         <Btn kind="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Btn><span className="sub2">Page {page + 1} of {pages}</span>
         <Btn kind="ghost" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Next</Btn></span>}>
         <PBody>
-          <DTable pageSize={0} cols={[...(canWrite ? ["|mid"] : []), "S/N|num", "Application No", "Name", "Programme", "Combination", "Status", "Fee", "Submitted", "Exam no"]}
+          <DTable pageSize={0} cols={[...(canWrite ? ["|mid"] : []), "S/N|num", "Application No", "Name", "Programme", "Combination", "Status", "Fee", "Submitted", "Checked", "Accepted", "Exam no"]}
             rows={rows.map((a, i) => [
               ...(canWrite ? [<input key="c" type="checkbox" aria-label={`Select ${a.application_no}`} checked={picked.has(a.id)} onChange={(e) => {
                 const n = new Set(picked); if (e.target.checked) n.add(a.id); else n.delete(a.id); setPicked(n);
               }} />] : []),
               page * 50 + i + 1, <Link key="l" href={`/jupeb/applications/${a.id}`} className="tnum">{a.application_no}</Link>, a.name, streamLabel(a.stream), a.combination_code ?? "—",
-              <Pil key="s" kind={stateKind(a.state)}>{STATE_SHORT[a.state] ?? a.state}</Pil>, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.exam_no ?? "—",
+              <Pil key="s" kind={stateKind(a.state)}>{STATE_SHORT[a.state] ?? a.state}</Pil>, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.checking_paid_at ? "Yes" : "—", a.accepted_at ? "Yes" : "—", a.exam_no ?? "—",
             ])} />
         </PBody>
       </Panel>
@@ -269,22 +286,40 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
       case "screening": ok = await act("/screening", { decision: f.decision, reason: f.reason || null, venue: f.venue || null, at: f.at ? new Date(f.at).toISOString() : null }, "Screening decided"); break;
       case "examno": ok = await act("/exam-no", { examNo: f.examNo, reason: f.reason || null }, "Examination number set"); break;
       case "class": ok = await act("/class", { classId: f.classId || null }, "Class placement"); break;
-      default: if (modal.kind.startsWith("doc:")) ok = await act(`/documents/${modal.kind.slice(4)}/review`, { status: f.status, note: f.note || null }, "Document reviewed");
+      default: if (modal.kind.startsWith("doc:")) ok = await act(`/documents/${modal.kind.slice(4)}/review${f.sitting ? `?sitting=${f.sitting}` : ""}`, { status: f.status, note: f.note || null }, "Document reviewed");
     }
     if (ok) setModal(null);
   }
   const setF = (k: string, v: string) => modal && setModal({ ...modal, fields: { ...modal.fields, [k]: v } });
   const s = c.state;
   const pdf = (doc: string) => `/jupeb/pdf/${doc}?id=${c.id}`;
+  const docBase = `/api/bff/api/v1/jupeb/office/applications/${c.id}/documents`;
+  const sq = (d: Doc) => (d.sitting ? `?sitting=${d.sitting}` : "");
+  const fees = c.fees;
   return (
     <>
       <PageHead title={fullName(c)} eyebrow={<Link href={`/jupeb/applications?session=${encodeURIComponent(c.session)}`}>← JUPEB applications</Link>}
-        description={<>{c.application_no} · {c.session} · <Pil kind={stateKind(s)}>{STATE_SHORT[s] ?? s}</Pil></>}
-        actions={<span className="row"><LinkBtn href={pdf("summary")}>Application summary</LinkBtn>
+        description={<>{c.application_no} · {c.session} · {streamLabel(c.stream)}{c.combination_code ? ` · ${c.combination_code}` : ""} · <Pil kind={stateKind(s)}>{STATE_SHORT[s] ?? s}</Pil></>}
+        actions={<span className="row" style={{ flexWrap: "wrap" }}><LinkBtn href={pdf("summary")}>Application summary</LinkBtn>
+          {c.submitted_at ? <LinkBtn href={pdf("acknowledgement")}>Acknowledgement</LinkBtn> : null}
+          {c.admission_decided_at ? <LinkBtn href={pdf("status")}>Status slip</LinkBtn> : null}
           {["ADMITTED", "STUDENT", "COMPLETED"].includes(s) ? <LinkBtn href={pdf("letter")}>Admission letter</LinkBtn> : null}
+          {c.accepted_at ? <LinkBtn href={pdf("acceptance")}>Acceptance letter</LinkBtn> : null}
           {c.subjects_registered_at ? <LinkBtn href={pdf("slip")}>Registration slip</LinkBtn> : null}
-          {c.registered.some((r) => r.grade) ? <LinkBtn href={pdf("result")}>Result</LinkBtn> : null}</span>} />
-      {c.missing.length && s === "DRAFT" ? <Note kind="info" title="Not yet submitted">{c.missing.join("; ")}</Note> : null}
+          {c.registered.some((r) => r.grade) ? <LinkBtn href={pdf("result")}>Statement of result</LinkBtn> : null}</span>} />
+      <div className="card"><div className="card__body" style={{ display: "flex", flexDirection: "row", gap: "var(--s-4)", alignItems: "center", flexWrap: "wrap" }}>
+        {c.has_passport
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={`${docBase}/PASSPORT/content?format=jpeg`} alt={`Passport photograph of ${fullName(c)}`} style={{ width: 96, height: 120, objectFit: "contain", border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)" }} />
+          : <div style={{ width: 96, height: 120, border: "1px dashed var(--line-2)", borderRadius: "var(--r-sm)", display: "grid", placeItems: "center", fontSize: 11, color: "var(--chrome)", textAlign: "center" }}>NO<br />PASSPORT</div>}
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <KvGrid cls="grid--3" pairs={[["Application number", c.application_no], ["JUPEB examination number", c.exam_no ?? "Not yet assigned"], ["Programme", streamLabel(c.stream)],
+            ["Combination", c.combination_code ? `${c.combination_code} — ${c.subjects.map((x) => x.title).join(", ")}` : "Not chosen"], ["Status checking fee", c.checking_paid_at ? `Paid ${day(c.checking_paid_at)}` : "Not paid"],
+            ["Acceptance", c.accepted_at ? `Accepted ${day(c.accepted_at)}` : "—"]]} />
+        </div>
+      </div></div>
+      {s === "DRAFT" || s === "RETURNED" ? <Note kind="info" title={s === "DRAFT" ? "Not yet submitted" : "Returned to the applicant"}>
+        {c.steps.steps.filter((x) => !x.ok).map((x) => `${x.step.charAt(0) + x.step.slice(1).toLowerCase()}: ${x.problems.map((p) => p.message).join("; ")}`).join(" · ") || "Every step is complete."}</Note> : null}
       {canWrite ? (
         <Panel title="Decide">
           <PBody>
@@ -305,12 +340,13 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
             ["Sex", c.sex === "F" ? "Female" : c.sex === "M" ? "Male" : "—"], ["Date of birth", day(c.date_of_birth)], ["NIN", c.nin ?? "—"], ["Phone", c.phone ?? "—"], ["Email", c.email],
             ["Nationality", c.nationality ?? "—"], ["State / LGA", `${c.state_of_origin ?? "—"} / ${c.lga ?? "—"}`], ["Home town", c.home_town ?? "—"], ["Contact address", c.contact_address ?? "—"],
             ["Guardian", c.guardian_name ? `${c.guardian_name} (${c.guardian_phone ?? "—"})` : "—"], ["Next of kin", c.next_of_kin_name ? `${c.next_of_kin_name} (${c.next_of_kin_phone ?? "—"}) ${c.next_of_kin_relationship ?? ""}` : "—"],
-            ["Programme", streamLabel(c.stream)], ["Combination", c.combination_code ? `${c.combination_code} — ${c.subjects.map((x) => x.title).join(", ")}` : "Chosen at subject registration"],
+            ["Programme", streamLabel(c.stream)], ["Combination", c.combination_code ? `${c.combination_code} — ${c.subjects.map((x) => x.title).join(", ")}` : "Not chosen"],
           ]} /></PBody>
         </Panel>
         <Panel title="Status">
           <PBody><KvGrid cls="grid--2" pairs={[
             ["Application fee", c.fee_confirmed_at ? `Paid ${day(c.fee_confirmed_at)}` : "Unpaid"], ["Submitted", day(c.submitted_at)],
+            ["Status checking fee", c.checking_paid_at ? `Paid ${day(c.checking_paid_at)}` : "Not paid"], ["Acceptance fee", c.accepted_at ? `Paid ${day(c.accepted_at)}` : "Not paid"],
             ["Eligibility", c.eligibility_decided_at ? `${s === "INELIGIBLE" ? "Not eligible" : "Eligible"} · ${day(c.eligibility_decided_at)}${c.decidedBy?.eligibility ? ` · ${c.decidedBy.eligibility}` : ""}` : "—"],
             ["Admission", c.admission_decided_at ? `${c.admission_ref ?? STATE_SHORT[s]} · ${day(c.admission_decided_at)}${c.decidedBy?.admission ? ` · ${c.decidedBy.admission}` : ""}` : "—"],
             ["Return note", c.return_note ?? "—"], ["Screening", c.screening_state ? `${SCREENING_LABEL[c.screening_state]}${c.screening_reason ? ` — ${c.screening_reason}` : ""}` : "—"],
@@ -318,26 +354,26 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
           ]} /></PBody>
         </Panel>
       </div>
-      <Panel title="O'Level" right={<Pil kind={c.olevelCheck.ok ? "ok" : "bad"}>{c.olevelCheck.ok ? `${c.olevelCheck.credits} credits — meets the requirement` : c.olevelCheck.reasons.join("; ") || "Not entered"}</Pil>}>
+      <Panel title={`O'Level · ${c.olevel_sittings === 2 ? "two sittings" : c.olevel_sittings === 1 ? "one sitting" : "sittings not declared"}`} right={<Pil kind={c.olevelCheck.ok ? "ok" : "bad"}>{c.olevelCheck.ok ? `${c.olevelCheck.credits} credits — meets the requirement` : c.olevelCheck.reasons.join("; ") || "Not entered"}</Pil>}>
         <PBody><DTable noPrint pageSize={0} cols={["Sitting|num", "Examination", "Number", "Year", "Subject", "Grade|mid"]}
           rows={c.olevel.map((o) => [o.sitting, o.exam_type, o.exam_number ?? "—", o.exam_year ?? "—", o.subject, o.grade])} /></PBody>
       </Panel>
       <Panel title="Documents">
         <PBody><DTable noPrint pageSize={0} cols={["Document", "File", "Uploaded", "Status", ...(canWrite ? ["Review|mid"] : [])]} rows={c.documents.map((d) => [
-          <span key="l">{d.label}{d.required ? "" : <span className="sub2"> · optional</span>}{d.review_note ? <div className="sub2">{d.review_note}</div> : null}</span>,
-          d.filename ? <a key="f" href={`/api/bff/api/v1/jupeb/office/applications/${c.id}/documents/${d.kind}/content`} target="_blank" rel="noreferrer">{d.filename}</a> : "—",
+          <span key="l">{d.label}{d.required ? "" : <span className="sub2"> · optional</span>}{d.exam_body ? <div className="sub2">{d.exam_body}{d.exam_year ? ` ${d.exam_year}` : ""}</div> : null}{d.review_note ? <div className="sub2">{d.review_note}</div> : null}</span>,
+          d.filename ? <a key="f" href={`${docBase}/${d.kind}/content${sq(d)}`} target="_blank" rel="noreferrer">{d.filename}</a> : "—",
           day(d.uploaded_at), d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status]}</Pil> : "—",
           ...(canWrite ? [d.filename ? <span key="r" className="row" style={{ gap: 4, justifyContent: "center" }}>
-            <Btn kind="go" disabled={busy || d.status === "VERIFIED"} onClick={() => void act(`/documents/${d.kind}/review`, { status: "VERIFIED" }, "Document verified")}>Verify</Btn>
-            <Btn kind="ghost" disabled={busy} onClick={() => open(`doc:${d.kind}`, `${d.label}: needs attention`, { status: "REPLACEMENT_REQUIRED", note: "" })}>Problem…</Btn>
+            <Btn kind="go" disabled={busy || d.status === "VERIFIED"} onClick={() => void act(`/documents/${d.kind}/review${sq(d)}`, { status: "VERIFIED" }, "Document verified")}>Verify</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => open(`doc:${d.kind}`, `${d.label}: needs attention`, { status: "REPLACEMENT_REQUIRED", note: "", sitting: d.sitting ? String(d.sitting) : "" })}>Problem…</Btn>
           </span> : "—"] : []),
         ])} /></PBody>
       </Panel>
       <div className="grid grid--2">
         <Panel title="Fees (the Bursary's rule)">
           <PBody>
-            <KvGrid cls="grid--2" pairs={[["Category", `${feeCategoryLabel(c.fees.category)} · ${c.fees.indigene ? "indigene" : "non-indigene"}`], ["School fee", `${naira(c.fees.total)}${c.fees.frozen ? " (charged)" : ""}`],
-              ["Paid", naira(c.fees.paid)], ["Outstanding", naira(c.fees.outstanding)]]} />
+            {fees ? <KvGrid cls="grid--2" pairs={[["Category", `${feeCategoryLabel(fees.category)} · ${fees.indigene ? "indigene" : "non-indigene"}`], ["School fee", `${naira(fees.total)}${fees.frozen ? " (charged)" : ""}`],
+              ["Paid", naira(fees.paid)], ["Outstanding", naira(fees.outstanding)]]} /> : null}
             <DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Confirmed"]} rows={c.references.map((r) => [FEE_KIND[r.kind] ?? r.kind, r.reference, naira(r.amount), r.confirmed_at ? `${day(r.confirmed_at)} · ${r.channel ?? ""}` : "—"])} />
           </PBody>
         </Panel>
@@ -542,19 +578,34 @@ export function JupebResults({ canWrite }: { canWrite: boolean }) {
 /* ── subjects and combinations ────────────────────────────────────────────────────────────────── */
 
 interface SubjectRow { id: string; code: string; title: string; description: string | null; active: boolean; combinations: number }
+interface OfferedResult { changed: number; told: number; subjects: SubjectRow[]; combinations: Combination[] }
+interface OfferAsk { kind: "subjects" | "combinations"; codes: string[]; offered: boolean; what: string }
 
+const PROGRAMME_OF = (c: Combination) => (c.science && c.non_science ? "Both" : c.science ? "Science" : "Non-Science");
+
+/** the catalogue (V339): the approved combinations and their subjects; V342 — the JUPEB Office disables what the University
+ *  does not offer and reactivates it later, one at a time or several at once; nothing is deleted */
 export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [combs, setCombs] = useState<Combination[]>([]);
   const [tick, setTick] = useState(0);
   const [sub, setSub] = useState<Record<string, string> | null>(null);
   const [comb, setComb] = useState<Record<string, string> | null>(null);
+  const [show, setShow] = useState<"all" | "offered" | "not">("all");
+  const [prog, setProg] = useState<"" | "SCIENCE" | "NON_SCIENCE">("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [ask, setAsk] = useState<OfferAsk | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     let live = true;
     void jcall<SubjectRow[]>("/api/v1/jupeb/office/subjects").then((r) => { if (live && r.ok) setSubjects(r.data); });
     void jcall<Combination[]>("/api/v1/jupeb/office/combinations").then((r) => { if (live && r.ok) setCombs(r.data); });
     return () => { live = false; };
   }, [tick]);
+  const shown = useMemo(() => combs.filter((c) => (show === "all" || (show === "offered" ? c.offered : !c.offered))
+    && (!prog || (prog === "SCIENCE" ? c.science : c.non_science))), [combs, show, prog]);
+  const offeredCount = combs.filter((c) => c.offered).length;
   async function saveSubject() {
     if (!sub) return;
     const r = await jcall("/api/v1/jupeb/office/subjects", "POST", { code: sub.code, title: sub.title, description: sub.description || null, active: sub.active !== "no" }, "JUPEB subject saved");
@@ -568,19 +619,69 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
     if (r.data.invalid) { notifyProblem({ status: 422, title: r.data.rows[0]?.message ?? "The combination is not valid." }); return; }
     notify("Combination saved."); setComb(null); setTick((t) => t + 1);
   }
+  async function setOffered() {
+    if (!ask) return;
+    setBusy(true);
+    try {
+      const r = await jcall<OfferedResult>(`/api/v1/jupeb/office/${ask.kind}/offered`, "POST", { codes: ask.codes, offered: ask.offered, reason: reason.trim() || null },
+        ask.offered ? "JUPEB: offered again" : "JUPEB: not offered");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      setSubjects(r.data.subjects); setCombs(r.data.combinations); setPicked(new Set()); setAsk(null); setReason("");
+      notify(`${r.data.changed} ${ask.kind === "subjects" ? "subject" : "combination"}${r.data.changed === 1 ? "" : "s"} ${ask.offered ? "reactivated" : "disabled"}`
+        + (r.data.told ? `; ${r.data.told} candidate${r.data.told === 1 ? "" : "s"} holding an affected combination told to choose another.` : "."));
+    } finally { setBusy(false); }
+  }
+  const toggle = (code: string) => setPicked((p) => { const n = new Set(p); if (n.has(code)) n.delete(code); else n.add(code); return n; });
+  const allShown = shown.length > 0 && shown.every((c) => picked.has(c.code));
   async function exportCombs() {
-    const blob = await brandedXlsx("JUPEB subject combinations", ["Code", "Name", "Subject 1", "Subject 2", "Subject 3", "Area", "Leads to", "Active", "Applications"],
-      combs.map((c) => [c.code, c.name, c.subject1, c.subject2, c.subject3, c.area, (c.leads_to ?? []).join(", "), c.active ? "Yes" : "No", c.applications]), { sheetName: "Combinations", serial: docSerial("JUPEBCOMB") });
+    const blob = await brandedXlsx("JUPEB subject combinations", ["Code", "Name", "Subject 1", "Subject 2", "Subject 3", "Area", "Programme", "Leads to", "Offered", "Applications"],
+      shown.map((c) => [c.code, c.name, c.subject1, c.subject2, c.subject3, c.area, PROGRAMME_OF(c), (c.leads_to ?? []).join(", "), c.offered ? "Yes" : "No", c.applications]), { sheetName: "Combinations", serial: docSerial("JUPEBCOMB") });
     downloadBlob(blob, "jupeb-combinations.xlsx");
   }
+  const status = (c: Combination) => c.offered ? <Pil kind="ok">Offered</Pil>
+    : !c.active ? <Pil kind="grey">Disabled</Pil>
+    : <Pil kind="warn">{`Not offered: ${c.subjects_not_offered.join(", ")} disabled`}</Pil>;
+  const pickedWhat = `${picked.size} combination${picked.size === 1 ? "" : "s"}`;
   return (
     <>
-      <PageHead title="JUPEB subjects and combinations" description="The University's own approved combinations of three subjects — entered here or imported; none is invented by the portal." />
-      <Panel title={`Combinations (${combs.length})`} right={<span className="row"><Btn kind="ghost" onClick={() => void exportCombs()}>Export (Excel)</Btn>{canWrite ? <Btn kind="primary" onClick={() => setComb({ code: "", name: "", subject1: "", subject2: "", subject3: "", area: "", faculties: "", programmes: "", description: "", eligibility: "", active: "yes" })}>Add combination</Btn> : null}</span>}>
-        <PBody><DTable pageSize={50} cols={["Code", "Name", "Subjects", "Area", "Leads to", "Applications|num", "Active|mid", ...(canWrite ? ["|mid"] : [])]} texts={combs.map((c) => `${c.code} ${c.name} ${c.subject1} ${c.subject2} ${c.subject3}`)}
-          rows={combs.map((c) => [c.code, c.name, `${c.subject1} · ${c.subject2} · ${c.subject3}`, c.area ?? "—", (c.leads_to ?? []).join(", ") || "—", c.applications,
-            c.active ? <Pil key="a" kind="ok">Active</Pil> : <Pil key="a" kind="grey">Inactive</Pil>,
-            ...(canWrite ? [<Btn key="e" kind="ghost" onClick={() => setComb({ code: c.code, name: c.name, subject1: c.subject1_code, subject2: c.subject2_code, subject3: c.subject3_code, area: c.area ?? "", faculties: "", programmes: "", description: c.description ?? "", eligibility: c.eligibility_notes ?? "", active: c.active ? "yes" : "no" })}>Edit</Btn>] : [])])} /></PBody>
+      <PageHead title="JUPEB subjects and combinations" description="The approved combinations of three subjects, with the Board's SC codes. Disable a subject or a combination the University does not offer and reactivate it when it does — nothing is deleted, and applicants and students choose only from what is offered." />
+      <KvGrid cls="grid--4" pairs={[["Combinations", combs.length], ["Offered", offeredCount], ["Not offered", combs.length - offeredCount], ["Subjects offered", `${subjects.filter((s) => s.active).length} of ${subjects.length}`]]} />
+      <Panel title={`Combinations (${shown.length})`} right={<span className="row">
+        <Btn kind="ghost" onClick={() => void exportCombs()}>Export (Excel)</Btn>
+        {canWrite ? <Btn kind="primary" onClick={() => setComb({ code: "", name: "", subject1: "", subject2: "", subject3: "", area: "", faculties: "", programmes: "", description: "", eligibility: "", active: "yes" })}>Add combination</Btn> : null}
+      </span>}>
+        <PBody>
+          <div className="row" style={{ gap: "var(--s-2)", marginBottom: "var(--s-2)", flexWrap: "wrap" }}>
+            <select className="ctl" style={{ width: 180 }} aria-label="Show" value={show} onChange={(e) => { setShow(e.target.value as typeof show); setPicked(new Set()); }}>
+              <option value="all">All combinations</option><option value="offered">Offered</option><option value="not">Not offered</option></select>
+            <select className="ctl" style={{ width: 180 }} aria-label="Programme" value={prog} onChange={(e) => { setProg(e.target.value as typeof prog); setPicked(new Set()); }}>
+              <option value="">Both programmes</option><option value="SCIENCE">Science</option><option value="NON_SCIENCE">Non-Science</option></select>
+          </div>
+          {canWrite && picked.size ? (
+            <div className="row" style={{ marginBottom: "var(--s-2)" }}>
+              <b>{picked.size} selected</b>
+              <Btn kind="secondary" onClick={() => setAsk({ kind: "combinations", codes: [...picked], offered: false, what: pickedWhat })}>Disable selected</Btn>
+              <Btn kind="secondary" onClick={() => setAsk({ kind: "combinations", codes: [...picked], offered: true, what: pickedWhat })}>Reactivate selected</Btn>
+              <Btn kind="ghost" onClick={() => setPicked(new Set())}>Clear</Btn>
+            </div>
+          ) : null}
+          <DTable pageSize={50} cols={[...(canWrite ? ["|mid"] : []), "Code", "Subjects", "Area", "Programme", "Applications|num", "Status", ...(canWrite ? ["|mid"] : [])]}
+            texts={shown.map((c) => `${c.code} ${c.name} ${c.subject1} ${c.subject2} ${c.subject3} ${c.area ?? ""}`)}
+            rows={shown.map((c) => [
+              ...(canWrite ? [<input key="p" type="checkbox" aria-label={`Select ${c.code}`} checked={picked.has(c.code)} onChange={() => toggle(c.code)} />] : []),
+              <b key="c">{c.code}</b>, `${c.subject1} · ${c.subject2} · ${c.subject3}`, c.area ?? "—", PROGRAMME_OF(c), c.applications, status(c),
+              ...(canWrite ? [<span key="e" className="row" style={{ gap: "var(--s-1)", justifyContent: "center", flexWrap: "nowrap" }}>
+                {c.active ? <Btn kind="ghost" onClick={() => setAsk({ kind: "combinations", codes: [c.code], offered: false, what: c.code })}>Disable</Btn>
+                  : <Btn kind="ghost" onClick={() => setAsk({ kind: "combinations", codes: [c.code], offered: true, what: c.code })}>Reactivate</Btn>}
+                <Btn kind="ghost" onClick={() => setComb({ code: c.code, name: c.name, subject1: c.subject1_code, subject2: c.subject2_code, subject3: c.subject3_code, area: c.area ?? "", faculties: "", programmes: "", description: c.description ?? "", eligibility: c.eligibility_notes ?? "", active: c.active ? "yes" : "no" })}>Edit</Btn>
+              </span>] : []),
+            ])} />
+          {canWrite && shown.length ? (
+            <label className="row mt-2" style={{ gap: "var(--s-1)" }}>
+              <input type="checkbox" checked={allShown} onChange={() => setPicked(allShown ? new Set() : new Set(shown.map((c) => c.code)))} /> Select all {shown.length} shown
+            </label>
+          ) : null}
+        </PBody>
       </Panel>
       {canWrite ? (
         <ImportBox title="Combination upload" path="/api/v1/jupeb/office/combinations/import" onDone={() => setTick((t) => t + 1)}
@@ -593,15 +694,35 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
           columns={["Code", "Name", "Subjects"]} cells={(r) => [String(r.code ?? ""), String(r.name ?? ""), Array.isArray(r.subjects) ? (r.subjects as string[]).join(" / ") : ""]} />
       ) : null}
       <Panel title={`Subjects (${subjects.length})`} right={canWrite ? <Btn kind="secondary" onClick={() => setSub({ code: "", title: "", description: "", active: "yes" })}>Add subject</Btn> : null}>
-        <PBody><DTable pageSize={50} cols={["Code", "Title", "Combinations|num", "Active|mid", ...(canWrite ? ["|mid"] : [])]} texts={subjects.map((s) => `${s.code} ${s.title}`)}
-          rows={subjects.map((s) => [s.code, s.title, s.combinations, s.active ? "Yes" : "No", ...(canWrite ? [<Btn key="e" kind="ghost" onClick={() => setSub({ code: s.code, title: s.title, description: s.description ?? "", active: s.active ? "yes" : "no" })}>Edit</Btn>] : [])])} /></PBody>
+        <PBody>
+          <p className="sub2">Disabling a subject stops every combination that contains it from being offered.</p>
+          <DTable pageSize={50} cols={["Code", "Title", "Combinations|num", "Status", ...(canWrite ? ["|mid"] : [])]} texts={subjects.map((s) => `${s.code} ${s.title}`)}
+            rows={subjects.map((s) => [<b key="c">{s.code}</b>, s.title, s.combinations, s.active ? <Pil key="a" kind="ok">Offered</Pil> : <Pil key="a" kind="grey">Disabled</Pil>,
+              ...(canWrite ? [<span key="e" className="row" style={{ gap: "var(--s-1)", justifyContent: "center", flexWrap: "nowrap" }}>
+                {s.active ? <Btn kind="ghost" onClick={() => setAsk({ kind: "subjects", codes: [s.code], offered: false, what: `${s.title} (${s.code})` })}>Disable</Btn>
+                  : <Btn kind="ghost" onClick={() => setAsk({ kind: "subjects", codes: [s.code], offered: true, what: `${s.title} (${s.code})` })}>Reactivate</Btn>}
+                <Btn kind="ghost" onClick={() => setSub({ code: s.code, title: s.title, description: s.description ?? "", active: s.active ? "yes" : "no" })}>Edit</Btn>
+              </span>] : [])])} />
+        </PBody>
       </Panel>
+      {ask ? (
+        <Modal title={ask.offered ? `Reactivate ${ask.what}` : `Disable ${ask.what}`} onClose={() => setAsk(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void setOffered()}>{busy ? "Saving…" : ask.offered ? "Reactivate" : "Disable"}</Btn></>}>
+          <p>{ask.offered
+            ? "Applicants and students will again be able to choose it (a combination is offered only while its three subjects are offered too)."
+            : ask.kind === "subjects"
+              ? "Every combination containing this subject stops being offered. Nothing is deleted; subjects already registered are kept. A candidate holding an affected combination who has not registered is told to choose another."
+              : "It stops being offered. Nothing is deleted; subjects already registered are kept. A candidate holding it who has not registered is told to choose another."}</p>
+          <Field id="o-reason" label="Reason (kept on the record)"><input id="o-reason" className="ctl" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={ask.offered ? "e.g. a lecturer is now available" : "e.g. not offered by the University this session"} /></Field>
+        </Modal>
+      ) : null}
       {sub ? (
         <Modal title="Subject" onClose={() => setSub(null)} foot={<><Btn kind="ghost" onClick={() => setSub(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void saveSubject()}>Save</Btn></>}>
           <Field id="s-code" label="Code"><input id="s-code" className="ctl" maxLength={40} value={sub.code} onChange={(e) => setSub({ ...sub, code: e.target.value.toUpperCase() })} /></Field>
           <Field id="s-title" label="Title"><input id="s-title" className="ctl" maxLength={160} value={sub.title} onChange={(e) => setSub({ ...sub, title: e.target.value })} /></Field>
           <Field id="s-desc" label="Description"><input id="s-desc" className="ctl" maxLength={600} value={sub.description} onChange={(e) => setSub({ ...sub, description: e.target.value })} /></Field>
-          <Field id="s-act" label="Active"><select id="s-act" className="ctl" value={sub.active} onChange={(e) => setSub({ ...sub, active: e.target.value })}><option value="yes">Yes</option><option value="no">No</option></select></Field>
+          <Field id="s-act" label="Offered"><select id="s-act" className="ctl" value={sub.active} onChange={(e) => setSub({ ...sub, active: e.target.value })}><option value="yes">Yes</option><option value="no">No</option></select></Field>
+          {canWrite && subjects.some((s) => s.code === sub.code) ? <SubjectUnits code={sub.code} /> : null}
         </Modal>
       ) : null}
       {comb ? (
@@ -611,19 +732,57 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
             <Field id="c-name" label="Name"><input id="c-name" className="ctl" maxLength={160} value={comb.name} onChange={(e) => setComb({ ...comb, name: e.target.value })} /></Field>
             {(["subject1", "subject2", "subject3"] as const).map((k, i) => (
               <Field key={k} id={`c-${k}`} label={`Subject ${i + 1}`}><select id={`c-${k}`} className="ctl" value={comb[k]} onChange={(e) => setComb({ ...comb, [k]: e.target.value })}>
-                <option value="">—</option>{subjects.filter((s) => s.active).map((s) => <option key={s.code} value={s.code}>{s.title} ({s.code})</option>)}</select></Field>
+                <option value="">—</option>{subjects.filter((s) => s.active || s.code === comb[k]).map((s) => <option key={s.code} value={s.code}>{s.title} ({s.code})</option>)}</select></Field>
             ))}
-            <Field id="c-area" label="Area"><select id="c-area" className="ctl" value={comb.area} onChange={(e) => setComb({ ...comb, area: e.target.value })}>
+            <Field id="c-area" label="Area" hint="Science and Engineering suit Science applicants; every other area suits Non-Science"><select id="c-area" className="ctl" value={comb.area} onChange={(e) => setComb({ ...comb, area: e.target.value })}>
               <option value="">—</option>{["Arts", "Law", "Engineering", "Science", "Social Sciences", "Management Sciences", "Other"].map((a) => <option key={a}>{a}</option>)}</select></Field>
             <Field id="c-fac" label="Leads to faculties" hint="Codes or names, separated by commas; blank keeps what is recorded"><input id="c-fac" className="ctl" value={comb.faculties} onChange={(e) => setComb({ ...comb, faculties: e.target.value })} /></Field>
             <Field id="c-prog" label="Leads to programmes" hint="Codes or names, separated by commas"><input id="c-prog" className="ctl" value={comb.programmes} onChange={(e) => setComb({ ...comb, programmes: e.target.value })} /></Field>
             <Field id="c-desc" label="Description"><input id="c-desc" className="ctl" value={comb.description} onChange={(e) => setComb({ ...comb, description: e.target.value })} /></Field>
             <Field id="c-elig" label="Eligibility notes"><input id="c-elig" className="ctl" value={comb.eligibility} onChange={(e) => setComb({ ...comb, eligibility: e.target.value })} /></Field>
-            <Field id="c-act" label="Active"><select id="c-act" className="ctl" value={comb.active} onChange={(e) => setComb({ ...comb, active: e.target.value })}><option value="yes">Yes</option><option value="no">No</option></select></Field>
+            <Field id="c-act" label="Offered"><select id="c-act" className="ctl" value={comb.active} onChange={(e) => setComb({ ...comb, active: e.target.value })}><option value="yes">Yes</option><option value="no">No</option></select></Field>
           </div>
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/** a subject's course units (BIO 001 …), printed in the note of the statement of result (V342) */
+function SubjectUnits({ code }: { code: string }) {
+  const [units, setUnits] = useState<{ code: string; title: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ code: string; title: string }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`).then((r) => { if (live) setUnits(r.ok ? r.data : []); });
+    return () => { live = false; };
+  }, [code]);
+  if (!units) return null;
+  const list = units;
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await jcall<{ code: string; title: string }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`, "PUT",
+        { units: list.filter((u) => u.code.trim() || u.title.trim()) }, "JUPEB course units saved");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      setUnits(r.data); notify("Course units saved.");
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-3">
+      <div className="eyebrow">Course units (printed on the statement of result)</div>
+      {list.map((u, i) => (
+        <div key={i} className="row" style={{ gap: "var(--s-2)", marginTop: "var(--s-1)" }}>
+          <input className="ctl" style={{ width: 110 }} aria-label={`Unit ${i + 1} code`} placeholder="BIO 001" maxLength={9} value={u.code} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, code: e.target.value.toUpperCase() } : x)))} />
+          <input className="ctl grow" aria-label={`Unit ${i + 1} title`} placeholder="General Biology" maxLength={160} value={u.title} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+          <Btn kind="ghost" aria-label="Remove unit" onClick={() => setUnits(list.filter((_, j) => j !== i))}>&times;</Btn>
+        </div>
+      ))}
+      <div className="row mt-2">
+        {list.length < 12 ? <Btn kind="ghost" onClick={() => setUnits([...list, { code: "", title: "" }])}>Add a unit</Btn> : null}
+        <Btn kind="secondary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save units"}</Btn>
+      </div>
+    </div>
   );
 }
 
@@ -676,9 +835,9 @@ export function JupebClasses({ canWrite }: { canWrite: boolean }) {
 
 interface Settings {
   session: string; sessions: SessionRow[]; own: boolean;
-  setting: { application_prefix: string; screening_required: boolean; screening_venue: string | null; screening_starts_on: string | null; screening_ends_on: string | null; screening_instructions: string | null; results_published_at: string | null };
+  setting: { application_prefix: string; screening_required: boolean; screening_venue: string | null; screening_starts_on: string | null; screening_ends_on: string | null; screening_instructions: string | null; results_published_at: string | null; exam_month: string | null };
   documentKinds: { code: string; label: string; required: boolean; image: boolean; active: boolean; ord: number }[];
-  fees: { application_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
+  fees: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
 }
 
 export function JupebSettings({ canWrite }: { canWrite: boolean }) {
@@ -694,7 +853,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
       setS(r.data);
       const x = r.data.setting;
       setF({ applicationPrefix: x.application_prefix, screeningRequired: x.screening_required ? "yes" : "no", screeningVenue: x.screening_venue ?? "", screeningStartsOn: x.screening_starts_on ?? "",
-        screeningEndsOn: x.screening_ends_on ?? "", screeningInstructions: x.screening_instructions ?? "" });
+        screeningEndsOn: x.screening_ends_on ?? "", screeningInstructions: x.screening_instructions ?? "", examMonth: x.exam_month ?? "" });
     });
     return () => { live = false; };
   }, [session]);
@@ -703,6 +862,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
     const r = await jcall<Settings>("/api/v1/jupeb/office/settings", "PUT", {
       session: scope === "default" ? "*" : s.session, applicationPrefix: f.applicationPrefix, screeningRequired: f.screeningRequired === "yes", screeningVenue: f.screeningVenue || null,
       screeningStartsOn: f.screeningStartsOn || null, screeningEndsOn: f.screeningEndsOn || null, screeningInstructions: f.screeningInstructions || null,
+      examMonth: f.examMonth?.trim() || null,
     }, "JUPEB settings saved");
     if (!r.ok) { notifyProblem(r.problem); return; }
     setS(r.data); notify("Settings saved.");
@@ -727,6 +887,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
             <Field id="st-venue" label="Screening venue"><input id="st-venue" className="ctl" value={f.screeningVenue ?? ""} onChange={(e) => setF({ ...f, screeningVenue: e.target.value })} disabled={ro} /></Field>
             <Field id="st-from" label="Screening from"><input id="st-from" type="date" className="ctl" value={f.screeningStartsOn ?? ""} onChange={(e) => setF({ ...f, screeningStartsOn: e.target.value })} disabled={ro} /></Field>
             <Field id="st-to" label="Screening to"><input id="st-to" type="date" className="ctl" value={f.screeningEndsOn ?? ""} onChange={(e) => setF({ ...f, screeningEndsOn: e.target.value })} disabled={ro} /></Field>
+            <Field id="st-exam" label="Examination month and year" hint="Printed on the statement of result, e.g. August 2026"><input id="st-exam" className="ctl" maxLength={40} value={f.examMonth ?? ""} onChange={(e) => setF({ ...f, examMonth: e.target.value })} disabled={ro} /></Field>
           </div>
           <Field id="st-instr" label="Screening instructions"><textarea id="st-instr" className="ctl" rows={3} value={f.screeningInstructions ?? ""} onChange={(e) => setF({ ...f, screeningInstructions: e.target.value })} disabled={ro} /></Field>
           {canWrite ? <Btn kind="primary" onClick={() => void save()}>Save settings</Btn> : null}
@@ -737,8 +898,10 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
           ...(canWrite ? [<Btn key="e" kind="ghost" onClick={() => setDoc({ code: d.code, label: d.label, required: d.required ? "yes" : "no", image: d.image ? "yes" : "no", active: d.active ? "yes" : "no", ord: String(d.ord) })}>Edit</Btn>] : [])])} /></PBody>
       </Panel>
       <Panel title="Fees (set by the Bursary)">
-        <PBody><KvGrid pairs={[["Application fee", naira(s.fees.application_fee)], ["First semester share", `${Number(s.fees.first_percent)}%`], ["Full payment", s.fees.allow_full ? "Allowed" : "Not allowed"],
-          ["Activation", s.fees.activation === "FULL" ? "Full payment" : "First instalment"], ["Indigene state", s.fees.indigene_state]]} /></PBody>
+        <PBody><KvGrid pairs={[["Application fee", naira(s.fees.application_fee)], ["Admission status checking fee", naira(s.fees.checking_fee)], ["Acceptance fee", naira(s.fees.acceptance_fee)],
+          ["First semester share", `${Number(s.fees.first_percent)}%`], ["Full payment", s.fees.allow_full ? "Allowed" : "Not allowed"],
+          ["Activation", s.fees.activation === "FULL" ? "Full payment" : "First instalment"], ["Indigene state", s.fees.indigene_state]]} />
+          <p className="sub2 mt-2">The JUPEB Office sees these amounts; only the Bursary changes them (Finance → JUPEB fees).</p></PBody>
       </Panel>
       {doc ? (
         <Modal title="Document asked for" onClose={() => setDoc(null)} foot={<><Btn kind="ghost" onClick={() => setDoc(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void saveDoc()}>Save</Btn></>}>
