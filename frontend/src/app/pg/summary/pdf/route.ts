@@ -173,8 +173,8 @@ export async function GET() {
   if (degs.length) {
     section("QUALIFICATIONS | INSTITUTION ATTENDED");
     table(
-      [{ h: "S/N", w: 24 }, { h: "Qualification", w: 92 }, { h: "Award", w: 48 }, { h: "Course of study", w: 86 }, { h: "Institution attended", w: 118 }, { h: "Class / result", w: 72 }, { h: "CGPA", w: 34 }, { h: "Year", w: 36 }],
-      degs.map((d, i) => [String(i + 1), QUAL[d.kind] ?? d.kind, d.award ?? "", d.field ?? "", d.institution ?? "", d.class_of_degree ?? "", d.cgpa != null ? String(d.cgpa) : "", d.year != null ? String(d.year) : ""]),
+      [{ h: "S/N", w: 24 }, { h: "Qualification", w: 96 }, { h: "Award", w: 50 }, { h: "Course of study", w: 92 }, { h: "Institution attended", w: 128 }, { h: "Class / result", w: 80 }, { h: "Year", w: 38 }],
+      degs.map((d, i) => [String(i + 1), QUAL[d.kind] ?? d.kind, d.award ?? "", d.field ?? "", d.institution ?? "", d.class_of_degree ?? "", d.year != null ? String(d.year) : ""]),
     );
   }
 
