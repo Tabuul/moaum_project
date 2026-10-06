@@ -66,12 +66,19 @@ class CbtExamIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2118);
-        int n = new Random().nextInt(9000) + 1000;
+        // a course code and students no other test method holds: the methods' exams count the offering's candidates,
+        // so two methods drawing the same code (once a code from 299) shared an offering and counted each other's students
+        int pick;
+        do {
+            pick = new Random().nextInt(9000) + 1000;
+        } while (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", "GST " + pick).query(Long.class).single() > 0
+                || jdbc.sql("SELECT count(*) FROM people.student WHERE matric_no = :m").param("m", "MOAUM/CBT/18/" + pick).query(Long.class).single() > 0);
+        final int n = pick;
         s = it.student("ZZCBT" + n, PROGRAMME, "MOAUM/ADM/18/" + String.format("%06d", n), "MOAUM/CBT/18/" + n, 100);
         s2 = it.student("ZZCBX" + n, PROGRAMME, "MOAUM/ADM/18/" + String.format("%06d", n + 1), "MOAUM/CBX/18/" + n, 100);
         student = TestTokens.token(s, List.of("student"));
         student2 = TestTokens.token(s2, List.of("student"));
-        code = "GST " + (500 + n % 299);
+        code = "GST " + n;
         it.db(() -> {
             for (UUID id : List.of(s, s2)) {
                 jdbc.sql("UPDATE people.student SET entry_session = :ses WHERE id = :id").param("ses", SESSION).param("id", id).update();
