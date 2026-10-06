@@ -22,7 +22,9 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   /* a recipient's secure document link (V262): opened from the email by someone who has no account here */
   "/documents/d/",
   /* the University's public figures for its website (V282): counts only, no session, any origin */
-  "/api/v1/public/"];
+  "/api/v1/public/",
+  /* the public JUPEB application and the forgotten-password page (V339) */
+  "/jupeb/apply", "/jupeb/reset"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([
@@ -30,6 +32,10 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/pg/apply",
   "/api/bff/api/v1/pg/status",
   "/api/bff/api/v1/pg/sign-in",
+  /* the public JUPEB endpoints (V339), exactly, so the prefix does not open the candidate's portal or the JUPEB Office */
+  "/api/bff/api/v1/jupeb/options",
+  "/api/bff/api/v1/jupeb/apply",
+  "/api/bff/api/v1/jupeb/forgot",
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 

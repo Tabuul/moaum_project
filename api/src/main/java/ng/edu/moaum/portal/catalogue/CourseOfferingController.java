@@ -224,8 +224,7 @@ class CourseOfferingController {
         Map<String, Object> course = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max, c.general_office,
                        c.lecture_hours, c.practical_hours, c.industrial_training, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
-                       c.owner_programme, op.name AS owner_programme_name, c.description,
-                       (SELECT r.ref FROM catalogue.course_reset r WHERE r.id = c.reset_batch_id) AS reset_ref
+                       c.owner_programme, op.name AS owner_programme_name, c.description
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                   LEFT JOIN ref.programme op ON op.code = c.owner_programme
                  WHERE c.code = :c

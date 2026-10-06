@@ -579,7 +579,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
-          { "id": "t/coursecatalogue", "icon": "doc", "label": "Course Catalogue Reset & Upload" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -1089,7 +1088,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/users", "icon": "user", "label": "Users & Roles" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
-          { "id": "t/coursecatalogue", "icon": "doc", "label": "Course Catalogue Reset & Upload" },
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
@@ -1234,7 +1232,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
-          { "id": "t/coursecatalogue", "icon": "doc", "label": "Course Catalogue Reset & Upload" },
         ]
       },
       {

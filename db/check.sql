@@ -5000,11 +5000,11 @@ BEGIN
                scr_open, r_admit, r_reason, st_cleared, v_student IS NOT NULL, ok_student, registered, kinds));
 END $$;
 
--- ── 184. V338: the course catalogue — an upload makes ONE course per code with an offering per programme (CORE or ELECTIVE for each) and writes nothing while a row is invalid; a reset archives a course history hangs on and removes the unused one, the registration, its offering and its title untouched; a re-upload brings the same course back; an owner change is kept ──
+-- ── 184. V338 (the reset withdrawn by V340): the course catalogue — an upload makes ONE course per code with an offering per programme (CORE or ELECTIVE for each) and writes nothing while a row is invalid; a registered offering keeps its title; a re-upload updates the same course; an owner change is kept; no reset function remains ──
 DO $$
 DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); off uuid := gen_random_uuid();
-        v_id uuid; v_id2 uuid; msg text; r_invalid text; r_confirm text; r_owner text; n_courses int; n_offers int; basis_e text; r_res jsonb;
-        st_x text; reset_x boolean; n_y int; n_entry int; n_hist int; title_off text; title_res text; st_back text; n_owner int; owner_src text;
+        v_id uuid; v_id2 uuid; msg text; r_invalid text; r_owner text; n_courses int; n_offers int; basis_e text; r_res jsonb;
+        n_entry int; title_off text; title_res text; st_back text; title_back text; n_owner int; owner_src text; no_reset boolean;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', who::text, true);
@@ -5043,17 +5043,14 @@ BEGIN
         UPDATE catalogue.course SET title = 'Check Course Corrected' WHERE code = 'ZZX 338';
         SELECT title INTO title_off FROM catalogue.offering WHERE id = off;
         SELECT title INTO title_res FROM assessment.student_results(st) WHERE course_code = 'ZZX 338';
-        -- the reset: confirmed only by the typed words; history archived, the rest removed
-        BEGIN PERFORM catalogue.course_reset('DEPARTMENT', 'ZZC338', 'check reset', 'yes'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_confirm := split_part(msg, ':', 1); END;
-        PERFORM catalogue.course_reset('DEPARTMENT', 'ZZC338', 'check reset', 'RESET COURSES');
-        SELECT state, reset_batch_id IS NOT NULL INTO st_x, reset_x FROM catalogue.course WHERE code = 'ZZX 338';
-        SELECT count(*) INTO n_y FROM catalogue.course WHERE code = 'ZZY 338';
-        SELECT count(*) INTO n_entry FROM registration.entry WHERE offering_id = off;
-        SELECT count(*) INTO n_hist FROM catalogue.course_offer_history WHERE course_code = 'ZZX 338';
-        -- a re-upload brings the same course back
+        -- the reset is withdrawn (V340): none of its functions remains
+        no_reset := to_regprocedure('catalogue.course_reset(text,text,text,text)') IS NULL AND to_regprocedure('catalogue.course_reset_preview(text,text)') IS NULL
+                    AND to_regprocedure('catalogue.reset_courses(text[],text[],text)') IS NULL AND to_regprocedure('catalogue.reset_scope(text,text)') IS NULL;
+        -- a re-upload updates the same course; the registration on its offering is whole
         PERFORM catalogue.import_catalogue(jsonb_build_array(
             jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course Again', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'offeringProgramme', 'C93381', 'offeringType', 'CORE')), true, 'check again');
-        SELECT id, state INTO v_id2, st_back FROM catalogue.course WHERE code = 'ZZX 338';
+        SELECT id, state, title INTO v_id2, st_back, title_back FROM catalogue.course WHERE code = 'ZZX 338';
+        SELECT count(*) INTO n_entry FROM registration.entry WHERE offering_id = off;
         -- the owner moves, kept with its reason; an owner programme of another department is refused
         BEGIN PERFORM catalogue.change_owner('ZZX 338', 'ZZD338', 'C93381', 'wrong'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_owner := split_part(msg, ':', 1); END;
         PERFORM catalogue.change_owner('ZZX 338', 'ZZD338', 'C93383', 'Taught by the second department');
@@ -5062,13 +5059,13 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('The course catalogue: an invalid upload writes nothing; a valid one makes one course per code with an offering per programme, Core or Elective for each; a registered offering keeps its title through a correction; a reset needs its typed confirmation, archives the course history hangs on (its registration whole) and removes the unused one, every binding kept on history; a re-upload brings the same course back; an owner change needs a programme of the new department and is kept',
+    PERFORM pg_temp.assert('The course catalogue: an invalid upload writes nothing; a valid one makes one course per code with an offering per programme, Core or Elective for each; a registered offering keeps its title through a correction; a re-upload updates the same course, its registration whole; an owner change needs a programme of the new department and is kept; the withdrawn reset has no function left',
         r_invalid = 'CAT_IMPORT_INVALID' AND n_courses = 1 AND n_offers = 3 AND basis_e = 'Elective'
         AND title_off = 'Check Course' AND title_res = 'Check Course'
-        AND r_confirm = 'CAT_RESET_CONFIRM' AND st_x = 'ENDED' AND reset_x AND n_y = 0 AND n_entry = 1 AND n_hist = 3
-        AND v_id2 = v_id AND st_back = 'LIVE' AND r_owner = 'CAT_OWNER_PROGRAMME' AND n_owner = 1 AND owner_src = 'DESK',
-        format('invalid=%s courses=%s offers=%s elective=%s title=%s/%s confirm=%s x=%s/%s y=%s entry=%s hist=%s same=%s back=%s owner=%s/%s/%s',
-               r_invalid, n_courses, n_offers, basis_e, title_off, title_res, r_confirm, st_x, reset_x, n_y, n_entry, n_hist, v_id2 = v_id, st_back, r_owner, n_owner, owner_src));
+        AND no_reset AND n_entry = 1 AND v_id2 = v_id AND st_back = 'LIVE' AND title_back = 'Check Course Again'
+        AND r_owner = 'CAT_OWNER_PROGRAMME' AND n_owner = 1 AND owner_src = 'DESK',
+        format('invalid=%s courses=%s offers=%s elective=%s title=%s/%s noreset=%s entry=%s same=%s back=%s/%s owner=%s/%s/%s',
+               r_invalid, n_courses, n_offers, basis_e, title_off, title_res, no_reset, n_entry, v_id2 = v_id, st_back, title_back, r_owner, n_owner, owner_src));
 END $$;
 
 -- ── 185. V339: JUPEB — the application window is closed until opened; the Bursary's defaults stand (₦15,000; ₦180,000 / ₦195,000 / ₦200,000 / ₦215,000; 70%); an O'Level needs five credits with English and Mathematics; the school fee follows Science-or-other and indigene status, is charged 70% then 30% in order and frozen once charged; the first instalment activates the student, who registers the combination's three subjects; an examination number is unique, a surname mismatch is held for review and a correction needs its reason ──

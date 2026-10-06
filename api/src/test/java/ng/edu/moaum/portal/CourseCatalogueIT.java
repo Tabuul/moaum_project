@@ -20,12 +20,11 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
- * The course catalogue's reset and its upload with owners and offerings (V338), on a department and programmes of the test's
- * own so nothing else is touched: one row per offering becomes ONE course with an offering per programme, CORE or ELECTIVE
- * for each; an invalid file writes nothing; a reset archives the course a registration hangs on and removes the unused one,
- * the registration and its offering untouched; the offering keeps the title it was registered under; a re-upload brings the
- * archived course back as the same record; an owner change is kept with its reason. Only central offices reset and upload.
- * Needs DATABASE_URL.
+ * The course catalogue's upload with owners and offerings (V338), on a department and programmes of the test's own so nothing
+ * else is touched: one row per offering becomes ONE course with an offering per programme, CORE or ELECTIVE for each; an
+ * invalid file writes nothing; the offering keeps the title it was registered under; a re-upload updates the same record; an
+ * owner change is kept with its reason. Only central offices upload. The catalogue reset is withdrawn (V340): it has no
+ * endpoint and no function. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -181,7 +180,7 @@ class CourseCatalogueIT {
     }
 
     @Test
-    void aResetArchivesWhatHistoryHangsOnRemovesTheRestAndAReuploadBringsItBack() {
+    void aRegisteredOfferingKeepsItsTitleTheResetIsGoneAndAnOwnerChangeIsKept() {
         uploadGood();
         UUID courseId = jdbc.sql("SELECT id FROM catalogue.course WHERE code = :c").param("c", x).query(UUID.class).single();
         // history on X: a session offering a student is registered on
@@ -204,49 +203,21 @@ class CourseCatalogueIT {
         assertThat(jdbc.sql("SELECT title FROM assessment.student_results(:s) WHERE course_code = :c").param("s", student).param("c", x).query(String.class).single())
                 .isEqualTo("Catalogue Foundations");
 
-        // only the central offices reset; the preview counts what will happen
-        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/catalogue/reset", Map.of("scope", "DEPARTMENT", "ref", d1, "reason", "Wrong owners", "confirm", "RESET COURSES")).getStatusCode().value()).isEqualTo(403);
-        ResponseEntity<Map> preview = it.get(ict, "/api/v1/catalogue/reset/preview?scope=DEPARTMENT&ref=" + d1);
-        assertThat(preview.getStatusCode().value()).as(String.valueOf(preview.getBody())).isEqualTo(200);
-        assertThat(((Number) preview.getBody().get("courses")).intValue()).isEqualTo(2);
-        assertThat(((Number) preview.getBody().get("toArchive")).intValue()).isEqualTo(1);
-        assertThat(((Number) preview.getBody().get("toDelete")).intValue()).isEqualTo(1);
-        assertThat(((Number) preview.getBody().get("referencedByRegistrations")).intValue()).isEqualTo(1);
-        assertThat(((Number) preview.getBody().get("bindings")).intValue()).isEqualTo(4);
-
-        // the confirmation and the reason are required
-        ResponseEntity<Map> unconfirmed = it.call(ict, HttpMethod.POST, "/api/v1/catalogue/reset", Map.of("scope", "DEPARTMENT", "ref", d1, "reason", "Wrong owners", "confirm", "yes"));
-        assertThat(unconfirmed.getStatusCode().value()).isEqualTo(422);
-        assertThat(unconfirmed.getBody().get("code")).isEqualTo("CAT_RESET_CONFIRM");
+        // the catalogue reset is withdrawn (V340): no endpoint answers, no function remains, and the course is untouched
+        assertThat(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/reset", Map.of("scope", "DEPARTMENT", "ref", d1, "reason", "Wrong owners", "confirm", "RESET COURSES"))
+                .getStatusCode().value()).isIn(404, 405);
+        assertThat(it.get(ict, "/api/v1/catalogue/reset/history").getStatusCode().value()).isIn(400, 404, 405);
+        assertThat(jdbc.sql("SELECT to_regprocedure('catalogue.course_reset(text,text,text,text)') IS NULL AND to_regprocedure('catalogue.course_reset_preview(text,text)') IS NULL")
+                .query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("SELECT state FROM catalogue.course WHERE code = :c").param("c", x).query(String.class).single()).isEqualTo("LIVE");
 
-        ResponseEntity<Map> done = it.call(ict, HttpMethod.POST, "/api/v1/catalogue/reset", Map.of("scope", "DEPARTMENT", "ref", d1, "reason", "Wrong owners on upload", "confirm", "RESET COURSES"));
-        assertThat(done.getStatusCode().value()).as(String.valueOf(done.getBody())).isEqualTo(200);
-        assertThat(String.valueOf(done.getBody().get("ref"))).startsWith("COURSE-RESET-");
-        assertThat(((Number) done.getBody().get("archived")).intValue()).isEqualTo(1);
-        assertThat(((Number) done.getBody().get("deleted")).intValue()).isEqualTo(1);
-        // X archived, with its history whole; Y gone; every binding ended and kept on the history
-        Map<String, Object> archived = jdbc.sql("SELECT id, state, reset_batch_id FROM catalogue.course WHERE code = :c").param("c", x).query().singleRow();
-        assertThat(archived.get("state")).isEqualTo("ENDED");
-        assertThat(archived.get("reset_batch_id")).isNotNull();
-        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", y).query(Long.class).single()).isZero();
-        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_offer WHERE course_code IN (:x, :y)").param("x", x).param("y", y).query(Long.class).single()).isZero();
-        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_offer_history WHERE course_code = :x").param("x", x).query(Long.class).single()).isEqualTo(3L);
-        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.offering WHERE id = :o").param("o", offering).query(Long.class).single()).isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM registration.entry WHERE offering_id = :o").param("o", offering).query(Long.class).single()).isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM assessment.student_results(:s) WHERE course_code = :c").param("s", student).param("c", x).query(Long.class).single()).isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_reset_item WHERE reset_id = (SELECT id FROM catalogue.course_reset WHERE ref = :r)")
-                .param("r", done.getBody().get("ref")).query(Long.class).single()).isGreaterThanOrEqualTo(6L);
-        List<Map<String, Object>> history = it.callList(ict, HttpMethod.GET, "/api/v1/catalogue/reset/history", null).getBody();
-        assertThat(history).anySatisfy(h -> assertThat(h.get("ref")).isEqualTo(done.getBody().get("ref")));
-
-        // a re-upload brings the same course back, LIVE; the registered offering still reads its own title
-        assertThat(summary(upload(ict, List.of(row(x, "Catalogue Foundations Revised", d1, p1, p1, "CORE", 100)), false)).get("revivedCourses")).isEqualTo(1);
+        // a re-upload updates the same course; the registered offering still reads its own title
         upload(ict, List.of(row(x, "Catalogue Foundations Revised", d1, p1, p1, "CORE", 100)), true);
-        Map<String, Object> back = jdbc.sql("SELECT id, state, reset_batch_id, title FROM catalogue.course WHERE code = :c").param("c", x).query().singleRow();
+        Map<String, Object> back = jdbc.sql("SELECT id, state, title FROM catalogue.course WHERE code = :c").param("c", x).query().singleRow();
         assertThat(back.get("id")).isEqualTo(courseId);
         assertThat(back.get("state")).isEqualTo("LIVE");
-        assertThat(back.get("reset_batch_id")).isNull();
+        assertThat(back.get("title")).isEqualTo("Catalogue Foundations Revised");
+        assertThat(jdbc.sql("SELECT count(*) FROM registration.entry WHERE offering_id = :o").param("o", offering).query(Long.class).single()).isEqualTo(1L);
         assertThat(jdbc.sql("SELECT title FROM catalogue.offering WHERE id = :o").param("o", offering).query(String.class).single()).isEqualTo("Catalogue Foundations");
 
         // the owner is changed on the desk, with its reason kept; a Head of Department does not change it

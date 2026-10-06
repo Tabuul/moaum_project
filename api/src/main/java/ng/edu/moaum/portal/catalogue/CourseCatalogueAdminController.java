@@ -1,10 +1,8 @@
 package ng.edu.moaum.portal.catalogue;
 
 import java.sql.Types;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -23,19 +21,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
-import ng.edu.moaum.portal.shared.NotFound;
 
 /**
- * The course catalogue's administration (V338): the reset that clears the active catalogue of the University, a faculty, a
- * department or a programme without touching academic history; the catalogue upload that names each course's owner and the
- * programmes that offer it as CORE or ELECTIVE; and the change of a course's owner. A reset and an upload are central acts
- * (the Directorate of ICT and the Academic Office); no Head of Department or support officer resets the catalogue.
+ * The course catalogue's administration (V338): the catalogue upload that names each course's owner and the programmes that
+ * offer it as CORE or ELECTIVE, and the change of a course's owner. The upload is a central act (the Directorate of ICT and the
+ * Academic Office). The catalogue reset V338 also added was withdrawn by V340.
  */
 @RestController
 @RequestMapping("/api/v1/catalogue")
 class CourseCatalogueAdminController {
 
-    /** who resets the catalogue and uploads it: the Directorate of ICT and the Academic Office */
+    /** who uploads the catalogue: the Directorate of ICT and the Academic Office */
     private static final String CENTRAL = "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_super')";
     /** who changes a course's owner: the Academic Office, the Registry and the Directorate of ICT */
     private static final String OWNERSHIP = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
@@ -54,64 +50,6 @@ class CourseCatalogueAdminController {
 
     private static String blank(String s) {
         return s == null || s.isBlank() ? null : s.trim();
-    }
-
-    /* ── the reset ── */
-
-    /** what a reset of a scope would do: courses, bindings, offerings removed and kept, courses archived and removed, what hangs on them */
-    @GetMapping("/reset/preview")
-    @PreAuthorize(CENTRAL)
-    @Transactional(readOnly = true)
-    Object resetPreview(@RequestParam String scope, @RequestParam(required = false) String ref) {
-        return parse(jdbc.sql("SELECT catalogue.course_reset_preview(:s, :r)::text")
-                .param("s", scope).param("r", blank(ref), Types.VARCHAR).query(String.class).single());
-    }
-
-    public record ResetIn(@NotBlank String scope, @Size(max = 200) String ref,
-                          @NotBlank @Size(min = 5, max = 2000) String reason, @NotBlank String confirm) {
-    }
-
-    /** reset a scope of the catalogue: one transaction under one reference, history archived and never deleted */
-    @PostMapping("/reset")
-    @PreAuthorize(CENTRAL)
-    @Transactional
-    Object reset(@Valid @RequestBody ResetIn body) {
-        return parse(jdbc.sql("SELECT catalogue.course_reset(:s, :r, :why, :confirm)::text")
-                .param("s", body.scope()).param("r", blank(body.ref()), Types.VARCHAR)
-                .param("why", body.reason()).param("confirm", body.confirm()).query(String.class).single());
-    }
-
-    /** the resets done, newest first */
-    @GetMapping("/reset/history")
-    @PreAuthorize(CENTRAL)
-    @Transactional(readOnly = true)
-    List<Map<String, Object>> resetHistory() {
-        return jdbc.sql("""
-                SELECT r.id, r.ref, r.scope, r.scope_ref, r.scope_label, r.reason, r.courses_in_scope, r.bindings_removed, r.offerings_removed,
-                       r.offerings_kept, r.archived, r.deleted, r.proposals_cancelled, r.programmes_affected, r.departments_affected, r.status,
-                       r.performed_at, r.performed_office, helpdesk.person_name(r.performed_by) AS performed_by
-                  FROM catalogue.course_reset r ORDER BY r.performed_at DESC LIMIT 100
-                """).query().listOfRows();
-    }
-
-    /** one reset, item by item */
-    @GetMapping("/reset/{id}")
-    @PreAuthorize(CENTRAL)
-    @Transactional(readOnly = true)
-    Map<String, Object> resetOne(@PathVariable UUID id) {
-        Map<String, Object> head = jdbc.sql("SELECT * FROM catalogue.course_reset WHERE id = :id").param("id", id)
-                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("course reset", id));
-        List<Map<String, Object>> items = jdbc.sql("""
-                SELECT i.course_code, i.action, i.programme_code, p.name AS programme, i.level, i.detail::text AS detail, i.at
-                  FROM catalogue.course_reset_item i LEFT JOIN ref.programme p ON p.code = i.programme_code
-                 WHERE i.reset_id = :id ORDER BY i.action, i.course_code, i.programme_code
-                """).param("id", id).query().listOfRows();
-        for (Map<String, Object> i : items) {
-            i.put("detail", parse(i.get("detail")));
-        }
-        Map<String, Object> out = new LinkedHashMap<>(head);
-        out.put("items", items);
-        return out;
     }
 
     /* ── the catalogue upload with owners and offerings ── */

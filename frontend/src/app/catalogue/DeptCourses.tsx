@@ -22,8 +22,6 @@ export interface Course {
   id?: string;
   /** proposals of this course to other departments' programmes still awaiting them (V332) */
   pending?: number;
-  /** the course reset that archived this course, if one did (V338) */
-  reset_ref?: string | null;
   code: string; title: string; units: number; semester: number; level: number; kind: string;
   state: string; ended_on: string | null; lecturer: string | null; offered: boolean; curriculum: string | null;
   programmes: string[];
@@ -188,11 +186,6 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       </div>
 
       {said ? <Note kind="ok" title={said} /> : null}
-      {courses.length > 0 && courses.every((c) => c.state === "ENDED") && courses.some((c) => c.reset_ref) ? (
-        <Note kind="info" title="COURSE CATALOGUE RESET">
-          No active courses found for this department: its catalogue was reset ({Array.from(new Set(courses.map((c) => c.reset_ref).filter(Boolean))).join(", ")}). The archived courses below keep their registrations and results. An upload of the corrected catalogue brings them back.
-        </Note>
-      ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       {proposals?.toDecide.length ? (

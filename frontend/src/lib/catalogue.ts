@@ -29,8 +29,8 @@ export interface Proposal {
 
 export interface CourseDetail {
   course: CourseHead & { ended_on: string | null; curriculum: string | null; ca_max: number | null; general_office: string | null; lecture_hours: number | null; practical_hours: number | null; industrial_training: boolean | null; faculty_code: string | null;
-    /** V338: the owner programme, the description, and the reset that archived the course */
-    owner_programme?: string | null; owner_programme_name?: string | null; description?: string | null; reset_ref?: string | null };
+    /** V338: the owner programme and the description */
+    owner_programme?: string | null; owner_programme_name?: string | null; description?: string | null };
   offers: Offer[];
   departments: { code: string; name: string; faculty: string | null; programmes: number; owner: boolean }[];
   sessions: { id: string; session: string; semester: number; allocated_on: string | null; lecturer: string | null; second_examiner: string | null; co_lecturers: { name: string; programme_code: string | null; programme: string | null }[]; registered: number; sheet_stage: string | null }[];

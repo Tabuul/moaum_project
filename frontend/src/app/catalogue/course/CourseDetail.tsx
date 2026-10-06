@@ -90,7 +90,6 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
         ["Awaiting a department", String(pending.length), pending.length ? "var(--amber-ink)" : null, pending.length ? "Proposals not yet decided" : "No proposal waits"],
       ]} />
 
-      {c.reset_ref ? <Note kind="info" title={`Archived by the course reset ${c.reset_ref}`}>Its registrations and results are kept and read as they were. An upload of the catalogue that names {c.code} brings this same course back to Live.</Note> : null}
       {c.description || (data.prerequisites ?? []).length ? (
         <Panel title="Course information">
           <PBody>
@@ -223,7 +222,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
           <DTable pageSize={0} noPrint cols={["S/N|num", "From", "To", "How", "Reason", "By", "When"]} rows={(data.ownerHistory ?? []).map((h, i) => [
             <span key="n" className="tnum sub2">{i + 1}</span>, <span key="f" className="sub2">{h.from_dept_name ?? h.from_dept ?? "—"}{h.from_programme ? ` · ${h.from_programme}` : ""}</span>,
             <span key="t"><b>{h.to_dept_name ?? h.to_dept ?? "—"}</b>{h.to_programme_name ? <div className="sub2">{h.to_programme_name}</div> : null}</span>,
-            <span key="s" className="sub2">{h.source === "IMPORT" ? "Catalogue upload" : h.source === "RESET" ? "Course reset" : "On the desk"}</span>,
+            <span key="s" className="sub2">{h.source === "IMPORT" ? "Catalogue upload" : "On the desk"}</span>,
             <span key="r" className="sub2">{h.reason ?? ""}</span>, <span key="b" className="sub2">{h.changed_by ?? ""}{h.changed_office ? ` (${h.changed_office})` : ""}</span>,
             <span key="w" className="tnum sub2">{new Date(h.changed_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
           ])} />
