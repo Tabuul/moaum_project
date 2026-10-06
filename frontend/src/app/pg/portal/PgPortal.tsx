@@ -40,7 +40,7 @@ interface Me {
 }
 
 const naira = (n: number | null) => (n == null ? "—" : "₦" + Number(n).toLocaleString());
-const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Master’s", 900: "MPhil / PhD" };
+const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Master", 900: "MPhil / PhD" };
 const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended by the department — with the faculty",
   DEPT_DECLINED: "Not recommended by the department", FAC_RECOMMENDED: "Recommended by the faculty — with the School",
@@ -584,20 +584,27 @@ function PortalStepper({ steps, current, onGo }: { steps: { label: string; done:
 
 function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: () => Promise<void> }) {
   const first = me.priorDegrees.find((d) => d.kind === "FIRST");
-  const [fd, setFd] = useState({
+  const savedFirst = {
     institution: first?.institution ?? me.prior.institution ?? "", award: first?.award ?? me.prior.award ?? "",
     field: first?.field ?? "", classOfDegree: first?.class_of_degree ?? me.prior.classOfDegree ?? "",
     cgpa: first?.cgpa != null ? String(first.cgpa) : (me.prior.cgpa != null ? String(me.prior.cgpa) : ""),
     year: first?.year != null ? String(first.year) : (me.prior.year != null ? String(me.prior.year) : ""),
-  });
-  const [quals, setQuals] = useState<QRow[]>(me.priorDegrees.filter((d) => d.kind !== "FIRST").map((d) => ({
+  };
+  const savedQuals: QRow[] = me.priorDegrees.filter((d) => d.kind !== "FIRST").map((d) => ({
     kind: d.kind, institution: d.institution ?? "", award: d.award ?? "", field: d.field ?? "",
     classOfDegree: d.class_of_degree ?? "", cgpa: d.cgpa != null ? String(d.cgpa) : "", year: d.year != null ? String(d.year) : "",
-  })));
+  }));
+  const firstOnRecord = Boolean(savedFirst.institution || savedFirst.award);
+  const [fd, setFd] = useState(savedFirst);
+  const [quals, setQuals] = useState<QRow[]>(savedQuals);
+  /* the form shows only to enter a record or to edit it; once saved, the record reads as a summary */
+  const [editFirst, setEditFirst] = useState(!firstOnRecord);
+  const [editQuals, setEditQuals] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<Problem | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const setQ = (i: number, k: keyof QRow, v: string) => setQuals(quals.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+  const kindWord = (k: string) => QUAL_KINDS.find(([c]) => c === k)?.[1] ?? k;
 
   async function saveFirst() {
     setErr(null); setOk(null); setBusy("first");
@@ -605,7 +612,7 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
       const r = await fetch("/api/bff/api/v1/pg/first-degree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setOk("First degree saved."); await onDone();
+      setOk("First degree saved."); setEditFirst(false); await onDone();
     } finally { setBusy(null); }
   }
   async function saveQuals() {
@@ -614,7 +621,7 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
       const r = await fetch("/api/bff/api/v1/pg/qualifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(quals) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setOk("Other qualifications saved."); await onDone();
+      setOk("Other qualifications saved."); setEditQuals(false); await onDone();
     } finally { setBusy(null); }
   }
 
@@ -628,41 +635,83 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
             <div>
-              <div className="b600 mb-2">First degree <span className="sub2" style={{ fontWeight: 400 }}>· the related / relevant Bachelor’s degree the admission rests on</span></div>
-              <div className="grid grid--2">
-                <Fld id="fd-inst" label="Institution" v={fd.institution} on={(v) => setFd({ ...fd, institution: v })} />
-                <Fld id="fd-award" label="Degree / award" v={fd.award} on={(v) => setFd({ ...fd, award: v })} ph="B.Sc." />
-                <Fld id="fd-field" label="Field of study" v={fd.field} on={(v) => setFd({ ...fd, field: v })} ph="Computer Science" />
-                <Sel id="fd-class" label="Class of degree" v={fd.classOfDegree} on={(v) => setFd({ ...fd, classOfDegree: v })} options={CLASSES} />
-                <Fld id="fd-cgpa" label="CGPA (if known)" v={fd.cgpa} on={(v) => setFd({ ...fd, cgpa: v })} ph="3.80" num />
-                <Fld id="fd-year" label="Year awarded" v={fd.year} on={(v) => setFd({ ...fd, year: v })} ph="2018" num />
+              <div className="row row--base mb-2">
+                <div className="b600">First degree <span className="sub2" style={{ fontWeight: 400 }}>· the related / relevant Bachelor’s degree the admission rests on</span></div>
+                <span className="grow" />
+                {!editFirst ? <Btn kind="ghost" size="sm" onClick={() => { setFd(savedFirst); setOk(null); setEditFirst(true); }}>Edit</Btn> : null}
               </div>
-              <div className="mt-2"><Btn kind="primary" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</Btn></div>
+              {editFirst ? (
+                <>
+                  <div className="grid grid--2">
+                    <Fld id="fd-inst" label="Institution" v={fd.institution} on={(v) => setFd({ ...fd, institution: v })} />
+                    <Fld id="fd-award" label="Degree / award" v={fd.award} on={(v) => setFd({ ...fd, award: v })} ph="B.Sc." />
+                    <Fld id="fd-field" label="Field of study" v={fd.field} on={(v) => setFd({ ...fd, field: v })} ph="Computer Science" />
+                    <Sel id="fd-class" label="Class of degree" v={fd.classOfDegree} on={(v) => setFd({ ...fd, classOfDegree: v })} options={CLASSES} />
+                    <Fld id="fd-cgpa" label="CGPA (if known)" v={fd.cgpa} on={(v) => setFd({ ...fd, cgpa: v })} ph="3.80" num />
+                    <Fld id="fd-year" label="Year awarded" v={fd.year} on={(v) => setFd({ ...fd, year: v })} ph="2018" num />
+                  </div>
+                  <div className="row mt-2">
+                    <Btn kind="primary" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</Btn>
+                    {firstOnRecord ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { setFd(savedFirst); setEditFirst(false); }}>Cancel</Btn> : null}
+                  </div>
+                </>
+              ) : (
+                <KvGrid cls="grid--3" pairs={[
+                  ["Institution", val(savedFirst.institution)], ["Degree / award", val(savedFirst.award)], ["Field of study", val(savedFirst.field)],
+                  ["Class of degree", val(savedFirst.classOfDegree)], ["CGPA", val(savedFirst.cgpa)], ["Year awarded", val(savedFirst.year)],
+                ]} />
+              )}
             </div>
 
             <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: "var(--s-4)" }}>
-              <div className="b600" style={{ marginBottom: 2 }}>Other qualifications</div>
-              <div className="sub2 mb-2">Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
-              <div style={{ display: "grid", gap: "var(--s-3)" }}>
-                {quals.map((q, i) => (
-                  <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: "var(--s-3)" }}>
-                    <div className="grid grid--2">
-                      <Sel id={`q-kind-${i}`} label="Qualification" v={q.kind} on={(v) => setQ(i, "kind", v)} options={QUAL_KINDS} />
-                      <Fld id={`q-inst-${i}`} label="Institution" v={q.institution} on={(v) => setQ(i, "institution", v)} />
-                      <Fld id={`q-award-${i}`} label="Award / title" v={q.award} on={(v) => setQ(i, "award", v)} ph="M.Sc. / PGD / HND" />
-                      <Fld id={`q-field-${i}`} label="Field of study" v={q.field} on={(v) => setQ(i, "field", v)} />
-                      <Sel id={`q-class-${i}`} label="Class / result" v={q.classOfDegree} on={(v) => setQ(i, "classOfDegree", v)} options={CLASSES} />
-                      <Fld id={`q-cgpa-${i}`} label="CGPA (if known)" v={q.cgpa} on={(v) => setQ(i, "cgpa", v)} num />
-                      <Fld id={`q-year-${i}`} label="Year awarded" v={q.year} on={(v) => setQ(i, "year", v)} num />
-                    </div>
-                    <div className="mt-2"><Btn kind="ghost" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</Btn></div>
-                  </div>
-                ))}
-                <div className="row">
-                  <Btn kind="ghost" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</Btn>
-                  <Btn kind="primary" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</Btn>
-                </div>
+              <div className="row row--base" style={{ marginBottom: 2 }}>
+                <div className="b600">Other qualifications</div>
+                <span className="grow" />
+                {!editQuals && savedQuals.length ? <Btn kind="ghost" size="sm" onClick={() => { setQuals(savedQuals); setOk(null); setEditQuals(true); }}>Edit</Btn> : null}
               </div>
+              <div className="sub2 mb-2">Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
+              {!editQuals ? (
+                savedQuals.length ? (
+                  <div style={{ display: "grid", gap: "var(--s-3)" }}>
+                    {savedQuals.map((q, i) => (
+                      <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: "var(--s-3)" }}>
+                        <div className="b600 mb-2">{kindWord(q.kind)}{q.award ? <span className="sub2" style={{ fontWeight: 400 }}> · {q.award}</span> : null}</div>
+                        <KvGrid cls="grid--3" pairs={[
+                          ["Institution", val(q.institution)], ["Field of study", val(q.field)], ["Class / result", val(q.classOfDegree)],
+                          ["CGPA", val(q.cgpa)], ["Year awarded", val(q.year)],
+                        ]} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="row row--base">
+                    <span className="sub2">No other qualification given.</span>
+                    <Btn kind="ghost" size="sm" onClick={() => { setQuals([emptyQ()]); setOk(null); setEditQuals(true); }}>+ Add a qualification</Btn>
+                  </div>
+                )
+              ) : (
+                <div style={{ display: "grid", gap: "var(--s-3)" }}>
+                  {quals.map((q, i) => (
+                    <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: "var(--s-3)" }}>
+                      <div className="grid grid--2">
+                        <Sel id={`q-kind-${i}`} label="Qualification" v={q.kind} on={(v) => setQ(i, "kind", v)} options={QUAL_KINDS} />
+                        <Fld id={`q-inst-${i}`} label="Institution" v={q.institution} on={(v) => setQ(i, "institution", v)} />
+                        <Fld id={`q-award-${i}`} label="Award / title" v={q.award} on={(v) => setQ(i, "award", v)} ph="M.Sc. / PGD / HND" />
+                        <Fld id={`q-field-${i}`} label="Field of study" v={q.field} on={(v) => setQ(i, "field", v)} />
+                        <Sel id={`q-class-${i}`} label="Class / result" v={q.classOfDegree} on={(v) => setQ(i, "classOfDegree", v)} options={CLASSES} />
+                        <Fld id={`q-cgpa-${i}`} label="CGPA (if known)" v={q.cgpa} on={(v) => setQ(i, "cgpa", v)} num />
+                        <Fld id={`q-year-${i}`} label="Year awarded" v={q.year} on={(v) => setQ(i, "year", v)} num />
+                      </div>
+                      <div className="mt-2"><Btn kind="ghost" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</Btn></div>
+                    </div>
+                  ))}
+                  <div className="row">
+                    <Btn kind="ghost" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</Btn>
+                    <Btn kind="primary" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</Btn>
+                    <Btn kind="ghost" disabled={busy !== null} onClick={() => { setQuals(savedQuals); setEditQuals(false); }}>Cancel</Btn>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -673,13 +722,19 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
 
 type RRow = { name: string; email: string; phone: string; institution: string; position: string };
 
-/** the referees — supplied in the portal after payment; each new referee with an email is emailed a reference request */
+/** the referees — supplied in the portal after payment; each new referee with an email is emailed a reference request.
+ *  Once named they read as a list with where each reference stands; the form shows only to name them or to edit those
+ *  who have not yet responded. */
 function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: () => Promise<void> }) {
   const submitted = me.referees.filter((r) => r.submitted_at);
-  const [rows, setRows] = useState<RRow[]>(() => {
-    const editable = me.referees.filter((r) => !r.submitted_at).map((r) => ({ name: r.name ?? "", email: r.email ?? "", phone: r.phone ?? "", institution: r.institution ?? "", position: r.position ?? "" }));
-    return editable.length ? editable : [{ name: "", email: "", phone: "", institution: "", position: "" }, { name: "", email: "", phone: "", institution: "", position: "" }];
-  });
+  const pending = me.referees.filter((r) => !r.submitted_at);
+  const blank: RRow = { name: "", email: "", phone: "", institution: "", position: "" };
+  const fromRecord = (): RRow[] => {
+    const editable = pending.map((r) => ({ name: r.name ?? "", email: r.email ?? "", phone: r.phone ?? "", institution: r.institution ?? "", position: r.position ?? "" }));
+    return editable.length ? editable : [{ ...blank }, { ...blank }];
+  };
+  const [rows, setRows] = useState<RRow[]>(fromRecord);
+  const [editing, setEditing] = useState(me.referees.length === 0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -691,12 +746,12 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
       const r = await fetch("/api/bff/api/v1/pg/referees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows.filter((x) => x.name.trim())) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setOk("Referees saved — a reference request was emailed to each referee with an email."); await onDone();
+      setOk("Referees saved — a reference request was emailed to each referee with an email."); setEditing(false); await onDone();
     } finally { setBusy(false); }
   }
 
   return (
-    <Panel title="Referees">
+    <Panel title="Referees" right={paid && !editing && me.referees.length ? <Btn kind="ghost" size="sm" onClick={() => { setRows(fromRecord()); setOk(null); setEditing(true); }}>{pending.length ? "Edit referees" : "+ Add a referee"}</Btn> : undefined}>
       <PBody>
         {!paid ? (
           <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you name your referees here.</Note>
@@ -705,26 +760,46 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
             <div className="sub2">Each referee with an email is sent a private link to complete a short, confidential reference for you. You can update referees who have not yet responded.</div>
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>Thank you.</Note> : null}
-            {submitted.length ? (
-              <div style={{ display: "grid", gap: "var(--s-1)" }}>
-                {submitted.map((r, i) => (
-                  <div key={i} className="sub2 ink-green row row--tight" style={{ flexWrap: "nowrap" }}><Tick size={12} colour="var(--green-ink)" /><span>Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</span></div>
+            {!editing ? (
+              <div style={{ display: "grid", gap: "var(--s-3)" }}>
+                {me.referees.map((r, i) => (
+                  <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: "var(--s-3)" }}>
+                    <div className="row row--base mb-2">
+                      <div className="b600">Referee {i + 1} · {val(r.name)}</div>
+                      <span className="grow" />
+                      {r.submitted_at
+                        ? <span className="sub2 ink-green row row--tight"><Tick size={12} colour="var(--green-ink)" />Reference received {fmtDate(r.submitted_at)}</span>
+                        : r.email ? <span className="sub2">Request sent · awaiting the reference</span> : <span className="sub2 ink-red">No email — no request could be sent</span>}
+                    </div>
+                    <KvGrid cls="grid--3" pairs={[["Position", val(r.position)], ["Institution", val(r.institution)], ["Email", val(r.email)], ["Phone number", val(r.phone)]]} />
+                  </div>
                 ))}
               </div>
-            ) : null}
-            {rows.map((r, i) => (
-              <div className="grid grid--2" key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? "var(--s-3)" : 0 }}>
-                <Fld id={`rf-n-${i}`} label={`Referee ${i + 1} — name`} v={r.name} on={(v) => setR(i, "name", v)} />
-                <Fld id={`rf-e-${i}`} label="Email" v={r.email} on={(v) => setR(i, "email", v)} />
-                <Fld id={`rf-p-${i}`} label="Phone number" v={r.phone} on={(v) => setR(i, "phone", v)} />
-                <Fld id={`rf-i-${i}`} label="Institution" v={r.institution} on={(v) => setR(i, "institution", v)} />
-                <Fld id={`rf-po-${i}`} label="Position" v={r.position} on={(v) => setR(i, "position", v)} />
-              </div>
-            ))}
-            <div className="row">
-              <Btn kind="ghost" onClick={() => setRows([...rows, { name: "", email: "", phone: "", institution: "", position: "" }])}>+ Add a referee</Btn>
-              <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</Btn>
-            </div>
+            ) : (
+              <>
+                {submitted.length ? (
+                  <div style={{ display: "grid", gap: "var(--s-1)" }}>
+                    {submitted.map((r, i) => (
+                      <div key={i} className="sub2 ink-green row row--tight" style={{ flexWrap: "nowrap" }}><Tick size={12} colour="var(--green-ink)" /><span>Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</span></div>
+                    ))}
+                  </div>
+                ) : null}
+                {rows.map((r, i) => (
+                  <div className="grid grid--2" key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? "var(--s-3)" : 0 }}>
+                    <Fld id={`rf-n-${i}`} label={`Referee ${submitted.length + i + 1} — name`} v={r.name} on={(v) => setR(i, "name", v)} />
+                    <Fld id={`rf-e-${i}`} label="Email" v={r.email} on={(v) => setR(i, "email", v)} />
+                    <Fld id={`rf-p-${i}`} label="Phone number" v={r.phone} on={(v) => setR(i, "phone", v)} />
+                    <Fld id={`rf-i-${i}`} label="Institution" v={r.institution} on={(v) => setR(i, "institution", v)} />
+                    <Fld id={`rf-po-${i}`} label="Position" v={r.position} on={(v) => setR(i, "position", v)} />
+                  </div>
+                ))}
+                <div className="row">
+                  <Btn kind="ghost" onClick={() => setRows([...rows, { ...blank }])}>+ Add a referee</Btn>
+                  <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</Btn>
+                  {me.referees.length ? <Btn kind="ghost" disabled={busy} onClick={() => { setRows(fromRecord()); setEditing(false); }}>Cancel</Btn> : null}
+                </div>
+              </>
+            )}
           </div>
         )}
       </PBody>

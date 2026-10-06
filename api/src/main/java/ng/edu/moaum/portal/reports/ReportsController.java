@@ -338,7 +338,7 @@ class ReportsController {
                      GROUP BY st.programme_code
                 )
                 SELECT prog.faculty, prog.code AS programme_code, prog.programme,
-                       CASE prog.pg_level WHEN 900 THEN 'MPhil / PhD' WHEN 800 THEN 'Master''s' ELSE 'PGD' END AS award,
+                       CASE prog.pg_level WHEN 900 THEN 'MPhil / PhD' WHEN 800 THEN 'Master' ELSE 'PGD' END AS award,
                        coalesce(app.applications, 0) AS applications, coalesce(app.offered, 0) AS offered,
                        coalesce(app.accepted, 0) AS accepted, coalesce(app.admitted, 0) AS admitted,
                        coalesce(reg.on_register, 0) AS on_register, coalesce(reg.female, 0) AS female, coalesce(reg.male, 0) AS male,

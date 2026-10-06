@@ -21,7 +21,7 @@ interface Row {
 }
 export interface View { counts: { total: number; pgd: number; masters: number; doctoral: number }; rows: Row[] }
 
-const LEVEL: Record<number, string> = { 700: "PGD", 800: "Master’s", 900: "Doctoral" };
+const LEVEL: Record<number, string> = { 700: "PGD", 800: "Master", 900: "Doctoral" };
 const RESEARCH: Record<string, string> = {
   REGISTERED: "Registered", SUPERVISED: "Supervised", PROPOSAL_SUBMITTED: "Proposal", PROPOSAL_APPROVED: "Proposal approved",
   SEMINAR_HELD: "Seminar", TITLE_REGISTERED: "Title", PANEL_CONSTITUTED: "Panel", DRAFT_SUBMITTED: "Draft", VIVA_HELD: "Viva",
@@ -99,7 +99,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
   const tiles: { label: string; value: string; color: string | null; sub: string; active: boolean; onClick: () => void }[] = [
     { label: "PG students", value: String(c.total), color: null, sub: "on the register", active: level === "" && standing === "", onClick: () => { setLevel(""); setStanding(""); } },
     { label: "PGD", value: String(c.pgd), color: null, sub: "level 700", active: level === "700", onClick: () => { setStanding(""); setLevel(level === "700" ? "" : "700"); } },
-    { label: "Master’s", value: String(c.masters), color: null, sub: "level 800", active: level === "800", onClick: () => { setStanding(""); setLevel(level === "800" ? "" : "800"); } },
+    { label: "Master", value: String(c.masters), color: null, sub: "level 800", active: level === "800", onClick: () => { setStanding(""); setLevel(level === "800" ? "" : "800"); } },
     { label: "Doctoral", value: String(c.doctoral), color: null, sub: "level 900", active: level === "900", onClick: () => { setStanding(""); setLevel(level === "900" ? "" : "900"); } },
     { label: "On probation", value: String(onProbation), color: onProbation ? "var(--red-deep)" : null, sub: "CGPA below 2.50", active: standing === "PROBATION", onClick: () => setStanding(standing === "PROBATION" ? "" : "PROBATION") },
   ];

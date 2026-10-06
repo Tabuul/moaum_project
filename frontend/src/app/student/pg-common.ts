@@ -30,7 +30,7 @@ export const RESEARCH_WORD: Record<string, string> = {
 };
 const DEGREE: Record<string, string> = { THESIS: "thesis", DISSERTATION: "dissertation", PROJECT: "project" };
 
-export const awardWord = (level: number) => (level >= 900 ? "MPhil / Doctoral" : level >= 800 ? "Master's degree" : "Postgraduate Diploma");
+export const awardWord = (level: number) => (level >= 900 ? "MPhil / Doctoral" : level >= 800 ? "Master" : "Postgraduate Diploma");
 export const fmtDay = (v: string | null | undefined) => {
   if (!v) return "—";
   const d = new Date(v);

@@ -34,7 +34,7 @@ export const WHICH_WORD: Record<Which, string> = {
 export const SEX_WORD: Record<string, string> = { M: "Male", F: "Female" };
 export const sexWord = (s: string | null | undefined) => (s ? SEX_WORD[s] ?? s : "Not recorded");
 export const entryWord = (e: string | null | undefined) => (e ? e.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()).replace(/^Utme$/, "UTME") : "Not recorded");
-export const DEGREE_WORD: Record<string, string> = { PGD: "Postgraduate Diploma", MASTERS: "Master's", MPHIL: "M.Phil.", PHD: "Ph.D." };
+export const DEGREE_WORD: Record<string, string> = { PGD: "Postgraduate Diploma", MASTERS: "Master", MPHIL: "M.Phil.", PHD: "Ph.D." };
 export const SEMESTER_WORD = (n: number | null | string) => (n == null || n === "" ? "Whole session" : Number(n) === 1 ? "First semester" : Number(n) === 2 ? "Second semester" : "Third semester");
 
 export interface StatFilters { session: string; semester: string; fac: string; dept: string; prog: string; level: string; status: string; degree: string; sex: string; entry: string; entrySession: string }
