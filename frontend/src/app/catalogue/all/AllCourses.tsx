@@ -26,8 +26,12 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
   const scoped = list.scope.dept || list.scope.fac;
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "asc" ? "desc" : "asc" });
 
-  const HEAD = ["Course code", "Course title", "Units", "Level", "Semester", "Course type", "Faculty", "Owner department", "Programmes offering", "Last session offered", "Status"];
-  const exportRows = () => list.rows.map((r) => [r.code, r.title, r.units, r.level, semName(r.semester), r.kind, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.programmes.map((p) => `${p.name} (${p.level})`).join("; "), r.last_session ?? "", STATE[r.state]?.[1] ?? r.state]);
+  const HEAD = ["S/N", "Course code", "Course title", "Units", "Level", "Semester", "Course type", "Faculty", "Owner department", "Owner programme", "Programmes offering", "Last session offered", "Status"];
+  const exportRows = () => list.rows.map((r, i) => [i + 1, r.code, r.title, r.units, r.level, semName(r.semester), r.kind, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.owner_programme_name ?? "", r.programmes.map((p) => `${p.name} (${p.level})`).join("; "), r.last_session ?? "", STATE[r.state]?.[1] ?? r.state]);
+  /** V338: one row per programme offering — the course, its owner, and where it is offered and how */
+  const OFFER_HEAD = ["S/N", "Course Code", "Course Title", "Units", "Course Owner Faculty", "Course Owner Department", "Course Owner Programme", "Offering Faculty", "Offering Department", "Offering Programme", "Offering Type", "Level", "Status"];
+  const offerRows = () => list.rows.flatMap((r) => r.programmes.map((p) => [r.code, r.title, r.units, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.owner_programme_name ?? "",
+    p.faculty ?? "", p.deptName ?? p.dept ?? "", p.name, (p.basis ?? "").toUpperCase(), p.level, STATE[r.state]?.[1] ?? r.state])).map((row, i) => [i + 1, ...row]);
   const meta = (): [string, string][] => [["Scope", scoped ? (list.scope.dept ? `Department ${list.scope.dept}` : `Faculty ${list.scope.fac}`) : "The University"], ["Filters", filtered ? Object.entries(filters).filter(([k, v]) => v && !["sort", "dir", "size"].includes(k)).map(([k, v]) => `${k} ${v}`).join(", ") : "None"]];
 
   return (
@@ -60,6 +64,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
         ))}
         {list.rows.length ? <>
           <Btn kind="ghost" size="sm" onClick={async () => downloadBlob(await brandedXlsx("All Courses", HEAD, exportRows(), { sheetName: "Courses", serial: docSerial("CRS"), meta: meta() }), "courses.xlsx")}>Excel</Btn>
+          <Btn kind="ghost" size="sm" onClick={async () => downloadBlob(await brandedXlsx("Course Offerings", OFFER_HEAD, offerRows(), { sheetName: "Offerings", serial: docSerial("CRSOFF"), meta: meta() }), "course-offerings.xlsx")}>Offerings (Excel)</Btn>
           <Btn kind="ghost" size="sm" onClick={() => brandedPrint("All Courses", scoped ? `Within ${list.scope.dept || list.scope.fac}` : "The University's catalogue", HEAD, exportRows(), docSerial("CRS"), { meta: meta(), generatedBy, orientation: "landscape" })}>PDF</Btn>
         </> : null}
       </span>}>
@@ -70,7 +75,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
             <span key="t">{r.title}{r.pending ? <div className="sub2 ink-amber">{r.pending} proposal{r.pending === 1 ? "" : "s"} awaiting a department</div> : null}</span>,
             <span key="u" className="tnum">{r.units}</span>, <span key="l" className="tnum">{r.level}</span>, <span key="s" className="tnum">{semName(r.semester)}</span>,
             <span key="k" className="sub2">{r.kind}{r.general_office ? ` · ${r.general_office}` : ""}</span>,
-            <span key="o">{r.dept_name ?? r.dept_code ?? "—"}<div className="sub2">{r.faculty_name ?? ""}</div></span>,
+            <span key="o">{r.dept_name ?? r.dept_code ?? "—"}<div className="sub2">{r.owner_programme_name ? `${r.owner_programme_name} · ` : ""}{r.faculty_name ?? ""}</div></span>,
             <span key="p">{r.programmes.length ? <>{r.programmes.slice(0, 3).map((p) => <div key={`${p.code}-${p.level}`} className="sub2"><Link href={`/catalogue/structure?prog=${encodeURIComponent(p.code)}`} className="lnk">{p.name}</Link> · {p.level}{p.basis !== "Core" ? ` · ${p.basis}` : ""}</div>)}{r.programmes.length > 3 ? <Link href={`/catalogue/course?code=${encodeURIComponent(r.code)}`} className="lnk sub2">+{r.programmes.length - 3} more</Link> : null}</> : <span className="sub2 ink-red">None</span>}</span>,
             <span key="ls" className="tnum sub2">{r.last_session ?? "—"}</span>,
             <Pil key="st" kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>,

@@ -30,6 +30,8 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
   const [basis, setBasis] = useState("");
   const [track, setTrack] = useState("");
   const [reason, setReason] = useState("");
+  /* V338: moving the course to its rightful owner */
+  const [owning, setOwning] = useState<{ dept: string; prog: string; why: string } | null>(null);
   const used = usageWords(data.usage);
 
   async function call(method: "POST" | "PUT" | "DELETE", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
@@ -76,17 +78,27 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
           {data.may.edit ? <Btn kind="ghost" onClick={() => setRename(c.code)}>Rename the code</Btn> : null}
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`); }}>End</Btn> : null}
           {data.may.edit && c.state === "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`); }}>Restore</Btn> : null}
+          {data.may.changeOwner && !c.general_office ? <Btn kind="ghost" onClick={() => setOwning({ dept: ownDept, prog: c.owner_programme ?? "", why: "" })}>Change owner</Btn> : null}
           <LinkBtn href={`/catalogue?dept=${encodeURIComponent(ownDept)}`}>Department courses</LinkBtn>
           <LinkBtn href="/catalogue/all">All courses</LinkBtn>
         </>} />
 
       <Tiles items={[
-        ["Course owner", c.dept_name ?? c.dept_code ?? "—", null, "Sets the sheet, answers a query on a mark"],
+        ["Course owner", c.dept_name ?? c.dept_code ?? "—", null, c.owner_programme_name ? `Owner programme: ${c.owner_programme_name}` : "Sets the sheet, answers a query on a mark"],
         ["Departments offering", String(data.departments.length), null, data.departments.map((d) => d.name).slice(0, 3).join(", ") + (data.departments.length > 3 ? ` +${data.departments.length - 3} more` : "")],
         ["Programmes offering", String(data.offers.length), null, `${data.offers.filter((o) => o.registered_now > 0).length} with students registered this session`],
         ["Awaiting a department", String(pending.length), pending.length ? "var(--amber-ink)" : null, pending.length ? "Proposals not yet decided" : "No proposal waits"],
       ]} />
 
+      {c.reset_ref ? <Note kind="info" title={`Archived by the course reset ${c.reset_ref}`}>Its registrations and results are kept and read as they were. An upload of the catalogue that names {c.code} brings this same course back to Live.</Note> : null}
+      {c.description || (data.prerequisites ?? []).length ? (
+        <Panel title="Course information">
+          <PBody>
+            {c.description ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{c.description}</div> : null}
+            {(data.prerequisites ?? []).length ? <div className="sub2 mt-2"><b>Prerequisites:</b> {(data.prerequisites ?? []).map((q) => `${q.code} ${q.title}`).join(" · ")}</div> : null}
+          </PBody>
+        </Panel>
+      ) : null}
       {used ? <Note kind="info" title="What this course carries">{used}. An edit of the code, units, level or semester reaches all of it: the course stays one record, and every registration, result and offering stays on it.</Note> : null}
 
       <div className="grid grid--2">
@@ -204,6 +216,35 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
               <Field id="ed-kind" label="Kind"><select id="ed-kind" className="ctl" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
             </div>
           </div>
+        </Modal>
+      ) : null}
+      {(data.ownerHistory ?? []).length ? (
+        <Panel title="Owner history" right="Every change of the department or programme that owns the course">
+          <DTable pageSize={0} noPrint cols={["S/N|num", "From", "To", "How", "Reason", "By", "When"]} rows={(data.ownerHistory ?? []).map((h, i) => [
+            <span key="n" className="tnum sub2">{i + 1}</span>, <span key="f" className="sub2">{h.from_dept_name ?? h.from_dept ?? "—"}{h.from_programme ? ` · ${h.from_programme}` : ""}</span>,
+            <span key="t"><b>{h.to_dept_name ?? h.to_dept ?? "—"}</b>{h.to_programme_name ? <div className="sub2">{h.to_programme_name}</div> : null}</span>,
+            <span key="s" className="sub2">{h.source === "IMPORT" ? "Catalogue upload" : h.source === "RESET" ? "Course reset" : "On the desk"}</span>,
+            <span key="r" className="sub2">{h.reason ?? ""}</span>, <span key="b" className="sub2">{h.changed_by ?? ""}{h.changed_office ? ` (${h.changed_office})` : ""}</span>,
+            <span key="w" className="tnum sub2">{new Date(h.changed_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
+          ])} />
+        </Panel>
+      ) : null}
+      {owning ? (
+        <Modal title={`Change the owner of ${c.code}`} sub="The same course moves to the department that is responsible for it: every programme offering, session offering, registration and result stays on it." onClose={() => setOwning(null)}
+          foot={<><Btn kind="ghost" onClick={() => setOwning(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !owning.dept || owning.why.trim().length < 3 || (owning.dept === ownDept && owning.prog === (c.owner_programme ?? ""))} onClick={async () => {
+            const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/owner`, { department: owning.dept, programme: owning.prog || null, reason: owning.why.trim() }, `${c.code} moved to ${owning.dept}`);
+            if (j) setOwning(null);
+          }}>Change owner</Btn></>}>
+          <Field id="ow-dept" label="Owner department">
+            <SearchSelect id="ow-dept" value={owning.dept} placeholder="Search a department…" options={(directory?.departments ?? []).map((d) => ({ value: d.code, label: d.name }))}
+              onChange={(v) => setOwning({ ...owning, dept: v, prog: "" })} />
+          </Field>
+          <Field id="ow-prog" label="Owner programme" hint="A programme of that department; optional">
+            <SearchSelect id="ow-prog" value={owning.prog} placeholder="Search a programme…" allLabel="No owner programme"
+              options={(directory?.programmes ?? []).filter((p) => p.dept_code === owning.dept).map((p) => ({ value: p.code, label: `${p.name} (${p.code})` }))}
+              onChange={(v) => setOwning({ ...owning, prog: v })} />
+          </Field>
+          <Field id="ow-why" label="Reason" hint="Kept on the owner history"><textarea id="ow-why" className="ctl" rows={2} maxLength={2000} value={owning.why} onChange={(e) => setOwning({ ...owning, why: e.target.value })} /></Field>
         </Modal>
       ) : null}
       {rename !== null ? (

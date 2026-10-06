@@ -81,7 +81,7 @@ class RecordsRepository {
     /** Where each result set has reached, and how many failed of those graded. */
     List<Map<String, Object>> results(Scope scope) {
         return rows("""
-                SELECT c.code AS "course", c.title AS "title", c.units AS "units",
+                SELECT c.code AS "course", coalesce(o.title, c.title) AS "title", coalesce(o.units, c.units) AS "units",
                        (SELECT count(*)::int FROM registration.entry e
                           JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND e.status = 'APPROVED'
@@ -129,7 +129,7 @@ class RecordsRepository {
     /** Who teaches what: the offering, its lecturer and its second examiner. */
     List<Map<String, Object>> allocation(Scope scope) {
         return rows("""
-                SELECT c.code AS "course", c.title AS "title", c.units AS "units",
+                SELECT c.code AS "course", coalesce(o.title, c.title) AS "title", coalesce(o.units, c.units) AS "units",
                        (SELECT count(*)::int FROM registration.entry e
                          WHERE e.offering_id = o.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN')) AS "registered",
                        CASE WHEN l.id IS NULL THEN NULL ELSE l.surname || ', ' || l.given_names END AS "lecturer",

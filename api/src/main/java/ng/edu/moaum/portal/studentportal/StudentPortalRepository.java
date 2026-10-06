@@ -321,7 +321,7 @@ class StudentPortalRepository {
     Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,
-                       (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
+                       (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
@@ -338,7 +338,7 @@ class StudentPortalRepository {
     List<Map<String, Object>> registrationHistory(UUID student) {
         return jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
-                       (SELECT json_agg(json_build_object('courseCode', c.code, 'title', c.title, 'units', e.units,
+                       (SELECT json_agg(json_build_object('courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
@@ -470,7 +470,7 @@ class StudentPortalRepository {
     List<Map<String, Object>> queries(UUID student) {
         return jdbc.sql("""
                 SELECT q.id, q.ref, q.part, q.said, q.routed_dept, d.name AS dept_name, q.raised_at, q.state, q.answer, q.answered_at,
-                       c.code AS course_code, c.title
+                       c.code AS course_code, coalesce(o.title, c.title) AS title
                   FROM assessment.result_query q
                   JOIN assessment.score_sheet sh ON sh.id = q.sheet_id JOIN catalogue.offering o ON o.id = sh.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code JOIN ref.department d ON d.code = q.routed_dept
@@ -481,13 +481,13 @@ class StudentPortalRepository {
     /** the published sheets whose query window is open, with the student's mark on them */
     List<Map<String, Object>> queryable(UUID student) {
         return jdbc.sql("""
-                SELECT sh.id AS sheet_id, c.code AS course_code, c.title, o.session, o.semester, sh.published_at,
+                SELECT sh.id AS sheet_id, c.code AS course_code, coalesce(o.title, c.title) AS title, o.session, o.semester, sh.published_at,
                        (sh.published_at + interval '7 days')::date AS window_until, ls.ca, ls.exam, ls.total, ls.grade, ls.outcome
                   FROM assessment.score s JOIN assessment.score_sheet sh ON sh.id = s.sheet_id
                   JOIN catalogue.offering o ON o.id = sh.offering_id JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(sh.id) x WHERE x.student_id = :s) ls ON true
                  WHERE s.student_id = :s AND assessment.query_window_open(sh.id)
-                 GROUP BY sh.id, c.code, c.title, o.session, o.semester, sh.published_at, ls.ca, ls.exam, ls.total, ls.grade, ls.outcome
+                 GROUP BY sh.id, c.code, coalesce(o.title, c.title), o.session, o.semester, sh.published_at, ls.ca, ls.exam, ls.total, ls.grade, ls.outcome
                  ORDER BY c.code
                 """).param("s", student).query().listOfRows();
     }

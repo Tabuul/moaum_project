@@ -268,6 +268,7 @@ class CatalogueController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
                 SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
+                       (SELECT r.ref FROM catalogue.course_reset r WHERE r.id = c.reset_batch_id) AS reset_ref,
                        (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id

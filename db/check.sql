@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 183
+\set EXPECTED 184
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4998,6 +4998,77 @@ BEGIN
         format('unpaid=%s note=%s returned=%s resub=%s twice=%s back=%s/%s final=%s check=%s/%s/%s/%s paid=%s/%s screening=%s admit=%s reason=%s cleared=%s student=%s ok=%s registered=%s kinds=%s',
                r_unpaid, r_note, st_returned, st_resub, r_twice, st_back, dept_cleared, st_final, c.valid, c.may_pay, c.may_check, c.status, c2.may_check, c2.status,
                scr_open, r_admit, r_reason, st_cleared, v_student IS NOT NULL, ok_student, registered, kinds));
+END $$;
+
+-- ── 184. V338: the course catalogue — an upload makes ONE course per code with an offering per programme (CORE or ELECTIVE for each) and writes nothing while a row is invalid; a reset archives a course history hangs on and removes the unused one, the registration, its offering and its title untouched; a re-upload brings the same course back; an owner change is kept ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); off uuid := gen_random_uuid();
+        v_id uuid; v_id2 uuid; msg text; r_invalid text; r_confirm text; r_owner text; n_courses int; n_offers int; basis_e text; r_res jsonb;
+        st_x text; reset_x boolean; n_y int; n_entry int; n_hist int; title_off text; title_res text; st_back text; n_owner int; owner_src text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKCATALOGUE', 'Officer');
+        INSERT INTO ref.department (code, name, faculty_code) VALUES ('ZZC338', 'CHECK CATALOGUE ONE', 'SC'), ('ZZD338', 'CHECK CATALOGUE TWO', 'SC');
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, category) VALUES
+          ('C93381', 'CHECK PROGRAMME ONE', 'ZZC338', 'SC', 180, 'UNDER GRADUATE'),
+          ('C93382', 'CHECK PROGRAMME TWO', 'ZZC338', 'SC', 180, 'UNDER GRADUATE'),
+          ('C93383', 'CHECK PROGRAMME THREE', 'ZZD338', 'SC', 180, 'UNDER GRADUATE');
+        -- an invalid row: nothing is written
+        BEGIN
+            PERFORM catalogue.import_catalogue(jsonb_build_array(
+                jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'offeringProgramme', 'C93381', 'offeringType', 'CORE'),
+                jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'offeringProgramme', 'C93382', 'offeringType', 'MAYBE')), true, 'check');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_invalid := split_part(msg, ':', 1);
+        END;
+        -- a valid file: one course, three offerings, an unused second course
+        r_res := catalogue.import_catalogue(jsonb_build_array(
+            jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'ownerProgramme', 'C93381', 'offeringProgramme', 'C93381', 'offeringType', 'CORE'),
+            jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'ownerProgramme', 'C93381', 'offeringProgramme', 'C93382', 'offeringType', 'ELECTIVE'),
+            jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'ownerProgramme', 'C93381', 'offeringProgramme', 'C93383', 'offeringType', 'CORE'),
+            jsonb_build_object('code', 'ZZY 338', 'title', 'Check Unused', 'units', '2', 'level', '200', 'semester', '2', 'ownerDepartment', 'ZZC338', 'offeringProgramme', 'C93381', 'offeringType', 'CORE', 'prerequisite', 'ZZX 338')), true, 'check');
+        SELECT count(*) INTO n_courses FROM catalogue.course WHERE code = 'ZZX 338';
+        SELECT count(*) INTO n_offers FROM catalogue.course_offer WHERE course_code = 'ZZX 338';
+        SELECT basis INTO basis_e FROM catalogue.course_offer WHERE course_code = 'ZZX 338' AND programme_code = 'C93382';
+        SELECT id INTO v_id FROM catalogue.course WHERE code = 'ZZX 338';
+        -- history on ZZX 338: a student registered on a session offering
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '2083/2084', '2083-10-01', '2084-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/83/833380', 'CHECKCATALOGUE', 'Student', 'C93381', 'UTME', '2083/2084', 100, 100, 'ADMITTED');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'ZZX 338', '2083/2084', 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (reg, st, '2083/2084', 1, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg, off, 3, 'CURRENT', 'APPROVED');
+        -- a corrected title reaches the course; the registered offering keeps its own
+        UPDATE catalogue.course SET title = 'Check Course Corrected' WHERE code = 'ZZX 338';
+        SELECT title INTO title_off FROM catalogue.offering WHERE id = off;
+        SELECT title INTO title_res FROM assessment.student_results(st) WHERE course_code = 'ZZX 338';
+        -- the reset: confirmed only by the typed words; history archived, the rest removed
+        BEGIN PERFORM catalogue.course_reset('DEPARTMENT', 'ZZC338', 'check reset', 'yes'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_confirm := split_part(msg, ':', 1); END;
+        PERFORM catalogue.course_reset('DEPARTMENT', 'ZZC338', 'check reset', 'RESET COURSES');
+        SELECT state, reset_batch_id IS NOT NULL INTO st_x, reset_x FROM catalogue.course WHERE code = 'ZZX 338';
+        SELECT count(*) INTO n_y FROM catalogue.course WHERE code = 'ZZY 338';
+        SELECT count(*) INTO n_entry FROM registration.entry WHERE offering_id = off;
+        SELECT count(*) INTO n_hist FROM catalogue.course_offer_history WHERE course_code = 'ZZX 338';
+        -- a re-upload brings the same course back
+        PERFORM catalogue.import_catalogue(jsonb_build_array(
+            jsonb_build_object('code', 'ZZX 338', 'title', 'Check Course Again', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', 'ZZC338', 'offeringProgramme', 'C93381', 'offeringType', 'CORE')), true, 'check again');
+        SELECT id, state INTO v_id2, st_back FROM catalogue.course WHERE code = 'ZZX 338';
+        -- the owner moves, kept with its reason; an owner programme of another department is refused
+        BEGIN PERFORM catalogue.change_owner('ZZX 338', 'ZZD338', 'C93381', 'wrong'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_owner := split_part(msg, ':', 1); END;
+        PERFORM catalogue.change_owner('ZZX 338', 'ZZD338', 'C93383', 'Taught by the second department');
+        SELECT count(*), max(source) INTO n_owner, owner_src FROM catalogue.course_owner_history WHERE course_id = v_id AND to_dept = 'ZZD338';
+        RAISE EXCEPTION 'the V338 catalogue check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The course catalogue: an invalid upload writes nothing; a valid one makes one course per code with an offering per programme, Core or Elective for each; a registered offering keeps its title through a correction; a reset needs its typed confirmation, archives the course history hangs on (its registration whole) and removes the unused one, every binding kept on history; a re-upload brings the same course back; an owner change needs a programme of the new department and is kept',
+        r_invalid = 'CAT_IMPORT_INVALID' AND n_courses = 1 AND n_offers = 3 AND basis_e = 'Elective'
+        AND title_off = 'Check Course' AND title_res = 'Check Course'
+        AND r_confirm = 'CAT_RESET_CONFIRM' AND st_x = 'ENDED' AND reset_x AND n_y = 0 AND n_entry = 1 AND n_hist = 3
+        AND v_id2 = v_id AND st_back = 'LIVE' AND r_owner = 'CAT_OWNER_PROGRAMME' AND n_owner = 1 AND owner_src = 'DESK',
+        format('invalid=%s courses=%s offers=%s elective=%s title=%s/%s confirm=%s x=%s/%s y=%s entry=%s hist=%s same=%s back=%s owner=%s/%s/%s',
+               r_invalid, n_courses, n_offers, basis_e, title_off, title_res, r_confirm, st_x, reset_x, n_y, n_entry, n_hist, v_id2 = v_id, st_back, r_owner, n_owner, owner_src));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

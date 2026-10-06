@@ -28,22 +28,27 @@ export interface Proposal {
 }
 
 export interface CourseDetail {
-  course: CourseHead & { ended_on: string | null; curriculum: string | null; ca_max: number | null; general_office: string | null; lecture_hours: number | null; practical_hours: number | null; industrial_training: boolean | null; faculty_code: string | null };
+  course: CourseHead & { ended_on: string | null; curriculum: string | null; ca_max: number | null; general_office: string | null; lecture_hours: number | null; practical_hours: number | null; industrial_training: boolean | null; faculty_code: string | null;
+    /** V338: the owner programme, the description, and the reset that archived the course */
+    owner_programme?: string | null; owner_programme_name?: string | null; description?: string | null; reset_ref?: string | null };
   offers: Offer[];
   departments: { code: string; name: string; faculty: string | null; programmes: number; owner: boolean }[];
   sessions: { id: string; session: string; semester: number; allocated_on: string | null; lecturer: string | null; second_examiner: string | null; co_lecturers: { name: string; programme_code: string | null; programme: string | null }[]; registered: number; sheet_stage: string | null }[];
   proposals: Proposal[];
   history: { programme_code: string; programme: string; dept: string | null; level: number; basis: string | null; track: string | null; added_at: string | null; source: string | null; ended_at: string; ended_by: string | null; ended_office: string | null; reason: string | null; registrations_carried: number }[];
   usage: Usage;
-  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string };
+  /** V338: what the course requires first, and every change of its owner */
+  prerequisites?: { code: string; title: string }[];
+  ownerHistory?: { from_dept: string | null; from_dept_name: string | null; to_dept: string | null; to_dept_name: string | null; from_programme: string | null; to_programme: string | null; to_programme_name: string | null; source: string | null; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
+  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean };
 }
 
 export interface Usage { registrations: number; scores: number; offerings: number; cbt_exams: number; questions: number; deferred: number; legacy: number }
 
 export interface CourseListRow {
   id: string; code: string; title: string; units: number; level: number; semester: number; kind: string; state: string; ended_on: string | null; curriculum: string | null; general_office: string | null;
-  dept_code: string | null; dept_name: string | null; faculty_name: string | null; programme_count: number;
-  programmes: { code: string; name: string; dept: string | null; level: number; basis: string }[]; last_session: string | null; pending: number;
+  dept_code: string | null; dept_name: string | null; faculty_name: string | null; programme_count: number; owner_programme?: string | null; owner_programme_name?: string | null;
+  programmes: { code: string; name: string; dept: string | null; deptName?: string | null; faculty?: string | null; level: number; basis: string }[]; last_session: string | null; pending: number;
 }
 export interface CourseList { total: number; page: number; size: number; rows: CourseListRow[]; scope: { dept: string; fac: string } }
 

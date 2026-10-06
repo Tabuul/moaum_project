@@ -14,7 +14,7 @@ import org.springframework.stereotype.Repository;
 class ResultsRepository {
 
     private static final String SHEET_SELECT = """
-            SELECT s.id, o.course_code, c.title AS course_title, c.units, c.ca_max, c.dept_code, d.name AS dept_name,
+            SELECT s.id, o.course_code, coalesce(o.title, c.title) AS course_title, coalesce(o.units, c.units) AS units, c.ca_max, c.dept_code, d.name AS dept_name,
                    d.faculty_code, f.name AS faculty_name, o.session, o.semester, s.stage, s.due_on, s.submitted_at,
                    s.returned_times, o.lecturer_id, coalesce(es.kind, 'MAIN') AS sitting,
                    CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
@@ -148,7 +148,7 @@ class ResultsRepository {
 
     List<ProgressRow> progress(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
         return jdbc.sql("""
-                SELECT s.id, o.course_code, c.title AS course_title, c.units, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
+                SELECT s.id, o.course_code, coalesce(o.title, c.title) AS course_title, coalesce(o.units, c.units) AS units, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
                        o.session, o.semester, coalesce(es.kind, 'MAIN') AS sitting, s.stage, s.due_on, s.returned_times, o.lecturer_id,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
                        cv.expected AS candidates, cv.received, cv.missing, cv.graded,
@@ -184,7 +184,7 @@ class ResultsRepository {
 
     List<NoSheetRow> offeringsWithoutSheet(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
         return jdbc.sql("""
-                SELECT o.id AS offering_id, o.course_code, c.title AS course_title, d.name AS dept_name,
+                SELECT o.id AS offering_id, o.course_code, coalesce(o.title, c.title) AS course_title, d.name AS dept_name,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
                        cand.n AS candidates, o.lecturer_id IS NULL AS no_lecturer
                   FROM catalogue.offering o
@@ -500,7 +500,7 @@ class ResultsRepository {
 
     List<MineRow> mine(UUID person, String session, Integer sem, boolean all) {
         return jdbc.sql("""
-                SELECT s.id, o.course_code, c.title AS course_title, c.units, o.session, o.semester, s.stage, s.due_on, s.returned_times,
+                SELECT s.id, o.course_code, coalesce(o.title, c.title) AS course_title, coalesce(o.units, c.units) AS units, o.session, o.semester, s.stage, s.due_on, s.returned_times,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')) AS candidates,
                        (SELECT count(*) FROM assessment.latest_scores(s.id)) AS entered,
@@ -557,7 +557,7 @@ class ResultsRepository {
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
-                       o.course_code, c.title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
+                       o.course_code, coalesce(o.title, c.title) AS title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
                        cf.sheet_id
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id

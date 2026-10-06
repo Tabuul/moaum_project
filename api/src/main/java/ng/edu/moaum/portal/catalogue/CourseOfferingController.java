@@ -189,9 +189,13 @@ class CourseOfferingController {
         var rows = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.level, c.semester, c.kind, c.state, c.ended_on, c.curriculum, c.general_office,
                        c.dept_code, d.name AS dept_name, f.name AS faculty_name,
+                       c.owner_programme, (SELECT p.name FROM ref.programme p WHERE p.code = c.owner_programme) AS owner_programme_name,
                        (SELECT count(*) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programme_count,
-                       coalesce((SELECT jsonb_agg(jsonb_build_object('code', co.programme_code, 'name', p.name, 'dept', p.dept_code, 'level', co.level, 'basis', co.basis) ORDER BY p.name, co.level)
-                                   FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('code', co.programme_code, 'name', p.name, 'dept', p.dept_code, 'deptName', pd.name, 'faculty', pf.name,
+                                                                     'level', co.level, 'basis', co.basis) ORDER BY p.name, co.level)
+                                   FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                   LEFT JOIN ref.department pd ON pd.code = p.dept_code LEFT JOIN ref.faculty pf ON pf.code = p.faculty_code
+                                  WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
                        (SELECT max(o.session) FROM catalogue.offering o WHERE o.course_code = c.code) AS last_session,
                        (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending
                 """ + where + " ORDER BY " + order + ("desc".equalsIgnoreCase(dir) ? " DESC" : " ASC") + ", c.code LIMIT :lim OFFSET :off");
@@ -219,8 +223,11 @@ class CourseOfferingController {
         String c = code(code);
         Map<String, Object> course = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max, c.general_office,
-                       c.lecture_hours, c.practical_hours, c.industrial_training, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name
+                       c.lecture_hours, c.practical_hours, c.industrial_training, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
+                       c.owner_programme, op.name AS owner_programme_name, c.description,
+                       (SELECT r.ref FROM catalogue.course_reset r WHERE r.id = c.reset_batch_id) AS reset_ref
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
+                  LEFT JOIN ref.programme op ON op.code = c.owner_programme
                  WHERE c.code = :c
                 """).param("c", c).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("course", code));
         String dept = (String) course.get("dept_code");
@@ -299,7 +306,22 @@ class CourseOfferingController {
         out.put("proposals", proposals);
         out.put("history", history);
         out.put("usage", usage);
-        out.put("may", Map.of("edit", authority.owns(dept), "offer", authority.owns(dept), "central", authority.central(), "actingDept", mine == null ? "" : mine));
+        // V338: what the course requires first, and every change of its owner
+        out.put("prerequisites", jdbc.sql("""
+                SELECT q.requires_code AS code, c.title FROM catalogue.course_prerequisite q JOIN catalogue.course c ON c.code = q.requires_code
+                 WHERE q.course_code = :c ORDER BY q.requires_code
+                """).param("c", c).query().listOfRows());
+        out.put("ownerHistory", jdbc.sql("""
+                SELECT h.from_dept, fd.name AS from_dept_name, h.to_dept, td.name AS to_dept_name, h.from_programme, h.to_programme,
+                       tp.name AS to_programme_name, h.source, h.reason, h.changed_at, h.changed_office, helpdesk.person_name(h.changed_by) AS changed_by
+                  FROM catalogue.course_owner_history h
+                  LEFT JOIN ref.department fd ON fd.code = h.from_dept LEFT JOIN ref.department td ON td.code = h.to_dept
+                  LEFT JOIN ref.programme tp ON tp.code = h.to_programme
+                 WHERE h.course_id = (SELECT id FROM catalogue.course WHERE code = :c) ORDER BY h.changed_at DESC LIMIT 40
+                """).param("c", c).query().listOfRows());
+        String office = ng.edu.moaum.portal.shared.AuditContextHolder.current().map(ng.edu.moaum.portal.shared.AuditContext::actorOffice).orElse("");
+        out.put("may", Map.of("edit", authority.owns(dept), "offer", authority.owns(dept), "central", authority.central(), "actingDept", mine == null ? "" : mine,
+                "changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office)));
         return out;
     }
 
