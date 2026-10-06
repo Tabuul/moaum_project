@@ -76,7 +76,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
     const made = await post("/api/bff/api/v1/results/exam-sessions", { ...f, semester: Number(f.semester) }, `Examination session ${f.session} semester ${f.semester} ${open ? "opened" : "saved as a draft"}`, "create");
     if (made && open && made.id) {
       const r = await post(`/api/bff/api/v1/results/exam-sessions/${made.id}/open`, {}, `Examination session opened`, "open");
-      if (r) setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer and generated none.`);
+      if (r) setSaid(`The session is open. Release the examination cards to students and the score sheets to lecturers below when you decide; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`);
     }
   }
 
@@ -113,7 +113,10 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
             <Field id="es-e" label="Examinations end"><input id="es-e" className="ctl" type="date" value={f.examsTo} onChange={(e) => setF({ ...f, examsTo: e.target.value })} /></Field>
             <Field id="es-d" label="Score sheets due"><input id="es-d" className="ctl" type="date" value={f.sheetsDue} onChange={(e) => setF({ ...f, sheetsDue: e.target.value })} /></Field>
           </div>
-          <Note kind="info" title="Opening a session generates every score sheet at once">
+          <Note kind="info" title="Opening a session releases nothing by itself">
+            Open sets the session up for the Examinations Office to timetable its papers. The examination cards reach students only when you press <b>Release examination cards</b>, and the score sheets reach lecturers only when you press <b>Release score sheets</b> — each on its own row below, whatever the dates say.
+          </Note>
+          <Note kind="info" title="Releasing the score sheets generates every sheet at once">
             One sheet per course offered, over the approved register at the moment of opening, in the name of the lecturer the department allocated. A course with no allocated lecturer generates no sheet — and is counted the moment the session opens, which is where an unallocated course is found before December rather than in it.
           </Note>
           <div className="row">
@@ -131,7 +134,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
       {list.length ? (
         <Panel title="Examination sessions" right={`${list.length} on record`}>
           <DTable
-            cols={["Session|mid", "Semester|mid", "Type|mid", "Examinations|mid", "Sheets due|mid", "Sheets|mid", "Outstanding|mid", "State|mid", "|num"]}
+            cols={["Session|mid", "Semester|mid", "Type|mid", "Examinations|mid", "Sheets due|mid", "Sheets|mid", "Outstanding|mid", "State|mid", "Examination cards|mid", "Score sheets|mid", "|num"]}
             rows={list.map((e) => [
               <b className="tnum" key="s">{e.session}</b>, <span className="tnum" key="m">{e.semester === 1 ? "First" : e.semester === 2 ? "Second" : "Third"}</span>,
               <span className="sub2" key="k">{e.kind === "MAIN" ? "Main" : e.kind === "RESIT" ? "Re-sit" : "Special"}</span>,
@@ -139,9 +142,18 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
               <span className="tnum" key="d">{day(e.sheetsDue)}</span>, <span className="tnum" key="n">{e.sheets}</span>,
               <span className={`tnum${e.outstanding ? " ink-red b700" : ""}`} key="o">{e.outstanding}</span>,
               e.state === "OPEN" ? <Pil kind="ok" key="st">Open</Pil> : e.state === "DRAFT" ? <Pil kind="info" key="st">Draft</Pil> : <Pil kind="grey" key="st">Closed</Pil>,
+              <span key="cards" className="row row--inline row--tight">
+                {e.cardsReleasedAt ? <Pil kind="ok">Released {day(e.cardsReleasedAt, false)}</Pil> : <Pil kind="grey">Not released</Pil>}
+                {canEdit && e.state === "OPEN" && !e.cardsReleasedAt ? <Btn kind="primary" size="sm" disabled={busy !== null} onClick={() => { if (window.confirm(`Release the examination cards for ${e.session} ${e.semester === 1 ? "first" : e.semester === 2 ? "second" : "third"} semester? Students see their papers at once, and a student the Bursary has cleared can download the card.`)) void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/release-cards`, {}, "Examination cards released", `cards-${e.id}`).then((r) => { if (r) { setSaid("The examination cards are released: students see their papers, and a cleared student can download the card."); router.refresh(); } }); }}>Release examination cards</Btn> : null}
+                {canEdit && e.cardsReleasedAt ? <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { if (window.confirm("Withdraw the examination cards? Students stop seeing their papers and cannot download the card until you release them again.")) void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/withdraw-cards`, {}, "Examination cards withdrawn", `cards-${e.id}`).then((r) => { if (r) { setSaid("The examination cards are withdrawn."); router.refresh(); } }); }}>Withdraw</Btn> : null}
+              </span>,
+              <span key="sheets" className="row row--inline row--tight">
+                {e.sheetsReleasedAt ? <Pil kind="ok">Released {day(e.sheetsReleasedAt, false)}</Pil> : <Pil kind="grey">Not released</Pil>}
+                {canEdit && e.state === "OPEN" && !e.sheetsReleasedAt ? <Btn kind="primary" size="sm" disabled={busy !== null} onClick={() => { if (window.confirm(`Release the score sheets for ${e.session} ${e.semester === 1 ? "first" : e.semester === 2 ? "second" : "third"} semester to the lecturers? One sheet is made for every course with a lecturer, and lecturers can enter marks at once. This is not undone.`)) void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/release-sheets`, {}, "Score sheets released", `sheets-${e.id}`).then((r) => { if (r) { setSaid(`${r.sheetsMade} score sheets released to the lecturers; ${r.offeringsWithoutLecturer} courses have no lecturer and get their sheet when one is allocated.`); router.refresh(); } }); }}>Release score sheets</Btn> : null}
+              </span>,
               <span key="a" className="row row--inline row--tight row--right">
                 {canEdit && e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
-                {e.state === "DRAFT" ? (canEdit ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : null) : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
+                {e.state === "DRAFT" ? (canEdit ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => { if (r) { setSaid(`The session is open. Release the examination cards and the score sheets on its row when you decide; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`); router.refresh(); } })}>Open</Btn> : null) : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
               </span>,
             ])}
           />

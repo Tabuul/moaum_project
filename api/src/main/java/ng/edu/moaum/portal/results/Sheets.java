@@ -120,7 +120,7 @@ public final class Sheets {
 
     public record ExamSession(UUID id, String session, int semester, String kind, LocalDate examsFrom, LocalDate examsTo,
                               LocalDate sheetsDue, String state, OffsetDateTime openedAt, long sheets, long candidates,
-                              long outstanding) {
+                              long outstanding, OffsetDateTime cardsReleasedAt, OffsetDateTime sheetsReleasedAt) {
     }
 
     public record FacultyProgress(String facultyCode, String facultyName, long expected, long submitted, long verified,

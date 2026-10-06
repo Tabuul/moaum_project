@@ -162,6 +162,9 @@ export interface ExamSession {
   sheets: number;
   candidates: number;
   outstanding: number;
+  /** V335: when Portal Management released the examination cards to students, and the score sheets to lecturers */
+  cardsReleasedAt?: string | null;
+  sheetsReleasedAt?: string | null;
 }
 
 export interface Monitor {

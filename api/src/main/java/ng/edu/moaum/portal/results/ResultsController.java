@@ -226,6 +226,27 @@ class ResultsController {
         return service.open(id);
     }
 
+    /** V335: release the score sheets to the lecturers (once) */
+    @PostMapping("/exam-sessions/{id}/release-sheets")
+    @PreAuthorize(EXAM_SESSIONS)
+    Map<String, Object> releaseSheets(@PathVariable UUID id) {
+        return service.releaseSheets(id);
+    }
+
+    /** V335: release the examination cards to the students */
+    @PostMapping("/exam-sessions/{id}/release-cards")
+    @PreAuthorize(EXAM_SESSIONS)
+    Map<String, Object> releaseCards(@PathVariable UUID id) {
+        return service.releaseCards(id, true);
+    }
+
+    /** V335: withdraw the examination cards (released in error) */
+    @PostMapping("/exam-sessions/{id}/withdraw-cards")
+    @PreAuthorize(EXAM_SESSIONS)
+    Map<String, Object> withdrawCards(@PathVariable UUID id) {
+        return service.releaseCards(id, false);
+    }
+
     @GetMapping("/exam-sessions/{id}/monitor")
     @PreAuthorize(READERS)
     Sheets.Monitor monitor(@PathVariable UUID id) {

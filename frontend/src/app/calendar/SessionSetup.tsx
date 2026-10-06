@@ -362,8 +362,8 @@ export function SessionSetup({
         right={<LinkBtn href="/examinations/sessions" kind="primary">Examination Sessions</LinkBtn>}
       >
         <PBody><div className="sub2">
-          Setting the examination dates above is <b>not</b> the same as opening the examination session. Until the
-          Director of ICT opens it, students see &ldquo;No examination session is open&rdquo; and no papers appear.
+          Setting the examination dates above releases nothing. The Director of ICT opens the examination session, then
+          releases the examination cards to students and the score sheets to lecturers, each by its own button.
           To open it:
           <ol className="m-0 mt-2" style={{ paddingLeft: "var(--s-4)" }}>
             <li>Act as the <b>Director of ICT</b>.</li>
@@ -371,8 +371,8 @@ export function SessionSetup({
             <li>
               Under <b>Create an examination session</b>, pick the session and semester, fill the exam dates and the
               score-sheets-due date, then click <b>Open the session</b> &mdash; or click <b>Open</b> next to one you saved as a
-              draft. Opening it generates every score sheet at once and reveals the papers to students over their approved
-              registration.
+              draft. Then, on the session&rsquo;s row, press <b>Release examination cards</b> when students should see their
+              papers and cards, and <b>Release score sheets</b> when lecturers should enter marks.
             </li>
           </ol>
         </div></PBody>

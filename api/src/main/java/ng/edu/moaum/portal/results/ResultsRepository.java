@@ -409,7 +409,8 @@ class ResultsRepository {
                           JOIN registration.entry en ON en.offering_id = s.offering_id AND en.status = 'APPROVED'
                           JOIN registration.course_registration r ON r.id = en.registration_id
                          WHERE s.exam_session_id = e.id) AS candidates,
-                       (SELECT count(*) FROM assessment.score_sheet s WHERE s.exam_session_id = e.id AND s.stage = 'ENTRY') AS outstanding
+                       (SELECT count(*) FROM assessment.score_sheet s WHERE s.exam_session_id = e.id AND s.stage = 'ENTRY') AS outstanding,
+                       e.cards_released_at, e.sheets_released_at
                   FROM assessment.exam_session e
                  WHERE (:session::text IS NULL OR e.session = :session)
                  ORDER BY e.session DESC, e.semester DESC, e.kind
@@ -456,6 +457,18 @@ class ResultsRepository {
     Opened open(UUID id) {
         return jdbc.sql("SELECT sheets_made, offerings_without_lecturer FROM assessment.open_exam_session(:id)")
                 .param("id", id).query(Opened.class).single();
+    }
+
+    /** V335: the score sheets released to the lecturers — made now, over the offerings with a lecturer */
+    Opened releaseSheets(UUID id) {
+        return jdbc.sql("SELECT sheets_made, offerings_without_lecturer FROM assessment.release_exam_sheets(:id)")
+                .param("id", id).query(Opened.class).single();
+    }
+
+    /** V335: the examination cards released to the students, or withdrawn */
+    java.time.OffsetDateTime releaseCards(UUID id, boolean release) {
+        return jdbc.sql("SELECT assessment.release_exam_cards(:id, :r)").param("id", id).param("r", release)
+                .query(java.time.OffsetDateTime.class).optional().orElse(null);
     }
 
     List<Sheets.FacultyProgress> progress(UUID examSessionId) {

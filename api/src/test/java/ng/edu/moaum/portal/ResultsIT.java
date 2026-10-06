@@ -105,6 +105,9 @@ class ResultsIT {
         if (exam.getStatusCode().value() == 200) {
             ResponseEntity<Map> opened = it.call(ict, HttpMethod.POST, "/api/v1/results/exam-sessions/" + exam.getBody().get("id") + "/open", null);
             assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
+            // V335: opening releases nothing; the score sheets are released to the lecturers by their own act
+            ResponseEntity<Map> released = it.call(ict, HttpMethod.POST, "/api/v1/results/exam-sessions/" + exam.getBody().get("id") + "/release-sheets", null);
+            assertThat(released.getStatusCode().value()).as(String.valueOf(released.getBody())).isEqualTo(200);
         }
         ResponseEntity<Map> listing = it.get(academic, "/api/v1/results/sheets?course=ZZR 301&session=2094/2095&sem=1");
         List<Map<String, Object>> sheets = (List<Map<String, Object>>) listing.getBody().get("sheets");

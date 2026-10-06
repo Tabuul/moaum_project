@@ -666,6 +666,26 @@ public class ResultsService {
         return Map.of("id", id, "sheetsMade", o.sheetsMade(), "offeringsWithoutLecturer", o.offeringsWithoutLecturer());
     }
 
+    /** V335: Portal Management releases the score sheets to the lecturers — the sheets are made now */
+    @org.springframework.transaction.annotation.Transactional
+    public Map<String, Object> releaseSheets(UUID id) {
+        repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
+        ResultsRepository.Opened o = repo.releaseSheets(id);
+        return Map.of("id", id, "sheetsMade", o.sheetsMade(), "offeringsWithoutLecturer", o.offeringsWithoutLecturer());
+    }
+
+    /** V335: Portal Management releases the examination cards to the students, or withdraws them */
+    @org.springframework.transaction.annotation.Transactional
+    public Map<String, Object> releaseCards(UUID id, boolean release) {
+        repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
+        java.time.OffsetDateTime at = repo.releaseCards(id, release);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", id);
+        out.put("released", at != null);
+        out.put("cardsReleasedAt", at);
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public Sheets.Monitor monitor(UUID id) {
         Sheets.ExamSession e = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));

@@ -497,7 +497,7 @@ class StudentPortalRepository {
     }
 
     List<Map<String, Object>> examSessions(String session) {
-        return jdbc.sql("SELECT id, session, semester, kind, exams_from, exams_to, state FROM assessment.exam_session WHERE session = :s AND state <> 'DRAFT' ORDER BY semester, kind")
+        return jdbc.sql("SELECT id, session, semester, kind, exams_from, exams_to, state FROM assessment.exam_session WHERE session = :s AND state <> 'DRAFT' AND cards_released_at IS NOT NULL ORDER BY semester, kind")
                 .param("s", session).query().listOfRows();
     }
 
