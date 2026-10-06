@@ -145,23 +145,11 @@ class FinancialAnalyticsIT {
         assertThat(((Number) ((Map<String, Object>) chs.get("totals")).get("revenue")).doubleValue()).isEqualTo(150000.0);
         assertThat(((Number) ((Map<String, Object>) summary(ItSupport.token("provost"), "session=" + SESSION + "&q=" + tag + "&fac=" + science).get("totals")).get("revenue")).doubleValue()).isEqualTo(0.0);
         assertThat(((Number) ((Map<String, Object>) summary(ItSupport.token("pgschool"), "session=" + SESSION + "&q=" + tag).get("totals")).get("revenue")).doubleValue()).isEqualTo(0.0);
-        // a Head of Department is held to their department: the two mathematics payers, never the College's
-        UUID head = it.person("ZZFA-HOD", "ZZFAHEAD");
-        it.db(() -> jdbc.sql("""
-                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
-                SELECT gen_random_uuid(), :p, 'hod', 'department', 'MTC', 'integration test', :p, current_date
-                 WHERE NOT EXISTS (SELECT 1 FROM iam.office_assignment x WHERE x.person_id = :p AND x.office_code = 'hod' AND x.valid_to IS NULL)
-                """).param("p", head).update());
-        String hod = TestTokens.token(head, List.of("hod"));
-        Map<String, Object> dept = summary(hod, "session=" + SESSION + "&q=" + tag + "&prog=C00061");
-        assertThat(((Map<String, Object>) dept.get("scope")).get("kind")).isEqualTo("DEPARTMENT");
-        assertThat(((Number) ((Map<String, Object>) dept.get("totals")).get("revenue")).doubleValue()).isEqualTo(0.0);
-        assertThat(((Number) ((Map<String, Object>) summary(hod, "session=" + SESSION + "&q=" + tag).get("totals")).get("revenue")).doubleValue()).isEqualTo(207000.0);
-        assertThat(((Number) it.get(hod, "/api/v1/analytics/finance/transactions?session=" + SESSION + "&q=" + tag).getBody().get("total")).intValue()).isEqualTo(5);
-        // the Academic Office reads the summary, not the transactions; a lecturer reads neither
-        ResponseEntity<Map> acad = it.get(ItSupport.token("academic"), "/api/v1/analytics/finance/summary?session=" + SESSION + "&q=" + tag);
-        assertThat(acad.getStatusCode().value()).isEqualTo(200);
-        assertThat(((Map<String, Object>) acad.getBody().get("scope")).get("transactions")).isEqualTo(false);
+        // the Head of Department and the Academic Office no longer read the finance figures at all (Oct 2026); a lecturer never did
+        String hod = it.officer("hod", "department", "MTC");
+        assertThat(it.get(hod, "/api/v1/analytics/finance/summary?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(hod, "/api/v1/analytics/finance/transactions?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(ItSupport.token("academic"), "/api/v1/analytics/finance/summary?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(ItSupport.token("academic"), "/api/v1/analytics/finance/transactions?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/analytics/finance/summary").getStatusCode().value()).isEqualTo(403);
         // a malformed date is refused, not swallowed

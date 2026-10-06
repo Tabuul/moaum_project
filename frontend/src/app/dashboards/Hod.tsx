@@ -4,9 +4,10 @@ import Link from "next/link";
 import { ScopeNotice } from "@/components/ScopeNotice";
 import type { OfficeScopeState } from "@/lib/office-scope";
 import type { Me } from "@/components/proto/Shell";
+import type { Problem } from "@/lib/api";
+import { ProblemNotice } from "@/components/ProblemNotice";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { StatsPanel } from "@/components/stats/StatsPanel";
-import { FinancePanel } from "@/components/stats/FinancePanel";
 import { DTable } from "@/components/proto/DTable";
 import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
@@ -35,20 +36,55 @@ export interface HodHome {
   probation?: number;
   carryoverStudents?: number;
   lecturers?: { name: string; courses: number; candidates: number }[];
-  feesCleared?: number;
-  feesOwing?: number;
+  feesCleared?: number | null;
+  feesOwing?: number | null;
+  /** the figures that could not be read, with the database's reason; the rest of the dashboard stands */
+  unavailable?: Record<string, string>;
 }
 
-export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = null, scope = null }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[]; pipeline?: PipelineView | null; scope?: OfficeScopeState | null }) {
-  if (!home || !home.resolved) {
-    /* V325: the scope state says exactly why — what the grant holds and what is wrong with it */
-    return scope && !scope.resolved ? <ScopeNotice scope={scope} /> : (
+const FIGURE: Record<string, string> = {
+  approvals: "registrations to approve", openQueries: "result queries", offeringsNeedLecturer: "courses without a lecturer", offeringsTotal: "courses offered",
+  deptStudents: "students", deptCourses: "courses in the catalogue", sheetsPending: "result sheets in progress", siwesUnsupervised: "SIWES supervision",
+  needLecturer: "the courses still needing a lecturer", pipeline: "the result pipeline", atRisk: "at-risk students", probation: "students on probation",
+  carryoverStudents: "students carrying a course", lecturers: "lecturers and teaching load", feesCleared: "fees cleared and owing", tracks: "students by curriculum track",
+};
+
+export function HodDashboard({ me, home, homeProblem = null, requestsOpen, history = [], pipeline = null, scope = null }: { me: Me | null; home: HodHome | null; homeProblem?: Problem | null; requestsOpen: number | null; history?: AllocationRow[]; pipeline?: PipelineView | null; scope?: OfficeScopeState | null }) {
+  /* the scope is the cause only when the scope says so, or the server says the office resolved to no department */
+  if (scope && !scope.resolved) return <ScopeNotice scope={scope} />;
+  if (home && !home.resolved) {
+    return (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
         The dashboard is scoped to your department, and the portal cannot tell which one this office holds. Ask the
         Registry to set the department on your Head-of-Department assignment, then this fills in.
       </Note>
     );
   }
+  if (!home) {
+    /* the department is known; the dashboard's figures could not be read — say what went wrong, and keep the desks open */
+    return (
+      <>
+        <Note kind="bad" title="The department's figures could not be read just now">
+          Your office is tied to {scope?.name ?? scope?.code ?? "your department"} and every department desk works as usual; only this
+          dashboard&rsquo;s summary did not load. Reload the page; if it persists, send the reference below to the Directorate of ICT.
+        </Note>
+        {homeProblem ? <ProblemNotice problem={homeProblem} /> : null}
+        <Panel title="Your department desks" right="Everything scoped to your department">
+          <PBody><div className="row">
+            <LinkBtn kind="ghost" href="/results/approvals">Registration approvals</LinkBtn>
+            <LinkBtn kind="ghost" href="/allocate">Teaching allocation</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/broadsheet">Broadsheet</LinkBtn>
+            <LinkBtn kind="ghost" href="/catalogue">Department courses</LinkBtn>
+            <LinkBtn kind="ghost" href="/siwes">SIWES supervision</LinkBtn>
+            <LinkBtn kind="ghost" href="/students">Students</LinkBtn>
+            <LinkBtn kind="ghost" href="/clearance">Clearance</LinkBtn>
+          </div></PBody>
+        </Panel>
+      </>
+    );
+  }
+  const missing = Object.entries(home.unavailable ?? {});
   const approvals = home.approvals ?? 0;
   const needLect = home.offeringsNeedLecturer ?? 0;
   const allocated = (home.offeringsTotal ?? 0) - needLect;
@@ -57,14 +93,20 @@ export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = 
   const pipe = home.pipeline ?? { entry: 0, workflow: 0, senate: 0, published: 0 };
   const atRisk = home.atRisk ?? [];
   const lecturers = home.lecturers ?? [];
+  const feesKnown = home.feesCleared != null && home.feesOwing != null;
   const feesCleared = home.feesCleared ?? 0;
   const feesOwing = home.feesOwing ?? 0;
   const carryovers = home.carryoverStudents ?? 0;
   return (
     <>
       <ScopeNotice scope={scope} />
+      {missing.length ? (
+        <Note kind="info" title={`${missing.length === 1 ? "One figure" : `${missing.length} figures`} could not be read`}>
+          {missing.map(([k, why]) => <div key={k}><b>{FIGURE[k] ?? k}</b>: {why}</div>)}
+          <div className="mt-1">The rest of the dashboard is current. A figure that depends on the clearance scheme reads once the Bursary has a scheme in force for the session.</div>
+        </Note>
+      ) : null}
       <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
-      <FinancePanel />
       {approvals ? (
         <Note kind="bad" title={`${approvals} course registration${approvals === 1 ? "" : "s"} waiting for your approval`}
           action={<LinkBtn kind="urgent" href="/results/approvals">Open approvals</LinkBtn>}>
@@ -97,9 +139,9 @@ export function HodDashboard({ me, home, requestsOpen, history = [], pipeline = 
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
         ["Cleared for registration",
-          <FeeCount key="c" which="cleared" count={feesCleared} session={home.session ?? ""} deptName={home.deptName ?? ""} />,
+          !feesKnown ? "—" : <FeeCount key="c" which="cleared" count={feesCleared} session={home.session ?? ""} deptName={home.deptName ?? ""} />,
           feesOwing ? "var(--chrome)" : "var(--green-ink)",
-          <span key="o" style={{ display: "block" }}>
+          !feesKnown ? <span key="o" className="sub2">Not read: {home.unavailable?.feesCleared ?? "the clearance scheme did not answer"}</span> : <span key="o" style={{ display: "block" }}>
             <FeeCount which="owing" count={feesOwing} session={home.session ?? ""} deptName={home.deptName ?? ""} size={22} colour={feesOwing ? "var(--red-ink)" : "var(--green-ink)"} />
             <span style={{ display: "block", marginTop: 2 }}>still owing for {home.session} · press either figure to download its list</span>
           </span>],

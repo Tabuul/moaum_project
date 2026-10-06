@@ -1,7 +1,10 @@
 package ng.edu.moaum.portal.hod;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import ng.edu.moaum.portal.shared.OfficeScope;
 
@@ -31,11 +34,31 @@ class HodController {
         this.scope = scope;
     }
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(HodController.class);
+
+    /** a figure read on its own: where it cannot be read (a clearance scheme not in force, a function the database lacks)
+     *  it is named with the database's reason and the rest of the dashboard stands. Each read is its own statement outside
+     *  a transaction, so one refusal does not abort the reads after it. */
+    private static <T> T part(Map<String, Object> out, Map<String, String> unavailable, String key, Supplier<T> read) {
+        try {
+            T v = read.get();
+            out.put(key, v);
+            return v;
+        } catch (org.springframework.dao.DataAccessException e) {
+            Throwable c = e.getMostSpecificCause() == null ? e : e.getMostSpecificCause();
+            String why = String.valueOf(c.getMessage()).split("\n")[0].replaceFirst("^ERROR:\s*", "");
+            unavailable.put(key, why.length() > 240 ? why.substring(0, 240) : why);
+            LOG.warn("HOD dashboard: {} could not be read: {}", key, why);
+            out.put(key, null);
+            return null;
+        }
+    }
+
     @GetMapping("/dashboard")
     @PreAuthorize("hasAuthority('OFFICE_hod')")
-    @Transactional(readOnly = true)
     Map<String, Object> dashboard(@RequestParam(required = false) String session) {
         Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> unavailable = new LinkedHashMap<>();
         String dept = scope.actingDept();
         if (dept == null || dept.isBlank() || "__none__".equals(dept)) {
             out.put("resolved", false);
@@ -48,42 +71,42 @@ class HodController {
                 : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
         out.put("session", s);
 
-        out.put("approvals", jdbc.sql("""
+        part(out, unavailable, "approvals", () -> jdbc.sql("""
                 SELECT count(*) FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id
                   JOIN ref.programme p ON p.code = st.programme_code
                  WHERE r.session = :s AND r.status = 'SUBMITTED' AND p.dept_code = :d
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
-        out.put("openQueries", jdbc.sql("SELECT count(*) FROM assessment.result_query WHERE routed_dept = :d AND state = 'RAISED'")
+        part(out, unavailable, "openQueries", () -> jdbc.sql("SELECT count(*) FROM assessment.result_query WHERE routed_dept = :d AND state = 'RAISED'")
                 .param("d", dept).query(Long.class).single());
 
-        out.put("offeringsNeedLecturer", jdbc.sql("""
+        part(out, unavailable, "offeringsNeedLecturer", () -> jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                  WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
-        out.put("offeringsTotal", jdbc.sql("""
+        part(out, unavailable, "offeringsTotal", () -> jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                  WHERE o.session = :s AND c.dept_code = :d
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
-        out.put("deptStudents", jdbc.sql("""
+        part(out, unavailable, "deptStudents", () -> jdbc.sql("""
                 SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE', 'PROBATION')
                 """).param("d", dept).query(Long.class).single());
 
-        out.put("deptCourses", jdbc.sql("SELECT count(*) FROM catalogue.course WHERE dept_code = :d AND state <> 'ENDED'")
+        part(out, unavailable, "deptCourses", () -> jdbc.sql("SELECT count(*) FROM catalogue.course WHERE dept_code = :d AND state <> 'ENDED'")
                 .param("d", dept).query(Long.class).single());
 
-        out.put("sheetsPending", jdbc.sql("""
+        part(out, unavailable, "sheetsPending", () -> jdbc.sql("""
                 SELECT count(*) FROM assessment.score_sheet ss
                   JOIN catalogue.offering o ON o.id = ss.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
                  WHERE o.session = :s AND c.dept_code = :d AND ss.stage <> 'PUBLISHED'
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
-        out.put("siwesUnsupervised", jdbc.sql("""
+        part(out, unavailable, "siwesUnsupervised", () -> jdbc.sql("""
                 SELECT count(*) FROM (
                     SELECT e.offering_id, r.student_id
                       FROM registration.entry e
@@ -97,7 +120,7 @@ class HodController {
                  WHERE sv.supervisor_id IS NULL
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
-        out.put("needLecturer", jdbc.sql("""
+        part(out, unavailable, "needLecturer", () -> jdbc.sql("""
                 SELECT c.code, c.title, c.level, o.semester
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                  WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL
@@ -105,7 +128,7 @@ class HodController {
                 """).param("s", s).param("d", dept).query().listOfRows());
 
         // the result-sheet pipeline, so the HOD sees where sheets are stuck (all sittings)
-        out.put("pipeline", jdbc.sql("""
+        part(out, unavailable, "pipeline", () -> jdbc.sql("""
                 SELECT count(*) FILTER (WHERE ss.stage = 'ENTRY') AS entry,
                        count(*) FILTER (WHERE ss.stage IN
                            ('VERIFICATION','DEPT_BOARD','FACULTY_SCRUTINY','FACULTY_COMPILATION','FACULTY_BOARD','RECORDS')) AS workflow,
@@ -118,25 +141,25 @@ class HodController {
                 """).param("s", s).param("d", dept).query().singleRow());
 
         // at-risk: students on probation, and a count of those carrying a failed course into this session
-        out.put("atRisk", jdbc.sql("""
+        part(out, unavailable, "atRisk", () -> jdbc.sql("""
                 SELECT st.surname || ', ' || st.other_names AS name, coalesce(st.matric_no, st.admission_no) AS number,
                        st.current_level AS level, st.status
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status = 'PROBATION'
                  ORDER BY st.current_level, st.surname LIMIT 12
                 """).param("d", dept).query().listOfRows());
-        out.put("probation", jdbc.sql("""
+        part(out, unavailable, "probation", () -> jdbc.sql("""
                 SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status = 'PROBATION'
                 """).param("d", dept).query(Long.class).single());
-        out.put("carryoverStudents", jdbc.sql("""
+        part(out, unavailable, "carryoverStudents", () -> jdbc.sql("""
                 SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
                    AND EXISTS (SELECT 1 FROM registration.carryovers(st.id))
                 """).param("d", dept).query(Long.class).single());
 
         // the department's lecturers and their teaching load this session
-        out.put("lecturers", jdbc.sql("""
+        part(out, unavailable, "lecturers", () -> jdbc.sql("""
                 SELECT pr.surname || ', ' || pr.given_names AS name,
                        count(DISTINCT o.id) AS courses,
                        count(*) FILTER (WHERE e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')) AS candidates
@@ -151,19 +174,22 @@ class HodController {
                 """).param("s", s).param("d", dept).query().listOfRows());
 
         // fees: how many of the department's students are cleared for registration this session, and how many owe
-        Map<String, Object> fees = jdbc.sql("""
+        Map<String, Object> fees = part(out, unavailable, "fees", () -> jdbc.sql("""
                 SELECT count(*) FILTER (WHERE cl.clears) AS cleared,
                        count(*) FILTER (WHERE NOT cl.clears) AS owing
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                   JOIN finance.session_clears(:s, 'REGISTRATION') cl ON cl.student_id = st.id
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
-                """).param("s", s).param("d", dept).query().singleRow();
-        out.put("feesCleared", fees.get("cleared"));
-        out.put("feesOwing", fees.get("owing"));
+                """).param("s", s).param("d", dept).query().singleRow());
+        out.remove("fees");
+        out.put("feesCleared", fees == null ? null : fees.get("cleared"));
+        out.put("feesOwing", fees == null ? null : fees.get("owing"));
+        if (fees == null) unavailable.put("feesCleared", unavailable.remove("fees"));
 
         // the department's students by curriculum track, with each track's expected end (V235)
-        out.put("tracks", jdbc.sql("SELECT * FROM policy.track_census(:d)").param("d", dept).query().listOfRows());
+        part(out, unavailable, "tracks", () -> jdbc.sql("SELECT * FROM policy.track_census(:d)").param("d", dept).query().listOfRows());
 
+        out.put("unavailable", unavailable);
         return out;
     }
 

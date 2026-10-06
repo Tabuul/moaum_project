@@ -134,7 +134,7 @@ export default async function DashboardPage() {
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} semester={teaching && teaching.ok ? teaching.data.openSemester ?? null : null} history={allocHistory && allocHistory.ok ? allocHistory.data : []} notices={myNotices && myNotices.ok ? myNotices.data : []} />
       ) : office === "hod" ? (
-        <HodDashboard scope={scope} me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
+        <HodDashboard scope={scope} me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} homeProblem={hodHome && !hodHome.ok ? hodHome.problem : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} pipeline={pipeline && pipeline.ok ? pipeline.data : null} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
