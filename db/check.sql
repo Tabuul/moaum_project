@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 188
+\set EXPECTED 189
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5323,6 +5323,52 @@ BEGIN
         format('noissue=%s code=%s same=%s ok=%s reason=%s defer=%s pending=%s note=%s subjects=%s after=%s/%s revoked=%s due=%s sent=%s same_day=%s later=%s off=%s',
                r_noissue, code_ok, ack = ack_again, v_ok->>'current', r_reason, r_defer, r_pending, r_note, subj_after, v_after->>'genuine', v_after->>'current',
                v_rev->>'revoked', due1, sent, due_same, due_later, due_off));
+END $$;
+
+-- ── 189. V344: JUPEB attendance minimum — with no minimum nobody is below it or warned; with one, a subject under it is below (warned once enough classes are counted), one above it within the band is at risk; the warning names the subject and its rate, and the office's warning reaches it even when another reminder comes first ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc uuid; app uuid; ses text := jupeb.current_session(); comb uuid; bio uuid; chm uuid; rg uuid; k int;
+        none_flag int; none_due int; bio_v text; bio_w boolean; chm_r boolean; chm_v text; words text; warned jsonb; few boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'ZZCHECK', 'Attendance');
+        comb := (SELECT id FROM jupeb.combination WHERE code = 'SC-031');
+        bio := (SELECT id FROM jupeb.subject WHERE code = 'BIO');
+        chm := (SELECT id FROM jupeb.subject WHERE code = 'CHM');
+        DELETE FROM attendance.policy WHERE context = 'JUPEB';
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v344@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, state, activated_at, subjects_registered_at)
+        VALUES (acc, ses, 'JUPEB/APP/2089/900001', 'CHECKATT', 'Candidate', 'zz.check.v344@example.com', 'SCIENCE', comb, 'STUDENT', now() - interval '30 days', now())
+        RETURNING id INTO app;
+        INSERT INTO jupeb.subject_registration (application_id, subject_id, session, registered_by)
+        SELECT app, x, ses, who FROM unnest(ARRAY[bio, chm, (SELECT id FROM jupeb.subject WHERE code = 'PHY')]) x;
+        FOR k IN 1..4 LOOP   -- Biology: 2 of 4 (50%)
+            rg := attendance.open_register('JUPEB', ses, 1, bio, NULL, current_date - k, NULL, who);
+            PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', app, 'status', CASE WHEN k <= 2 THEN 'ABSENT' ELSE 'PRESENT' END)), NULL, who, true);
+        END LOOP;
+        FOR k IN 1..5 LOOP   -- Chemistry: 4 of 5 (80%)
+            rg := attendance.open_register('JUPEB', ses, 1, chm, NULL, current_date - k, NULL, who);
+            PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', app, 'status', CASE WHEN k = 1 THEN 'ABSENT' ELSE 'PRESENT' END)), NULL, who, true);
+        END LOOP;
+        none_flag := (SELECT count(*) FROM attendance.jupeb_standing(ses) st WHERE st.member_ref = app AND (st.verdict IS NOT NULL OR st.at_risk OR st.warnable));
+        none_due := (SELECT count(*) FROM jupeb.due_reminders(now(), 'ATTENDANCE_LOW') d WHERE d.application_id = app);
+        INSERT INTO attendance.policy (context, session, min_percent, warn_band, min_classes) VALUES ('JUPEB', ses, 75, 10, 3);
+        SELECT st.verdict, st.warnable INTO bio_v, bio_w FROM attendance.jupeb_standing(ses) st WHERE st.member_ref = app AND st.code = 'BIO';
+        SELECT st.verdict, st.at_risk INTO chm_v, chm_r FROM attendance.jupeb_standing(ses) st WHERE st.member_ref = app AND st.code = 'CHM';
+        words := (jupeb.reminder_words(app, 'ATTENDANCE_LOW', '{}', 'https://portal.example'))[2];
+        warned := jupeb.send_reminders(now(), 'https://portal.example', 1000, 'OFFICE', 'ATTENDANCE_LOW');
+        UPDATE attendance.policy SET min_classes = 6 WHERE context = 'JUPEB' AND session = ses;
+        few := (SELECT st.warnable FROM attendance.jupeb_standing(ses) st WHERE st.member_ref = app AND st.code = 'BIO');
+        RAISE EXCEPTION 'the V344 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V344: no minimum, nobody below or warned; under the minimum is below (warned after enough classes), within the band above it is at risk; the warning names the subject; the office warning reaches it',
+        none_flag = 0 AND none_due = 0 AND bio_v = 'NOT_ELIGIBLE' AND bio_w AND chm_v = 'ELIGIBLE' AND chm_r
+        AND words LIKE '%minimum of 75% in: Biology 50%' || '%' AND (warned->'byKind'->>'ATTENDANCE_LOW')::int = 1 AND NOT few,
+        format('none=%s/%s bio=%s/%s chm=%s/%s words=%s warned=%s few=%s', none_flag, none_due, bio_v, bio_w, chm_v, chm_r, left(words, 60), warned, few));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

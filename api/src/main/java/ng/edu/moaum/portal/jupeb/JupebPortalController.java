@@ -385,7 +385,8 @@ class JupebPortalController {
         UUID app = me(auth);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("subjects", jdbc.sql("""
-                SELECT m.session, m.semester, s.code, s.title, m.total, m.present, m.absent, m.late, m.excused, m.rate, m.min_percent, m.verdict
+                SELECT m.session, m.semester, s.code, s.title, m.total, m.present, m.absent, m.late, m.excused, m.rate, m.min_percent, m.verdict,
+                       m.counted, m.at_risk, m.warnable
                   FROM attendance.member_summary('JUPEB', :a, :s) m JOIN jupeb.subject s ON s.id = m.subject_ref
                  ORDER BY m.session DESC, m.semester, s.title
                 """).param("a", app).param("s", blank(session), Types.VARCHAR).query().listOfRows());

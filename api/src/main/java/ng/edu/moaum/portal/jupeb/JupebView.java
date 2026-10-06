@@ -129,6 +129,11 @@ class JupebView {
             out.put("gradePoint", jdbc.sql("SELECT * FROM jupeb.grade_point(:id)").param("id", app).query().singleRow());
         }
         out.put("requests", requests(app));
+        /* V344: the attendance standing, subject by subject, once a student */
+        out.put("attendanceStanding", List.of("STUDENT", "COMPLETED").contains(String.valueOf(a.get("state"))) ? jdbc.sql("""
+                SELECT m.semester, s.code, s.title, m.total, m.counted, m.absent, m.rate, m.min_percent, m.verdict, m.at_risk, m.warnable
+                  FROM attendance.member_summary('JUPEB', :id, :s) m JOIN jupeb.subject s ON s.id = m.subject_ref ORDER BY s.title, m.semester
+                """).param("id", app).param("s", session).query().listOfRows() : List.of());
         if (office) {
             out.put("papers", papers(app));
             out.put("events", jdbc.sql("""

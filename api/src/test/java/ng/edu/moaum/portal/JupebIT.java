@@ -472,7 +472,7 @@ class JupebIT {
         // ── V343: reminders — the JUPEB Office's rules, who is due, sending now; nobody else sets them ──
         Map<String, Object> reminders = ok(it.get(office, "/api/v1/jupeb/office/reminders"));
         assertThat((List<Map<String, Object>>) reminders.get("rules")).extracting(r -> r.get("kind"))
-                .containsExactly("FEE_UNPAID", "SUBMIT_PENDING", "PASSPORT_MISSING", "CHECKING_OPEN", "ACCEPTANCE_UNPAID", "SCHOOL_FEE_UNPAID");
+                .containsExactly("FEE_UNPAID", "SUBMIT_PENDING", "PASSPORT_MISSING", "CHECKING_OPEN", "ACCEPTANCE_UNPAID", "SCHOOL_FEE_UNPAID", "ATTENDANCE_LOW");
         Map<String, Object> reminderRule = Map.of("enabled", true, "firstAfterDays", 2, "everyDays", 3, "maxCount", 3, "sms", false);
         assertThat(status(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/office/reminders/FEE_UNPAID", reminderRule))).isEqualTo(403);
         assertThat(status(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/reminders/NO_SUCH", reminderRule))).isEqualTo(404);

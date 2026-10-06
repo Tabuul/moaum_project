@@ -126,6 +126,7 @@ export function JupebPortal() {
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Profile me={me} />
       {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn">{`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.`}</Note> : null}
+      <AttendanceWarning me={me} onOpen={() => setTab("attendance")} />
       {me.state === "DEFERRED" ? <Note kind="info" title={`Your admission is deferred to ${me.deferred_to ?? "a later session"}`}>The JUPEB Office resumes it in that session; you will be told, and your payments stand.</Note> : null}
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates on its own once the payment reaches the University.</Note> : null}
       {guided ? <Guided me={me} act={act} /> : (
@@ -723,7 +724,23 @@ function Subjects({ me, act }: { me: Candidate; act: Act }) {
   );
 }
 
-interface AttendanceRow { session: string; semester: number; code: string; title: string; total: number; present: number; absent: number; late: number; excused: number; rate: number | null; min_percent: number | null; verdict: string | null }
+interface AttendanceRow { session: string; semester: number; code: string; title: string; total: number; present: number; absent: number; late: number; excused: number; rate: number | null; min_percent: number | null; verdict: string | null; at_risk: boolean; counted: number }
+
+/** V344: below the minimum (or close to it) in a subject — said where the student will see it */
+function AttendanceWarning({ me, onOpen }: { me: Candidate; onOpen: () => void }) {
+  const below = (me.attendanceStanding ?? []).filter((r) => r.verdict === "NOT_ELIGIBLE");
+  const risk = (me.attendanceStanding ?? []).filter((r) => r.at_risk);
+  const list = (rows: typeof below) => rows.map((r) => `${r.title} ${r.rate == null ? "—" : `${Number(r.rate)}%`}`).join(", ");
+  if (below.length) {
+    return <Note kind="bad" title={`Your attendance is below the minimum of ${Number(below[0].min_percent)}%`} action={<Btn kind="ghost" onClick={onOpen}>See your attendance</Btn>}>
+      {`In ${list(below)}. Attend every class from now on; if you were absent for a good reason, see the JUPEB Office (an excused absence does not count against you).`}</Note>;
+  }
+  if (risk.length) {
+    return <Note kind="info" title="Your attendance is close to the minimum" action={<Btn kind="ghost" onClick={onOpen}>See your attendance</Btn>}>
+      {`In ${list(risk)} (minimum ${Number(risk[0].min_percent)}%). Missing more classes would take you below it.`}</Note>;
+  }
+  return null;
+}
 interface AttendanceMine { subjects: AttendanceRow[]; recent: { held_on: string; session: string; semester: number; code: string; title: string; status: string; marked_time: string | null; remarks: string | null }[] }
 
 function Attendance() {
@@ -750,7 +767,8 @@ function Attendance() {
           <KvGrid cls="grid--3" pairs={[["Total classes", sum.total], ["Present", sum.present], ["Late", sum.late], ["Absent", sum.absent], ["Excused", sum.excused], ["Attendance rate", rate == null ? "—" : `${rate}%`]]} />
           <DTable noPrint pageSize={0} cols={["Subject", "Semester|num", "Classes|num", "Present|num", "Late|num", "Absent|num", "Excused|num", "Rate|num", "Standing"]} rows={rows.map((r) => [
             r.title, r.semester, r.total, r.present, r.late, r.absent, r.excused, r.rate == null ? "—" : `${Number(r.rate)}%`,
-            r.verdict ? <Pil key="v" kind={r.verdict === "ELIGIBLE" ? "ok" : r.verdict === "NOT_ELIGIBLE" ? "bad" : "warn"}>{r.verdict.replace("_", " ").toLowerCase()}</Pil> : <span key="v" className="sub2">—</span>,
+            r.verdict === "NOT_ELIGIBLE" ? <Pil key="v" kind="bad">Below the minimum</Pil> : r.at_risk ? <Pil key="v" kind="warn">Close to the minimum</Pil>
+              : r.verdict === "ELIGIBLE" ? <Pil key="v" kind="ok">Meets the minimum</Pil> : r.verdict === "REQUIRES_REVIEW" ? <Pil key="v" kind="grey">All excused</Pil> : <span key="v" className="sub2">—</span>,
           ])} />
         </PBody>
       </Panel>

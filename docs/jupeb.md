@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341, V342, V343)
+# The JUPEB programme (V339, V341, V342, V343, V344)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -92,6 +92,14 @@ copies of them.
   (`attendance.instructor`), checked on every call. The rate is (present + late) ÷ (classes − excused). A minimum
   percentage is the JUPEB Office's setting; **while none is set, nobody is judged.** Students see their own attendance
   only.
+- **Acting on the attendance minimum (V344).** The JUPEB Office's policy (Attendance → Minimum attendance) has the minimum,
+  an optional **warning band** (a student above the minimum by fewer than so many points is *close to the minimum*) and the
+  **classes counted before a warning** (default 3, so one early absence is not a 0%). `attendance.jupeb_standing(session)` gives
+  every student's rate per subject and semester against it. A student below the minimum sees it on their dashboard; the
+  office sees it on the Standing tab (below / close / everyone, with export), on the record and as a dashboard tile; and the
+  student is warned by email on the reminder **Attendance below the minimum** (its own start, spacing, cap and SMS; at most one
+  reminder a day), or at once from the Standing tab. With no minimum set nobody is below it or warned. What a shortfall means
+  for the examination is the University's decision; the portal only reports and warns.
 - **Verifiable papers (V343).** The acknowledgement, admission status slip, admission and acceptance letters, registration
   slip, statement of result and receipts carry a QR and a code (`XXXX-XXXX-XXXX`, 60 random bits) issued by the server for
   the record as it stands (`jupeb.issue_paper`); the same paper printed again for an unchanged record keeps its code. The
@@ -142,7 +150,9 @@ copies of them.
 - `JupebIT` also covers V343: the acknowledgement's code and its public verification, change requests (reason, one at a time,
   declined with a note, cancelled), the statement of result superseded after a correction, a revoked slip, and the reminder
   rules, preview and run.
-- `check.sql` properties 185–188 cover the rules on a brand-new database.
+- `JupebAttendanceIT` also covers V344: the policy's band and classes, the standing list (office and admin only), the warning
+  sent once and not again the same day, and the student's own standing.
+- `check.sql` properties 185–189 cover the rules on a brand-new database.
 
 ## Not done
 

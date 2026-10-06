@@ -90,6 +90,7 @@ export function JupebDashboard() {
         ["Screening cleared", c.screening_cleared, null, `${c.screening_open} still in screening`],
         ["Active students", c.students, null, `${c.registered} registered subjects`, q("STUDENT,COMPLETED")],
         ["Examination numbers", c.exam_numbers, null, "issued by the Board", "/jupeb/examination"],
+        ["Below the attendance minimum", c.attendance_below, Number(c.attendance_below) > 0 ? "var(--red-ink)" : null, `${c.attendance_at_risk} close to it`, "/jupeb/attendance"],
         ["Change requests open", c.requests_pending, Number(c.requests_pending) > 0 ? "var(--amber)" : null, `${c.deferred} deferred · ${c.withdrawn} withdrawn this session`, "/jupeb/requests"],
         ["School fees received", naira(total("SCHOOL")), null, d.resultsPublished ? "results published" : `${c.completed} completed`, "/jupeb/payments"],
       ]} />
@@ -389,6 +390,14 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
           </PBody>
         </Panel>
       </div>
+      {c.attendanceStanding?.length ? (
+        <Panel title="Attendance" right={<Link href="/jupeb/attendance">Registers and standing</Link>}>
+          <PBody><DTable noPrint pageSize={0} cols={["Subject", "Semester|num", "Classes|num", "Absent|num", "Rate|num", "Minimum|num", "Standing"]} rows={c.attendanceStanding.map((r) => [
+            r.title, r.semester, r.counted, r.absent, r.rate == null ? "—" : `${Number(r.rate)}%`, r.min_percent == null ? "not set" : `${Number(r.min_percent)}%`,
+            r.verdict === "NOT_ELIGIBLE" ? <Pil key="s" kind="bad">Below the minimum</Pil> : r.at_risk ? <Pil key="s" kind="warn">Close to the minimum</Pil>
+              : r.verdict === "ELIGIBLE" ? <Pil key="s" kind="ok">Meets the minimum</Pil> : <span key="s" className="sub2">—</span>])} /></PBody>
+        </Panel>
+      ) : null}
       <RequestsAndPapers c={c} canWrite={canWrite} onChange={setC} />
       <Panel title="Timeline">
         <PBody><DTable noPrint pageSize={0} cols={["When", "What", "Note", "By"]} rows={c.events.map((e) => [when(e.at), EVENT_LABEL[e.kind] ?? e.kind, e.note ?? "—", e.actor_name ?? e.actor_office ?? "—"])} /></PBody>
@@ -585,6 +594,7 @@ interface DueRow { application_id: string; application_no: string; name: string;
 const REMINDER_LABEL: Record<string, string> = {
   FEE_UNPAID: "Application fee not paid", SUBMIT_PENDING: "Paid but not submitted (or a correction not resubmitted)", PASSPORT_MISSING: "No passport photograph",
   CHECKING_OPEN: "Admission status not checked while checking is open", ACCEPTANCE_UNPAID: "Acceptance fee not paid", SCHOOL_FEE_UNPAID: "School fee not paid, or a balance outstanding",
+  ATTENDANCE_LOW: "Attendance below the minimum (students)",
 };
 
 /** the reminders the portal sends each morning at ten: when, how often, how many times, and SMS too or not */

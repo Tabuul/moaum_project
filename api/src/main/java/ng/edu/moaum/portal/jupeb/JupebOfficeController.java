@@ -113,7 +113,9 @@ class JupebOfficeController {
                        count(*) FILTER (WHERE stream IN ('NON_SCIENCE', 'ARTS')) AS non_science,
                        count(*) FILTER (WHERE state = 'DEFERRED') AS deferred,
                        count(*) FILTER (WHERE state = 'WITHDRAWN') AS withdrawn,
-                       (SELECT count(*) FROM jupeb.change_request r WHERE r.state = 'PENDING') AS requests_pending
+                       (SELECT count(*) FROM jupeb.change_request r WHERE r.state = 'PENDING') AS requests_pending,
+                       (SELECT count(DISTINCT st.member_ref) FROM attendance.jupeb_standing(:s) st WHERE st.verdict = 'NOT_ELIGIBLE') AS attendance_below,
+                       (SELECT count(DISTINCT st.member_ref) FROM attendance.jupeb_standing(:s) st WHERE st.at_risk) AS attendance_at_risk
                   FROM jupeb.application WHERE session = :s
                 """).param("s", s).query().singleRow());
         out.put("money", jdbc.sql("""

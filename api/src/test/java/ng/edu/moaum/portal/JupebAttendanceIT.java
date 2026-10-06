@@ -207,6 +207,27 @@ class JupebAttendanceIT {
         Map<String, Object> below = ok(it.get(office, ub -> ub.path("/api/v1/attendance/jupeb/reports").queryParam("session", session).queryParam("subject", s1)
                 .queryParam("below", true).build()));
         assertThat((List<Map<String, Object>>) below.get("rows")).extracting(r -> r.get("member_ref")).containsExactly(studentB.toString());
+
+        // V344: the standing against the minimum — below it, close to it — and the warning, the office's to send; nobody else's
+        ok(it.call(office, HttpMethod.PUT, "/api/v1/attendance/jupeb/policy", Map.of("session", session, "minPercent", 75, "warnBand", 10, "minClasses", 1)));
+        Map<String, Object> opts = ok(it.get(office, ub -> ub.path("/api/v1/attendance/jupeb/options").queryParam("session", session).build()));
+        assertThat(new java.math.BigDecimal(String.valueOf(opts.get("warnBand")))).isEqualByComparingTo("10");
+        assertThat(((Number) opts.get("minClasses")).intValue()).isEqualTo(1);
+        Map<String, Object> standing = ok(it.get(office, ub -> ub.path("/api/v1/attendance/jupeb/standing").queryParam("session", session).queryParam("only", "below").build()));
+        assertThat((List<Map<String, Object>>) standing.get("rows")).extracting(r -> r.get("member_ref")).containsOnly(studentB.toString());
+        assertThat((List<Map<String, Object>>) standing.get("rows")).allMatch(r -> Boolean.TRUE.equals(r.get("warnable")));
+        assertThat(status(it.get(lecturer, ub -> ub.path("/api/v1/attendance/jupeb/standing").queryParam("session", session).build()))).isEqualTo(403);
+        assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/warn", null))).isEqualTo(403);
+        Map<String, Object> warned = ok(it.call(office, HttpMethod.POST, "/api/v1/attendance/jupeb/warn", null));
+        assertThat(((Number) ((Map<String, Object>) warned.get("result")).get("sent")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.reminder_log WHERE application_id = :a AND kind = 'ATTENDANCE_LOW'").param("a", studentB).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.reminder_log WHERE application_id = :a AND kind = 'ATTENDANCE_LOW'").param("a", studentA).query(Integer.class).single()).isZero();
+        // once a day at most: warning again at once sends nothing more to the same student
+        ok(it.call(office, HttpMethod.POST, "/api/v1/attendance/jupeb/warn", null));
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.reminder_log WHERE application_id = :a AND kind = 'ATTENDANCE_LOW'").param("a", studentB).query(Integer.class).single()).isEqualTo(1);
+        // the student sees it on their own record
+        List<Map<String, Object>> mineStanding = (List<Map<String, Object>>) ok(it.get(studentBToken, "/api/v1/jupeb/me")).get("attendanceStanding");
+        assertThat(mineStanding).anySatisfy(r -> assertThat(r.get("verdict")).isEqualTo("NOT_ELIGIBLE"));
         // the lecturer's report reaches their own class only
         Map<String, Object> lec = ok(it.get(lecturer, ub -> ub.path("/api/v1/attendance/jupeb/reports").queryParam("session", session).build()));
         assertThat((List<Map<String, Object>>) lec.get("rows")).extracting(r -> r.get("member_ref")).containsExactly(studentA.toString());

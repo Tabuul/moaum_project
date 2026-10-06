@@ -25,7 +25,7 @@ const STATUS_WORD: Record<Status, string> = { PRESENT: "Present", ABSENT: "Absen
 const STATUS_KIND: Record<Status, "ok" | "bad" | "warn" | "grey"> = { PRESENT: "ok", ABSENT: "bad", LATE: "warn", EXCUSED: "grey" };
 
 interface Options {
-  session: string; sessions: string[]; office: boolean; reader: boolean; policy: number | null;
+  session: string; sessions: string[]; office: boolean; reader: boolean; policy: number | null; warnBand: number | null; minClasses: number;
   subjects: { id: string; code: string; title: string }[]; classes: { id: string; name: string; combination_id: string | null }[];
   assignments: { subject_id: string; code: string; title: string; class_id: string | null; class_name: string | null }[];
 }
@@ -38,7 +38,7 @@ interface Register {
 }
 interface Change { changed_at: string; name: string; application_no: string; old_status: string | null; new_status: string; old_remarks: string | null; new_remarks: string | null; reason: string; changed_office: string | null; changed_by: string | null }
 interface Instructor { id: string; session: string; subject_code: string; subject_title: string; class_name: string | null; name: string; staff_number: string | null; email: string | null; assigned_at: string }
-type Tab = "registers" | "reports" | "instructors" | "policy";
+type Tab = "registers" | "standing" | "reports" | "instructors" | "policy";
 
 const today = () => new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
 
@@ -58,7 +58,7 @@ export function JupebAttendance() {
   }, [session]);
   if (problem) return <ProblemNotice problem={problem} />;
   if (!o) return <Note kind="info" title="Loading attendance…">One moment.</Note>;
-  const tabs: { id: Tab; label: string }[] = [{ id: "registers", label: "Registers" }, { id: "reports", label: "Reports" },
+  const tabs: { id: Tab; label: string }[] = [{ id: "registers", label: "Registers" }, ...(o.reader ? [{ id: "standing" as Tab, label: "Standing" }] : []), { id: "reports", label: "Reports" },
     ...(o.reader ? [{ id: "instructors" as Tab, label: "Instructors" }] : []), ...(o.office ? [{ id: "policy" as Tab, label: "Minimum attendance" }] : [])];
   return (
     <>
@@ -70,9 +70,10 @@ export function JupebAttendance() {
         <>
           <Tabs items={tabs} value={tab} onChange={setTab} look="line" label="Attendance" />
           {tab === "registers" ? <Registers o={o} onOpen={setOpen} /> : null}
+          {tab === "standing" ? <Standing o={o} /> : null}
           {tab === "reports" ? <Reports o={o} /> : null}
           {tab === "instructors" ? <Instructors o={o} /> : null}
-          {tab === "policy" ? <Policy o={o} onSaved={(m) => setO({ ...o, policy: m })} /> : null}
+          {tab === "policy" ? <Policy o={o} onSaved={(x) => setO({ ...o, ...x })} /> : null}
         </>
       )}
     </>
@@ -354,30 +355,98 @@ function Instructors({ o }: { o: Options }) {
   );
 }
 
-function Policy({ o, onSaved }: { o: Options; onSaved: (m: number | null) => void }) {
+function Policy({ o, onSaved }: { o: Options; onSaved: (x: Partial<Options>) => void }) {
   const [scope, setScope] = useState<"session" | "*">("session");
   const [v, setV] = useState(o.policy == null ? "" : String(o.policy));
+  const [band, setBand] = useState(o.warnBand == null ? "" : String(o.warnBand));
+  const [min, setMin] = useState(String(o.minClasses ?? 3));
   const [busy, setBusy] = useState(false);
   async function save() {
     const n = v.trim() === "" ? null : Number(v);
+    const b = band.trim() === "" ? null : Number(band);
+    const c = Number(min);
     if (n != null && (Number.isNaN(n) || n < 0 || n > 100)) { notifyProblem({ status: 400, title: "A percentage from 0 to 100, or blank for none." }); return; }
+    if (b != null && (Number.isNaN(b) || b < 0 || b > 50)) { notifyProblem({ status: 400, title: "The warning band is 0 to 50 points, or blank for none." }); return; }
+    if (!Number.isInteger(c) || c < 1 || c > 50) { notifyProblem({ status: 400, title: "The classes counted before a warning are 1 to 50." }); return; }
     setBusy(true);
     try {
-      const r = await jcall(`${BASE}/policy`, "PUT", { session: scope === "*" ? "*" : o.session, minPercent: n }, "JUPEB minimum attendance");
+      const r = await jcall(`${BASE}/policy`, "PUT", { session: scope === "*" ? "*" : o.session, minPercent: n, warnBand: b, minClasses: c }, "JUPEB minimum attendance");
       if (!r.ok) { notifyProblem(r.problem); return; }
-      onSaved(n); notify(n == null ? "No minimum is set." : `Minimum attendance set to ${n}%.`);
+      onSaved({ policy: n, warnBand: b, minClasses: c }); notify(n == null ? "No minimum is set." : `Minimum attendance set to ${n}%.`);
     } finally { setBusy(false); }
   }
   return (
     <Panel title="Minimum attendance">
       <PBody>
-        <p>The share of a subject&rsquo;s classes (excused ones left out; late counts as attended) a student must attend. While none is set, the portal judges no one.</p>
+        <p>The share of a subject&rsquo;s classes (excused ones left out; late counts as attended) a student must attend. While none is set, the portal judges no one and warns no one.</p>
         <div className="grid grid--3">
           <Field id="p-scope" label="For"><select id="p-scope" className="ctl" value={scope} onChange={(e) => setScope(e.target.value as "session" | "*")}><option value="session">{o.session} only</option><option value="*">Every session without its own</option></select></Field>
           <Field id="p-min" label="Minimum (%)" hint="Blank for none"><input id="p-min" className="ctl tnum" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} /></Field>
+          <Field id="p-band" label="At risk within (points above the minimum)" hint="Blank: nobody is flagged at risk"><input id="p-band" className="ctl tnum" inputMode="decimal" value={band} onChange={(e) => setBand(e.target.value)} /></Field>
+          <Field id="p-classes" label="Classes counted before a warning" hint="A first absence is not a 0% to warn about"><input id="p-classes" className="ctl tnum" inputMode="numeric" value={min} onChange={(e) => setMin(e.target.value.replace(/\D/g, ""))} /></Field>
           <div className="field"><label>&nbsp;</label><Btn kind="primary" disabled={busy} onClick={() => void save()}>Save</Btn></div>
         </div>
-        <p className="sub2">Now: {o.policy == null ? "no minimum set" : `${o.policy}%`}.</p>
+        <p className="sub2">Now: {o.policy == null ? "no minimum set" : `${o.policy}%`}{o.warnBand != null && o.policy != null ? `; at risk below ${Number(o.policy) + Number(o.warnBand)}%` : ""}; warnings after {o.minClasses ?? 3} classes counted.
+          Students below the minimum are warned by email on the &ldquo;Attendance below the minimum&rdquo; reminder (JUPEB settings → Reminders); what a shortfall means for the examination is the University&rsquo;s decision.</p>
+      </PBody>
+    </Panel>
+  );
+}
+
+interface StandingRow {
+  member_ref: string; application_no: string; name: string; exam_no: string | null; class_name: string | null; semester: number; code: string; title: string;
+  total: number; counted: number; absent: number; rate: number | null; min_percent: number | null; verdict: string | null; at_risk: boolean; warnable: boolean; last_warned: string | null;
+}
+
+/** who is below the minimum, or close to it, subject by subject — and warning them now */
+function Standing({ o }: { o: Options }) {
+  const [only, setOnly] = useState<"below" | "risk" | "all">("below");
+  const [d, setD] = useState<{ policy: { min_percent: number | null; warn_band: number | null; min_classes: number } | null; rows: StandingRow[] } | null>(null);
+  const [tick, setTick] = useState(0);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ policy: { min_percent: number | null; warn_band: number | null; min_classes: number } | null; rows: StandingRow[] }>(`${BASE}/standing?session=${encodeURIComponent(o.session)}&only=${only}`)
+      .then((r) => { if (live) { if (r.ok) setD(r.data); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [o.session, only, tick]);
+  const min = d?.policy?.min_percent ?? null;
+  const students = new Set((d?.rows ?? []).map((r) => r.member_ref)).size;
+  const word = (r: StandingRow) => r.verdict === "NOT_ELIGIBLE" ? <Pil kind="bad">Below the minimum</Pil> : r.at_risk ? <Pil kind="warn">Close to the minimum</Pil>
+    : r.verdict === "ELIGIBLE" ? <Pil kind="ok">Meets the minimum</Pil> : r.verdict === "REQUIRES_REVIEW" ? <Pil kind="grey">All excused</Pil> : <span className="sub2">—</span>;
+  async function warn() {
+    setBusy(true);
+    try {
+      const r = await jcall<{ result: { sent: number } }>(`${BASE}/warn`, "POST", {}, "JUPEB attendance warnings sent");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(`${r.data.result.sent} student${r.data.result.sent === 1 ? "" : "s"} warned. A student warned in the last day, or as often as the rule allows, is not warned again.`);
+      setTick((t) => t + 1);
+    } finally { setBusy(false); }
+  }
+  async function exportXlsx() {
+    if (!d) return;
+    const blob = await brandedXlsx(`JUPEB attendance standing — ${o.session}`, ["Student", "Application no", "Exam no", "Class", "Subject", "Semester", "Classes counted", "Absent", "Rate (%)", "Minimum (%)", "Standing", "Last warned"],
+      d.rows.map((r) => [r.name, r.application_no, r.exam_no ?? "", r.class_name ?? "", r.title, r.semester, r.counted, r.absent, r.rate == null ? "" : Number(r.rate), r.min_percent == null ? "" : Number(r.min_percent),
+        r.verdict === "NOT_ELIGIBLE" ? "Below the minimum" : r.at_risk ? "Close to the minimum" : r.verdict === "ELIGIBLE" ? "Meets the minimum" : "", r.last_warned ? when(r.last_warned) : ""]),
+      { sheetName: "Standing", serial: docSerial("JUPEBSTAND"), meta: [["Session", o.session], ["Minimum", min == null ? "Not set" : `${min}%`]] });
+    downloadBlob(blob, `jupeb-attendance-standing-${only}.xlsx`);
+  }
+  if (!d) return <Note kind="info" title="Loading the standing…">One moment.</Note>;
+  if (min == null) return <Note kind="info" title="No minimum attendance is set">Set it on the Minimum attendance tab; until then nobody is below it, at risk or warned.</Note>;
+  return (
+    <Panel title={only === "below" ? `Below the minimum (${students} student${students === 1 ? "" : "s"})` : only === "risk" ? `Close to the minimum (${students})` : `Every student (${students})`}
+      right={<span className="row">
+        <Btn kind="ghost" disabled={!d.rows.length} onClick={() => void exportXlsx()}>Export (Excel)</Btn>
+        {o.office ? <Btn kind="secondary" disabled={busy} onClick={() => void warn()}>{busy ? "Warning…" : "Warn students below the minimum now"}</Btn> : null}
+      </span>}>
+      <PBody>
+        <select className="ctl" style={{ width: 220, marginBottom: "var(--s-2)" }} aria-label="Show" value={only} onChange={(e) => setOnly(e.target.value as typeof only)}>
+          <option value="below">Below the minimum</option><option value="risk" disabled={d.policy?.warn_band == null}>Close to the minimum</option><option value="all">Everyone</option></select>
+        <p className="sub2">Minimum {min}%{d.policy?.warn_band != null ? `; close to it below ${Number(min) + Number(d.policy.warn_band)}%` : ""}. A student is warned once {d.policy?.min_classes ?? 3} classes of a subject are counted.</p>
+        <DTable pageSize={50} cols={["Student", "Application no", "Class", "Subject", "Semester|num", "Classes|num", "Absent|num", "Rate|num", "Standing", "Last warned"]}
+          texts={d.rows.map((r) => `${r.name} ${r.application_no} ${r.exam_no ?? ""} ${r.title}`)}
+          rows={d.rows.map((r) => [r.name, r.application_no, r.class_name ?? "—", r.title, r.semester, r.counted, r.absent, r.rate == null ? "—" : `${Number(r.rate)}%`,
+            <span key="w">{word(r)}{r.verdict === "NOT_ELIGIBLE" && !r.warnable ? <div className="sub2">too few classes to warn yet</div> : null}</span>, r.last_warned ? when(r.last_warned) : "—"])} />
       </PBody>
     </Panel>
   );

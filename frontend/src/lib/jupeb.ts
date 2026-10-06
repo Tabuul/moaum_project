@@ -35,6 +35,8 @@ export interface ChangeRequest {
   decided_at: string | null; decided_office?: string | null; decision_note: string | null; to_stream: string | null; to_combination_code: string | null;
   from_session: string | null; to_session: string | null; decided_by_name?: string | null;
 }
+/** V344: a subject's attendance against the minimum */
+export interface AttendanceStanding { semester: number; code: string; title: string; total: number; counted: number; absent: number; rate: number | null; min_percent: number | null; verdict: string | null; at_risk: boolean; warnable: boolean }
 /** V343: a paper issued with a verification code */
 export interface Paper { code: string; kind: string; subject_ref: string | null; issued_at: string; issued_office: string | null; revoked_at: string | null; revoked_reason: string | null; current: boolean }
 export interface Candidate {
@@ -67,6 +69,8 @@ export interface Candidate {
   combinations?: Combination[];
   /** V343 */
   requests: ChangeRequest[]; papers?: Paper[]; withdrawn_at: string | null; deferred_from: string | null; deferred_to: string | null;
+  /** V344: the attendance standing, subject by subject, once a student */
+  attendanceStanding: AttendanceStanding[];
 }
 
 export const STATE_LABEL: Record<string, string> = {

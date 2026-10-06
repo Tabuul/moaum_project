@@ -55,11 +55,14 @@ class AttendanceController {
     private final JdbcClient jdbc;
     private final FileObjects files;
     private final tools.jackson.databind.ObjectMapper json;
+    private final String portalUrl;
 
-    AttendanceController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper json) {
+    AttendanceController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper json,
+                         @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.files = files;
         this.json = json;
+        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
     private static boolean has(Authentication auth, String... authorities) {
@@ -145,9 +148,11 @@ class AttendanceController {
                      WHERE i.context = 'JUPEB' AND i.person_id = :p AND i.session = :s AND i.ended_at IS NULL ORDER BY cl.name
                     """).param("p", me(auth)).param("s", s).query().listOfRows());
         }
-        out.put("policy", jdbc.sql("""
-                SELECT min_percent FROM attendance.policy WHERE context = 'JUPEB' AND session IN (:s, '*') ORDER BY (session = '*') LIMIT 1
-                """).param("s", s).query().listOfRows().stream().findFirst().map(m -> m.get("min_percent")).orElse(null));
+        Map<String, Object> pol = jdbc.sql("SELECT min_percent, warn_band, min_classes FROM attendance.policy_of('JUPEB', :s)").param("s", s)
+                .query().listOfRows().stream().findFirst().orElse(Map.of());
+        out.put("policy", pol.get("min_percent"));
+        out.put("warnBand", pol.get("warn_band"));
+        out.put("minClasses", pol.getOrDefault("min_classes", 3));
         return out;
     }
 
@@ -408,7 +413,7 @@ class AttendanceController {
         return instructors(session);
     }
 
-    public record PolicyIn(@NotBlank String session, @Min(0) @Max(100) Double minPercent) {
+    public record PolicyIn(@NotBlank String session, @Min(0) @Max(100) Double minPercent, @Min(0) @Max(50) Double warnBand, @Min(1) @Max(50) Integer minClasses) {
     }
 
     /** the minimum attendance (a percentage of the classes not excused), for a session or every session ('*'); blank means none is set */
@@ -419,9 +424,46 @@ class AttendanceController {
         String s = body.session().trim();
         if (!"*".equals(s) && !s.matches("^\\d{4}/\\d{4}$")) throw new NotFound("session", s);
         jdbc.sql("""
-                INSERT INTO attendance.policy (context, session, min_percent, updated_by) VALUES ('JUPEB', :s, :m, :by)
-                ON CONFLICT (context, session) DO UPDATE SET min_percent = EXCLUDED.min_percent, updated_by = EXCLUDED.updated_by, updated_at = now()
-                """).param("s", s).param("m", body.minPercent(), Types.NUMERIC).param("by", me(auth)).update();
-        return Map.of("session", s, "minPercent", body.minPercent() == null ? "" : body.minPercent());
+                INSERT INTO attendance.policy (context, session, min_percent, warn_band, min_classes, updated_by) VALUES ('JUPEB', :s, :m, :w, coalesce(:c, 3), :by)
+                ON CONFLICT (context, session) DO UPDATE SET min_percent = EXCLUDED.min_percent, warn_band = EXCLUDED.warn_band, min_classes = EXCLUDED.min_classes,
+                       updated_by = EXCLUDED.updated_by, updated_at = now()
+                """).param("s", s).param("m", body.minPercent(), Types.NUMERIC).param("w", body.warnBand(), Types.NUMERIC).param("c", body.minClasses(), Types.INTEGER)
+                .param("by", me(auth)).update();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("minPercent", body.minPercent());
+        out.put("warnBand", body.warnBand());
+        out.put("minClasses", body.minClasses() == null ? 3 : body.minClasses());
+        return out;
+    }
+
+    /* ── acting on the minimum (V344) ── */
+
+    /** every JUPEB student of the session, subject by subject: below the minimum, at risk above it, or all; the minimum and its refinements with them */
+    @GetMapping("/standing")
+    @PreAuthorize(OFFICE + " or hasAuthority('OFFICE_admin')")
+    @Transactional(readOnly = true)
+    Map<String, Object> standing(@RequestParam(required = false) String session, @RequestParam(defaultValue = "below") String only) {
+        String s = sessionOr(session);
+        String o = only.trim().toLowerCase();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("policy", jdbc.sql("SELECT min_percent, warn_band, min_classes FROM attendance.policy_of('JUPEB', :s)").param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("rows", jdbc.sql("""
+                SELECT st.*, (SELECT max(l.sent_at) FROM jupeb.reminder_log l WHERE l.application_id = st.member_ref AND l.kind = 'ATTENDANCE_LOW') AS last_warned
+                  FROM attendance.jupeb_standing(:s) st
+                 WHERE CASE :o WHEN 'below' THEN st.verdict = 'NOT_ELIGIBLE' WHEN 'risk' THEN st.at_risk ELSE true END
+                 ORDER BY st.name, st.title, st.semester
+                """).param("s", s).param("o", o).query().listOfRows());
+        return out;
+    }
+
+    /** warn, now, every student below the minimum with enough classes counted — on the reminder's own rule (spacing, cap, one a day) */
+    @PostMapping("/warn")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> warn() {
+        String r = jdbc.sql("SELECT jupeb.send_reminders(now(), :p, 1000, 'OFFICE', 'ATTENDANCE_LOW')::text").param("p", portalUrl).query(String.class).single();
+        return Map.of("result", json.readValue(r, Object.class));
     }
 }
