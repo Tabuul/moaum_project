@@ -338,6 +338,45 @@ class JupebPortalController {
         return mine(auth);
     }
 
+    /* ── verifiable papers (V343): the code a paper's QR carries, issued by the server for the record as it stands ── */
+
+    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT") String kind,
+                          @Size(max = 60) String reference) {
+    }
+
+    @PostMapping("/papers")
+    @Transactional
+    Map<String, Object> paper(Authentication auth, @Valid @RequestBody PaperIn body) {
+        UUID app = me(auth);
+        String code = jdbc.sql("SELECT jupeb.issue_paper(:a, :k, :r, false, :a, 'applicant')").param("a", app).param("k", body.kind())
+                .param("r", body.reference(), Types.VARCHAR).query(String.class).single();
+        return Map.of("code", code, "kind", body.kind());
+    }
+
+    /* ── change requests after submission (V343): withdraw, defer, change the combination or the programme — the JUPEB Office decides ── */
+
+    public record ChangeIn(@NotBlank @Pattern(regexp = "WITHDRAW|DEFER|CHANGE_COMBINATION|CHANGE_PROGRAMME") String kind, @Size(max = 20) String stream,
+                           @Size(max = 60) String combination, @Size(max = 9) String toSession, @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    @PostMapping("/requests")
+    @Transactional
+    Map<String, Object> request(Authentication auth, @Valid @RequestBody ChangeIn body) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.request_change(:a, :k, :s, :c, :t, :r, :a, 'applicant')").param("a", app).param("k", body.kind())
+                .param("s", body.stream(), Types.VARCHAR).param("c", body.combination(), Types.VARCHAR).param("t", body.toSession(), Types.VARCHAR)
+                .param("r", body.reason()).query(UUID.class).single();
+        return mine(auth);
+    }
+
+    @PostMapping("/requests/{id}/cancel")
+    @Transactional
+    Map<String, Object> cancelRequest(Authentication auth, @PathVariable UUID id) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.cancel_change(:r, :a, :a)").param("r", id).param("a", app).query().listOfRows();
+        return mine(auth);
+    }
+
     /* ── the student's own attendance (V342): subject by subject, from the University's attendance engine ── */
 
     @GetMapping("/attendance")

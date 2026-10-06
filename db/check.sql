@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 187
+\set EXPECTED 188
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5261,6 +5261,68 @@ BEGIN
         format('win=%s fees=%s/%s masked=%s closed=%s acc_early=%s chk=%s once=%s seen=%s school=%s acc=%s accepted=%s withdraw=%s docs=%s/%s gp=%s/%s+%s,%s+%s seed=%s sci=%s told=%s choose=%s prog=%s reason=%s changes=%s locked=%s verdict=%s rate=%s',
                win, d_chk, d_acc, masked, r_closed, r_acc_early, amt_chk, r_once, seen, r_school, amt_acc, accepted, r_withdraw, docs_short, docs_full,
                gp1.total, gp1.out_of, gp1.bonus, gp2.total, gp2.bonus, n_seed, n_sci, told, r_choose_off, prog_msg, r_reason, n_changes, r_locked, verdict, rate));
+END $$;
+
+-- ── 188. V343: JUPEB — a paper's code is issued only for what the record supports, kept while the record is unchanged, shows superseded after a change and not genuine once revoked; a change request needs its reason, is one at a time, is declined only with a note, defers only an accepted admission, and a combination change re-registers the subjects; reminders come when due, once a day, spaced and capped by the office's rule, and not at all when switched off ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc uuid; acc2 uuid; app uuid; app2 uuid; ses text := jupeb.current_session(); msg text;
+        c31 uuid; c33 uuid; r_noissue text; ack text; ack_again text; v_ok jsonb; v_after jsonb; v_rev jsonb; r_reason text; r_pending text; r_note text;
+        r_defer text; rq uuid; rq2 uuid; subj_after text; due1 text; due_same int; due_later text; due_off int; sent jsonb; code_ok boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        c31 := (SELECT id FROM jupeb.combination WHERE code = 'SC-031');
+        c33 := (SELECT id FROM jupeb.combination WHERE code = 'SC-033');
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v343@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, state, submitted_at, fee_confirmed_at)
+        VALUES (acc, ses, 'JUPEB/APP/2090/900001', 'CHECKP', 'Candidate', 'zz.check.v343@example.com', 'SCIENCE', c31, 'DRAFT', NULL, now()) RETURNING id INTO app;
+        BEGIN PERFORM jupeb.issue_paper(app, 'ACKNOWLEDGEMENT', NULL, false, NULL, 'applicant'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_noissue := split_part(msg, ':', 1); END;
+        UPDATE jupeb.application SET state = 'SUBMITTED', submitted_at = now() WHERE id = app;
+        ack := jupeb.issue_paper(app, 'ACKNOWLEDGEMENT', NULL, false, NULL, 'applicant');
+        ack_again := jupeb.issue_paper(app, 'ACKNOWLEDGEMENT', NULL, false, NULL, 'applicant');
+        code_ok := ack ~ '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$';
+        v_ok := jupeb.verify_paper(lower(replace(ack, '-', '')));
+        -- the change requests
+        BEGIN PERFORM jupeb.request_change(app, 'CHANGE_COMBINATION', NULL, 'SC-033', NULL, 'short', who, 'applicant'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.request_change(app, 'DEFER', NULL, NULL, NULL, 'Medical treatment this session', who, 'applicant'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_defer := split_part(msg, ':', 1); END;
+        rq := jupeb.request_change(app, 'CHANGE_COMBINATION', NULL, 'SC-033', NULL, 'Mathematics in place of Physics', who, 'applicant');
+        BEGIN PERFORM jupeb.request_change(app, 'WITHDRAW', NULL, NULL, NULL, 'A second request at once', who, 'applicant'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_pending := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.decide_change(rq, false, ' ', who, 'jupeb'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_note := split_part(msg, ':', 1); END;
+        /* a student with subjects registered and no examination number: the change re-registers the new combination's three */
+        UPDATE jupeb.application SET state = 'STUDENT' WHERE id = app;
+        INSERT INTO jupeb.subject_registration (application_id, subject_id, session, registered_by)
+        SELECT app, s, ses, who FROM jupeb.combination c, unnest(ARRAY[c.subject1, c.subject2, c.subject3]) s WHERE c.id = c31;
+        UPDATE jupeb.application SET subjects_registered_at = now() WHERE id = app;
+        PERFORM jupeb.decide_change(rq, true, NULL, who, 'jupeb');
+        subj_after := (SELECT string_agg(s.code, ',' ORDER BY s.code) FROM jupeb.subject_registration r JOIN jupeb.subject s ON s.id = r.subject_id WHERE r.application_id = app);
+        v_after := jupeb.verify_paper(ack);
+        PERFORM jupeb.revoke_paper(ack, 'Issued in error at the desk', who);
+        v_rev := jupeb.verify_paper(ack);
+        -- the reminders: a draft three days old, unpaid, while the window is open
+        PERFORM policy.window_act('JUPEB_APPLICATION', ses, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', who, 'ict');
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v343b@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc2;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state, created_at)
+        VALUES (acc2, ses, 'JUPEB/APP/2090/900002', 'CHECKR', 'Candidate', 'zz.check.v343b@example.com', 'DRAFT', now() - interval '3 days') RETURNING id INTO app2;
+        due1 := (SELECT d.kind FROM jupeb.due_reminders(now()) d WHERE d.application_id = app2);
+        sent := jupeb.send_reminders(now(), 'https://portal.example', 1000, 'OFFICE');
+        due_same := (SELECT count(*) FROM jupeb.due_reminders(now() + interval '2 hours') d WHERE d.application_id = app2);
+        due_later := (SELECT d.kind FROM jupeb.due_reminders(now() + interval '3 days 1 hour') d WHERE d.application_id = app2);
+        UPDATE jupeb.reminder_rule SET enabled = false;
+        due_off := (SELECT count(*) FROM jupeb.due_reminders(now() + interval '10 days'));
+        RAISE EXCEPTION 'the V343 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V343: paper codes issued for the record as it is, kept, superseded after a change, void once revoked; change requests with a reason, one at a time, declined with a note, deferment only of an accepted admission, a combination change re-registering the subjects; reminders when due, once a day, spaced, off when switched off',
+        r_noissue = 'JUPEB_PAPER_NOT_ISSUABLE' AND code_ok AND ack = ack_again AND (v_ok->>'genuine')::boolean AND (v_ok->>'current')::boolean
+        AND r_reason = 'JUPEB_CHANGE_REASON' AND r_defer = 'JUPEB_DEFER_STATE' AND r_pending = 'JUPEB_CHANGE_PENDING' AND r_note = 'JUPEB_CHANGE_NOTE'
+        AND subj_after = 'BIO,CHM,MTH' AND (v_after->>'genuine')::boolean AND NOT (v_after->>'current')::boolean
+        AND NOT (v_rev->>'genuine')::boolean AND (v_rev->>'revoked')::boolean
+        AND due1 = 'FEE_UNPAID' AND (sent->'byKind'->>'FEE_UNPAID')::int >= 1 AND due_same = 0 AND due_later IS NOT NULL AND due_off = 0,
+        format('noissue=%s code=%s same=%s ok=%s reason=%s defer=%s pending=%s note=%s subjects=%s after=%s/%s revoked=%s due=%s sent=%s same_day=%s later=%s off=%s',
+               r_noissue, code_ok, ack = ack_again, v_ok->>'current', r_reason, r_defer, r_pending, r_note, subj_after, v_after->>'genuine', v_after->>'current',
+               v_rev->>'revoked', due1, sent, due_same, due_later, due_off));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

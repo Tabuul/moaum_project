@@ -3,6 +3,7 @@
 /** /verify — the public entry to verify a payment on the portal. Enter the receipt reference (or
  *  receipt number) and the check code printed on the receipt; it opens the authoritative record. */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Btn } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
@@ -49,6 +50,7 @@ export default function VerifyLanding() {
           <p className="sub2 ink-faint m-0">
             Scan the QR on the receipt with the camera above, or open it with your phone&rsquo;s camera app &mdash; either way it opens this check with the details filled in.
           </p>
+          <p className="sub2 m-0">Verifying a JUPEB statement of result, letter or slip? <Link href="/verify/jupeb">Enter its code</Link>.</p>
         </form>
       </div>
     </div>

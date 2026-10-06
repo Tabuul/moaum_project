@@ -27,6 +27,26 @@ class JupebView {
 
     /** the states a decision has been taken in: hidden from the candidate until they may check their status */
     static final Set<String> DECIDED = Set.of("ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED");
+    /** the change requests made after submission, newest first (V343) */
+    List<Map<String, Object>> requests(UUID app) {
+        return jdbc.sql("""
+                SELECT r.id, r.kind, r.state, jupeb.change_words(r.id) AS words, r.reason, r.requested_at, r.requested_office, r.decided_at, r.decided_office,
+                       r.decision_note, r.to_stream, tc.code AS to_combination_code, r.from_session, r.to_session,
+                       (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = r.decided_by) AS decided_by_name
+                  FROM jupeb.change_request r LEFT JOIN jupeb.combination tc ON tc.id = r.to_combination
+                 WHERE r.application_id = :id ORDER BY r.requested_at DESC
+                """).param("id", app).query().listOfRows();
+    }
+
+    /** the papers issued with a verification code, and whether each still states the record (V343) */
+    List<Map<String, Object>> papers(UUID app) {
+        return jdbc.sql("""
+                SELECT p.code, p.kind, p.subject_ref, p.issued_at, p.issued_office, p.revoked_at, p.revoked_reason,
+                       p.revoked_at IS NULL AND md5(coalesce(jupeb.paper_facts(p.application_id, p.kind, p.subject_ref, true), 'null'::jsonb)::text) = p.fingerprint AS current
+                  FROM jupeb.paper p WHERE p.application_id = :id ORDER BY p.issued_at DESC
+                """).param("id", app).query().listOfRows();
+    }
+
     /** the trail's entries that would tell the decision */
     private static final Set<String> DECISION_EVENTS = Set.of("ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED");
 
@@ -51,7 +71,8 @@ class JupebView {
                    a.created_at, a.updated_at, a.state IN ('DRAFT', 'RETURNED') AS editable,
                    (SELECT fs.application_fee FROM jupeb.fee_setting_of(a.session) fs) AS application_fee,
                    jupeb.paid_at(a.id, 'STATUS_CHECKING') AS checking_paid_at, jupeb.paid_at(a.id, 'ACCEPTANCE') AS accepted_at,
-                   EXISTS (SELECT 1 FROM jupeb.document p WHERE p.application_id = a.id AND p.kind = 'PASSPORT') AS has_passport
+                   EXISTS (SELECT 1 FROM jupeb.document p WHERE p.application_id = a.id AND p.kind = 'PASSPORT') AS has_passport,
+                   a.withdrawn_at, a.deferred_from, a.deferred_to
               FROM jupeb.application a
               LEFT JOIN ref.programme g ON g.code = a.programme_code
               LEFT JOIN ref.department d ON d.code = g.dept_code
@@ -107,7 +128,9 @@ class JupebView {
         if (office || published) {
             out.put("gradePoint", jdbc.sql("SELECT * FROM jupeb.grade_point(:id)").param("id", app).query().singleRow());
         }
+        out.put("requests", requests(app));
         if (office) {
+            out.put("papers", papers(app));
             out.put("events", jdbc.sql("""
                     SELECT e.kind, e.note, e.at, e.actor_office, p.surname || ', ' || p.given_names AS actor_name
                       FROM jupeb.application_event e LEFT JOIN iam.person p ON p.id = e.actor_id

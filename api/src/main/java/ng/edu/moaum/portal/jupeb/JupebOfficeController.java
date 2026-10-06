@@ -10,6 +10,8 @@ import java.util.Set;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -50,11 +52,14 @@ class JupebOfficeController {
     private final JdbcClient jdbc;
     private final JupebView view;
     private final FileObjects files;
+    private final String portalUrl;
 
-    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files) {
+    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files,
+                          @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.view = view;
         this.files = files;
+        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
     private static UUID actor() {
@@ -105,7 +110,10 @@ class JupebOfficeController {
                        count(*) FILTER (WHERE jupeb.paid_at(id, 'STATUS_CHECKING') IS NOT NULL) AS checking_paid,
                        count(*) FILTER (WHERE jupeb.paid_at(id, 'ACCEPTANCE') IS NOT NULL) AS accepted,
                        count(*) FILTER (WHERE stream = 'SCIENCE') AS science,
-                       count(*) FILTER (WHERE stream IN ('NON_SCIENCE', 'ARTS')) AS non_science
+                       count(*) FILTER (WHERE stream IN ('NON_SCIENCE', 'ARTS')) AS non_science,
+                       count(*) FILTER (WHERE state = 'DEFERRED') AS deferred,
+                       count(*) FILTER (WHERE state = 'WITHDRAWN') AS withdrawn,
+                       (SELECT count(*) FROM jupeb.change_request r WHERE r.state = 'PENDING') AS requests_pending
                   FROM jupeb.application WHERE session = :s
                 """).param("s", s).query().singleRow());
         out.put("money", jdbc.sql("""
@@ -592,6 +600,144 @@ class JupebOfficeController {
     @Transactional
     Object importCombinations(@Valid @RequestBody ImportIn body) {
         return runImport("jupeb.import_combinations", body);
+    }
+
+    /* ── verifiable papers (V343) ── */
+
+    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT") String kind,
+                          @Size(max = 60) String reference) {
+    }
+
+    /** the code for a paper the office prints; the same code while the record it states is unchanged */
+    @PostMapping("/applications/{id}/papers")
+    @PreAuthorize(READ)
+    @Transactional
+    Map<String, Object> paper(@PathVariable UUID id, @Valid @RequestBody PaperIn body) {
+        requireApp(id);
+        String code = jdbc.sql("SELECT jupeb.issue_paper(:a, :k, :r, true, :by, nullif(current_setting('moaum.actor_office', true), ''))").param("a", id)
+                .param("k", body.kind()).param("r", body.reference(), Types.VARCHAR).param("by", actor()).query(String.class).single();
+        return Map.of("code", code, "kind", body.kind());
+    }
+
+    public record RevokeIn(@NotBlank @Size(max = 600) String reason) {
+    }
+
+    /** a paper issued in error stops verifying; the reason is kept and the candidate's trail says so */
+    @PostMapping("/papers/{code}/revoke")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> revoke(@PathVariable String code, @Valid @RequestBody RevokeIn body) {
+        jdbc.sql("SELECT jupeb.revoke_paper(:c, :r, :by)").param("c", code).param("r", body.reason()).param("by", actor()).query().listOfRows();
+        UUID app = jdbc.sql("SELECT application_id FROM jupeb.paper WHERE code = upper(btrim(:c))").param("c", code).query(UUID.class).single();
+        return view.of(app, true);
+    }
+
+    /* ── change requests after submission (V343) ── */
+
+    @GetMapping("/requests")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> requests(@RequestParam(required = false) String state, @RequestParam(required = false) String session) {
+        String st = state == null ? "PENDING" : state.trim().toUpperCase();
+        return jdbc.sql("""
+                SELECT r.id, r.kind, r.state, jupeb.change_words(r.id) AS words, r.reason, r.requested_at, r.requested_office, r.decided_at, r.decision_note,
+                       a.id AS application_id, a.application_no, a.surname || ', ' || a.first_name || coalesce(' ' || a.middle_name, '') AS name,
+                       a.state AS application_state, a.session
+                  FROM jupeb.change_request r JOIN jupeb.application a ON a.id = r.application_id
+                 WHERE (:st = 'ALL' OR r.state = :st) AND (:s = '' OR a.session = :s OR r.from_session = :s)
+                 ORDER BY r.requested_at DESC LIMIT 500
+                """).param("st", st).param("s", session == null ? "" : session.trim()).query().listOfRows();
+    }
+
+    public record ChangeIn(@NotBlank @Pattern(regexp = "WITHDRAW|DEFER|CHANGE_COMBINATION|CHANGE_PROGRAMME") String kind, @Size(max = 20) String stream,
+                           @Size(max = 60) String combination, @Size(max = 9) String toSession, @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    /** a request raised at the desk for the candidate, decided like any other */
+    @PostMapping("/applications/{id}/requests")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> raise(@PathVariable UUID id, @Valid @RequestBody ChangeIn body) {
+        requireApp(id);
+        jdbc.sql("SELECT jupeb.request_change(:a, :k, :s, :c, :t, :r, :by, nullif(current_setting('moaum.actor_office', true), ''))").param("a", id)
+                .param("k", body.kind()).param("s", body.stream(), Types.VARCHAR).param("c", body.combination(), Types.VARCHAR)
+                .param("t", body.toSession(), Types.VARCHAR).param("r", body.reason()).param("by", actor()).query(UUID.class).single();
+        return view.of(id, true);
+    }
+
+    public record DecideIn(boolean approve, @Size(max = 1000) String note) {
+    }
+
+    @PostMapping("/requests/{id}/decide")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> decide(@PathVariable UUID id, @Valid @RequestBody DecideIn body) {
+        UUID app = jdbc.sql("SELECT application_id FROM jupeb.change_request WHERE id = :id").param("id", id).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("JUPEB change request", id));
+        jdbc.sql("SELECT jupeb.decide_change(:r, :ok, :n, :by, nullif(current_setting('moaum.actor_office', true), ''))").param("r", id).param("ok", body.approve())
+                .param("n", body.note(), Types.VARCHAR).param("by", actor()).query().listOfRows();
+        return view.of(app, true);
+    }
+
+    /** a deferred admission resumed in the session it was deferred to */
+    @PostMapping("/applications/{id}/resume")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> resume(@PathVariable UUID id) {
+        requireApp(id);
+        jdbc.sql("SELECT jupeb.resume_deferment(:a, :by)").param("a", id).param("by", actor()).query().listOfRows();
+        return view.of(id, true);
+    }
+
+    /* ── reminders (V343): the rules, who is due, and sending now ── */
+
+    @GetMapping("/reminders")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> reminders() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rules", jdbc.sql("""
+                SELECT r.kind, r.enabled, r.first_after_days, r.every_days, r.max_count, r.sms, r.updated_at,
+                       (SELECT count(*) FROM jupeb.reminder_log l WHERE l.kind = r.kind AND l.sent_at > now() - interval '30 days') AS sent_30_days,
+                       (SELECT max(l.sent_at) FROM jupeb.reminder_log l WHERE l.kind = r.kind) AS last_sent
+                  FROM jupeb.reminder_rule r ORDER BY r.ord
+                """).query().listOfRows());
+        out.put("dueNow", jdbc.sql("SELECT kind, count(*) AS candidates FROM jupeb.due_reminders(now()) GROUP BY kind").query().listOfRows());
+        return out;
+    }
+
+    @GetMapping("/reminders/due")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> due() {
+        return jdbc.sql("SELECT application_id, application_no, name, kind, sent_before, last_sent FROM jupeb.due_reminders(now()) LIMIT 1000").query().listOfRows();
+    }
+
+    public record RuleIn(boolean enabled, @Min(0) @Max(60) int firstAfterDays, @Min(1) @Max(60) int everyDays, @Min(1) @Max(10) int maxCount, boolean sms) {
+    }
+
+    @PutMapping("/reminders/{kind}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> saveRule(@PathVariable String kind, @Valid @RequestBody RuleIn body) {
+        int n = jdbc.sql("""
+                UPDATE jupeb.reminder_rule SET enabled = :e, first_after_days = :f, every_days = :v, max_count = :m, sms = :s, updated_by = :by, updated_at = now()
+                 WHERE kind = upper(btrim(:k))
+                """).param("e", body.enabled()).param("f", body.firstAfterDays()).param("v", body.everyDays()).param("m", body.maxCount())
+                .param("s", body.sms()).param("by", actor()).param("k", kind).update();
+        if (n == 0) throw new NotFound("JUPEB reminder", kind);
+        return reminders();
+    }
+
+    /** send what is due now, without waiting for the morning run */
+    @PostMapping("/reminders/run")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> runReminders() {
+        String sent = jdbc.sql("SELECT jupeb.send_reminders(now(), :p, 500, 'OFFICE')::text").param("p", portalUrl).query(String.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(reminders());
+        out.put("result", sent);
+        return out;
     }
 
     /* ── the office's settings: numbering, screening, the documents asked for ── */

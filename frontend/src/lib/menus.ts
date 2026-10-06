@@ -1687,7 +1687,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admission",
         "items": [
           { "id": "jupeb/applications", "icon": "doc", "label": "Applications" },
-          { "id": "jupeb/payments", "icon": "card", "label": "Payments" }
+          { "id": "jupeb/payments", "icon": "card", "label": "Payments" },
+          { "id": "jupeb/requests", "icon": "doc", "label": "Change Requests" }
         ]
       },
       {

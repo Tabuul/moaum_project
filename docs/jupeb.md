@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341, V342)
+# The JUPEB programme (V339, V341, V342, V343)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -92,15 +92,40 @@ copies of them.
   (`attendance.instructor`), checked on every call. The rate is (present + late) ÷ (classes − excused). A minimum
   percentage is the JUPEB Office's setting; **while none is set, nobody is judged.** Students see their own attendance
   only.
+- **Verifiable papers (V343).** The acknowledgement, admission status slip, admission and acceptance letters, registration
+  slip, statement of result and receipts carry a QR and a code (`XXXX-XXXX-XXXX`, 60 random bits) issued by the server for
+  the record as it stands (`jupeb.issue_paper`); the same paper printed again for an unchanged record keeps its code. The
+  public page `/verify/jupeb/{code}` (and `/verify/jupeb` to type one) shows what the paper printed and whether the record
+  still says it: **genuine and current**, **genuine but superseded** (a corrected grade, a changed combination, a withdrawn
+  admission — the record now is shown), or **not genuine** (unknown, or revoked by the JUPEB Office with a reason). Only what
+  the paper itself shows is disclosed — never the NIN, date of birth, email or phone. An unpublished statement carries no code.
+- **Change requests after submission (V343).** The candidate (or the JUPEB Office at the desk) asks — never changes — to
+  **withdraw**, **defer** an accepted, not yet activated admission to one of the next two sessions, **change the combination**
+  (until the Board's examination number or a result exists; registered subjects follow the new combination), or **change the
+  programme** (until a school fee is charged). A reason of at least ten characters; one request open at a time; the candidate
+  may cancel it. The JUPEB Office approves (the change is judged again on the record as it then stands) or declines with a
+  note the candidate reads. Withdrawal sets WITHDRAWN (record kept; refunds are the Bursary's own decision); deferment sets
+  DEFERRED until the office resumes it in the later session, where the candidate is admitted again with what they paid.
+  Every step is on the trail and emailed.
+- **Reminders (V343).** Each morning at 10:00 (Africa/Lagos) the portal reminds a candidate with an unfinished step — the
+  application fee unpaid, paid but not submitted (or a correction not resubmitted), no passport photograph, admission status
+  not checked while checking is open, acceptance fee unpaid, school fee unpaid or a balance outstanding — at most one reminder a
+  day, each kind on the JUPEB Office's rule (days after it began, every how many days, at most how many times, and SMS too or
+  not). Application-step reminders only while the application window is open. Every reminder is logged; JUPEB settings show
+  the rules, who is due now, and "send due reminders now".
 
 ## API
 
 - **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`.
 - **Candidate** (`OFFICE_applicant`, scoped to the token's application): `/api/v1/jupeb/me`, plus `/biodata`,
   `/choice` (programme and combination), `/olevel`, `/documents/{kind}?sitting=` (with `/content`),
-  `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance` and `/support`.
+  `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance`, `/papers`, `/requests` (with `/{id}/cancel`) and
+  `/support`.
+- **Public verification:** `/api/v1/verify/jupeb/{code}`.
 - **JUPEB Office:** `/api/v1/jupeb/office/...`, including `/subjects/offered`, `/combinations/offered`,
-  `/subjects/{code}/units`. Reads are for jupeb, super and admin; writes for jupeb and super.
+  `/subjects/{code}/units`, `/applications/{id}/papers`, `/papers/{code}/revoke`, `/requests`, `/applications/{id}/requests`,
+  `/requests/{id}/decide`, `/applications/{id}/resume`, `/reminders` (with `/due`, `/run`, `/{kind}`). Reads are for jupeb,
+  super and admin; writes for jupeb and super.
 - **Attendance:** `/api/v1/attendance/jupeb/...` — options, registers, marks, lock/unlock, changes, photo, reports,
   instructors, policy. Lecturers are scoped by assignment.
 - **Fees:** `/api/v1/jupeb/fees`. Reads for bursar, jupeb, super, admin and audit; writes and bank confirmations for
@@ -114,9 +139,12 @@ copies of them.
   (₦15,000, before school fees), fees, activation, registration, examination numbers, results, support, and RBAC.
 - `JupebAttendanceIT`: a lecturer's scope, the class list, marking, corrections with reasons, locking, the office's
   override, photographs, the student's own attendance, reports and the minimum.
-- `check.sql` properties 185–187 cover the rules on a brand-new database.
+- `JupebIT` also covers V343: the acknowledgement's code and its public verification, change requests (reason, one at a time,
+  declined with a note, cancelled), the statement of result superseded after a correction, a revoked slip, and the reminder
+  rules, preview and run.
+- `check.sql` properties 185–188 cover the rules on a brand-new database.
 
 ## Not done
 
 - **Document uploads accept PDF, JPEG or PNG up to 5 MB.** There is no virus scanning, as elsewhere on the portal.
-- **Withdrawal and the move into 200 level are not built.** Both are decisions for the University.
+- **The move into 200 level (direct entry) is not built.** It is a decision for the University.

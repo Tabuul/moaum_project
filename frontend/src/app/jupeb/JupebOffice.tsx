@@ -18,11 +18,11 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
-  DOC_STATUS, EVENT_LABEL, FEE_KIND, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, naira, readSheet, stateKind, streamLabel, when,
-  type Candidate, type Combination, type Doc,
+  DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
+  stateKind, streamLabel, when, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper,
 } from "@/lib/jupeb";
 
-const STATES = ["DRAFT", "SUBMITTED", "RETURNED", "ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED", "STUDENT", "COMPLETED"];
+const STATES = ["DRAFT", "SUBMITTED", "RETURNED", "ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED", "STUDENT", "COMPLETED", "DEFERRED", "WITHDRAWN"];
 
 interface SessionRow { session: string; applications: number }
 
@@ -90,6 +90,7 @@ export function JupebDashboard() {
         ["Screening cleared", c.screening_cleared, null, `${c.screening_open} still in screening`],
         ["Active students", c.students, null, `${c.registered} registered subjects`, q("STUDENT,COMPLETED")],
         ["Examination numbers", c.exam_numbers, null, "issued by the Board", "/jupeb/examination"],
+        ["Change requests open", c.requests_pending, Number(c.requests_pending) > 0 ? "var(--amber)" : null, `${c.deferred} deferred · ${c.withdrawn} withdrawn this session`, "/jupeb/requests"],
         ["School fees received", naira(total("SCHOOL")), null, d.resultsPublished ? "results published" : `${c.completed} completed`, "/jupeb/payments"],
       ]} />
       <Panel title="Payments by fee">
@@ -388,6 +389,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
           </PBody>
         </Panel>
       </div>
+      <RequestsAndPapers c={c} canWrite={canWrite} onChange={setC} />
       <Panel title="Timeline">
         <PBody><DTable noPrint pageSize={0} cols={["When", "What", "Note", "By"]} rows={c.events.map((e) => [when(e.at), EVENT_LABEL[e.kind] ?? e.kind, e.note ?? "—", e.actor_name ?? e.actor_office ?? "—"])} /></PBody>
       </Panel>
@@ -414,6 +416,240 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/* ── V343: change requests, verifiable papers and reminders ───────────────────────────────────── */
+
+const OFFICE_CHANGE: Record<string, string> = {
+  WITHDRAW: "Withdraw the application", DEFER: "Defer the admission", CHANGE_COMBINATION: "Change the combination", CHANGE_PROGRAMME: "Change the programme",
+};
+
+type Ask = { kind: "approve" | "decline"; req: ChangeRequest } | { kind: "revoke"; paper: Paper } | { kind: "raise" };
+
+/** on the record: the candidate's change requests with the office's decision, the papers issued with a code, and a deferment resumed */
+function RequestsAndPapers({ c, canWrite, onChange }: { c: Candidate; canWrite: boolean; onChange: (c: Candidate) => void }) {
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const [note, setNote] = useState("");
+  const [raise, setRaise] = useState<Record<string, string>>({ kind: "CHANGE_COMBINATION", combination: "", stream: c.stream === "SCIENCE" ? "NON_SCIENCE" : "SCIENCE", toSession: laterSessions(c.session)[0] ?? "", reason: "" });
+  const [busy, setBusy] = useState(false);
+  const pending = c.requests.find((r) => r.state === "PENDING");
+  const papers = c.papers ?? [];
+  async function call(path: string, body: unknown, reason: string) {
+    setBusy(true);
+    try {
+      const r = await jcall<Candidate>(path, "POST", body, reason);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      onChange(r.data); notify("Done."); setAsk(null); setNote("");
+    } finally { setBusy(false); }
+  }
+  function submit() {
+    if (!ask) return;
+    if (ask.kind === "approve" || ask.kind === "decline") {
+      void call(`/api/v1/jupeb/office/requests/${ask.req.id}/decide`, { approve: ask.kind === "approve", note: note.trim() || null }, ask.kind === "approve" ? "JUPEB change approved" : "JUPEB change declined");
+    } else if (ask.kind === "revoke") {
+      void call(`/api/v1/jupeb/office/papers/${encodeURIComponent(ask.paper.code)}/revoke`, { reason: note.trim() }, "JUPEB paper revoked");
+    } else {
+      void call(`/api/v1/jupeb/office/applications/${c.id}/requests`, {
+        kind: raise.kind, stream: raise.kind === "CHANGE_PROGRAMME" ? raise.stream : null,
+        combination: raise.kind === "CHANGE_COMBINATION" || raise.kind === "CHANGE_PROGRAMME" ? raise.combination.trim() || null : null,
+        toSession: raise.kind === "DEFER" ? raise.toSession.trim() : null, reason: raise.reason.trim(),
+      }, "JUPEB change raised at the desk");
+    }
+  }
+  const status = (p: Paper) => p.revoked_at ? <Pil kind="bad">Revoked</Pil> : p.current ? <Pil kind="ok">Current</Pil> : <Pil kind="warn">Superseded</Pil>;
+  return (
+    <>
+      {c.state === "DEFERRED" ? (
+        <Note kind="info" title={`Admission deferred to ${c.deferred_to ?? "—"}`}
+          action={canWrite ? <Btn kind="primary" disabled={busy} onClick={() => void call(`/api/v1/jupeb/office/applications/${c.id}/resume`, {}, "Deferred JUPEB admission resumed")}>Resume in {c.deferred_to}</Btn> : null}>
+          {`Deferred from ${c.deferred_from ?? c.session}. Resuming admits the candidate again in ${c.deferred_to ?? "that session"}, with the acceptance and fees already paid.`}
+        </Note>
+      ) : null}
+      {c.state === "WITHDRAWN" ? <Note kind="bad" title="Withdrawn">{`Withdrawn${c.withdrawn_at ? ` on ${day(c.withdrawn_at)}` : ""}. The record is kept; a refund, if any, is the Bursary's decision.`}</Note> : null}
+      <Panel title={`Change requests (${c.requests.length})`} right={canWrite && !pending && !["DRAFT", "RETURNED", "COMPLETED", "WITHDRAWN"].includes(c.state)
+        ? <Btn kind="ghost" onClick={() => setAsk({ kind: "raise" })}>Raise for the candidate…</Btn> : null}>
+        <PBody>
+          <DTable noPrint pageSize={0} cols={["Asked", "Request", "Why", "By", "Decision", ...(canWrite ? ["|mid"] : [])]} rows={c.requests.map((r) => [
+            when(r.requested_at), r.words, r.reason, r.requested_office === "applicant" ? "Candidate" : `Desk (${r.requested_office ?? "—"})`,
+            <span key="d"><Pil kind={(REQUEST_STATE[r.state] ?? [r.state, "grey"])[1]}>{(REQUEST_STATE[r.state] ?? [r.state])[0]}</Pil>
+              {r.decision_note ? <div className="sub2">{r.decision_note}</div> : null}{r.decided_by_name ? <div className="sub2">{r.decided_by_name} · {day(r.decided_at)}</div> : null}</span>,
+            ...(canWrite ? [r.state === "PENDING" ? <span key="a" className="row" style={{ gap: 4, justifyContent: "center", flexWrap: "nowrap" }}>
+              <Btn kind="go" disabled={busy} onClick={() => { setNote(""); setAsk({ kind: "approve", req: r }); }}>Approve…</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => { setNote(""); setAsk({ kind: "decline", req: r }); }}>Decline…</Btn></span> : "—"] : []),
+          ])} />
+        </PBody>
+      </Panel>
+      <Panel title={`Verifiable papers issued (${papers.length})`}>
+        <PBody>
+          <p className="sub2">Each printed statement, letter, slip and receipt carries one of these codes; anyone can check it at /verify/jupeb. A paper printed again for an unchanged record keeps its code.</p>
+          <DTable noPrint pageSize={0} cols={["Code", "Paper", "Issued", "By", "Status", ...(canWrite ? ["|mid"] : [])]} rows={papers.map((p) => [
+            <a key="c" className="tnum" href={`/verify/jupeb/${p.code}`} target="_blank" rel="noreferrer">{p.code}</a>,
+            `${PAPER_KIND[p.kind] ?? p.kind}${p.subject_ref ? ` · ${p.subject_ref}` : ""}`, when(p.issued_at), p.issued_office ?? "—",
+            <span key="s">{status(p)}{p.revoked_reason ? <div className="sub2">{p.revoked_reason}</div> : null}</span>,
+            ...(canWrite ? [!p.revoked_at ? <Btn key="r" kind="ghost" onClick={() => { setNote(""); setAsk({ kind: "revoke", paper: p }); }}>Revoke…</Btn> : "—"] : []),
+          ])} />
+        </PBody>
+      </Panel>
+      {ask ? (
+        <Modal title={ask.kind === "approve" ? "Approve the request" : ask.kind === "decline" ? "Decline the request" : ask.kind === "revoke" ? `Revoke ${ask.paper.code}` : "Raise a request for the candidate"}
+          onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" disabled={busy
+            || (ask.kind === "decline" && !note.trim()) || (ask.kind === "revoke" && note.trim().length < 5) || (ask.kind === "raise" && raise.reason.trim().length < 10)}
+            onClick={submit}>{ask.kind === "approve" ? "Approve" : ask.kind === "decline" ? "Decline" : ask.kind === "revoke" ? "Revoke" : "Raise"}</Btn></>}>
+          {ask.kind === "approve" || ask.kind === "decline" ? (
+            <>
+              <p><b>{ask.req.words}</b> — {ask.req.reason}</p>
+              {ask.kind === "approve" ? <p className="sub2">The change is judged again on the record as it stands and made at once; the candidate is told.</p> : null}
+              <Field id="rq-note" label={ask.kind === "decline" ? "Why it is declined (the candidate reads this)" : "Note (optional)"} required={ask.kind === "decline"}>
+                <textarea id="rq-note" className="ctl" rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            </>
+          ) : ask.kind === "revoke" ? (
+            <>
+              <p>The code stops verifying: anyone checking it is told the paper is not valid. The reason is kept on the candidate&rsquo;s trail.</p>
+              <Field id="pp-reason" label="Reason" required><input id="pp-reason" className="ctl" maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            </>
+          ) : (
+            <div className="grid grid--2">
+              <Field id="rs-kind" label="Request"><select id="rs-kind" className="ctl" value={raise.kind} onChange={(e) => setRaise({ ...raise, kind: e.target.value })}>
+                {Object.entries(OFFICE_CHANGE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+              {raise.kind === "CHANGE_PROGRAMME" ? <Field id="rs-stream" label="New programme"><select id="rs-stream" className="ctl" value={raise.stream} onChange={(e) => setRaise({ ...raise, stream: e.target.value })}>
+                <option value="SCIENCE">Science</option><option value="NON_SCIENCE">Non-Science</option></select></Field> : null}
+              {raise.kind === "CHANGE_COMBINATION" || raise.kind === "CHANGE_PROGRAMME" ? <Field id="rs-comb" label="New combination code" hint="e.g. SC-033"><input id="rs-comb" className="ctl" maxLength={20} value={raise.combination} onChange={(e) => setRaise({ ...raise, combination: e.target.value.toUpperCase() })} /></Field> : null}
+              {raise.kind === "DEFER" ? <Field id="rs-to" label="Defer to"><select id="rs-to" className="ctl" value={raise.toSession} onChange={(e) => setRaise({ ...raise, toSession: e.target.value })}>
+                {laterSessions(c.session).map((x) => <option key={x}>{x}</option>)}</select></Field> : null}
+              <Field id="rs-why" label="Reason (as the candidate gave it)" required full><textarea id="rs-why" className="ctl" rows={3} maxLength={1000} value={raise.reason} onChange={(e) => setRaise({ ...raise, reason: e.target.value })} /></Field>
+            </div>
+          )}
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+interface RequestRow { id: string; kind: string; state: string; words: string; reason: string; requested_at: string; requested_office: string | null; decided_at: string | null; decision_note: string | null; application_id: string; application_no: string; name: string; application_state: string; session: string }
+
+/** /jupeb/requests — every change request, the open ones first, decided here or on the record */
+export function JupebRequests({ canWrite }: { canWrite: boolean }) {
+  const [state, setState] = useState("PENDING");
+  const [rows, setRows] = useState<RequestRow[] | null>(null);
+  const [tick, setTick] = useState(0);
+  const [ask, setAsk] = useState<{ approve: boolean; row: RequestRow } | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<RequestRow[]>(`/api/v1/jupeb/office/requests?state=${state}`).then((r) => { if (live) { if (r.ok) setRows(r.data); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [state, tick]);
+  async function decide() {
+    if (!ask) return;
+    setBusy(true);
+    try {
+      const r = await jcall(`/api/v1/jupeb/office/requests/${ask.row.id}/decide`, "POST", { approve: ask.approve, note: note.trim() || null }, ask.approve ? "JUPEB change approved" : "JUPEB change declined");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(ask.approve ? "Approved; the candidate is told." : "Declined; the candidate is told."); setAsk(null); setNote(""); setTick((t) => t + 1);
+    } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <PageHead title="JUPEB change requests" description="After submission a candidate asks — never changes — to withdraw, defer an accepted admission, or change the combination or programme. Each is judged again when approved."
+        actions={<select className="ctl" aria-label="Show" value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="PENDING">Open</option><option value="APPROVED">Approved</option><option value="DECLINED">Declined</option><option value="CANCELLED">Cancelled</option><option value="ALL">All</option></select>} />
+      <Panel title={`${rows?.length ?? 0} request(s)`}>
+        <PBody>
+          <DTable pageSize={50} cols={["Asked", "Application No", "Name", "Request", "Why", "Status", ...(canWrite && state === "PENDING" ? ["|mid"] : [])]}
+            texts={(rows ?? []).map((r) => `${r.application_no} ${r.name} ${r.words}`)}
+            rows={(rows ?? []).map((r) => [when(r.requested_at), <Link key="l" className="tnum" href={`/jupeb/applications/${r.application_id}`}>{r.application_no}</Link>, r.name, r.words, r.reason,
+              <span key="s"><Pil kind={(REQUEST_STATE[r.state] ?? [r.state, "grey"])[1]}>{(REQUEST_STATE[r.state] ?? [r.state])[0]}</Pil>{r.decision_note ? <div className="sub2">{r.decision_note}</div> : null}</span>,
+              ...(canWrite && state === "PENDING" ? [<span key="a" className="row" style={{ gap: 4, justifyContent: "center", flexWrap: "nowrap" }}>
+                <Btn kind="go" onClick={() => { setNote(""); setAsk({ approve: true, row: r }); }}>Approve…</Btn>
+                <Btn kind="ghost" onClick={() => { setNote(""); setAsk({ approve: false, row: r }); }}>Decline…</Btn></span>] : [])])} />
+        </PBody>
+      </Panel>
+      {ask ? (
+        <Modal title={ask.approve ? "Approve the request" : "Decline the request"} onClose={() => setAsk(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || (!ask.approve && !note.trim())} onClick={() => void decide()}>{ask.approve ? "Approve" : "Decline"}</Btn></>}>
+          <p><b>{ask.row.application_no}</b> · {ask.row.name}: {ask.row.words} — {ask.row.reason}</p>
+          <Field id="rq2-note" label={ask.approve ? "Note (optional)" : "Why it is declined (the candidate reads this)"} required={!ask.approve}>
+            <textarea id="rq2-note" className="ctl" rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+interface ReminderRule { kind: string; enabled: boolean; first_after_days: number; every_days: number; max_count: number; sms: boolean; sent_30_days: number; last_sent: string | null }
+interface Reminders { rules: ReminderRule[]; dueNow: { kind: string; candidates: number }[]; result?: string }
+interface DueRow { application_id: string; application_no: string; name: string; kind: string; sent_before: number; last_sent: string | null }
+
+const REMINDER_LABEL: Record<string, string> = {
+  FEE_UNPAID: "Application fee not paid", SUBMIT_PENDING: "Paid but not submitted (or a correction not resubmitted)", PASSPORT_MISSING: "No passport photograph",
+  CHECKING_OPEN: "Admission status not checked while checking is open", ACCEPTANCE_UNPAID: "Acceptance fee not paid", SCHOOL_FEE_UNPAID: "School fee not paid, or a balance outstanding",
+};
+
+/** the reminders the portal sends each morning at ten: when, how often, how many times, and SMS too or not */
+function ReminderRules({ canWrite }: { canWrite: boolean }) {
+  const [d, setD] = useState<Reminders | null>(null);
+  const [edit, setEdit] = useState<Record<string, ReminderRule>>({});
+  const [due, setDue] = useState<DueRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const take = (x: Reminders) => { setD(x); setEdit(Object.fromEntries(x.rules.map((r) => [r.kind, { ...r }]))); };
+  useEffect(() => {
+    let live = true;
+    void jcall<Reminders>("/api/v1/jupeb/office/reminders").then((r) => { if (live && r.ok) take(r.data); });
+    return () => { live = false; };
+  }, []);
+  if (!d) return null;
+  const dueOf = (k: string) => Number(d.dueNow.find((x) => x.kind === k)?.candidates ?? 0);
+  async function save(k: string) {
+    const r0 = edit[k];
+    const r = await jcall<Reminders>(`/api/v1/jupeb/office/reminders/${k}`, "PUT", { enabled: r0.enabled, firstAfterDays: Number(r0.first_after_days), everyDays: Number(r0.every_days), maxCount: Number(r0.max_count), sms: r0.sms }, "JUPEB reminder rule");
+    if (!r.ok) { notifyProblem(r.problem); return; }
+    take(r.data); notify("Saved.");
+  }
+  async function preview() {
+    const r = await jcall<DueRow[]>("/api/v1/jupeb/office/reminders/due");
+    if (r.ok) setDue(r.data); else notifyProblem(r.problem);
+  }
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await jcall<Reminders>("/api/v1/jupeb/office/reminders/run", "POST", {}, "JUPEB reminders sent now");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      take(r.data); setDue(null);
+      const sent = (() => { try { return JSON.parse(r.data.result ?? "{}").sent ?? 0; } catch { return 0; } })();
+      notify(`${sent} reminder${sent === 1 ? "" : "s"} sent.`);
+    } finally { setBusy(false); }
+  }
+  const set = (k: string, patch: Partial<ReminderRule>) => setEdit({ ...edit, [k]: { ...edit[k], ...patch } });
+  const totalDue = d.dueNow.reduce((n, x) => n + Number(x.candidates), 0);
+  return (
+    <Panel title="Reminders" right={<span className="row"><Btn kind="ghost" onClick={() => void preview()}>Who is due now ({totalDue})</Btn>
+      {canWrite ? <Btn kind="secondary" disabled={busy || totalDue === 0} onClick={() => void run()}>{busy ? "Sending…" : "Send due reminders now"}</Btn> : null}</span>}>
+      <PBody>
+        <p className="sub2">Each morning at 10:00 the portal emails a candidate with an unfinished step — at most one reminder a day, on these rules. Turn one off to stop it.</p>
+        <DTable noPrint pageSize={0} cols={["Reminder", "On|mid", "First after (days)|num", "Every (days)|num", "At most (times)|num", "Also SMS|mid", "Sent, 30 days|num", "Due now|num", ...(canWrite ? ["|mid"] : [])]}
+          rows={d.rules.map((r) => {
+            const e = edit[r.kind] ?? r;
+            const num = (k: "first_after_days" | "every_days" | "max_count", min: number, max: number) => canWrite
+              ? <input key={k} className="ctl tnum" style={{ width: 70, textAlign: "right" }} type="number" min={min} max={max} aria-label={`${REMINDER_LABEL[r.kind]} ${k}`} value={e[k]} onChange={(ev) => set(r.kind, { [k]: Number(ev.target.value) } as Partial<ReminderRule>)} />
+              : e[k];
+            return [REMINDER_LABEL[r.kind] ?? r.kind,
+              <input key="on" type="checkbox" aria-label={`${REMINDER_LABEL[r.kind]} on`} disabled={!canWrite} checked={e.enabled} onChange={(ev) => set(r.kind, { enabled: ev.target.checked })} />,
+              num("first_after_days", 0, 60), num("every_days", 1, 60), num("max_count", 1, 10),
+              <input key="sms" type="checkbox" aria-label={`${REMINDER_LABEL[r.kind]} by SMS`} disabled={!canWrite} checked={e.sms} onChange={(ev) => set(r.kind, { sms: ev.target.checked })} />,
+              r.sent_30_days, dueOf(r.kind),
+              ...(canWrite ? [<Btn key="s" kind="ghost" onClick={() => void save(r.kind)}>Save</Btn>] : [])];
+          })} />
+        {due ? (
+          <>
+            <div className="eyebrow mt-3">Due now ({due.length})</div>
+            <DTable pageSize={20} cols={["Application No", "Name", "Reminder", "Sent before|num", "Last sent"]} rows={due.map((x) => [
+              <Link key="l" className="tnum" href={`/jupeb/applications/${x.application_id}`}>{x.application_no}</Link>, x.name, REMINDER_LABEL[x.kind] ?? x.kind, x.sent_before, x.last_sent ? when(x.last_sent) : "—"])} />
+          </>
+        ) : null}
+      </PBody>
+    </Panel>
   );
 }
 
@@ -897,6 +1133,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
         <PBody><DTable noPrint pageSize={0} cols={["Code", "Document", "Required|mid", "Image|mid", "Active|mid", ...(canWrite ? ["|mid"] : [])]} rows={s.documentKinds.map((d) => [d.code, d.label, d.required ? "Yes" : "No", d.image ? "Yes" : "No", d.active ? "Yes" : "No",
           ...(canWrite ? [<Btn key="e" kind="ghost" onClick={() => setDoc({ code: d.code, label: d.label, required: d.required ? "yes" : "no", image: d.image ? "yes" : "no", active: d.active ? "yes" : "no", ord: String(d.ord) })}>Edit</Btn>] : [])])} /></PBody>
       </Panel>
+      <ReminderRules canWrite={canWrite} />
       <Panel title="Fees (set by the Bursary)">
         <PBody><KvGrid pairs={[["Application fee", naira(s.fees.application_fee)], ["Admission status checking fee", naira(s.fees.checking_fee)], ["Acceptance fee", naira(s.fees.acceptance_fee)],
           ["First semester share", `${Number(s.fees.first_percent)}%`], ["Full payment", s.fees.allow_full ? "Allowed" : "Not allowed"],

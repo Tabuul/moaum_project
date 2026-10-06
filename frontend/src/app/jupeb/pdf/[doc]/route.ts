@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import { jpegSize } from "@/lib/pdf-write";
+import { qrMatrix } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument, type DocumentMeta } from "@/lib/document/pdf";
 import { formatDocDate } from "@/lib/document/institution";
 import { ADMISSION_STATUS, FEE_KIND, feeCategoryLabel, fullName, streamLabel, type Candidate } from "@/lib/jupeb";
 
 export const dynamic = "force-dynamic";
+
+/** the papers that carry a verification code (V343), by the route's name */
+const PAPER: Record<string, string> = {
+  acknowledgement: "ACKNOWLEDGEMENT", status: "STATUS_SLIP", letter: "ADMISSION_LETTER", acceptance: "ACCEPTANCE_LETTER",
+  receipt: "RECEIPT", slip: "REGISTRATION_SLIP", result: "RESULT",
+};
 
 const money = (n: number | string | null | undefined) => (n == null ? "-" : "NGN " + Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
@@ -183,6 +190,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     name = `jupeb-application-${c.application_no}`;
   } else {
     return NextResponse.json({ status: 404, title: "No such JUPEB document" }, { status: 404 });
+  }
+  /* V343: the verification code, issued by the server for the record as it stands; its QR opens the public verifier. A paper the
+     record does not support as verifiable (an unpublished statement printed by the office) carries none */
+  const kind = PAPER[doc];
+  if (kind) {
+    const issued = await api<{ code: string }>(office ? `/api/v1/jupeb/office/applications/${c.id}/papers` : "/api/v1/jupeb/me/papers",
+      { method: "POST", body: { kind, reference: doc === "receipt" ? url.searchParams.get("ref") : null } });
+    if (issued.ok) {
+      const h = req.headers;
+      const host = h.get("x-forwarded-host") ?? h.get("host");
+      const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : url.origin;
+      pdf.space(6);
+      pdf.qr(qrMatrix(`${origin}/verify/jupeb/${issued.data.code}`), `Verify at ${origin}/verify/jupeb with the code ${issued.data.code}`, 64);
+    }
   }
   const bytes = pdf.finish();
   return new NextResponse(Buffer.from(bytes), {

@@ -24,11 +24,11 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
-  ADMISSION_STATUS, DOC_STATUS, EVENT_LABEL, FEE_KIND, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS, SCREENING_LABEL, STATE_SHORT,
+  ADMISSION_STATUS, CHANGE_KIND, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS, SCREENING_LABEL, STATE_SHORT,
   day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Combination, type Doc, type FeeRef, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "admission" | "payments" | "subjects" | "attendance" | "results" | "documents" | "support";
+type Tab = "overview" | "admission" | "payments" | "subjects" | "attendance" | "results" | "documents" | "requests" | "support";
 type Act = (path: string, method?: string, body?: unknown) => Promise<Candidate | null>;
 
 interface Ticket { id: string; number: string; subject: string; category: string; status: string; created_at: string; updated_at: string; queue: string | null }
@@ -117,13 +117,16 @@ export function JupebPortal() {
   const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
     { id: "overview", label: "Overview" }, { id: "admission", label: "Admission" }, { id: "payments", label: "Payments" },
     { id: "subjects", label: "Subjects", disabled: !admitted }, { id: "attendance", label: "Attendance", disabled: !(me.state === "STUDENT" || me.state === "COMPLETED") },
-    { id: "results", label: "Results", disabled: !admitted }, { id: "documents", label: "Documents" }, { id: "support", label: "Support" },
+    { id: "results", label: "Results", disabled: !admitted }, { id: "documents", label: "Documents" },
+    { id: "requests", label: me.requests.some((r) => r.state === "PENDING") ? "Requests (1)" : "Requests" }, { id: "support", label: "Support" },
   ];
 
   return (
     <Shell route="jupeb/portal" me={shellMe}>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Profile me={me} />
+      {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn">{`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.`}</Note> : null}
+      {me.state === "DEFERRED" ? <Note kind="info" title={`Your admission is deferred to ${me.deferred_to ?? "a later session"}`}>The JUPEB Office resumes it in that session; you will be told, and your payments stand.</Note> : null}
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates on its own once the payment reaches the University.</Note> : null}
       {guided ? <Guided me={me} act={act} /> : (
         <>
@@ -135,6 +138,7 @@ export function JupebPortal() {
           {tab === "attendance" ? <Attendance /> : null}
           {tab === "results" ? <Results me={me} /> : null}
           {tab === "documents" ? <DocumentCentre me={me} /> : null}
+          {tab === "requests" ? <Requests me={me} act={act} /> : null}
           {tab === "support" ? <SupportTab /> : null}
         </>
       )}
@@ -802,6 +806,87 @@ function DocumentCentre({ me }: { me: Candidate }) {
         <PBody>
           <DTable noPrint pageSize={0} cols={["Document", "File", "Status"]} rows={me.documents.filter((d) => d.filename).map((d) => [d.label,
             <a key="f" href={docUrl(d)} target="_blank" rel="noreferrer">{d.filename}</a>, d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status] ?? d.status}</Pil> : "—"])} />
+        </PBody>
+      </Panel>
+    </div>
+  );
+}
+
+/** V343: after submission, a change is asked for — never made — and the JUPEB Office decides it */
+function Requests({ me, act }: { me: Candidate; act: Act }) {
+  const st = me.state;
+  const open = me.requests.find((r) => r.state === "PENDING") ?? null;
+  const kinds = [
+    ...(st !== "COMPLETED" && st !== "WITHDRAWN" ? ["WITHDRAW"] : []),
+    ...(st === "ADMITTED" && me.accepted_at ? ["DEFER"] : []),
+    ...(!me.exam_no && ["SUBMITTED", "UNDER_REVIEW", "ELIGIBLE", "PENDING", "ADMITTED", "STUDENT", "DEFERRED"].includes(st) ? ["CHANGE_COMBINATION"] : []),
+    ...(!me.fees?.frozen && ["SUBMITTED", "UNDER_REVIEW", "ELIGIBLE", "PENDING", "ADMITTED", "DEFERRED"].includes(st) ? ["CHANGE_PROGRAMME"] : []),
+  ];
+  const [kind, setKind] = useState<string>(kinds.includes("CHANGE_COMBINATION") ? "CHANGE_COMBINATION" : kinds[0] ?? "");
+  const [stream, setStream] = useState<string>(me.stream === "SCIENCE" ? "NON_SCIENCE" : "SCIENCE");
+  const [comb, setComb] = useState("");
+  const [toSession, setToSession] = useState(laterSessions(me.session)[0] ?? "");
+  const [reason, setReason] = useState("");
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const list = kind === "CHANGE_PROGRAMME" ? suiting(me.combinations, stream) : suiting(me.combinations, me.stream).filter((c) => c.id !== me.combination_id);
+  async function send() {
+    setBusy(true);
+    try {
+      const r = await act("/api/v1/jupeb/me/requests", "POST", {
+        kind, stream: kind === "CHANGE_PROGRAMME" ? stream : null, combination: kind === "CHANGE_COMBINATION" || kind === "CHANGE_PROGRAMME" ? comb || null : null,
+        toSession: kind === "DEFER" ? toSession : null, reason: reason.trim(),
+      });
+      if (r) { notify("Your request is with the JUPEB Office. You will be told of its decision."); setReason(""); setComb(""); setSure(false); }
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="stack">
+      {open ? (
+        <Note kind="info" title="Your request is with the JUPEB Office" action={<Btn kind="ghost" onClick={() => void act(`/api/v1/jupeb/me/requests/${open.id}/cancel`)}>Cancel the request</Btn>}>
+          {`You asked to ${open.words}, on ${day(open.requested_at)}. One request is open at a time.`}
+        </Note>
+      ) : kinds.length ? (
+        <Panel title="Ask the JUPEB Office for a change">
+          <PBody>
+            <p className="sub2">Your submitted application is changed only by the JUPEB Office. Say what you need and why; you will be told of the decision by email and here.</p>
+            <Field id="rq-kind" label="What do you need?">
+              <select id="rq-kind" className="ctl" style={{ maxWidth: 420 }} value={kind} onChange={(e) => { setKind(e.target.value); setComb(""); setSure(false); }}>
+                {kinds.map((k) => <option key={k} value={k}>{CHANGE_KIND[k]}</option>)}
+              </select>
+            </Field>
+            {kind === "CHANGE_PROGRAMME" ? (
+              <Field id="rq-stream" label="New programme">
+                <select id="rq-stream" className="ctl" style={{ maxWidth: 320 }} value={stream} onChange={(e) => { setStream(e.target.value); setComb(""); }}>
+                  {me.stream !== "SCIENCE" ? <option value="SCIENCE">Science</option> : null}{me.stream === "SCIENCE" ? <option value="NON_SCIENCE">Non-Science</option> : null}
+                </select>
+              </Field>
+            ) : null}
+            {kind === "CHANGE_COMBINATION" || kind === "CHANGE_PROGRAMME" ? <CombinationPicker id="rq-comb" list={list} value={comb} onChange={setComb} /> : null}
+            {kind === "DEFER" ? (
+              <Field id="rq-session" label="Defer to" hint="Your acceptance and payments stand; school fees are paid in that session.">
+                <select id="rq-session" className="ctl" style={{ maxWidth: 220 }} value={toSession} onChange={(e) => setToSession(e.target.value)}>
+                  {laterSessions(me.session).map((x) => <option key={x}>{x}</option>)}
+                </select>
+              </Field>
+            ) : null}
+            {kind === "WITHDRAW" ? (
+              <Note kind="bad" title="Withdrawing ends your application">Your record is kept, but you will not continue in the JUPEB programme. Any refund is the Bursary&rsquo;s decision under its own rules.</Note>
+            ) : null}
+            <Field id="rq-reason" label="Why?" required hint="At least ten characters"><textarea id="rq-reason" className="ctl" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+            {kind === "WITHDRAW" ? <label className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> I understand and want to withdraw</label> : null}
+            <div className="row mt-2"><Btn kind="primary" disabled={busy || reason.trim().length < 10 || ((kind === "CHANGE_COMBINATION" || kind === "CHANGE_PROGRAMME") && list.length > 0 && !comb) || (kind === "WITHDRAW" && !sure)}
+              onClick={() => void send()}>{busy ? "Sending…" : "Send the request"}</Btn></div>
+          </PBody>
+        </Panel>
+      ) : <Note kind="info" title="No change can be asked for now">Your record as it stands takes no change request.</Note>}
+      <Panel title="Your requests">
+        <PBody>
+          <DTable noPrint pageSize={0} cols={["Asked", "Request", "Why", "Decision", "Note"]} rows={me.requests.map((r) => [
+            day(r.requested_at), r.words, r.reason,
+            <Pil key="s" kind={(REQUEST_STATE[r.state] ?? [r.state, "grey"])[1]}>{(REQUEST_STATE[r.state] ?? [r.state])[0]}</Pil>,
+            r.decision_note ? `${r.decision_note}${r.decided_at ? ` · ${day(r.decided_at)}` : ""}` : r.decided_at ? day(r.decided_at) : "—",
+          ])} />
         </PBody>
       </Panel>
     </div>

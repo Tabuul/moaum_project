@@ -29,6 +29,14 @@ export interface Fees {
 export interface FeeRef { kind: string; reference: string; amount: number; semester: number | null; expires_at: string; confirmed_at: string | null; channel: string | null; created_at: string }
 export interface Registered { code: string; title: string; registered_at: string; grade?: string | null; points?: number | null; units?: { code: string; title: string }[] }
 export interface JEvent { kind: string; note: string | null; at: string; actor_office?: string | null; actor_name?: string | null }
+/** V343: a request after submission — withdraw, defer, change the combination or the programme — and its decision */
+export interface ChangeRequest {
+  id: string; kind: string; state: string; words: string; reason: string; requested_at: string; requested_office: string | null;
+  decided_at: string | null; decided_office?: string | null; decision_note: string | null; to_stream: string | null; to_combination_code: string | null;
+  from_session: string | null; to_session: string | null; decided_by_name?: string | null;
+}
+/** V343: a paper issued with a verification code */
+export interface Paper { code: string; kind: string; subject_ref: string | null; issued_at: string; issued_office: string | null; revoked_at: string | null; revoked_reason: string | null; current: boolean }
 export interface Candidate {
   id: string; session: string; application_no: string; surname: string; first_name: string; middle_name: string | null; sex: string | null; date_of_birth: string | null;
   nin: string | null; email: string; phone: string | null; nationality: string | null; state_of_origin: string | null; lga: string | null; contact_address: string | null;
@@ -57,6 +65,8 @@ export interface Candidate {
   resultChanges?: { code: string; old_grade: string | null; new_grade: string; reason: string; batch_ref: string | null; changed_at: string }[];
   decidedBy?: { eligibility: string | null; admission: string | null; returned: string | null; screening: string | null };
   combinations?: Combination[];
+  /** V343 */
+  requests: ChangeRequest[]; papers?: Paper[]; withdrawn_at: string | null; deferred_from: string | null; deferred_to: string | null;
 }
 
 export const STATE_LABEL: Record<string, string> = {
@@ -64,17 +74,18 @@ export const STATE_LABEL: Record<string, string> = {
   UNDER_REVIEW: "Under review — check your admission status when checking opens",
   ELIGIBLE: "Found eligible — awaiting the admission decision", INELIGIBLE: "Not eligible", ADMITTED: "Admitted", NOT_ADMITTED: "Not admitted",
   PENDING: "Admission decision pending", STUDENT: "JUPEB student — active", COMPLETED: "Results published", WITHDRAWN: "Withdrawn",
+  DEFERRED: "Admission deferred",
 };
 export const STATE_SHORT: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted", RETURNED: "Returned", UNDER_REVIEW: "Under review", ELIGIBLE: "Eligible", INELIGIBLE: "Not eligible", ADMITTED: "Admitted",
-  NOT_ADMITTED: "Not admitted", PENDING: "Pending", STUDENT: "Student", COMPLETED: "Completed", WITHDRAWN: "Withdrawn",
+  NOT_ADMITTED: "Not admitted", PENDING: "Pending", STUDENT: "Student", COMPLETED: "Completed", WITHDRAWN: "Withdrawn", DEFERRED: "Deferred",
 };
 export function stateKind(s: string | null | undefined): "grey" | "info" | "ok" | "bad" | "warn" {
   switch (s) {
     case "ADMITTED": case "STUDENT": case "COMPLETED": case "ELIGIBLE": case "VERIFIED": case "CLEARED": case "PAID": return "ok";
     case "INELIGIBLE": case "NOT_ADMITTED": case "REJECTED": case "NOT_CLEARED": case "WITHDRAWN": return "bad";
     case "RETURNED": case "PENDING": case "REPLACEMENT_REQUIRED": case "CORRECTION_REQUIRED": case "PARTIALLY_PAID": return "warn";
-    case "SUBMITTED": case "UNDER_REVIEW": case "SCHEDULED": case "IN_PROGRESS": case "UPLOADED": return "info";
+    case "SUBMITTED": case "UNDER_REVIEW": case "SCHEDULED": case "IN_PROGRESS": case "UPLOADED": case "DEFERRED": return "info";
     default: return "grey";
   }
 }
@@ -96,6 +107,8 @@ export const EVENT_LABEL: Record<string, string> = {
   DOCUMENT_UNDER_REVIEW: "Document under review", DOCUMENT_REPLACED: "Document replaced",
   SCREENING_PENDING: "Screening opened", SCREENING_SCHEDULED: "Screening scheduled", SCREENING_IN_PROGRESS: "Screening in progress", SCREENING_CLEARED: "Cleared at screening",
   SCREENING_NOT_CLEARED: "Not cleared at screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
+  CHANGE_REQUESTED: "Change requested", CHANGE_APPROVED: "Request approved", CHANGE_DECLINED: "Request declined", CHANGE_CANCELLED: "Request cancelled",
+  COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -172,3 +185,20 @@ export async function readSheet(file: File, aliases: Record<string, string>): Pr
   }
   return out;
 }
+
+/** V343: what a change request asks, and the papers that carry a verification code */
+export const CHANGE_KIND: Record<string, string> = {
+  WITHDRAW: "Withdraw my application", DEFER: "Defer my admission to a later session", CHANGE_COMBINATION: "Change my subject combination", CHANGE_PROGRAMME: "Change my programme (Science / Non-Science)",
+};
+export const REQUEST_STATE: Record<string, [string, "info" | "ok" | "bad" | "grey" | "warn"]> = {
+  PENDING: ["With the JUPEB Office", "warn"], APPROVED: ["Approved", "ok"], DECLINED: ["Declined", "bad"], CANCELLED: ["Cancelled", "grey"],
+};
+export const PAPER_KIND: Record<string, string> = {
+  RESULT: "Statement of result", ADMISSION_LETTER: "Admission letter", ACCEPTANCE_LETTER: "Acceptance letter", STATUS_SLIP: "Admission status slip",
+  REGISTRATION_SLIP: "Registration slip", ACKNOWLEDGEMENT: "Application acknowledgement", RECEIPT: "Payment receipt",
+};
+/** the next two sessions after one — where an admission may be deferred to */
+export const laterSessions = (session: string) => {
+  const y = Number(session.slice(0, 4));
+  return Number.isFinite(y) ? [`${y + 1}/${y + 2}`, `${y + 2}/${y + 3}`] : [];
+};

@@ -293,6 +293,42 @@ class JupebIT {
         assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null)).get("state")).isEqualTo("SUBMITTED");
         assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", bio))).isEqualTo("JUPEB_NOT_EDITABLE");
 
+        // ── V343: the acknowledgement carries a code the public verifier reads back; the same paper keeps its code ──
+        String ack = String.valueOf(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "ACKNOWLEDGEMENT"))).get("code"));
+        assertThat(ack).matches("^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$");
+        assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "ACKNOWLEDGEMENT"))).get("code")).isEqualTo(ack);
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "REGISTRATION_SLIP")))).isEqualTo("JUPEB_PAPER_NOT_ISSUABLE");
+        Map<String, Object> verified = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + ack.toLowerCase().replace("-", ""), null));
+        assertThat(verified.get("genuine")).isEqualTo(true);
+        assertThat(verified.get("current")).isEqualTo(true);
+        assertThat(((Map<String, Object>) verified.get("facts")).get("applicationNo")).isEqualTo(number);
+        assertThat(((Map<String, Object>) verified.get("facts"))).doesNotContainKeys("nin", "email", "phone", "dateOfBirth");
+        assertThat(ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/AAAA-BBBB-CCCC", null)).get("genuine")).isEqualTo(false);
+
+        // ── V343: after submission a change is asked for, one at a time, and the JUPEB Office decides it (declining says why) ──
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "CHANGE_COMBINATION", "combination", "SC-031", "reason", "short"))))
+                .isEqualTo("JUPEB_CHANGE_REASON");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "DEFER", "reason", "Family reasons this session"))))
+                .isEqualTo("JUPEB_DEFER_STATE");
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "CHANGE_COMBINATION", "combination", "SC-031", "reason", "I would rather take Biology")));
+        Map<String, Object> asked = ((List<Map<String, Object>>) mine.get("requests")).get(0);
+        assertThat(asked.get("state")).isEqualTo("PENDING");
+        assertThat(String.valueOf(asked.get("words"))).contains("to SC-031");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "WITHDRAW", "reason", "Changed my mind entirely"))))
+                .isEqualTo("JUPEB_CHANGE_PENDING");
+        assertThat(status(it.call(me, HttpMethod.POST, "/api/v1/jupeb/office/requests/" + asked.get("id") + "/decide", Map.of("approve", false, "note", "x")))).isEqualTo(403);
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/requests/" + asked.get("id") + "/decide", Map.of("approve", false))))
+                .isEqualTo("JUPEB_CHANGE_NOTE");
+        assertThat(it.getList(office, "/api/v1/jupeb/office/requests").getBody()).anyMatch(r -> asked.get("id").equals(((Map) r).get("id")));
+        Map<String, Object> declined = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/requests/" + asked.get("id") + "/decide",
+                Map.of("approve", false, "note", "The class for SC-031 is full")));
+        assertThat(((List<Map<String, Object>>) declined.get("requests")).get(0).get("state")).isEqualTo("DECLINED");
+        assertThat(declined.get("combination_code")).isEqualTo(comb);
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "WITHDRAW", "reason", "Thinking of withdrawing")));
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests/" + ((List<Map<String, Object>>) mine.get("requests")).get(0).get("id") + "/cancel", null));
+        assertThat(((List<Map<String, Object>>) mine.get("requests")).get(0).get("state")).isEqualTo("CANCELLED");
+        assertThat(mine.get("state")).isEqualTo("SUBMITTED");
+
         // ── the office: a document to replace needs its reason; the candidate replaces it; a return and a resubmission ──
         Map<String, Object> list = ok(it.get(office, ub -> ub.path("/api/v1/jupeb/office/applications").queryParam("session", session).queryParam("q", number).build()));
         assertThat(((Number) list.get("total")).intValue()).isEqualTo(1);
@@ -406,6 +442,43 @@ class JupebIT {
         mine = ok(it.get(me, "/api/v1/jupeb/me"));
         assertThat(mine.get("state")).isEqualTo("COMPLETED");
         assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("grade")).containsExactlyInAnyOrder("A", "B", "C");
+
+        // ── V343: the published statement of result verifies; a later correction marks it superseded; a revoked paper no longer verifies ──
+        String statement = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/papers", Map.of("kind", "RESULT"))).get("code"));
+        assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "RESULT"))).get("code")).isEqualTo(statement);
+        verified = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + statement, null));
+        assertThat(verified.get("current")).isEqualTo(true);
+        assertThat(((Map<String, Object>) verified.get("facts")).get("gradePoint")).isEqualTo("13/16");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/results/import", Map.of("rows",
+                List.of(Map.of("row", 2, "examNo", held, "subject", "ZZM" + tag, "grade", "B", "reason", "The Board corrected the grade")), "commit", true)));
+        verified = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + statement, null));
+        assertThat(verified.get("genuine")).isEqualTo(true);
+        assertThat(verified.get("current")).isEqualTo(false);
+        assertThat(((Map<String, Object>) verified.get("currentFacts")).get("gradePoint")).isEqualTo("12/16");
+        String slip = String.valueOf(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "REGISTRATION_SLIP"))).get("code"));
+        assertThat(status(it.call(me, HttpMethod.POST, "/api/v1/jupeb/office/papers/" + slip + "/revoke", Map.of("reason", "Issued in error")))).isEqualTo(403);
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/papers/" + slip + "/revoke", Map.of("reason", "no")))).isEqualTo("JUPEB_PAPER_REASON");
+        Map<String, Object> afterRevoke = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/papers/" + slip + "/revoke", Map.of("reason", "Printed before the correction")));
+        assertThat((List<Map<String, Object>>) afterRevoke.get("papers")).anySatisfy(pp -> {
+            assertThat(pp.get("code")).isEqualTo(slip);
+            assertThat(pp.get("revoked_at")).isNotNull();
+        });
+        verified = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + slip, null));
+        assertThat(verified.get("genuine")).isEqualTo(false);
+        assertThat(verified.get("revoked")).isEqualTo(true);
+        // a completed candidate asks for no change
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "WITHDRAW", "reason", "I want to withdraw now")))).isEqualTo("JUPEB_CHANGE_CLOSED");
+
+        // ── V343: reminders — the JUPEB Office's rules, who is due, sending now; nobody else sets them ──
+        Map<String, Object> reminders = ok(it.get(office, "/api/v1/jupeb/office/reminders"));
+        assertThat((List<Map<String, Object>>) reminders.get("rules")).extracting(r -> r.get("kind"))
+                .containsExactly("FEE_UNPAID", "SUBMIT_PENDING", "PASSPORT_MISSING", "CHECKING_OPEN", "ACCEPTANCE_UNPAID", "SCHOOL_FEE_UNPAID");
+        Map<String, Object> reminderRule = Map.of("enabled", true, "firstAfterDays", 2, "everyDays", 3, "maxCount", 3, "sms", false);
+        assertThat(status(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/office/reminders/FEE_UNPAID", reminderRule))).isEqualTo(403);
+        assertThat(status(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/reminders/NO_SUCH", reminderRule))).isEqualTo(404);
+        ok(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/reminders/FEE_UNPAID", reminderRule));
+        assertThat(it.getList(office, "/api/v1/jupeb/office/reminders/due").getStatusCode().value()).isEqualTo(200);
+        assertThat(String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/reminders/run", null)).get("result"))).contains("\"sent\"");
 
         // ── support: the candidate's ticket reaches the JUPEB queue; the category is not offered to students and staff ──
         Map<String, Object> ticket = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/support",
