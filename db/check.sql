@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 184
+\set EXPECTED 185
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -298,7 +298,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 38, n || ' offices (36 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314 and the Head of ICT Support Desk V328; the applicant V021 and the student V026)');
+                           n = 39, n || ' offices (37 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328 and the JUPEB Office V339; the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -5069,6 +5069,67 @@ BEGIN
         AND v_id2 = v_id AND st_back = 'LIVE' AND r_owner = 'CAT_OWNER_PROGRAMME' AND n_owner = 1 AND owner_src = 'DESK',
         format('invalid=%s courses=%s offers=%s elective=%s title=%s/%s confirm=%s x=%s/%s y=%s entry=%s hist=%s same=%s back=%s owner=%s/%s/%s',
                r_invalid, n_courses, n_offers, basis_e, title_off, title_res, r_confirm, st_x, reset_x, n_y, n_entry, n_hist, v_id2 = v_id, st_back, r_owner, n_owner, owner_src));
+END $$;
+
+-- ── 185. V339: JUPEB — the application window is closed until opened; the Bursary's defaults stand (₦15,000; ₦180,000 / ₦195,000 / ₦200,000 / ₦215,000; 70%); an O'Level needs five credits with English and Mathematics; the school fee follows Science-or-other and indigene status, is charged 70% then 30% in order and frozen once charged; the first instalment activates the student, who registers the combination's three subjects; an examination number is unique, a surname mismatch is held for review and a correction needs its reason ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc1 uuid; acc2 uuid; app1 uuid; app2 uuid; s1 uuid; s2 uuid; s3 uuid; comb uuid; prog text; fac text; msg text;
+        win text; d_app numeric; d_fees numeric[]; ok4 boolean; ok5 boolean; noeng boolean; sf record; r_order text; ref1 text; amt1 numeric; st_after text;
+        n_reg int; r_taken text; r_reason text; imp jsonb; held text; frozen numeric; ses text := '2093/2094';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        win := (SELECT w.state FROM policy.window_state('JUPEB_APPLICATION', ses, NULL) w);
+        d_app := (jupeb.fee_setting_of(ses)).application_fee;
+        d_fees := ARRAY[jupeb.school_fee_amount(ses, 'OTHER', true), jupeb.school_fee_amount(ses, 'SCIENCE', true),
+                        jupeb.school_fee_amount(ses, 'OTHER', false), jupeb.school_fee_amount(ses, 'SCIENCE', false), (jupeb.fee_setting_of(ses)).first_percent];
+        SELECT code, faculty_code INTO prog, fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO jupeb.fee_category (faculty_code, category) VALUES (fac, 'SCIENCE') ON CONFLICT (faculty_code) DO UPDATE SET category = 'SCIENCE';
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZCHK1', 'Check One') RETURNING id INTO s1;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZCHK2', 'Check Two') RETURNING id INTO s2;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZCHK3', 'Check Three') RETURNING id INTO s3;
+        INSERT INTO jupeb.combination (code, name, subject1, subject2, subject3) VALUES ('ZZCHK', 'Check combination', s1, s2, s3) RETURNING id INTO comb;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check1@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc1;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check2@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc2;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state)
+        VALUES (acc1, ses, 'JUPEB/APP/2093/900001', 'CHECKONE', 'Candidate', 'zz.check1@example.com', prog, comb, 'Benue', 'ADMITTED') RETURNING id INTO app1;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at, exam_no)
+        VALUES (acc2, ses, 'JUPEB/APP/2093/900002', 'CHECKTWO', 'Candidate', 'zz.check2@example.com', prog, comb, 'Lagos', 'STUDENT', now(), 'ZZCHK-0002') RETURNING id INTO app2;
+        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, subject, grade) VALUES
+            (app1, 1, 'WAEC', 'English Language', 'C6'), (app1, 1, 'WAEC', 'Mathematics', 'C5'), (app1, 1, 'WAEC', 'Physics', 'B3'), (app1, 1, 'WAEC', 'Chemistry', 'C4');
+        ok4 := (SELECT k.ok FROM jupeb.olevel_check(app1) k);
+        INSERT INTO jupeb.olevel (application_id, sitting, exam_type, subject, grade) VALUES (app1, 2, 'NECO', 'Biology', 'A1');
+        ok5 := (SELECT k.ok FROM jupeb.olevel_check(app1) k);
+        UPDATE jupeb.olevel SET grade = 'D7' WHERE application_id = app1 AND subject = 'English Language';
+        noeng := (SELECT NOT k.ok AND NOT k.english FROM jupeb.olevel_check(app1) k);
+        SELECT * INTO sf FROM jupeb.school_fees(app1);
+        BEGIN PERFORM jupeb.new_fee_reference(app1, 'SCHOOL_SECOND'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_order := split_part(msg, ':', 1); END;
+        ref1 := jupeb.new_fee_reference(app1, 'SCHOOL_FIRST');
+        amt1 := (SELECT amount FROM jupeb.fee_reference WHERE reference = ref1);
+        UPDATE jupeb.school_fee SET amount = 999999 WHERE session = '*' AND category = 'SCIENCE' AND indigene;
+        PERFORM jupeb.confirm_fee(ref1, 'check');
+        st_after := (SELECT state FROM jupeb.application WHERE id = app1);
+        frozen := (SELECT f.total FROM jupeb.school_fees(app1) f);
+        n_reg := jupeb.register_subjects(app1, who);
+        BEGIN PERFORM jupeb.set_exam_no(app1, 'ZZCHK-0002', NULL, 'DESK', NULL); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_taken := split_part(msg, ':', 1); END;
+        imp := jupeb.import_exam_numbers(jsonb_build_array(jsonb_build_object('row', 2, 'applicationNo', 'JUPEB/APP/2093/900001', 'examNo', 'ZZCHK-0001', 'surname', 'SOMEBODY')), true, 'check', who);
+        held := (SELECT exam_no FROM jupeb.application WHERE id = app1);
+        PERFORM jupeb.set_exam_no(app1, 'ZZCHK-0001', NULL, 'DESK', NULL);
+        BEGIN PERFORM jupeb.set_exam_no(app1, 'ZZCHK-0003', NULL, 'DESK', NULL); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V339 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB: the window is closed until opened; the Bursary''s defaults stand; five credits with English and Mathematics; Science/indigene ₦195,000 charged 70% then 30%, frozen once charged; the first instalment activates; three subjects registered; an examination number unique, a surname mismatch held for review, a correction needing its reason',
+        win = 'CLOSED' AND d_app = 15000 AND d_fees = ARRAY[180000, 195000, 200000, 215000, 70]::numeric[]
+        AND ok4 = false AND ok5 AND noeng
+        AND sf.category = 'SCIENCE' AND sf.indigene AND sf.total = 195000 AND sf.first_amount = 136500 AND sf.second_amount = 58500
+        AND r_order = 'JUPEB_FEE_ORDER' AND amt1 = 136500 AND st_after = 'STUDENT' AND frozen = 195000 AND n_reg = 3
+        AND r_taken = 'JUPEB_EXAM_NO_TAKEN' AND (imp->>'review')::int = 1 AND held IS NULL AND r_reason = 'JUPEB_EXAM_NO_REASON',
+        format('window=%s app=%s fees=%s ok4=%s ok5=%s noeng=%s fee=%s/%s/%s/%s/%s order=%s first=%s state=%s frozen=%s reg=%s taken=%s review=%s held=%s reason=%s',
+               win, d_app, d_fees, ok4, ok5, noeng, sf.category, sf.indigene, sf.total, sf.first_amount, sf.second_amount, r_order, amt1, st_after, frozen, n_reg,
+               r_taken, imp->>'review', held, r_reason));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

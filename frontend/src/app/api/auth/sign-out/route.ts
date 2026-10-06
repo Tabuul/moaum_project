@@ -12,5 +12,6 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ signedOut: true });
   response.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
   response.cookies.set(OFFICE_COOKIE, "", { path: "/", maxAge: 0 });
+  response.cookies.set("moaum_jupeb", "", { path: "/", maxAge: 0 });
   return response;
 }

@@ -5,7 +5,7 @@ export interface PublicWindow {
   type: string; label: string; session: string; status: string; open: boolean;
   opensAt: string | null; closesAt: string | null; message: string | null; applicationPath: string; applicationUrl: string;
 }
-export interface PublicWindows { postUtme: PublicWindow; postgraduate: PublicWindow; now: string }
+export interface PublicWindows { postUtme: PublicWindow; postgraduate: PublicWindow; jupeb?: PublicWindow; now: string }
 
 const when = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : null;

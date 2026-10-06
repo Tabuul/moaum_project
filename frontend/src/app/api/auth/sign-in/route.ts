@@ -20,12 +20,17 @@ const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
 /* a postgraduate application number: PG/YY/NNNNNN — the PG applicant's own door (they also sign in on their email) */
 const PG_APPLICATION = /^PG\/[0-9]{2}\/[0-9]{6}$/i;
+/* a JUPEB application number: JUPEB/APP/YYYY/NNNNNN (V339) — the JUPEB candidate's own door, applicant to student to result
+   (they also sign in on their email) */
+const JUPEB_APPLICATION = /^JUPEB\/APP\/[0-9]{4}\/[0-9]{6}$/i;
+/* a JUPEB candidate's token is an applicant's; this cookie tells the home page to open the JUPEB portal for them */
+const JUPEB_COOKIE = "moaum_jupeb";
 /* a legacy old-portal matriculation number carried over from the old portal — BSU/…, MOAU/…, and the
    like: two-to-six letters, one to four more segments, then digits. It opens the student door too, so a
    migrated student signs in; a rare staff number of the same shape falls back to the staff door. */
 const LEGACY_MATRIC = /^[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7}$/i;
 
-type Kind = "staff" | "student" | "applicant" | "pgapplicant";
+type Kind = "staff" | "student" | "applicant" | "pgapplicant" | "jupeb";
 
 async function upstream(path: string, body: unknown, request: NextRequest): Promise<Response | null> {
   return fetch(`${API_URL}${path}`, {
@@ -48,6 +53,7 @@ export async function POST(request: NextRequest) {
 
   let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student"
     : PG_APPLICATION.test(identifier) ? "pgapplicant"
+    : JUPEB_APPLICATION.test(identifier) ? "jupeb"
     : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
   /* a legacy old-portal matric was not matched above (only MOAUM/… is) — route it to the student door,
      and fall back to staff if it turns out to be a staff number of the same shape */
@@ -57,6 +63,8 @@ export async function POST(request: NextRequest) {
     r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
   } else if (kind === "pgapplicant") {
     r = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
+  } else if (kind === "jupeb") {
+    r = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
   } else if (legacyMatric) {
     const asStudent = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
     if (asStudent && asStudent.ok) {
@@ -90,6 +98,13 @@ export async function POST(request: NextRequest) {
         if (pg && pg.ok) {
           r = pg;
           kind = "pgapplicant";
+        } else {
+          /* and the JUPEB candidate, on the email they applied with (V339) */
+          const jupeb = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
+          if (jupeb && jupeb.ok) {
+            r = jupeb;
+            kind = "jupeb";
+          }
         }
       }
     }
@@ -117,6 +132,10 @@ export async function POST(request: NextRequest) {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;
     home = "/pg/portal";
+  } else if (kind === "jupeb") {
+    office = "applicant";
+    name = `${signed.surname}, ${signed.otherNames}`;
+    home = "/jupeb/portal";
   } else {
     const offices = (signed.offices as { code: string }[] | undefined) ?? [];
     office = preferredOffice && offices.some((o) => o.code === preferredOffice) ? preferredOffice : offices[0]?.code ?? "";
@@ -127,5 +146,7 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ kind, home, mustChange, name, office, offices: signed.offices ?? [] });
   response.cookies.set(SESSION_COOKIE, String(signed.token), cookieOptions(seconds));
   if (office) response.cookies.set(OFFICE_COOKIE, office, { ...cookieOptions(seconds), httpOnly: false });
+  if (kind === "jupeb") response.cookies.set(JUPEB_COOKIE, "1", { ...cookieOptions(seconds), httpOnly: false });
+  else response.cookies.delete(JUPEB_COOKIE);
   return response;
 }

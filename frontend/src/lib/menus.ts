@@ -670,6 +670,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
           { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
+          { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
+          { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
           { "id": "t/nelmatch", "icon": "swap", "label": "Match a Remittance" },
           { "id": "t/pv", "icon": "doc", "label": "Payment Vouchers", "badge": "1" },
           { "id": "t/payroll", "icon": "card", "label": "Payroll", "badge": "3" },
@@ -1035,6 +1037,14 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "JUPEB",
+        "items": [
+          { "id": "jupeb/dashboard", "icon": "cap", "label": "JUPEB Office" },
+          { "id": "jupeb/applications", "icon": "doc", "label": "JUPEB Applications" },
+          { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" }
         ]
       },
       {
@@ -1649,6 +1659,54 @@ export const MENUS: Record<string, Menu> = {
           { "id": "pg/portal", "icon": "home", "label": "Dashboard" },
           { "id": "pg/apply", "icon": "doc", "label": "Apply Form" },
           { "id": "pg/summary", "icon": "print", "label": "Application Summary" }
+        ]
+      }
+    ]
+  },
+  "jupebcandidate": {
+    "label": "JUPEB Candidate",
+    "home": "jupeb/home",
+    "groups": [
+      {
+        "name": "My JUPEB",
+        "items": [
+          { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" }
+        ]
+      }
+    ]
+  },
+  "jupeb": {
+    "label": "JUPEB Office",
+    "home": "jupeb/dashboard",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "jupeb/dashboard", "icon": "home", "label": "Dashboard" }
+        ]
+      },
+      {
+        "name": "Admission",
+        "items": [
+          { "id": "jupeb/applications", "icon": "doc", "label": "Applications" },
+          { "id": "jupeb/payments", "icon": "card", "label": "Payments" }
+        ]
+      },
+      {
+        "name": "Academic",
+        "items": [
+          { "id": "jupeb/catalogue", "icon": "book", "label": "Subjects & Combinations" },
+          { "id": "jupeb/classes", "icon": "user", "label": "Classes" },
+          { "id": "jupeb/examination", "icon": "upload", "label": "Examination Numbers" },
+          { "id": "jupeb/results", "icon": "chart", "label": "Results" }
+        ]
+      },
+      {
+        "name": "Office",
+        "items": [
+          { "id": "jupeb/settings", "icon": "server", "label": "Settings" },
+          { "id": "f/jupebfees", "icon": "card", "label": "Fees (Bursary)" },
+          { "id": "t/helpdesk", "icon": "life", "label": "Support Desk" }
         ]
       }
     ]

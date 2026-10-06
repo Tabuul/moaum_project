@@ -259,7 +259,7 @@ public class PaymentsService {
         /* an applicant's fee reference, or a student's (V026): the account is the applicant's account or the student's own id */
         PaymentsRepository.Reference r = repo.byReference(reference)
                 .or(() -> repo.studentReference(reference))
-                .or(() -> repo.pgReference(reference))
+                .or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!r.accountId().equals(account)) {
             throw new NotFound("fee reference", reference);
@@ -396,6 +396,8 @@ public class PaymentsService {
             case "CHECKING" -> "admission checking fee";
             case "PG_CHECKING" -> "postgraduate checking fee";
             case "PG_APPLICATION" -> "postgraduate application fee";
+            case "JUPEB_APPLICATION" -> "JUPEB application fee";
+            case "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "JUPEB school fees";
             default -> "application fee";
         };
     }
@@ -407,6 +409,7 @@ public class PaymentsService {
             case "ACCEPTANCE" -> "/applicant/accept";
             case "CHECKING" -> "/applicant/admission";
             case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> "/pg/portal";
+            case "JUPEB_APPLICATION", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "/jupeb/portal";
             default -> "/applicant/fee";
         };
     }
@@ -415,9 +418,9 @@ public class PaymentsService {
         return portalUrl + backPath(kind) + "?paid=" + reference;
     }
 
-    /** a reference wherever it lives: an applicant's fee, a student's fee, a postgraduate applicant's fee */
+    /** a reference wherever it lives: an applicant's fee, a student's fee, a postgraduate applicant's fee, a JUPEB candidate's fee */
     private PaymentsRepository.Reference anyReference(String reference) {
-        return repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).orElse(null);
+        return repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).orElse(null);
     }
 
     /** the merchant a reference is paid to: the College of Health Sciences' own when the payer's programme is in that College */
@@ -865,7 +868,7 @@ public class PaymentsService {
     /** the same, with the channel the receipt names when it is not a card gateway's (Quickteller's biller page names its own) */
     Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
                                String providerRef, String payload, String channelLabel) {
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).orElse(null);
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).orElse(null);
         String outcome;
         Map<String, Object> answer;
         if (r == null) {
@@ -887,6 +890,7 @@ public class PaymentsService {
                     () -> tx.execute(st -> switch (r.kind()) {
                         case "FEES" -> repo.confirmStudent(reference, channel, note);
                         case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> repo.confirmPg(reference, channel);
+                        case "JUPEB_APPLICATION", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> repo.confirmJupeb(reference, channel);
                         default -> repo.confirm(reference, channel, note);
                     }));
             outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";
@@ -948,7 +952,7 @@ public class PaymentsService {
      */
     public Map<String, Object> verify(String referenceIn, String source) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (r.confirmedAt() != null) {
             return Map.of("outcome", "already confirmed", "reference", reference);
@@ -1032,7 +1036,7 @@ public class PaymentsService {
     /** whether a reference stands confirmed: the payer's own, or any for an office — read from the record, no gateway asked (V299) */
     public Map<String, Object> stateFor(UUID account, boolean office, String referenceIn) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!office && !r.accountId().equals(account)) {
             throw new NotFound("fee reference", reference);
@@ -1047,7 +1051,7 @@ public class PaymentsService {
     /** the student's own reference, or an office's: who may ask */
     public Map<String, Object> verifyFor(UUID account, boolean office, String reference) {
         if (!office) {
-            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
+            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                     .orElseThrow(() -> new NotFound("fee reference", reference));
             if (!r.accountId().equals(account)) {
                 throw new NotFound("fee reference", reference);

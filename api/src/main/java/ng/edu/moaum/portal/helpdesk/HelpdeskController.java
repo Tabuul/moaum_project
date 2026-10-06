@@ -178,7 +178,7 @@ class HelpdeskController {
     @PreAuthorize(REQUESTER)
     @Transactional(readOnly = true)
     List<Map<String, Object>> categories() {
-        return jdbc.sql("SELECT id, code, name, description, suggested_priority, fields::text AS fields, attachment_hint FROM helpdesk.category WHERE active ORDER BY ordinal, name")
+        return jdbc.sql("SELECT id, code, name, description, suggested_priority, fields::text AS fields, attachment_hint FROM helpdesk.category WHERE active AND code <> 'JUPEB' ORDER BY ordinal, name")
                 .query().listOfRows();
     }
 

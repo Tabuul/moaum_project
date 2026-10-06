@@ -32,8 +32,8 @@ export interface ApplicationsPage {
 
 /** V337: postgraduate admission status checking is the School's own window, beside its application */
 const PG_CHECKING = "POSTGRADUATE_ADMISSION_STATUS_CHECKING";
-const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking" };
-const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee" };
+const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application" };
+const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
@@ -142,7 +142,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{ACTION_WORD[e.action] ?? e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
           <span key="r" className="sub2">{e.reason ?? ""}</span>, <span key="w" className="sub2">{e.officer ?? ""}{e.office ? ` (${e.office})` : ""}</span>, <span key="t" className="tnum sub2">{when(e.at)}</span>,
-        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is open by default.</div></PBody>}
+        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {w.type === "JUPEB_APPLICATION" ? "closed" : "open"} by default.</div></PBody>}
       </Panel>
     );
   };
@@ -151,7 +151,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
 
   return (
     <>
-      <PageHead title="Application Registration Control" description="Whether a new Post UTME registration or a new postgraduate application may be started. The Director of ICT opens, closes, schedules, extends and reopens each window for the admission exercise of a session and writes the message the public reads while it is closed. Closing stops new applications only: an applicant who registered before the closing signs in and continues as before. The backend refuses a new application while the window is closed whatever any page shows; the login page hides the button, the apply page shows the message, and the University's website reads the same state."
+      <PageHead title="Application Registration Control" description="Whether a new Post UTME registration, postgraduate application or JUPEB application may be started. The Director of ICT opens, closes, schedules, extends and reopens each window for the admission exercise of a session and writes the message the public reads while it is closed. Closing stops new applications only: an applicant who registered before the closing signs in and continues as before. The backend refuses a new application while the window is closed whatever any page shows; the login page hides the button, the apply page shows the message, and the University's website reads the same state."
         actions={<span className="row row--inline row--tight"><label htmlFor="arc-session" className="sub2">Session</label><select id="arc-session" className="ctl" value={session} onChange={(e) => go(`/ict/applications?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}{Number(x.registrations) || Number(x.applications) ? ` — ${Number(x.registrations).toLocaleString()} UG · ${Number(x.applications).toLocaleString()} PG` : ""}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">Application windows are opened and closed by the Director of ICT alone.</Note> : null}

@@ -56,6 +56,7 @@ class ApplicationWindowsPublicController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("postUtme", view(all.get(ApplicationWindows.POST_UTME), "/apply"));
         out.put("postgraduate", view(all.get(ApplicationWindows.POSTGRADUATE), "/pg/apply"));
+        out.put("jupeb", view(all.get(ApplicationWindows.JUPEB), "/jupeb/apply"));
         out.put("now", OffsetDateTime.now());
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic()).body(out);
     }

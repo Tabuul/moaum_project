@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -40,7 +41,9 @@ export default async function DashboardPage() {
   const [me, sessions] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ name: string; state: string }[]>("/api/v1/ref/sessions")]);
   const office = me.ok ? me.data.activeOffice : null;
   /* an applicant's home is their application, not an office's dashboard */
-  if (office === "applicant") redirect("/applicant");
+  /* a JUPEB candidate signs in as an applicant too (V339); the sign-in leaves a cookie that sends them to their own portal */
+  if (office === "applicant") redirect((await cookies()).get("moaum_jupeb") ? "/jupeb/portal" : "/applicant");
+  if (office === "jupeb") redirect("/jupeb");
   if (office === "student") {
     /* a College of Health Sciences student (a programme under the College) from 200 level up lands in
        the College's own student area; every other student keeps the standard student portal */

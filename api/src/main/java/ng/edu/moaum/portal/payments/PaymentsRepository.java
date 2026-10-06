@@ -85,6 +85,23 @@ class PaymentsRepository {
         return already ? "already confirmed" : "confirmed";
     }
 
+    /* ── a JUPEB candidate's fee reference (V339): the account is the candidate's application, a separate confirm ── */
+
+    Optional<Reference> jupebReference(String reference) {
+        return jdbc.sql("""
+                SELECT fr.id, fr.application_id, a.id AS account_id, 'JUPEB_' || fr.kind AS kind, fr.reference, fr.amount,
+                       fr.expires_at, fr.confirmed_at, a.email, a.application_no
+                  FROM jupeb.fee_reference fr
+                  JOIN jupeb.application a ON a.id = fr.application_id
+                 WHERE upper(fr.reference) = upper(btrim(:r))
+                """).param("r", reference).query(Reference.class).optional();
+    }
+
+    /** confirms a JUPEB fee reference; idempotent. A school fee may activate the candidate as a JUPEB student (jupeb.confirm_fee) */
+    String confirmJupeb(String reference, String channel) {
+        return jdbc.sql("SELECT jupeb.confirm_fee(:r, :c)").param("r", reference).param("c", channel).query(String.class).single();
+    }
+
     /* ── V037: the gateway's words kept, the attempts, what stands for a reference ── */
 
     UUID logEvent(String gateway, String source, String event, String reference, String gatewayRef, BigDecimal amount, String status,
@@ -134,7 +151,9 @@ class PaymentsRepository {
                         UNION ALL
                         SELECT s.programme_code FROM finance.payment_reference pr JOIN people.student s ON s.id = pr.student_id WHERE pr.reference = upper(btrim(:r))
                         UNION ALL
-                        SELECT pa.programme_code FROM admissions.pg_fee_reference fr JOIN admissions.pg_application pa ON pa.id = fr.application_id WHERE fr.reference = upper(btrim(:r))) x
+                        SELECT pa.programme_code FROM admissions.pg_fee_reference fr JOIN admissions.pg_application pa ON pa.id = fr.application_id WHERE fr.reference = upper(btrim(:r))
+                        UNION ALL
+                        SELECT ja.programme_code FROM jupeb.fee_reference jf JOIN jupeb.application ja ON ja.id = jf.application_id WHERE jf.reference = upper(btrim(:r))) x
                   JOIN ref.programme p ON p.code = x.code
                   JOIN ref.faculty f ON f.code = p.faculty_code
                  LIMIT 1

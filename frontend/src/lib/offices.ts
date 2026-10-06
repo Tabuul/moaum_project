@@ -35,6 +35,7 @@ export const OFFICE_LABELS: Record<string, string> = {
   pgsecretary: "Secretary, Postgraduate School",
   gst: "Director, General Studies",
   eps: "Director, Entrepreneurship Studies",
+  jupeb: "JUPEB Office",
 };
 
 export function officeLabel(code: string | null | undefined): string {
@@ -77,6 +78,8 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   applicant: ["Applicant", "Admissions"],
   student: ["Student", "The register"],
   pgapplicant: ["Postgraduate applicant", "School of Postgraduate Studies"],
+  jupebcandidate: ["JUPEB candidate", "JUPEB programme"],
+  jupeb: ["JUPEB Office", "JUPEB programme"],
   pgschool: ["Dean, Postgraduate School", "School of Postgraduate Studies"],
   pgsecretary: ["Secretary, Postgraduate School", "School of Postgraduate Studies"],
   provost: ["Provost", "College of Health Sciences"],

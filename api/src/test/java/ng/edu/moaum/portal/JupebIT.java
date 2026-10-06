@@ -1,0 +1,339 @@
+package ng.edu.moaum.portal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.math.BigDecimal;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.PlatformTransactionManager;
+
+/**
+ * The JUPEB programme (V339), application to result: the application is taken only while the Director of ICT has its window
+ * open; the candidate signs in on the application number, continues the biodata, enters an O'Level that must hold five credits
+ * with English and Mathematics in at most two sittings, uploads private documents and pays an application fee the server sets;
+ * the JUPEB Office reviews, returns, finds eligible and admits in bulk after a preview; the Bursary's rule gives the school fee
+ * by Science or other and indigene or not, 70% then 30%, frozen once charged; the first instalment activates the student, who
+ * registers the combination's three subjects only; the Board's examination numbers are imported by application number, a
+ * mismatched surname held for review and a correction needing its reason; results are imported and shown only once published;
+ * the candidate's support ticket reaches the JUPEB queue. Needs DATABASE_URL.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
+@EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
+@SuppressWarnings({"rawtypes", "unchecked"})
+class JupebIT {
+
+    static final String WINDOW = "JUPEB_APPLICATION";
+    static final byte[] PDF = "%PDF-1.4\n% a JUPEB test document\n%%EOF\n".getBytes();
+    static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R'};
+
+    @Value("${local.server.port}")
+    int port;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    PlatformTransactionManager transactions;
+
+    ItSupport it;
+    String ict = ItSupport.token("ict");
+    String office;
+    String bursar;
+    String session;
+    String programme;
+    String faculty;
+    String priorCategory;
+    String tag;
+
+    @BeforeEach
+    void setUp() {
+        it = new ItSupport(port, jdbc, transactions);
+        office = TestTokens.token(it.person("ZZJUPEB-OFFICER", "ZZJUPEBOFFICER"), List.of("jupeb"));
+        bursar = TestTokens.token(it.person("ZZJUPEB-BURSAR", "ZZJUPEBBURSAR"), List.of("bursar"));
+        session = jdbc.sql("SELECT jupeb.current_session()").query(String.class).single();
+        Map<String, Object> p = jdbc.sql("SELECT code, faculty_code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1").query().singleRow();
+        programme = String.valueOf(p.get("code"));
+        faculty = String.valueOf(p.get("faculty_code"));
+        priorCategory = jdbc.sql("SELECT category FROM jupeb.fee_category WHERE faculty_code = :f").param("f", faculty).query(String.class).optional().orElse(null);
+        tag = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
+        clean();
+    }
+
+    @AfterEach
+    void tearDown() {
+        clean();
+    }
+
+    /** the session as every other run expects it: the JUPEB window closed (its default), no session fee rule, results unpublished, the faculty's category as it was */
+    private void clean() {
+        it.db(() -> {
+            jdbc.sql("DELETE FROM policy.portal_window_event WHERE window_type = :t AND session = :s").param("t", WINDOW).param("s", session).update();
+            jdbc.sql("DELETE FROM policy.portal_window WHERE window_type = :t AND session = :s").param("t", WINDOW).param("s", session).update();
+            jdbc.sql("DELETE FROM jupeb.school_fee WHERE session = :s").param("s", session).update();
+            jdbc.sql("DELETE FROM jupeb.fee_setting WHERE session = :s").param("s", session).update();
+            jdbc.sql("DELETE FROM jupeb.setting WHERE session = :s").param("s", session).update();
+            if (priorCategory == null) {
+                jdbc.sql("DELETE FROM jupeb.fee_category WHERE faculty_code = :f").param("f", faculty).update();
+            } else {
+                jdbc.sql("UPDATE jupeb.fee_category SET category = :c WHERE faculty_code = :f").param("c", priorCategory).param("f", faculty).update();
+            }
+            return null;
+        });
+    }
+
+    private static int status(ResponseEntity<?> r) {
+        return r.getStatusCode().value();
+    }
+
+    private static Map<String, Object> ok(ResponseEntity<Map> r) {
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        return r.getBody();
+    }
+
+    private static String code(ResponseEntity<Map> r) {
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
+        return String.valueOf(r.getBody().get("code"));
+    }
+
+    private Map<String, Object> form(String email, String combination) {
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put("surname", "Zzjupeb");
+        f.put("firstName", "Candidate");
+        f.put("middleName", "Test");
+        f.put("sex", "F");
+        f.put("dob", "2007-03-14");
+        f.put("nin", "1" + String.format("%010d", Math.abs(email.hashCode()) % 1_000_000_000L));
+        f.put("email", email);
+        f.put("phone", "08031234567");
+        f.put("password", "Jupeb2026!x");
+        f.put("programme", programme);
+        f.put("combination", combination);
+        return f;
+    }
+
+    private Map<String, Object> doc(String name, String type, byte[] bytes) {
+        return Map.of("filename", name, "contentType", type, "base64", Base64.getEncoder().encodeToString(bytes));
+    }
+
+    @Test
+    void applicationToResult() {
+        // ── the office's subjects and an approved combination of three ──
+        for (String s : List.of("M", "P", "C")) {
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/jupeb/office/subjects", Map.of("code", "ZZ" + s + tag, "title", "ZZ Subject " + s + " " + tag)))).isEqualTo(200);
+        }
+        String comb = "ZZ" + tag;
+        Map<String, Object> saved = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/combinations",
+                Map.of("code", comb, "name", "ZZ Test Combination " + tag, "subject1", "ZZM" + tag, "subject2", "ZZP" + tag, "subject3", "ZZC" + tag, "area", "Science")));
+        assertThat(saved.get("new")).isEqualTo(1);
+        // a combination is three different subjects
+        assertThat(String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/combinations/import",
+                Map.of("rows", List.of(Map.of("row", 2, "code", "ZY" + tag, "name", "Twice", "subject1", "ZZM" + tag, "subject2", "ZZM" + tag, "subject3", "ZZC" + tag)), "commit", false)))
+                .get("invalid"))).isEqualTo("1");
+
+        // ── the Bursary's rule for the session; the JUPEB Office reads it but may not set it ──
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("session", session);
+        rule.put("applicationFee", 15000);
+        rule.put("firstPercent", 70);
+        rule.put("allowFull", true);
+        rule.put("activation", "FIRST_INSTALMENT");
+        rule.put("indigeneState", "Benue");
+        rule.put("schoolFees", List.of(Map.of("category", "OTHER", "indigene", true, "amount", 180000), Map.of("category", "SCIENCE", "indigene", true, "amount", 195000),
+                Map.of("category", "OTHER", "indigene", false, "amount", 200000), Map.of("category", "SCIENCE", "indigene", false, "amount", 215000)));
+        assertThat(status(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/fees", rule))).isEqualTo(403);
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees", rule));
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees/categories", Map.of("faculties", List.of(Map.of("faculty", faculty, "category", "SCIENCE")))));
+        assertThat(ok(it.get(office, ub -> ub.path("/api/v1/jupeb/fees").queryParam("session", session).build())).get("own")).isEqualTo(true);
+
+        // ── closed until the Director of ICT opens it ──
+        String email = "zzjupeb." + tag.toLowerCase() + "@example.com";
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)))).isEqualTo("APPLICATION_CLOSED");
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/portal-windows/" + WINDOW, Map.of("session", session, "action", "OPEN")));
+        Map<String, Object> options = ok(it.anon(HttpMethod.GET, "/api/v1/jupeb/options", null));
+        assertThat(((Map<String, Object>) options.get("window")).get("open")).isEqualTo(true);
+
+        Map<String, Object> applied = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)));
+        String number = String.valueOf(applied.get("application_no"));
+        assertThat(number).matches("^JUPEB/APP/" + session.substring(0, 4) + "/\\d{6}$");
+        assertThat(new BigDecimal(String.valueOf(applied.get("amount")))).isEqualByComparingTo("15000");
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)))).isEqualTo("JUPEB_APP_EXISTS");
+
+        // ── signed in on the application number; the token reaches this candidate's record only ──
+        Map<String, Object> signed = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", number, "password", "Jupeb2026!x")));
+        String me = String.valueOf(signed.get("token"));
+        UUID app = UUID.fromString(String.valueOf(signed.get("applicationId")));
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", email, "password", "wrong-password")))).isEqualTo(422);
+        assertThat(status(it.get(ItSupport.token("applicant"), "/api/v1/jupeb/me"))).isEqualTo(404);
+        assertThat(status(it.get(ItSupport.token("student"), "/api/v1/jupeb/me"))).isEqualTo(403);
+        assertThat(status(it.get(ItSupport.token("bursar"), "/api/v1/jupeb/office/applications/" + app))).isEqualTo(403);
+
+        Map<String, Object> mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("state")).isEqualTo("DRAFT");
+        assertThat((List<String>) mine.get("missing")).anyMatch(m -> m.contains("application fee"));
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null))).isEqualTo("JUPEB_INCOMPLETE");
+
+        // the application fee: the same live reference, confirmed by the Bursar from the teller — never by the JUPEB Office
+        Map<String, Object> ref = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=APPLICATION", null));
+        assertThat(ref.get("reference")).isEqualTo(applied.get("reference"));
+        Map<String, Object> teller = Map.of("channel", "Bank teller", "reason", "Teller 0001 seen at the Bursary");
+        assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + ref.get("reference") + "/confirm", teller))).isEqualTo(403);
+        assertThat(ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + ref.get("reference") + "/confirm", teller)).get("outcome")).isEqualTo("confirmed");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=APPLICATION", null))).isEqualTo("JUPEB_FEE_PAID");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_FIRST", null))).isEqualTo("JUPEB_FEES_NOT_YET");
+
+        // ── the biodata continued on the dashboard ──
+        Map<String, Object> bio = new LinkedHashMap<>();
+        bio.put("middleName", "Test");
+        bio.put("nationality", "Nigerian");
+        bio.put("stateOfOrigin", "Benue");
+        bio.put("lga", "Makurdi");
+        bio.put("contactAddress", "No. 1 Test Road, Makurdi");
+        bio.put("homeTown", "Makurdi");
+        bio.put("nextOfKinName", "Zz Parent");
+        bio.put("nextOfKinPhone", "08039876543");
+        bio.put("nextOfKinRelationship", "Mother");
+        ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", bio));
+
+        // ── the O'Level: five credits with English and Mathematics, in at most two sittings ──
+        List<Map<String, Object>> four = List.of(grade(1, "English Language", "C5"), grade(1, "Mathematics", "B3"), grade(1, "Physics", "C6"),
+                grade(1, "Chemistry", "C4"), grade(1, "Biology", "D7"));
+        Map<String, Object> check = (Map<String, Object>) ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("grades", four))).get("olevelCheck");
+        assertThat(check.get("ok")).isEqualTo(false);
+        List<Map<String, Object>> five = new java.util.ArrayList<>(four);
+        five.add(grade(2, "Biology", "B2"));
+        check = (Map<String, Object>) ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("grades", five))).get("olevelCheck");
+        assertThat(check.get("ok")).isEqualTo(true);
+        assertThat(((Number) check.get("credits")).intValue()).isEqualTo(5);
+
+        // ── the documents: what a file claims to be is checked; each is read back only by its owner and the office ──
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/NIN", doc("nin.pdf", "application/pdf", "not a pdf".getBytes()))))
+                .isEqualTo("JUPEB_DOC_TYPE");
+        for (String k : List.of("OLEVEL_RESULT", "NIN", "BIRTH_CERTIFICATE", "STATE_OF_ORIGIN")) {
+            ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/" + k, doc(k.toLowerCase() + ".pdf", "application/pdf", PDF)));
+        }
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/PASSPORT", doc("passport.pdf", "application/pdf", PDF)))).isEqualTo("JUPEB_DOC_TYPE");
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/PASSPORT", doc("passport.png", "image/png", PNG)));
+        assertThat((List<String>) mine.get("missing")).isEmpty();
+        assertThat(it.getBytes(me, "/api/v1/jupeb/me/documents/NIN/content").getBody()).isEqualTo(PDF);
+        assertThat(it.getBytes(office, "/api/v1/jupeb/office/applications/" + app + "/documents/NIN/content").getBody()).isEqualTo(PDF);
+
+        assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null)).get("state")).isEqualTo("SUBMITTED");
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", bio))).isEqualTo("JUPEB_NOT_EDITABLE");
+
+        // ── the office: a document to replace needs its reason; the candidate replaces it; a return and a resubmission ──
+        Map<String, Object> list = ok(it.get(office, ub -> ub.path("/api/v1/jupeb/office/applications").queryParam("session", session).queryParam("q", number).build()));
+        assertThat(((Number) list.get("total")).intValue()).isEqualTo(1);
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/documents/OLEVEL_RESULT/review", Map.of("status", "REPLACEMENT_REQUIRED"))))
+                .isEqualTo("JUPEB_REASON");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/documents/OLEVEL_RESULT/review",
+                Map.of("status", "REPLACEMENT_REQUIRED", "note", "The scan is unreadable.")));
+        ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/OLEVEL_RESULT", doc("olevel2.pdf", "application/pdf", PDF)));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/return", Map.of("note", "Add your home town.")));
+        ok(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", bio));
+        assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null)).get("state")).isEqualTo("SUBMITTED");
+
+        // ── admission: eligibility first, then in bulk after a preview ──
+        Map<String, Object> bulk = Map.of("ids", List.of(app), "decision", "ADMITTED", "note", "Welcome", "commit", false);
+        Map<String, Object> preview = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/admission/bulk", bulk));
+        assertThat(((Number) preview.get("ok")).intValue()).isZero();
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/eligibility", Map.of("eligible", false)))).isEqualTo("JUPEB_REASON");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/eligibility", Map.of("eligible", true)));
+        assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/admission/bulk", bulk)).get("ok")).intValue()).isEqualTo(1);
+        Map<String, Object> commit = new LinkedHashMap<>(bulk);
+        commit.put("commit", true);
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/admission/bulk", commit));
+        mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("state")).isEqualTo("ADMITTED");
+        assertThat(String.valueOf(mine.get("admission_ref"))).startsWith("JUPEB/ADM/");
+
+        // ── the school fee: Science (the Bursary's faculty), indigene (Benue): ₦195,000, 70% then 30% ──
+        Map<String, Object> fees = (Map<String, Object>) mine.get("fees");
+        assertThat(fees.get("category")).isEqualTo("SCIENCE");
+        assertThat(fees.get("indigene")).isEqualTo(true);
+        assertThat(new BigDecimal(String.valueOf(fees.get("total")))).isEqualByComparingTo("195000");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null))).isEqualTo("JUPEB_FEE_ORDER");
+        Map<String, Object> first = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_FIRST", null));
+        assertThat(new BigDecimal(String.valueOf(first.get("amount")))).isEqualByComparingTo("136500");
+        // a later change by the Bursary does not rewrite a fee already charged
+        Map<String, Object> raised = new LinkedHashMap<>(rule);
+        raised.put("schoolFees", List.of(Map.of("category", "OTHER", "indigene", true, "amount", 180000), Map.of("category", "SCIENCE", "indigene", true, "amount", 300000),
+                Map.of("category", "OTHER", "indigene", false, "amount", 200000), Map.of("category", "SCIENCE", "indigene", false, "amount", 215000)));
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees", raised));
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + first.get("reference") + "/confirm", teller));
+        mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("state")).isEqualTo("STUDENT");
+        fees = (Map<String, Object>) mine.get("fees");
+        assertThat(new BigDecimal(String.valueOf(fees.get("total")))).isEqualByComparingTo("195000");
+        assertThat(new BigDecimal(String.valueOf(fees.get("outstanding")))).isEqualByComparingTo("58500");
+        assertThat(fees.get("status")).isEqualTo("PARTIALLY_PAID");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_FULL", null))).isEqualTo("JUPEB_FEE_ORDER");
+        Map<String, Object> second = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null));
+        assertThat(new BigDecimal(String.valueOf(second.get("amount")))).isEqualByComparingTo("58500");
+
+        // ── the combination's three subjects, and no other ──
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));
+        assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("code"))
+                .containsExactlyInAnyOrder("ZZM" + tag, "ZZP" + tag, "ZZC" + tag);
+        ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.subject_registration WHERE application_id = :a").param("a", app).query(Integer.class).single()).isEqualTo(3);
+
+        // ── the Board's examination numbers: by application number; a surname that disagrees is held for review; invalid stops the commit ──
+        String examNo = "ZZJ" + tag + "01";
+        Map<String, Object> rows = Map.of("rows", List.of(Map.of("row", 2, "applicationNo", number, "examNo", examNo, "surname", "Somebody"),
+                Map.of("row", 3, "applicationNo", "JUPEB/APP/1999/999999", "examNo", examNo + "X")), "commit", true, "fileName", "numbers.xlsx");
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/exam-numbers/import", rows))).isEqualTo("JUPEB_IMPORT_INVALID");
+        Map<String, Object> review = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/exam-numbers/import",
+                Map.of("rows", List.of(Map.of("row", 2, "applicationNo", number, "examNo", examNo, "surname", "Somebody")), "commit", true)));
+        assertThat(((Number) review.get("review")).intValue()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT exam_no FROM jupeb.application WHERE id = :a").param("a", app).query(String.class).optional().orElse(null)).isNull();
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/exam-numbers/import",
+                Map.of("rows", List.of(Map.of("row", 2, "applicationNo", number, "examNo", examNo, "surname", "ZZJUPEB")), "commit", true)));
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/exam-no", Map.of("examNo", examNo + "B"))))
+                .isEqualTo("JUPEB_EXAM_NO_REASON");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/exam-no", Map.of("examNo", examNo + "B", "reason", "The Board corrected the number")));
+        Map<String, Object> detail = ok(it.get(office, "/api/v1/jupeb/office/applications/" + app));
+        assertThat((List<Map<String, Object>>) detail.get("examNoHistory")).extracting(h -> h.get("new_no")).containsExactly(examNo, examNo + "B");
+        String held = examNo + "B";
+
+        // ── results: imported whole, shown to the candidate only once published ──
+        Map<String, Object> grades = Map.of("rows", List.of(Map.of("row", 2, "examNo", held, "subject", "ZZM" + tag, "grade", "A"),
+                Map.of("row", 3, "examNo", held, "subject", "ZZP" + tag, "grade", "B"), Map.of("row", 4, "examNo", held, "subject", "ZZC" + tag, "grade", "C")), "commit", true);
+        assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/results/import", grades)).get("applied")).intValue()).isEqualTo(3);
+        assertThat(((List<Map<String, Object>>) ok(it.get(me, "/api/v1/jupeb/me")).get("registered"))).allMatch(r -> !r.containsKey("grade"));
+        Map<String, Object> fix = Map.of("rows", List.of(Map.of("row", 2, "examNo", held, "subject", "ZZM" + tag, "grade", "B")), "commit", true);
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/results/import", fix))).isEqualTo("JUPEB_IMPORT_INVALID");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/results/publish", Map.of("session", session)));
+        mine = ok(it.get(me, "/api/v1/jupeb/me"));
+        assertThat(mine.get("state")).isEqualTo("COMPLETED");
+        assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("grade")).containsExactlyInAnyOrder("A", "B", "C");
+
+        // ── support: the candidate's ticket reaches the JUPEB queue; the category is not offered to students and staff ──
+        Map<String, Object> ticket = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/support",
+                Map.of("category", "JUPEB", "subject", "My result", "description", "Please confirm my result.", "details", Map.of("jupeb_issue", "Results"))));
+        assertThat(jdbc.sql("SELECT queue_code FROM helpdesk.ticket WHERE id = :t").param("t", UUID.fromString(String.valueOf(ticket.get("id")))).query(String.class).single())
+                .isEqualTo("JUPEB_SUPPORT");
+        assertThat((List<Map<String, Object>>) ok(it.get(me, "/api/v1/jupeb/me/support")).get("tickets")).hasSize(1);
+        assertThat(it.getList(ItSupport.token("student"), "/api/v1/helpdesk/categories").getBody()).noneMatch(c -> "JUPEB".equals(((Map) c).get("code")));
+
+        // ── the trail: every step on the candidate's own timeline, and each told by email ──
+        assertThat((List<Map<String, Object>>) detail.get("events")).extracting(e -> e.get("kind"))
+                .contains("CREATED", "APPLICATION_FEE_CONFIRMED", "SUBMITTED", "RETURNED", "ELIGIBLE", "ADMITTED", "SCHOOL_FEE_CONFIRMED", "STUDENT", "SUBJECTS_REGISTERED", "EXAM_NO_ASSIGNED");
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL'").param("a", app).query(Integer.class).single()).isGreaterThanOrEqualTo(8);
+    }
+
+    private static Map<String, Object> grade(int sitting, String subject, String grade) {
+        return Map.of("sitting", sitting, "examType", sitting == 1 ? "WAEC" : "NECO", "examYear", 2024, "subject", subject, "grade", grade);
+    }
+}

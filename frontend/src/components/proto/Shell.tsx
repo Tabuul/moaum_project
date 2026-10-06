@@ -286,6 +286,17 @@ export const ROUTES: Record<string, string> = {
   "pg/portal": "/pg/portal",
   "pg/apply": "/pg/apply",
   "pg/summary": "/pg/summary/pdf",
+  /* V339: the JUPEB programme — the candidate's own portal, the JUPEB Office's desk, the Bursary's fees */
+  "jupeb/portal": "/jupeb/portal",
+  "jupeb/dashboard": "/jupeb",
+  "jupeb/applications": "/jupeb/applications",
+  "jupeb/catalogue": "/jupeb/catalogue",
+  "jupeb/examination": "/jupeb/examination",
+  "jupeb/results": "/jupeb/results",
+  "jupeb/classes": "/jupeb/classes",
+  "jupeb/settings": "/jupeb/settings",
+  "jupeb/payments": "/jupeb/payments",
+  "f/jupebfees": "/finance/jupeb-fees",
 };
 
 /* the portal's own subtitles where the prototype's named an invented figure */
@@ -363,6 +374,16 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/pgcalendar": ["Postgraduate calendar", "The School's own sessions and semesters, apart from the undergraduate calendar"],
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
   "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
+  "jupeb/portal": ["Your JUPEB record", "JUPEB programme"],
+  "jupeb/dashboard": ["JUPEB Office", "The JUPEB programme: applications, admission, students, examination numbers and results"],
+  "jupeb/applications": ["JUPEB applications", "Every candidate of the session, from draft to result"],
+  "jupeb/catalogue": ["JUPEB subjects and combinations", "The University's approved combinations of three subjects"],
+  "jupeb/examination": ["JUPEB examination numbers", "The Board's numbers, imported by application number"],
+  "jupeb/results": ["JUPEB results", "The Board's grades, imported and published"],
+  "jupeb/classes": ["JUPEB classes", "Sets of students for teaching"],
+  "jupeb/settings": ["JUPEB settings", "Numbering, screening and the documents asked for"],
+  "jupeb/payments": ["JUPEB payments", "Application and school fees of the session"],
+  "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

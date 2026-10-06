@@ -9,8 +9,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 /**
- * The two application windows of the admission exercise (V312): whether Post-UTME registration and the
- * postgraduate application are open — the Director of ICT's rule in {@code policy.portal_window}, read from the
+ * The application windows of the admission exercise (V312; JUPEB from V339): whether Post-UTME registration, the
+ * postgraduate application and the JUPEB application are open — the Director of ICT's rule in {@code policy.portal_window}, read from the
  * server's clock — and the message the public reads while one is closed. The door every new application comes
  * through: {@link #requireOpen} refuses with the Director's own message, and the database refuses once more
  * behind it, so no path round the API can start an application while the window is closed.
@@ -20,7 +20,9 @@ public class ApplicationWindows {
 
     public static final String POST_UTME = "POST_UTME_REGISTRATION";
     public static final String POSTGRADUATE = "POSTGRADUATE_APPLICATION";
-    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE);
+    /** V339: the JUPEB programme's application; closed until the Director of ICT first opens it */
+    public static final String JUPEB = "JUPEB_APPLICATION";
+    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB);
 
     /** one window as the public reads it: the session it is for, its state, its dates, and the closure message */
     public record Window(String type, String session, String state, OffsetDateTime opensAt, OffsetDateTime closesAt, String message) {
@@ -36,7 +38,7 @@ public class ApplicationWindows {
     }
 
     public static String word(String type) {
-        return POST_UTME.equals(type) ? "Post-UTME registration" : "Postgraduate application";
+        return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : "Postgraduate application";
     }
 
     /** the session a new application of this kind is filed under today */
@@ -54,11 +56,12 @@ public class ApplicationWindows {
         return new Window(type, s, String.valueOf(w.get("state")), at(w.get("opens_at")), at(w.get("closes_at")), (String) w.get("message"));
     }
 
-    /** both windows, for the login page, the apply pages and the University's website */
+    /** every application window, for the login page, the apply pages and the University's website */
     public Map<String, Window> readAll(String postUtmeSession) {
         Map<String, Window> out = new LinkedHashMap<>();
         out.put(POST_UTME, read(POST_UTME, postUtmeSession));
         out.put(POSTGRADUATE, read(POSTGRADUATE, null));
+        out.put(JUPEB, read(JUPEB, null));
         return out;
     }
 
