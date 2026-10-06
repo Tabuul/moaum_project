@@ -64,6 +64,13 @@ class PgAdmissionsController {
     /* admitting onto the register, and confirming a fee */
     private static final String ADMIT = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_registrar','OFFICE_super')";
     private static final String CONFIRMERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
+    /* the offices that read the whole School, held to no department or faculty (V337) */
+    private static final String SCHOOL_WIDE =
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_super')";
+    /* the physical screening of accepted applicants (V337): the School's officers and the Registry's screening offices; a
+       department never clears an applicant */
+    private static final String SCREENERS =
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final FileObjects files;
     private final JdbcClient jdbc;
@@ -136,7 +143,8 @@ class PgAdmissionsController {
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa,
                        a.fee_confirmed_at, a.checking_confirmed_at, a.acceptance_confirmed_at,
                        a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
-                       a.accepted_at, a.admitted_at, a.student_id,
+                       a.accepted_at, a.admitted_at, a.student_id, a.return_note, a.returned_at, a.returned_to,
+                       (SELECT sc.state FROM admissions.pg_screening sc WHERE sc.application_id = a.id) AS screening_state,
                        (SELECT count(*) FROM admissions.pg_document x WHERE x.application_id = a.id AND x.kind <> 'PASSPORT') AS documents,
                        (SELECT count(*) FROM admissions.pg_referee x WHERE x.application_id = a.id AND x.submitted_at IS NOT NULL) AS references_in
                   FROM admissions.pg_application a
@@ -149,9 +157,10 @@ class PgAdmissionsController {
                    AND (:state::text IS NULL OR a.state = :state)
                    AND (:dept::text IS NULL OR g.dept_code = :dept)
                    AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                   AND (NOT :paidOnly OR a.fee_confirmed_at IS NOT NULL)
                  ORDER BY p.surname, p.other_names, a.application_no
                 """)
-                .param("s", session)
+                .param("s", session).param("paidOnly", paidOnly())
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), Types.VARCHAR)
                 .param("state", state == null || state.isBlank() ? null : state.trim().toUpperCase(), Types.VARCHAR)
                 .param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR)
@@ -164,12 +173,17 @@ class PgAdmissionsController {
                        count(*) FILTER (WHERE a.state = 'OFFERED') AS offered,
                        count(*) FILTER (WHERE a.state = 'ACCEPTED') AS accepted,
                        count(*) FILTER (WHERE a.state = 'ADMITTED') AS admitted,
-                       count(*) FILTER (WHERE a.state IN ('DEPT_DECLINED','FAC_DECLINED','NOT_OFFERED')) AS declined
+                       count(*) FILTER (WHERE a.state IN ('DEPT_DECLINED','FAC_DECLINED','NOT_OFFERED')) AS declined,
+                       count(*) FILTER (WHERE a.state IN ('DEPT_DECLINED','FAC_DECLINED')) AS not_recommended,
+                       count(*) FILTER (WHERE a.state = 'NOT_OFFERED') AS not_offered,
+                       count(*) FILTER (WHERE a.state = 'RETURNED') AS returned,
+                       count(*) FILTER (WHERE a.fee_confirmed_at IS NULL) AS unpaid
                   FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code
                  WHERE a.session = :s
                    AND (:dept::text IS NULL OR g.dept_code = :dept)
                    AND (:fac::text IS NULL OR g.faculty_code = :fac)
-                """).param("s", session).param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR).query().singleRow();
+                   AND (NOT :paidOnly OR a.fee_confirmed_at IS NOT NULL)
+                """).param("s", session).param("paidOnly", paidOnly()).param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR).query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         out.put("bound", Map.of("department", String.valueOf(boundDept()), "faculty", String.valueOf(boundFaculty())));
@@ -183,18 +197,28 @@ class PgAdmissionsController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> dashboard(@RequestParam String session) {
+        String dept = boundDept(), fac = boundFaculty();
         Map<String, Object> counts = jdbc.sql("""
                 SELECT count(*) AS total,
-                       count(*) FILTER (WHERE state = 'SUBMITTED') AS submitted,
-                       count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS recommended,
-                       count(*) FILTER (WHERE state = 'FAC_RECOMMENDED') AS faculty,
-                       count(*) FILTER (WHERE state = 'OFFERED') AS offered,
-                       count(*) FILTER (WHERE state = 'ACCEPTED') AS accepted,
-                       count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
-                  FROM admissions.pg_application WHERE session = :s
-                """).param("s", session).query().singleRow();
-        long students = jdbc.sql("SELECT count(*) FROM people.student WHERE entry_mode = 'POSTGRADUATE'")
-                .query(Long.class).single();
+                       count(*) FILTER (WHERE a.state = 'SUBMITTED') AS submitted,
+                       count(*) FILTER (WHERE a.state = 'DEPT_RECOMMENDED') AS recommended,
+                       count(*) FILTER (WHERE a.state = 'FAC_RECOMMENDED') AS faculty,
+                       count(*) FILTER (WHERE a.state IN ('DEPT_DECLINED','FAC_DECLINED')) AS not_recommended,
+                       count(*) FILTER (WHERE a.state = 'RETURNED') AS returned,
+                       count(*) FILTER (WHERE a.state = 'OFFERED') AS offered,
+                       count(*) FILTER (WHERE a.state = 'NOT_OFFERED') AS not_offered,
+                       count(*) FILTER (WHERE a.state = 'ACCEPTED') AS accepted,
+                       count(*) FILTER (WHERE a.state = 'ACCEPTED' AND admissions.pg_screening_required(a.id)) AS screening,
+                       count(*) FILTER (WHERE a.state = 'ADMITTED') AS admitted
+                  FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code
+                 WHERE a.session = :s
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                """).param("s", session).param("dept", dept, Types.VARCHAR).param("fac", fac, Types.VARCHAR).query().singleRow();
+        long students = jdbc.sql("""
+                SELECT count(*) FROM people.student s JOIN ref.programme g ON g.code = s.programme_code
+                 WHERE s.entry_mode = 'POSTGRADUATE'
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                """).param("dept", dept, Types.VARCHAR).param("fac", fac, Types.VARCHAR).query(Long.class).single();
         // the register's end of the lifecycle: who is active, on research, before the examiners, cleared, graduated
         Map<String, Object> pipeline = jdbc.sql("""
                 SELECT count(*) FILTER (WHERE s.status IN ('ACTIVE','ADMITTED','PROBATION')) AS active,
@@ -205,9 +229,11 @@ class PgAdmissionsController {
                        count(*) FILTER (WHERE r.stage IN ('CLEARED','AWARD_RECOMMENDED')) AS graduation_eligible,
                        count(*) FILTER (WHERE s.status = 'GRADUATED') AS graduated,
                        count(*) FILTER (WHERE s.status IN ('DEFERRED','WITHDRAWN','VOLUNTARY_WITHDRAWAL','SUSPENDED')) AS not_in_study
-                  FROM people.student s LEFT JOIN admissions.pg_research r ON r.student_id = s.id
+                  FROM people.student s JOIN ref.programme g ON g.code = s.programme_code
+                  LEFT JOIN admissions.pg_research r ON r.student_id = s.id
                  WHERE s.entry_mode = 'POSTGRADUATE'
-                """).param("s", session).query().singleRow();
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                """).param("s", session).param("dept", dept, Types.VARCHAR).param("fac", fac, Types.VARCHAR).query().singleRow();
         List<Map<String, Object>> byProgramme = jdbc.sql("""
                 SELECT g.name AS programme_name, g.pg_award,
                        count(*) AS applications,
@@ -217,8 +243,9 @@ class PgAdmissionsController {
                   FROM admissions.pg_application a
                   JOIN ref.programme g ON g.code = a.programme_code
                  WHERE a.session = :s
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
                  GROUP BY g.name, g.pg_award ORDER BY g.name
-                """).param("s", session).query().listOfRows();
+                """).param("s", session).param("dept", dept, Types.VARCHAR).param("fac", fac, Types.VARCHAR).query().listOfRows();
         /* the latest applicants themselves, so the School sees who has applied without leaving the home;
            newest first, and across sessions so a just-submitted application is never hidden by a session default */
         List<Map<String, Object>> recent = jdbc.sql("""
@@ -229,9 +256,11 @@ class PgAdmissionsController {
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
+                 WHERE (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                   AND (NOT :paidOnly OR a.fee_confirmed_at IS NOT NULL)
                  ORDER BY a.submitted_at DESC NULLS LAST, a.created_at DESC
                  LIMIT 50
-                """).query().listOfRows();
+                """).param("dept", dept, Types.VARCHAR).param("fac", fac, Types.VARCHAR).param("paidOnly", paidOnly()).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         out.put("counts", counts);
@@ -248,7 +277,7 @@ class PgAdmissionsController {
      * Secretary's clearance before binding — with the lists behind the figures.
      */
     @GetMapping("/secretary/dashboard")
-    @PreAuthorize(READERS)
+    @PreAuthorize(SCHOOL_WIDE)
     @Transactional(readOnly = true)
     Map<String, Object> secretaryDashboard(@RequestParam String session) {
         long toRegister = jdbc.sql("""
@@ -329,10 +358,12 @@ class PgAdmissionsController {
                  WHERE s.entry_mode = 'POSTGRADUATE'
                    AND (:prog::text IS NULL OR s.programme_code = :prog)
                    AND (:lvl::int IS NULL OR s.entry_level = :lvl)
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
                  ORDER BY s.surname, s.other_names
                 """)
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), Types.VARCHAR)
                 .param("lvl", level, Types.INTEGER)
+                .param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR)
                 .query().listOfRows();
         for (Map<String, Object> row : rows) {
             java.math.BigDecimal cgpa = row.get("cgpa") == null ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(row.get("cgpa").toString());
@@ -341,11 +372,13 @@ class PgAdmissionsController {
         }
         Map<String, Object> counts = jdbc.sql("""
                 SELECT count(*) AS total,
-                       count(*) FILTER (WHERE entry_level = 700) AS pgd,
-                       count(*) FILTER (WHERE entry_level = 800) AS masters,
-                       count(*) FILTER (WHERE entry_level = 900) AS doctoral
-                  FROM people.student WHERE entry_mode = 'POSTGRADUATE'
-                """).query().singleRow();
+                       count(*) FILTER (WHERE s.entry_level = 700) AS pgd,
+                       count(*) FILTER (WHERE s.entry_level = 800) AS masters,
+                       count(*) FILTER (WHERE s.entry_level = 900) AS doctoral
+                  FROM people.student s JOIN ref.programme g ON g.code = s.programme_code
+                 WHERE s.entry_mode = 'POSTGRADUATE'
+                   AND (:dept::text IS NULL OR g.dept_code = :dept) AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                """).param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR).query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("counts", counts);
         out.put("rows", rows);
@@ -423,7 +456,8 @@ class PgAdmissionsController {
                        a.proposal_title, a.proposal_text,
                        a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.dept_note,
                        a.fac_decided_at, a.fac_note, a.spgs_decided_at, a.spgs_note,
-                       a.accepted_at, a.admitted_at, a.student_id
+                       a.accepted_at, a.admitted_at, a.student_id,
+                       a.checking_confirmed_at, a.acceptance_confirmed_at, a.return_note, a.returned_at, a.returned_to
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
@@ -461,6 +495,18 @@ class PgAdmissionsController {
         out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
         out.put("history", history);
+        // the physical screening (V337): whether the session requires it, and the record once opened
+        out.put("screeningRequired", jdbc.sql("SELECT admissions.pg_screening_required(:id)").param("id", id).query(Boolean.class).single());
+        out.put("screening", jdbc.sql("""
+                SELECT sc.state, sc.venue, sc.scheduled_for, sc.verified_documents, sc.missing_documents, sc.issues, sc.remarks, sc.reason,
+                       sc.decided_at, sc.officer_office,
+                       (SELECT x.surname || ', ' || x.given_names FROM iam.person x WHERE x.id = sc.officer_id) AS officer
+                  FROM admissions.pg_screening sc WHERE sc.application_id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElse(null));
+        if (app.get("student_id") != null) {
+            out.put("student", jdbc.sql("SELECT admission_no, matric_no, status FROM people.student WHERE id = :s")
+                    .param("s", app.get("student_id")).query().listOfRows().stream().findFirst().orElse(null));
+        }
         return out;
     }
 
@@ -474,6 +520,11 @@ class PgAdmissionsController {
 
     private String boundFaculty() {
         return scope.actingFacultyOffice() ? String.valueOf(scope.actingFaculty()) : null;
+    }
+
+    /** a department or faculty office sees an application once its application fee is confirmed (V337) */
+    private boolean paidOnly() {
+        return boundDept() != null || boundFaculty() != null;
     }
 
     private void inBound(UUID applicationId) {
@@ -616,7 +667,7 @@ class PgAdmissionsController {
                 .param("note", body.note(), Types.VARCHAR).param("actor", actor).query().listOfRows();
         // tell the applicant a decision is ready — they pay the checking fee to see it
         Map<String, Object> who = jdbc.sql("""
-                SELECT p.email, a.application_no, r.checking_fee
+                SELECT p.email, a.application_no, r.checking_fee, a.checking_confirmed_at
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   CROSS JOIN LATERAL admissions.pg_fee_rule(a.session) r
@@ -624,11 +675,16 @@ class PgAdmissionsController {
                 """).param("id", id).query().listOfRows().stream().findFirst().orElse(null);
         if (who != null && who.get("email") != null && !String.valueOf(who.get("email")).isBlank()) {
             String fee = "₦" + who.get("checking_fee");
-            String body2 = "A decision has been made on your postgraduate application " + who.get("application_no") + ".\n\n"
-                    + "Pay the checking fee of " + fee + " on the applicant portal to view your admission status:\n"
-                    + portalUrl + "/pg/portal\n\nIf you are admitted, you then pay the acceptance fee to accept and print your offer of admission.";
+            String nl = String.valueOf((char) 10);
+            // the release says a decision is released, never what it is: the portal is where the status is read
+            String body2 = who.get("checking_confirmed_at") != null
+                    ? "The School of Postgraduate Studies has released your admission status for application " + who.get("application_no") + "." + nl + nl
+                      + "Sign in to the applicant portal to check it:" + nl + portalUrl + "/pg/portal"
+                    : "The School of Postgraduate Studies has released your admission status for application " + who.get("application_no") + "." + nl + nl
+                      + "Pay the admission status checking fee of " + fee + " on the applicant portal, while checking is open, to check it:" + nl
+                      + portalUrl + "/pg/portal" + nl + nl + "If you are admitted, you then pay the acceptance fee to accept and print your offer of admission.";
             jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")
-                    .param("r", who.get("email")).param("sub", "A decision on your MOAUM postgraduate application")
+                    .param("r", who.get("email")).param("sub", "Your MOAUM postgraduate admission status is released")
                     .param("b", body2).param("ai", id).query().listOfRows();
         }
         return application(id);
@@ -652,6 +708,162 @@ class PgAdmissionsController {
         Map<String, Object> out = new LinkedHashMap<>(application(id));
         out.put("studentId", student);
         return out;
+    }
+
+    public record ReturnIn(@jakarta.validation.constraints.NotBlank @Size(max = 2000) String note) {
+    }
+
+    /** the department returns a submitted application to the applicant, saying what to correct (V337) */
+    @PostMapping("/applications/{id}/return")
+    @PreAuthorize(DEPT)
+    @Transactional
+    Map<String, Object> returnToApplicant(@PathVariable UUID id, @Valid @RequestBody ReturnIn body) {
+        inBound(id);
+        UUID actor = AuditContextHolder.required().actorId();
+        jdbc.sql("SELECT admissions.pg_dept_return(:id, :note, :actor)")
+                .param("id", id).param("note", body.note()).param("actor", actor).query().listOfRows();
+        return application(id);
+    }
+
+    /** the School returns a department's (or faculty's) recommendation to the department, which decides again (V337) */
+    @PostMapping("/applications/{id}/return-to-department")
+    @PreAuthorize(SPGS)
+    @Transactional
+    Map<String, Object> returnToDepartment(@PathVariable UUID id, @Valid @RequestBody ReturnIn body) {
+        UUID actor = AuditContextHolder.required().actorId();
+        jdbc.sql("SELECT admissions.pg_school_return(:id, :note, :actor)")
+                .param("id", id).param("note", body.note()).param("actor", actor).query().listOfRows();
+        return application(id);
+    }
+
+    /* ── physical screening (V337) ── */
+
+    /** the session's screening policy: whether accepted applicants are screened, where, when, and what they bring */
+    @GetMapping("/sessions/{session}/{year}/screening-policy")
+    @PreAuthorize(SCREENERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> screeningPolicy(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        Map<String, Object> row = jdbc.sql("""
+                SELECT session, required, enabled_from, venue, starts_on, ends_on, instructions, required_documents, updated_at
+                  FROM admissions.pg_screening_policy WHERE session = :s
+                """).param("s", s).query().listOfRows().stream().findFirst().orElse(null);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("stated", row != null);
+        out.put("policy", row);
+        return out;
+    }
+
+    public record ScreeningPolicyIn(boolean required, @Size(max = 300) String venue, String startsOn, String endsOn,
+                                    @Size(max = 4000) String instructions, List<@Size(max = 200) String> requiredDocuments) {
+    }
+
+    private static String lines(List<String> xs) {
+        if (xs == null) {
+            return null;
+        }
+        return xs.stream().map(x -> x == null ? "" : x.trim()).filter(x -> !x.isEmpty())
+                .collect(java.util.stream.Collectors.joining(String.valueOf((char) 10)));
+    }
+
+    /** the School states (or changes) the session's screening policy; applicants accepted before it was first stated are not held */
+    @org.springframework.web.bind.annotation.PutMapping("/sessions/{session}/{year}/screening-policy")
+    @PreAuthorize(SPGS)
+    @Transactional
+    Map<String, Object> setScreeningPolicy(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ScreeningPolicyIn body) {
+        String s = session + "/" + year;
+        var ctx = AuditContextHolder.required();
+        jdbc.sql("""
+                INSERT INTO admissions.pg_screening_policy (session, required, venue, starts_on, ends_on, instructions, required_documents, updated_by, updated_office)
+                VALUES (:s, :req, :venue, :from::date, :to::date, :ins, coalesce(string_to_array(nullif(:docs, ''), chr(10)), '{}'), :by, :office)
+                ON CONFLICT (session) DO UPDATE SET required = EXCLUDED.required, venue = EXCLUDED.venue, starts_on = EXCLUDED.starts_on,
+                    ends_on = EXCLUDED.ends_on, instructions = EXCLUDED.instructions, required_documents = EXCLUDED.required_documents,
+                    updated_by = EXCLUDED.updated_by, updated_office = EXCLUDED.updated_office, updated_at = now()
+                """)
+                .param("s", s).param("req", body.required())
+                .param("venue", body.venue() == null || body.venue().isBlank() ? null : body.venue().trim(), Types.VARCHAR)
+                .param("from", body.startsOn() == null || body.startsOn().isBlank() ? null : body.startsOn().trim(), Types.VARCHAR)
+                .param("to", body.endsOn() == null || body.endsOn().isBlank() ? null : body.endsOn().trim(), Types.VARCHAR)
+                .param("ins", body.instructions() == null || body.instructions().isBlank() ? null : body.instructions().trim(), Types.VARCHAR)
+                .param("docs", lines(body.requiredDocuments()), Types.VARCHAR)
+                .param("by", ctx.actorId()).param("office", ctx.actorOffice(), Types.VARCHAR)
+                .update();
+        return screeningPolicy(session, year);
+    }
+
+    /** the screening desk: every accepted applicant of the session, their screening and where they stand */
+    @GetMapping("/screening")
+    @PreAuthorize(SCREENERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> screening(@RequestParam String session) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT a.id, a.application_no, a.state, a.accepted_at, a.acceptance_confirmed_at, a.admitted_at,
+                       p.surname, p.other_names, p.email, p.phone,
+                       g.name AS programme_name, g.pg_award, d.name AS department_name, f.name AS faculty_name,
+                       admissions.pg_screening_required(a.id) AS required,
+                       coalesce(sc.state, CASE WHEN a.state = 'ACCEPTED' THEN 'PENDING' END) AS screening_state,
+                       sc.venue, sc.scheduled_for, sc.decided_at, sc.reason, sc.missing_documents,
+                       st.admission_no, st.matric_no
+                  FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                  JOIN ref.programme g ON g.code = a.programme_code
+                  JOIN ref.department d ON d.code = g.dept_code
+                  JOIN ref.faculty f ON f.code = g.faculty_code
+                  LEFT JOIN admissions.pg_screening sc ON sc.application_id = a.id
+                  LEFT JOIN people.student st ON st.id = a.student_id
+                 WHERE a.session = :s AND (a.state = 'ACCEPTED' OR sc.application_id IS NOT NULL)
+                 ORDER BY p.surname, p.other_names
+                """).param("s", session).query().listOfRows();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String k : List.of("PENDING", "SCHEDULED", "IN_PROGRESS", "CLEARED", "NOT_CLEARED", "CORRECTION_REQUIRED")) {
+            counts.put(k, rows.stream().filter(r -> k.equals(r.get("screening_state"))).count());
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("counts", counts);
+        out.put("rows", rows);
+        return out;
+    }
+
+    public record ScheduleIn(@jakarta.validation.constraints.NotBlank @Size(max = 300) String venue,
+                             @jakarta.validation.constraints.NotNull java.time.OffsetDateTime at) {
+    }
+
+    /** the screening officer sets (or moves) when and where an accepted applicant is screened */
+    @PostMapping("/applications/{id}/screening/schedule")
+    @PreAuthorize(SCREENERS)
+    @Transactional
+    Map<String, Object> scheduleScreening(@PathVariable UUID id, @Valid @RequestBody ScheduleIn body) {
+        var ctx = AuditContextHolder.required();
+        jdbc.sql("SELECT admissions.pg_screening_schedule(:id, :venue, :at, :by, :office)")
+                .param("id", id).param("venue", body.venue().trim()).param("at", body.at(), Types.TIMESTAMP_WITH_TIMEZONE)
+                .param("by", ctx.actorId()).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
+        return application(id);
+    }
+
+    public record ScreeningDecisionIn(@jakarta.validation.constraints.NotBlank String decision,
+                                      List<@Size(max = 200) String> verifiedDocuments, List<@Size(max = 200) String> missingDocuments,
+                                      @Size(max = 2000) String issues, @Size(max = 2000) String remarks, @Size(max = 2000) String reason) {
+    }
+
+    /** the screening officer's decision on an accepted applicant: CLEARED admits them to the register (school fees next),
+     *  NOT_CLEARED and CORRECTION_REQUIRED carry the reason the applicant reads */
+    @PostMapping("/applications/{id}/screening/decision")
+    @PreAuthorize(SCREENERS)
+    @Transactional
+    Map<String, Object> decideScreening(@PathVariable UUID id, @Valid @RequestBody ScreeningDecisionIn body) {
+        var ctx = AuditContextHolder.required();
+        jdbc.sql("""
+                SELECT admissions.pg_screening_decide(:id, :d, string_to_array(nullif(:ver, ''), chr(10)), string_to_array(nullif(:mis, ''), chr(10)),
+                                                      :issues, :remarks, :reason, :by, :office)
+                """)
+                .param("id", id).param("d", body.decision().trim().toUpperCase())
+                .param("ver", body.verifiedDocuments() == null ? null : lines(body.verifiedDocuments()), Types.VARCHAR)
+                .param("mis", body.missingDocuments() == null ? null : lines(body.missingDocuments()), Types.VARCHAR)
+                .param("issues", body.issues(), Types.VARCHAR).param("remarks", body.remarks(), Types.VARCHAR).param("reason", body.reason(), Types.VARCHAR)
+                .param("by", ctx.actorId()).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
+        return application(id);
     }
 
     public record FeeConfirm(String reference, String channel) {

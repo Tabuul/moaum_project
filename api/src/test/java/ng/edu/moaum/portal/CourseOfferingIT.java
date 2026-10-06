@@ -70,6 +70,9 @@ class CourseOfferingIT {
                 "offers", List.of(Map.of("programme", OWN_PROG, "level", 200), Map.of("programme", OTHER_PROG, "level", 200, "reason", "Physics takes it as a borrowed course"))));
         assertThat(created.getStatusCode().value()).as(String.valueOf(created.getBody())).isEqualTo(200);
         assertThat(created.getBody().get("code")).isEqualTo(CODE);
+        // live at once, on the department's list and in registration: no Faculty Board or Senate step
+        assertThat(created.getBody().get("state")).isEqualTo("LIVE");
+        assertThat(jdbc.sql("SELECT state FROM catalogue.course WHERE code = :c").param("c", CODE).query(String.class).single()).isEqualTo("LIVE");
         assertThat(((Number) created.getBody().get("bound")).intValue()).isEqualTo(1);
         assertThat(((Number) created.getBody().get("proposed")).intValue()).isEqualTo(1);
         String id = String.valueOf(created.getBody().get("id"));

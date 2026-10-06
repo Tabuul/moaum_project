@@ -622,10 +622,14 @@ class CatalogueController {
         for (FirstOffer o : body.offers() == null ? List.<FirstOffer>of() : body.offers()) {
             outcomes.add(authority.offer(code, body.dept().trim().toUpperCase(), o.programme(), o.level(), o.basis(), o.track(), o.reason()));
         }
+        // a course the department adds is live at once, on its course list and in the current session's registration,
+        // as an uploaded course is (V172) and a GST course is: it no longer waits on the Faculty Board and Senate
+        jdbc.sql("SELECT catalogue.make_course_live(:c)").param("c", code).query().listOfRows();
+        ensureCurrentOffering(code);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("code", code);
         out.put("id", jdbc.sql("SELECT id FROM catalogue.course WHERE code = :c").param("c", code).query(java.util.UUID.class).single());
-        out.put("state", "BOARD");
+        out.put("state", "LIVE");
         out.put("bound", outcomes.stream().filter(x -> "BOUND".equals(x.get("outcome"))).count());
         out.put("proposed", outcomes.stream().filter(x -> "PROPOSED".equals(x.get("outcome"))).count());
         out.put("offers", outcomes);

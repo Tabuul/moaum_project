@@ -140,19 +140,23 @@ class PgApplyController {
     }
 
     /** check an application's status, by its number and the email it was made with (public). The admission
-     *  decision and the School's note are released only once the checking fee is confirmed — the same mask
-     *  the signed-in portal applies — and the offer is accepted only by the acceptance fee, on the portal. */
+     *  decision and the School's note are released only to an applicant who may check their status (V337: the
+     *  checking fee paid while checking is open) — the same mask the signed-in portal applies; a department's or
+     *  faculty's recommendation is never shown — and the offer is accepted only by the acceptance fee, on the portal. */
     @GetMapping("/status")
     Map<String, Object> status(@RequestParam String applicationNo, @RequestParam String email) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.application_no,
-                       CASE WHEN a.spgs_decided_at IS NOT NULL AND a.checking_confirmed_at IS NULL THEN 'DECISION_LOCKED' ELSE a.state END AS state,
+                       CASE WHEN a.state IN ('DRAFT','SUBMITTED','RETURNED','ACCEPTED','ADMITTED') THEN a.state
+                            WHEN a.state IN ('OFFERED','NOT_OFFERED') THEN CASE WHEN c.may_check THEN a.state ELSE 'DECISION_LOCKED' END
+                            ELSE 'UNDER_REVIEW' END AS state,
                        a.entry_level, g.name AS programme_name, g.pg_award,
                        p.surname, p.other_names, a.fee_confirmed_at, a.submitted_at,
-                       CASE WHEN a.checking_confirmed_at IS NULL THEN NULL ELSE a.spgs_note END AS spgs_note
+                       CASE WHEN c.may_check THEN a.spgs_note END AS spgs_note
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
+                  CROSS JOIN LATERAL admissions.pg_status_checking(a.id) c
                  WHERE a.application_no = :no AND lower(p.email) = lower(:email)
                 """).param("no", applicationNo.trim()).param("email", email.trim()).query().listOfRows();
         return rows.isEmpty() ? Map.of("found", false) : Map.of("found", true, "application", rows.get(0));

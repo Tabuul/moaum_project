@@ -96,7 +96,8 @@ class PgLifecycleIT {
         assertThat(bio.get("nationality")).isEqualTo("Nigerian");
         assertThat(bio.get("contactAddress")).isEqualTo("No. 5 Gboko Road, Makurdi, Benue State");
         assertThat(it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=ACCEPTANCE", null).getStatusCode().value()).isEqualTo(422);
-        assertThat(it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=CHECKING", null).getStatusCode().value()).isEqualTo(422);
+        // V337: any valid applicant may pay to check while checking is open (open until the Director first configures it), decided or not
+        assertThat(it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=CHECKING", null).getStatusCode().value()).isEqualTo(200);
 
         // ── a Head of Department with no department of their own reaches nothing; the desks decide in order ──
         assertThat(it.get(ItSupport.token("hod"), "/api/v1/pg/applications/" + app).getStatusCode().value()).isEqualTo(403);
@@ -104,7 +105,7 @@ class PgLifecycleIT {
         assertThat(state(it.call(academic, HttpMethod.POST, "/api/v1/pg/applications/" + app + "/faculty-decision", Map.of("recommend", true)))).isEqualTo("FAC_RECOMMENDED");
         assertThat(state(it.call(school, HttpMethod.POST, "/api/v1/pg/applications/" + app + "/spgs-decision", Map.of("offer", true, "note", "Offered")))).isEqualTo("OFFERED");
 
-        // the decision is sealed until the checking fee; the department's words are sealed with it
+        // the decision is sealed until the checking fee; the department's words are internal (V337), never the applicant's
         me = it.get(applicant, "/api/v1/pg/me");
         assertThat(me.getBody().get("state")).isEqualTo("DECISION_LOCKED");
         assertThat(me.getBody().get("deptNote")).isNull();
@@ -115,7 +116,9 @@ class PgLifecycleIT {
         assertThat(it.call(secretary, HttpMethod.POST, "/api/v1/pg/applications/" + app + "/confirm-fee", Map.of("reference", chk.getBody().get("reference"))).getStatusCode().value()).isEqualTo(200);
         me = it.get(applicant, "/api/v1/pg/me");
         assertThat(me.getBody().get("state")).isEqualTo("OFFERED");
-        assertThat(me.getBody().get("deptNote")).isEqualTo("Strong first degree");
+        assertThat(me.getBody().get("deptNote")).isNull();
+        assertThat(me.getBody().get("spgsNote")).isEqualTo("Offered");
+        assertThat(((Map<String, Object>) me.getBody().get("statusChecking")).get("status")).isEqualTo("ADMITTED");
         ResponseEntity<Map> acc = it.call(applicant, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=ACCEPTANCE", null);
         assertThat(acc.getStatusCode().value()).as(String.valueOf(acc.getBody())).isEqualTo(200);
         assertThat(state(it.call(secretary, HttpMethod.POST, "/api/v1/pg/applications/" + app + "/confirm-fee", Map.of("reference", acc.getBody().get("reference"))))).isEqualTo("ACCEPTED");

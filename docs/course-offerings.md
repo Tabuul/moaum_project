@@ -8,7 +8,7 @@ workflow, its safeguards and the screens.
 
 | Question | Answer |
 |---|---|
-| Is there one canonical course record? | Yes. `catalogue.course` is keyed by the code, owned by one department (`dept_code`), with title, units, semester, level, kind, state (BOARD → SENATE → LIVE → ENDED), curriculum, CA split, GST/EPS office. |
+| Is there one canonical course record? | Yes. `catalogue.course` is keyed by the code, owned by one department (`dept_code`), with title, units, semester, level, kind, state (LIVE → ENDED; a course the department adds is LIVE at once, as an uploaded or GST course is — BOARD and SENATE remain only on courses added before that), curriculum, CA split, GST/EPS office. |
 | Is there a course-to-programme relationship? | Yes. `catalogue.course_offer (course_code, programme_code, level, basis, track)` — one row an offer, basis Core, Elective, Borrowed or GST, for a track or every track. Department is derived from the programme. |
 | Does anything duplicate a course per programme? | No. On Railway: 4,662 courses, 10,138 offers, 4,518 of them to a programme of a department other than the owner's. `GST 101` is one course offered to 76 programmes. |
 | How does registration find courses? | `registration.student_menu` reads `course_offer` by the student's programme, level, track and curriculum, then the session's `catalogue.offering`. A binding is visible to that programme's students and to nobody else. |

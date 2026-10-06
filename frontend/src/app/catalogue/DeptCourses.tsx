@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 
-/** tDeptCourses — proto/part…: the department's catalogue, a new course (into BOARD state,
- *  the Board and Senate make it live), and ending a course with a date rather than deleting it. */
+/** tDeptCourses — proto/part…: the department's catalogue, a new course (live at once, on the list and in the
+ *  current session's registration), and ending a course with a date rather than deleting it. */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
@@ -36,7 +36,7 @@ export interface CodeFix { code: string; proposed: string; title: string; state:
 export interface Programme { code: string; name: string }
 
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
-  LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
+  LIVE: ["ok", "Live"], BOARD: ["warn", "Not yet live"], SENATE: ["warn", "Not yet live"], ENDED: ["grey", "Ended"],
 };
 /* the Note's action slot takes the existing-course buttons (V332) */
 const KINDS = ["Core", "Required", "Elective", "GST"];
@@ -143,7 +143,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
   return (
     <>
       <Note kind="info" title="The department owns its courses, and creates them">
-        A course belongs to exactly one department &mdash; the one that teaches it, sets its score sheet and answers a query about a mark in it. What the department cannot do is make it live on its own: a new course is a curriculum change the Faculty Board sees and Senate approves, because the NUC accredits a programme on the courses it says it teaches.
+        A course belongs to exactly one department &mdash; the one that teaches it, sets its score sheet and answers a query about a mark in it. A course the department adds is live at once: it appears on this list and in the current session&rsquo;s registration for the programmes it is offered to.
       </Note>
 
       <div className="scope">
@@ -185,7 +185,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         </div>
       </div>
 
-      {said ? <Note kind="ok" title={said}>It goes to the Faculty Board, then to Senate &mdash; the department cannot make it live. Until Senate resolves it, no student can register for it and no score sheet exists.</Note> : null}
+      {said ? <Note kind="ok" title={said} /> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       {proposals?.toDecide.length ? (
@@ -220,7 +220,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       <Tiles items={[
         ["Courses owned", String(courses.length), null, depts.find((d) => d.code === dept)?.name ?? dept],
         ["Live", String(live), "var(--green-ink)", "Offered and taught"],
-        ["Awaiting approval", String(waiting), waiting ? "var(--chrome)" : null, "Board or Senate"],
+        ["Not yet live", String(waiting), waiting ? "var(--chrome)" : null, "Added before courses went live at once"],
         ["Live, no lecturer", String(noLec), noLec ? "var(--red-ink)" : null, noLec ? "No score sheet can open" : "All allocated"],
       ]} />
 
@@ -271,7 +271,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             ))}
             <div className="row row--base mt-3">
               <Btn kind="urgent" disabled={busy} onClick={() => { if (window.confirm(`Remove ${toEnd.length} duplicate code${toEnd.length === 1 ? "" : "s"} completely? Each is deleted where nothing carries it, and ended where a registration, result or timetable does. The cleanest code in each group is kept.`)) void send(`/duplicates/remove?dept=${encodeURIComponent(dept)}`, {}, `Removed the duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.removed ?? 0)} duplicate code(s) removed completely, ${String(j.ended ?? 0)} ended because a record carries them`); }); }}>{busy ? "Working…" : `Remove ${toEnd.length} duplicate${toEnd.length === 1 ? "" : "s"} completely`}</Btn>
-              <Btn kind="secondary" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. This can be undone by the Board/Senate if needed.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
+              <Btn kind="secondary" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. It can be undone by restoring the course.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
               <span className="sub2">Remove deletes the code outright; End keeps it on the record with a date.</span>
             </div>
           </PBody>
@@ -335,7 +335,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
               <Btn kind="ghost" disabled={busy} title="Delete the course outright; only possible when no registration, result or timetable carries it" onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
             </div>,
           ])} texts={shown.map((c) => `${c.code} ${c.title} ${kindLabel(c.kind)}`)} />
-        ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
+        ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here, live, as soon as it is created."}</div></PBody>}
       </Panel>
 
       {add ? (
@@ -344,7 +344,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim() || Boolean(found?.byCode)} onClick={async () => {
               const offers = [...own.map((p) => ({ programme: p, level: Number(f.level) })), ...extra.map((x) => ({ programme: x.programme, level: Number(f.level), reason: why.trim() || null }))];
               const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind, offers }, `New course ${f.code}`);
-              if (j) { setSaid(`${String(j.code)} created — at the Faculty Board · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""}`); setAdd(false); }
+              if (j) { setSaid(`${String(j.code)} created and live · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""} · it is on the course list below`); setAdd(false); }
             }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">

@@ -23,15 +23,17 @@ export interface AppWindow {
   type: string; session: string; path: string; configured: boolean; state: string; phase: string;
   opens_at?: string | null; closes_at?: string | null; forced?: string | null; reason?: string | null; window_id?: string | null;
   message: string; message_updated_at?: string | null; message_updated_by?: string | null; message_office?: string | null;
-  total: number; today: number; week: number; events: WindowEvent[];
+  total: number; today: number; week: number; paid?: number; events: WindowEvent[];
 }
 export interface ApplicationsPage {
   session: string; liveSessions: Record<string, string>; sessions: { name: string; state: string; registrations: number; applications: number }[];
   windows: AppWindow[]; publicPath: string; now: string;
 }
 
-const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application" };
-const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application" };
+/** V337: postgraduate admission status checking is the School's own window, beside its application */
+const PG_CHECKING = "POSTGRADUATE_ADMISSION_STATUS_CHECKING";
+const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking" };
+const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
@@ -95,21 +97,26 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
     const [word, kind] = STATE[w.state] ?? [w.state, "grey"];
     const live = page.liveSessions[w.type];
     const noun = NOUN[w.type];
+    const checking = w.type === PG_CHECKING;
     return (
       <Panel key={w.type} title={`${WORD[w.type].toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>
           <Tiles items={[
             ["STATUS", word, w.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", w.state === "OPEN" ? (w.closes_at ? `Closes ${when(w.closes_at)}` : "No closing date") : w.state === "SCHEDULED" ? `Opens ${when(w.opens_at)}` : w.state === "EXPIRED" ? `Closed ${when(w.closes_at)}` : "Closed by the Director"],
-            [`${noun.toUpperCase()}S`, Number(w.total).toLocaleString(), null, `${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in the last 7 days`],
-            ["PUBLIC PAGE", w.path, null, w.state === "OPEN" ? "The form; the login page shows its button" : "The closure message; the login page hides its button"],
+            checking
+              ? ["VALID APPLICANTS", Number(w.total).toLocaleString(), null, `${Number(w.paid ?? 0).toLocaleString()} paid to check · ${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in 7 days`]
+              : [`${noun.toUpperCase()}S`, Number(w.total).toLocaleString(), null, `${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in the last 7 days`],
+            checking
+              ? ["WHERE", w.path, null, w.state === "OPEN" ? "Valid applicants pay once and check, as often as they like" : "No new checking fee; a paid applicant waits for it to reopen"]
+              : ["PUBLIC PAGE", w.path, null, w.state === "OPEN" ? "The form; the login page shows its button" : "The closure message; the login page hides its button"],
             ["LAST ACT", w.events[0] ? w.events[0].action : "None", null, w.events[0] ? `${when(w.events[0].at)}${w.events[0].officer ? ` · ${w.events[0].officer}` : ""}` : `Open by default until the Director first acts`],
           ]} />
           <KvGrid cls="grid--3" pairs={[
             ["Opens", w.state === "CLOSED" ? "—" : w.opens_at ? when(w.opens_at) : w.configured ? "Immediately" : "—"], ["Closes", w.state === "CLOSED" ? "Closed now" : w.closes_at ? `${when(w.closes_at)} · ${remaining(w.closes_at, page.now)}` : w.configured ? "No closing date" : "—"],
             ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : "Not configured: open"], ["Reason", w.reason ?? "—"],
-            ["Scope", "Whole admission exercise of the session"], ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
+            ["Scope", "Whole admission exercise of the session"], checking ? ["Who checks", "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
           ]} />
-          {live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>The rule shown here governs {session}. To open or close what applicants meet today, choose {live} above.</Note> : null}
+          {live && live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>The rule shown here governs {session}. To open or close what applicants meet today, choose {live} above.</Note> : null}
           {may ? (
             <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
               {w.state === "OPEN" ? <Btn kind="urgent" size="sm" onClick={() => start(w, "CLOSE")}>Close now</Btn> : <Btn kind="go" size="sm" onClick={() => start(w, w.configured ? "REOPEN" : "OPEN")}>{w.configured ? "Reopen now" : "Open now"}</Btn>}
@@ -120,7 +127,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
             </div>
           ) : null}
         </PBody>
-        <PBody>
+        {checking ? null : <PBody>
           <Field id={`msg-${w.type}`} label="Closure message" hint={`Shown at ${w.path} and read by the University's website while ${WORD[w.type]} is closed, scheduled or expired. Plain text; blank lines make paragraphs.${w.message_updated_at ? ` Last changed ${when(w.message_updated_at)}${w.message_updated_by ? ` by ${w.message_updated_by}` : ""}.` : ""}`}>
             <textarea id={`msg-${w.type}`} className="ctl" rows={6} maxLength={2000} value={drafts[w.type] ?? ""} disabled={!may} onChange={(e) => setDrafts({ ...drafts, [w.type]: e.target.value })} />
           </Field>
@@ -130,7 +137,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
               {(drafts[w.type] ?? "") !== (w.message ?? "") ? <Btn kind="ghost" size="sm" onClick={() => setDrafts({ ...drafts, [w.type]: w.message ?? "" })}>Discard changes</Btn> : null}
             </div>
           ) : null}
-        </PBody>
+        </PBody>}
         {w.events.length ? <DTable pageSize={10} cols={["S/N|num", "Action|mid", "Before|mid", "After|mid", "Opens|mid", "Closes|mid", "Reason", "Changed by", "At|mid"]} rows={w.events.map((e, i) => [
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{ACTION_WORD[e.action] ?? e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
@@ -169,7 +176,9 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           {problem ? <ProblemNotice problem={problem} /> : null}
           {act.action === "CLOSE" ? (
             <Note kind="bad" title={`Are you sure you want to close ${WORD[act.type]} for ${session}?`}>
-              It takes effect the moment you confirm. No new {NOUN[act.type]} can be started until it is reopened; the login page hides the button and {acting.path} shows your closure message. Applicants who already registered sign in and continue as before. Nothing is deleted.
+              {act.type === PG_CHECKING
+                ? <>It takes effect the moment you confirm. No new checking fee is taken and no applicant reads an admission status until it is reopened; an applicant who has accepted an offer continues. A checking fee already paid stands. Nothing is deleted.</>
+                : <>It takes effect the moment you confirm. No new {NOUN[act.type]} can be started until it is reopened; the login page hides the button and {acting.path} shows your closure message. Applicants who already registered sign in and continue as before. Nothing is deleted.</>}
             </Note>
           ) : (
             <>

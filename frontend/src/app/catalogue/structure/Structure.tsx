@@ -182,7 +182,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                         <Pil key="b" kind={r.basis === "Core" ? "info" : r.basis === "GST" ? "ok" : "grey"}>{r.basis}</Pil>,
                         <span className="sub2 tnum" key="tr">{r.track ?? "every track"}</span>,
                         <span className={`sub2${ownDept && r.dept_code !== ownDept ? " ink-chrome" : ""}`} key="o">{r.dept_name ?? r.dept_code}</span>,
-                        <Pil key="s" kind={r.state === "LIVE" ? "ok" : r.state === "ENDED" ? "bad" : "warn"}>{r.state === "LIVE" ? "Live" : r.state === "BOARD" ? "At the Board" : r.state === "SENATE" ? "At Senate" : r.state}</Pil>,
+                        <Pil key="s" kind={r.state === "LIVE" ? "ok" : r.state === "ENDED" ? "bad" : "warn"}>{r.state === "LIVE" ? "Live" : r.state === "BOARD" || r.state === "SENATE" ? "Not yet live" : r.state}</Pil>,
                         ...(may ? [<Btn key="x" kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn>] : []),
                       ])} texts={list.map((r) => `${r.code} ${r.title} ${r.basis} ${r.track ?? ""} ${r.dept_name ?? ""}`)} />
                     </div>

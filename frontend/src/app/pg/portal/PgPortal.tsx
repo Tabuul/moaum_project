@@ -37,6 +37,16 @@ interface Me {
   prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
   proposal: { title: string | null; text: string | null };
   referees: Referee[]; priorDegrees: PriorDegree[]; documents: DocMeta[];
+  /** V337: admission status checking — valid, the window, paid once, what may be done, and the School's status once it may be read */
+  statusChecking?: { valid: boolean; windowState: string; windowOpen: boolean; paid: boolean; mayPay: boolean; mayCheck: boolean; status: "ADMITTED" | "NOT_ADMITTED" | "PENDING" | null };
+  /** V337: the department's return for correction, while the application is with the applicant */
+  returned?: { note: string; at: string } | null;
+  /** V337: the physical screening after acceptance, where the session requires it */
+  screening?: {
+    required: boolean;
+    policy: { venue: string | null; starts_on: string | null; ends_on: string | null; instructions: string | null; required_documents: string[] | null } | null;
+    record: { state: string; venue: string | null; scheduled_for: string | null; verified_documents: string[] | null; missing_documents: string[] | null; decided_at: string | null; reason: string | null } | null;
+  } | null;
 }
 
 const naira = (n: number | null) => (n == null ? "—" : "₦" + Number(n).toLocaleString());
@@ -46,13 +56,14 @@ const STATE_LABEL: Record<string, string> = {
   DEPT_DECLINED: "Not recommended by the department", FAC_RECOMMENDED: "Recommended by the faculty — with the School",
   FAC_DECLINED: "Not recommended by the faculty", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
-  DECISION_LOCKED: "A decision has been made — pay the checking fee to view it",
+  DECISION_LOCKED: "Decided — your admission status is released; check it below",
+  UNDER_REVIEW: "Under review by the department, the faculty and the School", RETURNED: "Returned to you for correction",
 };
 const STATE_SHORT: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Dept recommended", DEPT_DECLINED: "Declined",
   FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Declined",
   OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
-  DECISION_LOCKED: "Decision ready",
+  DECISION_LOCKED: "Status released", UNDER_REVIEW: "Under review", RETURNED: "Returned",
 };
 /** the words for each turn on the application's history (V255) */
 const EVENT_LABEL: Record<string, string> = {
@@ -60,7 +71,16 @@ const EVENT_LABEL: Record<string, string> = {
   REFERENCE_RECEIVED: "Reference received", DEPT_RECOMMENDED: "Considered by the department", DEPT_DECLINED: "Considered by the department",
   FAC_RECOMMENDED: "Considered by the faculty", FAC_DECLINED: "Considered by the faculty", OFFERED: "Decided by the School", NOT_OFFERED: "Decided by the School",
   CHECKING_FEE_CONFIRMED: "Checking fee confirmed", ACCEPTANCE_FEE_CONFIRMED: "Acceptance fee confirmed", ACCEPTED: "Offer accepted", ADMITTED: "Admitted to the register",
+  DEPT_CONSIDERED: "Considered by the department", FAC_CONSIDERED: "Considered by the faculty", SCHOOL_DECIDED: "Admission status released by the School",
+  RETURNED: "Returned to you for correction", RESUBMITTED: "Corrected and resubmitted",
+  SCREENING_PENDING: "Physical screening opened", SCREENING_SCHEDULED: "Physical screening scheduled", SCREENING_IN_PROGRESS: "Physical screening in progress",
+  SCREENING_CLEARED: "Cleared at physical screening", SCREENING_NOT_CLEARED: "Not cleared at physical screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
 };
+const SCREENING_WORD: Record<string, [string, "ok" | "bad" | "info"]> = {
+  PENDING: ["Awaiting your screening", "info"], SCHEDULED: ["Scheduled", "info"], IN_PROGRESS: ["In progress", "info"],
+  CLEARED: ["Cleared", "ok"], NOT_CLEARED: ["Not cleared", "bad"], CORRECTION_REQUIRED: ["Correction required", "bad"],
+};
+const whenTime = (v: string | null | undefined) => (v ? new Date(v).toLocaleString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
 function fmtDate(v: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
@@ -100,7 +120,7 @@ export function PgPortal() {
       setMe(m);
       // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
       const kind = !m.feeConfirmedAt ? "APPLICATION"
-        : m.state === "DECISION_LOCKED" ? "CHECKING"
+        : m.state === "DECISION_LOCKED" && m.statusChecking?.mayPay ? "CHECKING"
         : (!m.acceptanceConfirmedAt && (m.state === "OFFERED" || m.state === "ACCEPTED" || m.state === "ADMITTED")) ? "ACCEPTANCE"
         : null;
       if (kind) {
@@ -152,6 +172,27 @@ export function PgPortal() {
     } finally { setChecking(false); }
   }
 
+  /** the checking fee prepared on request, for an applicant whose status is not yet released (V337) */
+  async function prepareChecking() {
+    setChecking(true);
+    try {
+      const fr = await fetch("/api/bff/api/v1/pg/fee-reference?kind=CHECKING", { method: "POST", headers: { "Content-Type": "application/json" } });
+      const fj = await fr.json().catch(() => null);
+      if (!fr.ok) { notifyProblem(fj && typeof fj === "object" && "status" in fj ? (fj as Problem) : { status: fr.status, title: fr.statusText }); return; }
+      setReference(String((fj as { reference: string }).reference));
+    } finally { setChecking(false); }
+  }
+
+  async function resubmit() {
+    setChecking(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/pg/resubmit", { method: "POST", headers: { "Content-Type": "application/json" } });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setMe(j as Me);
+    } finally { setChecking(false); }
+  }
+
   async function emailSummary() {
     setEmailing(true); setEmailed(null);
     try {
@@ -182,15 +223,21 @@ export function PgPortal() {
   const paid = !!me.feeConfirmedAt;
   const passport = me.documents.find((d) => d.kind === "PASSPORT") ?? null;
   const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
+  const sc = me.statusChecking;
+  const scr = me.screening;
   const steps: [string, boolean, string | null][] = [
     ["Application submitted", !!me.submittedAt, me.submittedAt],
     ["Application fee paid", paid, me.feeConfirmedAt],
-    ["Department decision", !!me.deptDecidedAt, me.deptDecidedAt],
-    ["Faculty decision", !!me.facDecidedAt, me.facDecidedAt ?? null],
-    ["School decision", !!me.spgsDecidedAt, me.spgsDecidedAt],
-    ["Offer accepted", !!me.acceptedAt, me.acceptedAt],
-    ["Admitted to the register", !!me.admittedAt, me.admittedAt],
+    ["Department recommendation", !!me.deptDecidedAt, me.deptDecidedAt],
+    ["Faculty recommendation", !!me.facDecidedAt, me.facDecidedAt ?? null],
+    ["Admission status released", !!me.spgsDecidedAt, me.spgsDecidedAt],
+    ["Admission status checked", !!me.checkingConfirmedAt, me.checkingConfirmedAt],
+    ["Acceptance fee paid", !!me.acceptanceConfirmedAt, me.acceptanceConfirmedAt],
+    ...(scr ? [["Physical screening cleared", scr.record?.state === "CLEARED", scr.record?.state === "CLEARED" ? scr.record.decided_at : null] as [string, boolean, string | null]] : []),
+    ["Admitted — student portal open", !!me.admittedAt, me.admittedAt],
+    ["Matriculation number issued", !!me.student?.matric_no, null],
   ];
+  const editable = me.state === "SUBMITTED" || me.state === "RETURNED";
 
   return (
     <Shell route="pg/portal" me={shellMe}>
@@ -220,21 +267,55 @@ export function PgPortal() {
 
       {/* The decision gate: once the School decides, the applicant pays the checking fee to view the
           outcome; if offered, they pay the acceptance fee to accept, and can then print the offer letter. */}
-      {paid && me.state === "DECISION_LOCKED" ? (
-        <Panel title="Your admission decision is ready">
+      {me.state === "RETURNED" && me.returned ? (
+        <Panel title="Your application was returned for correction">
           <PBody>
-            <div className="sub2 mb-2">
-              The School of Postgraduate Studies has taken a decision on your application. Pay the checking fee of <b>{naira(me.checkingFee)}</b> to view your admission status. If you are offered a place, you will then pay the acceptance fee to accept the offer and print your admission letter.
-            </div>
-            {reference ? (
+            <Note kind="bad" title="What the department asks you to correct">{me.returned.note}</Note>
+            <div className="sub2 mt-2">Make the correction in <b>Complete your application</b> below — your academic record, referees, documents or passport — then resubmit. The department considers it again once it is resubmitted.</div>
+            <div className="row mt-2"><Btn kind="primary" disabled={checking} onClick={() => void resubmit()}>{checking ? "Resubmitting…" : "I have corrected it — resubmit my application"}</Btn></div>
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {/* V337: admission status checking. Any valid applicant pays the checking fee once while the Directorate of ICT has checking
+          open — admitted, not admitted or still pending — and checks as often as they like; the status is the School's. */}
+      {paid && sc && sc.valid && !sc.paid && me.state !== "RETURNED" ? (
+        <Panel title="Check your admission status">
+          <PBody>
+            {sc.windowOpen ? (
               <>
-                <PayByCard reference={reference} amount={Number(me.checkingFee ?? 0)} />
-                <div className="row mt-2">
-                  <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — show my status"}</Btn>
-                  <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
+                <div className="sub2 mb-2">
+                  {me.state === "DECISION_LOCKED" ? "The School of Postgraduate Studies has released your admission status. " : "Your application is still being considered. "}
+                  Pay the admission status checking fee of <b>{naira(me.checkingFee)}</b> once, and check your status here as often as you like while checking is open — whether you are admitted, not admitted, or still pending. If you are admitted, you then pay the acceptance fee to accept the offer.
                 </div>
+                {reference ? (
+                  <>
+                    <PayByCard reference={reference} amount={Number(me.checkingFee ?? 0)} />
+                    <div className="row mt-2">
+                      <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — show my status"}</Btn>
+                      <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
+                    </div>
+                  </>
+                ) : <Btn kind="primary" disabled={checking} onClick={() => void prepareChecking()}>{checking ? "Preparing…" : `Pay ${naira(me.checkingFee)} to check my admission status`}</Btn>}
               </>
-            ) : <Note kind="bad" title="The checking fee could not be prepared">Reload the page, or write to the School quoting your application number.</Note>}
+            ) : (
+              <Note kind="info" title={`Admission status checking is ${sc.windowState.toLowerCase()}`}>
+                The Directorate of ICT opens admission status checking for the session. You will be able to pay the checking fee and check your status here when it opens.
+              </Note>
+            )}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {paid && sc && sc.paid && !sc.mayCheck ? (
+        <Note kind="info" title="Admission status checking is closed for now">Your checking fee stands: check your status here again, at no further cost, when checking reopens.</Note>
+      ) : null}
+
+      {paid && sc && sc.mayCheck && sc.status === "PENDING" ? (
+        <Panel title="Admission status">
+          <PBody>
+            <Note kind="info" title="PENDING">Your admission status is currently pending. Please check again later — there is nothing more to pay.</Note>
+            <div className="row mt-2"><Btn kind="secondary" onClick={() => void load()}>Check again</Btn></div>
           </PBody>
         </Panel>
       ) : null}
@@ -242,9 +323,17 @@ export function PgPortal() {
       {paid && !me.acceptanceConfirmedAt && (me.state === "OFFERED" || me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
         <Panel title="Congratulations — you have been offered a place">
           <PBody>
-            <Note kind="ok" title={`Offer of provisional admission · ${me.programme}`}>
-              You have been offered provisional admission for the {me.session} session. Pay the acceptance fee of <b>{naira(me.acceptanceFee)}</b> to accept the offer, then print your offer of admission.
+            <Note kind="ok" title="CONGRATULATIONS!">
+              You have been offered admission into the School of Postgraduate Studies for the {me.session} session.
             </Note>
+            <div className="mt-3">
+              <KvGrid cls="grid--2" pairs={[
+                ["Applicant", me.name], ["Application number", me.applicationNo], ["Admission session", me.session], ["Faculty", me.faculty],
+                ["Department", me.department], ["Programme", me.programme], ["Degree", me.award ?? LEVEL[me.entryLevel] ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
+                ["Admission status", "Admitted"], ["Next step", "Accept your admission"],
+              ]} />
+            </div>
+            <div className="sub2 mt-2"><b>Next step — accept your admission:</b> pay the acceptance fee of <b>{naira(me.acceptanceFee)}</b>, then print your offer of admission{scr?.required ? " and attend the physical screening" : ""}.</div>
             {reference ? (
               <div className="mt-3">
                 <PayByCard reference={reference} amount={Number(me.acceptanceFee ?? 0)} />
@@ -269,10 +358,43 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
+      {scr && (me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
+        <Panel title="Physical screening">
+          <PBody>
+            {(() => {
+              const rec = scr.record;
+              const [word, kind] = SCREENING_WORD[rec?.state ?? "PENDING"] ?? ["Awaiting your screening", "info"];
+              const venue = rec?.venue ?? scr.policy?.venue;
+              return (
+                <div className="stack">
+                  <Note kind={kind} title={`Screening status: ${word}`}>
+                    {rec?.state === "CLEARED" ? "You were cleared at physical screening and are on the University register: sign in to the student portal to pay your school fees."
+                      : rec?.state === "NOT_CLEARED" ? <>You were not cleared. {rec.reason} Contact the School of Postgraduate Studies for the next step.</>
+                      : rec?.state === "CORRECTION_REQUIRED" ? <>A correction is needed before you can be cleared: {rec.reason}</>
+                      : "Attend the physical screening with the originals of your documents. You are cleared there, and school fees open once you are."}
+                  </Note>
+                  <KvGrid cls="grid--2" pairs={[
+                    ["Venue", venue ?? "To be announced"],
+                    ["When", rec?.scheduled_for ? whenTime(rec.scheduled_for) : scr.policy?.starts_on ? `${fmtDate(scr.policy.starts_on)}${scr.policy.ends_on ? ` to ${fmtDate(scr.policy.ends_on)}` : ""}` : "To be announced"],
+                  ]} />
+                  {scr.policy?.instructions ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{scr.policy.instructions}</div> : null}
+                  {scr.policy?.required_documents?.length ? (
+                    <div className="sub2"><b>Bring these originals:</b>
+                      <ul className="mt-1">{scr.policy.required_documents.map((d) => <li key={d}>{d}{rec?.missing_documents?.includes(d) ? " — missing at screening" : rec?.verified_documents?.includes(d) ? " — verified" : ""}</li>)}</ul>
+                    </div>
+                  ) : null}
+                  {rec?.missing_documents?.length ? <div className="sub2"><b>Outstanding:</b> {rec.missing_documents.join(" · ")}</div> : null}
+                </div>
+              );
+            })()}
+          </PBody>
+        </Panel>
+      ) : null}
+
       {paid && me.state === "NOT_OFFERED" ? (
         <Panel title="Admission decision">
           <PBody>
-            <Note kind="bad" title="Not offered a place">We regret that you were not offered admission for the {me.session} session.{me.spgsNote ? "" : " You may wish to apply again in a future session."}</Note>
+            <Note kind="bad" title="NOT ADMITTED">We regret that you were not offered admission for the {me.session} session.{me.spgsNote ? "" : " You may wish to apply again in a future session."}</Note>
             {me.spgsNote ? <div className="sub2 mt-2">{me.spgsNote}</div> : null}
           </PBody>
         </Panel>
@@ -334,6 +456,11 @@ export function PgPortal() {
         </Panel>
       </div>
 
+      {paid && !editable ? (
+        <Note kind="info" title="Your application is with the University">
+          It cannot be changed while it is being considered{me.state === "ACCEPTED" ? ", except that documents and your passport may still be uploaded for screening" : ""}. If something must be corrected, the department returns the application to you and says what.
+        </Note>
+      ) : null}
       <CompleteSteps me={me} paid={paid} passport={passport} onDone={load} />
 
       {paid ? (
@@ -370,7 +497,7 @@ export function PgPortal() {
                 </li>
               ))}
             </ol>
-            <div className="sub2 mt-2">What each desk decided is shown once the checking fee is confirmed.</div>
+            <div className="sub2 mt-2">The department&rsquo;s and faculty&rsquo;s recommendations are internal; the School&rsquo;s decision is read by checking your admission status.</div>
           </PBody>
         </Panel>
       ) : null}

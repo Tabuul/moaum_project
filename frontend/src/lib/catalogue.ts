@@ -50,7 +50,7 @@ export interface CourseList { total: number; page: number; size: number; rows: C
 export interface Exists { byCode: CourseHead | null; byTitle: CourseHead[] }
 
 export const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
-  LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
+  LIVE: ["ok", "Live"], BOARD: ["warn", "Not yet live"], SENATE: ["warn", "Not yet live"], ENDED: ["grey", "Ended"],
 };
 export const KINDS = ["Core", "Required", "Elective", "GST"];
 export const BASES = ["Core", "Elective", "Borrowed", "GST"];

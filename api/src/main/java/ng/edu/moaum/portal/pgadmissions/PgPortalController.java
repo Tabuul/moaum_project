@@ -208,10 +208,19 @@ class PgPortalController {
         if (app == null) {
             throw new NotFound("postgraduate application", me);
         }
-        // each fee comes in its turn: checking once the School has decided, acceptance once a place is offered and the decision read
-        if ("CHECKING".equals(k) && app.get("spgs_decided_at") == null) {
-            throw new DomainRuleViolation("PG_FEE_NOT_YET", "The checking fee is paid once the School has decided on the application.",
-                    new DomainRuleViolation.Remedy("Track the application here; you are told by email when a decision is ready.", "School of Postgraduate Studies"));
+        // each fee comes in its turn: checking for any valid application while checking is open (V337) — admitted, not admitted or
+        // not yet decided alike — and acceptance once a place is offered and the decision read
+        if ("CHECKING".equals(k)) {
+            Map<String, Object> chk = jdbc.sql("SELECT * FROM admissions.pg_status_checking(:app)").param("app", app.get("id")).query().singleRow();
+            if (!Boolean.TRUE.equals(chk.get("valid"))) {
+                throw new DomainRuleViolation("PG_FEE_NOT_YET", "Admission status checking is for an application whose application fee is confirmed.",
+                        new DomainRuleViolation.Remedy("Pay the application fee first.", "You"));
+            }
+            if (!Boolean.TRUE.equals(chk.get("paid")) && !"OPEN".equals(chk.get("window_state"))) {
+                throw new DomainRuleViolation("PG_CHECKING_CLOSED",
+                        "Admission status checking is " + String.valueOf(chk.get("window_state")).toLowerCase() + " for this session.",
+                        new DomainRuleViolation.Remedy("The Directorate of ICT opens admission status checking; you are told by email when the School releases admission status.", "Directorate of ICT"));
+            }
         }
         if ("ACCEPTANCE".equals(k) && !(("OFFERED".equals(app.get("state")) || "ACCEPTED".equals(app.get("state")) || "ADMITTED".equals(app.get("state"))) && app.get("checking_confirmed_at") != null)) {
             throw new DomainRuleViolation("PG_FEE_NOT_YET", "The acceptance fee is paid once a place is offered and the decision has been read.",
@@ -245,7 +254,7 @@ class PgPortalController {
                        a.checking_confirmed_at, a.acceptance_confirmed_at,
                        a.dept_note, a.dept_decided_at, a.fac_note, a.fac_decided_at, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at, a.created_at, a.student_id,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
-                       a.proposal_title, a.proposal_text,
+                       a.proposal_title, a.proposal_text, a.return_note, a.returned_at, a.returned_to,
                        p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
                        p.nationality, p.contact_address,
                        g.code AS programme_code, g.name AS programme_name, g.pg_award, g.pg_research,
@@ -288,10 +297,26 @@ class PgPortalController {
         out.put("otherNames", a.get("other_names"));
         out.put("email", a.get("email"));
         out.put("phone", a.get("phone"));
-        // the admission decision is released only after the checking fee is paid
-        boolean decisionLocked = a.get("spgs_decided_at") != null && a.get("checking_confirmed_at") == null;
-        out.put("state", decisionLocked ? "DECISION_LOCKED" : a.get("state"));
+        // V337: the admission status is read by checking it — the checking fee paid once, while checking is open (or the offer
+        // accepted); a department's or faculty's recommendation is never the applicant's answer, only the School's decision is
+        Map<String, Object> chk = jdbc.sql("SELECT * FROM admissions.pg_status_checking(:app)").param("app", a.get("application_id")).query().singleRow();
+        boolean visible = Boolean.TRUE.equals(chk.get("may_check"));
+        String shown = applicantState(String.valueOf(a.get("state")), visible);
+        boolean decisionLocked = "DECISION_LOCKED".equals(shown);
+        out.put("state", shown);
         out.put("decisionLocked", decisionLocked);
+        Map<String, Object> checking = new LinkedHashMap<>();
+        checking.put("valid", chk.get("valid"));
+        checking.put("windowState", chk.get("window_state"));
+        checking.put("windowOpen", chk.get("window_open"));
+        checking.put("paid", chk.get("paid"));
+        checking.put("mayPay", chk.get("may_pay"));
+        checking.put("mayCheck", chk.get("may_check"));
+        checking.put("status", visible ? chk.get("status") : null);
+        out.put("statusChecking", checking);
+        if ("RETURNED".equals(a.get("state"))) {
+            out.put("returned", Map.of("note", String.valueOf(a.get("return_note")), "at", String.valueOf(a.get("returned_at"))));
+        }
         out.put("checkingConfirmedAt", a.get("checking_confirmed_at"));
         out.put("acceptanceConfirmedAt", a.get("acceptance_confirmed_at"));
         out.put("entryLevel", a.get("entry_level"));
@@ -308,13 +333,13 @@ class PgPortalController {
         out.put("acceptanceFee", feeRule.get("acceptance_fee"));
         out.put("checkingFee", feeRule.get("checking_fee"));
         out.put("liveReference", live == null ? null : live.get("reference"));
-        // the department's and the faculty's words are part of the decision: sealed until the checking fee opens it
-        boolean sealed = a.get("checking_confirmed_at") == null;
-        out.put("deptNote", sealed ? null : a.get("dept_note"));
+        // the department's and the faculty's words are their internal recommendation (V337): never the applicant's to read;
+        // the School's note is part of its decision, read with the status
+        out.put("deptNote", null);
         out.put("deptDecidedAt", a.get("dept_decided_at"));
-        out.put("facNote", sealed ? null : a.get("fac_note"));
+        out.put("facNote", null);
         out.put("facDecidedAt", a.get("fac_decided_at"));
-        out.put("spgsNote", decisionLocked ? null : a.get("spgs_note"));
+        out.put("spgsNote", visible ? a.get("spgs_note") : null);
         out.put("spgsDecidedAt", a.get("spgs_decided_at"));
         out.put("acceptedAt", a.get("accepted_at"));
         out.put("admittedAt", a.get("admitted_at"));
@@ -340,13 +365,23 @@ class PgPortalController {
         out.put("referees", referees);
         out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
-        // the application's own history, as the trail keeps it — the decisions' words stay sealed until the checking fee
+        // the application's own history, as the trail keeps it: the department's and faculty's turns as "considered", the School's
+        // decision as "decided" until the status may be checked, and the School's return of a recommendation to the department not at all
         out.put("history", jdbc.sql("""
-                SELECT e.kind, e.at,
-                       CASE WHEN :sealed AND e.kind IN ('DEPT_RECOMMENDED','DEPT_DECLINED','FAC_RECOMMENDED','FAC_DECLINED','OFFERED','NOT_OFFERED')
-                            THEN NULL ELSE e.note END AS note
-                  FROM admissions.pg_application_event e WHERE e.application_id = :app ORDER BY e.at, e.kind
-                """).param("sealed", sealed).param("app", a.get("application_id")).query().listOfRows());
+                SELECT CASE WHEN e.kind IN ('DEPT_RECOMMENDED','DEPT_DECLINED') THEN 'DEPT_CONSIDERED'
+                            WHEN e.kind IN ('FAC_RECOMMENDED','FAC_DECLINED') THEN 'FAC_CONSIDERED'
+                            WHEN e.kind IN ('OFFERED','NOT_OFFERED') AND NOT :visible THEN 'SCHOOL_DECIDED'
+                            ELSE e.kind END AS kind,
+                       e.at,
+                       CASE WHEN e.kind IN ('DEPT_RECOMMENDED','DEPT_DECLINED','FAC_RECOMMENDED','FAC_DECLINED') THEN NULL
+                            WHEN e.kind IN ('OFFERED','NOT_OFFERED') AND NOT :visible THEN NULL
+                            ELSE e.note END AS note
+                  FROM admissions.pg_application_event e
+                 WHERE e.application_id = :app AND e.kind <> 'RETURNED_TO_DEPARTMENT'
+                 ORDER BY e.at, e.kind
+                """).param("visible", visible).param("app", a.get("application_id")).query().listOfRows());
+        // the physical screening (V337): what the applicant is told, and where they stand
+        out.put("screening", screeningOf((UUID) a.get("application_id"), String.valueOf(a.get("session"))));
         // once admitted, the student record the applicant has become: the number that opens the student portal
         if (a.get("student_id") != null) {
             out.put("student", firstOrNull(jdbc.sql("""
@@ -354,6 +389,47 @@ class PgPortalController {
                     """).param("s", a.get("student_id")).query().listOfRows()));
         }
         return out;
+    }
+
+    /** the state as the applicant reads it (V337): their own steps as they are; the department's and faculty's turns as UNDER_REVIEW;
+     *  the School's decision only once the status may be checked, else DECISION_LOCKED */
+    static String applicantState(String state, boolean visible) {
+        return switch (state) {
+            case "DRAFT", "SUBMITTED", "RETURNED", "ACCEPTED", "ADMITTED" -> state;
+            case "OFFERED", "NOT_OFFERED" -> visible ? state : "DECISION_LOCKED";
+            default -> "UNDER_REVIEW";
+        };
+    }
+
+    /** the screening as the applicant reads it: the session's instructions and their own record, the officer's reason where they must act */
+    private Map<String, Object> screeningOf(UUID app, String session) {
+        boolean required = Boolean.TRUE.equals(jdbc.sql("SELECT admissions.pg_screening_required(:a)").param("a", app).query(Boolean.class).single());
+        Map<String, Object> rec = firstOrNull(jdbc.sql("""
+                SELECT state, venue, scheduled_for, verified_documents, missing_documents, decided_at,
+                       CASE WHEN state IN ('NOT_CLEARED','CORRECTION_REQUIRED') THEN reason END AS reason
+                  FROM admissions.pg_screening WHERE application_id = :a
+                """).param("a", app).query().listOfRows());
+        if (!required && rec == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("required", required);
+        out.put("policy", firstOrNull(jdbc.sql("""
+                SELECT venue, starts_on, ends_on, instructions, required_documents FROM admissions.pg_screening_policy WHERE session = :s
+                """).param("s", session).query().listOfRows()));
+        out.put("record", rec);
+        return out;
+    }
+
+    /** the applicant resubmits an application the department returned for correction (V337) */
+    @PostMapping("/resubmit")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> resubmit(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate application corrected and resubmitted", null, null),
+                () -> tx.execute(st -> jdbc.sql("SELECT admissions.pg_resubmit(:app)").param("app", appId).query().listOfRows()));
+        return view(me);
     }
 
     /** one of the applicant's own documents, streamed back to them; scoped to their application */
@@ -388,6 +464,23 @@ class PgPortalController {
     private static final java.util.Set<String> APPLICANT_DOC_KINDS = java.util.Set.of(
             "HIGHER_DEGREE", "UNDERGRAD_CERT", "OLEVEL", "BIRTH_CERTIFICATE", "NYSC", "LGA_CERTIFICATE", "NAME_CHANGE", "CREDENTIALS");
 
+    /**
+     * V337: the record under review does not change beneath the department. The academic record and the referees are edited
+     * while the application waits on the department (SUBMITTED) or has been returned for correction; documents and the passport
+     * also while the offer is accepted and screening is under way, when a missing document is brought in.
+     */
+    private void requireEditable(UUID appId, boolean documents) {
+        String state = jdbc.sql("SELECT state FROM admissions.pg_application WHERE id = :id").param("id", appId)
+                .query(String.class).optional().orElse("");
+        boolean ok = "SUBMITTED".equals(state) || "RETURNED".equals(state) || (documents && "ACCEPTED".equals(state));
+        if (!ok) {
+            throw new DomainRuleViolation("PG_RECORD_LOCKED",
+                    "Your application is with the University for a decision, so it cannot be changed now.",
+                    new DomainRuleViolation.Remedy("If something must be corrected, the department returns the application to you and says what; you then correct it and resubmit.",
+                            "School of Postgraduate Studies"));
+        }
+    }
+
     /** documents and the passport are uploaded only after the application fee is confirmed */
     private void requireFeePaid(UUID appId) {
         Map<String, Object> r = firstOrNull(jdbc.sql("SELECT fee_confirmed_at FROM admissions.pg_application WHERE id = :id")
@@ -406,6 +499,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, true);
         String kind = body.kind() == null || body.kind().isBlank() ? "CREDENTIALS" : body.kind().trim().toUpperCase();
         if (!APPLICANT_DOC_KINDS.contains(kind)) {
             throw new DomainRuleViolation("PG_DOC_KIND", "That is not a document the application takes.",
@@ -447,6 +541,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, true);
         int n = jdbc.sql("DELETE FROM admissions.pg_document WHERE id = :d AND application_id = :app AND kind <> 'PASSPORT'")
                 .param("d", docId).param("app", appId).update();
         if (n == 0) {
@@ -463,6 +558,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, true);
         if (!"image/jpeg".equals(body.contentType()) && !"image/png".equals(body.contentType())) {
             throw new DomainRuleViolation("PG_PASSPORT_TYPE", "The passport must be a JPEG or PNG photo.",
                     new DomainRuleViolation.Remedy("Upload a clear passport photograph (JPEG or PNG).", "You"));
@@ -563,6 +659,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, false);
         String inst = trimToNull(body.institution()), award = trimToNull(body.award()), field = trimToNull(body.field()),
                 cls = trimToNull(body.classOfDegree()), cgpa = trimToNull(body.cgpa()), year = trimToNull(body.year());
         AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate first degree", null, null),
@@ -610,6 +707,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, false);
         List<QualIn> quals = body == null ? List.of() : body;
         AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate qualifications", null, null),
                 () -> tx.execute(st -> {
@@ -647,6 +745,7 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        requireEditable(appId, false);
         List<RefereeIn> in = body == null ? List.of() : body;
         String applicantName = String.valueOf(jdbc.sql("""
                 SELECT p.surname || ' ' || p.other_names FROM admissions.pg_application a

@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 182
+\set EXPECTED 183
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4930,6 +4930,74 @@ BEGIN
         r_caps = 'REFUSED' AND sees_none = false AND sees_a = true AND sees_b = false AND caps = ARRAY['EDIT_CONTACT', 'VIEW_STUDENT'] AND words IS NOT NULL
         AND r_reason = 'SUPPORT_REASON' AND v_act IS NOT NULL AND n_act = 1 AND v_ins = false AND n_ev = 1,
         format('caps_refused=%s none=%s a=%s b=%s caps=%s words=%s reason=%s act=%s n=%s photo=%s/%s', r_caps, sees_none, sees_a, sees_b, caps, words, r_reason, v_act IS NOT NULL, n_act, v_ins, n_ev));
+END $$;
+
+-- ── 183. V337: the postgraduate lifecycle completed — the department decides a paid application, returns it for correction and decides again only when the School returns it; the School's word is final on a "not recommended"; a valid applicant checks once paid, the status the School's; screening holds an accepted applicant off the register until cleared, and clearance admits them; an endorsed postgraduate registration counts for matriculation ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); prog text; fac text; appl uuid := gen_random_uuid(); app uuid := gen_random_uuid(); v_student uuid;
+        msg text; r_unpaid text; r_note text; r_twice text; r_admit text; r_reason text; st_returned text; st_resub text; st_back text; st_final text;
+        dept_cleared boolean; c record; c2 record; scr_open text; st_cleared text; ok_student boolean; registered boolean; kinds text[];
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKPGDESK', 'Officer');
+        SELECT p.code, p.faculty_code INTO prog, fac FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, password_hash, contact_address)
+        VALUES (appl, '2083/2084', 'CHECKPGLIFE', 'Applicant', 'check.pglife@example.com', '$2a$12$checkcheckcheckcheckcheckcheckcheckcheckcheckcheckche', 'No. 1 Check Road');
+        INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        VALUES (app, appl, '2083/2084', 'PG/83/999183', prog, 800, 'SUBMITTED', now());
+
+        -- the department decides a paid application only
+        BEGIN PERFORM admissions.pg_dept_decide(app, true, NULL, who); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_unpaid := split_part(msg, ':', 1); END;
+        UPDATE admissions.pg_application SET fee_confirmed_at = now() WHERE id = app;
+        -- a return says what to correct; the applicant resubmits
+        BEGIN PERFORM admissions.pg_dept_return(app, '  ', who); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_note := split_part(msg, ':', 1); END;
+        PERFORM admissions.pg_dept_return(app, 'Upload the NYSC certificate', who);
+        SELECT state INTO st_returned FROM admissions.pg_application WHERE id = app;
+        PERFORM admissions.pg_resubmit(app);
+        SELECT state INTO st_resub FROM admissions.pg_application WHERE id = app;
+        -- not recommended: decided once; the School returns it, the department decides again, the School's word is final
+        PERFORM admissions.pg_dept_decide(app, false, 'Weak', who);
+        BEGIN PERFORM admissions.pg_dept_decide(app, true, NULL, who); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_twice := split_part(msg, ':', 1); END;
+        PERFORM admissions.pg_school_return(app, 'Reconsider the HND', who);
+        SELECT state, dept_decided_at IS NULL AND dept_note IS NULL INTO st_back, dept_cleared FROM admissions.pg_application WHERE id = app;
+        PERFORM admissions.pg_dept_decide(app, false, NULL, who);
+        -- before the School decides, a valid applicant may pay to check, and reads PENDING once paid
+        SELECT * INTO c FROM admissions.pg_status_checking(app);
+        PERFORM admissions.pg_spgs_decide(app, true, 'Offered on the School''s judgement', who);
+        SELECT state INTO st_final FROM admissions.pg_application WHERE id = app;
+        UPDATE admissions.pg_application SET checking_confirmed_at = now() WHERE id = app;
+        SELECT * INTO c2 FROM admissions.pg_status_checking(app);
+
+        -- the session screens: acceptance opens the screening; the register waits for clearance, which admits
+        INSERT INTO admissions.pg_screening_policy (session, required, enabled_from, venue) VALUES ('2083/2084', true, now() - interval '1 minute', 'Check Hall');
+        UPDATE admissions.pg_application SET acceptance_confirmed_at = now() WHERE id = app;
+        UPDATE admissions.pg_application SET state = 'ACCEPTED', accepted_at = now() WHERE id = app;
+        SELECT state INTO scr_open FROM admissions.pg_screening WHERE application_id = app;
+        BEGIN PERFORM admissions.pg_admit(app); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_admit := split_part(msg, ':', 1); END;
+        BEGIN PERFORM admissions.pg_screening_decide(app, 'NOT_CLEARED', NULL, NULL, NULL, NULL, ' ', who, 'pgsecretary'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        PERFORM admissions.pg_screening_decide(app, 'CLEARED', ARRAY['First degree certificate'], NULL, NULL, 'Originals seen', NULL, who, 'pgsecretary');
+        SELECT a.state, a.student_id INTO st_cleared, v_student FROM admissions.pg_application a WHERE a.id = app;
+        ok_student := admissions.screening_ok_student(v_student);
+        -- an endorsed postgraduate registration of the session is registration for matriculation
+        INSERT INTO admissions.pg_registration (student_id, session, semester, mode, state, endorsed_at) VALUES (v_student, '2083/2084', 1, 'FULL_TIME', 'ENDORSED', now());
+        SELECT m.registered INTO registered FROM people.matric_candidates('2083/2084', fac) m WHERE m.student_id = v_student;
+        SELECT array_agg(kind ORDER BY at, kind) INTO kinds FROM admissions.pg_application_event WHERE application_id = app;
+        RAISE EXCEPTION 'the V337 postgraduate lifecycle check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The postgraduate lifecycle completed: the department decides only a paid application, returns one for correction with a note and the applicant resubmits it, decides once until the School returns it to them, and the School''s decision on a "not recommended" is final; a valid applicant may pay to check before any decision and reads the School''s status once paid; an accepted applicant of a screening session is screened, held off the register until cleared (a refusal needs its reason), and clearance admits them; an endorsed postgraduate registration counts for matriculation',
+        r_unpaid = 'PG_FEE_UNCONFIRMED' AND r_note = 'PG_RETURN_NOTE_REQUIRED' AND st_returned = 'RETURNED' AND st_resub = 'SUBMITTED'
+        AND r_twice = 'PG_NOT_WITH_DEPARTMENT' AND st_back = 'SUBMITTED' AND dept_cleared AND st_final = 'OFFERED'
+        AND c.valid AND c.may_pay AND NOT c.may_check AND c.status = 'PENDING' AND c2.may_check AND c2.status = 'ADMITTED'
+        AND scr_open = 'PENDING' AND r_admit = 'PG_SCREENING_NOT_CLEARED' AND r_reason = 'PG_SCREENING_REASON' AND st_cleared = 'ADMITTED'
+        AND v_student IS NOT NULL AND ok_student AND registered
+        AND kinds @> ARRAY['RETURNED', 'RESUBMITTED', 'RETURNED_TO_DEPARTMENT', 'SCREENING_PENDING', 'SCREENING_CLEARED', 'ADMITTED'],
+        format('unpaid=%s note=%s returned=%s resub=%s twice=%s back=%s/%s final=%s check=%s/%s/%s/%s paid=%s/%s screening=%s admit=%s reason=%s cleared=%s student=%s ok=%s registered=%s kinds=%s',
+               r_unpaid, r_note, st_returned, st_resub, r_twice, st_back, dept_cleared, st_final, c.valid, c.may_pay, c.may_check, c.status, c2.may_check, c2.status,
+               scr_open, r_admit, r_reason, st_cleared, v_student IS NOT NULL, ok_student, registered, kinds));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

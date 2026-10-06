@@ -55,6 +55,9 @@ class PortalWindowController {
     private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION");
     /** V295: admission status checking, a window of the admission exercise, beside the two of the academic session */
     private static final String CHECKING = "ADMISSION_STATUS_CHECKING";
+    /** V337: postgraduate admission status checking, its own window for the School's admission exercise of a session;
+     *  open until first configured, so what runs today keeps running */
+    static final String PG_CHECKING = "POSTGRADUATE_ADMISSION_STATUS_CHECKING";
     /** who reads admission status checking's counts and report: the Director, and the offices that read admissions */
     private static final String CHECKING_READERS =
             "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
@@ -123,10 +126,10 @@ class PortalWindowController {
     Map<String, Object> act(@PathVariable String type, @Valid @RequestBody ActIn body) {
         String t = type.trim().toUpperCase();
         boolean application = ApplicationWindows.TYPES.contains(t);
-        if (!TYPES.contains(t) && !CHECKING.equals(t) && !application) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration and the postgraduate application.", new DomainRuleViolation.Remedy("Name one of the five.", "Directorate of ICT"));
+        if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t)) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration, the postgraduate application and postgraduate admission status checking.", new DomainRuleViolation.Remedy("Name one of the six.", "Directorate of ICT"));
         }
-        if (CHECKING.equals(t) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
+        if ((CHECKING.equals(t) || PG_CHECKING.equals(t)) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
                     new DomainRuleViolation.Remedy("Leave the semester and the late period blank.", "Directorate of ICT"));
         }
@@ -146,7 +149,7 @@ class PortalWindowController {
                 .query(UUID.class).single();
         Map<String, Object> after = state(t, body.session(), body.semester());
         int told = 0;
-        if (!application && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
+        if (!application && !PG_CHECKING.equals(t) && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
             told = CHECKING.equals(t)
                     ? jdbc.sql("SELECT admissions.tell_status_checking(:s, :a)").param("s", body.session().trim()).param("a", body.action()).query(Integer.class).single()
                     : tell(t, body.session().trim(), body.semester(), body.action(), after);
@@ -156,7 +159,7 @@ class PortalWindowController {
         out.put("before", before);
         out.put("after", after);
         out.put("told", told);
-        out.putAll(application ? applicationsOf(body.session()) : CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
+        out.putAll(application || PG_CHECKING.equals(t) ? applicationsOf(body.session()) : CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
         return out;
     }
 
@@ -195,6 +198,21 @@ class PortalWindowController {
             w.put("events", history(s, t, 200));
             windows.add(w);
         }
+        // V337: postgraduate admission status checking beside the postgraduate application — who is valid, who has paid to check
+        Map<String, Object> pg = new LinkedHashMap<>(state(PG_CHECKING, s, null));
+        pg.put("type", PG_CHECKING);
+        pg.put("session", s);
+        pg.put("path", "/pg/portal");
+        pg.put("message", null);
+        pg.putAll(jdbc.sql("""
+                SELECT count(*) FILTER (WHERE fee_confirmed_at IS NOT NULL) AS total,
+                       count(*) FILTER (WHERE checking_confirmed_at IS NOT NULL) AS paid,
+                       count(*) FILTER (WHERE checking_confirmed_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS today,
+                       count(*) FILTER (WHERE checking_confirmed_at >= now() - interval '7 days') AS week
+                  FROM admissions.pg_application WHERE session = :s
+                """).param("s", s).query().singleRow());
+        pg.put("events", history(s, PG_CHECKING, 200));
+        windows.add(pg);
         out.put("windows", windows);
         out.put("publicPath", "/api/v1/public/application-windows");
         out.put("now", OffsetDateTime.now());

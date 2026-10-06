@@ -14,8 +14,10 @@ import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,9 +44,58 @@ class PgCourseworkController {
     private static final String DESK = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
-    PgCourseworkController(JdbcClient jdbc) {
+    PgCourseworkController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
+    }
+
+    /* ── the Head of Department's bound (V337): a Head of Department reads, endorses and scores their own department's
+          postgraduate coursework only; the School and the Academic Office read it all. The check is on the record, so an
+          id typed into the address bar is refused the same way. ── */
+
+    /** the department the acting Head of Department is held to, a sentinel that matches nothing when none resolves, or null */
+    private String hodDept() {
+        if (!scope.actingHod()) {
+            return null;
+        }
+        String d = scope.actingDept();
+        return d == null ? "__none__" : d;
+    }
+
+    private void programmeInBound(String programme) {
+        String dept = hodDept();
+        if (dept == null) {
+            return;
+        }
+        String of = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", programme == null ? "" : programme.trim())
+                .query(String.class).optional().orElse(null);
+        if (of != null && !dept.equalsIgnoreCase(of)) {
+            throw new AccessDeniedException("This programme belongs to another department; the Head of Department manages their own department's postgraduate coursework only.");
+        }
+    }
+
+    private void registrationInBound(UUID registration) {
+        String dept = hodDept();
+        if (dept == null) {
+            return;
+        }
+        String of = jdbc.sql("""
+                SELECT g.dept_code FROM admissions.pg_registration r JOIN people.student s ON s.id = r.student_id
+                  JOIN ref.programme g ON g.code = s.programme_code WHERE r.id = :id
+                """).param("id", registration).query(String.class).optional().orElse(null);
+        if (of != null && !dept.equalsIgnoreCase(of)) {
+            throw new AccessDeniedException("This registration is another department's; the Head of Department reads and endorses their own department's only.");
+        }
+    }
+
+    private void entryInBound(UUID entry) {
+        UUID registration = jdbc.sql("SELECT registration_id FROM admissions.pg_registration_entry WHERE id = :e")
+                .param("e", entry).query(UUID.class).optional().orElse(null);
+        if (registration != null) {
+            registrationInBound(registration);
+        }
     }
 
     private static Map<String, Object> firstOrNull(List<Map<String, Object>> rows) {
@@ -205,6 +256,7 @@ class PgCourseworkController {
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam String programme) {
+        programmeInBound(programme);
         return jdbc.sql("""
                 SELECT id, code, title, units, kind, semester, active FROM admissions.pg_course
                  WHERE programme_code = :p ORDER BY semester, code
@@ -222,8 +274,9 @@ class PgCourseworkController {
                   FROM admissions.pg_course c
                   JOIN ref.programme g ON g.code = c.programme_code
                   JOIN ref.faculty f ON f.code = g.faculty_code
+                 WHERE (:dept::text IS NULL OR g.dept_code = :dept)
                  ORDER BY g.name, c.semester, c.code
-                """).query().listOfRows();
+                """).param("dept", hodDept(), java.sql.Types.VARCHAR).query().listOfRows();
     }
 
     public record CourseIn(@NotBlank String programmeCode, @NotBlank @Size(max = 20) String code,
@@ -236,6 +289,7 @@ class PgCourseworkController {
     @PreAuthorize(DESK)
     @Transactional
     Map<String, Object> addCourse(@Valid @RequestBody CourseIn body) {
+        programmeInBound(body.programmeCode());
         if (!jdbc.sql("SELECT count(*) FROM ref.programme WHERE code = :p AND category = 'POST GRADUATE'")
                 .param("p", body.programmeCode().trim()).query(Long.class).single().equals(1L)) {
             throw new NotFound("postgraduate programme", body.programmeCode());
@@ -268,7 +322,8 @@ class PgCourseworkController {
             throw new DomainRuleViolation("PG_COURSE_ROWS", "The file has no rows to read.",
                     new DomainRuleViolation.Remedy("Download the template, fill it and upload it.", "Postgraduate School"));
         }
-        int created = 0, updated = 0, noProg = 0, skipped = 0;
+        int created = 0, updated = 0, noProg = 0, skipped = 0, outside = 0;
+        String dept = hodDept();
         String firstError = null;
         for (Map<String, Object> r : body.rows()) {
             try {
@@ -282,6 +337,9 @@ class PgCourseworkController {
                          ORDER BY archived, code LIMIT 1
                         """).param("p", progRaw).query(String.class).optional().orElse(null);
                 if (prog == null) { noProg++; continue; }
+                // a Head of Department loads their own department's programmes only; another department's rows are skipped, not written
+                if (dept != null && !dept.equalsIgnoreCase(jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog)
+                        .query(String.class).optional().orElse(""))) { outside++; continue; }
                 int units = parseFirstInt(str(r.get("units")), 3);
                 if (units < 0 || units > 12) { units = 3; }
                 String kind = str(r.get("kind")).toUpperCase();
@@ -307,6 +365,7 @@ class PgCourseworkController {
         out.put("created", created);
         out.put("updated", updated);
         out.put("no_programme", noProg);
+        out.put("outside_department", outside);
         out.put("skipped", skipped);
         out.put("first_error", firstError);
         return out;
@@ -338,9 +397,10 @@ class PgCourseworkController {
                   JOIN ref.programme g ON g.code = s.programme_code
                  WHERE r.session = :s AND r.semester = :sem
                    AND (:prog::text IS NULL OR s.programme_code = :prog)
+                   AND (:dept::text IS NULL OR g.dept_code = :dept)
                  ORDER BY s.surname, s.other_names
                 """)
-                .param("s", session.trim()).param("sem", semester)
+                .param("s", session.trim()).param("sem", semester).param("dept", hodDept(), java.sql.Types.VARCHAR)
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), java.sql.Types.VARCHAR)
                 .query().listOfRows();
     }
@@ -350,6 +410,7 @@ class PgCourseworkController {
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
     Map<String, Object> registration(@PathVariable UUID id) {
+        registrationInBound(id);
         Map<String, Object> r = firstOrNull(jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.mode, r.state, s.surname, s.other_names,
                        s.matric_no, s.admission_no, g.name AS programme_name
@@ -380,6 +441,7 @@ class PgCourseworkController {
     @PreAuthorize(DESK)
     @Transactional
     Map<String, Object> endorse(@PathVariable UUID id, Authentication authentication) {
+        registrationInBound(id);
         UUID by;
         try {
             by = UUID.fromString(authentication.getName());
@@ -399,6 +461,7 @@ class PgCourseworkController {
     @PreAuthorize(DESK)
     @Transactional
     Map<String, Object> score(@Valid @RequestBody ScoreIn body, Authentication authentication) {
+        entryInBound(body.entryId());
         UUID by;
         try {
             by = UUID.fromString(authentication.getName());
