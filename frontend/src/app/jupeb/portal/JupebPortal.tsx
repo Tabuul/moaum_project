@@ -5,7 +5,7 @@
  * form asked only what opens an application; here the candidate continues the biodata (nationality, state and LGA, addresses,
  * home town, guardian, next of kin), enters the O'Level, uploads the documents, pays — every amount the server's, from the
  * Bursary's rule — submits, reads the decision and the admission letter, pays the school fees 70% then 30% (or at once where
- * the Bursary allows), registers the combination's three subjects, sees the official examination number and, once published,
+ * the Bursary allows), chooses a combination of their Science or Arts stream and registers its three subjects, sees the official examination number and, once published,
  * the results, and raises support tickets. Every call is scoped to the signed-in candidate.
  */
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
@@ -20,7 +20,7 @@ import { PayByCard } from "@/app/applicant/common";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS, SCREENING_LABEL, STATE_LABEL, STATE_SHORT,
-  day, fileBase64, fullName, jcall, naira, stateKind, when, type Candidate, type Doc, type FeeRef,
+  day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Doc, type FeeRef,
 } from "@/lib/jupeb";
 
 type Tab = "overview" | "biodata" | "olevel" | "documents" | "payments" | "admission" | "subjects" | "results" | "support";
@@ -205,7 +205,7 @@ function Biodata({ me, act }: { me: Candidate; act: Act }) {
     nationality: me.nationality ?? "Nigerian", stateOfOrigin: me.state_of_origin ?? "", lga: me.lga ?? "", contactAddress: me.contact_address ?? "",
     permanentAddress: me.permanent_address ?? "", homeTown: me.home_town ?? "", guardianName: me.guardian_name ?? "", guardianPhone: me.guardian_phone ?? "",
     guardianAddress: me.guardian_address ?? "", nextOfKinName: me.next_of_kin_name ?? "", nextOfKinPhone: me.next_of_kin_phone ?? "",
-    nextOfKinRelationship: me.next_of_kin_relationship ?? "", programme: me.programme_code ?? "", combination: me.combination_code ?? "",
+    nextOfKinRelationship: me.next_of_kin_relationship ?? "", stream: me.stream ?? "",
   }));
   const [busy, setBusy] = useState(false);
   const ro = !me.editable;
@@ -214,11 +214,11 @@ function Biodata({ me, act }: { me: Candidate; act: Act }) {
   async function save() {
     setBusy(true);
     try {
-      const { programme, combination, ...bio } = f;
+      const { stream, ...bio } = f;
       const body = Object.fromEntries(Object.entries(bio).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()]));
       if (!(await act("/api/v1/jupeb/me/biodata", "PUT", body))) return;
-      if (programme && combination && (programme !== me.programme_code || combination !== me.combination_code)) {
-        if (!(await act("/api/v1/jupeb/me/choice", "PUT", { programme, combination }))) return;
+      if (stream && stream !== me.stream) {
+        if (!(await act("/api/v1/jupeb/me/choice", "PUT", { stream }))) return;
       }
       notify("Your biodata is saved.");
     } finally { setBusy(false); }
@@ -267,21 +267,16 @@ function Biodata({ me, act }: { me: Candidate; act: Act }) {
         <div className="grid grid--3">
           {input("nextOfKinName", "Name", { required: true })}{input("nextOfKinPhone", "Phone", { max: 11, required: true })}{input("nextOfKinRelationship", "Relationship", { max: 60 })}
         </div>
-        <div className="eyebrow mt-3">Programme and combination</div>
-        <KvGrid cls="grid--2" pairs={[
-          ["Programme of interest", `${me.programme_name ?? "—"}${me.faculty_name ? ` · ${me.faculty_name}` : ""}`],
-          ["Subject combination", me.combination_code ? `${me.combination_code} — ${me.subjects.map((s) => s.title).join(", ")}` : "—"],
-        ]} />
-        {!ro && me.combinations ? (
-          <div className="grid grid--2 mt-2">
-            {input("programme", "Programme code", { max: 10, hint: "Change only if you mean to; the code as on the application" })}
-            <Field id="b-comb" label="Change combination">
-              <select id="b-comb" className="ctl" value={f.combination} onChange={set("combination")}>
-                {me.combinations.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.subject1}, {c.subject2}, {c.subject3}</option>)}
+        <div className="eyebrow mt-3">Programme</div>
+        {ro ? <KvGrid cls="grid--2" pairs={[["Programme", streamLabel(me.stream)]]} /> : (
+          <div className="grid grid--3">
+            <Field id="b-stream" label="Programme" required>
+              <select id="b-stream" className="ctl" value={f.stream} onChange={set("stream")}>
+                <option value="">— Science or Arts —</option><option value="SCIENCE">Science</option><option value="ARTS">Arts</option>
               </select>
             </Field>
           </div>
-        ) : null}
+        )}
         {!ro ? <div className="row mt-3"><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save biodata"}</Btn></div> : null}
       </PBody>
     </Panel>
@@ -422,7 +417,7 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
           {!admitted ? <p className="sub2">School fees are paid once you are admitted.</p> : (
             <>
               <KvGrid pairs={[
-                ["Category", `${f.category === "SCIENCE" ? "Science" : "Other"} · ${f.indigene ? `${me.feeRule.indigene_state} indigene` : "non-indigene"}`],
+                ["Category", `${feeCategoryLabel(f.category)} · ${f.indigene ? `${me.feeRule.indigene_state} indigene` : "non-indigene"}`],
                 ["School fee", naira(f.total)], ["Paid", naira(f.paid)], ["Outstanding", naira(f.outstanding)],
                 [`First semester (${Number(f.first_percent)}%)`, `${naira(f.first_amount)}${f.first_paid ? " · paid" : ""}`],
                 [`Second semester (${100 - Number(f.first_percent)}%)`, `${naira(f.second_amount)}${f.second_paid ? " · paid" : ""}`],
@@ -473,7 +468,7 @@ function Admission({ me }: { me: Candidate }) {
               {me.admission_note ?? (ADMITTED.has(me.state) ? "Congratulations on your admission into the University's JUPEB programme." : "")}
             </Note>
           ) : <p className="sub2">The JUPEB Office decides on submitted, eligible applications. Your decision appears here and is sent to your email.</p>}
-          <KvGrid pairs={[["Programme of interest", me.programme_name ?? "—"], ["Faculty", me.faculty_name ?? "—"], ["Combination", me.combination_code ?? "—"], ["Session", me.session]]} />
+          <KvGrid pairs={[["Programme", streamLabel(me.stream)], ["Combination", me.combination_code ?? "Chosen at subject registration"], ["Session", me.session]]} cls="grid--3" />
           {ADMITTED.has(me.state) ? <div className="row mt-3"><LinkBtn kind="primary" href="/jupeb/pdf/letter">Download admission letter</LinkBtn></div> : null}
         </PBody>
       </Panel>
@@ -492,14 +487,29 @@ function Admission({ me }: { me: Candidate }) {
 
 function Subjects({ me, act }: { me: Candidate; act: Act }) {
   const [busy, setBusy] = useState(false);
+  const [choice, setChoice] = useState<string>(me.combination_id ?? "");
+  const offered = me.combinations ?? [];
+  const chosen = offered.find((c) => c.id === choice) ?? null;
+  const open = me.state === "STUDENT" && !me.subjects_registered_at;
+  const rows = me.registered.length ? me.registered.map((r) => [r.code, r.title])
+    : chosen ? [[chosen.subject1_code, chosen.subject1], [chosen.subject2_code, chosen.subject2], [chosen.subject3_code, chosen.subject3]]
+    : me.subjects.map((s) => [s.code, s.title]);
   return (
     <Panel title="Subject registration" right={me.subjects_registered_at ? <Pil kind="ok">Registered {day(me.subjects_registered_at)}</Pil> : null}>
       <PBody>
-        <KvGrid pairs={[["Combination", `${me.combination_code ?? "—"}`], ["Class", me.class_name ?? "Not yet placed"], ["JUPEB examination number", me.exam_no ?? "Not yet assigned"], ["Session", me.session]]} />
-        <DTable noPrint pageSize={0} cols={["Code", "Subject"]} rows={(me.registered.length ? me.registered.map((r) => [r.code, r.title]) : me.subjects.map((s) => [s.code, s.title]))} />
-        {me.state === "STUDENT" && !me.subjects_registered_at ? (
-          <div className="row mt-3"><Btn kind="primary" disabled={busy} onClick={() => { setBusy(true); void act("/api/v1/jupeb/me/register-subjects").finally(() => setBusy(false)); }}>{busy ? "Registering…" : "Register these three subjects"}</Btn></div>
-        ) : me.state === "ADMITTED" ? <p className="hint mt-2">You register your subjects once your school fee activates your studentship.</p> : null}
+        <KvGrid pairs={[["Programme", streamLabel(me.stream)], ["Combination", me.combination_code ?? (chosen ? chosen.code : "Not yet chosen")], ["Class", me.class_name ?? "Not yet placed"], ["JUPEB examination number", me.exam_no ?? "Not yet assigned"]]} />
+        {open ? (
+          <Field id="s-comb" label={`Your subject combination (${streamLabel(me.stream)})`} hint={offered.length ? "Choose the three subjects you will study and be examined in." : "No combination is open for your programme yet; the JUPEB Office will add them."}>
+            <select id="s-comb" className="ctl" value={choice} onChange={(e) => setChoice(e.target.value)} disabled={!offered.length}>
+              <option value="">— Choose a combination —</option>
+              {offered.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.subject1}, {c.subject2}, {c.subject3}</option>)}
+            </select>
+          </Field>
+        ) : null}
+        {rows.length ? <DTable noPrint pageSize={0} cols={["Code", "Subject"]} rows={rows} /> : null}
+        {open ? (
+          <div className="row mt-3"><Btn kind="primary" disabled={busy || !choice} onClick={() => { setBusy(true); void act("/api/v1/jupeb/me/register-subjects", "POST", { combination: choice }).finally(() => setBusy(false)); }}>{busy ? "Registering…" : "Register these three subjects"}</Btn></div>
+        ) : me.state === "ADMITTED" ? <p className="hint mt-2">You choose your combination and register your subjects once your school fee activates your studentship.</p> : null}
         {me.subjects_registered_at ? <div className="row mt-3"><LinkBtn kind="ghost" href="/jupeb/pdf/slip">Download registration slip</LinkBtn></div> : null}
       </PBody>
     </Panel>

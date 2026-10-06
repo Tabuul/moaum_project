@@ -83,7 +83,7 @@ class JupebPublicController {
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
-    /** what the application form offers: the window, the fee, the undergraduate programmes, the approved combinations, the documents asked for */
+    /** what the application form offers: the window, the fee and the documents asked for (V341: the programme is Science or Arts) */
     @GetMapping("/options")
     Map<String, Object> options() {
         ApplicationWindows.Window w = windows.read(ApplicationWindows.JUPEB, null);
@@ -92,13 +92,7 @@ class JupebPublicController {
         out.put("window", Map.of("state", w.state(), "open", w.open(), "message", w.open() || w.message() == null ? "" : w.message(),
                 "opensAt", w.opensAt() == null ? "" : w.opensAt().toString(), "closesAt", w.closesAt() == null ? "" : w.closesAt().toString()));
         out.put("applicationFee", jdbc.sql("SELECT application_fee FROM jupeb.fee_setting_of(:s)").param("s", w.session()).query(java.math.BigDecimal.class).single());
-        out.put("programmes", jdbc.sql("""
-                SELECT g.code, g.name, f.code AS faculty_code, f.name AS faculty_name, d.name AS department_name
-                  FROM ref.programme g JOIN ref.faculty f ON f.code = g.faculty_code JOIN ref.department d ON d.code = g.dept_code
-                 WHERE g.category = 'UNDER GRADUATE' AND NOT g.archived
-                 ORDER BY f.name, g.name
-                """).query().listOfRows());
-        out.put("combinations", view.combinations(true));
+        out.put("streams", List.of(Map.of("code", "SCIENCE", "label", "Science"), Map.of("code", "ARTS", "label", "Arts")));
         out.put("documents", jdbc.sql("SELECT code, label, required, image FROM jupeb.document_kind WHERE active ORDER BY ord, label").query().listOfRows());
         return out;
     }
@@ -110,7 +104,7 @@ class JupebPublicController {
                           @NotBlank @Email @Size(max = 160) String email,
                           @NotBlank @Pattern(regexp = "^0[0-9]{10}$", message = "an eleven-digit Nigerian number, e.g. 08012345678") String phone,
                           @NotBlank @Size(min = MIN_PASSWORD, max = 100) String password,
-                          @NotBlank @Size(max = 10) String programme, @NotBlank @Size(max = 40) String combination) {
+                          @NotBlank @Pattern(regexp = "(?i)SCIENCE|ARTS", message = "Science or Arts") String stream) {
     }
 
     /** apply: the account, the application numbered for life, and the application fee's reference */
@@ -134,8 +128,7 @@ class JupebPublicController {
         form.put("email", body.email());
         form.put("phone", body.phone());
         form.put("passwordHash", encoder.encode(body.password()));
-        form.put("programme", body.programme());
-        form.put("combination", body.combination());
+        form.put("stream", body.stream().trim().toUpperCase());
         String j = json.writeValueAsString(form);
         try {
             return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB application", null, null),

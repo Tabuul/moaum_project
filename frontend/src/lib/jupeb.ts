@@ -28,6 +28,8 @@ export interface Candidate {
   nin: string | null; email: string; phone: string | null; nationality: string | null; state_of_origin: string | null; lga: string | null; contact_address: string | null;
   permanent_address: string | null; home_town: string | null; guardian_name: string | null; guardian_phone: string | null; guardian_address: string | null;
   next_of_kin_name: string | null; next_of_kin_phone: string | null; next_of_kin_relationship: string | null;
+  /** V341: SCIENCE or ARTS, chosen on the application */
+  stream: string | null;
   programme_code: string | null; programme_name: string | null; department_name: string | null; faculty_code: string | null; faculty_name: string | null;
   combination_id: string | null; combination_code: string | null; combination_name: string | null; combination_area: string | null;
   state: string; fee_confirmed_at: string | null; submitted_at: string | null; return_note: string | null; returned_at: string | null;
@@ -90,6 +92,10 @@ export const OLEVEL_SUBJECTS = [
   "Technical Drawing", "Computer Studies", "Data Processing", "Food and Nutrition", "Home Management", "Visual Art", "Music", "French", "Hausa", "Igbo",
   "Yoruba", "Tiv", "Marketing", "Insurance", "Office Practice", "Book Keeping", "Animal Husbandry", "Fisheries", "Physical Education", "Health Education",
 ];
+
+/** V341: the programme a JUPEB candidate is in — Science or Arts; the school fee's OTHER category is the Arts fee */
+export const streamLabel = (s: string | null | undefined) => (s === "SCIENCE" ? "Science" : s === "ARTS" ? "Arts" : "—");
+export const feeCategoryLabel = (c: string | null | undefined) => (c === "SCIENCE" ? "Science" : c === "OTHER" ? "Arts" : "—");
 
 export const naira = (n: number | string | null | undefined) => (n == null || n === "" ? "—" : "₦" + Number(n).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 }));
 export const day = (v: string | null | undefined) => {

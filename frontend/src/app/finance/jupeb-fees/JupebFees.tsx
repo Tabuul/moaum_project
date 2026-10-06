@@ -2,8 +2,8 @@
 
 /**
  * The Bursary's JUPEB fees (V339): the application fee, the four school fees (Science or other, indigene or not), the first
- * semester's share, whether the whole fee may be paid at once, what activates a student, the indigene state, and which
- * faculties count as Science. A session takes its own rule or the default. A change reaches only fees charged after it — a
+ * semester's share, whether the whole fee may be paid at once, what activates a student, and the indigene state. The
+ * applicant's programme (Science or Arts, V341) decides which school fee applies. A session takes its own rule or the default. A change reaches only fees charged after it — a
  * candidate's school fee is frozen when first charged. The JUPEB Office reads this page; only the Bursar saves it.
  */
 import { useEffect, useState } from "react";
@@ -22,13 +22,12 @@ interface Fees {
   history: { session: string; application_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null }[];
 }
 
-const FEE_LABEL = (c: string, i: boolean) => `${c === "SCIENCE" ? "Science" : "Other"} · ${i ? "indigene" : "non-indigene"}`;
+const FEE_LABEL = (c: string, i: boolean) => `${c === "SCIENCE" ? "Science" : "Arts"} · ${i ? "indigene" : "non-indigene"}`;
 
 export function JupebFees({ canWrite }: { canWrite: boolean }) {
   const [session, setSession] = useState("");
   const [d, setD] = useState<Fees | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
-  const [cats, setCats] = useState<Record<string, string>>({});
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -40,7 +39,6 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
       const x = r.data.rule;
       const sf = Object.fromEntries(r.data.schoolFees.map((s) => [`${s.category}_${s.indigene}`, String(Number(s.amount))]));
       setF({ applicationFee: String(Number(x.application_fee)), firstPercent: String(Number(x.first_percent)), allowFull: x.allow_full ? "yes" : "no", activation: x.activation, indigeneState: x.indigene_state, ...sf });
-      setCats(Object.fromEntries(r.data.faculties.map((c) => [c.code, c.category])));
     });
     return () => { live = false; };
   }, [session, tick]);
@@ -55,14 +53,6 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
       }, `JUPEB fees for ${target === "*" ? "every session" : target}`);
       if (!r.ok) { notifyProblem(r.problem); return; }
       notify("The JUPEB fees are saved. Fees already charged keep their amounts."); setTick((t) => t + 1);
-    } finally { setBusy(false); }
-  }
-  async function saveCats() {
-    setBusy(true);
-    try {
-      const r = await jcall("/api/v1/jupeb/fees/categories", "PUT", { faculties: Object.entries(cats).map(([faculty, category]) => ({ faculty, category })) }, "JUPEB Science faculties");
-      if (!r.ok) { notifyProblem(r.problem); return; }
-      notify("Faculty categories saved."); setTick((t) => t + 1);
     } finally { setBusy(false); }
   }
   const pct = Number(f.firstPercent || 0);
@@ -97,11 +87,6 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
           })} />
           {canWrite ? <div className="row mt-3"><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : `Save for ${target === "*" ? "every session" : target}`}</Btn></div> : <p className="hint">Only the Bursar sets the JUPEB fees.</p>}
         </PBody>
-      </Panel>
-      <Panel title="Which faculties pay the Science fee" right={canWrite ? <Btn kind="secondary" disabled={busy} onClick={() => void saveCats()}>Save categories</Btn> : null}>
-        <PBody><DTable pageSize={0} cols={["Faculty", "Category"]} rows={d.faculties.map((c) => [c.name,
-          <select key="c" className="ctl" style={{ width: 140 }} aria-label={`${c.name} category`} value={cats[c.code] ?? "OTHER"} onChange={(e) => setCats({ ...cats, [c.code]: e.target.value })} disabled={ro}>
-            <option value="SCIENCE">Science</option><option value="OTHER">Other</option></select>])} /></PBody>
       </Panel>
       <Panel title="Rules on record">
         <PBody><DTable pageSize={10} cols={["Session", "Application fee|num", "First share|num", "Full payment", "Activation", "Indigene state", "Changed"]}

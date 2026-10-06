@@ -30,7 +30,7 @@ class JupebView {
             SELECT a.id, a.session, a.application_no, a.surname, a.first_name, a.middle_name, a.sex, a.date_of_birth::text AS date_of_birth, a.nin, a.email, a.phone,
                    a.nationality, a.state_of_origin, a.lga, a.contact_address, a.permanent_address, a.home_town,
                    a.guardian_name, a.guardian_phone, a.guardian_address, a.next_of_kin_name, a.next_of_kin_phone, a.next_of_kin_relationship,
-                   a.programme_code, g.name AS programme_name, d.name AS department_name, f.code AS faculty_code, f.name AS faculty_name,
+                   a.stream, a.programme_code, g.name AS programme_name, d.name AS department_name, f.code AS faculty_code, f.name AS faculty_name,
                    a.combination_id, c.code AS combination_code, c.name AS combination_name, c.area AS combination_area,
                    a.state, a.fee_confirmed_at, a.submitted_at, a.return_note, a.returned_at, a.eligibility_note, a.eligibility_decided_at,
                    a.admission_ref, a.admission_note, a.admission_decided_at, a.activated_at, a.class_id, cl.name AS class_name,
@@ -115,6 +115,15 @@ class JupebView {
     /** what still stands between the application and its submission */
     List<String> missing(UUID app) {
         return jdbc.sql("SELECT unnest(jupeb.missing(:id))").param("id", app).query(String.class).list();
+    }
+
+    /** the active combinations a candidate may register: those of their stream (V341) */
+    List<Map<String, Object>> combinationsFor(UUID app) {
+        java.util.Set<String> suits = new java.util.HashSet<>(jdbc.sql("""
+                SELECT c.code FROM jupeb.combination c
+                 WHERE c.active AND jupeb.combination_suits(c.area, (SELECT a.stream FROM jupeb.application a WHERE a.id = :id))
+                """).param("id", app).query(String.class).list());
+        return combinations(true).stream().filter(c -> suits.contains(String.valueOf(c.get("code")))).toList();
     }
 
     /** the approved combinations with their three subjects, for the pickers and the office's list */

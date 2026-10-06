@@ -18,7 +18,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
-  DOC_STATUS, EVENT_LABEL, FEE_KIND, SCREENING_LABEL, STATE_SHORT, day, fullName, jcall, naira, readSheet, stateKind, when,
+  DOC_STATUS, EVENT_LABEL, FEE_KIND, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, naira, readSheet, stateKind, streamLabel, when,
   type Candidate, type Combination,
 } from "@/lib/jupeb";
 
@@ -45,7 +45,7 @@ interface Dash {
   session: string; sessions: SessionRow[]; window: { state: string; opens_at: string | null; closes_at: string | null };
   counts: Record<string, number>; money: { kind: string; paid: number; amount: number }[];
   byCombination: { code: string; name: string; applications: number; admitted: number; students: number }[];
-  byFaculty: { faculty: string; applications: number; admitted: number }[]; tickets: number; resultsPublished: boolean;
+  byStream: { stream: string; applications: number; admitted: number; students: number }[]; tickets: number; resultsPublished: boolean;
 }
 
 export function JupebDashboard() {
@@ -87,8 +87,8 @@ export function JupebDashboard() {
           <PBody><DTable pageSize={10} cols={["Code", "Combination", "Applications|num", "Admitted|num", "Students|num"]} texts={d.byCombination.map((r) => `${r.code} ${r.name}`)}
             rows={d.byCombination.map((r) => [r.code, r.name, r.applications, r.admitted, r.students])} /></PBody>
         </Panel>
-        <Panel title="By faculty of the programme of interest">
-          <PBody><DTable pageSize={10} cols={["Faculty", "Applications|num", "Admitted|num"]} rows={d.byFaculty.map((r) => [r.faculty, r.applications, r.admitted])} /></PBody>
+        <Panel title="By programme">
+          <PBody><DTable pageSize={10} cols={["Programme", "Applications|num", "Admitted|num", "Students|num"]} rows={d.byStream.map((r) => [r.stream, r.applications, r.admitted, r.students])} /></PBody>
         </Panel>
       </div>
       <Panel title="Support" right={<Link href="/helpdesk">Open the support desk</Link>}>
@@ -102,7 +102,7 @@ export function JupebDashboard() {
 
 interface AppRow {
   id: string; application_no: string; name: string; sex: string | null; date_of_birth: string | null; phone: string | null; email: string; nin: string | null;
-  state_of_origin: string | null; lga: string | null; programme_name: string | null; faculty_name: string | null; combination_code: string | null; state: string;
+  state_of_origin: string | null; lga: string | null; stream: string | null; combination_code: string | null; state: string;
   fee_confirmed_at: string | null; submitted_at: string | null; admission_ref: string | null; exam_no: string | null; screening_state: string | null; class_name: string | null;
   fee_category: string | null; indigene: boolean | null; school_fee: number | null; school_fee_paid: number; school_fee_outstanding: number; school_fee_status: string; created_at: string;
 }
@@ -138,10 +138,10 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
     const r = await jcall<AppList>(`/api/v1/jupeb/office/applications?${query}&page=0&size=20000`);
     if (!r.ok) { notifyProblem(r.problem); return; }
     const blob = await brandedXlsx(`JUPEB applications — ${r.data.session}`,
-      ["Application No", "Name", "Sex", "Date of birth", "Phone", "Email", "NIN", "State of origin", "LGA", "Programme of interest", "Faculty", "Combination", "Status",
+      ["Application No", "Name", "Sex", "Date of birth", "Phone", "Email", "NIN", "State of origin", "LGA", "Programme", "Combination", "Status",
         "Application fee", "Submitted", "Admission ref", "Fee category", "Indigene", "School fee", "Paid", "Outstanding", "Screening", "Class", "JUPEB exam no"],
-      r.data.rows.map((a) => [a.application_no, a.name, a.sex, a.date_of_birth, a.phone, a.email, a.nin, a.state_of_origin, a.lga, a.programme_name, a.faculty_name,
-        a.combination_code, STATE_SHORT[a.state] ?? a.state, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.admission_ref, a.fee_category,
+      r.data.rows.map((a) => [a.application_no, a.name, a.sex, a.date_of_birth, a.phone, a.email, a.nin, a.state_of_origin, a.lga, streamLabel(a.stream),
+        a.combination_code, STATE_SHORT[a.state] ?? a.state, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.admission_ref, feeCategoryLabel(a.fee_category),
         a.indigene == null ? "" : a.indigene ? "Yes" : "No", a.school_fee, a.school_fee_paid, a.school_fee_outstanding, a.screening_state, a.class_name, a.exam_no]),
       { sheetName: "Applications", serial: docSerial("JUPEB"), meta: Object.entries(filters).filter(([, v]) => v).map(([k, v]) => [k, v] as [string, string]) });
     downloadBlob(blob, `jupeb-applications-${r.data.session.replace("/", "-")}.xlsx`);
@@ -179,6 +179,8 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
               <option value="">All</option><option value="PAID">Paid</option><option value="UNPAID">Unpaid</option></select></Field>
             <Field id="f-scr" label="Screening"><select id="f-scr" className="ctl" value={filters.screening} onChange={(e) => set("screening", e.target.value)}>
               <option value="">All</option>{Object.entries(SCREENING_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            <Field id="f-stream" label="Programme"><select id="f-stream" className="ctl" value={filters.stream ?? ""} onChange={(e) => set("stream", e.target.value)}>
+              <option value="">All</option><option value="SCIENCE">Science</option><option value="ARTS">Arts</option></select></Field>
             <Field id="f-q" label="Search" hint="Name, application or exam number, email, phone, NIN"><input id="f-q" className="ctl" value={filters.q} onChange={(e) => set("q", e.target.value)} /></Field>
           </div>
         </PBody>
@@ -194,12 +196,12 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
         <Btn kind="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Btn><span className="sub2">Page {page + 1} of {pages}</span>
         <Btn kind="ghost" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Next</Btn></span>}>
         <PBody>
-          <DTable pageSize={0} cols={[...(canWrite ? ["|mid"] : []), "S/N|num", "Application No", "Name", "Programme of interest", "Combination", "Status", "Fee", "Submitted", "Exam no"]}
+          <DTable pageSize={0} cols={[...(canWrite ? ["|mid"] : []), "S/N|num", "Application No", "Name", "Programme", "Combination", "Status", "Fee", "Submitted", "Exam no"]}
             rows={rows.map((a, i) => [
               ...(canWrite ? [<input key="c" type="checkbox" aria-label={`Select ${a.application_no}`} checked={picked.has(a.id)} onChange={(e) => {
                 const n = new Set(picked); if (e.target.checked) n.add(a.id); else n.delete(a.id); setPicked(n);
               }} />] : []),
-              page * 50 + i + 1, <Link key="l" href={`/jupeb/applications/${a.id}`} className="tnum">{a.application_no}</Link>, a.name, a.programme_name ?? "—", a.combination_code ?? "—",
+              page * 50 + i + 1, <Link key="l" href={`/jupeb/applications/${a.id}`} className="tnum">{a.application_no}</Link>, a.name, streamLabel(a.stream), a.combination_code ?? "—",
               <Pil key="s" kind={stateKind(a.state)}>{STATE_SHORT[a.state] ?? a.state}</Pil>, a.fee_confirmed_at ? "Paid" : "Unpaid", day(a.submitted_at), a.exam_no ?? "—",
             ])} />
         </PBody>
@@ -303,7 +305,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
             ["Sex", c.sex === "F" ? "Female" : c.sex === "M" ? "Male" : "—"], ["Date of birth", day(c.date_of_birth)], ["NIN", c.nin ?? "—"], ["Phone", c.phone ?? "—"], ["Email", c.email],
             ["Nationality", c.nationality ?? "—"], ["State / LGA", `${c.state_of_origin ?? "—"} / ${c.lga ?? "—"}`], ["Home town", c.home_town ?? "—"], ["Contact address", c.contact_address ?? "—"],
             ["Guardian", c.guardian_name ? `${c.guardian_name} (${c.guardian_phone ?? "—"})` : "—"], ["Next of kin", c.next_of_kin_name ? `${c.next_of_kin_name} (${c.next_of_kin_phone ?? "—"}) ${c.next_of_kin_relationship ?? ""}` : "—"],
-            ["Programme of interest", `${c.programme_name ?? "—"}${c.faculty_name ? ` · ${c.faculty_name}` : ""}`], ["Combination", `${c.combination_code ?? "—"} — ${c.subjects.map((x) => x.title).join(", ")}`],
+            ["Programme", streamLabel(c.stream)], ["Combination", c.combination_code ? `${c.combination_code} — ${c.subjects.map((x) => x.title).join(", ")}` : "Chosen at subject registration"],
           ]} /></PBody>
         </Panel>
         <Panel title="Status">
@@ -334,7 +336,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
       <div className="grid grid--2">
         <Panel title="Fees (the Bursary's rule)">
           <PBody>
-            <KvGrid cls="grid--2" pairs={[["Category", `${c.fees.category} · ${c.fees.indigene ? "indigene" : "non-indigene"}`], ["School fee", `${naira(c.fees.total)}${c.fees.frozen ? " (charged)" : ""}`],
+            <KvGrid cls="grid--2" pairs={[["Category", `${feeCategoryLabel(c.fees.category)} · ${c.fees.indigene ? "indigene" : "non-indigene"}`], ["School fee", `${naira(c.fees.total)}${c.fees.frozen ? " (charged)" : ""}`],
               ["Paid", naira(c.fees.paid)], ["Outstanding", naira(c.fees.outstanding)]]} />
             <DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Confirmed"]} rows={c.references.map((r) => [FEE_KIND[r.kind] ?? r.kind, r.reference, naira(r.amount), r.confirmed_at ? `${day(r.confirmed_at)} · ${r.channel ?? ""}` : "—"])} />
           </PBody>

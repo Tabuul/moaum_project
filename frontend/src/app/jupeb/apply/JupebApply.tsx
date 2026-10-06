@@ -2,21 +2,21 @@
 
 /**
  * The public JUPEB application (V339): the few things the University needs to open an application — who the candidate is
- * (names, sex, date of birth, NIN), how to reach them (email, phone), the programme they intend to study after JUPEB and the
- * approved subject combination, and a password. The candidate then signs in, pays the application fee (the amount is the
- * Bursary's, stated by the server) and continues the biodata, O'Level and documents on their dashboard before submitting.
+ * (names, sex, date of birth, NIN), how to reach them (email, phone), the programme — Science or Arts (V341) — and a password.
+ * The candidate then signs in, pays the application fee (the amount is the Bursary's, stated by the server) and continues the
+ * biodata, O'Level and documents on their dashboard before submitting. The subject combination is chosen at subject
+ * registration, once the school fee has activated the student.
  */
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { jcall, naira, type Combination } from "@/lib/jupeb";
+import { jcall, naira } from "@/lib/jupeb";
 
-interface Prog { code: string; name: string; faculty_code: string; faculty_name: string; department_name: string }
-interface Options { session: string; applicationFee: number; programmes: Prog[]; combinations: Combination[]; documents: { code: string; label: string; required: boolean }[] }
+interface Options { session: string; applicationFee: number; streams: { code: string; label: string }[]; documents: { code: string; label: string; required: boolean }[] }
 interface Applied { application_no: string; reference: string; amount: number }
 
 export function JupebApply() {
@@ -33,12 +33,6 @@ export function JupebApply() {
   }, []);
 
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
-  const faculties = useMemo(() => {
-    const g: [string, Prog[]][] = [];
-    for (const p of opts?.programmes ?? []) { const x = g.find(([k]) => k === p.faculty_name); if (x) x[1].push(p); else g.push([p.faculty_name, [p]]); }
-    return g;
-  }, [opts]);
-  const comb = opts?.combinations.find((c) => c.code === f.combination) ?? null;
 
   function fail(title: string) {
     const p: Problem = { status: 400, title };
@@ -52,15 +46,14 @@ export function JupebApply() {
     if (!/^[0-9]{11}$/.test(f.nin ?? "")) return fail("Your NIN is the eleven digits on your NIN slip.");
     if (!f.email?.trim()) return fail("Your email is required — you sign in with it.");
     if (!/^0[0-9]{10}$/.test(f.phone ?? "")) return fail("Your phone is an eleven-digit number, e.g. 08012345678.");
-    if (!f.programme) return fail("Choose the programme you intend to study.");
-    if (!f.combination) return fail("Choose your JUPEB subject combination.");
+    if (!f.stream) return fail("Choose your programme: Science or Arts.");
     if ((f.password ?? "").length < 8) return fail("Choose a password of at least eight characters.");
     if (f.password !== f.password2) return fail("The two passwords do not match.");
     setBusy(true);
     try {
       const body = {
         surname: f.surname.trim(), firstName: f.firstName.trim(), middleName: f.middleName?.trim() || null, sex: f.sex, dob: f.dob, nin: f.nin,
-        email: f.email.trim(), phone: f.phone, password: f.password, programme: f.programme, combination: f.combination,
+        email: f.email.trim(), phone: f.phone, password: f.password, stream: f.stream,
       };
       const r = await jcall<Applied>("/api/v1/jupeb/apply", "POST", body);
       if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
@@ -107,19 +100,11 @@ export function JupebApply() {
           <Field id="phone" label="Phone" required><input id="phone" className="ctl tnum" inputMode="tel" maxLength={11} placeholder="08012345678" value={f.phone ?? ""} onChange={(e) => setF({ ...f, phone: e.target.value.replace(/\D/g, "") })} autoComplete="tel" /></Field>
         </div>
 
-        <Section title="Your programme and JUPEB subjects" />
-        <Field id="programme" label="Programme you intend to study" required hint="The University programme you hope to enter after JUPEB">
-          <select id="programme" className="ctl" value={f.programme ?? ""} onChange={set("programme")}>
-            <option value="">— Choose a programme —</option>
-            {faculties.map(([fac, list]) => (
-              <optgroup key={fac} label={fac}>{list.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</optgroup>
-            ))}
-          </select>
-        </Field>
-        <Field id="combination" label="Subject combination" required hint={comb ? `${comb.subject1} · ${comb.subject2} · ${comb.subject3}${comb.eligibility_notes ? ` — ${comb.eligibility_notes}` : ""}` : "Three subjects, as the University approves them"}>
-          <select id="combination" className="ctl" value={f.combination ?? ""} onChange={set("combination")} disabled={!opts || opts.combinations.length === 0}>
-            <option value="">{opts && opts.combinations.length === 0 ? "No combination is open yet" : "— Choose a combination —"}</option>
-            {(opts?.combinations ?? []).map((c) => <option key={c.code} value={c.code}>{c.code} — {c.subject1}, {c.subject2}, {c.subject3}</option>)}
+        <Section title="Your programme" />
+        <Field id="stream" label="Programme" required>
+          <select id="stream" className="ctl" value={f.stream ?? ""} onChange={set("stream")}>
+            <option value="">— Science or Arts —</option>
+            {(opts?.streams ?? [{ code: "SCIENCE", label: "Science" }, { code: "ARTS", label: "Arts" }]).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
           </select>
         </Field>
 

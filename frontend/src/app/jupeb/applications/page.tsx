@@ -11,7 +11,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const canWrite = office === "jupeb" || office === "super";
   const params = await searchParams;
   const initial: Record<string, string> = {};
-  for (const k of ["session", "state", "combination", "fee", "screening", "q"]) if (typeof params[k] === "string") initial[k] = params[k] as string;
+  for (const k of ["session", "state", "combination", "fee", "screening", "q", "stream"]) if (typeof params[k] === "string") initial[k] = params[k] as string;
   return (
     <Shell route="jupeb/applications" me={me.ok ? me.data : null}>
       <JupebApplications canWrite={canWrite} initial={initial} />

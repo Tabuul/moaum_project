@@ -27,7 +27,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * with English and Mathematics in at most two sittings, uploads private documents and pays an application fee the server sets;
  * the JUPEB Office reviews, returns, finds eligible and admits in bulk after a preview; the Bursary's rule gives the school fee
  * by Science or other and indigene or not, 70% then 30%, frozen once charged; the first instalment activates the student, who
- * registers the combination's three subjects only; the Board's examination numbers are imported by application number, a
+ * chooses a combination of their Science or Arts stream and registers its three subjects only; the Board's examination numbers are imported by application number, a
  * mismatched surname held for review and a correction needing its reason; results are imported and shown only once published;
  * the candidate's support ticket reaches the JUPEB queue. Needs DATABASE_URL.
  */
@@ -118,8 +118,7 @@ class JupebIT {
         f.put("email", email);
         f.put("phone", "08031234567");
         f.put("password", "Jupeb2026!x");
-        f.put("programme", programme);
-        f.put("combination", combination);
+        f.put("stream", "Science");
         return f;
     }
 
@@ -154,7 +153,6 @@ class JupebIT {
                 Map.of("category", "OTHER", "indigene", false, "amount", 200000), Map.of("category", "SCIENCE", "indigene", false, "amount", 215000)));
         assertThat(status(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/fees", rule))).isEqualTo(403);
         ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees", rule));
-        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees/categories", Map.of("faculties", List.of(Map.of("faculty", faculty, "category", "SCIENCE")))));
         assertThat(ok(it.get(office, ub -> ub.path("/api/v1/jupeb/fees").queryParam("session", session).build())).get("own")).isEqualTo(true);
 
         // ── closed until the Director of ICT opens it ──
@@ -282,8 +280,11 @@ class JupebIT {
         Map<String, Object> second = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null));
         assertThat(new BigDecimal(String.valueOf(second.get("amount")))).isEqualByComparingTo("58500");
 
-        // ── the combination's three subjects, and no other ──
-        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));
+        // ── the student chooses a combination of their stream (V341), and registers its three subjects, no other ──
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null))).isEqualTo("JUPEB_COMBINATION_CHOOSE");
+        UUID combId = jdbc.sql("SELECT id FROM jupeb.combination WHERE code = :c").param("c", comb).query(UUID.class).single();
+        assertThat((List<Map<String, Object>>) mine.get("combinations")).anySatisfy(c -> assertThat(c.get("code")).isEqualTo(comb));
+        mine = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", Map.of("combination", combId)));
         assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("code"))
                 .containsExactlyInAnyOrder("ZZM" + tag, "ZZP" + tag, "ZZC" + tag);
         ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/register-subjects", null));

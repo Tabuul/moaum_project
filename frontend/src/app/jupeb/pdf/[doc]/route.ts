@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument } from "@/lib/document/pdf";
 import { formatDocDate } from "@/lib/document/institution";
-import { FEE_KIND, fullName, type Candidate } from "@/lib/jupeb";
+import { FEE_KIND, fullName, streamLabel, type Candidate } from "@/lib/jupeb";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
   const c = res.data;
   const admitted = ["ADMITTED", "STUDENT", "COMPLETED"].includes(c.state);
   const refuse = (title: string) => NextResponse.json({ status: 409, title }, { status: 409 });
-  const who: [string, string][] = [["Name", fullName(c)], ["Application number", c.application_no], ["Session", c.session], ["Combination", c.combination_code ?? "-"]];
+  const who: [string, string][] = [["Name", fullName(c)], ["Application number", c.application_no], ["Session", c.session], ["Programme", streamLabel(c.stream)]];
   let pdf: PdfDocument;
   let name: string;
   const begin = (d: PdfDocument) => { d.space(8); return d; };
@@ -36,15 +36,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     pdf = begin(new PdfDocument("LETTER", { title: "Offer of provisional admission: JUPEB programme", reference: c.admission_ref, subtitle: `${c.session} academic session`, unit: "JUPEB Office" }, inst));
     pdf.keyValues([["Name", fullName(c)], ["Application number", c.application_no], ["Admission reference", c.admission_ref ?? "-"], ["Date", formatDocDate(c.admission_decided_at, inst)]]);
     pdf.paragraph(`Dear ${c.first_name},`);
-    pdf.paragraph(`I am pleased to inform you that you have been offered provisional admission into the Joint Universities Preliminary Examinations Board (JUPEB) programme of ${inst.name} for the ${c.session} academic session, in the subject combination below.`);
-    pdf.keyValues([["Combination", `${c.combination_code ?? ""}: ${c.subjects.map((s) => s.title).join(", ")}`], ["Programme of interest", c.programme_name ?? "-"], ["Faculty", c.faculty_name ?? "-"], ["Duration", "One academic session"]], 1);
+    pdf.paragraph(`I am pleased to inform you that you have been offered provisional admission into the Joint Universities Preliminary Examinations Board (JUPEB) programme of ${inst.name} for the ${c.session} academic session, as below.`);
+    pdf.keyValues([["Programme", streamLabel(c.stream)], ["Duration", "One academic session"],
+      ["Subject combination", c.combination_code ? `${c.combination_code}: ${c.subjects.map((s) => s.title).join(", ")}` : "Chosen at subject registration, after the school fee"]], 1);
     pdf.heading("Conditions");
     [
       "This offer is provisional and subject to the verification of your credentials. Should any of them be found false, the offer is withdrawn.",
       `Pay the school fee on the JUPEB portal. Your studentship is activated when ${c.feeRule.activation === "FULL" ? "the full school fee" : "the first semester's share"} is confirmed, after which you register your three subjects.`,
       c.screeningSetting.screening_required ? "Attend physical screening with the originals of every document you uploaded; school fees open once you are cleared." : "Bring the originals of every document you uploaded when the JUPEB Office asks for them.",
       "Your official JUPEB examination number is issued by the Board and shown on your portal once assigned.",
-      "Admission into 200 level of your programme of interest after JUPEB depends on your JUPEB result and the University's direct-entry requirements.",
+      "Admission into 200 level of a University programme after JUPEB depends on your JUPEB result and the University's direct-entry requirements.",
     ].forEach((t, i) => pdf.paragraph(`${i + 1}. ${t}`));
     pdf.paragraph("Congratulations.");
     pdf.signatures([{ designation: "Coordinator, JUPEB Office" }]);
@@ -64,14 +65,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
   } else if (doc === "slip") {
     if (!c.subjects_registered_at) return refuse("The registration slip is issued once your three subjects are registered.");
     pdf = begin(new PdfDocument("FORM", { title: "JUPEB subject registration slip", reference: c.application_no, subtitle: `${c.session} academic session`, unit: "JUPEB Office" }, inst));
-    pdf.keyValues([...who, ["Class", c.class_name ?? "-"], ["JUPEB examination number", c.exam_no ?? "Not yet assigned"], ["Registered", formatDocDate(c.subjects_registered_at, inst)], ["Programme of interest", c.programme_name ?? "-"]]);
+    pdf.keyValues([...who, ["Class", c.class_name ?? "-"], ["JUPEB examination number", c.exam_no ?? "Not yet assigned"], ["Registered", formatDocDate(c.subjects_registered_at, inst)], ["Combination", c.combination_code ?? "-"]]);
     pdf.table(["Code", "Subject"], c.registered.map((r) => [r.code, r.title]), { serial: true });
     pdf.signatures([{ designation: "Candidate" }, { designation: "JUPEB Office" }]);
     name = `jupeb-registration-slip-${c.application_no}`;
   } else if (doc === "result") {
     if (!c.resultsPublished && !id) return refuse("Results are shown once the JUPEB Office publishes them.");
     pdf = begin(new PdfDocument("RESULT", { title: "JUPEB statement of result", reference: c.exam_no ?? c.application_no, subtitle: `${c.session} academic session`, unit: "JUPEB Office", watermark: c.resultsPublished ? null : "UNPUBLISHED" }, inst));
-    pdf.keyValues([...who, ["JUPEB examination number", c.exam_no ?? "-"], ["Programme of interest", c.programme_name ?? "-"]]);
+    pdf.keyValues([...who, ["JUPEB examination number", c.exam_no ?? "-"], ["Combination", c.combination_code ?? "-"]]);
     pdf.table(["Code", "Subject", "Grade", "Points"], c.registered.map((r) => [r.code, r.title, r.grade ?? "-", r.points ?? "-"]), { serial: true });
     pdf.keyValues([["Total points", String(c.registered.reduce((n, r) => n + Number(r.points ?? 0), 0))]], 1);
     pdf.paragraph("Grades: A = 5, B = 4, C = 3, D = 2, E = 1, F = 0 points. This statement reproduces the result the Board issued; the Board's own certificate is authoritative.");
@@ -82,8 +83,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     pdf.keyValues([["Name", fullName(c)], ["Sex", c.sex === "F" ? "Female" : c.sex === "M" ? "Male" : "-"], ["Date of birth", formatDocDate(c.date_of_birth, inst)], ["NIN", c.nin ?? "-"],
       ["Email", c.email], ["Phone", c.phone ?? "-"], ["Nationality", c.nationality ?? "-"], ["State of origin", c.state_of_origin ?? "-"], ["LGA", c.lga ?? "-"], ["Home town", c.home_town ?? "-"],
       ["Contact address", c.contact_address ?? "-"], ["Next of kin", `${c.next_of_kin_name ?? "-"} ${c.next_of_kin_phone ? `(${c.next_of_kin_phone})` : ""}`]]);
-    pdf.heading("Programme and combination");
-    pdf.keyValues([["Programme of interest", c.programme_name ?? "-"], ["Faculty", c.faculty_name ?? "-"], ["Combination", c.combination_code ?? "-"], ["Subjects", c.subjects.map((s) => s.title).join(", ")]]);
+    pdf.heading("Programme");
+    pdf.keyValues([["Programme", streamLabel(c.stream)], ["Combination", c.combination_code ?? "Chosen at subject registration"]]);
     pdf.heading("O'Level");
     pdf.table(["Sitting", "Examination", "Year", "Subject", "Grade"], c.olevel.map((o) => [o.sitting, o.exam_type, o.exam_year ?? "-", o.subject, o.grade]), { serial: true });
     pdf.heading("Documents");

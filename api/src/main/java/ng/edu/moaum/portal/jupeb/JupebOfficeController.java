@@ -111,10 +111,11 @@ class JupebOfficeController {
                   FROM jupeb.combination c LEFT JOIN jupeb.application a ON a.combination_id = c.id AND a.session = :s
                  GROUP BY c.code, c.name HAVING count(a.id) > 0 OR bool_or(c.active) ORDER BY count(a.id) DESC, c.code
                 """).param("s", s).query().listOfRows());
-        out.put("byFaculty", jdbc.sql("""
-                SELECT f.name AS faculty, count(*) AS applications, count(*) FILTER (WHERE a.state IN ('ADMITTED', 'STUDENT', 'COMPLETED')) AS admitted
-                  FROM jupeb.application a JOIN ref.programme g ON g.code = a.programme_code JOIN ref.faculty f ON f.code = g.faculty_code
-                 WHERE a.session = :s GROUP BY f.name ORDER BY count(*) DESC
+        out.put("byStream", jdbc.sql("""
+                SELECT coalesce(initcap(a.stream), 'Not stated') AS stream, count(*) AS applications,
+                       count(*) FILTER (WHERE a.state IN ('ADMITTED', 'STUDENT', 'COMPLETED')) AS admitted,
+                       count(*) FILTER (WHERE a.state IN ('STUDENT', 'COMPLETED')) AS students
+                  FROM jupeb.application a WHERE a.session = :s GROUP BY 1 ORDER BY count(*) DESC
                 """).param("s", s).query().listOfRows());
         out.put("tickets", jdbc.sql("SELECT count(*) FROM helpdesk.ticket WHERE queue_code = 'JUPEB_SUPPORT' AND status <> 'CLOSED'").query(Long.class).single());
         out.put("resultsPublished", jdbc.sql("SELECT jupeb.results_published(:s)").param("s", s).query(Boolean.class).single());
@@ -133,7 +134,7 @@ class JupebOfficeController {
 
     private static final String LIST = """
             SELECT a.id, a.application_no, a.surname || ', ' || a.first_name || coalesce(' ' || a.middle_name, '') AS name, a.sex, a.date_of_birth::text AS date_of_birth, a.phone, a.email,
-                   a.nin, a.state_of_origin, a.lga, a.programme_code, g.name AS programme_name, f.name AS faculty_name, c.code AS combination_code, c.name AS combination_name,
+                   a.nin, a.state_of_origin, a.lga, a.stream, a.programme_code, g.name AS programme_name, f.name AS faculty_name, c.code AS combination_code, c.name AS combination_name,
                    a.state, a.fee_confirmed_at, a.submitted_at, a.admission_ref, a.admission_decided_at, a.exam_no, a.screening_state, cl.name AS class_name,
                    a.subjects_registered_at, a.activated_at, sf.category AS fee_category, sf.indigene, sf.total AS school_fee, sf.paid AS school_fee_paid,
                    sf.outstanding AS school_fee_outstanding, sf.status AS school_fee_status, a.created_at, count(*) OVER () AS total_rows
@@ -147,6 +148,7 @@ class JupebOfficeController {
                AND (:state = '' OR a.state = ANY(string_to_array(:state, ',')))
                AND (:comb = '' OR c.code = :comb)
                AND (:prog = '' OR a.programme_code = :prog)
+               AND (:stream = '' OR a.stream = :stream)
                AND (:fac = '' OR g.faculty_code = :fac)
                AND (:fee = '' OR (:fee = 'PAID') = (a.fee_confirmed_at IS NOT NULL))
                AND (:screening = '' OR a.screening_state = :screening)
@@ -162,6 +164,7 @@ class JupebOfficeController {
                                      @RequestParam(required = false) String combination, @RequestParam(required = false) String programme,
                                      @RequestParam(required = false) String faculty, @RequestParam(required = false) String fee,
                                      @RequestParam(required = false) String screening, @RequestParam(required = false) String q,
+                                     @RequestParam(required = false) String stream,
                                      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
                                      @RequestParam(defaultValue = "submitted") String sort) {
         String s = sessionOr(session);
@@ -174,7 +177,7 @@ class JupebOfficeController {
         };
         List<Map<String, Object>> rows = jdbc.sql(LIST + " ORDER BY " + order + " LIMIT :n OFFSET :o")
                 .param("s", s).param("state", up(state)).param("comb", up(combination)).param("prog", up(programme)).param("fac", up(faculty))
-                .param("fee", up(fee)).param("screening", up(screening)).param("q", q == null ? "" : q.trim())
+                .param("fee", up(fee)).param("screening", up(screening)).param("stream", up(stream)).param("q", q == null ? "" : q.trim())
                 .param("n", n).param("o", Math.max(0, page) * n).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
         Map<String, Object> out = new LinkedHashMap<>();

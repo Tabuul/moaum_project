@@ -8,7 +8,7 @@ copies of them.
 |---|---|---|
 | Applicant / student | `/jupeb/apply`, then `/jupeb/portal` | Apply, sign in, continue the biodata, enter the O'Level, upload documents, pay, submit, read the decision and letter, pay school fees, register subjects, see the exam number and results, raise support tickets |
 | JUPEB Office (new office `jupeb`) | `/jupeb` and its menu | Review, return, decide eligibility, admit (one or in bulk after a preview), screening, classes, subjects and combinations, examination numbers, results, settings, payments (read only) |
-| Bursary | `/finance/jupeb-fees`, `/jupeb/payments` | Set every JUPEB fee and the Science faculties; confirm a bank payment from the teller |
+| Bursary | `/finance/jupeb-fees`, `/jupeb/payments` | Set every JUPEB fee; confirm a bank payment from the teller |
 | Director of ICT | Portal Windows → Application Registration Control | Open, close, schedule and extend the **JUPEB application** window and write its closure message |
 | Super Administrator | the JUPEB group in its menu | Everything the JUPEB Office and the Bursar do |
 
@@ -25,7 +25,7 @@ copies of them.
 | Notices | `platform.queue_notice` (email, SMS) | Every step tells the candidate. |
 | Audit | `audit.attach` and attribution | Every JUPEB table is on the spine, except the account and reset tokens (password hashes) and the document bytes. |
 | Support | `helpdesk.submit/route`, `TicketNotifier` | New requester kind `JUPEB`, queue `JUPEB_SUPPORT` (office `jupeb`) and category `JUPEB`. The category is hidden from students and staff. |
-| Register | `ref.faculty`, `ref.programme` | Programme of interest, combination relevance and the Science mapping. |
+| Register | `ref.faculty`, `ref.programme` | The faculties and programmes a combination leads to (for the office's information). |
 | Documents | `PdfDocument` (letterhead, footer) | Admission letter, receipt, registration slip, statement of result, application summary at `/jupeb/pdf/{doc}`. |
 | Exports | `brandedXlsx` | Every list exports with S/N first. |
 
@@ -41,7 +41,8 @@ copies of them.
 ## Rules (all on the server)
 
 - **Application.** It is accepted only while the window is open. The short form asks for names, sex, date of birth,
-  NIN, email, phone, password, programme of interest and combination. Nationality, state and LGA, addresses, home
+  NIN, email, phone, password, and the programme: **Science or Arts** (V341). There is no programme list and no
+  subject combination on the form. Nationality, state and LGA, addresses, home
   town, guardian and next of kin are completed on the dashboard. The number `JUPEB/APP/<year>/<6 digits>` is permanent;
   the prefix is a JUPEB setting.
 - **Submission** needs all of the following:
@@ -58,15 +59,17 @@ copies of them.
   - Admission is Admitted, Not admitted or Pending, and is made only on an eligible application.
   - Bulk admission previews every row first; the commit decides the rows that can be decided and lists the rest.
   - An admission with a school fee paid against it is not withdrawn here.
-- **Fees (the Bursary's).** The application fee defaults to ₦15,000. The school fee is chosen by category (the
-  Bursary's Science faculties, otherwise Other) and indigene status (state of origin against the indigene state, Benue
+- **Fees (the Bursary's).** The application fee defaults to ₦15,000. The school fee is chosen by the applicant's
+  programme (Science pays the Science fee, Arts the other fee; V341) and indigene status (state of origin against the indigene state, Benue
   by default). The defaults are ₦180,000, ₦195,000, ₦200,000 and ₦215,000. The first semester pays the Bursary's
   percentage (70%) and the second pays the rest. Full payment is allowed when the Bursary allows it. The total is
   **frozen on the candidate when first charged**, so a later change reaches only new charges. The first share is paid
   before the second. A session takes its own rule or the default (`*`).
 - **Activation.** A candidate becomes a student when the Bursary's threshold is met (the first instalment, or the full
   fee). Where screening is required, school fees open only after the candidate is cleared.
-- **Subject registration.** The student registers exactly the combination's three subjects.
+- **Subject registration.** Once active, the student chooses one of the approved combinations of their programme
+  (Science: the Science and Engineering areas; Arts: every other area; a combination with no area is open to both) and
+  registers exactly its three subjects (V341).
 - **Examination numbers.**
   - Numbers are imported by **application number**, never by name alone.
   - A surname that disagrees puts the row on review, and it is not applied.

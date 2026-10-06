@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 185
+\set EXPECTED 186
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5127,6 +5127,39 @@ BEGIN
         format('window=%s app=%s fees=%s ok4=%s ok5=%s noeng=%s fee=%s/%s/%s/%s/%s order=%s first=%s state=%s frozen=%s reg=%s taken=%s review=%s held=%s reason=%s',
                win, d_app, d_fees, ok4, ok5, noeng, sf.category, sf.indigene, sf.total, sf.first_amount, sf.second_amount, r_order, amt1, st_after, frozen, n_reg,
                r_taken, imp->>'review', held, r_reason));
+END $$;
+
+-- ── 186. V341: JUPEB — Science or Arts: the applicant's stream decides the school fee (Arts pays the other fee); a draft without a stream is incomplete; a student registers a combination of their own stream, chosen at registration ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc uuid; app uuid; s1 uuid; s2 uuid; s3 uuid; s4 uuid; c_sci uuid; c_art uuid; msg text;
+        cat text; total numeric; miss boolean; r_choose text; r_stream text; n_reg int; held uuid; ses text := '2092/2093';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZS1', 'Check S One') RETURNING id INTO s1;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZS2', 'Check S Two') RETURNING id INTO s2;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZS3', 'Check S Three') RETURNING id INTO s3;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZS4', 'Check S Four') RETURNING id INTO s4;
+        INSERT INTO jupeb.combination (code, name, subject1, subject2, subject3, area) VALUES ('ZZSCI', 'Check science', s1, s2, s3, 'Science') RETURNING id INTO c_sci;
+        INSERT INTO jupeb.combination (code, name, subject1, subject2, subject3, area) VALUES ('ZZART', 'Check arts', s2, s3, s4, 'Arts') RETURNING id INTO c_art;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.stream@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state)
+        VALUES (acc, ses, 'JUPEB/APP/2092/900001', 'CHECKSTREAM', 'Candidate', 'zz.check.stream@example.com', 'Benue', 'DRAFT') RETURNING id INTO app;
+        miss := 'Science or Arts' = ANY(jupeb.missing(app));
+        UPDATE jupeb.application SET stream = 'ARTS', state = 'STUDENT' WHERE id = app;
+        SELECT f.category, f.total INTO cat, total FROM jupeb.school_fees(app) f;
+        BEGIN PERFORM jupeb.register_subjects(app, who); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_choose := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.register_subjects(app, who, c_sci); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_stream := split_part(msg, ':', 1); END;
+        n_reg := jupeb.register_subjects(app, who, c_art);
+        held := (SELECT combination_id FROM jupeb.application WHERE id = app);
+        RAISE EXCEPTION 'the V341 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB Science or Arts: a draft without a stream is incomplete; Arts with Benue pays the indigene other fee (NGN 180,000); a student must choose a combination of their own stream to register its three subjects',
+        miss AND cat = 'OTHER' AND total = 180000 AND r_choose = 'JUPEB_COMBINATION_CHOOSE' AND r_stream = 'JUPEB_COMBINATION_STREAM' AND n_reg = 3 AND held = c_art,
+        format('missing=%s fee=%s/%s choose=%s stream=%s reg=%s held=%s', miss, cat, total, r_choose, r_stream, n_reg, held = c_art));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

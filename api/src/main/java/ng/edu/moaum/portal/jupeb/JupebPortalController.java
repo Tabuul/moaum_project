@@ -86,8 +86,9 @@ class JupebPortalController {
     @GetMapping
     @Transactional(readOnly = true)
     Map<String, Object> mine(Authentication auth) {
-        Map<String, Object> out = new java.util.LinkedHashMap<>(view.of(me(auth), false));
-        out.put("combinations", view.combinations(true));
+        UUID app = me(auth);
+        Map<String, Object> out = new java.util.LinkedHashMap<>(view.of(app, false));
+        out.put("combinations", view.combinationsFor(app));
         return out;
     }
 
@@ -130,24 +131,16 @@ class JupebPortalController {
         return mine(auth);
     }
 
-    public record Choice(@NotBlank @Size(max = 10) String programme, @NotBlank @Size(max = 40) String combination) {
+    public record Choice(@NotBlank @Pattern(regexp = "(?i)SCIENCE|ARTS", message = "Science or Arts") String stream) {
     }
 
-    /** the programme of interest and the combination, while the application is a draft or returned */
+    /** V341: Science or Arts, while the application is a draft or returned */
     @PutMapping("/choice")
     @Transactional
     Map<String, Object> choice(Authentication auth, @Valid @RequestBody Choice c) {
         UUID app = me(auth);
         requireEditable(app);
-        String prog = jdbc.sql("SELECT code FROM ref.programme WHERE code = upper(btrim(:p)) AND category = 'UNDER GRADUATE' AND NOT archived")
-                .param("p", c.programme()).query(String.class).optional()
-                .orElseThrow(() -> new DomainRuleViolation("JUPEB_PROGRAMME", "Choose the undergraduate programme you intend to study.",
-                        new DomainRuleViolation.Remedy("Pick one from the list.", "You")));
-        UUID comb = jdbc.sql("SELECT id FROM jupeb.combination WHERE (id::text = :c OR code = upper(btrim(:c))) AND active").param("c", c.combination())
-                .query(UUID.class).optional()
-                .orElseThrow(() -> new DomainRuleViolation("JUPEB_COMBINATION", "Choose one of the approved subject combinations.",
-                        new DomainRuleViolation.Remedy("Pick one from the list.", "You")));
-        jdbc.sql("UPDATE jupeb.application SET programme_code = :p, combination_id = :c WHERE id = :id").param("p", prog).param("c", comb).param("id", app).update();
+        jdbc.sql("UPDATE jupeb.application SET stream = :s WHERE id = :id").param("s", c.stream().trim().toUpperCase()).param("id", app).update();
         return mine(auth);
     }
 
@@ -293,12 +286,16 @@ class JupebPortalController {
         return mine(auth);
     }
 
-    /** the active student registers the three subjects of the approved combination — no other */
+    public record Registration(UUID combination) {
+    }
+
+    /** the active student chooses a combination of their stream and registers its three subjects — no other (V341) */
     @PostMapping("/register-subjects")
     @Transactional
-    Map<String, Object> register(Authentication auth) {
+    Map<String, Object> register(Authentication auth, @RequestBody(required = false) Registration body) {
         UUID app = me(auth);
-        jdbc.sql("SELECT jupeb.register_subjects(:a, :a)").param("a", app).query(Integer.class).single();
+        jdbc.sql("SELECT jupeb.register_subjects(:a, :a, :c)").param("a", app).param("c", body == null ? null : body.combination(), Types.OTHER)
+                .query(Integer.class).single();
         return mine(auth);
     }
 
