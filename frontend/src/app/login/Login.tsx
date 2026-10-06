@@ -72,12 +72,6 @@ export function Login({ next, sso, ssoProblem = null }: {
           </div>
           <div style={{ height: 26 }} />
           <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
-          <p>One place for admission, registration, results, fees and records. Sign in with the number the University issued you.</p>
-        </div>
-        <div className="login-stats">
-          <div className="login-stat"><span className="n tnum">12</span><span className="l">faculties</span></div>
-          <div className="login-stat"><span className="n tnum">1</span><span className="l">college</span></div>
-          <div className="login-stat"><span className="n tnum">1992</span><span className="l">established</span></div>
         </div>
       </div>
       <div className="login-panel">
@@ -112,7 +106,6 @@ export function Login({ next, sso, ssoProblem = null }: {
           ) : null}
           <div className="login-help">
             <Link href="/login/forgot">Forgot your password?</Link>
-            <Link href="/login/first">First account</Link>
           </div>
         </form>
       </div>
