@@ -88,14 +88,29 @@ public class FileMigrationJob {
         forgetOrphans();
     }
 
-    /** an object no row points at any more (a photograph replaced by another, a document deleted) is removed;
-     *  an hour's grace keeps an upload in progress out of reach */
+    /**
+     * an object no row points at any more (a photograph replaced by another, a document deleted) is removed;
+     * an hour's grace keeps an upload in progress out of reach. Whether a row points at it is asked of every table that keeps
+     * an object id (each uuid column named object_id, as the database lists them now), never of a list kept by hand: V348
+     * found that the JUPEB documents, added after the list was written, had every object swept away an hour after upload.
+     */
     void forgetOrphans() {
-        StringBuilder none = new StringBuilder();
-        for (Spec s : SPECS) {
-            none.append(" AND NOT EXISTS (SELECT 1 FROM ").append(s.table).append(" t WHERE t.object_id = f.id)");
+        List<Map<String, Object>> holders = jdbc.sql("""
+                SELECT c.table_schema, c.table_name FROM information_schema.columns c JOIN information_schema.tables t
+                    ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+                 WHERE c.column_name = 'object_id' AND c.data_type = 'uuid' AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+                   AND NOT (c.table_schema = 'platform' AND c.table_name = 'file_object')
+                 ORDER BY 1, 2
+                """).query().listOfRows();
+        if (holders.isEmpty()) {
+            LOG.warn("files: no table holding object ids was found; nothing is removed");
+            return;
         }
-        none.append(" AND NOT EXISTS (SELECT 1 FROM admissions.attachment t WHERE t.object_id = f.id)");
+        StringBuilder none = new StringBuilder();
+        for (Map<String, Object> h : holders) {
+            none.append(" AND NOT EXISTS (SELECT 1 FROM ").append(quoted(h.get("table_schema"))).append('.').append(quoted(h.get("table_name")))
+                    .append(" t WHERE t.object_id = f.id)");
+        }
         List<UUID> orphans = jdbc.sql("SELECT f.id FROM platform.file_object f WHERE f.created_at < now() - interval '1 hour'" + none + " LIMIT 100")
                 .query(UUID.class).list();
         int n = 0;
@@ -177,6 +192,11 @@ public class FileMigrationJob {
         }
         if (done > 0) LOG.info("files: {} passport photographs moved to the object store", done);
         return done;
+    }
+
+    /** a schema or table name from the catalogue, quoted as an identifier */
+    private static String quoted(Object name) {
+        return "\"" + String.valueOf(name).replace("\"", "\"\"") + "\"";
     }
 
     /** read it back: what the store holds is what the database held, byte for byte */

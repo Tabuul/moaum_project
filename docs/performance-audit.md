@@ -276,6 +276,19 @@ no gain.
   `FileMigrationJob` moves the existing 110,000 passports and documents, each
   read back and hash-checked. Not yet run against a real bucket (no AWS
   account in this session): see `docs/aws-deployment.md` §5a.
+  **V348 (7 Oct 2026):** Railway runs with `MOAUM_FILES_PROVIDER=S3` and
+  `MOAUM_FILES_MIGRATE=true`. The job's orphan sweep judged an object unused
+  when none of the tables in its own hand-kept list pointed at it; the JUPEB
+  documents (V339) were not on the list and had no foreign key, so all eleven
+  JUPEB documents and passports were removed from the bucket an hour after
+  upload. The sweep now asks `information_schema` for every `uuid` column named
+  `object_id`; every such column references `platform.file_object` (check.sql
+  property 193), so the database itself refuses to forget an object a row still
+  shows. The lost documents are recorded in `jupeb.document_lost` (with the
+  object id, from which the bucket key `jupeb/document/<application>/<object>`
+  is rebuilt, should the bucket keep versions) and marked for re-upload. A new
+  table that stores files must declare `object_id uuid REFERENCES
+  platform.file_object(id)`.
 - ~~`finance.reset_legacy_payments` privileges.~~ V309: `SECURITY DEFINER`
   with a fixed `search_path`, as the audit trigger.
 - ~~**`GET /api/v1/admissions/sessions/{s}/candidate-data`** answered with

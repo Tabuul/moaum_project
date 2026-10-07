@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 192
+\set EXPECTED 193
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5621,6 +5621,46 @@ BEGIN
                prev->>'valid', prev->>'invalid', prev->>'exists', done->>'applied', again->>'applied', v_kinds, v_fee_status, v_exempt_before, v_exempt_after,
                v_surname_pending, r_same, v_surname_after, v_dob_after, paper_before->'questions'->0 ? 'answer', paper_after->'questions'->0 ? 'answer', v_score,
                r_clash, caps_none, caps_jupeb, r_ticket, n_led, r_temp, rep->'enrolment'->'totals'->>'fromOldPortal'));
+END $$;
+
+-- ── 193. V348: a stored file is held by every table that points at it — each column keeping an object id references platform.file_object, so the store's orphan sweep (which asks the catalogue, not a list) can never remove an object a row still shows; the JUPEB documents lost before are recorded and asked for again ──
+DO $$
+DECLARE unheld text; who uuid := gen_random_uuid(); app uuid; obj uuid; r_forget text := 'REMOVED'; n_lost_table int;
+BEGIN
+    unheld := (SELECT string_agg(c.table_schema || '.' || c.table_name, ', ' ORDER BY 1)
+                 FROM information_schema.columns c JOIN information_schema.tables t
+                   ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+                WHERE c.column_name = 'object_id' AND c.data_type = 'uuid' AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+                  AND NOT (c.table_schema = 'platform' AND c.table_name = 'file_object')
+                  AND NOT EXISTS (SELECT 1 FROM pg_constraint k
+                                   WHERE k.contype = 'f' AND k.conrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass
+                                     AND k.confrelid = 'platform.file_object'::regclass
+                                     AND k.conkey = ARRAY[(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = k.conrelid AND a.attname = 'object_id')]));
+    n_lost_table := (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'jupeb' AND table_name = 'document_lost');
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKFILES348', 'Officer');
+        PERFORM jupeb.import_old_portal_students(jsonb_build_array(jsonb_build_object('row', 2, 'appNo', 'S0CHECK193001', 'firstName', 'Ada', 'surname', 'Check',
+                     'sex', 'Female', 'phone', '08011112222', 'dob', '1/2/2005', 'email', 'zz.check193@example.com',
+                     'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')), jupeb.current_session(), true, true, 'check.xlsx', who);
+        app := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK193001');
+        INSERT INTO platform.file_object (id, object_key, content_type, size_bytes, sha256, owner_table, owner_id)
+        VALUES (gen_random_uuid(), 'jupeb/document/check193/x.pdf', 'application/pdf', 5, '\x00'::bytea, 'jupeb.document', app::text) RETURNING id INTO obj;
+        INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes, object_id) VALUES (app, 'NIN', 'nin.pdf', 'application/pdf', 5, obj);
+        -- what FileObjects.forget does: the record first — refused while a document still points at it
+        BEGIN
+            DELETE FROM platform.file_object WHERE id = obj;
+        EXCEPTION WHEN foreign_key_violation THEN r_forget := 'REFUSED';
+        END;
+        RAISE EXCEPTION 'the V348 files check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('A stored file is held by every table that points at it: each object id column references platform.file_object, so an object a JUPEB document (or any row) still shows is never removed',
+        unheld IS NULL AND r_forget = 'REFUSED' AND n_lost_table = 1,
+        format('unheld=%s forget=%s lost_table=%s', coalesce(unheld, 'none'), r_forget, n_lost_table));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

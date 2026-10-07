@@ -154,7 +154,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "practice": return admitted ? <Practice /> : notYet("Practice tests", "once you are admitted");
       case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
       case "results": return admitted ? <Results me={me} /> : notYet("Results", "once you are admitted");
-      case "documents": return <DocumentCentre me={me} />;
+      case "documents": return <DocumentCentre me={me} act={act} />;
       case "requests": return <Requests me={me} act={act} />;
       default: return <><Profile me={me} /><Overview me={me} /></>;
     }
@@ -165,6 +165,11 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
       {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn">{`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.`}</Note> : null}
       {tab !== "attendance" ? <AttendanceWarning me={me} onOpen={() => setTab("attendance")} /> : null}
+      {tab !== "documents" && !guided && me.documents.some((d) => d.status === "REPLACEMENT_REQUIRED" || d.status === "REJECTED") ? (
+        <Note kind="bad" title="A document must be uploaded again" action={<Btn kind="ghost" onClick={() => setTab("documents")}>Open Documents</Btn>}>
+          {`${me.documents.filter((d) => d.status === "REPLACEMENT_REQUIRED" || d.status === "REJECTED").map((d) => d.label).join(", ")}: see the note beside each and upload it again.`}
+        </Note>
+      ) : null}
       {me.state === "DEFERRED" ? <Note kind="info" title={`Your admission is deferred to ${me.deferred_to ?? "a later session"}`}>The JUPEB Office resumes it in that session; you will be told, and your payments stand.</Note> : null}
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates on its own once the payment reaches the University.</Note> : null}
       {section}
@@ -1302,9 +1307,8 @@ function Results({ me }: { me: Candidate }) {
   );
 }
 
-function DocumentCentre({ me }: { me: Candidate }) {
+function DocumentCentre({ me, act }: { me: Candidate; act: Act }) {
   const sc = me.statusChecking;
-  const { link, viewer } = useViewer(me.documents);
   const items: [string, string | null, string][] = [
     ["Application acknowledgement", me.submitted_at ? "/jupeb/pdf/acknowledgement" : null, "after submission"],
     ["Application summary", "/jupeb/pdf/summary", ""],
@@ -1331,9 +1335,8 @@ function DocumentCentre({ me }: { me: Candidate }) {
       </Panel>
       <Panel title="Your uploaded documents">
         <PBody>
-          {viewer}
-          <DTable noPrint pageSize={0} cols={["Document", "File", "Status"]} rows={me.documents.filter((d) => d.filename).map((d) => [d.label,
-            link(d, "f"), d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status] ?? d.status}</Pil> : "—"])} />
+          {/* a document the JUPEB Office asked to be replaced (or one lost from storage, V348) is uploaded again here */}
+          <DocumentRows me={me} act={act} editable={false} />
         </PBody>
       </Panel>
     </div>
