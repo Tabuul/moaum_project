@@ -1422,12 +1422,20 @@ class JupebIT {
             assertThat(code(it.call(office, HttpMethod.POST, path + "/fees", carry))).isEqualTo("JUPEB_ROLLOVER_FEES");
             assertThat(status(it.call(office, HttpMethod.POST, path + "/students", carry))).isEqualTo(404);
             assertThat(code(it.call(office, HttpMethod.POST, path + "/classes", Map.of("from", to, "to", from)))).isEqualTo("JUPEB_ROLLOVER_LATER");
-            // the fees: the Bursary's alone, and only into a session on the University's calendar (the carry itself: check.sql 200)
+            // the fees: the Bursary's alone, and only into a session on the University's calendar — which other suites may have
+            // put there; the test follows what the calendar holds and never changes it (the carry is also check.sql 200's)
             assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo(403);
             assertThat(ok(it.get(bursar, "/api/v1/jupeb/fees?session=" + to)).get("carryFrom")).isEqualTo(from);
-            assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo("JUPEB_ROLLOVER_NO_SESSION");
+            if (Boolean.TRUE.equals(plan.get("onCalendar"))) {
+                Map<String, Object> fees = ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry));
+                assertThat(fees.get("own")).isEqualTo(true);
+                assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) fees.get("rule")).get("application_fee")))).isEqualByComparingTo("17000");
+                assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo("JUPEB_ROLLOVER_EXISTS");
+            } else {
+                assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo("JUPEB_ROLLOVER_NO_SESSION");
+            }
             plan = ok(it.get(office, path + "?from=" + from + "&to=" + to));
-            assertThat((List<Map<String, Object>>) plan.get("history")).extracting(h -> h.get("item")).containsExactly("CLASSES");
+            assertThat((List<Map<String, Object>>) plan.get("history")).extracting(h -> h.get("item")).contains("CLASSES");
         } finally {
             it.db(() -> {
                 jdbc.sql("DELETE FROM jupeb.session_rollover WHERE to_session = :t").param("t", to).update();
