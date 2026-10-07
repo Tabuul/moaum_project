@@ -14,9 +14,10 @@
  * Every amount is the server's; every call is scoped to the signed-in candidate.
  */
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tabs, KvGrid } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, KvGrid } from "@/components/proto/ui";
 import { Field, Steps as StepList } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
@@ -29,7 +30,10 @@ import {
   day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Combination, type Doc, type FeeRef, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "admission" | "payments" | "subjects" | "attendance" | "results" | "documents" | "requests" | "support";
+type Tab = "overview" | "profile" | "admission" | "payments" | "subjects" | "attendance" | "results" | "documents" | "requests" | "password" | "support";
+const TAB_IDS: Tab[] = ["overview", "profile", "admission", "payments", "subjects", "attendance", "results", "documents", "requests", "password", "support"];
+/** each section is its own item in the side menu (Shell routes jupeb/portal/<section> to /jupeb/portal?tab=<section>) */
+const routeOf = (t: Tab) => (t === "overview" ? "jupeb/portal" : `jupeb/portal/${t}`);
 type Act = (path: string, method?: string, body?: unknown) => Promise<Candidate | null>;
 
 interface Ticket { id: string; number: string; subject: string; category: string; status: string; created_at: string; updated_at: string; queue: string | null }
@@ -45,12 +49,15 @@ const PHOTO = "/api/bff/api/v1/jupeb/me/documents/PASSPORT/content?format=jpeg";
 const suiting = (all: Combination[] | undefined, stream: string | null) =>
   (all ?? []).filter((c) => c.offered && (stream === "SCIENCE" ? c.science : stream ? c.non_science : false));
 
-export function JupebPortal() {
+export function JupebPortal({ tab: tabIn }: { tab?: string }) {
+  const router = useRouter();
   const [me, setMe] = useState<Candidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [signedOut, setSignedOut] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
+  const tab: Tab = (TAB_IDS as string[]).includes(tabIn ?? "") ? (tabIn as Tab) : "overview";
+  /** a section is opened from the side menu, or from a link on the page: the address says which, so it can be bookmarked */
+  const setTab = useCallback((t: Tab) => router.push(t === "overview" ? "/jupeb/portal" : `/jupeb/portal?tab=${t}`), [router]);
   const [verifying, setVerifying] = useState(false);
 
   const load = useCallback(async () => {
@@ -82,13 +89,13 @@ export function JupebPortal() {
       await load();
       if (paid) {
         setVerifying(true);
-        setTab(paid.includes("CHK") || paid.includes("ACC") ? "admission" : "payments");
+        router.replace(`/jupeb/portal?tab=${paid.includes("CHK") || paid.includes("ACC") ? "admission" : "payments"}`);
         const ok = await pollConfirm(paid, 8);
         setVerifying(false);
         if (ok) notify("Payment confirmed — thank you.");
       }
     })();
-  }, [load, pollConfirm]);
+  }, [load, pollConfirm, router]);
 
   /** one act; the record the server returns replaces the page's */
   const act: Act = useCallback(async (path, method = "POST", body) => {
@@ -109,60 +116,143 @@ export function JupebPortal() {
     );
   }
 
+  const guided = me.state === "DRAFT" || me.state === "RETURNED";
+  const admitted = ADMITTED.has(me.state);
+  const studying = me.state === "STUDENT" || me.state === "COMPLETED";
+  /* the side menu follows the record: the guided application while it is a draft; the studies once admitted */
   const shellMe: ShellMe = {
-    actorId: "", activeOffice: "jupebcandidate", offices: ["jupebcandidate"],
-    name: fullName(me), staffNumber: me.exam_no ?? me.application_no, sessionId: null, unit: `JUPEB ${me.session}`, waiting: {},
+    actorId: "", activeOffice: "jupebcandidate", offices: ["jupebcandidate"], menu: guided ? "jupebapplicant" : admitted ? "jupebstudent" : "jupebcandidate",
+    name: fullName(me), staffNumber: me.exam_no ?? me.application_no, sessionId: null, unit: `JUPEB ${me.session}`,
+    waiting: me.requests.some((r) => r.state === "PENDING") ? { "jupeb/portal/requests": "1" } : {},
   };
   /* V345: a temporary password handed out by the JUPEB Office is changed before anything else */
   if (me.must_change_password) {
     return (
-      <Shell route="jupeb/portal" me={shellMe}>
+      <Shell route="jupeb/portal/password" me={shellMe}>
         <Profile me={me} />
         <ChangePassword forced onDone={(fresh) => { setMe(fresh); notify("Your password is changed."); }} />
       </Shell>
     );
   }
-  const guided = me.state === "DRAFT" || me.state === "RETURNED";
-  const admitted = ADMITTED.has(me.state);
-  const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
-    { id: "overview", label: "Overview" }, { id: "admission", label: "Admission" }, { id: "payments", label: "Payments" },
-    { id: "subjects", label: "Subjects", disabled: !admitted }, { id: "attendance", label: "Attendance", disabled: !(me.state === "STUDENT" || me.state === "COMPLETED") },
-    { id: "results", label: "Results", disabled: !admitted }, { id: "documents", label: "Documents" },
-    { id: "requests", label: me.requests.some((r) => r.state === "PENDING") ? "Requests (1)" : "Requests" }, { id: "support", label: "Support" },
-  ];
+  const notYet = (what: string, when: string) => <Note kind="info" title={`${what} opens ${when}`}>It appears here, in this same menu, the moment it applies to you.</Note>;
+  /* the profile, the password and support are always open; while the application is a draft every other item is the guided application */
+  const section = (() => {
+    switch (tab) {
+      case "profile": return <MyProfile me={me} onEdit={guided ? () => setTab("overview") : undefined} />;
+      case "password": return <ChangePassword onDone={(fresh) => { setMe(fresh); notify("Your password is changed."); }} />;
+      case "support": return <SupportTab />;
+      default: break;
+    }
+    if (guided) return <><Profile me={me} /><Guided me={me} act={act} /></>;
+    switch (tab) {
+      case "admission": return <Admission me={me} reload={load} />;
+      case "payments": return <Payments me={me} reload={load} />;
+      case "subjects": return admitted ? <Subjects me={me} act={act} /> : notYet("Subject registration", "once you are admitted");
+      case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
+      case "results": return admitted ? <Results me={me} /> : notYet("Results", "once you are admitted");
+      case "documents": return <DocumentCentre me={me} />;
+      case "requests": return <Requests me={me} act={act} />;
+      default: return <><Profile me={me} /><Overview me={me} /></>;
+    }
+  })();
 
   return (
-    <Shell route="jupeb/portal" me={shellMe}>
+    <Shell route={routeOf(tab)} me={shellMe}>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <Profile me={me} />
       {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn">{`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.`}</Note> : null}
-      <AttendanceWarning me={me} onOpen={() => setTab("attendance")} />
+      {tab !== "attendance" ? <AttendanceWarning me={me} onOpen={() => setTab("attendance")} /> : null}
       {me.state === "DEFERRED" ? <Note kind="info" title={`Your admission is deferred to ${me.deferred_to ?? "a later session"}`}>The JUPEB Office resumes it in that session; you will be told, and your payments stand.</Note> : null}
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates on its own once the payment reaches the University.</Note> : null}
-      {guided ? <Guided me={me} act={act} /> : (
-        <>
-          <Tabs items={tabs} value={tab} onChange={setTab} look="line" label="Your JUPEB record" />
-          {tab === "overview" ? <Overview me={me} /> : null}
-          {tab === "admission" ? <Admission me={me} reload={load} /> : null}
-          {tab === "payments" ? <Payments me={me} reload={load} /> : null}
-          {tab === "subjects" ? <Subjects me={me} act={act} /> : null}
-          {tab === "attendance" ? <Attendance /> : null}
-          {tab === "results" ? <Results me={me} /> : null}
-          {tab === "documents" ? <DocumentCentre me={me} /> : null}
-          {tab === "requests" ? <Requests me={me} act={act} /> : null}
-          {tab === "support" ? <SupportTab /> : null}
-        </>
-      )}
+      {section}
     </Shell>
+  );
+}
+
+/* ── My Profile: everything the University holds about the candidate, read from the record ────────────────── */
+
+function MyProfile({ me, onEdit }: { me: Candidate; onEdit?: () => void }) {
+  const sc = me.statusChecking;
+  const status = sc.may_check && sc.status ? ADMISSION_STATUS[sc.status] : null;
+  const v = (x: string | null | undefined) => (x && String(x).trim() ? x : "—");
+  const nin = me.nin ? `${"•".repeat(Math.max(0, me.nin.length - 4))}${me.nin.slice(-4)}` : "—";
+  const subjects = (me.subjects ?? []).map((x) => x.code).join(", ");
+  return (
+    <>
+      <div className="card">
+        <div className="card__body" style={{ display: "flex", flexDirection: "row", gap: "var(--s-4)", alignItems: "center", flexWrap: "wrap" }}>
+          <Passport src={me.has_passport ? `${PHOTO}&v=${encodeURIComponent(me.updated_at)}` : null} />
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div className="b700" style={{ fontSize: 20 }}>{fullName(me)}</div>
+            <div className="sub2">{me.application_no}{me.exam_no ? ` · JUPEB ${me.exam_no}` : ""} · {me.session}</div>
+            <div className="row row--inline mt-1" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+              <Pil kind={stateKind(me.state)}>{STATE_SHORT[me.state] ?? me.state}</Pil>
+              {status ? <Pil kind={status[1]}>{status[0]}</Pil> : null}
+              {me.legacy_source ? <Pil kind="grey">From the old portal</Pil> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid--2">
+        <Panel title="Personal information">
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[
+              ["Surname", v(me.surname)], ["First name", v(me.first_name)], ["Middle name", v(me.middle_name)], ["Sex", me.sex === "F" ? "Female" : me.sex === "M" ? "Male" : v(me.sex)],
+              ["Date of birth", me.date_of_birth ? day(me.date_of_birth) : "—"], ["NIN", nin], ["Nationality", v(me.nationality)], ["State of origin", v(me.state_of_origin)],
+              ["LGA", v(me.lga)], ["Home town", v(me.home_town)],
+            ]} />
+          </PBody>
+        </Panel>
+        <Panel title="Contact">
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[
+              ["Email", v(me.email)], ["Phone", v(me.phone)], ["Contact address", v(me.contact_address)], ["Permanent address", v(me.permanent_address)],
+            ]} />
+          </PBody>
+        </Panel>
+        <Panel title="Programme">
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[
+              ["Programme", streamLabel(me.stream)], ["Subject combination", me.combination_code ? `${me.combination_code}${me.combination_name ? ` — ${me.combination_name}` : ""}` : "Not yet chosen"],
+              ["Subjects registered", subjects || "Not yet registered"], ["Class", v(me.class_name)],
+              ["Session", me.session], ["JUPEB examination number", me.exam_no ?? "Not yet assigned"],
+              ["Studentship activated", me.activated_at ? day(me.activated_at) : "—"], ["Admission accepted", me.accepted_at ? day(me.accepted_at) : "—"],
+            ]} />
+          </PBody>
+        </Panel>
+        <Panel title="Guardian and next of kin">
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[
+              ["Guardian", v(me.guardian_name)], ["Guardian's phone", v(me.guardian_phone)], ["Guardian's address", v(me.guardian_address)], ["Next of kin", v(me.next_of_kin_name)],
+              ["Next of kin's phone", v(me.next_of_kin_phone)], ["Relationship", v(me.next_of_kin_relationship)],
+            ]} />
+          </PBody>
+        </Panel>
+      </div>
+      <Panel title="O'Level">
+        <PBody>
+          <KvGrid cls="grid--4" pairs={[
+            ["Sittings", String(me.olevelCheck?.sittings ?? me.olevel_sittings ?? 0)], ["Credits", String(me.olevelCheck?.credits ?? 0)],
+            ["English", me.olevelCheck?.english ? "Credit" : "—"], ["Mathematics", me.olevelCheck?.mathematics ? "Credit" : "—"],
+          ]} />
+        </PBody>
+      </Panel>
+      {onEdit ? (
+        <Note kind="info" title="Your application is still open to you" action={<Btn kind="ghost" onClick={onEdit}>Continue the application</Btn>}>Correct any detail in the application&rsquo;s steps before you submit it.</Note>
+      ) : (
+        <Note kind="info" title="A detail is wrong?">After submission the record is the JUPEB Office&rsquo;s. Ask for a correction under Help &amp; Support, with the evidence; the Office corrects it and you are told.</Note>
+      )}
+    </>
   );
 }
 
 /* ── the profile: the passport, and who the candidate is ─────────────────────────────────────────── */
 
 function Passport({ src }: { src: string | null }) {
-  return src ? (
+  // a photograph the record names but cannot serve shows the empty frame, never a broken image
+  const [failed, setFailed] = useState<string | null>(null);
+  return src && failed !== src ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "contain", border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)", background: "var(--bg)" }} />
+    <img src={src} alt="Passport photograph" onError={() => setFailed(src)} style={{ width: 96, height: 120, objectFit: "contain", border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)", background: "var(--bg)" }} />
   ) : (
     <div aria-label="No passport photograph" style={{ width: 96, height: 120, border: "1px dashed var(--line-2)", borderRadius: "var(--r-sm)", display: "grid", placeItems: "center", color: "var(--chrome)", fontSize: 11, textAlign: "center" }}>
       PASSPORT<br />PHOTOGRAPH

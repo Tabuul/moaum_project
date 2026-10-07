@@ -7,7 +7,8 @@
  * the script, not the file.
  */
 export interface MenuItem { id: string; icon: string; label: string; badge?: string }
-export interface MenuGroup { name: string; items: MenuItem[] }
+/** open: the group starts unfolded (a short menu, like the JUPEB student's, shows every item at once) */
+export interface MenuGroup { name: string; items: MenuItem[]; open?: boolean }
 export interface Menu { label: string; home: string; groups: MenuGroup[] }
 
 export const MENUS: Record<string, Menu> = {
@@ -1667,14 +1668,97 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "jupebapplicant": {
+    "label": "JUPEB Applicant",
+    "home": "jupeb/home",
+    "groups": [
+      {
+        "name": "My JUPEB application",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal", "icon": "doc", "label": "Application" }
+        ]
+      },
+      {
+        "name": "Account",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/profile", "icon": "user", "label": "My Profile" },
+          { "id": "jupeb/portal/password", "icon": "shield", "label": "Change Password" },
+          { "id": "jupeb/portal/support", "icon": "life", "label": "Help & Support" }
+        ]
+      }
+    ]
+  },
   "jupebcandidate": {
     "label": "JUPEB Candidate",
     "home": "jupeb/home",
     "groups": [
       {
         "name": "My JUPEB",
+        "open": true,
         "items": [
-          { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" }
+          { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" },
+          { "id": "jupeb/portal/admission", "icon": "check", "label": "Admission" },
+          { "id": "jupeb/portal/payments", "icon": "card", "label": "Payments" }
+        ]
+      },
+      {
+        "name": "Records",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/documents", "icon": "doc", "label": "Documents" },
+          { "id": "jupeb/portal/requests", "icon": "swap", "label": "Change Requests" }
+        ]
+      },
+      {
+        "name": "Account",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/profile", "icon": "user", "label": "My Profile" },
+          { "id": "jupeb/portal/password", "icon": "shield", "label": "Change Password" },
+          { "id": "jupeb/portal/support", "icon": "life", "label": "Help & Support" }
+        ]
+      }
+    ]
+  },
+  "jupebstudent": {
+    "label": "JUPEB Student",
+    "home": "jupeb/home",
+    "groups": [
+      {
+        "name": "My JUPEB",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" },
+          { "id": "jupeb/portal/admission", "icon": "check", "label": "Admission" },
+          { "id": "jupeb/portal/payments", "icon": "card", "label": "Payments" }
+        ]
+      },
+      {
+        "name": "Studies",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/subjects", "icon": "book", "label": "Subjects" },
+          { "id": "jupeb/portal/attendance", "icon": "cal", "label": "Attendance" },
+          { "id": "jupeb/portal/results", "icon": "chart", "label": "Results" }
+        ]
+      },
+      {
+        "name": "Records",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/documents", "icon": "doc", "label": "Documents" },
+          { "id": "jupeb/portal/requests", "icon": "swap", "label": "Change Requests" }
+        ]
+      },
+      {
+        "name": "Account",
+        "open": true,
+        "items": [
+          { "id": "jupeb/portal/profile", "icon": "user", "label": "My Profile" },
+          { "id": "jupeb/portal/password", "icon": "shield", "label": "Change Password" },
+          { "id": "jupeb/portal/support", "icon": "life", "label": "Help & Support" }
         ]
       }
     ]

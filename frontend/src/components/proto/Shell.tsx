@@ -289,6 +289,16 @@ export const ROUTES: Record<string, string> = {
   "pg/summary": "/pg/summary/pdf",
   /* V339: the JUPEB programme — the candidate's own portal, the JUPEB Office's desk, the Bursary's fees */
   "jupeb/portal": "/jupeb/portal",
+  "jupeb/portal/profile": "/jupeb/portal?tab=profile",
+  "jupeb/portal/admission": "/jupeb/portal?tab=admission",
+  "jupeb/portal/payments": "/jupeb/portal?tab=payments",
+  "jupeb/portal/subjects": "/jupeb/portal?tab=subjects",
+  "jupeb/portal/attendance": "/jupeb/portal?tab=attendance",
+  "jupeb/portal/results": "/jupeb/portal?tab=results",
+  "jupeb/portal/documents": "/jupeb/portal?tab=documents",
+  "jupeb/portal/requests": "/jupeb/portal?tab=requests",
+  "jupeb/portal/password": "/jupeb/portal?tab=password",
+  "jupeb/portal/support": "/jupeb/portal?tab=support",
   "jupeb/dashboard": "/jupeb",
   "jupeb/applications": "/jupeb/applications",
   "jupeb/catalogue": "/jupeb/catalogue",
@@ -381,6 +391,16 @@ const OVERRIDES: Record<string, [string, string]> = {
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
   "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
   "jupeb/portal": ["Your JUPEB record", "JUPEB programme"],
+  "jupeb/portal/profile": ["My Profile", "What the University holds about you"],
+  "jupeb/portal/admission": ["Admission", "Status checking, acceptance and screening"],
+  "jupeb/portal/payments": ["Payments", "Your fees, references and receipts"],
+  "jupeb/portal/subjects": ["Subjects", "Your subject combination"],
+  "jupeb/portal/attendance": ["Attendance", "Your attendance, subject by subject"],
+  "jupeb/portal/results": ["Results", "Your JUPEB results"],
+  "jupeb/portal/documents": ["Documents", "Your letters, slips and statements"],
+  "jupeb/portal/requests": ["Change Requests", "Withdraw, defer or change after submission"],
+  "jupeb/portal/password": ["Change Password", "Your JUPEB portal password"],
+  "jupeb/portal/support": ["Help & Support", "Ask the JUPEB Office or ICT Support"],
   "jupeb/dashboard": ["JUPEB Office", "The JUPEB programme: applications, admission, students, examination numbers and results"],
   "jupeb/applications": ["JUPEB applications", "Every candidate of the session, from draft to result"],
   "jupeb/catalogue": ["JUPEB subjects and combinations", "The University's approved combinations of three subjects"],
@@ -460,7 +480,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
 
   const isOpen = (g: MenuGroup) => {
     if (Object.prototype.hasOwnProperty.call(navg, g.name)) return !!navg[g.name];
-    return g.items.some((it) => it.id === current);
+    return !!g.open || g.items.some((it) => it.id === current);
   };
   // the crumb above the title: the menu group the page sits in, and the page as the menu names it
   const crumbGroup = menu.groups.find((g) => g.items.some((it) => it.id === current));
