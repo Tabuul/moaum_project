@@ -656,7 +656,7 @@ class JupebIT {
         assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot))).isEqualTo("JUPEB_SLOT_CLASH");
         Map<String, Object> week = ok(it.get(token, "/api/v1/jupeb/me/timetable"));
         List<Map<String, Object>> slots = (List<Map<String, Object>>) week.get("slots");
-        assertThat(slots).extracting(x -> x.get("venue")).contains("JUPEB Hall " + tag);
+        assertThat(slots).extracting(x -> x.get("venue")).contains("JUPEBHALL" + tag);
         // V351: the programme's day comes from the whole timetable, so the hour of this lecture is never a break
         Map<String, Object> frame = ((List<Map<String, Object>>) week.get("frames")).stream().filter(f -> Integer.valueOf(1).equals(f.get("semester"))).findFirst().orElseThrow();
         assertThat((List<Integer>) frame.get("breaks")).doesNotContain(8, 9);

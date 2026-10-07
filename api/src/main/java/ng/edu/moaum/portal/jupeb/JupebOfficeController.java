@@ -1780,7 +1780,7 @@ class JupebOfficeController {
                 SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, deadline_on::text AS deadline_on, title FROM jupeb.calendar_event
                  WHERE session = :s AND marker = 'BOARD_REGISTRATION' AND removed_at IS NULL
                 """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
-        out.put("examinations", jdbc.sql("SELECT jupeb.calendar_date(:s, 'EXAMINATIONS')::text").param("s", s).query(String.class).single());
+        out.put("examinations", jdbc.sql("SELECT jupeb.calendar_date(:s, 'EXAMINATIONS')::text AS d").param("s", s).query().singleRow().get("d"));
         out.put("rows", clearanceRows(s));
         return out;
     }
@@ -1822,7 +1822,7 @@ class JupebOfficeController {
             m.put("session", x[0]); m.put("level", x[1]); m.put("title", x[2]); m.put("detail", x[3]); m.put("count", count);
             items.add(m);
         };
-        long open = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) WHERE (policy.window_state(w.t, :s, NULL)).state = 'OPEN'")
+        long open = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) CROSS JOIN LATERAL policy.window_state(w.t, :s, NULL) ws WHERE ws.state = 'OPEN'")
                 .param("s", from).query(Long.class).single();
         add.accept(new String[] {from, open > 0 ? "warn" : "ok", open > 0 ? "JUPEB windows still open" : "No JUPEB window open",
                 open > 0 ? "New applicants and status checking still follow " + from + "; the Director of ICT closes them, or sets them for " + t + "." : "Nothing is taken in under " + from + " now."}, open);
@@ -1833,7 +1833,7 @@ class JupebOfficeController {
         long students = jdbc.sql("SELECT count(*) FROM jupeb.application WHERE session = :s AND state = 'STUDENT'").param("s", from).query(Long.class).single();
         boolean published = jdbc.sql("SELECT jupeb.results_published(:s)").param("s", from).query(Boolean.class).single();
         add.accept(new String[] {from, students > 0 && !published ? "warn" : "ok", published ? "Results published" : "Results not yet published",
-                students + " active student" + (students == 1 ? "" : "s") + " of " + from + (published ? "." : " await their results.")}, students);
+                students + " active student" + (students == 1 ? "" : "s") + " of " + from + (published ? "." : students == 1 ? " awaits the results." : " await their results.")}, students);
         Map<String, Object> owed = jdbc.sql("""
                 SELECT count(*) FILTER (WHERE sf.outstanding > 0) AS n, coalesce(sum(sf.outstanding), 0) AS total
                   FROM jupeb.application a CROSS JOIN LATERAL jupeb.school_fees(a.id) sf WHERE a.session = :s AND a.state IN ('STUDENT', 'COMPLETED')
@@ -1848,7 +1848,7 @@ class JupebOfficeController {
         boolean onCalendar = jdbc.sql("SELECT EXISTS (SELECT 1 FROM policy.academic_session WHERE name = :t)").param("t", t).query(Boolean.class).single();
         add.accept(new String[] {t, onCalendar ? "ok" : "warn", onCalendar ? "On the University's calendar" : "Not on the University's calendar",
                 onCalendar ? "Windows can be set for " + t + "." : "The University's calendar has no " + t + " yet, so no JUPEB window can be set for it."}, onCalendar ? 1 : 0);
-        long windows = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) WHERE (policy.window_state(w.t, :s, NULL)).state = 'OPEN'")
+        long windows = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) CROSS JOIN LATERAL policy.window_state(w.t, :s, NULL) ws WHERE ws.state = 'OPEN'")
                 .param("s", t).query(Long.class).single();
         add.accept(new String[] {t, "info", windows > 0 ? "JUPEB windows open" : "JUPEB windows closed",
                 windows > 0 ? "Applications are taken for " + t + "." : "Closed until the Director of ICT opens them."}, windows);

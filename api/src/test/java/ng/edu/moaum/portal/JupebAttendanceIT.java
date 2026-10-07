@@ -172,7 +172,7 @@ class JupebAttendanceIT {
             assertThat((List<Map<String, Object>>) ws.get("assignments")).extracting(a -> a.get("subject_id").toString()).containsExactly(s1.toString());
             List<Map<String, Object>> students = (List<Map<String, Object>>) (List<?>) it.callList(lecturer, HttpMethod.GET, "/api/v1/jupeb/teaching/subjects/" + s1 + "/students", null).getBody();
             assertThat(students).extracting(x -> x.get("id").toString()).containsExactly(studentA.toString());
-            assertThat(status(it.callList(lecturer, HttpMethod.GET, "/api/v1/jupeb/teaching/subjects/" + s2 + "/students", null))).isEqualTo(404);
+            assertThat(status(it.get(lecturer, "/api/v1/jupeb/teaching/subjects/" + s2 + "/students"))).isEqualTo(404);
             Map<String, Object> notice = ok(it.call(lecturer, HttpMethod.POST, "/api/v1/jupeb/teaching/notices",
                     Map.of("subjectId", s1, "classId", classA, "title", "Test on cells", "body", "The class test on cells is on Friday.")));
             assertThat(notice.get("reach")).isEqualTo(1);

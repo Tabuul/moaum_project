@@ -349,10 +349,11 @@ class AttendanceController {
         out.put("from", f.toString());
         out.put("to", t.toString());
         out.put("today", today.toString());
-        out.put("teachingStarts", jdbc.sql("SELECT jupeb.calendar_date(:s, 'TEACHING_STARTS')::text").param("s", s).query(String.class).single());
+        /* a session whose calendar does not say when teaching starts: none, and every day counts */
+        out.put("teachingStarts", jdbc.sql("SELECT jupeb.calendar_date(:s, 'TEACHING_STARTS')::text AS d").param("s", s).query().singleRow().get("d"));
         out.put("semesterStarts", jdbc.sql("""
-                SELECT (CASE jupeb.current_semester(:s, NULL) WHEN 2 THEN jupeb.calendar_date(:s, 'SEMESTER_2_STARTS') ELSE jupeb.calendar_date(:s, 'TEACHING_STARTS') END)::text
-                """).param("s", s).query(String.class).single());
+                SELECT (CASE jupeb.current_semester(:s, NULL) WHEN 2 THEN jupeb.calendar_date(:s, 'SEMESTER_2_STARTS') ELSE jupeb.calendar_date(:s, 'TEACHING_STARTS') END)::text AS d
+                """).param("s", s).query().singleRow().get("d"));
         out.put("counts", counts);
         out.put("rows", rows);
         return out;
