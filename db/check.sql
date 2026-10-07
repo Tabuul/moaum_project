@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 196
+\set EXPECTED 198
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5581,6 +5581,7 @@ BEGIN
         v_score := (SELECT score FROM jupeb.practice_attempt WHERE id = att);
         -- a room is never booked twice in the same hour (V351: parallel lectures in other rooms are the rule)
         s1 := (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = app ORDER BY subject_id LIMIT 1);
+        INSERT INTO jupeb.room (code) VALUES ('LT1') ON CONFLICT (code) DO NOTHING;  -- V354: a room is one of the list
         INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '08:00', '10:00', 'LT 1');
         BEGIN
             INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '09:00', '11:00', 'LT 1');
@@ -5826,11 +5827,11 @@ BEGIN
         BEGIN UPDATE jupeb.setting SET current_session = '2031-2032' WHERE session = '*';
         EXCEPTION WHEN check_violation THEN r_bad := 'REFUSED'; END;
         -- a room or a class never twice in the same hour; other rooms side by side
-        s1 := (SELECT id FROM jupeb.subject ORDER BY code LIMIT 1);
+        s1 := (SELECT id FROM jupeb.subject WHERE code = 'GEO');
         s2 := (SELECT id FROM jupeb.subject ORDER BY code OFFSET 1 LIMIT 1);
         INSERT INTO jupeb.class (session, name) VALUES ('2031/2032', 'CHECK196 A') RETURNING id INTO k;
         INSERT INTO jupeb.timetable_slot (session, semester, subject_id, class_id, weekday, starts_at, ends_at, venue, course_code)
-        VALUES ('2031/2032', 1, s1, k, 1, '08:00', '10:00', 'LR8', 'geo001') RETURNING course_code INTO v_code;
+        VALUES ('2031/2032', 1, s1, k, 1, '08:00', '10:00', 'LR8', 'gry001') RETURNING course_code INTO v_code;
         BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, 1, '09:00', '10:00', 'lr 8');
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_room := split_part(msg, ':', 1); END;
         BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, class_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, k, 1, '09:00', '11:00', 'LR9');
@@ -5847,9 +5848,156 @@ BEGIN
     PERFORM pg_temp.assert('JUPEB V351: the JUPEB Office names the programme''s current session (2026/2027) and the JUPEB windows follow it, the University''s untouched, cleared the University''s again; the 2026/2027 first-semester timetable has every course three hours and every practical two, each lecture coded; a room or a class never twice in an hour, other rooms side by side; a course code as the Board prints it',
         named = '2026/2027' AND v_cur = '2031/2032' AND v_app = '2031/2032' AND v_uni = uni AND v_back = uni AND r_bad = 'REFUSED'
         AND n_seed = 56 AND n_short = 0 AND n_prac = 3 AND n_short_prac = 0 AND n_nocode = 0 AND n_noroom = 1
-        AND v_code = 'GEO 001' AND r_room = 'JUPEB_SLOT_CLASH' AND r_class = 'JUPEB_SLOT_CLASH' AND n_side = 3 AND r_code = 'REFUSED',
+        AND v_code = 'GRY 001' AND r_room = 'JUPEB_SLOT_CLASH' AND r_class = 'JUPEB_SLOT_CLASH' AND n_side = 3 AND r_code = 'REFUSED',
         format('named=%s current=%s app=%s uni=%s/%s back=%s bad=%s seed=%s short=%s prac=%s short_prac=%s nocode=%s noroom=%s code=%s room=%s class=%s side=%s badcode=%s',
                named, v_cur, v_app, v_uni, uni, v_back, r_bad, n_seed, n_short, n_prac, n_short_prac, n_nocode, n_noroom, v_code, r_room, r_class, n_side, r_code));
+END $$;
+
+-- ── 197. V353: the JUPEB syllabus 2027–2031 — nineteen of the Board's subjects under the portal's, 77 course units with their semesters, credit units and topics (BIO 002 Botany in the first semester, as the Biology section has it); a combination's courses: MAT 004A for a Science combination, 004B for a Management Sciences one, and both options of an either/or subject until the student chooses, then that one only; the option is one of the subject's own, chosen by the student only until the examination number and changed by the office only with a reason; a timetable course is one of the subject's units, taught in that semester; the live timetable says ECN and GRY, each lecture linked to its unit ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); acc uuid; app uuid; sub uuid; crs uuid; iss uuid; yor uuid; bio uuid; msg text;
+        n_board int; n_units int; n_topics int; v_bio text; v_bio_sem int; v_mat_sci text; v_mat_mgt text; n_sc001 int; n_mine int; v_mine text;
+        r_wrong text; r_locked text; r_reason text; v_final text; n_events int; r_course text; r_sem text; n_old int; n_unlinked int;
+BEGIN
+    n_board := (SELECT count(*) FROM jupeb.board_subject b JOIN jupeb.syllabus y ON y.id = b.syllabus_id WHERE y.code = '2027-2031');
+    n_units := (SELECT count(*) FROM jupeb.subject_unit WHERE board_subject_id IS NOT NULL AND semester IS NOT NULL AND credit_units = 3);
+    n_topics := (SELECT count(*) FROM jupeb.unit_topic);
+    SELECT title, semester INTO v_bio, v_bio_sem FROM jupeb.subject_unit WHERE code = 'BIO 002';
+    v_mat_sci := (SELECT string_agg(u.code, ',') FROM jupeb.units_for((SELECT id FROM jupeb.combination WHERE code = 'SC-038'), NULL) u WHERE u.code LIKE 'MAT 004%');
+    v_mat_mgt := (SELECT string_agg(u.code, ',') FROM jupeb.units_for((SELECT id FROM jupeb.combination WHERE code = 'SC-024'), NULL) u WHERE u.code LIKE 'MAT 004%');
+    n_sc001 := (SELECT count(*) FROM jupeb.units_for((SELECT id FROM jupeb.combination WHERE code = 'SC-001'), NULL));
+    n_old := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND course_code ~ '^(ECO|GEO) ');
+    n_unlinked := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND course_code IS NOT NULL AND unit_id IS NULL);
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKSYLLABUS353', 'Officer');
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check197@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, state)
+        VALUES (acc, ses, 'CHECK197/0001', 'CHECK', 'Option', 'zz.check197@example.com', 'NON_SCIENCE', (SELECT id FROM jupeb.combination WHERE code = 'SC-001'), 'STUDENT')
+        RETURNING id INTO app;
+        PERFORM jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        sub := (SELECT id FROM jupeb.subject WHERE code = 'CRS/ISS');
+        crs := (SELECT id FROM jupeb.board_subject WHERE prefix = 'CRS');
+        iss := (SELECT id FROM jupeb.board_subject WHERE prefix = 'ISS');
+        yor := (SELECT id FROM jupeb.board_subject WHERE prefix = 'YOR');
+        BEGIN PERFORM jupeb.choose_option(app, sub, yor, false, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_wrong := split_part(msg, ':', 1); END;
+        PERFORM jupeb.choose_option(app, sub, iss, false, NULL);
+        n_mine := (SELECT count(*) FROM jupeb.units_for(NULL, app));
+        v_mine := (SELECT string_agg(DISTINCT u.prefix, ',') FROM jupeb.units_for(NULL, app) u WHERE u.subject_code = 'CRS/ISS');
+        UPDATE jupeb.application SET exam_no = 'CHK197000001' WHERE id = app;
+        BEGIN PERFORM jupeb.choose_option(app, sub, crs, false, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_locked := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.choose_option(app, sub, crs, true, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        PERFORM jupeb.choose_option(app, sub, crs, true, 'The candidate sits Christian Religious Studies');
+        v_final := (SELECT b.prefix FROM jupeb.subject_registration r JOIN jupeb.board_subject b ON b.id = r.board_subject_id WHERE r.application_id = app AND r.subject_id = sub);
+        n_events := (SELECT count(*) FROM jupeb.application_event WHERE application_id = app AND kind = 'SUBJECT_OPTION');
+        -- the timetable: a course of the subject, in its semester
+        bio := (SELECT id FROM jupeb.subject WHERE code = 'BIO');
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue, course_code) VALUES ('2031/2032', 1, bio, 6, '08:00', '09:00', 'LR8', 'BIO 009');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_course := split_part(msg, ':', 1); END;
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue, course_code) VALUES ('2031/2032', 1, bio, 6, '08:00', '09:00', 'LR8', 'bio003');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_sem := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V353 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V353: the syllabus 2027–2031 — 19 Board subjects, 77 units with semesters and topics, BIO 002 Botany in the first semester; MAT 004A for Science, 004B for Management Sciences; both options until chosen, then that one; an option among the subject''s own, by the student until the examination number, by the office with a reason; a timetable course is a unit of the subject in its semester; ECN and GRY on the live timetable, each lecture linked',
+        n_board = 19 AND n_units = 77 AND n_topics = 946 AND v_bio = 'Botany' AND v_bio_sem = 1 AND v_mat_sci = 'MAT 004A' AND v_mat_mgt = 'MAT 004B' AND n_sc001 = 16
+        AND r_wrong = 'JUPEB_OPTION' AND n_mine = 12 AND v_mine = 'ISS' AND r_locked = 'JUPEB_OPTION_LOCKED' AND r_reason = 'JUPEB_OPTION_REASON' AND v_final = 'CRS' AND n_events = 2
+        AND r_course = 'JUPEB_SLOT_COURSE' AND r_sem = 'JUPEB_SLOT_SEMESTER' AND n_old = 0 AND n_unlinked = 0,
+        format('board=%s units=%s topics=%s bio002=%s/%s mat=%s|%s sc001=%s wrong=%s mine=%s/%s locked=%s reason=%s final=%s events=%s course=%s sem=%s old=%s unlinked=%s',
+               n_board, n_units, n_topics, v_bio, v_bio_sem, v_mat_sci, v_mat_mgt, n_sc001, r_wrong, n_mine, v_mine, r_locked, r_reason, v_final, n_events, r_course, r_sem, n_old, n_unlinked));
+END $$;
+
+-- ── 198. V354: the Board's 2026/2027 calendar is on the record and copied forward a year as a plan (titles' years too); the semester is the second only from the day the calendar says; a venue is one of the list of rooms, a closed room takes no new lecture, a renamed room renames its lectures; a semester's timetable copies into the next with each course moved to its place (MAT 002 → MAT 004A, 004B noted), never into one with lectures; a lecture's register opens from its slot on its weekday only, once, apart from another lecture of the subject that day; a lecture not held is not opened, and one with marks is not called not held; the lectures due say which is which; a notice to a subject reaches its students only; the clearance says what is outstanding ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); today date := (now() AT TIME ZONE 'Africa/Lagos')::date; wd int := extract(isodow FROM (now() AT TIME ZONE 'Africa/Lagos')::date)::int;
+        n_cal int; v_teach date; v_reg date; v_exams date; v_sem_now int; v_sem_before int; v_sem_after int; n_copy int; v_exam28 date; v_title28 text; v_planned boolean; r_cal text;
+        geo uuid; acc uuid; lr8 uuid; r_room text; r_closed text; v_renamed text; n_tt int; v_gry text; v_mat text; v_mat_note text; r_tt text;
+        sa uuid; sb uuid; ra uuid; ra2 uuid; rb uuid; r_day text; v_state_a text; v_state_b text; r_notheld text; r_marked text;
+        acct uuid; app uuid; v_reach_mine boolean; v_reach_other boolean; v_clear boolean; v_out text[]; msg text;
+BEGIN
+    n_cal := (SELECT count(*) FROM jupeb.calendar_event WHERE session = '2026/2027' AND source = 'BOARD' AND removed_at IS NULL);
+    v_teach := jupeb.calendar_date('2026/2027', 'TEACHING_STARTS');
+    v_reg := jupeb.calendar_date('2026/2027', 'BOARD_REGISTRATION');
+    v_exams := jupeb.calendar_date('2026/2027', 'EXAMINATIONS');
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKCALENDAR354', 'Officer');
+        -- the semester by the calendar, the calendar copied forward
+        v_sem_now := jupeb.current_semester('2026/2027', DATE '2026-10-07');
+        INSERT INTO jupeb.calendar_event (session, starts_on, title, marker) VALUES ('2026/2027', '2027-02-15', 'Second semester lectures begin', 'SEMESTER_2_STARTS');
+        v_sem_before := jupeb.current_semester('2026/2027', DATE '2027-02-14');
+        v_sem_after := jupeb.current_semester('2026/2027', DATE '2027-03-01');
+        n_copy := jupeb.copy_calendar('2026/2027', '2027/2028', who);
+        SELECT starts_on, title, planned INTO v_exam28, v_title28, v_planned FROM jupeb.calendar_event WHERE session = '2027/2028' AND marker = 'EXAMINATIONS';
+        BEGIN PERFORM jupeb.copy_calendar('2026/2027', '2027/2028', who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_cal := split_part(msg, ':', 1); END;
+        -- the rooms
+        geo := (SELECT id FROM jupeb.subject WHERE code = 'GEO');
+        acc := (SELECT id FROM jupeb.subject WHERE code = 'ACC');
+        lr8 := (SELECT id FROM jupeb.room WHERE code = 'LR8');
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, geo, 7, '08:00', '09:00', 'Hall Z 99');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_room := split_part(msg, ':', 1); END;
+        INSERT INTO jupeb.room (code, kind, active) VALUES ('CHK198', 'HALL', false);
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, geo, 7, '08:00', '09:00', 'chk 198');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_closed := split_part(msg, ':', 1); END;
+        UPDATE jupeb.room SET active = true WHERE code = 'CHK198';
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, geo, 7, '08:00', '09:00', 'chk 198');
+        UPDATE jupeb.room SET code = 'chk 199' WHERE code = 'CHK198';
+        v_renamed := (SELECT venue FROM jupeb.timetable_slot WHERE session = '2031/2032' AND weekday = 7 AND starts_at = '08:00');
+        -- the first semester copied into the second
+        n_tt := jupeb.copy_timetable('2026/2027', 1, '2026/2027', 2, who);
+        v_gry := (SELECT string_agg(DISTINCT course_code, ',') FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 2 AND course_code LIKE 'GRY%');
+        SELECT course_code, note INTO v_mat, v_mat_note FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 2 AND course_code LIKE 'MAT 004%' LIMIT 1;
+        BEGIN PERFORM jupeb.copy_timetable('2026/2027', 1, '2026/2027', 2, who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_tt := split_part(msg, ':', 1); END;
+        -- two lectures of a subject today: a register each, from the slot, on its weekday only
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, room_id) VALUES ('2031/2032', 1, acc, wd, '10:00', '11:00', lr8) RETURNING id INTO sa;
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, room_id) VALUES ('2031/2032', 1, acc, wd, '14:00', '15:00', lr8) RETURNING id INTO sb;
+        ra := jupeb.open_lecture_register(sa, today, who);
+        ra2 := jupeb.open_lecture_register(sa, today, who);
+        BEGIN PERFORM jupeb.open_lecture_register(sa, today - 1, who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_day := split_part(msg, ':', 1); END;
+        PERFORM jupeb.record_not_held(sb, today, 'Public holiday declared', who, 'jupeb');
+        BEGIN rb := jupeb.open_lecture_register(sb, today, who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notheld := split_part(msg, ':', 1); END;
+        v_state_a := (SELECT state FROM jupeb.lectures_due('2031/2032', today, today) WHERE slot_id = sa);
+        v_state_b := (SELECT state FROM jupeb.lectures_due('2031/2032', today, today) WHERE slot_id = sb);
+        INSERT INTO attendance.mark (register_id, member_ref, status, marked_by) VALUES (ra, gen_random_uuid(), 'PRESENT', who);
+        BEGIN PERFORM jupeb.record_not_held(sa, today, 'It was not held after all', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_marked := split_part(msg, ':', 1); END;
+        -- a notice to a subject's students; the clearance of a student with much outstanding
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check198@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acct;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, state)
+        VALUES (acct, ses, 'CHECK198/0001', 'CHECK', 'Clearance', 'zz.check198@example.com', 'NON_SCIENCE', (SELECT id FROM jupeb.combination WHERE code = 'SC-001'), 'STUDENT')
+        RETURNING id INTO app;
+        PERFORM jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        v_reach_mine := jupeb.audience_reaches(ses, 'SUBJECT', (SELECT id::text FROM jupeb.subject WHERE code = 'GOV'), (SELECT a FROM jupeb.application a WHERE a.id = app));
+        v_reach_other := jupeb.audience_reaches(ses, 'SUBJECT', acc::text, (SELECT a FROM jupeb.application a WHERE a.id = app));
+        SELECT cleared, outstanding INTO v_clear, v_out FROM jupeb.exam_clearance(ses) WHERE application_id = app;
+        RAISE EXCEPTION 'the V354 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V354: the Board''s 2026/2027 calendar, copied forward a year as a plan; the second semester only from its day; rooms from the list, a closed one refused, a rename followed; the first semester copied into the second (MAT 004A, 004B noted), never into one with lectures; a register per lecture from its slot on its weekday; not held, not opened; marked, not called not held; the lectures due say which; a subject''s notice reaches its students; the clearance says what is outstanding',
+        n_cal = 36 AND v_teach = DATE '2026-09-28' AND v_reg = DATE '2026-11-13' AND v_exams = DATE '2027-07-26'
+        AND v_sem_now = 1 AND v_sem_before = 1 AND v_sem_after = 2 AND n_copy = 37 AND v_exam28 = DATE '2028-07-26' AND v_title28 = '2028 examinations in all universities' AND v_planned
+        AND r_cal = 'JUPEB_CALENDAR_EXISTS' AND r_room = 'JUPEB_ROOM_UNKNOWN' AND r_closed = 'JUPEB_ROOM_CLOSED' AND v_renamed = 'CHK199'
+        AND n_tt = 56 AND v_gry = 'GRY 003,GRY 004' AND v_mat = 'MAT 004A' AND v_mat_note LIKE '%MAT 004B%' AND r_tt = 'JUPEB_TIMETABLE_NOT_EMPTY'
+        AND ra = ra2 AND r_day = 'ATT_SLOT_DAY' AND r_notheld = 'JUPEB_LECTURE_NOT_HELD' AND v_state_a = 'OPEN' AND v_state_b = 'NOT_HELD' AND r_marked = 'JUPEB_LECTURE_RECORDED'
+        AND v_reach_mine AND NOT v_reach_other AND NOT v_clear
+        AND 'Say which is taken: Christian / Islamic Religious Studies' = ANY (v_out) AND 'No examination number from the Board yet' = ANY (v_out)
+        AND NOT ('No minimum attendance is set' = ANY (v_out)),
+        format('cal=%s teach=%s reg=%s exams=%s sem=%s/%s/%s copy=%s exam28=%s title28=%s planned=%s again=%s room=%s closed=%s renamed=%s tt=%s gry=%s mat=%s/%s ttagain=%s same=%s day=%s notheld=%s states=%s/%s marked=%s reach=%s/%s cleared=%s out=%s',
+               n_cal, v_teach, v_reg, v_exams, v_sem_now, v_sem_before, v_sem_after, n_copy, v_exam28, v_title28, v_planned, r_cal, r_room, r_closed, v_renamed, n_tt, v_gry,
+               v_mat, v_mat_note, r_tt, ra = ra2, r_day, r_notheld, v_state_a, v_state_b, r_marked, v_reach_mine, v_reach_other, v_clear, v_out));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

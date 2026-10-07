@@ -321,6 +321,8 @@ export const ROUTES: Record<string, string> = {
   "jupeb/reports": "/jupeb/reports",
   "jupeb/announcements": "/jupeb/announcements",
   "jupeb/idcards": "/jupeb/idcards",
+  "jupeb/calendar": "/jupeb/calendar",
+  "jupeb/teaching": "/jupeb/teaching",
   "f/jupebfees": "/finance/jupeb-fees",
 };
 
@@ -426,6 +428,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/settings": ["JUPEB settings", "Numbering, screening and the documents asked for"],
   "jupeb/payments": ["JUPEB payments", "Application, status checking, acceptance and school fees of the session"],
   "jupeb/attendance": ["JUPEB attendance", "Registers, corrections, instructors and reports"],
+  "jupeb/calendar": ["JUPEB calendar", "The session's dates — the Board's and the University's"],
+  "jupeb/teaching": ["JUPEB teaching", "Your JUPEB subjects: the week, today's lectures, your students and notices"],
   "jupeb/requests": ["JUPEB change requests", "Withdrawals, deferments and changes asked for after submission"],
   "jupeb/import": ["Upload students from the old portal", "Registered JUPEB students, each given a login"],
   "jupeb/oldpayments": ["Old-portal payments", "Payments made on the old portal, put on each student's record once"],

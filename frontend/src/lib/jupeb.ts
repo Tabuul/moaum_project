@@ -27,7 +27,14 @@ export interface Fees {
   first_paid: boolean; second_paid: boolean; full_paid: boolean; paid: number; outstanding: number; status: string; frozen: boolean;
 }
 export interface FeeRef { kind: string; reference: string; amount: number; semester: number | null; expires_at: string; confirmed_at: string | null; channel: string | null; created_at: string }
-export interface Registered { code: string; title: string; registered_at: string; grade?: string | null; points?: number | null; units?: { code: string; title: string }[] }
+export interface Registered {
+  code: string; title: string; registered_at: string; grade?: string | null; points?: number | null;
+  /** V353: the student's course units of the subject (MAT 004A or 004B by the combination, the option chosen of an either/or subject) */
+  units?: { id?: string; code: string; title: string; semester?: number | null; credit_units?: number | null; topics?: number }[];
+  subject_id?: string; board_subject_id?: string | null; option_title?: string | null;
+  /** V353: of an either/or subject (Christian or Islamic Religious Studies, Igbo or Yoruba), the Board's subjects to choose between */
+  options?: { id: string; code: string; prefix: string; title: string }[] | null;
+}
 export interface JEvent { kind: string; note: string | null; at: string; actor_office?: string | null; actor_name?: string | null }
 /** V343: a request after submission — withdraw, defer, change the combination or the programme — and its decision */
 export interface ChangeRequest {
@@ -124,7 +131,7 @@ export const EVENT_LABEL: Record<string, string> = {
   ID_CARD_ISSUED: "Identity card issued", ID_CARD_REPLACED: "Identity card replaced",
   REFUND_CLAIM_OPENED: "Refund claim opened with the Bursary", REFUND_DETAILS_GIVEN: "Account for a refund given", REFUND_PROPOSED: "Refund raised by the Bursary",
   REFUND_DECLINED: "Refund claim declined by the Bursary", REFUND_PAID: "Refund paid by the Bursary", PRACTICE_ADVICE: "Advised on practice tests",
-  SESSION_REFILED: "Re-filed under another session",
+  SESSION_REFILED: "Re-filed under another session", SUBJECT_OPTION: "Subject option chosen",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -219,6 +226,10 @@ export interface Slot {
   class_name: string | null; instructors: string | null; class_id?: string | null; subject_id?: string; session?: string;
   /** V351: the course as the Board's timetable prints it (GEO 001), and a practical */
   course_code?: string | null; practical?: boolean;
+  /** V353: the course unit the slot teaches */
+  unit_id?: string | null; unit_title?: string | null;
+  /** V354: the room chosen from the list, its capacity, and the students the lecture has */
+  room_id?: string | null; capacity?: number | null; students?: number;
 }
 /** V347: a practice attempt's paper — the answer key only after submission (the server decides) */
 export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null; image?: boolean }
@@ -237,8 +248,24 @@ export const PAPER_KIND: Record<string, string> = {
 /** V349: whom a notice of the JUPEB Office reaches */
 export const AUDIENCE: Record<string, string> = {
   ALL: "Everyone in the session", APPLICANTS: "Applicants not yet admitted", ADMITTED: "Everyone admitted", STUDENTS: "Active students",
-  CLASS: "One class", COMBINATION: "One subject combination", PROGRAMME: "One programme", STUDENT: "One student",
+  CLASS: "One class", COMBINATION: "One subject combination", PROGRAMME: "One programme", STUDENT: "One student", SUBJECT: "The students of one subject",
 };
+/** V354: an event of the session calendar — the Board's or the University's own; a marker names what the portal works from */
+export interface CalendarEvent {
+  id?: string; ord?: number; starts_on: string; ends_on: string | null; title: string; deadline_on: string | null; deadline_note: string | null;
+  source?: "BOARD" | "SCHOOL"; marker: string | null; for_students?: boolean; planned: boolean;
+}
+export const MARKER: Record<string, string> = {
+  TEACHING_STARTS: "Teaching starts (first semester)", SEMESTER_2_STARTS: "Second semester starts", BOARD_REGISTRATION: "The Board's registration of candidates",
+  LECTURE_MONITORING: "Monitoring of lectures", CA_SUBMISSION: "Continuous assessment scores to the Board", CBT_MOCK: "CBT mock examinations",
+  EXAMINATIONS: "The examinations", RESULTS: "Release of results (end of the year)",
+};
+/** an event's dates in words: "28 Sep 2026", "13 Nov 2026 – 29 Jan 2027" */
+export const eventDates = (e: { starts_on: string; ends_on: string | null }) => (e.ends_on && e.ends_on !== e.starts_on ? `${day(e.starts_on)} – ${day(e.ends_on)}` : day(e.starts_on));
+/** V354: a room of the list JUPEB lectures are held in */
+export interface Room { id: string; code: string; name: string | null; kind: string; capacity: number | null; active: boolean; lectures?: number }
+/** V354: one item of the examination clearance */
+export interface ClearanceCheck { key: string; label: string; ok: boolean; note: string | null }
 /** V350: the refund claim a withdrawal opens, decided by the Bursary through its own refund workflow */
 export interface RefundClaim {
   id: string; opened_at: string; payments: { reference: string; kind: string; amount: number; channel: string | null; paidOn: string }[]; paid_total: number;

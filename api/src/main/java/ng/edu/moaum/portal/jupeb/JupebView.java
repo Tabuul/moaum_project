@@ -114,15 +114,20 @@ class JupebView {
         boolean published = jdbc.sql("SELECT jupeb.results_published(:s)").param("s", session).query(Boolean.class).single();
         out.put("resultsPublished", published);
         out.put("registered", jdbc.sql("""
-                SELECT s.code, s.title, sr.registered_at, r.grade, r.points,
-                       (SELECT coalesce(jsonb_agg(jsonb_build_object('code', u.code, 'title', u.title) ORDER BY u.ord, u.code), '[]'::jsonb)::text
-                          FROM jupeb.subject_unit u WHERE u.subject_id = s.id) AS units
+                SELECT s.id AS subject_id, s.code, s.title, sr.registered_at, r.grade, r.points, sr.board_subject_id,
+                       (SELECT b.title || ' (' || b.prefix || ')' FROM jupeb.board_subject b WHERE b.id = sr.board_subject_id) AS option_title,
+                       (SELECT CASE WHEN count(*) > 1 THEN jsonb_agg(jsonb_build_object('id', b.id, 'code', b.code, 'prefix', b.prefix, 'title', b.title) ORDER BY b.code)::text END
+                          FROM jupeb.board_subject b WHERE b.subject_id = s.id) AS options,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', u.unit_id, 'code', u.code, 'title', u.title, 'semester', u.semester, 'credit_units', u.credit_units,
+                                                                     'topics', u.topics) ORDER BY u.semester NULLS LAST, u.board_code NULLS LAST, u.ord, u.code), '[]'::jsonb)::text
+                          FROM jupeb.units_for((SELECT x.combination_id FROM jupeb.application x WHERE x.id = :id), :id) u WHERE u.subject_id = s.id) AS units
                   FROM jupeb.subject_registration sr JOIN jupeb.subject s ON s.id = sr.subject_id
                   LEFT JOIN jupeb.result r ON r.application_id = sr.application_id AND r.subject_id = sr.subject_id
                  WHERE sr.application_id = :id ORDER BY s.title
                 """).param("id", app).query().listOfRows().stream().map(r -> {
                     Map<String, Object> m = new LinkedHashMap<>(r);
                     m.put("units", parse(String.valueOf(r.get("units"))));
+                    m.put("options", r.get("options") == null ? null : parse(String.valueOf(r.get("options"))));
                     if (!office && !published) { m.remove("grade"); m.remove("points"); }
                     return m;
                 }).toList());
@@ -238,6 +243,20 @@ class JupebView {
     /** a jsonb column read as text, as plain maps and lists, for the other JUPEB controllers (V350) */
     static Object readJson(String text) {
         return text == null || "null".equals(text) ? null : READER.readValue(text, Object.class);
+    }
+
+    /** V353: a course unit's syllabus — the unit, its objectives, its subject's general objectives and the topics in the order printed */
+    static Map<String, Object> unitSyllabus(org.springframework.jdbc.core.simple.JdbcClient jdbc, UUID unit) {
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("""
+                SELECT u.id, u.code, u.title, u.semester, u.credit_units, u.objectives, u.source_page, s.code AS subject_code, s.title AS subject_title,
+                       b.code AS board_code, b.title AS board_title, b.prefix, b.objectives AS subject_objectives, y.title AS syllabus
+                  FROM jupeb.subject_unit u JOIN jupeb.subject s ON s.id = u.subject_id
+                  LEFT JOIN jupeb.board_subject b ON b.id = u.board_subject_id LEFT JOIN jupeb.syllabus y ON y.id = b.syllabus_id
+                 WHERE u.id = :u
+                """).param("u", unit).query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course unit", unit)));
+        out.put("topics", jdbc.sql("SELECT ord, sn, topic, sub_topic, details, source_page FROM jupeb.unit_topic WHERE unit_id = :u ORDER BY ord")
+                .param("u", unit).query().listOfRows());
+        return out;
     }
 
     /** what still stands between the application and its submission */

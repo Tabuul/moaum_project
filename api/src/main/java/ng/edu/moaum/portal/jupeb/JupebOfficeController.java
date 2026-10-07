@@ -447,10 +447,10 @@ class JupebOfficeController {
         out.put("rows", jdbc.sql("""
                 SELECT a.id, a.application_no, a.surname, a.first_name, a.middle_name, a.sex, a.date_of_birth::text AS date_of_birth, a.phone, a.email,
                        a.state_of_origin, a.lga, a.nin, a.stream, c.code AS combination_code, cl.name AS class_name, a.exam_no,
-                       (SELECT coalesce(array_agg(sj.code ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
-                         WHERE r.application_id = a.id) AS subject_codes,
-                       (SELECT coalesce(array_agg(sj.title ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
-                         WHERE r.application_id = a.id) AS subject_titles
+                       (SELECT coalesce(array_agg(coalesce(b.prefix, sj.code) ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
+                          LEFT JOIN jupeb.board_subject b ON b.id = r.board_subject_id WHERE r.application_id = a.id) AS subject_codes,
+                       (SELECT coalesce(array_agg(coalesce(b.title, sj.title) ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
+                          LEFT JOIN jupeb.board_subject b ON b.id = r.board_subject_id WHERE r.application_id = a.id) AS subject_titles
                   FROM jupeb.application a
                   LEFT JOIN jupeb.combination c ON c.id = a.combination_id
                   LEFT JOIN jupeb.class cl ON cl.id = a.class_id
@@ -555,7 +555,8 @@ class JupebOfficeController {
         return subjects();
     }
 
-    public record Unit(@NotBlank @Pattern(regexp = "^[A-Za-z]{2,5} ?[0-9]{3}$", message = "a code like BIO 001") String code, @NotBlank @Size(max = 160) String title) {
+    public record Unit(@NotBlank @Pattern(regexp = "^[A-Za-z]{2,5} ?[0-9]{3}[A-Za-z]?$", message = "a code like BIO 001") String code, @NotBlank @Size(max = 160) String title,
+                       @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(2) Integer semester) {
     }
 
     public record Units(@NotNull @Size(max = 12) List<@Valid Unit> units) {
@@ -567,8 +568,10 @@ class JupebOfficeController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> units(@PathVariable String code) {
         return jdbc.sql("""
-                SELECT u.code, u.title, u.ord FROM jupeb.subject_unit u JOIN jupeb.subject s ON s.id = u.subject_id
-                 WHERE upper(s.code) = upper(btrim(:c)) ORDER BY u.ord, u.code
+                SELECT u.code, u.title, u.ord, u.semester, u.credit_units, b.code AS board_code, b.prefix,
+                       (SELECT count(*) FROM jupeb.unit_topic t WHERE t.unit_id = u.id) AS topics
+                  FROM jupeb.subject_unit u JOIN jupeb.subject s ON s.id = u.subject_id LEFT JOIN jupeb.board_subject b ON b.id = u.board_subject_id
+                 WHERE upper(s.code) = upper(btrim(:c)) ORDER BY u.semester NULLS LAST, b.code NULLS LAST, u.ord, u.code
                 """).param("c", code).query().listOfRows();
     }
 
@@ -584,13 +587,92 @@ class JupebOfficeController {
                 throw new DomainRuleViolation("JUPEB_UNIT_TWICE", u.code() + " appears twice.", new DomainRuleViolation.Remedy("List each course unit once.", "JUPEB Office"));
             }
         }
-        jdbc.sql("DELETE FROM jupeb.subject_unit WHERE subject_id = :s").param("s", subject).update();
+        /* V353: kept by code — a unit the syllabus loaded keeps its Board subject, objectives and topics; one removed goes only when
+           no syllabus topic and no timetable slot hangs on it */
+        List<String> codes = body.units().stream().map(u -> u.code().trim().toUpperCase().replaceAll("^([A-Z]+) ?([0-9]{3}[A-Z]?)$", "$1 $2")).toList();
+        List<String> held = jdbc.sql("""
+                SELECT u.code FROM jupeb.subject_unit u WHERE u.subject_id = :s AND NOT (u.code = ANY (:codes))
+                   AND (EXISTS (SELECT 1 FROM jupeb.unit_topic t WHERE t.unit_id = u.id) OR EXISTS (SELECT 1 FROM jupeb.timetable_slot x WHERE x.unit_id = u.id))
+                """).param("s", subject).param("codes", codes.toArray(new String[0])).query(String.class).list();
+        if (!held.isEmpty()) {
+            throw new DomainRuleViolation("JUPEB_UNIT_IN_USE", String.join(", ", held) + " cannot be removed: the syllabus or the timetable uses " + (held.size() == 1 ? "it." : "them."),
+                    new DomainRuleViolation.Remedy("Keep the unit; correct its title instead.", "JUPEB Office"));
+        }
+        jdbc.sql("DELETE FROM jupeb.subject_unit WHERE subject_id = :s AND NOT (code = ANY (:codes))").param("s", subject).param("codes", codes.toArray(new String[0])).update();
         int ord = 1;
-        for (Unit u : body.units()) {
-            String c = u.code().trim().toUpperCase().replaceAll("^([A-Z]+) ?([0-9]{3})$", "$1 $2");
-            jdbc.sql("INSERT INTO jupeb.subject_unit (subject_id, code, title, ord) VALUES (:s, :c, :t, :o)").param("s", subject).param("c", c).param("t", u.title().trim()).param("o", ord++).update();
+        for (int i = 0; i < codes.size(); i++) {
+            Unit u = body.units().get(i);
+            jdbc.sql("""
+                    INSERT INTO jupeb.subject_unit (subject_id, code, title, ord, semester) VALUES (:s, :c, :t, :o, :sem)
+                    ON CONFLICT (subject_id, code) DO UPDATE SET title = EXCLUDED.title, ord = EXCLUDED.ord, semester = coalesce(EXCLUDED.semester, jupeb.subject_unit.semester)
+                    """).param("s", subject).param("c", codes.get(i)).param("t", u.title().trim()).param("o", ord++).param("sem", u.semester(), Types.INTEGER).update();
         }
         return units(code);
+    }
+
+    /* ── V353: the Board's syllabus — its subjects, their course units, a unit's objectives and topics, a combination's courses ── */
+
+    @GetMapping("/syllabus")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> syllabus() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("syllabus", jdbc.sql("SELECT code, title, source, first_session, last_session, loaded_at FROM jupeb.syllabus ORDER BY first_session DESC")
+                .query().listOfRows());
+        out.put("boardSubjects", jdbc.sql("""
+                SELECT b.id, b.code, b.title, b.prefix, b.objectives, s.id AS subject_id, s.code AS subject_code, s.title AS subject_title, y.code AS syllabus
+                  FROM jupeb.board_subject b JOIN jupeb.subject s ON s.id = b.subject_id JOIN jupeb.syllabus y ON y.id = b.syllabus_id
+                 ORDER BY b.code
+                """).query().listOfRows());
+        out.put("units", jdbc.sql("""
+                SELECT u.id, u.subject_id, u.board_subject_id, u.code, u.title, u.semester, u.credit_units, u.areas, u.ord,
+                       (SELECT count(*) FROM jupeb.unit_topic t WHERE t.unit_id = u.id) AS topics
+                  FROM jupeb.subject_unit u ORDER BY u.semester NULLS LAST, u.ord, u.code
+                """).query().listOfRows());
+        return out;
+    }
+
+    /** a course unit's syllabus: its objectives and the topics printed for it, with its subject's general objectives */
+    @GetMapping("/units/{id}/syllabus")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> unitSyllabus(@PathVariable UUID id) {
+        return JupebView.unitSyllabus(jdbc, id);
+    }
+
+    /** every combination's courses at once, for the list the office keeps of them */
+    @GetMapping("/combinations/units")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> everyCombinationUnits() {
+        return jdbc.sql("""
+                SELECT c.code AS combination_code, c.area, c.active, u.*
+                  FROM jupeb.combination c CROSS JOIN LATERAL jupeb.units_for(c.id, NULL) u
+                 ORDER BY c.code, u.semester NULLS LAST, u.n, u.board_code NULLS LAST, u.ord
+                """).query().listOfRows();
+    }
+
+    /** the courses of a combination, semester by semester: MAT 004A or 004B by its area, both options of an either/or subject */
+    @GetMapping("/combinations/{code}/units")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> combinationUnits(@PathVariable String code) {
+        UUID c = jdbc.sql("SELECT id FROM jupeb.combination WHERE upper(code) = upper(btrim(:c))").param("c", code).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("JUPEB combination", code));
+        return jdbc.sql("SELECT * FROM jupeb.units_for(:c, NULL)").param("c", c).query().listOfRows();
+    }
+
+    public record OptionIn(@NotNull UUID subjectId, @NotNull UUID boardSubjectId, @Size(max = 300) String reason) {
+    }
+
+    /** of an either/or subject (Christian or Islamic Religious Studies, Igbo or Yoruba), the one the student sits — a change with a reason */
+    @PutMapping("/applications/{id}/subject-option")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> subjectOption(@PathVariable UUID id, @Valid @RequestBody OptionIn b) {
+        jdbc.sql("SELECT jupeb.choose_option(:a, :s, :b, true, :r)").param("a", id).param("s", b.subjectId()).param("b", b.boardSubjectId())
+                .param("r", blankOf(b.reason()), Types.VARCHAR).query().listOfRows();
+        return view.of(id, true);
     }
 
     @GetMapping("/combinations")
@@ -908,13 +990,96 @@ class JupebOfficeController {
                          @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String startsAt,
                          @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String endsAt,
                          @Size(max = 120) String venue, @Size(max = 300) String note,
-                         @jakarta.validation.constraints.Pattern(regexp = "^([A-Za-z]{2,4}(/[A-Za-z]{2,4})? ?[0-9]{3})?$", message = "a course code such as GEO 001") String courseCode,
-                         Boolean practical) {
+                         @jakarta.validation.constraints.Pattern(regexp = "^([A-Za-z]{2,4}(/[A-Za-z]{2,4})? ?[0-9]{3}[A-Za-z]?)?$", message = "a course code such as GRY 001") String courseCode,
+                         Boolean practical, UUID roomId, Boolean tell) {
+    }
+
+    public record TellIn(Boolean tell) {
+    }
+
+    /** V354: a notice of a timetable change to the students of the subject (and class), on their dashboards and by email */
+    private int tellSubject(String session, UUID subject, UUID klass, String title, String body) {
+        String ref = klass == null ? subject.toString() : subject + "/" + klass;
+        UUID n = jdbc.sql("""
+                INSERT INTO jupeb.announcement (session, audience, audience_ref, title, body, send_email, created_by, created_office)
+                VALUES (:s, 'SUBJECT', :r, :t, :b, true, :by, nullif(current_setting('moaum.actor_office', true), '')) RETURNING id
+                """).param("s", session).param("r", ref).param("t", title.length() > 160 ? title.substring(0, 160) : title).param("b", body).param("by", actor())
+                .query(UUID.class).single();
+        jdbc.sql("SELECT jupeb.announcement_notify(:n)").param("n", n).query(Integer.class).single();
+        return jdbc.sql("SELECT jupeb.announcement_reach(:s, 'SUBJECT', :r)").param("s", session).param("r", ref).query(Integer.class).single();
+    }
+
+    private Map<String, Object> slotFacts(UUID id) {
+        return jdbc.sql("""
+                SELECT t.session, t.semester, t.subject_id, t.class_id, t.course_code, jupeb.slot_text(t.id) AS words,
+                       coalesce(t.course_code, (SELECT s.code FROM jupeb.subject s WHERE s.id = t.subject_id)) AS label
+                  FROM jupeb.timetable_slot t WHERE t.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("timetable slot", id));
+    }
+
+    /** V354: every lecture of a semester copied into an empty semester or session — into the second semester each course moves on to its place there */
+    public record CopyIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String session, @Min(1) @Max(2) int semester,
+                         @NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String toSession, @Min(1) @Max(2) int toSemester) {
+    }
+
+    @PostMapping("/timetable/copy")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> copyTimetable(@Valid @RequestBody CopyIn b) {
+        int n = jdbc.sql("SELECT jupeb.copy_timetable(:s, :sem, :ts, :tsem, :by)").param("s", b.session()).param("sem", b.semester()).param("ts", b.toSession())
+                .param("tsem", b.toSemester()).param("by", actor()).query(Integer.class).single();
+        return Map.of("copied", n, "session", b.toSession(), "semester", b.toSemester());
+    }
+
+    /* ── V354: the rooms ── */
+
+    public record RoomIn(@NotBlank @Size(max = 40) String code, @Size(max = 120) String name, @Pattern(regexp = "^(LECTURE|LAB|HALL|OTHER)?$") String kind,
+                         @Min(1) @Max(5000) Integer capacity, Boolean active) {
+    }
+
+    @GetMapping("/rooms")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> rooms() {
+        return jdbc.sql("""
+                SELECT r.id, r.code, r.name, r.kind, r.capacity, r.active,
+                       (SELECT count(*) FROM jupeb.timetable_slot t WHERE t.room_id = r.id AND t.active AND t.session = jupeb.current_session()) AS lectures
+                  FROM jupeb.room r ORDER BY r.active DESC, length(r.code), r.code
+                """).query().listOfRows();
+    }
+
+    @PostMapping("/rooms")
+    @PreAuthorize(WRITE)
+    @Transactional
+    List<Map<String, Object>> addRoom(@Valid @RequestBody RoomIn b) {
+        try {
+            jdbc.sql("INSERT INTO jupeb.room (code, name, kind, capacity, active, created_by) VALUES (jupeb.room_code(:c), :n, coalesce(:k, 'LECTURE'), :cap, coalesce(:a, true), :by)")
+                    .param("c", b.code()).param("n", blankOf(b.name()), Types.VARCHAR).param("k", blankOf(b.kind()), Types.VARCHAR).param("cap", b.capacity(), Types.INTEGER)
+                    .param("a", b.active(), Types.BOOLEAN).param("by", actor()).update();
+        } catch (org.springframework.dao.DuplicateKeyException twice) {
+            throw new DomainRuleViolation("JUPEB_ROOM_EXISTS", b.code().trim() + " is already on the list of rooms.", new DomainRuleViolation.Remedy("Choose it from the list.", "JUPEB Office"));
+        }
+        return rooms();
+    }
+
+    @PutMapping("/rooms/{id}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    List<Map<String, Object>> editRoom(@PathVariable UUID id, @Valid @RequestBody RoomIn b) {
+        try {
+            int n = jdbc.sql("UPDATE jupeb.room SET code = jupeb.room_code(:c), name = :n, kind = coalesce(:k, kind), capacity = :cap, active = coalesce(:a, active) WHERE id = :id")
+                    .param("c", b.code()).param("n", blankOf(b.name()), Types.VARCHAR).param("k", blankOf(b.kind()), Types.VARCHAR).param("cap", b.capacity(), Types.INTEGER)
+                    .param("a", b.active(), Types.BOOLEAN).param("id", id).update();
+            if (n == 0) throw new NotFound("room", id);
+        } catch (org.springframework.dao.DuplicateKeyException twice) {
+            throw new DomainRuleViolation("JUPEB_ROOM_EXISTS", b.code().trim() + " is already on the list of rooms.", new DomainRuleViolation.Remedy("Keep the code the room has.", "JUPEB Office"));
+        }
+        return rooms();
     }
 
     private static String course(String code) {
         String c = blankOf(code);
-        return c == null ? null : c.toUpperCase().replaceAll("^([A-Z/]+) ?([0-9]{3})$", "$1 $2");
+        return c == null ? null : c.toUpperCase().replaceAll("^([A-Z/]+) ?([0-9]{3}[A-Z]?)$", "$1 $2");
     }
 
     @GetMapping("/timetable")
@@ -924,6 +1089,11 @@ class JupebOfficeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("slots", jdbc.sql("""
                 SELECT t.id, t.session, t.semester, t.class_id, k.name AS class_name, t.subject_id, s.code, s.title, t.weekday, t.course_code, t.practical,
+                       t.unit_id, (SELECT u.title FROM jupeb.subject_unit u WHERE u.id = t.unit_id) AS unit_title,
+                       t.room_id, (SELECT r.capacity FROM jupeb.room r WHERE r.id = t.room_id) AS capacity,
+                       (SELECT count(*) FROM jupeb.subject_registration sr JOIN jupeb.application a ON a.id = sr.application_id
+                         WHERE sr.subject_id = t.subject_id AND a.session = t.session AND a.state IN ('STUDENT', 'COMPLETED')
+                           AND (t.class_id IS NULL OR a.class_id = t.class_id)) AS students,
                        to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
                        (SELECT string_agg(p.surname || ', ' || p.given_names, '; ' ORDER BY p.surname) FROM attendance.instructor i JOIN iam.person p ON p.id = i.person_id
                          WHERE i.context = 'JUPEB' AND i.session = t.session AND i.subject_ref = t.subject_id AND i.ended_at IS NULL
@@ -934,6 +1104,13 @@ class JupebOfficeController {
                 """).param("s", session.trim()).param("sem", semester, Types.INTEGER).query().listOfRows());
         out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", session.trim()).query().listOfRows());
         out.put("subjects", jdbc.sql("SELECT id, code, title FROM jupeb.subject WHERE active ORDER BY code").query().listOfRows());
+        out.put("rooms", rooms());
+        out.put("currentSemester", jdbc.sql("SELECT jupeb.current_semester(:s, NULL)").param("s", session.trim()).query(Integer.class).single());
+        /* V353: each subject's course units, for the form's course and the Board's rules */
+        out.put("units", jdbc.sql("""
+                SELECT u.id, u.subject_id, u.code, u.title, u.semester, b.prefix FROM jupeb.subject_unit u LEFT JOIN jupeb.board_subject b ON b.id = u.board_subject_id
+                 ORDER BY u.semester NULLS LAST, b.code NULLS LAST, u.ord, u.code
+                """).query().listOfRows());
         return out;
     }
 
@@ -942,38 +1119,61 @@ class JupebOfficeController {
     @Transactional
     Map<String, Object> addSlot(@Valid @RequestBody SlotIn b) {
         UUID id = jdbc.sql("""
-                INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, venue, note, course_code, practical, created_by)
-                VALUES (:s, :sem, :c, :sub, :w, :st::time, :en::time, :v, :n, :cc, :pr, :by) RETURNING id
+                INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, venue, room_id, note, course_code, practical, created_by)
+                VALUES (:s, :sem, :c, :sub, :w, :st::time, :en::time, :v, :room, :n, :cc, :pr, :by) RETURNING id
                 """).param("s", b.session().trim()).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
                 .param("cc", course(b.courseCode()), Types.VARCHAR).param("pr", Boolean.TRUE.equals(b.practical()))
-                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
-                .param("by", actor()).query(UUID.class).single();
-        return Map.of("id", id);
+                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", b.roomId() == null ? blankOf(b.venue()) : null, Types.VARCHAR).param("room", b.roomId(), Types.OTHER)
+                .param("n", blankOf(b.note()), Types.VARCHAR).param("by", actor()).query(UUID.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(Map.of("id", id));
+        if (Boolean.TRUE.equals(b.tell())) {
+            Map<String, Object> f = slotFacts(id);
+            out.put("told", tellSubject(b.session().trim(), b.subjectId(), b.classId(), "Timetable: " + f.get("label") + " added",
+                    "A lecture is added to the timetable: " + f.get("words") + "."));
+        }
+        return out;
     }
 
     @PutMapping("/timetable/{id}")
     @PreAuthorize(WRITE)
     @Transactional
     Map<String, Object> editSlot(@PathVariable UUID id, @Valid @RequestBody SlotIn b) {
+        Map<String, Object> before = slotFacts(id);
         int n = jdbc.sql("""
-                UPDATE jupeb.timetable_slot SET semester = :sem, class_id = :c, subject_id = :sub, weekday = :w, starts_at = :st::time, ends_at = :en::time, venue = :v, note = :n,
-                       course_code = :cc, practical = :pr
+                UPDATE jupeb.timetable_slot SET semester = :sem, class_id = :c, subject_id = :sub, weekday = :w, starts_at = :st::time, ends_at = :en::time, venue = :v, room_id = :room,
+                       note = :n, course_code = :cc, practical = :pr
                  WHERE id = :id AND active
                 """).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
                 .param("cc", course(b.courseCode()), Types.VARCHAR).param("pr", Boolean.TRUE.equals(b.practical()))
-                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
-                .param("id", id).update();
+                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", b.roomId() == null ? blankOf(b.venue()) : null, Types.VARCHAR).param("room", b.roomId(), Types.OTHER)
+                .param("n", blankOf(b.note()), Types.VARCHAR).param("id", id).update();
         if (n == 0) throw new NotFound("timetable slot", id);
-        return Map.of("id", id);
+        Map<String, Object> out = new LinkedHashMap<>(Map.of("id", id));
+        if (Boolean.TRUE.equals(b.tell())) {
+            Map<String, Object> after = slotFacts(id);
+            String body = "The timetable is changed: " + after.get("words") + ". It was: " + before.get("words") + ".";
+            int told = tellSubject(String.valueOf(after.get("session")), b.subjectId(), b.classId(), "Timetable change: " + after.get("label"), body);
+            if (!before.get("subject_id").equals(b.subjectId())) {
+                told += tellSubject(String.valueOf(before.get("session")), (UUID) before.get("subject_id"), (UUID) before.get("class_id"), "Timetable change: " + before.get("label"), body);
+            }
+            out.put("told", told);
+        }
+        return out;
     }
 
     @PostMapping("/timetable/{id}/remove")
     @PreAuthorize(WRITE)
     @Transactional
-    Map<String, Object> removeSlot(@PathVariable UUID id) {
+    Map<String, Object> removeSlot(@PathVariable UUID id, @RequestBody(required = false) TellIn body) {
+        Map<String, Object> before = slotFacts(id);
         int n = jdbc.sql("UPDATE jupeb.timetable_slot SET active = false WHERE id = :id AND active").param("id", id).update();
         if (n == 0) throw new NotFound("timetable slot", id);
-        return Map.of("id", id, "removed", true);
+        Map<String, Object> out = new LinkedHashMap<>(Map.of("id", id, "removed", true));
+        if (body != null && Boolean.TRUE.equals(body.tell())) {
+            out.put("told", tellSubject(String.valueOf(before.get("session")), (UUID) before.get("subject_id"), (UUID) before.get("class_id"),
+                    "Timetable: " + before.get("label") + " removed", "A lecture is no longer on the timetable: " + before.get("words") + "."));
+        }
+        return out;
     }
 
     /* ── V347: practice tests ── */
@@ -1140,7 +1340,7 @@ class JupebOfficeController {
     }
 
     public record AnnouncementIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String session,
-                                 @NotBlank @Pattern(regexp = "ALL|APPLICANTS|ADMITTED|STUDENTS|CLASS|COMBINATION|PROGRAMME") String audience,
+                                 @NotBlank @Pattern(regexp = "ALL|APPLICANTS|ADMITTED|STUDENTS|CLASS|COMBINATION|PROGRAMME|SUBJECT") String audience,
                                  @Size(max = 80) String audienceRef, @NotBlank @Size(min = 3, max = 160) String title, @NotBlank @Size(min = 3, max = 5000) String body,
                                  Boolean pinned, Boolean email, Boolean sms, LocalDate expiresOn) {
     }
@@ -1161,6 +1361,15 @@ class JupebOfficeController {
                     throw new DomainRuleViolation("JUPEB_ANNOUNCE_AUDIENCE", "Choose a subject combination.", new DomainRuleViolation.Remedy("Pick the combination from the list.", "JUPEB Office"));
                 }
                 return r.toUpperCase();
+            }
+            case "SUBJECT" -> {
+                /* V354: a subject, or a subject and a class of the session (subject/class) */
+                String[] parts = r == null ? new String[0] : r.split("/");
+                boolean ok = parts.length >= 1 && parts.length <= 2 && Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.subject WHERE id::text = :x)").param("x", parts[0]).query(Boolean.class).single())
+                        && (parts.length == 1 || Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.class WHERE id::text = :k AND session = :s)").param("k", parts[1]).param("s", session).query(Boolean.class).single()));
+                if (!ok) throw new DomainRuleViolation("JUPEB_ANNOUNCE_AUDIENCE", "Choose a subject (and, if it is for one class, a class of the " + session + " session).",
+                        new DomainRuleViolation.Remedy("Pick the subject from the list.", "JUPEB Office"));
+                return r;
             }
             case "PROGRAMME" -> {
                 if (!"SCIENCE".equals(r) && !"NON_SCIENCE".equals(r)) {
@@ -1187,6 +1396,8 @@ class JupebOfficeController {
                        n.withdrawn_at, n.withdrawn_reason, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = n.created_by) AS created_by_name,
                        CASE n.audience WHEN 'CLASS' THEN (SELECT k.name FROM jupeb.class k WHERE k.id::text = n.audience_ref)
                                        WHEN 'STUDENT' THEN (SELECT upper(x.surname) || ', ' || x.first_name || ' (' || x.application_no || ')' FROM jupeb.application x WHERE x.id::text = n.audience_ref)
+                                       WHEN 'SUBJECT' THEN (SELECT s.title FROM jupeb.subject s WHERE s.id::text = split_part(n.audience_ref, '/', 1))
+                                                           || coalesce(' · ' || (SELECT k.name FROM jupeb.class k WHERE k.id::text = nullif(split_part(n.audience_ref, '/', 2), '')), '')
                                        ELSE n.audience_ref END AS audience_name,
                        (SELECT count(*) FROM jupeb.application a WHERE jupeb.audience_reaches(n.session, n.audience, n.audience_ref, a)) AS reach,
                        (SELECT count(*) FROM jupeb.announcement_read r WHERE r.announcement_id = n.id) AS reads
@@ -1195,6 +1406,7 @@ class JupebOfficeController {
                 """).param("s", s).query().listOfRows());
         out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", s).query().listOfRows());
         out.put("combinations", jdbc.sql("SELECT code, name FROM jupeb.combination WHERE active ORDER BY code").query().listOfRows());
+        out.put("subjects", jdbc.sql("SELECT id, code, title FROM jupeb.subject WHERE active ORDER BY title").query().listOfRows());
         return out;
     }
 
@@ -1204,9 +1416,9 @@ class JupebOfficeController {
     @Transactional(readOnly = true)
     Map<String, Object> announcementReach(@RequestParam String session, @RequestParam String audience, @RequestParam(required = false) String ref) {
         String a = audience.trim().toUpperCase();
-        if (!Set.of("ALL", "APPLICANTS", "ADMITTED", "STUDENTS", "CLASS", "COMBINATION", "PROGRAMME").contains(a)) throw new NotFound("audience", a);
-        String r = Set.of("CLASS", "COMBINATION", "PROGRAMME").contains(a) ? blankOf(ref) : null;
-        if (r == null && Set.of("CLASS", "COMBINATION", "PROGRAMME").contains(a)) return Map.of("count", 0);
+        if (!Set.of("ALL", "APPLICANTS", "ADMITTED", "STUDENTS", "CLASS", "COMBINATION", "PROGRAMME", "SUBJECT").contains(a)) throw new NotFound("audience", a);
+        String r = Set.of("CLASS", "COMBINATION", "PROGRAMME", "SUBJECT").contains(a) ? blankOf(ref) : null;
+        if (r == null && Set.of("CLASS", "COMBINATION", "PROGRAMME", "SUBJECT").contains(a)) return Map.of("count", 0);
         return Map.of("count", jdbc.sql("SELECT jupeb.announcement_reach(:s, :a, :r)").param("s", session.trim()).param("a", a).param("r", r, Types.VARCHAR)
                 .query(Integer.class).single());
     }
@@ -1435,6 +1647,222 @@ class JupebOfficeController {
                 .param("c", s, Types.VARCHAR).param("by", actor()).update();
         if (n == 0) throw new NotFound("JUPEB default setting", "*");
         return settings(null);
+    }
+
+    /* ── V354: the session calendar ── */
+
+    public record EventIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String session, @NotNull LocalDate startsOn, LocalDate endsOn,
+                          @NotBlank @Size(min = 3, max = 300) String title, LocalDate deadlineOn, @Size(max = 300) String deadlineNote,
+                          @Pattern(regexp = "^(BOARD|SCHOOL)?$") String source,
+                          @Pattern(regexp = "^(TEACHING_STARTS|SEMESTER_2_STARTS|BOARD_REGISTRATION|LECTURE_MONITORING|CA_SUBMISSION|CBT_MOCK|EXAMINATIONS|RESULTS)?$") String marker,
+                          Boolean forStudents, Boolean planned) {
+    }
+
+    @GetMapping("/calendar")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> calendar(@RequestParam(required = false) String session) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("sessions", jdbc.sql("""
+                SELECT DISTINCT x.session FROM (SELECT session FROM jupeb.calendar_event WHERE removed_at IS NULL UNION SELECT session FROM jupeb.application
+                                                 UNION SELECT jupeb.current_session()) x WHERE x.session IS NOT NULL ORDER BY 1 DESC
+                """).query(String.class).list());
+        out.put("currentSession", jdbc.sql("SELECT jupeb.current_session()").query(String.class).single());
+        out.put("semester", jdbc.sql("SELECT jupeb.current_semester(:s, NULL)").param("s", s).query(Integer.class).single());
+        out.put("today", jdbc.sql("SELECT (now() AT TIME ZONE 'Africa/Lagos')::date::text").query(String.class).single());
+        out.put("events", jdbc.sql("""
+                SELECT e.id, e.ord, e.starts_on::text AS starts_on, e.ends_on::text AS ends_on, e.title, e.deadline_on::text AS deadline_on, e.deadline_note, e.source,
+                       e.marker, e.for_students, e.planned
+                  FROM jupeb.calendar_event e WHERE e.session = :s AND e.removed_at IS NULL ORDER BY e.starts_on, e.ord, e.title
+                """).param("s", s).query().listOfRows());
+        return out;
+    }
+
+    @PostMapping("/calendar")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> addEvent(@Valid @RequestBody EventIn b) {
+        try {
+            jdbc.sql("""
+                    INSERT INTO jupeb.calendar_event (session, ord, starts_on, ends_on, title, deadline_on, deadline_note, source, marker, for_students, planned, created_by)
+                    VALUES (:s, (SELECT coalesce(max(ord), 0) + 1 FROM jupeb.calendar_event WHERE session = :s), :st, :en, :t, :d, :dn, coalesce(:src, 'SCHOOL'), :m,
+                            coalesce(:fs, false), coalesce(:pl, false), :by)
+                    """).param("s", b.session()).param("st", b.startsOn()).param("en", b.endsOn(), Types.DATE).param("t", b.title().trim()).param("d", b.deadlineOn(), Types.DATE)
+                    .param("dn", blankOf(b.deadlineNote()), Types.VARCHAR).param("src", blankOf(b.source()), Types.VARCHAR).param("m", blankOf(b.marker()), Types.VARCHAR)
+                    .param("fs", b.forStudents(), Types.BOOLEAN).param("pl", b.planned(), Types.BOOLEAN).param("by", actor()).update();
+        } catch (org.springframework.dao.DuplicateKeyException twice) {
+            throw markerTaken(b);
+        }
+        return calendar(b.session());
+    }
+
+    private static DomainRuleViolation markerTaken(EventIn b) {
+        return new DomainRuleViolation("JUPEB_CALENDAR_MARKER", "Another event of " + b.session() + " already marks this (" + b.marker() + ").",
+                new DomainRuleViolation.Remedy("Edit that event, or take the mark off it first.", "JUPEB Office"));
+    }
+
+    @PutMapping("/calendar/{id}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> editEvent(@PathVariable UUID id, @Valid @RequestBody EventIn b) {
+        try {
+            int n = jdbc.sql("""
+                    UPDATE jupeb.calendar_event SET starts_on = :st, ends_on = :en, title = :t, deadline_on = :d, deadline_note = :dn, source = coalesce(:src, source),
+                           marker = :m, for_students = coalesce(:fs, for_students), planned = coalesce(:pl, planned), updated_at = now()
+                     WHERE id = :id AND session = :s AND removed_at IS NULL
+                    """).param("st", b.startsOn()).param("en", b.endsOn(), Types.DATE).param("t", b.title().trim()).param("d", b.deadlineOn(), Types.DATE)
+                    .param("dn", blankOf(b.deadlineNote()), Types.VARCHAR).param("src", blankOf(b.source()), Types.VARCHAR).param("m", blankOf(b.marker()), Types.VARCHAR)
+                    .param("fs", b.forStudents(), Types.BOOLEAN).param("pl", b.planned(), Types.BOOLEAN).param("id", id).param("s", b.session()).update();
+            if (n == 0) throw new NotFound("calendar event", id);
+        } catch (org.springframework.dao.DuplicateKeyException twice) {
+            throw markerTaken(b);
+        }
+        return calendar(b.session());
+    }
+
+    @PostMapping("/calendar/{id}/remove")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> removeEvent(@PathVariable UUID id) {
+        String s = jdbc.sql("UPDATE jupeb.calendar_event SET removed_at = now(), removed_by = :by WHERE id = :id AND removed_at IS NULL RETURNING session")
+                .param("by", actor()).param("id", id).query(String.class).optional().orElseThrow(() -> new NotFound("calendar event", id));
+        return calendar(s);
+    }
+
+    public record CalendarCopyIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String from, @NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String to) {
+    }
+
+    /** a session's calendar copied forward as the plan of a later one — a year on, planned until confirmed */
+    @PostMapping("/calendar/copy")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> copyCalendar(@Valid @RequestBody CalendarCopyIn b) {
+        jdbc.sql("SELECT jupeb.copy_calendar(:f, :t, :by)").param("f", b.from()).param("t", b.to()).param("by", actor()).query(Integer.class).single();
+        return calendar(b.to());
+    }
+
+    public record SessionIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String session) {
+    }
+
+    /** a planned calendar confirmed against the Board's own, every event at once */
+    @PostMapping("/calendar/confirm")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> confirmCalendar(@Valid @RequestBody SessionIn b) {
+        jdbc.sql("UPDATE jupeb.calendar_event SET planned = false, updated_at = now() WHERE session = :s AND planned AND removed_at IS NULL").param("s", b.session()).update();
+        return calendar(b.session());
+    }
+
+    /* ── V354: clearance for the examination ── */
+
+    private List<Map<String, Object>> clearanceRows(String s) {
+        return jdbc.sql("""
+                SELECT application_id, application_no, name, class_name, combination_code, exam_no, checks::text AS checks, array_to_json(outstanding)::text AS outstanding, cleared
+                  FROM jupeb.exam_clearance(:s)
+                """).param("s", s).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("checks", JupebView.readJson(String.valueOf(r.get("checks"))));
+                    m.put("outstanding", JupebView.readJson(String.valueOf(r.get("outstanding"))));
+                    return m;
+                }).toList();
+    }
+
+    @GetMapping("/clearance")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> clearance(@RequestParam(required = false) String session) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("boardRegistration", jdbc.sql("""
+                SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, deadline_on::text AS deadline_on, title FROM jupeb.calendar_event
+                 WHERE session = :s AND marker = 'BOARD_REGISTRATION' AND removed_at IS NULL
+                """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("examinations", jdbc.sql("SELECT jupeb.calendar_date(:s, 'EXAMINATIONS')::text").param("s", s).query(String.class).single());
+        out.put("rows", clearanceRows(s));
+        return out;
+    }
+
+    /** every student not yet cleared told, one notice each, what is outstanding on their own record */
+    @PostMapping("/clearance/tell")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> tellOutstanding(@Valid @RequestBody SessionIn b) {
+        int told = 0;
+        for (Map<String, Object> r : clearanceRows(b.session())) {
+            if (Boolean.TRUE.equals(r.get("cleared"))) continue;
+            List<?> items = (List<?>) r.get("outstanding");
+            StringBuilder body = new StringBuilder("To sit the JUPEB examination your record must be complete. These are outstanding:");
+            for (Object x : items) body.append("\n• ").append(x);
+            body.append("\nSee to them, or ask the JUPEB Office what to do.");
+            UUID n = jdbc.sql("""
+                    INSERT INTO jupeb.announcement (session, audience, audience_ref, title, body, send_email, created_by, created_office)
+                    VALUES (:s, 'STUDENT', :r, 'Before the examination: what is outstanding', :b, true, :by, nullif(current_setting('moaum.actor_office', true), '')) RETURNING id
+                    """).param("s", b.session()).param("r", r.get("application_id").toString()).param("b", body.toString()).param("by", actor()).query(UUID.class).single();
+            jdbc.sql("SELECT jupeb.announcement_notify(:n)").param("n", n).query(Integer.class).single();
+            told++;
+        }
+        return Map.of("told", told);
+    }
+
+    /* ── V354: what stands in the current session, and what the next has, before the current session is changed ── */
+
+    @GetMapping("/settings/session-check")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> sessionCheck(@RequestParam String to) {
+        String from = jdbc.sql("SELECT jupeb.current_session()").query(String.class).single();
+        String t = to.trim();
+        if (!t.matches("^\\d{4}/\\d{4}$")) throw new NotFound("session", t);
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        java.util.function.BiConsumer<String[], Object> add = (x, count) -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("session", x[0]); m.put("level", x[1]); m.put("title", x[2]); m.put("detail", x[3]); m.put("count", count);
+            items.add(m);
+        };
+        long open = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) WHERE (policy.window_state(w.t, :s, NULL)).state = 'OPEN'")
+                .param("s", from).query(Long.class).single();
+        add.accept(new String[] {from, open > 0 ? "warn" : "ok", open > 0 ? "JUPEB windows still open" : "No JUPEB window open",
+                open > 0 ? "New applicants and status checking still follow " + from + "; the Director of ICT closes them, or sets them for " + t + "." : "Nothing is taken in under " + from + " now."}, open);
+        long inProgress = jdbc.sql("SELECT count(*) FROM jupeb.application WHERE session = :s AND state IN ('DRAFT', 'SUBMITTED', 'RETURNED', 'ELIGIBLE', 'PENDING', 'ADMITTED')")
+                .param("s", from).query(Long.class).single();
+        add.accept(new String[] {from, inProgress > 0 ? "warn" : "ok", "Applications still in progress",
+                "They stay in " + from + " — applying, under review or admitted and not yet students."}, inProgress);
+        long students = jdbc.sql("SELECT count(*) FROM jupeb.application WHERE session = :s AND state = 'STUDENT'").param("s", from).query(Long.class).single();
+        boolean published = jdbc.sql("SELECT jupeb.results_published(:s)").param("s", from).query(Boolean.class).single();
+        add.accept(new String[] {from, students > 0 && !published ? "warn" : "ok", published ? "Results published" : "Results not yet published",
+                students + " active student" + (students == 1 ? "" : "s") + " of " + from + (published ? "." : " await their results.")}, students);
+        Map<String, Object> owed = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE sf.outstanding > 0) AS n, coalesce(sum(sf.outstanding), 0) AS total
+                  FROM jupeb.application a CROSS JOIN LATERAL jupeb.school_fees(a.id) sf WHERE a.session = :s AND a.state IN ('STUDENT', 'COMPLETED')
+                """).param("s", from).query().singleRow();
+        add.accept(new String[] {from, ((Number) owed.get("n")).longValue() > 0 ? "info" : "ok", "School fees outstanding",
+                "₦" + String.format("%,.0f", ((Number) owed.get("total")).doubleValue()) + " in all — the Bursary's to follow up."}, owed.get("n"));
+        long unlocked = jdbc.sql("SELECT count(*) FROM attendance.register WHERE context = 'JUPEB' AND session = :s AND locked_at IS NULL").param("s", from).query(Long.class).single();
+        add.accept(new String[] {from, unlocked > 0 ? "info" : "ok", "Attendance registers not locked", "Lock them, so their marks are final."}, unlocked);
+        long ahead = jdbc.sql("SELECT count(*) FROM jupeb.calendar_event WHERE session = :s AND removed_at IS NULL AND coalesce(ends_on, starts_on) >= (now() AT TIME ZONE 'Africa/Lagos')::date")
+                .param("s", from).query(Long.class).single();
+        add.accept(new String[] {from, ahead > 0 ? "info" : "ok", "Calendar events still ahead", ahead > 0 ? "The session's calendar is not over." : "The session's calendar is over."}, ahead);
+        boolean onCalendar = jdbc.sql("SELECT EXISTS (SELECT 1 FROM policy.academic_session WHERE name = :t)").param("t", t).query(Boolean.class).single();
+        add.accept(new String[] {t, onCalendar ? "ok" : "warn", onCalendar ? "On the University's calendar" : "Not on the University's calendar",
+                onCalendar ? "Windows can be set for " + t + "." : "The University's calendar has no " + t + " yet, so no JUPEB window can be set for it."}, onCalendar ? 1 : 0);
+        long windows = jdbc.sql("SELECT count(*) FROM (VALUES ('JUPEB_APPLICATION'), ('JUPEB_ADMISSION_STATUS_CHECKING')) w(t) WHERE (policy.window_state(w.t, :s, NULL)).state = 'OPEN'")
+                .param("s", t).query(Long.class).single();
+        add.accept(new String[] {t, "info", windows > 0 ? "JUPEB windows open" : "JUPEB windows closed",
+                windows > 0 ? "Applications are taken for " + t + "." : "Closed until the Director of ICT opens them."}, windows);
+        boolean fees = jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.fee_setting WHERE session = :t) AND EXISTS (SELECT 1 FROM jupeb.school_fee WHERE session = :t)").param("t", t).query(Boolean.class).single();
+        add.accept(new String[] {t, fees ? "ok" : "info", fees ? "The Bursary's fees are set" : "The Bursary's default fees apply", fees ? "Fees of its own are set for " + t + "." : "No fee rule of its own; the default applies until the Bursary sets one."}, fees ? 1 : 0);
+        long slots = jdbc.sql("SELECT count(*) FROM jupeb.timetable_slot WHERE session = :t AND active").param("t", t).query(Long.class).single();
+        add.accept(new String[] {t, slots > 0 ? "ok" : "info", "Lecture timetable", slots > 0 ? slots + " lectures on it." : "None yet — copy " + from + "'s on the timetable page."}, slots);
+        long events = jdbc.sql("SELECT count(*) FROM jupeb.calendar_event WHERE session = :t AND removed_at IS NULL").param("t", t).query(Long.class).single();
+        add.accept(new String[] {t, events > 0 ? "ok" : "info", "Session calendar", events > 0 ? events + " events on it." : "None yet — copy " + from + "'s forward as the plan, on the calendar page."}, events);
+        long classes = jdbc.sql("SELECT count(*) FROM jupeb.class WHERE session = :t").param("t", t).query(Long.class).single();
+        add.accept(new String[] {t, "info", "Classes", classes > 0 ? classes + " classes." : "None yet."}, classes);
+        long deferred = jdbc.sql("SELECT count(*) FROM jupeb.application WHERE state = 'DEFERRED' AND deferred_to = :t").param("t", t).query(Long.class).single();
+        add.accept(new String[] {t, deferred > 0 ? "info" : "ok", "Deferred admissions to resume", deferred > 0 ? "The JUPEB Office resumes each in " + t + "." : "None."}, deferred);
+        return Map.of("from", from, "to", t, "items", items);
     }
 
     public record DocumentKindIn(@NotBlank @Pattern(regexp = "^[A-Z][A-Z0-9_]{1,30}$") String code, @NotBlank @Size(max = 120) String label,

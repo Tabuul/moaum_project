@@ -150,6 +150,9 @@ class AttendanceController {
         }
         Map<String, Object> pol = jdbc.sql("SELECT min_percent, warn_band, min_classes FROM attendance.policy_of('JUPEB', :s)").param("s", s)
                 .query().listOfRows().stream().findFirst().orElse(Map.of());
+        /* V354: the semester today by the JUPEB calendar, and today */
+        out.put("semester", jdbc.sql("SELECT jupeb.current_semester(:s, NULL)").param("s", s).query(Integer.class).single());
+        out.put("today", jdbc.sql("SELECT (now() AT TIME ZONE 'Africa/Lagos')::date::text").query(String.class).single());
         out.put("policy", pol.get("min_percent"));
         out.put("warnBand", pol.get("warn_band"));
         out.put("minClasses", pol.getOrDefault("min_classes", 3));
@@ -309,6 +312,97 @@ class AttendanceController {
             if (!taught) throw new NotFound("photograph", member);
         }
         return JupebDocuments.stream(jdbc, files, member, "PASSPORT", null, true);
+    }
+
+    /* ── V354: the lectures due, from the timetable ── */
+
+    /** the timetabled lectures from one day to another (today by default), each recorded, open, not held, due, missed or to come —
+     *  an instructor's own subjects (and classes) only */
+    @GetMapping("/lectures")
+    @PreAuthorize(ANY)
+    @Transactional(readOnly = true)
+    Map<String, Object> lectures(Authentication auth, @RequestParam(required = false) String session, @RequestParam(required = false) LocalDate from,
+                                 @RequestParam(required = false) LocalDate to, @RequestParam(required = false) String scope) {
+        String s = sessionOr(session);
+        LocalDate today = jdbc.sql("SELECT (now() AT TIME ZONE 'Africa/Lagos')::date").query(LocalDate.class).single();
+        LocalDate f = from == null ? today : from;
+        LocalDate t = to == null ? f : to;
+        if ("semester".equals(scope)) {
+            /* the semester so far: from the day it started by the calendar (or the last 30 days when the calendar does not say) to today */
+            f = jdbc.sql("""
+                    SELECT coalesce(CASE jupeb.current_semester(:s, NULL) WHEN 2 THEN jupeb.calendar_date(:s, 'SEMESTER_2_STARTS') ELSE jupeb.calendar_date(:s, 'TEACHING_STARTS') END,
+                                    (now() AT TIME ZONE 'Africa/Lagos')::date - 30)
+                    """).param("s", s).query(LocalDate.class).single();
+            if (f.isAfter(today)) f = today;
+            t = today;
+        }
+        if (t.isBefore(f) || t.isAfter(f.plusDays(400))) throw new DomainRuleViolation("ATT_RANGE", "Choose a range of at most 400 days, ending after it begins.",
+                new DomainRuleViolation.Remedy("Narrow the dates.", "You"));
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT d.*, d.day::text AS held_on FROM jupeb.lectures_due(:s, :f, :t) d
+                 WHERE :all OR attendance.may_take(:p, 'JUPEB', :s, d.subject_id, d.class_id)
+                """).param("s", s).param("f", f).param("t", t).param("all", reader(auth)).param("p", me(auth)).query().listOfRows();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Map<String, Object> r : rows) counts.merge(String.valueOf(r.get("state")), 1L, Long::sum);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("from", f.toString());
+        out.put("to", t.toString());
+        out.put("today", today.toString());
+        out.put("teachingStarts", jdbc.sql("SELECT jupeb.calendar_date(:s, 'TEACHING_STARTS')::text").param("s", s).query(String.class).single());
+        out.put("semesterStarts", jdbc.sql("""
+                SELECT (CASE jupeb.current_semester(:s, NULL) WHEN 2 THEN jupeb.calendar_date(:s, 'SEMESTER_2_STARTS') ELSE jupeb.calendar_date(:s, 'TEACHING_STARTS') END)::text
+                """).param("s", s).query(String.class).single());
+        out.put("counts", counts);
+        out.put("rows", rows);
+        return out;
+    }
+
+    private Map<String, Object> slot(UUID id) {
+        return jdbc.sql("SELECT session, subject_id, class_id FROM jupeb.timetable_slot WHERE id = :id AND active").param("id", id).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("timetable lecture", id));
+    }
+
+    public record DayIn(@NotNull LocalDate day, @Size(max = 300) String reason) {
+    }
+
+    /** the register of a timetabled lecture on its day — by its instructor or the office; the lecture's own register, found again after */
+    @PostMapping("/slots/{id}/register")
+    @PreAuthorize(ANY)
+    @Transactional
+    Map<String, Object> openLecture(Authentication auth, @PathVariable UUID id, @Valid @RequestBody DayIn body) {
+        Map<String, Object> t = slot(id);
+        if (!mayTake(auth, String.valueOf(t.get("session")), (UUID) t.get("subject_id"), (UUID) t.get("class_id"))) {
+            throw new AccessDeniedException("You are not assigned to take this subject's attendance.");
+        }
+        UUID reg = jdbc.sql("SELECT jupeb.open_lecture_register(:s, :d, :by)").param("s", id).param("d", body.day()).param("by", me(auth)).query(UUID.class).single();
+        return detail(auth, reg, null, 0, 200);
+    }
+
+    /** a timetabled lecture recorded as not held on a day, with the reason — by its instructor or the office */
+    @PostMapping("/slots/{id}/not-held")
+    @PreAuthorize(ANY)
+    @Transactional
+    Map<String, Object> notHeld(Authentication auth, @PathVariable UUID id, @Valid @RequestBody DayIn body) {
+        Map<String, Object> t = slot(id);
+        if (!mayTake(auth, String.valueOf(t.get("session")), (UUID) t.get("subject_id"), (UUID) t.get("class_id"))) {
+            throw new AccessDeniedException("You are not assigned to this subject.");
+        }
+        String office = auth.getAuthorities().stream().map(GrantedAuthority::getAuthority).filter(a -> a.startsWith("OFFICE_")).map(a -> a.substring(7)).findFirst().orElse(null);
+        UUID n = jdbc.sql("SELECT jupeb.record_not_held(:s, :d, :r, :by, :o)").param("s", id).param("d", body.day()).param("r", body.reason(), Types.VARCHAR)
+                .param("by", me(auth)).param("o", office, Types.VARCHAR).query(UUID.class).single();
+        return Map.of("id", n, "slot", id, "day", body.day().toString(), "notHeld", true);
+    }
+
+    /** a lecture recorded as not held, withdrawn — the JUPEB Office's */
+    @PostMapping("/slots/{id}/not-held/withdraw")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> withdrawNotHeld(Authentication auth, @PathVariable UUID id, @Valid @RequestBody DayIn body) {
+        int n = jdbc.sql("UPDATE jupeb.lecture_not_held SET withdrawn_at = now(), withdrawn_by = :by WHERE slot_id = :s AND held_on = :d AND withdrawn_at IS NULL")
+                .param("by", me(auth)).param("s", id).param("d", body.day()).update();
+        if (n == 0) throw new NotFound("lecture recorded as not held", id);
+        return Map.of("slot", id, "day", body.day().toString(), "notHeld", false);
     }
 
     /* ── the reports ── */

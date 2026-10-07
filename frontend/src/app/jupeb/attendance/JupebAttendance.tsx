@@ -17,6 +17,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { day, jcall, when } from "@/lib/jupeb";
+import { LecturesDue } from "./LecturesDue";
 
 const BASE = "/api/v1/attendance/jupeb";
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
@@ -38,7 +39,7 @@ interface Register {
 }
 interface Change { changed_at: string; name: string; application_no: string; old_status: string | null; new_status: string; old_remarks: string | null; new_remarks: string | null; reason: string; changed_office: string | null; changed_by: string | null }
 interface Instructor { id: string; session: string; subject_code: string; subject_title: string; class_name: string | null; name: string; staff_number: string | null; email: string | null; assigned_at: string }
-type Tab = "registers" | "standing" | "reports" | "instructors" | "policy";
+type Tab = "lectures" | "registers" | "standing" | "reports" | "instructors" | "policy";
 
 const today = () => new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
 
@@ -46,7 +47,7 @@ export function JupebAttendance() {
   const [session, setSession] = useState("");
   const [o, setO] = useState<Options | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [tab, setTab] = useState<Tab>("registers");
+  const [tab, setTab] = useState<Tab>("lectures");
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -58,7 +59,7 @@ export function JupebAttendance() {
   }, [session]);
   if (problem) return <ProblemNotice problem={problem} />;
   if (!o) return <Note kind="info" title="Loading attendance…">One moment.</Note>;
-  const tabs: { id: Tab; label: string }[] = [{ id: "registers", label: "Registers" }, ...(o.reader ? [{ id: "standing" as Tab, label: "Standing" }] : []), { id: "reports", label: "Reports" },
+  const tabs: { id: Tab; label: string }[] = [{ id: "lectures", label: "Lectures" }, { id: "registers", label: "Registers" }, ...(o.reader ? [{ id: "standing" as Tab, label: "Standing" }] : []), { id: "reports", label: "Reports" },
     ...(o.reader ? [{ id: "instructors" as Tab, label: "Instructors" }] : []), ...(o.office ? [{ id: "policy" as Tab, label: "Minimum attendance" }] : [])];
   return (
     <>
@@ -69,6 +70,7 @@ export function JupebAttendance() {
       {open ? <RegisterView id={open} onBack={() => setOpen(null)} /> : (
         <>
           <Tabs items={tabs} value={tab} onChange={setTab} look="line" label="Attendance" />
+          {tab === "lectures" ? <LecturesDue session={o.session} office={o.office} onOpen={setOpen} /> : null}
           {tab === "registers" ? <Registers o={o} onOpen={setOpen} /> : null}
           {tab === "standing" ? <Standing o={o} /> : null}
           {tab === "reports" ? <Reports o={o} /> : null}
@@ -145,7 +147,7 @@ function Registers({ o, onOpen }: { o: Options; onOpen: (id: string) => void }) 
 
 interface Draft { status: Status | null; time: string; remarks: string }
 
-function RegisterView({ id, onBack }: { id: string; onBack: () => void }) {
+export function RegisterView({ id, onBack }: { id: string; onBack: () => void }) {
   const [r, setR] = useState<Register | null>(null);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);

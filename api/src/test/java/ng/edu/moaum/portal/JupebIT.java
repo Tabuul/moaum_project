@@ -645,7 +645,8 @@ class JupebIT {
         Map<String, Object> second = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null));
         assertThat(new BigDecimal(String.valueOf(second.get("amount")))).isEqualByComparingTo(balance);
 
-        // the timetable: a room is never double-booked; the student sees their subjects' slots
+        // the timetable: a room is never double-booked; the student sees their subjects' slots (V354: the room is on the list)
+        assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/jupeb/office/rooms", Map.of("code", "JUPEB Hall " + tag)))).isEqualTo(200);
         UUID subject = jdbc.sql("SELECT sr.subject_id FROM jupeb.subject_registration sr JOIN jupeb.subject s ON s.id = sr.subject_id WHERE sr.application_id = :a ORDER BY s.code LIMIT 1")
                 .param("a", app).query(UUID.class).single();
         Map<String, Object> slot = new LinkedHashMap<>(Map.of("session", session, "semester", 1, "subjectId", subject.toString(), "weekday", 3, "startsAt", "08:00", "endsAt", "10:00", "venue", "JUPEB Hall " + tag));
@@ -862,9 +863,11 @@ class JupebIT {
             assertThat(s.get("namedSession")).isNull();
 
             // the course as the Board prints it; a practical in another room at the same hour; the same room refused
-            List<UUID> subjects = jdbc.sql("SELECT id FROM jupeb.subject ORDER BY code LIMIT 2").query(UUID.class).list();
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/jupeb/office/rooms", Map.of("code", "ZZ" + tag)))).isEqualTo(200);
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/jupeb/office/rooms", Map.of("code", "ZZ" + tag + "LAB", "kind", "LAB")))).isEqualTo(200);
+            List<UUID> subjects = jdbc.sql("SELECT id FROM jupeb.subject WHERE code IN ('GEO', 'AGR') ORDER BY (code = 'GEO') DESC").query(UUID.class).list();
             Map<String, Object> slot = new LinkedHashMap<>(Map.of("session", "2031/2032", "semester", 1, "subjectId", subjects.get(0).toString(), "weekday", 1,
-                    "startsAt", "08:00", "endsAt", "09:00", "venue", "ZZ" + tag, "courseCode", "geo001"));
+                    "startsAt", "08:00", "endsAt", "09:00", "venue", "ZZ" + tag, "courseCode", "gry001"));
             ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot));
             Map<String, Object> practical = new LinkedHashMap<>(Map.of("session", "2031/2032", "semester", 1, "subjectId", subjects.get(1).toString(), "weekday", 1,
                     "startsAt", "08:00", "endsAt", "10:00", "venue", "ZZ" + tag + "LAB", "practical", true));
@@ -872,12 +875,184 @@ class JupebIT {
             practical.put("venue", "zz " + tag.toLowerCase());
             assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", practical))).isEqualTo("JUPEB_SLOT_CLASH");
             List<Map<String, Object>> slots = (List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/timetable?session=2031/2032&semester=1")).get("slots");
-            assertThat(slots).extracting(x -> x.get("course_code")).containsExactlyInAnyOrder("GEO 001", null);
+            assertThat(slots).extracting(x -> x.get("course_code")).containsExactlyInAnyOrder("GRY 001", null);
             assertThat(slots).extracting(x -> x.get("practical")).containsExactlyInAnyOrder(false, true);
         } finally {
             it.db(() -> {
                 jdbc.sql("DELETE FROM jupeb.timetable_slot WHERE session = '2031/2032'").update();
                 jdbc.sql("UPDATE jupeb.setting SET current_session = :c WHERE session = '*'").param("c", named, java.sql.Types.VARCHAR).update();
+                return null;
+            });
+        }
+    }
+
+    /** V353: the Board's syllabus — each subject's courses, a combination's (MAT 004A or 004B by its area), a course's syllabus; the
+     *  option of an either/or subject chosen by the student until the examination number, then by the office with a reason; a
+     *  student reads only their own courses' syllabus; a timetable course is one of the subject's units */
+    @Test
+    @SuppressWarnings("unchecked")
+    void syllabusCoursesAndTheOptionOfAnEitherOrSubject() {
+        Map<String, Object> syl = ok(it.get(office, "/api/v1/jupeb/office/syllabus"));
+        assertThat((List<Map<String, Object>>) syl.get("boardSubjects")).hasSize(19);
+        List<Map<String, Object>> units = (List<Map<String, Object>>) syl.get("units");
+        assertThat(units).extracting(u -> u.get("code")).contains("BIO 001", "ECN 001", "GRY 004", "MAT 004A", "MAT 004B", "CRS 001", "ISS 001");
+        assertThat(status(it.get(bursar, "/api/v1/jupeb/office/syllabus"))).isEqualTo(403);
+        List<Map<String, Object>> sc024 = (List<Map<String, Object>>) (List<?>) it.callList(office, HttpMethod.GET, "/api/v1/jupeb/office/combinations/SC-024/units", null).getBody();
+        assertThat(sc024).extracting(u -> u.get("code")).contains("MAT 004B", "BUS 001", "ECN 004").doesNotContain("MAT 004A");
+        String botany = units.stream().filter(u -> "BIO 002".equals(u.get("code"))).findFirst().orElseThrow().get("id").toString();
+        Map<String, Object> bio = ok(it.get(office, "/api/v1/jupeb/office/units/" + botany + "/syllabus"));
+        assertThat(bio.get("title")).isEqualTo("Botany");
+        assertThat((List<?>) bio.get("topics")).isNotEmpty();
+
+        // a student of SC-001 (Christian / Islamic Religious Studies, Government, Literature in English)
+        String appNo = "S9" + tag + "06";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Aisha", "surname", "Terkura", "sex", "Female", "phone", "08066667777", "dob", "3/4/2006",
+                "email", "zzv353." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+        UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+        String token = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Syllabus2026!")));
+        it.db(() -> jdbc.sql("SELECT jupeb.register_subjects(:a, :a, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'))").param("a", app).query(Integer.class).single());
+
+        // both options until chosen; then the one chosen only; another's course is not theirs to open
+        List<Map<String, Object>> mine = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/units")).get("units");
+        assertThat(mine).extracting(u -> u.get("code")).contains("CRS 001", "ISS 001", "GOV 001", "LIT 004");
+        UUID religion = jdbc.sql("SELECT id FROM jupeb.subject WHERE code = 'CRS/ISS'").query(UUID.class).single();
+        UUID iss = jdbc.sql("SELECT id FROM jupeb.board_subject WHERE prefix = 'ISS'").query(UUID.class).single();
+        UUID crs = jdbc.sql("SELECT id FROM jupeb.board_subject WHERE prefix = 'CRS'").query(UUID.class).single();
+        UUID yor = jdbc.sql("SELECT id FROM jupeb.board_subject WHERE prefix = 'YOR'").query(UUID.class).single();
+        assertThat(code(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/subject-option", Map.of("subjectId", religion.toString(), "boardSubjectId", yor.toString())))).isEqualTo("JUPEB_OPTION");
+        Map<String, Object> me = ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/subject-option", Map.of("subjectId", religion.toString(), "boardSubjectId", iss.toString())));
+        assertThat((List<Map<String, Object>>) me.get("registered")).anySatisfy(r -> assertThat(r.get("option_title")).isEqualTo("Islamic Studies (ISS)"));
+        mine = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/units")).get("units");
+        assertThat(mine).extracting(u -> u.get("code")).contains("ISS 001").doesNotContain("CRS 001");
+        assertThat(mine).hasSize(12);
+        String iss001 = mine.stream().filter(u -> "ISS 001".equals(u.get("code"))).findFirst().orElseThrow().get("unit_id").toString();
+        assertThat(ok(it.get(token, "/api/v1/jupeb/me/units/" + iss001 + "/syllabus")).get("code")).isEqualTo("ISS 001");
+        assertThat(status(it.get(token, "/api/v1/jupeb/me/units/" + botany + "/syllabus"))).isEqualTo(404);
+
+        // the examination number closes the student's choice; the office changes it, with a reason
+        it.db(() -> jdbc.sql("UPDATE jupeb.application SET exam_no = :x WHERE id = :a").param("x", "ZZ" + tag + "353").param("a", app).update());
+        assertThat(code(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/subject-option", Map.of("subjectId", religion.toString(), "boardSubjectId", crs.toString())))).isEqualTo("JUPEB_OPTION_LOCKED");
+        Map<String, Object> change = new LinkedHashMap<>(Map.of("subjectId", religion.toString(), "boardSubjectId", crs.toString()));
+        assertThat(code(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/applications/" + app + "/subject-option", change))).isEqualTo("JUPEB_OPTION_REASON");
+        change.put("reason", "The candidate sits Christian Religious Studies");
+        Map<String, Object> c = ok(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/applications/" + app + "/subject-option", change));
+        assertThat((List<Map<String, Object>>) c.get("registered")).anySatisfy(r -> assertThat(r.get("option_title")).isEqualTo("Christian Religious Studies (CRS)"));
+
+        // a timetable course is one of the subject's units
+        UUID biology = jdbc.sql("SELECT id FROM jupeb.subject WHERE code = 'BIO'").query(UUID.class).single();
+        Map<String, Object> slot = new LinkedHashMap<>(Map.of("session", "2031/2032", "semester", 1, "subjectId", biology.toString(), "weekday", 6,
+                "startsAt", "08:00", "endsAt", "09:00", "venue", "ZZ" + tag, "courseCode", "BIO 009"));
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot))).isEqualTo("JUPEB_SLOT_COURSE");
+    }
+
+    /** V354: the session calendar kept and planned forward; rooms from the list; a semester copied into the next; the students of a subject
+     *  told of a timetable change; the clearance for the examination, and the students told what is outstanding; the checks before the
+     *  current session changes */
+    @Test
+    @SuppressWarnings("unchecked")
+    void calendarRoomsCopyNoticesClearanceAndSessionChecks() {
+        String far = "2091/2092";
+        String next = "2092/2093";
+        List<String> slotIds = new java.util.ArrayList<>();
+        try {
+            // the Board's 2026/2027 calendar is on the record; an event added and its mark kept to one event; the Bursary refused
+            Map<String, Object> cal = ok(it.get(office, "/api/v1/jupeb/office/calendar?session=2026/2027"));
+            assertThat((List<Map<String, Object>>) cal.get("events")).extracting(e -> e.get("marker")).contains("TEACHING_STARTS", "BOARD_REGISTRATION", "EXAMINATIONS", "RESULTS");
+            Map<String, Object> event = new LinkedHashMap<>(Map.of("session", far, "startsOn", "2091-09-25", "title", "Teaching commences", "marker", "TEACHING_STARTS", "forStudents", true));
+            ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/calendar", event));
+            event.put("title", "Teaching commences again");
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/calendar", event))).isEqualTo("JUPEB_CALENDAR_MARKER");
+            assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/calendar", event))).isEqualTo(403);
+            Map<String, Object> planned = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/calendar/copy", Map.of("from", far, "to", next)));
+            List<Map<String, Object>> nextEvents = (List<Map<String, Object>>) planned.get("events");
+            assertThat(nextEvents).hasSize(1);
+            assertThat(nextEvents.get(0).get("starts_on")).isEqualTo("2092-09-25");
+            assertThat(nextEvents.get(0).get("planned")).isEqualTo(true);
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/calendar/copy", Map.of("from", far, "to", next)))).isEqualTo("JUPEB_CALENDAR_EXISTS");
+            Map<String, Object> confirmed = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/calendar/confirm", Map.of("session", next)));
+            assertThat(((List<Map<String, Object>>) confirmed.get("events")).get(0).get("planned")).isEqualTo(false);
+
+            // the rooms: one code a room, however written
+            List<Map<String, Object>> rooms = (List<Map<String, Object>>) (List<?>) it.callList(office, HttpMethod.POST, "/api/v1/jupeb/office/rooms", Map.of("code", "zz rm " + tag, "capacity", 40)).getBody();
+            assertThat(rooms).extracting(r -> r.get("code")).contains("ZZRM" + tag);
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/rooms", Map.of("code", "ZZRM" + tag)))).isEqualTo("JUPEB_ROOM_EXISTS");
+            String room = rooms.stream().filter(r -> ("ZZRM" + tag).equals(r.get("code"))).findFirst().orElseThrow().get("id").toString();
+            UUID geo = jdbc.sql("SELECT id FROM jupeb.subject WHERE code = 'GEO'").query(UUID.class).single();
+            Map<String, Object> slot = new LinkedHashMap<>(Map.of("session", far, "semester", 1, "subjectId", geo.toString(), "weekday", 2,
+                    "startsAt", "08:00", "endsAt", "09:00", "roomId", room, "courseCode", "GRY 001"));
+            slotIds.add(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot)).get("id").toString());
+            slot.remove("roomId");
+            slot.put("venue", "Nowhere " + tag);
+            slot.put("weekday", 3);
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot))).isEqualTo("JUPEB_ROOM_UNKNOWN");
+
+            // the first semester copied into the second: GRY 001 moves on to GRY 003; never into a semester with lectures
+            Map<String, Object> copied = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable/copy", Map.of("session", far, "semester", 1, "toSession", far, "toSemester", 2)));
+            assertThat(copied.get("copied")).isEqualTo(1);
+            List<Map<String, Object>> second = (List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/timetable?session=" + far + "&semester=2")).get("slots");
+            assertThat(second).extracting(x -> x.get("course_code")).containsExactly("GRY 003");
+            second.forEach(x -> slotIds.add(x.get("id").toString()));
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable/copy", Map.of("session", far, "semester", 1, "toSession", far, "toSemester", 2)))).isEqualTo("JUPEB_TIMETABLE_NOT_EMPTY");
+
+            // a student of SC-001; a Government lecture added on their timetable, and they are told
+            String appNo = "SA" + tag + "07";
+            Map<String, Object> in = new LinkedHashMap<>();
+            in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Ene", "surname", "Ogbole", "sex", "Female", "phone", "08066668888", "dob", "3/4/2006",
+                    "email", "zzv354." + tag.toLowerCase() + "@example.com")));
+            in.put("session", session);
+            in.put("dayFirst", true);
+            in.put("commit", true);
+            in.put("fileName", "old.xlsx");
+            in.put("emailLinks", false);
+            Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+            String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+            UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+            String token = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+            ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Calendar2026!")));
+            it.db(() -> jdbc.sql("SELECT jupeb.register_subjects(:a, :a, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'))").param("a", app).query(Integer.class).single());
+            UUID gov = jdbc.sql("SELECT id FROM jupeb.subject WHERE code = 'GOV'").query(UUID.class).single();
+            Map<String, Object> lecture = new LinkedHashMap<>(Map.of("session", session, "semester", 1, "subjectId", gov.toString(), "weekday", 6,
+                    "startsAt", "07:00", "endsAt", "08:00", "roomId", room, "courseCode", "GOV 001", "tell", true));
+            Map<String, Object> added = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", lecture));
+            slotIds.add(added.get("id").toString());
+            assertThat(((Number) added.get("told")).intValue()).isGreaterThanOrEqualTo(1);
+            List<Map<String, Object>> notices = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/announcements")).get("announcements");
+            assertThat(notices).extracting(n -> n.get("title")).contains("Timetable: GOV 001 added");
+
+            // the clearance: what is outstanding, said to the student and by the office
+            Map<String, Object> mine = ok(it.get(token, "/api/v1/jupeb/me/clearance"));
+            assertThat(mine.get("cleared")).isEqualTo(false);
+            assertThat((List<Map<String, Object>>) mine.get("checks")).anySatisfy(c -> {
+                assertThat(c.get("key")).isEqualTo("OPTION");
+                assertThat(c.get("ok")).isEqualTo(false);
+            });
+            Map<String, Object> clear = ok(it.get(office, "/api/v1/jupeb/office/clearance?session=" + session));
+            Map<String, Object> row = ((List<Map<String, Object>>) clear.get("rows")).stream().filter(r -> app.toString().equals(String.valueOf(r.get("application_id")))).findFirst().orElseThrow();
+            assertThat((List<String>) row.get("outstanding")).contains("No examination number from the Board yet");
+            assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/clearance/tell", Map.of("session", session)))).isEqualTo(403);
+            assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/clearance/tell", Map.of("session", session))).get("told")).intValue()).isGreaterThanOrEqualTo(1);
+            notices = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/announcements")).get("announcements");
+            assertThat(notices).extracting(n -> n.get("title")).contains("Before the examination: what is outstanding");
+
+            // the student's dates; the checks before the current session changes
+            assertThat(ok(it.get(token, "/api/v1/jupeb/me/calendar")).get("session")).isEqualTo(session);
+            Map<String, Object> check = ok(it.get(office, "/api/v1/jupeb/office/settings/session-check?to=" + next));
+            assertThat(check.get("from")).isEqualTo(session);
+            assertThat((List<Map<String, Object>>) check.get("items")).extracting(x -> x.get("session")).contains(session, next);
+        } finally {
+            it.db(() -> {
+                for (String id : slotIds) jdbc.sql("DELETE FROM jupeb.timetable_slot WHERE id = :id::uuid").param("id", id).update();
+                jdbc.sql("DELETE FROM jupeb.calendar_event WHERE session IN ('2091/2092', '2092/2093')").update();
+                jdbc.sql("DELETE FROM jupeb.room WHERE code = :c").param("c", "ZZRM" + tag).update();
                 return null;
             });
         }

@@ -251,6 +251,59 @@ copies of them.
   the 2026/2027 first-semester timetable on the record (56 slots, for every class) where the Board's sheet writes MAT, VSA and
   CRS for the subjects MTH, VAR and CRS/ISS; on Wednesday 12:00–1:00 the sheet puts ACC 002 and GOV 002 both in LR8, so GOV 002's
   room is left for the office to confirm.
+- **The Board's syllabus 2027–2031 (V353).** Loaded from the JUPEB Office's workbook (JUPEB_2027-2031_Extracted_Courses_and_
+  Syllabus.xlsx), its sheets checked against one another first — the same 77 courses, codes, titles and semesters on each.
+  The courses are the subjects' course units (V342's `jupeb.subject_unit`, the list the statement of result prints — not a
+  second list), each now with its semester, credit units, objectives and topics (`jupeb.unit_topic`, 946 rows in the order
+  printed). Each of the Board's 19 subjects (`jupeb.board_subject`, J121 … J155) sits under the portal subject it is taught as —
+  Economics is J133 with courses ECN, Geography J134 GRY, History J123 HST, Mathematics J154 MAT, Visual Art J128 VSA; the
+  portal's "Christian / Islamic Religious Studies" is the Board's CRS or ISS and "Igbo / Yoruba" IGB or YOR: the student
+  chooses which they take on Subjects (until the examination number is assigned; the office after that, with a reason), and
+  their courses, the statement's note and the Board's list follow the choice. Biology as the syllabus's Biology section has
+  it (the JUPEB Office's decision): BIO 002 Botany in the first semester, BIO 003 Microbiology in the second — V342's sample
+  statement had them the other way round. A combination's courses are its subjects' units: MAT 004A (Applied Mathematics) for
+  Science and Engineering combinations, MAT 004B (Applied Business Mathematics) for the others — the syllabus offers them as
+  alternatives without saying who takes which, so the content decides it. The catalogue page lists each subject's courses with
+  their syllabus and each combination's courses (one Excel of every combination's); the student's Subjects tab lists theirs.
+  The timetable names its courses as the syllabus does (the JUPEB Office's decision: ECO 001 became ECN 001, GEO 001 GRY 001),
+  and a slot's course is one of its subject's units, taught in that semester.
+- **The session calendar (V354).** The JUPEB Board's calendar for 2026/2027 (36 events, from the JUPEB Office's
+  "2026-2027 JUPEB SESSION CALENDAR.pdf") is on the record (`jupeb.calendar_event`), with the University's own JUPEB events
+  beside it, on the Calendar page; a session's calendar is copied forward as the plan of the next — every date and every year
+  its titles name a year on, marked planned until the office confirms it against the Board's own. A few events carry a mark
+  the portal works from: teaching starts (28 September 2026 — the first semester's lectures count from it), the second semester
+  starts (the University's own date: the Board leaves it to each Foundation School, so it is never invented — until it is added
+  the semester stays the first), the Board's registration of candidates (13 November 2026 – 29 January 2027, shown with the
+  clearance), the examinations (lectures stop counting there), the results. The dashboard shows what comes next; the students
+  see the events the office marks for them.
+- **Rooms (V354).** A list of rooms (`jupeb.room`: LR7 … LR17 and LAB from the timetable, with seats when given); a lecture names
+  one, so one room is never written two ways, and a venue not on the list is refused (`JUPEB_ROOM_UNKNOWN`); a closed room takes
+  no new lecture; a renamed room renames its lectures. A lecture with more students than its room's seats is flagged.
+- **A semester copied (V354).** A session's semester is copied into an empty one (the next semester or session): into the
+  other semester each course moves on to the course in the same place (GRY 001 → GRY 003; MAT 002 → MAT 004A, with MAT 004B
+  noted); classes are found again by name in another session. The office can tell a subject's students of a change to their
+  lectures (an announcement to audience `SUBJECT`, on the dashboard and by email).
+- **The lectures due (V354).** Every timetabled lecture on every teaching day — from teaching's start by the calendar (and
+  the day the lecture was put on the timetable) until the examinations — is recorded, open, not held (with the reason), due
+  today, missed or to come (`jupeb.lectures_due`). A register is now one lecture (`attendance.register.slot_ref`): a subject
+  with two lectures a day (a lecture and a practical) has a register for each, opened from the lecture on its weekday by its
+  instructor or the office; a register opened by hand for the day becomes the lecture's. A lecture not held is not opened, and
+  one whose attendance is taken is not called not held; the office withdraws a "not held". The Attendance page opens on the
+  lectures; the office sees the semester's unrecorded ones.
+- **Clearance for the examination (V354).** Each active student against what sitting the Board's examination needs
+  (`jupeb.exam_clearance`): three subjects registered and the option of an either/or subject chosen, a passport photograph,
+  the required documents verified, the school fee paid in full, attendance at the minimum (only once the JUPEB Office sets a
+  minimum — never assumed), and the examination number. On the Examination page with what is outstanding said plainly; the
+  office tells each student not cleared what is outstanding on their own record; the student sees their own on the dashboard.
+  Nothing is changed by it — each item is put right where it belongs.
+- **Before the current session changes (V354).** On Settings, choosing another JUPEB session shows what still stands in the
+  one it leaves (windows open, applications in progress, results, fees outstanding, registers not locked, calendar events
+  ahead) and what the next has (on the University's calendar, windows, the Bursary's fees, timetable, calendar, classes,
+  deferred admissions to resume). Nothing moves on its own.
+- **The lecturer's workspace (V354).** JUPEB Teaching, for a lecturer the JUPEB Office assigned: their subjects (and classes),
+  today's lectures each opening its register, the semester's unrecorded ones, the week, their students' attendance and practice
+  in the subject, the courses and their syllabus, and notices to the students of a subject (and class) they teach — on the
+  dashboard and by email, never by text; the office sees every notice. Nothing else is theirs to read.
 
 ## API
 
@@ -268,12 +321,19 @@ copies of them.
   `/old-portal-payments` (with `/import`), `/timetable` (with `/{id}`, `/{id}/remove`), `/practice-tests` (with `/{id}`,
   `/{id}/questions`, `/{id}/questions/{q}/remove`) and `/reports?session=`, and (V349) `/announcements` (with `/reach`,
   `/{id}/withdraw`), `/practice-tests/{id}/questions/add`, `/practice-tests/{id}/questions/{q}` (PUT), `.../{q}/image` (with
-  `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`), and (V351) `/settings/current-session` (PUT). Reads are for jupeb, super and admin; writes for jupeb and super.
+  `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`), and (V351) `/settings/current-session` (PUT), and (V353) `/syllabus`,
+  `/units/{id}/syllabus`, `/combinations/units`, `/combinations/{code}/units`, `/applications/{id}/subject-option` (PUT), and (V354)
+  `/calendar` (with `/{id}`, `/{id}/remove`, `/copy`, `/confirm`), `/rooms` (with `/{id}`), `/timetable/copy`, `/clearance` (with
+  `/tell`), `/settings/session-check`. Reads are for jupeb, super and admin; writes for jupeb and super.
 - **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
   `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
   JUPEB records.
 - **Attendance:** `/api/v1/attendance/jupeb/...` — options, registers, marks, lock/unlock, changes, photo, reports,
-  instructors, policy. Lecturers are scoped by assignment.
+  instructors, policy, and (V354) `/lectures`, `/slots/{id}/register`, `/slots/{id}/not-held` (with `/withdraw`, the office's).
+  Lecturers are scoped by assignment.
+- **The lecturer (V354):** `/api/v1/jupeb/teaching` (with `/subjects/{id}/students`, `/units/{id}/syllabus`, `/notices`,
+  `/notices/{id}/withdraw`) — `OFFICE_lecturer` only, their own assignments.
+- **The student (V353, V354):** `/api/v1/jupeb/me/units` (with `/{id}/syllabus`), `/subject-option` (PUT), `/calendar`, `/clearance`.
 - **Fees:** `/api/v1/jupeb/fees`. Reads for bursar, jupeb, super, admin and audit; writes and bank confirmations for
   bursar and super.
 
@@ -319,7 +379,12 @@ copies of them.
   student, a deferred admission, three registers): the windows open for 2026/2027, the two students moved with their payments
   and the school fee unchanged, the others left, twelve papers revoked and a reprint issued afresh, the second instalment
   charged in 2026/2027 for what is left, a new applicant numbered under 2026, and a second run moving nothing.
-- `check.sql` properties 185–196 cover the rules on a brand-new database.
+- `JupebIT.syllabusCoursesAndTheOptionOfAnEitherOrSubject` covers V353 and `JupebIT.calendarRoomsCopyNoticesClearanceAndSessionChecks`
+  V354 (the calendar's mark kept to one event, planned forward and confirmed; rooms, one code a room; a semester copied; a
+  subject's students told; the clearance and the notice of what is outstanding; the session checks);
+  `JupebAttendanceIT.lecturesFromTheTimetableAndTheLecturersWorkspace` the lectures due, a register a lecture, not held, and
+  the lecturer's workspace and notices, scoped.
+- `check.sql` properties 185–198 cover the rules on a brand-new database.
 
 ## Not done
 

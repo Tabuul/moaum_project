@@ -19,10 +19,11 @@ interface Row {
   send_email: boolean; send_sms: boolean; expires_on: string | null; published_at: string; notified: number | null; withdrawn_at: string | null;
   withdrawn_reason: string | null; created_by_name: string | null; reach: number; reads: number;
 }
-interface Data { session: string; sessions: { session: string; applications: number }[]; announcements: Row[]; classes: { id: string; name: string }[]; combinations: { code: string; name: string }[] }
+interface Data { session: string; sessions: { session: string; applications: number }[]; announcements: Row[]; classes: { id: string; name: string }[]; combinations: { code: string; name: string }[];
+  subjects?: { id: string; code: string; title: string }[] }
 interface Form { audience: string; ref: string; title: string; body: string; pinned: boolean; email: boolean; sms: boolean; expiresOn: string }
 const EMPTY: Form = { audience: "STUDENTS", ref: "", title: "", body: "", pinned: false, email: true, sms: false, expiresOn: "" };
-const NEEDS_REF = new Set(["CLASS", "COMBINATION", "PROGRAMME"]);
+const NEEDS_REF = new Set(["CLASS", "COMBINATION", "PROGRAMME", "SUBJECT"]);
 
 export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
   const [session, setSession] = useState("");
@@ -78,7 +79,7 @@ export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
   }
   const audienceWords = (a: Row) => a.audience === "PROGRAMME" ? `Programme: ${streamLabel(a.audience_ref)}` : a.audience === "CLASS" ? `Class: ${a.audience_name ?? "—"}`
     : a.audience === "STUDENT" ? `Student: ${a.audience_name ?? "—"} (advice)`
-    : a.audience === "COMBINATION" ? `Combination: ${a.audience_ref}` : AUDIENCE[a.audience] ?? a.audience;
+    : a.audience === "COMBINATION" ? `Combination: ${a.audience_ref}` : a.audience === "SUBJECT" ? `Subject: ${a.audience_name ?? "—"}` : AUDIENCE[a.audience] ?? a.audience;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -98,6 +99,14 @@ export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
               ) : form.audience === "COMBINATION" ? (
                 <Field id="an-ref" label="Combination" required><select id="an-ref" className="ctl" value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}>
                   <option value="">— Choose —</option>{(data?.combinations ?? []).map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></Field>
+              ) : form.audience === "SUBJECT" ? (
+                <div className="grid grid--2">
+                  <Field id="an-ref" label="Subject" required><select id="an-ref" className="ctl" value={form.ref.split("/")[0]} onChange={(e) => setForm({ ...form, ref: e.target.value })}>
+                    <option value="">— Choose —</option>{(data?.subjects ?? []).map((x) => <option key={x.id} value={x.id}>{x.title} ({x.code})</option>)}</select></Field>
+                  <Field id="an-ref2" label="Class"><select id="an-ref2" className="ctl" value={form.ref.split("/")[1] ?? ""} disabled={!form.ref}
+                    onChange={(e) => setForm({ ...form, ref: e.target.value ? `${form.ref.split("/")[0]}/${e.target.value}` : form.ref.split("/")[0] })}>
+                    <option value="">Every class</option>{(data?.classes ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+                </div>
               ) : form.audience === "PROGRAMME" ? (
                 <Field id="an-ref" label="Programme" required><select id="an-ref" className="ctl" value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}>
                   <option value="">— Choose —</option><option value="SCIENCE">Science</option><option value="NON_SCIENCE">Non-Science</option></select></Field>

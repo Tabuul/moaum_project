@@ -503,6 +503,7 @@ class JupebPortalController {
         Map<String, Object> a = jdbc.sql("SELECT session, class_id FROM jupeb.application WHERE id = :id").param("id", app).query().singleRow();
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", a.get("session"));
+        out.put("semester", jdbc.sql("SELECT jupeb.current_semester(:s, NULL)").param("s", a.get("session")).query(Integer.class).single());
         out.put("slots", jdbc.sql("""
                 SELECT t.id, t.semester, t.weekday, to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
                        s.code, s.title, k.name AS class_name, t.course_code, t.practical,
@@ -533,6 +534,77 @@ class JupebPortalController {
                     return f;
                 }).toList());
         return out;
+    }
+
+    /* ── V354: the session calendar's dates for students, and the student's own clearance for the examination ── */
+
+    @GetMapping("/calendar")
+    @Transactional(readOnly = true)
+    Map<String, Object> calendar(Authentication auth) {
+        UUID app = me(auth);
+        String s = jdbc.sql("SELECT session FROM jupeb.application WHERE id = :a").param("a", app).query(String.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("today", jdbc.sql("SELECT (now() AT TIME ZONE 'Africa/Lagos')::date::text").query(String.class).single());
+        out.put("events", jdbc.sql("""
+                SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, title, deadline_on::text AS deadline_on, deadline_note, marker, planned
+                  FROM jupeb.calendar_event WHERE session = :s AND for_students AND removed_at IS NULL ORDER BY starts_on, ord
+                """).param("s", s).query().listOfRows());
+        return out;
+    }
+
+    /** the student's own standing against what sitting the examination needs — only an active student has one */
+    @GetMapping("/clearance")
+    @Transactional(readOnly = true)
+    Map<String, Object> clearance(Authentication auth) {
+        UUID app = me(auth);
+        return jdbc.sql("""
+                SELECT c.cleared, c.checks::text AS checks, c.exam_no FROM jupeb.application a CROSS JOIN LATERAL jupeb.exam_clearance(a.session) c
+                 WHERE a.id = :a AND c.application_id = :a
+                """).param("a", app).query().listOfRows().stream().findFirst().map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+                    m.put("checks", JupebView.readJson(String.valueOf(r.get("checks"))));
+                    return m;
+                }).orElseThrow(() -> new NotFound("examination clearance", app));
+    }
+
+    /* ── V353: the student's courses, as the Board's syllabus has them ── */
+
+    /** the courses of the student's subjects (or of the combination chosen, before registration), semester by semester */
+    @GetMapping("/units")
+    @Transactional(readOnly = true)
+    Map<String, Object> units(Authentication auth) {
+        UUID app = me(auth);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("units", jdbc.sql("SELECT * FROM jupeb.units_for((SELECT combination_id FROM jupeb.application WHERE id = :a), :a)").param("a", app).query().listOfRows());
+        out.put("syllabus", jdbc.sql("""
+                SELECT y.title FROM jupeb.syllabus y JOIN jupeb.application a ON a.id = :a AND a.session BETWEEN y.first_session AND y.last_session
+                 ORDER BY y.first_session DESC LIMIT 1
+                """).param("a", app).query(String.class).optional().orElse(null));
+        return out;
+    }
+
+    /** a course unit's syllabus — only of the student's own courses; another's is not found */
+    @GetMapping("/units/{id}/syllabus")
+    @Transactional(readOnly = true)
+    Map<String, Object> unitSyllabus(Authentication auth, @PathVariable UUID id) {
+        UUID app = me(auth);
+        boolean mine = jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.units_for((SELECT combination_id FROM jupeb.application WHERE id = :a), :a) u WHERE u.unit_id = :u)")
+                .param("a", app).param("u", id).query(Boolean.class).single();
+        if (!mine) throw new NotFound("course unit", id);
+        return JupebView.unitSyllabus(jdbc, id);
+    }
+
+    public record OptionIn(@jakarta.validation.constraints.NotNull UUID subjectId, @jakarta.validation.constraints.NotNull UUID boardSubjectId) {
+    }
+
+    /** of an either/or subject, the one the student sits — theirs to choose until their examination number is assigned */
+    @PutMapping("/subject-option")
+    @Transactional
+    Map<String, Object> subjectOption(Authentication auth, @Valid @RequestBody OptionIn b) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.choose_option(:a, :s, :b, false, NULL)").param("a", app).param("s", b.subjectId()).param("b", b.boardSubjectId()).query().listOfRows();
+        return mine(auth);
     }
 
     /** the practice tests of the student's subjects, with the attempts left and the best score */

@@ -124,6 +124,80 @@ class JupebAttendanceIT {
         return it.call(token, HttpMethod.POST, "/api/v1/attendance/jupeb/registers", body).getBody();
     }
 
+    /** V354: a lecture's register opened from its timetable slot, on its weekday, by its instructor only — two lectures of a subject a day,
+     *  a register each; a lecture not held is not opened until the office withdraws that; the lectures due say which is which. The
+     *  lecturer's workspace: their subjects and students only, and notices to the students of a subject (and class) they teach. */
+    @Test
+    void lecturesFromTheTimetableAndTheLecturersWorkspace() {
+        String far = "2091/2092";
+        UUID room = UUID.randomUUID();
+        UUID person = jdbc.sql("SELECT id FROM iam.person WHERE staff_number = :s").param("s", staffNumber).query(UUID.class).single();
+        List<String> slots = new java.util.ArrayList<>();
+        try {
+            it.db(() -> jdbc.sql("INSERT INTO jupeb.room (id, code) VALUES (:id, :c)").param("id", room).param("c", "ZZATT" + tag).update());
+            int wd = LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).getDayOfWeek().getValue();
+            for (Object[] t : new Object[][] {{"10:00", "11:00", s1}, {"14:00", "15:00", s1}, {"16:00", "17:00", s2}}) {
+                Map<String, Object> slot = Map.of("session", far, "semester", 1, "subjectId", t[2].toString(), "weekday", wd, "startsAt", t[0], "endsAt", t[1], "roomId", room.toString());
+                slots.add(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot)).get("id").toString());
+            }
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/attendance/jupeb/instructors", Map.of("session", far, "subjectId", s1, "staff", staffNumber)))).isEqualTo(200);
+
+            // the lecturer's lectures today: their subject's two, not the other subject's
+            Map<String, Object> due = ok(it.get(lecturer, ub -> ub.path("/api/v1/attendance/jupeb/lectures").queryParam("session", far).build()));
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) due.get("rows");
+            assertThat(rows).extracting(r -> r.get("slot_id").toString()).containsExactlyInAnyOrder(slots.get(0), slots.get(1));
+            assertThat(rows).extracting(r -> r.get("state")).containsOnly("DUE");
+            String today = due.get("today").toString();
+            String reg = ok(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(0) + "/register", Map.of("day", today))).get("id").toString();
+            assertThat(ok(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(0) + "/register", Map.of("day", today))).get("id").toString()).isEqualTo(reg);
+            assertThat(code(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(0) + "/register",
+                    Map.of("day", LocalDate.parse(today).minusDays(1).toString())))).isEqualTo("ATT_SLOT_DAY");
+            assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(2) + "/register", Map.of("day", today)))).isEqualTo(403);
+
+            // the other lecture not held: not opened; the lectures due say so; the office withdraws it and it is opened, a register of its own
+            ok(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(1) + "/not-held", Map.of("day", today, "reason", "The lecturer was at a workshop")));
+            assertThat(code(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(1) + "/register", Map.of("day", today)))).isEqualTo("JUPEB_LECTURE_NOT_HELD");
+            rows = (List<Map<String, Object>>) ok(it.get(office, ub -> ub.path("/api/v1/attendance/jupeb/lectures").queryParam("session", far).build())).get("rows");
+            assertThat(rows).anySatisfy(r -> { assertThat(r.get("slot_id").toString()).isEqualTo(slots.get(0)); assertThat(r.get("state")).isEqualTo("OPEN"); });
+            assertThat(rows).anySatisfy(r -> { assertThat(r.get("slot_id").toString()).isEqualTo(slots.get(1)); assertThat(r.get("state")).isEqualTo("NOT_HELD"); });
+            assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(1) + "/not-held/withdraw", Map.of("day", today)))).isEqualTo(403);
+            ok(it.call(office, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(1) + "/not-held/withdraw", Map.of("day", today)));
+            String other = ok(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/slots/" + slots.get(1) + "/register", Map.of("day", today))).get("id").toString();
+            assertThat(other).isNotEqualTo(reg);
+
+            // the workspace of the current session: assigned to s1, class A
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/attendance/jupeb/instructors",
+                    Map.of("session", session, "subjectId", s1, "classId", classA, "staff", staffNumber)))).isEqualTo(200);
+            Map<String, Object> ws = ok(it.get(lecturer, "/api/v1/jupeb/teaching"));
+            assertThat((List<Map<String, Object>>) ws.get("assignments")).extracting(a -> a.get("subject_id").toString()).containsExactly(s1.toString());
+            List<Map<String, Object>> students = (List<Map<String, Object>>) (List<?>) it.callList(lecturer, HttpMethod.GET, "/api/v1/jupeb/teaching/subjects/" + s1 + "/students", null).getBody();
+            assertThat(students).extracting(x -> x.get("id").toString()).containsExactly(studentA.toString());
+            assertThat(status(it.callList(lecturer, HttpMethod.GET, "/api/v1/jupeb/teaching/subjects/" + s2 + "/students", null))).isEqualTo(404);
+            Map<String, Object> notice = ok(it.call(lecturer, HttpMethod.POST, "/api/v1/jupeb/teaching/notices",
+                    Map.of("subjectId", s1, "classId", classA, "title", "Test on cells", "body", "The class test on cells is on Friday.")));
+            assertThat(notice.get("reach")).isEqualTo(1);
+            assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/jupeb/teaching/notices", Map.of("subjectId", s1, "title", "Everyone", "body", "To every class.")))).isEqualTo(403);
+            assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/jupeb/teaching/notices", Map.of("subjectId", s2, "classId", classA, "title", "Not mine", "body", "Another subject.")))).isEqualTo(403);
+            assertThat(status(it.get(office, "/api/v1/jupeb/teaching"))).isEqualTo(403);
+            String a = TestTokens.token(studentA, List.of("applicant"));
+            String b = TestTokens.token(studentB, List.of("applicant"));
+            assertThat((List<Map<String, Object>>) ok(it.get(a, "/api/v1/jupeb/me/announcements")).get("announcements")).extracting(n -> n.get("title")).contains("Test on cells");
+            assertThat((List<Map<String, Object>>) ok(it.get(b, "/api/v1/jupeb/me/announcements")).get("announcements")).extracting(n -> n.get("title")).doesNotContain("Test on cells");
+        } finally {
+            it.db(() -> {
+                for (String id : slots) {
+                    jdbc.sql("DELETE FROM jupeb.lecture_not_held WHERE slot_id = :s::uuid").param("s", id).update();
+                    jdbc.sql("DELETE FROM attendance.mark WHERE register_id IN (SELECT id FROM attendance.register WHERE slot_ref = :s::uuid)").param("s", id).update();
+                    jdbc.sql("DELETE FROM attendance.register WHERE slot_ref = :s::uuid").param("s", id).update();
+                    jdbc.sql("DELETE FROM jupeb.timetable_slot WHERE id = :s::uuid").param("s", id).update();
+                }
+                jdbc.sql("DELETE FROM attendance.instructor WHERE session = '2091/2092' AND person_id = :p").param("p", person).update();
+                jdbc.sql("DELETE FROM jupeb.room WHERE id = :r").param("r", room).update();
+                return null;
+            });
+        }
+    }
+
     @Test
     void anInstructorTakesTheirOwnRegisterAndTheOfficeCorrectsALockedOne() {
         // not yet assigned: nothing to take

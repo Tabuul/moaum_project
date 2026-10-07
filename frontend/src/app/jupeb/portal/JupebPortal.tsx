@@ -28,6 +28,8 @@ import QRCode from "qrcode";
 import { MathText } from "@/components/proto/MathText";
 import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { TimetableGrid, printGrid, type Frame } from "../TimetableGrid";
+import { SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "../Syllabus";
+import { eventDates, type CalendarEvent, type ClearanceCheck } from "@/lib/jupeb";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
@@ -823,6 +825,7 @@ function Overview({ me }: { me: Candidate }) {
     [me.state === "COMPLETED" ? "done" : "todo", "Results published", me.resultsPublished ? "Published" : "—"],
   ];
   return (
+    <>
     <div className="grid grid--2">
       <Panel title="Your progress"><PBody><StepList list={steps} /></PBody></Panel>
       <Panel title="What has happened">
@@ -838,6 +841,9 @@ function Overview({ me }: { me: Candidate }) {
         </PBody>
       </Panel>
     </div>
+    <DatesToKnow />
+    {me.state === "STUDENT" ? <MyClearance /> : null}
+    </>
   );
 }
 
@@ -1099,6 +1105,7 @@ function Subjects({ me, act }: { me: Candidate; act: Act }) {
     : chosen ? [[chosen.subject1_code, chosen.subject1], [chosen.subject2_code, chosen.subject2], [chosen.subject3_code, chosen.subject3]]
     : me.subjects.map((s) => [s.code, s.title]);
   return (
+    <>
     <Panel title="Subject registration" right={me.subjects_registered_at ? <Pil kind="ok">Registered {day(me.subjects_registered_at)}</Pil> : null}>
       <PBody>
         <KvGrid pairs={[["Programme", streamLabel(me.stream)], ["Combination", me.combination_code ?? "Not yet chosen"], ["Class", me.class_name ?? "Not yet placed"], ["JUPEB examination number", me.exam_no ?? "Not yet assigned"]]} />
@@ -1116,6 +1123,88 @@ function Subjects({ me, act }: { me: Candidate; act: Act }) {
           <div className="row mt-3"><Btn kind="primary" disabled={busy || !choice} onClick={() => { setBusy(true); void act("/api/v1/jupeb/me/register-subjects", "POST", { combination: choice }).finally(() => setBusy(false)); }}>{busy ? "Registering…" : "Register these three subjects"}</Btn></div>
         ) : me.state === "ADMITTED" ? <p className="hint mt-2">You register your subjects once your school fee activates your studentship.</p> : null}
         {me.subjects_registered_at ? <div className="row mt-3"><LinkBtn kind="ghost" href="/jupeb/pdf/slip">Download registration slip</LinkBtn></div> : null}
+      </PBody>
+    </Panel>
+    {me.subjects_registered_at ? <YourCourses me={me} act={act} /> : null}
+    </>
+  );
+}
+
+/** V353: the student's courses, semester by semester, as the Board's syllabus has them — with each course's syllabus, and the
+ *  option they take of an either/or subject (theirs to choose until the examination number is assigned) */
+function YourCourses({ me, act }: { me: Candidate; act: Act }) {
+  const [d, setD] = useState<{ units: UnitRow[]; syllabus: string | null } | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const chosen = me.registered.map((r) => r.board_subject_id ?? "").join(",");
+  useEffect(() => {
+    let live = true;
+    void jcall<{ units: UnitRow[]; syllabus: string | null }>("/api/v1/jupeb/me/units").then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, [chosen]);
+  const either = me.registered.filter((r) => r.options?.length);
+  async function choose(subjectId: string | undefined, board: string) {
+    if (!subjectId || !board) return;
+    setBusy(true);
+    try { await act("/api/v1/jupeb/me/subject-option", "PUT", { subjectId, boardSubjectId: board }); } finally { setBusy(false); }
+  }
+  if (!d || !d.units.length) return null;
+  return (
+    <Panel title={`Your courses${d.syllabus ? ` — ${d.syllabus}` : ""}`}>
+      <PBody>
+        <p className="sub2">The course units of your three subjects, two in each semester, as the Board&rsquo;s syllabus lists them. Open a course to read what it covers.</p>
+        {either.map((r) => (
+          <Field key={r.code} id={`opt-${r.code}`} label={`${r.title}: which do you take?`}
+            hint={me.exam_no ? "Your examination number is assigned, so the JUPEB Office changes this now." : "Choose the one you will be examined in. You may change it until your examination number is assigned."}>
+            <select id={`opt-${r.code}`} className="ctl" style={{ maxWidth: 360 }} disabled={busy || !!me.exam_no} value={r.board_subject_id ?? ""} onChange={(e) => void choose(r.subject_id, e.target.value)}>
+              <option value="">— Choose —</option>{(r.options ?? []).map((o) => <option key={o.id} value={o.id}>{`${o.title} (${o.prefix})`}</option>)}
+            </select>
+          </Field>
+        ))}
+        <UnitsBySemester units={d.units} showSubject onOpen={(u) => setOpen(unitId(u))} />
+      </PBody>
+      {open ? <SyllabusModal url={`/api/v1/jupeb/me/units/${open}/syllabus`} onClose={() => setOpen(null)} /> : null}
+    </Panel>
+  );
+}
+
+/** V354: the dates of the session's calendar the JUPEB Office shows the students — what is on, what comes next */
+function DatesToKnow() {
+  const [d, setD] = useState<{ session: string; today: string; events: CalendarEvent[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ session: string; today: string; events: CalendarEvent[] }>("/api/v1/jupeb/me/calendar").then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, []);
+  if (!d || !d.events.length) return null;
+  const today = d.today;
+  const ahead = d.events.filter((e) => (e.ends_on ?? e.starts_on) >= today);
+  return (
+    <Panel title={`Dates to know — ${d.session}`}>
+      <PBody>
+        {!ahead.length ? <p className="sub2">The session&rsquo;s dates are past.</p> : (
+          <DTable noPrint pageSize={0} cols={["When", "What"]} rows={ahead.map((e) => [<span key="d" style={{ whiteSpace: "nowrap" }}>{eventDates(e)}</span>,
+            <span key="t">{e.title}{e.starts_on <= today ? <> <Pil kind="ok">On now</Pil></> : null}{e.planned ? <span className="sub2"> (planned — the date may change)</span> : null}</span>])} />
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+/** V354: the student's own clearance to sit the examination — each item, done or what is outstanding */
+function MyClearance() {
+  const [d, setD] = useState<{ cleared: boolean; checks: ClearanceCheck[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ cleared: boolean; checks: ClearanceCheck[] }>("/api/v1/jupeb/me/clearance").then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, []);
+  if (!d) return null;
+  return (
+    <Panel title="Your clearance for the examination" right={d.cleared ? <Pil kind="ok">Cleared</Pil> : <Pil kind="warn">Not yet</Pil>}>
+      <PBody>
+        <p className="sub2">To sit the JUPEB examination your record must be complete. Where something is outstanding, see to it, or ask the JUPEB Office.</p>
+        <DTable noPrint pageSize={0} cols={["", "Item", "Note"]} rows={d.checks.map((c) => [<Pil key="p" kind={c.ok ? "ok" : "warn"}>{c.ok ? "Done" : "Outstanding"}</Pil>, c.label, c.ok ? (c.note ?? "—") : c.note ?? "—"])} />
       </PBody>
     </Panel>
   );
@@ -1180,13 +1269,17 @@ function Attendance() {
 /* ── V347: the week's lectures, and the practice tests ──────────────────────────────────────────────── */
 
 function Timetable({ me }: { me: Candidate }) {
-  const [data, setData] = useState<{ session: string; slots: Slot[]; frames?: Frame[] } | null>(null);
+  const [data, setData] = useState<{ session: string; slots: Slot[]; frames?: Frame[]; semester?: number } | null>(null);
   const [semester, setSemester] = useState("1");
   useEffect(() => {
     let live = true;
-    void jcall<{ session: string; slots: Slot[]; frames?: Frame[] }>("/api/v1/jupeb/me/timetable").then((r) => {
+    void jcall<{ session: string; slots: Slot[]; frames?: Frame[]; semester?: number }>("/api/v1/jupeb/me/timetable").then((r) => {
       if (!live) return;
-      if (r.ok) { setData(r.data); if (r.data.slots.length && !r.data.slots.some((x) => x.semester === 1)) setSemester("2"); } else notifyProblem(r.problem);
+      if (r.ok) {
+        setData(r.data);
+        const sem = r.data.semester ?? 1;
+        setSemester(String(r.data.slots.some((x) => x.semester === sem) || !r.data.slots.length ? sem : r.data.slots[0].semester));
+      } else notifyProblem(r.problem);
     });
     return () => { live = false; };
   }, []);

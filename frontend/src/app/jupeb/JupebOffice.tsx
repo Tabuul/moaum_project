@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { buildXlsx } from "@/lib/xlsx";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles, KvGrid } from "@/components/proto/ui";
@@ -19,9 +19,10 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { DocViewer, viewerClick, type ViewDoc } from "./DocViewer";
 import { AdviceDialog, PracticeWatch, adviceFor, type Advice } from "./PracticeWatch";
+import { SEMESTER, SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "./Syllabus";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
-  stateKind, streamLabel, when, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper,
+  stateKind, streamLabel, when, eventDates, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper, type Registered, type CalendarEvent, type ClearanceCheck,
 } from "@/lib/jupeb";
 
 const STATES = ["DRAFT", "SUBMITTED", "RETURNED", "ELIGIBLE", "INELIGIBLE", "PENDING", "ADMITTED", "NOT_ADMITTED", "STUDENT", "COMPLETED", "DEFERRED", "WITHDRAWN"];
@@ -111,11 +112,34 @@ export function JupebDashboard({ canWrite = false }: { canWrite?: boolean }) {
           <PBody><DTable pageSize={10} cols={["Programme", "Applications|num", "Admitted|num", "Students|num"]} rows={d.byStream.map((r) => [r.stream, r.applications, r.admitted, r.students])} /></PBody>
         </Panel>
       </div>
+      <ComingUp session={d.session} />
       <PracticeWatch session={d.session} canWrite={canWrite} />
       <Panel title="Support" right={<Link href="/helpdesk">Open the support desk</Link>}>
         <PBody><p className="sub2">{d.tickets} open ticket(s) in the JUPEB support queue.</p></PBody>
       </Panel>
     </>
+  );
+}
+
+/** V354: the calendar's next dates and deadlines, on the dashboard */
+function ComingUp({ session }: { session: string }) {
+  const [d, setD] = useState<{ today: string; events: CalendarEvent[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ today: string; events: CalendarEvent[] }>(`/api/v1/jupeb/office/calendar?session=${encodeURIComponent(session)}`).then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, [session]);
+  if (!d) return null;
+  const next = d.events.filter((e) => (e.ends_on ?? e.starts_on) >= d.today).slice(0, 5);
+  return (
+    <Panel title="Coming up on the calendar" right={<Link href="/jupeb/calendar">The calendar</Link>}>
+      <PBody>
+        {!next.length ? <p className="sub2">{d.events.length ? "Nothing more on this session's calendar." : "This session's calendar is not on the record yet."}</p> : (
+          <DTable noPrint pageSize={0} cols={["Dates", "Event", "Deadline"]} rows={next.map((e) => [<span key="d" style={{ whiteSpace: "nowrap" }}>{eventDates(e)}</span>,
+            <span key="t">{e.title}{e.starts_on <= d.today ? <> <Pil kind="ok">On now</Pil></> : null}</span>, e.deadline_on ? day(e.deadline_on) : "—"])} />
+        )}
+      </PBody>
+    </Panel>
   );
 }
 
@@ -393,8 +417,9 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
         </Panel>
         <Panel title="Subjects and results">
           <PBody>
-            <DTable noPrint pageSize={0} cols={["Code", "Subject", "Grade|mid", "Points|num"]} rows={(c.registered.length ? c.registered : c.subjects.map((x) => ({ code: x.code, title: x.title, grade: null, points: null })))
-              .map((r) => [r.code, r.title, r.grade ?? "—", r.points ?? "—"])} />
+            <DTable noPrint pageSize={0} cols={["Code", "Subject", "Option", "Courses", "Grade|mid", "Points|num"]} rows={(c.registered.length ? c.registered : c.subjects.map((x) => ({ code: x.code, title: x.title, grade: null, points: null } as Registered)))
+              .map((r) => [r.code, r.title, r.options?.length ? <OptionPick key="o" c={c} r={r} canWrite={canWrite} onChange={setC} /> : "—",
+                (r.units ?? []).map((u) => u.code).join(", ") || "—", r.grade ?? "—", r.points ?? "—"])} />
             {c.examNoHistory?.length ? <><div className="eyebrow mt-3">Examination number history</div>
               <DTable noPrint pageSize={0} cols={["From", "To", "Reason", "Source", "By", "When"]} rows={c.examNoHistory.map((h) => [h.old_no ?? "—", h.new_no, h.reason ?? "—", `${h.source}${h.batch_ref ? ` ${h.batch_ref}` : ""}`, h.changed_by_name ?? h.changed_office ?? "—", when(h.changed_at)])} /></> : null}
             {c.resultChanges?.length ? <><div className="eyebrow mt-3">Result corrections</div>
@@ -811,6 +836,72 @@ interface BoardRow {
 }
 interface BoardList { session: string; which: string; notRegistered: number; rows: BoardRow[] }
 
+interface ClearanceRow { application_id: string; application_no: string; name: string; class_name: string | null; combination_code: string | null; exam_no: string | null; checks: ClearanceCheck[]; outstanding: string[]; cleared: boolean }
+interface ClearanceData { session: string; boardRegistration: { starts_on: string; ends_on: string | null; deadline_on: string | null; title: string } | null; examinations: string | null; rows: ClearanceRow[] }
+
+/** V354: each active student against what sitting the examination needs — what is outstanding said plainly, and the students told */
+function ClearancePanel({ canWrite }: { canWrite: boolean }) {
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [session, setSession] = useState("");
+  const [d, setD] = useState<ClearanceData | null>(null);
+  const [only, setOnly] = useState<"all" | "outstanding" | "cleared">("outstanding");
+  const [check, setCheck] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.sessions); setSession((x) => x || r.data.session); } });
+    return () => { live = false; };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    if (session) void jcall<ClearanceData>(`/api/v1/jupeb/office/clearance?session=${encodeURIComponent(session)}`).then((r) => { if (live) { if (r.ok) setD(r.data); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [session]);
+  if (!d) return null;
+  const labels = d.rows[0]?.checks.map((c) => [c.key, c.label] as const) ?? [];
+  const failing = (key: string) => d.rows.filter((r) => r.checks.some((c) => c.key === key && !c.ok)).length;
+  const rows = d.rows.filter((r) => (only === "all" || (only === "cleared") === r.cleared) && (!check || r.checks.some((c) => c.key === check && !c.ok)));
+  const cleared = d.rows.filter((r) => r.cleared).length;
+  const reg = d.boardRegistration;
+  async function excel() {
+    downloadBlob(await brandedXlsx(`JUPEB examination clearance — ${d!.session}`, ["Application No", "Name", "Class", "Combination", "Exam No", "Cleared", ...labels.map(([, l]) => l), "Outstanding"],
+      d!.rows.map((r) => [r.application_no, r.name, r.class_name ?? "", r.combination_code ?? "", r.exam_no ?? "", r.cleared ? "Yes" : "No",
+        ...labels.map(([k]) => (r.checks.find((c) => c.key === k)?.ok ? "Yes" : "No")), r.outstanding.join("; ")]),
+      { sheetName: "Clearance", serial: docSerial("JUPEBCLEAR") }), `jupeb-clearance-${d!.session.replace("/", "-")}.xlsx`);
+  }
+  async function tell() {
+    const n = d!.rows.length - cleared;
+    if (!window.confirm(`Tell the ${n} student${n === 1 ? "" : "s"} not yet cleared what is outstanding on their own record? Each gets one notice, on their dashboard and by email.`)) return;
+    setBusy(true);
+    try {
+      const r = await jcall<{ told: number }>("/api/v1/jupeb/office/clearance/tell", "POST", { session: d!.session }, `JUPEB clearance: students told (${d!.session})`);
+      if (r.ok) notify(`${r.data.told} student${r.data.told === 1 ? "" : "s"} told.`); else notifyProblem(r.problem);
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel title="Clearance to sit the examination" right={<span className="row">
+      <select className="ctl" style={{ width: 160 }} aria-label="Session" value={session} onChange={(e) => setSession(e.target.value)}>{sessions.map((x) => <option key={x.session} value={x.session}>{x.session}</option>)}</select>
+      <Btn kind="ghost" disabled={!d.rows.length} onClick={() => void excel()}>Excel</Btn>
+      {canWrite ? <Btn kind="secondary" disabled={busy || cleared === d.rows.length} onClick={() => void tell()}>Tell those not cleared</Btn> : null}
+    </span>}>
+      <PBody>
+        {reg ? <Note kind="info" title={`The Board's registration of candidates: ${eventDates(reg)}`}>{`${reg.title}${reg.deadline_on ? `; it closes ${day(reg.deadline_on)}` : ""}. ${d.examinations ? `The examinations begin ${day(d.examinations)}.` : ""}`}</Note> : null}
+        <KvGrid cls="grid--4" pairs={[["Active students", d.rows.length], ["Cleared", cleared], ["Not yet", d.rows.length - cleared], ["Session", d.session]]} />
+        <div className="row mt-2" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+          <select className="ctl" style={{ width: 200 }} aria-label="Which" value={only} onChange={(e) => setOnly(e.target.value as typeof only)}>
+            <option value="outstanding">Not yet cleared</option><option value="cleared">Cleared</option><option value="all">Everyone</option></select>
+          <select className="ctl" style={{ width: 300 }} aria-label="Outstanding item" value={check} onChange={(e) => setCheck(e.target.value)}>
+            <option value="">Any item</option>{labels.map(([k, l]) => <option key={k} value={k}>{`${l} — ${failing(k)} not met`}</option>)}</select>
+        </div>
+        <DTable pageSize={25} cols={["Application No", "Name", "Class", "Exam no", "Cleared|mid", "Outstanding"]} texts={rows.map((r) => `${r.application_no} ${r.name}`)}
+          rows={rows.map((r) => [<Link key="a" href={`/jupeb/applications/${r.application_id}`}>{r.application_no}</Link>, r.name, r.class_name ?? "—", r.exam_no ?? "—",
+            r.cleared ? <Pil key="c" kind="ok">Cleared</Pil> : <Pil key="c" kind="warn">Not yet</Pil>, r.outstanding.length ? r.outstanding.join(" · ") : "—"])} />
+        <p className="sub2 mt-2">Three subjects registered (and the option of an either/or subject chosen), a passport photograph, the required documents verified, the school fee paid in full, attendance at the minimum when one is set, and the examination number from the Board. None of it is changed here: each item is put right where it belongs.</p>
+      </PBody>
+    </Panel>
+  );
+}
+
 /** the list sent to the Board for examination numbers, in Excel (whose columns the examination-number upload reads back) and PDF */
 function BoardListPanel() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -864,6 +955,7 @@ export function JupebExamNumbers({ canWrite }: { canWrite: boolean }) {
   return (
     <>
       <PageHead title="JUPEB examination numbers" description="The official numbers the Board issues, imported by application number. A number is never invented here, never shared by two candidates, and never overwritten without a reason." />
+      <ClearancePanel canWrite={canWrite} />
       <BoardListPanel />
       {canWrite ? (
         <ImportBox title="Examination numbers" path="/api/v1/jupeb/office/exam-numbers/import" onDone={() => setTick((t) => t + 1)}
@@ -958,6 +1050,7 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
   const [ask, setAsk] = useState<OfferAsk | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [courses, setCourses] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     void jcall<SubjectRow[]>("/api/v1/jupeb/office/subjects").then((r) => { if (live && r.ok) setSubjects(r.data); });
@@ -1009,6 +1102,7 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
       <KvGrid cls="grid--4" pairs={[["Combinations", combs.length], ["Offered", offeredCount], ["Not offered", combs.length - offeredCount], ["Subjects offered", `${subjects.filter((s) => s.active).length} of ${subjects.length}`]]} />
       <Panel title={`Combinations (${shown.length})`} right={<span className="row">
         <Btn kind="ghost" onClick={() => void exportCombs()}>Export (Excel)</Btn>
+        <Btn kind="ghost" onClick={() => void exportCombinationCourses()}>Courses of every combination (Excel)</Btn>
         {canWrite ? <Btn kind="primary" onClick={() => setComb({ code: "", name: "", subject1: "", subject2: "", subject3: "", area: "", faculties: "", programmes: "", description: "", eligibility: "", active: "yes" })}>Add combination</Btn> : null}
       </span>}>
         <PBody>
@@ -1026,11 +1120,12 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
               <Btn kind="ghost" onClick={() => setPicked(new Set())}>Clear</Btn>
             </div>
           ) : null}
-          <DTable pageSize={50} cols={[...(canWrite ? ["|mid"] : []), "Code", "Subjects", "Area", "Programme", "Applications|num", "Status", ...(canWrite ? ["|mid"] : [])]}
+          <DTable pageSize={50} cols={[...(canWrite ? ["|mid"] : []), "Code", "Subjects", "Area", "Programme", "Applications|num", "Status", "|mid", ...(canWrite ? ["|mid"] : [])]}
             texts={shown.map((c) => `${c.code} ${c.name} ${c.subject1} ${c.subject2} ${c.subject3} ${c.area ?? ""}`)}
             rows={shown.map((c) => [
               ...(canWrite ? [<input key="p" type="checkbox" aria-label={`Select ${c.code}`} checked={picked.has(c.code)} onChange={() => toggle(c.code)} />] : []),
               <b key="c">{c.code}</b>, `${c.subject1} · ${c.subject2} · ${c.subject3}`, c.area ?? "—", PROGRAMME_OF(c), c.applications, status(c),
+              <Btn key="u" kind="ghost" onClick={() => setCourses(c.code)}>Courses</Btn>,
               ...(canWrite ? [<span key="e" className="row" style={{ gap: "var(--s-1)", justifyContent: "center", flexWrap: "nowrap" }}>
                 {c.active ? <Btn kind="ghost" onClick={() => setAsk({ kind: "combinations", codes: [c.code], offered: false, what: c.code })}>Disable</Btn>
                   : <Btn kind="ghost" onClick={() => setAsk({ kind: "combinations", codes: [c.code], offered: true, what: c.code })}>Reactivate</Btn>}
@@ -1066,6 +1161,8 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
               </span>] : [])])} />
         </PBody>
       </Panel>
+      <CoursesPanel />
+      {courses ? <CombinationCourses code={courses} onClose={() => setCourses(null)} /> : null}
       {ask ? (
         <Modal title={ask.offered ? `Reactivate ${ask.what}` : `Disable ${ask.what}`} onClose={() => setAsk(null)}
           foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void setOffered()}>{busy ? "Saving…" : ask.offered ? "Reactivate" : "Disable"}</Btn></>}>
@@ -1109,13 +1206,116 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
   );
 }
 
+/** the option of an either/or subject on the application — the office sets it; a change of one already chosen is given a reason */
+function OptionPick({ c, r, canWrite, onChange }: { c: Candidate; r: Registered; canWrite: boolean; onChange: (c: Candidate) => void }) {
+  const [busy, setBusy] = useState(false);
+  if (!canWrite || !r.subject_id) return <>{r.option_title ?? "Not chosen"}</>;
+  async function pick(board: string) {
+    if (!board || !r.subject_id) return;
+    let reason: string | null = null;
+    if (r.board_subject_id) {
+      reason = window.prompt(`Why is ${r.title} changed? (kept on the record)`) ?? "";
+      if (reason.trim().length < 5) { notify("Nothing changed: give the reason in a few words."); return; }
+    }
+    setBusy(true);
+    try {
+      const x = await jcall<Candidate>(`/api/v1/jupeb/office/applications/${c.id}/subject-option`, "PUT", { subjectId: r.subject_id, boardSubjectId: board, reason }, `JUPEB subject option: ${r.title}`);
+      if (!x.ok) { notifyProblem(x.problem); return; }
+      onChange(x.data); notify("The option is recorded.");
+    } finally { setBusy(false); }
+  }
+  return (
+    <select className="ctl" style={{ minWidth: 200 }} aria-label={`${r.title}: the option taken`} disabled={busy} value={r.board_subject_id ?? ""} onChange={(e) => void pick(e.target.value)}>
+      <option value="">Not chosen</option>{(r.options ?? []).map((o) => <option key={o.id} value={o.id}>{`${o.title} (${o.prefix})`}</option>)}
+    </select>
+  );
+}
+
+/* ── V353: the Board's syllabus 2027–2031 — each subject's courses, and the courses of every combination ── */
+
+interface SyllabusData {
+  syllabus: { code: string; title: string; source: string | null; first_session: string; last_session: string }[];
+  boardSubjects: { id: string; code: string; title: string; prefix: string; objectives: string | null; subject_id: string; subject_code: string; subject_title: string }[];
+  units: (UnitRow & { id: string; subject_id: string; board_subject_id: string | null; areas: string[] | null })[];
+}
+type CombUnit = UnitRow & { combination_code: string; area: string | null; active: boolean; n: number };
+
+/** the courses of every combination, one row a course, as an Excel for the office */
+async function exportCombinationCourses() {
+  const r = await jcall<CombUnit[]>("/api/v1/jupeb/office/combinations/units");
+  if (!r.ok) { notifyProblem(r.problem); return; }
+  const blob = await brandedXlsx("JUPEB subject combinations and their courses (JUPEB Syllabus 2027–2031)",
+    ["Combination", "Area", "Subject", "Board subject", "Semester", "Course code", "Course title", "Credit units", "Note"],
+    r.data.map((u) => [u.combination_code, u.area ?? "", u.subject_title ?? "", u.board_title ? `${u.board_title} (${u.board_code})` : "", SEMESTER(u.semester), u.code, u.title, u.credit_units ?? "",
+      u.either ? `One of the options of ${u.subject_title}: the student takes either` : u.code.startsWith("MAT 004") ? `For ${u.area ?? "this"} combinations` : ""]),
+    { sheetName: "Combination courses", serial: docSerial("JUPEBCOURSES") });
+  downloadBlob(blob, "jupeb-combination-courses-2027-2031.xlsx");
+}
+
+/** one combination's courses, semester by semester */
+function CombinationCourses({ code, onClose }: { code: string; onClose: () => void }) {
+  const [rows, setRows] = useState<UnitRow[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<UnitRow[]>(`/api/v1/jupeb/office/combinations/${encodeURIComponent(code)}/units`).then((r) => { if (live) { if (r.ok) setRows(r.data); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [code]);
+  const either = [...new Set((rows ?? []).filter((u) => u.either).map((u) => u.subject_title))];
+  function print() {
+    if (!rows) return;
+    brandedPrint(`${code}: the courses of the combination`, "JUPEB Syllabus 2027–2031", ["Semester", "Subject", "Code", "Course", "Units"],
+      rows.map((u) => [SEMESTER(u.semester), u.board_title ?? u.subject_title ?? "", u.code, u.title, String(u.credit_units ?? "")]), docSerial("JUPEBCOMBC"));
+  }
+  return (
+    <Modal wide title={`${code}: its courses`} onClose={onClose} foot={<><Btn kind="ghost" onClick={onClose}>Close</Btn>{rows?.length ? <Btn kind="secondary" onClick={print}>Print / PDF</Btn> : null}</>}>
+      {!rows ? <p className="sub2">Loading…</p> : (
+        <>
+          <p className="sub2">{`The course units of the combination's three subjects, two a semester each, as the Board's syllabus lists them.${either.length ? ` ${either.join(" and ")}: the student takes one of the options shown, chosen on their Subjects page.` : ""}`}</p>
+          <UnitsBySemester units={rows} showSubject onOpen={(u) => setOpen(unitId(u))} />
+        </>
+      )}
+      {open ? <SyllabusModal url={`/api/v1/jupeb/office/units/${open}/syllabus`} onClose={() => setOpen(null)} /> : null}
+    </Modal>
+  );
+}
+
+/** each subject's courses, with the Board's code and prefix, and each course's syllabus */
+function CoursesPanel() {
+  const [d, setD] = useState<SyllabusData | null>(null);
+  const [subject, setSubject] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<SyllabusData>("/api/v1/jupeb/office/syllabus").then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, []);
+  if (!d || !d.boardSubjects.length) return null;
+  const subjects = [...new Map(d.boardSubjects.map((b) => [b.subject_id, { id: b.subject_id, code: b.subject_code, title: b.subject_title }])).values()].sort((a, b) => a.title.localeCompare(b.title));
+  const pick = subject || subjects[0]?.id;
+  const boards = d.boardSubjects.filter((b) => b.subject_id === pick);
+  const units = d.units.filter((u) => u.subject_id === pick).map((u) => ({ ...u, board_title: boards.find((b) => b.id === u.board_subject_id)?.title ?? null }));
+  const ed = d.syllabus[0];
+  return (
+    <Panel title={`Courses — ${ed?.title ?? "JUPEB syllabus"}`} right={<select className="ctl" style={{ width: 280 }} aria-label="Subject" value={pick} onChange={(e) => setSubject(e.target.value)}>
+      {subjects.map((s) => <option key={s.id} value={s.id}>{s.title} ({s.code})</option>)}</select>}>
+      <PBody>
+        <p className="sub2">{`The Board's course units of each subject, two in each semester, for the sessions ${ed?.first_session ?? ""} to ${ed?.last_session ?? ""}. Mathematics takes MAT 004A (Applied Mathematics) in Science and Engineering combinations and MAT 004B (Applied Business Mathematics) in the others. ${d.boardSubjects.length} Board subjects, ${d.units.length} course units.`}</p>
+        {boards.map((b) => <p key={b.id} className="mt-1"><b>{b.title}</b>{` — the Board's ${b.code}, courses ${b.prefix}`}{boards.length > 1 ? " (a student takes one of these)" : ""}</p>)}
+        <UnitsBySemester units={units} showSubject={boards.length > 1} onOpen={(u) => setOpen(unitId(u))} />
+      </PBody>
+      {open ? <SyllabusModal url={`/api/v1/jupeb/office/units/${open}/syllabus`} onClose={() => setOpen(null)} /> : null}
+    </Panel>
+  );
+}
+
 /** a subject's course units (BIO 001 …), printed in the note of the statement of result (V342) */
 function SubjectUnits({ code }: { code: string }) {
-  const [units, setUnits] = useState<{ code: string; title: string }[] | null>(null);
+  const [units, setUnits] = useState<{ code: string; title: string; semester?: number | null; topics?: number }[] | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let live = true;
-    void jcall<{ code: string; title: string }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`).then((r) => { if (live) setUnits(r.ok ? r.data : []); });
+    void jcall<{ code: string; title: string; semester?: number | null; topics?: number }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`).then((r) => { if (live) setUnits(r.ok ? r.data : []); });
     return () => { live = false; };
   }, [code]);
   if (!units) return null;
@@ -1123,8 +1323,8 @@ function SubjectUnits({ code }: { code: string }) {
   async function save() {
     setBusy(true);
     try {
-      const r = await jcall<{ code: string; title: string }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`, "PUT",
-        { units: list.filter((u) => u.code.trim() || u.title.trim()) }, "JUPEB course units saved");
+      const r = await jcall<{ code: string; title: string; semester?: number | null }[]>(`/api/v1/jupeb/office/subjects/${encodeURIComponent(code)}/units`, "PUT",
+        { units: list.filter((u) => u.code.trim() || u.title.trim()).map((u) => ({ code: u.code, title: u.title, semester: u.semester ?? null })) }, "JUPEB course units saved");
       if (!r.ok) { notifyProblem(r.problem); return; }
       setUnits(r.data); notify("Course units saved.");
     } finally { setBusy(false); }
@@ -1134,9 +1334,11 @@ function SubjectUnits({ code }: { code: string }) {
       <div className="eyebrow">Course units (printed on the statement of result)</div>
       {list.map((u, i) => (
         <div key={i} className="row" style={{ gap: "var(--s-2)", marginTop: "var(--s-1)" }}>
-          <input className="ctl" style={{ width: 110 }} aria-label={`Unit ${i + 1} code`} placeholder="BIO 001" maxLength={9} value={u.code} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, code: e.target.value.toUpperCase() } : x)))} />
+          <input className="ctl" style={{ width: 110 }} aria-label={`Unit ${i + 1} code`} placeholder="BIO 001" maxLength={10} value={u.code} disabled={!!u.topics} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, code: e.target.value.toUpperCase() } : x)))} />
+          <select className="ctl" style={{ width: 120 }} aria-label={`Unit ${i + 1} semester`} value={u.semester ?? ""} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, semester: e.target.value ? Number(e.target.value) : null } : x)))}>
+            <option value="">Semester</option><option value="1">First</option><option value="2">Second</option></select>
           <input className="ctl grow" aria-label={`Unit ${i + 1} title`} placeholder="General Biology" maxLength={160} value={u.title} onChange={(e) => setUnits(list.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
-          <Btn kind="ghost" aria-label="Remove unit" onClick={() => setUnits(list.filter((_, j) => j !== i))}>&times;</Btn>
+          {u.topics ? <span className="sub2" title="Its syllabus is on the record">{`${u.topics} topics`}</span> : <Btn kind="ghost" aria-label="Remove unit" onClick={() => setUnits(list.filter((_, j) => j !== i))}>&times;</Btn>}
         </div>
       ))}
       <div className="row mt-2">
@@ -1203,6 +1405,34 @@ interface Settings {
   fees: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
 }
 
+interface CheckItem { session: string; level: "ok" | "warn" | "info"; title: string; detail: string; count: number }
+
+/** V354: before the current session changes — what still stands in the one it leaves, and what the next has */
+function SessionCheck({ to }: { to: string }) {
+  const [d, setD] = useState<{ from: string; to: string; items: CheckItem[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ from: string; to: string; items: CheckItem[] }>(`/api/v1/jupeb/office/settings/session-check?to=${encodeURIComponent(to)}`).then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, [to]);
+  if (!d) return <p className="sub2 mt-2">Looking at both sessions…</p>;
+  const KIND = { ok: "ok", warn: "warn", info: "info" } as const;
+  const part = (session: string) => d.items.filter((x) => x.session === session);
+  return (
+    <div className="mt-3">
+      <div className="eyebrow">{`Before ${d.to} becomes the current session`}</div>
+      <p className="sub2">Nothing moves on its own: applications and students stay in the session they were filed under. This is what still stands, to see to first.</p>
+      {[d.from, d.to].map((x) => (
+        <div key={x} className="mt-2">
+          <b>{x === d.from ? `${x} — the session it leaves` : `${x} — the session it turns to`}</b>
+          <DTable noPrint pageSize={0} cols={["", "", "Detail"]} rows={part(x).map((i) => [<Pil key="p" kind={KIND[i.level]}>{i.level === "ok" ? "Done" : i.level === "warn" ? "See to it" : "Note"}</Pil>,
+            <b key="t">{`${i.title}${i.count > 1 || (i.count === 1 && i.level !== "ok") ? ` (${i.count})` : ""}`}</b>, i.detail])} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** V351: the JUPEB programme's own current session — new applications are filed under it and every JUPEB screen opens on it, not on the University's */
 function CurrentSession({ s, canWrite, onSaved }: { s: Settings; canWrite: boolean; onSaved: (x: Settings) => void }) {
   const start = Number((s.currentSession ?? s.session).slice(0, 4));
@@ -1229,6 +1459,7 @@ function CurrentSession({ s, canWrite, onSaved }: { s: Settings; canWrite: boole
           </select>
           {canWrite ? <Btn kind="primary" disabled={busy || pick === (s.namedSession ?? "")} onClick={() => void save()}>{busy ? "Saving…" : "Make it current"}</Btn> : null}
         </div>
+        {pick && pick !== s.currentSession ? <SessionCheck to={pick} /> : null}
       </PBody>
     </Panel>
   );
