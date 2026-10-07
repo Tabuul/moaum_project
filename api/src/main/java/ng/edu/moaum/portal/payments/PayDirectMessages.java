@@ -30,18 +30,43 @@ import org.w3c.dom.NodeList;
  * the reading; a document type declaration is refused outright (no entity is
  * ever expanded). A request sent as JSON with the same names is read the same
  * way and answered as JSON. Nothing here decides anything: it only reads and
- * writes the envelope.
+ * writes the envelope — and says which of the two messages a request is, so
+ * that one address can take both, as Interswitch asks of a biller that takes
+ * customer validation and payment notification.
  */
 final class PayDirectMessages {
 
     private PayDirectMessages() {
     }
 
-    /** a request as read: the fields of its root (credentials, the reference asked about) and, for a notification, each payment */
-    record Message(boolean json, Map<String, String> fields, List<Map<String, String>> payments) {
+    /** which of the two messages a request is */
+    enum Kind { CUSTOMER_VALIDATION, PAYMENT_NOTIFICATION, UNKNOWN }
+
+    /** a request as read: its name (the root element, or the JSON's one key), the fields of its root (credentials, the reference asked
+     *  about) and, for a notification, each payment */
+    record Message(boolean json, String name, Map<String, String> fields, List<Map<String, String>> payments) {
         String field(String name) {
             String v = fields.get(name);
             return v == null ? "" : v.trim();
+        }
+
+        /** by its name (CustomerInformationRequest, PaymentNotificationRequest), whatever its case; failing a name, by what it
+         *  carries: payments make a notification, a customer reference alone a validation */
+        Kind kind() {
+            String n = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
+            if (n.startsWith("customerinformation")) {
+                return Kind.CUSTOMER_VALIDATION;
+            }
+            if (n.startsWith("paymentnotification")) {
+                return Kind.PAYMENT_NOTIFICATION;
+            }
+            if (!payments.isEmpty()) {
+                return Kind.PAYMENT_NOTIFICATION;
+            }
+            if (!field("CustReference").isEmpty()) {
+                return Kind.CUSTOMER_VALIDATION;
+            }
+            return Kind.UNKNOWN;
         }
     }
 
@@ -135,7 +160,7 @@ final class PayDirectMessages {
             }
             List<Map<String, String>> pays = new ArrayList<>();
             payments(root, pays);
-            return new Message(false, leaves(root), pays);
+            return new Message(false, localName(root), leaves(root), pays);
         } catch (Exception e) {
             throw new IllegalArgumentException("the request is not the XML it should be: " + e.getMessage(), e);
         }
@@ -170,8 +195,10 @@ final class PayDirectMessages {
             throw new IllegalArgumentException("the request is not the JSON it should be: " + e.getMessage(), e);
         }
         Map<?, ?> r = root;
+        String name = "";
         // {"CustomerInformationRequest": {...}} is read as its contents
         if (r.size() == 1 && r.values().iterator().next() instanceof Map<?, ?> inner) {
+            name = String.valueOf(r.keySet().iterator().next());
             r = inner;
         }
         List<Map<String, String>> pays = new ArrayList<>();
@@ -190,7 +217,7 @@ final class PayDirectMessages {
         } else if (pick(r, "PaymentLogId") != null) {
             pays.add(scalars(r));
         }
-        return new Message(true, scalars(r), pays);
+        return new Message(true, name, scalars(r), pays);
     }
 
     /* ── writing ── */

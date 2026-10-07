@@ -36,6 +36,12 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/jupeb/options",
   "/api/bff/api/v1/jupeb/apply",
   "/api/bff/api/v1/jupeb/forgot",
+  /* Interswitch PayDirect's doors (V299; the one address for both messages, Oct 2026) when the API has no public address of its
+     own and the portal forwards to it: Interswitch has no session. The API answers them as it answers them directly — a
+     notification believed only with its credentials. Exactly these three, not the Bursary's /paydirect desk. */
+  "/api/bff/api/v1/payments/paydirect/interswitch",
+  "/api/bff/api/v1/payments/paydirect/validate",
+  "/api/bff/api/v1/payments/paydirect/notify",
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 

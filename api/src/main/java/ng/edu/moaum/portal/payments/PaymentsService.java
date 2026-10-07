@@ -700,6 +700,30 @@ public class PaymentsService {
      * received — settled, already settled, short, or naming no reference of the
      * portal's — is answered 0, so Interswitch does not send it again.
      */
+    /**
+     * The one address Interswitch posts both messages to (Oct 2026): a customer validation is answered as at the validation door, a
+     * payment notification as at the notification door — the same checks, the same settling, the same log. A message that is
+     * neither (or cannot be read) is logged and answered as a reference not found, so nothing is ever paid on it.
+     */
+    public PayDirectMessages.Answer paydirectMessage(String body) {
+        PayDirectMessages.Kind kind;
+        try {
+            kind = PayDirectMessages.read(body).kind();
+        } catch (IllegalArgumentException unreadable) {
+            kind = PayDirectMessages.Kind.UNKNOWN;
+        }
+        if (kind == PayDirectMessages.Kind.PAYMENT_NOTIFICATION) {
+            return paydirectNotify(body);
+        }
+        if (kind == PayDirectMessages.Kind.UNKNOWN) {
+            log("paydirect", "WEBHOOK", "message", null, null, null, "unrecognised", false, "IGNORED",
+                    json(Map.of("why", "Neither a customer validation nor a payment notification")));
+            boolean asJson = body != null && body.strip().startsWith("{");
+            return new PayDirectMessages.Answer(asJson, PayDirectMessages.customerAnswer(asJson, "", "", "", false, null, null, null, null));
+        }
+        return paydirectValidate(body);
+    }
+
     public PayDirectMessages.Answer paydirectNotify(String body) {
         PayDirectMessages.Message m;
         try {
@@ -775,6 +799,7 @@ public class PaymentsService {
         m.put("apiBase", apiBase());
         m.put("validatePath", "/api/v1/payments/paydirect/validate");
         m.put("notifyPath", "/api/v1/payments/paydirect/notify");
+        m.put("singlePath", "/api/v1/payments/paydirect/interswitch");
         return m;
     }
 
@@ -1168,8 +1193,8 @@ public class PaymentsService {
         row.put("gateway", "paydirect");
         row.put("on", on);
         row.put("mode", on ? "LIVE" : "OFF");
-        row.put("webhook", "/api/v1/payments/paydirect/notify");
-        row.put("validate", "/api/v1/payments/paydirect/validate");
+        /* Oct 2026: the one address that takes both the customer validation and the payment notification */
+        row.put("webhook", "/api/v1/payments/paydirect/interswitch");
         row.put("hash", paydirectCredentials() != null);
         row.put("channels", "Pay on Quickteller — the biller's page on quickteller.com: card, bank transfer, USSD, Quickteller wallet");
         return row;

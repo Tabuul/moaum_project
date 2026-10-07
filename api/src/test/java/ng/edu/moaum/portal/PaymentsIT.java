@@ -314,8 +314,10 @@ class PaymentsIT {
             assertThat(jdbc.sql("SELECT count(*) FROM finance.gateway_attempt WHERE reference = :r AND gateway = 'paydirect'").param("r", reference).query(Long.class).single())
                     .as("the Bursary sees who went to pay").isEqualTo(1L);
 
-            // Quickteller's question about the reference: the payer's name and the amount; an unknown reference is refused
-            String asked = postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
+            // the one address Interswitch asks for takes both messages; opened in a browser it says it is reachable
+            assertThat(open.get().uri("/api/v1/payments/paydirect/interswitch").retrieve().body(String.class)).contains("This address is reachable");
+            // Quickteller's question about the reference, at the one address: the payer's name and the amount; an unknown reference is refused
+            String asked = postXml("/api/v1/payments/paydirect/interswitch", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
                     + "<MerchantReference>6405</MerchantReference><CustReference>" + reference.toLowerCase() + "</CustReference><PaymentItemCode>01</PaymentItemCode>"
                     + "<ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>");
             assertThat(asked).contains("<Status>0</Status>").contains("<CustReference>" + reference + "</CustReference>")
@@ -345,8 +347,8 @@ class PaymentsIT {
                     .contains("<PaymentLogId>" + shortId + "</PaymentLogId><Status>0</Status>");
             assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single()).isTrue();
 
-            // the amount owed, authentic: confirmed once, on Quickteller's channel
-            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
+            // the amount owed, authentic, reported at the one address: confirmed once, on Quickteller's channel
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
                     .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
             assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("feeConfirmedAt")).isNotNull();
             assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).isEqualTo(true);
@@ -358,9 +360,13 @@ class PaymentsIT {
                     .param("r", reference).query(String.class).list();
             assertThat(outcomes).containsExactly("BAD_SIGNATURE", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED");
 
-            // a paid reference is refused when Quickteller asks again, so it is not paid twice
+            // a paid reference is refused when Quickteller asks again, so it is not paid twice — at either address
             assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))
                     .contains("<Status>1</Status>");
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))
+                    .contains("<CustomerInformationResponse>").contains("<Status>1</Status>");
+            // a message that is neither is answered as a reference not found, and nothing moves
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", "<Hello><World/></Hello>")).contains("<CustomerInformationResponse>").contains("<Status>1</Status>");
             // a reversal is kept for the Bursary; the confirmation stands until the Bursary acts
             String reversalId = String.valueOf(Long.parseLong(logId) + 2);
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, reversalId, "-" + amount.toPlainString(), false, true)))

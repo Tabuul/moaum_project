@@ -72,7 +72,9 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Payment gateways call the API directly, not through the frontend.
+# Payment gateways call the API directly, not through the frontend. A rule takes at most five paths: Interswitch PayDirect's
+# doors are one wildcard — the one address for both messages (/paydirect/interswitch, Oct 2026) and the two separate ones (the
+# Bursary's own /paydirect pages still need a signed-in token at the API).
 resource "aws_lb_listener_rule" "gateway_callbacks" {
   listener_arn = local.https ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
   priority     = 10
@@ -84,8 +86,7 @@ resource "aws_lb_listener_rule" "gateway_callbacks" {
     path_pattern {
       values = [
         "/api/v1/payments/webhook/*",
-        "/api/v1/payments/paydirect/validate",
-        "/api/v1/payments/paydirect/notify",
+        "/api/v1/payments/paydirect/*",
         "/api/v1/payments/quickteller/start",
         "/api/v1/payments/quickteller/return",
       ]

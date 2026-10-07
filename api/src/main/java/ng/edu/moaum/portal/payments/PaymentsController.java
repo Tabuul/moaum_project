@@ -135,11 +135,21 @@ class PaymentsController {
         return answer(payments.paydirectNotify(body));
     }
 
-    /** opened in a browser, either door says what it is — so the Directorate of ICT can see it is reachable before giving it to Interswitch */
-    @GetMapping(value = { "/paydirect/validate", "/paydirect/notify" }, produces = "text/plain;charset=UTF-8")
+    /**
+     * Oct 2026: the one address Interswitch asks a biller for when it takes both customer validation and payment notification —
+     * the message (raw text/xml, posted to the stream) says which it is, by its root element, and is answered as at its own door.
+     */
+    @PostMapping(value = "/paydirect/interswitch", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectMessage(@RequestBody(required = false) String body) {
+        return answer(payments.paydirectMessage(body));
+    }
+
+    /** opened in a browser, each door says what it is — so the Directorate of ICT can see it is reachable before giving it to Interswitch */
+    @GetMapping(value = { "/paydirect/validate", "/paydirect/notify", "/paydirect/interswitch" }, produces = "text/plain;charset=UTF-8")
     ResponseEntity<String> paydirectDoor() {
-        return ResponseEntity.ok("MOAUM portal: Quickteller (Interswitch PayDirect) posts its reference checks to /api/v1/payments/paydirect/validate "
-                + "and its payment notifications to /api/v1/payments/paydirect/notify. This address is reachable.");
+        return ResponseEntity.ok("MOAUM portal: Quickteller (Interswitch PayDirect) may post both its customer validations and its payment notifications "
+                + "to the one address /api/v1/payments/paydirect/interswitch (or each to its own: /api/v1/payments/paydirect/validate and "
+                + "/api/v1/payments/paydirect/notify). This address is reachable.");
     }
 
     /* ── V037: the Bursary's side of the gateways ── */

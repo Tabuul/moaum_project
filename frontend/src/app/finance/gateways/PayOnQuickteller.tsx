@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Pay on Quickteller (V299) on the Bursary's screen: the two addresses the
- * University gives Interswitch, the billers (their Quickteller page, whether the
+ * Pay on Quickteller (V299) on the Bursary's screen: the address the University
+ * gives Interswitch (Oct 2026: one address for both messages, as Interswitch asks;
+ * or each message to its own), the billers (their Quickteller page, whether the
  * portal sends payers there, whether the amount rides in the link), Quickteller's
  * recent reference checks, and the collections report import — the way back for
  * any payment whose notification did not arrive.
@@ -30,6 +31,7 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
   const rows = collectionRows(text);
   const validateAt = q.apiBase + q.validatePath;
   const notifyAt = q.apiBase + q.notifyPath;
+  const singleAt = q.apiBase + (q.singlePath ?? "/api/v1/payments/paydirect/interswitch");
   const on = q.billers.filter((b) => b.active && b.redirect && b.pay_link);
 
   function copy(s: string) {
@@ -43,10 +45,10 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
           The payer presses Pay and chooses Quickteller; the biller&rsquo;s page opens at quickteller.com with the payment reference in <b>cid</b> (and the amount, when the biller carries it) &mdash; the reference exactly as the portal issued it. Quickteller asks the portal about the reference when the payer presses Continue, and reports each payment to the portal, which confirms it as it confirms every payment: for that reference, once, and only for the amount owed. A payer in the College of Health Sciences pays the College&rsquo;s biller while it is in use.
         </Note>
         <KvGrid cls="grid--2" pairs={[
-          ["1 · Give Interswitch these two addresses", <span key="a">
-            <span className="blk">Reference check (customer validation): <span className="tnum">{validateAt}</span> <Btn kind="ghost" onClick={() => copy(validateAt)}>Copy</Btn></span>
-            <span className="blk mt-2">Payment notification: <span className="tnum">{notifyAt}</span> <Btn kind="ghost" onClick={() => copy(notifyAt)}>Copy</Btn></span>
-            <span className="sub2 blk mt-2">Either address opened in a browser says it is reachable. Interswitch posts its PayDirect XML to them.</span>
+          ["1 · Give Interswitch this one address", <span key="a">
+            <span className="blk"><b className="tnum">{singleAt}</b> <Btn kind="ghost" onClick={() => copy(singleAt)}>Copy</Btn></span>
+            <span className="sub2 blk mt-2">It takes both the customer validation (the reference check) and the payment notification &mdash; the single URL Interswitch asks for. Each message says which it is, and is answered as such. Opened in a browser, it says it is reachable.</span>
+            <span className="sub2 blk mt-2">{"Should Interswitch take them separately: customer validation "}<span className="tnum">{validateAt}</span>{", payment notification "}<span className="tnum">{notifyAt}</span>.</span>
           </span>],
           ["2 · Agree the notification's service username and password", q.credentials
             ? <span key="c"><Pil kind="ok">Set</Pil> <span className="sub2">A notification that does not carry them is kept and not believed.</span></span>
