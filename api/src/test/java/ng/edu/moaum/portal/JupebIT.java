@@ -1406,8 +1406,7 @@ class JupebIT {
                         INSERT INTO jupeb.fee_setting (session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_office)
                         VALUES (:s, 17000, 1000, 17000, 70, true, 'FIRST_INSTALMENT', 'Benue', 'bursar')
                         """).param("s", from).update();
-                return jdbc.sql("INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), :t, date '2094-09-01', date '2095-08-31') ON CONFLICT (name) DO NOTHING")
-                        .param("t", to).update();
+                return null;
             });
             assertThat(status(it.get(bursar, path + "?from=" + from + "&to=" + to))).isEqualTo(403);
             Map<String, Object> plan = ok(it.get(office, path + "?from=" + from + "&to=" + to));
@@ -1423,21 +1422,18 @@ class JupebIT {
             assertThat(code(it.call(office, HttpMethod.POST, path + "/fees", carry))).isEqualTo("JUPEB_ROLLOVER_FEES");
             assertThat(status(it.call(office, HttpMethod.POST, path + "/students", carry))).isEqualTo(404);
             assertThat(code(it.call(office, HttpMethod.POST, path + "/classes", Map.of("from", to, "to", from)))).isEqualTo("JUPEB_ROLLOVER_LATER");
-            // the fees: the Bursary's alone, unchanged
+            // the fees: the Bursary's alone, and only into a session on the University's calendar (the carry itself: check.sql 200)
             assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo(403);
             assertThat(ok(it.get(bursar, "/api/v1/jupeb/fees?session=" + to)).get("carryFrom")).isEqualTo(from);
-            Map<String, Object> fees = ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry));
-            assertThat(fees.get("own")).isEqualTo(true);
-            assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) fees.get("rule")).get("application_fee")))).isEqualByComparingTo("17000");
+            assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo("JUPEB_ROLLOVER_NO_SESSION");
             plan = ok(it.get(office, path + "?from=" + from + "&to=" + to));
-            assertThat((List<Map<String, Object>>) plan.get("history")).extracting(h -> h.get("item")).contains("CLASSES", "FEES");
+            assertThat((List<Map<String, Object>>) plan.get("history")).extracting(h -> h.get("item")).containsExactly("CLASSES");
         } finally {
             it.db(() -> {
                 jdbc.sql("DELETE FROM jupeb.session_rollover WHERE to_session = :t").param("t", to).update();
                 jdbc.sql("DELETE FROM jupeb.class WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
                 jdbc.sql("DELETE FROM jupeb.school_fee WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
-                jdbc.sql("DELETE FROM jupeb.fee_setting WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
-                return jdbc.sql("DELETE FROM policy.academic_session WHERE name = :t").param("t", to).update();
+                return jdbc.sql("DELETE FROM jupeb.fee_setting WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
             });
         }
 

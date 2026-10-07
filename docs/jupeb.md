@@ -461,7 +461,8 @@ copies of them.
   maximum, another class refused, not once locked).
 - `JupebIT.nextSessionFromTheLastAndPasswordsThatEndSessions` covers V356: the plan (the Bursary refused), classes carried once
   (the Bursary refused, a second carry refused), the fees refused to the office, an unknown item, an earlier session refused;
-  the Bursary carrying the fees (the office refused) and the history; a temporary password refused for anything but reading and
+  the fees refused to the office and, for the Bursary, into a session not on the University's calendar (the carry itself is
+  check.sql 200's); the history; a temporary password refused for anything but reading and
   changing it, a new password ending the other session, one forgotten-password link in two minutes, a reset link ending every
   session and the other links and refused a second time, and five failures locking the account with "locked" said.
 - `check.sql` properties 185–200 cover the rules on a brand-new database.
