@@ -2,7 +2,8 @@
 
 /**
  * JUPEB practice tests (V347): a test of one subject, its question bank uploaded from Excel or CSV, opened to the students
- * of that subject. Each attempt draws its questions at random from the bank, is timed and marked by the server; the answer
+ * of that subject. V349: a question is also typed one at a time, with formulas ($x^2$, $H_2O$, $\frac{1}{2}mv^2$) drawn as it is
+ * typed and an image (a diagram, a graph) attached; a question already answered is never rewritten — editing it makes a new version. Each attempt draws its questions at random from the bank, is timed and marked by the server; the answer
  * key never reaches a student before they submit. Practice is never part of a result.
  *
  * This is the JUPEB module's own engine: the University's CBT engine (V322) is bound to the main register's students and
@@ -15,13 +16,20 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
-import { jcall, readSheet, when } from "@/lib/jupeb";
+import { fileBase64, jcall, readSheet, when } from "@/lib/jupeb";
+import { MathText } from "@/components/proto/MathText";
+import { plainMath } from "@/lib/mathtext";
 
 interface Test {
   id: string; subject_id: string; code: string; subject: string; title: string; instructions: string | null; duration_minutes: number; questions_per_attempt: number;
   attempts_allowed: number; show_answers: boolean; open: boolean; updated_at: string; questions: number; attempts: number; students: number; average: number | null;
 }
-interface Question { id: string; ordinal: number; stem: string; option_a: string; option_b: string; option_c: string | null; option_d: string | null; option_e: string | null; answer: string; explanation: string | null; answered: number; right_answers: number }
+interface Question {
+  id: string; ordinal: number; stem: string; option_a: string; option_b: string; option_c: string | null; option_d: string | null; option_e: string | null; answer: string;
+  explanation: string | null; answered: number; right_answers: number; has_image: boolean;
+}
+interface QForm { id: string | null; question: string; a: string; b: string; c: string; d: string; e: string; answer: string; explanation: string; image: File | null }
+const BLANK_Q: QForm = { id: null, question: "", a: "", b: "", c: "", d: "", e: "", answer: "A", explanation: "", image: null };
 interface Form { id: string | null; subjectId: string; title: string; instructions: string; durationMinutes: string; questionsPerAttempt: string; attemptsAllowed: string; showAnswers: boolean; open: boolean }
 
 const ALIASES: Record<string, string> = {
@@ -114,12 +122,14 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
   const [refused, setRefused] = useState<{ row: number; reason: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [edit, setEdit] = useState<QForm | null>(null);
   useEffect(() => {
     let live = true;
     void jcall<{ questions: Question[] }>(`/api/v1/jupeb/office/practice-tests/${test.id}`).then((r) => { if (!live) return; if (r.ok) setRows(r.data.questions); else notifyProblem(r.problem); });
     return () => { live = false; };
   }, [test.id, tick]);
   const changed = () => { setTick((t) => t + 1); onChanged(); };
+  const base = `/api/v1/jupeb/office/practice-tests/${test.id}/questions`;
   async function upload(file: File | undefined) {
     if (!file) return;
     const list = await readSheet(file, ALIASES);
@@ -127,7 +137,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
     if (replace && !window.confirm(`Replace the ${rows?.length ?? 0} questions in the bank with the ${list.length} in ${file.name}? Past attempts keep their questions.`)) return;
     setBusy(true);
     try {
-      const r = await jcall<{ added: number; refused: { row: number; reason: string }[]; active: number }>(`/api/v1/jupeb/office/practice-tests/${test.id}/questions`, "POST", { rows: list, replace });
+      const r = await jcall<{ added: number; refused: { row: number; reason: string }[]; active: number }>(base, "POST", { rows: list, replace });
       if (!r.ok) { notifyProblem(r.problem); return; }
       setRefused(r.data.refused);
       notify(`${r.data.added} question${r.data.added === 1 ? "" : "s"} added; the bank holds ${r.data.active}.`);
@@ -136,19 +146,57 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
   }
   async function remove(q: Question) {
     if (!window.confirm(`Remove question ${q.ordinal} from the bank? Past attempts keep it.`)) return;
-    const r = await jcall(`/api/v1/jupeb/office/practice-tests/${test.id}/questions/${q.id}/remove`, "POST", {});
+    const r = await jcall(`${base}/${q.id}/remove`, "POST", {});
     if (r.ok) changed(); else notifyProblem(r.problem);
   }
+  /** an image put on a question: PNG or JPEG, at most 1 MB */
+  async function putImage(question: string, file: File): Promise<boolean> {
+    if (!/^image\/(png|jpeg)$/.test(file.type)) { notifyProblem({ status: 400, title: "A question's image is a PNG or a JPEG." }); return false; }
+    if (file.size > 1024 * 1024) { notifyProblem({ status: 400, title: `A question's image is at most 1 MB; this one is ${Math.round(file.size / 1024)} KB.` }); return false; }
+    const r = await jcall(`${base}/${question}/image`, "POST", { filename: file.name, contentType: file.type, base64: await fileBase64(file) });
+    if (!r.ok) { notifyProblem(r.problem); return false; }
+    return true;
+  }
+  async function image(q: Question, file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try { if (await putImage(q.id, file)) { notify(`Image put on question ${q.ordinal}.`); changed(); } } finally { setBusy(false); }
+  }
+  async function dropImage(q: Question) {
+    if (!window.confirm(`Take the image off question ${q.ordinal}?`)) return;
+    const r = await jcall(`${base}/${q.id}/image/remove`, "POST", {});
+    if (r.ok) changed(); else notifyProblem(r.problem);
+  }
+  async function save() {
+    if (!edit) return;
+    setBusy(true);
+    try {
+      const row = { question: edit.question, a: edit.a, b: edit.b, c: edit.c, d: edit.d, e: edit.e, answer: edit.answer, explanation: edit.explanation };
+      const r = edit.id ? await jcall<{ id: string; newVersion?: boolean }>(`${base}/${edit.id}`, "PUT", { row }) : await jcall<{ id: string }>(`${base}/add`, "POST", { row });
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      if (edit.image && !(await putImage(r.data.id, edit.image))) { changed(); return; }
+      notify(edit.id ? ("newVersion" in r.data && r.data.newVersion ? "Saved as a new version; the attempts that used the old one keep it." : "The question is corrected.") : "The question is added.");
+      setEdit(null);
+      changed();
+    } finally { setBusy(false); }
+  }
   function template() {
-    downloadBlob(buildXlsx(["Question", "A", "B", "C", "D", "E", "Answer", "Explanation"], [["The SI unit of force is", "Newton", "Joule", "Watt", "Pascal", "", "A", "F = ma, measured in newtons"]], "Questions"),
-      "jupeb-practice-questions-template.xlsx");
+    downloadBlob(buildXlsx(["Question", "A", "B", "C", "D", "E", "Answer", "Explanation"], [
+      ["The SI unit of force is", "Newton", "Joule", "Watt", "Pascal", "", "A", "F = ma, measured in newtons"],
+      ["The kinetic energy of a body is", "$mv$", "$\\frac{1}{2}mv^2$", "$mgh$", "$\\frac{1}{2}kx^2$", "", "B", "$E_k = \\frac{1}{2}mv^2$"],
+    ], "Questions"), "jupeb-practice-questions-template.xlsx");
   }
   async function exportBank() {
     if (!rows) return;
-    downloadBlob(await brandedXlsx(`JUPEB practice questions — ${test.code} ${test.title}`, ["No.", "Question", "A", "B", "C", "D", "E", "Answer", "Explanation", "Answered", "Right"],
-      rows.map((q) => [q.ordinal, q.stem, q.option_a, q.option_b, q.option_c, q.option_d, q.option_e, q.answer, q.explanation, Number(q.answered), Number(q.right_answers)]),
+    downloadBlob(await brandedXlsx(`JUPEB practice questions — ${test.code} ${test.title}`, ["No.", "Question", "A", "B", "C", "D", "E", "Answer", "Explanation", "Image", "Answered", "Right"],
+      rows.map((q) => [q.ordinal, plainMath(q.stem), plainMath(q.option_a), plainMath(q.option_b), plainMath(q.option_c), plainMath(q.option_d), plainMath(q.option_e), q.answer,
+        plainMath(q.explanation), q.has_image ? "Yes" : "", Number(q.answered), Number(q.right_answers)]),
       { sheetName: "Questions", serial: docSerial("JUPEBPQ"), noSerialColumn: true, meta: [["Confidential", "The answer key: keep it within the JUPEB Office"]] }), `jupeb-practice-${test.code}.xlsx`);
   }
+  const options = (q: Question) => ([["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d], ["E", q.option_e]] as [string, string | null][]).filter(([, v]) => v);
+  const formOf = (q: Question): QForm => ({ id: q.id, question: q.stem, a: q.option_a, b: q.option_b, c: q.option_c ?? "", d: q.option_d ?? "", e: q.option_e ?? "", answer: q.answer,
+    explanation: q.explanation ?? "", image: null });
+  const letters = edit ? (["A", "B", "C", "D", "E"] as const).filter((l) => (edit[l.toLowerCase() as "a"] ?? "").trim()) : [];
   return (
     <Panel title={`${test.code} · ${test.title} — question bank`} right={<span className="row">
       {rows?.length ? <Btn kind="ghost" onClick={() => void exportBank()}>Export (Excel)</Btn> : null}
@@ -158,23 +206,74 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
         <KvGrid cls="grid--4" pairs={[["Questions in the bank", String(rows?.length ?? "…")], ["Per attempt", String(test.questions_per_attempt)], ["Time", `${test.duration_minutes} min`], ["Last changed", when(test.updated_at)]]} />
         {canWrite ? (
           <div className="row mt-2" style={{ flexWrap: "wrap" }}>
-            <label className="btn btn--primary btn--sm" style={{ cursor: busy ? "wait" : "pointer" }}>Upload questions (Excel or CSV)
+            <Btn kind="primary" disabled={busy} onClick={() => setEdit({ ...BLANK_Q })}>Add a question</Btn>
+            <label className="btn btn--secondary btn--sm" style={{ cursor: busy ? "wait" : "pointer" }}>Upload questions (Excel or CSV)
               <input type="file" hidden accept=".xlsx,.csv" disabled={busy} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} /></label>
-            <label className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> replace the bank (otherwise added to it)</label>
+            <label className="row row--inline row--tight"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> replace the bank (otherwise added to it)</label>
             <Btn kind="ghost" onClick={template}>Template</Btn>
-            {busy ? <span className="sub2">Uploading…</span> : null}
+            {busy ? <span className="sub2">Working…</span> : null}
           </div>
         ) : null}
+        {canWrite ? <p className="sub2 mt-1">Formulas go between dollar signs: <code>$x^2$</code>, <code>$H_2O$</code>, <code>$\frac{"{1}{2}"}mv^2$</code>, <code>$\sqrt{"{b^2-4ac}"}$</code>, <code>$\alpha$</code>, <code>$\to$</code>, <code>$30^\circ$</code>. A diagram is attached to a question as a PNG or JPEG of up to 1 MB.</p> : null}
         {refused.length ? <Note kind="bad" title={`${refused.length} row${refused.length === 1 ? "" : "s"} not added`}>{refused.map((x) => `Row ${x.row}: ${x.reason}`).join(" · ")}</Note> : null}
         {rows && rows.length ? (
           <DTable pageSize={25} cols={["No.|num", "Question", "Options", "Answer|mid", "Answered|num", "Right|num", ...(canWrite ? [""] : [])]}
             texts={rows.map((q) => `${q.stem} ${q.option_a} ${q.option_b} ${q.option_c ?? ""} ${q.option_d ?? ""} ${q.option_e ?? ""}`)}
-            rows={rows.map((q) => [q.ordinal, <span key="q" style={{ whiteSpace: "pre-line" }}>{q.stem}</span>,
-              <span key="o" className="sub2">{[["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d], ["E", q.option_e]].filter(([, v]) => v).map(([k, v]) => `${k}. ${v}`).join("  ·  ")}</span>,
+            rows={rows.map((q) => [q.ordinal,
+              <span key="q"><MathText text={q.stem} />{q.has_image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/bff${base}/${q.id}/image`} alt={`Diagram of question ${q.ordinal}`} style={{ display: "block", maxWidth: 220, maxHeight: 140, objectFit: "contain", marginTop: 6, border: "1px solid var(--line)", background: "#fff" }} />
+              ) : null}{q.explanation ? <div className="sub2 mt-1">Explanation: <MathText text={q.explanation} /></div> : null}</span>,
+              <span key="o" className="sub2">{options(q).map(([k, v]) => <span key={k} style={{ display: "block" }}><b>{k}.</b> <MathText text={v} /></span>)}</span>,
               q.answer, Number(q.answered), Number(q.answered) ? `${Number(q.right_answers)} (${Math.round((100 * Number(q.right_answers)) / Number(q.answered))}%)` : "—",
-              ...(canWrite ? [<Btn key="r" kind="ghost" onClick={() => void remove(q)}>Remove</Btn>] : [])])} />
+              ...(canWrite ? [<span key="a" className="stack" style={{ gap: 4 }}>
+                <Btn kind="ghost" onClick={() => setEdit(formOf(q))}>Edit</Btn>
+                <label className="btn btn--ghost btn--sm" style={{ cursor: "pointer" }}>{q.has_image ? "Replace image" : "Add image"}
+                  <input type="file" hidden accept="image/png,image/jpeg" onChange={(e) => { void image(q, e.target.files?.[0]); e.target.value = ""; }} /></label>
+                {q.has_image ? <Btn kind="ghost" onClick={() => void dropImage(q)}>Remove image</Btn> : null}
+                <Btn kind="ghost" onClick={() => void remove(q)}>Remove</Btn>
+              </span>] : [])])} />
         ) : rows ? <p className="sub2 mt-2">The bank is empty.</p> : null}
       </PBody>
+      {edit ? (
+        <Modal wide title={edit.id ? "Edit the question" : "Add a question"} onClose={() => setEdit(null)}
+          foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn>
+            <Btn kind="primary" disabled={busy || !edit.question.trim() || !edit.a.trim() || !edit.b.trim() || !letters.includes(edit.answer as "A")} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Btn></>}>
+          <div className="grid grid--2">
+            <div>
+              <Field id="pq-q" label="Question" required><textarea id="pq-q" className="ctl" rows={4} maxLength={4000} value={edit.question} onChange={(e) => setEdit({ ...edit, question: e.target.value })} /></Field>
+              {(["a", "b", "c", "d", "e"] as const).map((k) => (
+                <Field key={k} id={`pq-${k}`} label={`Option ${k.toUpperCase()}`} required={k === "a" || k === "b"}><input id={`pq-${k}`} className="ctl" maxLength={1000} value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Field>
+              ))}
+              <div className="grid grid--2">
+                <Field id="pq-ans" label="Answer" required><select id="pq-ans" className="ctl" value={edit.answer} onChange={(e) => setEdit({ ...edit, answer: e.target.value })}>
+                  {(["A", "B", "C", "D", "E"] as const).map((l) => <option key={l} value={l} disabled={!letters.includes(l)}>{l}</option>)}</select></Field>
+                <Field id="pq-img" label={edit.id ? "Replace the image" : "Image"} hint="PNG or JPEG, up to 1 MB"><input id="pq-img" type="file" accept="image/png,image/jpeg" onChange={(e) => setEdit({ ...edit, image: e.target.files?.[0] ?? null })} /></Field>
+              </div>
+              <Field id="pq-x" label="Explanation" hint="Shown after submission where the test shows answers"><textarea id="pq-x" className="ctl" rows={3} maxLength={4000} value={edit.explanation} onChange={(e) => setEdit({ ...edit, explanation: e.target.value })} /></Field>
+            </div>
+            <div>
+              <div className="eyebrow">As the student sees it</div>
+              <div className="card"><div className="card__body">
+                <div className="b600"><MathText text={edit.question || "—"} /></div>
+                {edit.id && rows?.find((r) => r.id === edit.id)?.has_image && !edit.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/api/bff${base}/${edit.id}/image`} alt="The question's image" style={{ display: "block", maxWidth: "100%", maxHeight: 200, objectFit: "contain", marginTop: 6, background: "#fff" }} />
+                ) : edit.image ? <p className="sub2 mt-1">{`New image: ${edit.image.name}`}</p> : null}
+                <div className="stack mt-2" style={{ gap: 6 }}>
+                  {letters.map((l) => (
+                    <div key={l} style={{ padding: "6px 8px", border: `1px solid ${l === edit.answer ? "var(--green)" : "var(--line)"}`, borderRadius: "var(--r-sm)" }}>
+                      <b>{l}.</b> <MathText text={edit[l.toLowerCase() as "a"]} />
+                    </div>
+                  ))}
+                </div>
+                {edit.explanation ? <p className="sub2 mt-2">Explanation: <MathText text={edit.explanation} /></p> : null}
+              </div></div>
+              {edit.id ? <p className="sub2 mt-2">A question someone has already answered is kept as it was for their attempt; saving makes a new version for the attempts to come.</p> : null}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </Panel>
   );
 }

@@ -4,13 +4,16 @@
  * The JUPEB Office's reports of a session (V347), read from the record as it stands: enrolment (by state, programme,
  * combination, state of origin and class), fees (by kind and month, and the school-fee position — what the Bursary's
  * engine charged and confirmed; nothing here changes an amount), attendance and results by subject, and practice tests.
- * Each table downloads in Excel and PDF with the University's branding.
+ * Each table downloads in Excel and PDF with the University's branding. V349: the Dashboard tab draws the same figures as charts —
+ * the stages of the session's applications, the programmes, combinations and states of origin, the fees by month and the
+ * school-fee position, attendance, the grades by subject and the practice scores.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, PageHead, Panel, PBody, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Donut, GroupBars, HBars, Legend, Stack, VBars, VZ, vzNum } from "@/components/proto/vz";
 import { FEE_KIND, STATE_SHORT, jcall, naira, streamLabel } from "@/lib/jupeb";
 
 type Num = number | string | null;
@@ -30,7 +33,7 @@ interface Report {
   results: { code: string; title: string; candidates: number; A: number; B: number; C: number; D: number; E: number; F: number; other: number; passRate: Num; averagePoints: Num }[];
   practice: { title: string; code: string; attempts: number; students: number; averagePercent: Num }[];
 }
-type Section = "enrolment" | "fees" | "attendance" | "results" | "practice";
+type Section = "dashboard" | "enrolment" | "fees" | "attendance" | "results" | "practice";
 type Cell = string | number | null;
 
 const pct = (v: Num) => (v == null ? "—" : `${Number(v)}%`);
@@ -40,7 +43,7 @@ export function JupebReports() {
   const [session, setSession] = useState("");
   const [loaded, setLoaded] = useState<Report | null>(null);
   const [sessions, setSessions] = useState<string[]>([]);
-  const [tab, setTab] = useState<Section>("enrolment");
+  const [tab, setTab] = useState<Section>("dashboard");
   useEffect(() => {
     let live = true;
     void jcall<{ session: string; sessions: { session: string }[] }>("/api/v1/jupeb/office/dashboard").then((r) => {
@@ -75,10 +78,10 @@ export function JupebReports() {
             ["Fees confirmed", naira(data.fees.total), null, `${naira(data.fees.schoolFees.outstanding)} school fees outstanding`],
           ]} />
           <Tabs<Section> look="line" value={tab} onChange={setTab} items={[
-            { id: "enrolment", label: "Enrolment" }, { id: "fees", label: "Fees" }, { id: "attendance", label: "Attendance", count: data.attendance.length },
+            { id: "dashboard", label: "Dashboard" }, { id: "enrolment", label: "Enrolment" }, { id: "fees", label: "Fees" }, { id: "attendance", label: "Attendance", count: data.attendance.length },
             { id: "results", label: "Results", count: data.results.length }, { id: "practice", label: "Practice tests", count: data.practice.length },
           ]} />
-          {tab === "enrolment" ? (
+          {tab === "dashboard" ? <Charts data={data} /> : tab === "enrolment" ? (
             <div className="grid grid--2">
               <Table s={data.session} title="Applications by state" heads={["State", "Applications"]} rows={data.enrolment.byState.map((x) => [STATE_SHORT[x.state] ?? x.state, x.count])} />
               <Table s={data.session} title="By programme" heads={["Programme", "Applicants", "Admitted", "Students"]}
@@ -114,6 +117,67 @@ export function JupebReports() {
         </>
       )}
     </>
+  );
+}
+
+/* ── V349: the session at a glance ── */
+
+const STAGES: [string, string[], string][] = [
+  ["Drafts", ["DRAFT"], VZ.axis],
+  ["In review", ["SUBMITTED", "RETURNED", "UNDER_REVIEW", "ELIGIBLE", "PENDING"], VZ.s1],
+  ["Admitted", ["ADMITTED", "DEFERRED"], VZ.s4],
+  ["Students", ["STUDENT", "COMPLETED"], VZ.good],
+  ["Not admitted", ["NOT_ADMITTED", "INELIGIBLE"], VZ.crit],
+  ["Withdrawn", ["WITHDRAWN"], VZ.s5],
+];
+const GRADES: [string, string][] = [["A", VZ.good], ["B", "#58b85c"], ["C", VZ.s1], ["D", VZ.s4], ["E", "#f08c3a"], ["F", VZ.crit], ["other", VZ.axis]];
+
+function ChartPanel({ title, children, note }: { title: string; children: ReactNode; note?: string }) {
+  return <Panel title={title}><PBody>{children}{note ? <p className="sub2 mt-1">{note}</p> : null}</PBody></Panel>;
+}
+
+function Charts({ data }: { data: Report }) {
+  const e = data.enrolment;
+  const byState = new Map(e.byState.map((x) => [x.state, Number(x.count)]));
+  const stages = STAGES.map(([l, states, c]) => ({ l, v: states.reduce((a, st) => a + (byState.get(st) ?? 0), 0), c })).filter((x) => x.v > 0);
+  const sf = data.fees.schoolFees;
+  const months = data.fees.byMonth.slice(-12);
+  const nothing = <p className="sub2">Nothing to show for this session yet.</p>;
+  return (
+    <div className="grid grid--2">
+      <ChartPanel title="Applications by stage">
+        {stages.length ? <Donut items={stages} capLabel="applications" capValue={vzNum(Number(e.totals.applications))} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="By programme">
+        {e.byStream.length ? <GroupBars rows={e.byStream.map((x) => ({ l: x.stream === "UNSET" ? "Not chosen" : streamLabel(x.stream), v: [Number(x.applicants), Number(x.admitted), Number(x.students)] }))}
+          keys={[{ l: "Applicants", c: VZ.s1 }, { l: "Admitted", c: VZ.s4 }, { l: "Students", c: VZ.good }]} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Students by subject combination" note={e.byCombination.length > 10 ? `The ten largest of ${e.byCombination.length}; the Enrolment tab lists them all.` : undefined}>
+        {e.byCombination.length ? <HBars items={e.byCombination.slice(0, 10).map((x) => ({ l: x.code, v: Number(x.students) }))} colour={VZ.s1} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Students by state of origin" note={e.byState_of_origin.length > 10 ? `The ten largest of ${e.byState_of_origin.length}.` : undefined}>
+        {e.byState_of_origin.length ? <HBars items={e.byState_of_origin.slice(0, 10).map((x) => ({ l: x.state, v: Number(x.students) }))} colour={VZ.s3} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Fees confirmed by month (₦)" note={data.fees.byMonth.length > 12 ? "The last twelve months." : undefined}>
+        {months.length ? <VBars items={months.map((x) => ({ l: month(x.month).replace(/ (\d{4})$/, " ’$1").replace(/’(\d\d)(\d\d)$/, "’$2"), v: Number(x.amount), c: VZ.s1 }))} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="School fees of the admitted">
+        {Number(sf.students) ? <Donut items={[{ l: "Paid in full", v: Number(sf.paidInFull), c: VZ.good }, { l: "Partly paid", v: Number(sf.partly), c: VZ.warn }, { l: "Not paid", v: Number(sf.unpaid), c: VZ.crit }].filter((x) => x.v > 0)}
+          capLabel="outstanding" capValue={naira(sf.outstanding)} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Average attendance by subject (%)">
+        {data.attendance.length ? <HBars items={data.attendance.map((x) => ({ l: `${x.code}${data.attendance.some((y) => y.code === x.code && y.semester !== x.semester) ? ` · S${x.semester}` : ""}`, v: Number(x.averageRate ?? 0) }))} colour={VZ.s3} /> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Grades by subject">
+        {data.results.length ? <>
+          <Legend keys={GRADES.map(([l, c]) => ({ l: l === "other" ? "Absent / withheld" : l, c }))} />
+          <Stack rows={data.results.map((x) => ({ l: x.code, parts: GRADES.map(([g]) => Number((x as unknown as Record<string, number>)[g] ?? 0)) }))} keys={GRADES.map(([l, c]) => ({ l, c }))} />
+        </> : nothing}
+      </ChartPanel>
+      <ChartPanel title="Practice tests: average score (%)">
+        {data.practice.length ? <HBars items={data.practice.map((x) => ({ l: `${x.code} · ${x.title}`, v: Number(x.averagePercent ?? 0) }))} colour={VZ.s2} /> : nothing}
+      </ChartPanel>
+    </div>
   );
 }
 

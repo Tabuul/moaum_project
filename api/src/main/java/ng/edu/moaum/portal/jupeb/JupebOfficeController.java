@@ -1028,6 +1028,7 @@ class JupebOfficeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("questions", jdbc.sql("""
                 SELECT q.id, q.ordinal, q.stem, q.option_a, q.option_b, q.option_c, q.option_d, q.option_e, q.answer, q.explanation,
+                       EXISTS (SELECT 1 FROM jupeb.practice_image i WHERE i.question_id = q.id) AS has_image,
                        (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct IS NOT NULL) AS answered,
                        (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct) AS right_answers
                   FROM jupeb.practice_question q WHERE q.test_id = :id AND q.active ORDER BY q.ordinal
@@ -1066,6 +1067,242 @@ class JupebOfficeController {
                 new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
         out.put("sessions", jdbc.sql("SELECT DISTINCT session FROM jupeb.application ORDER BY session DESC").query(String.class).list());
         return out;
+    }
+
+    /* ── V349: one question added or edited (with its image), the announcements, the identity cards ── */
+
+    public record QuestionIn(@NotNull Map<String, Object> row) {
+    }
+
+    private void requireQuestion(UUID test, UUID question) {
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.practice_question WHERE id = :q AND test_id = :t)")
+                .param("q", question).param("t", test).query(Boolean.class).single())) {
+            throw new NotFound("practice question", question);
+        }
+    }
+
+    /** one question typed by the office (formulas written as $x^2$, $H_2O$, $\frac{1}{2}$); its id back, to attach an image to */
+    @PostMapping("/practice-tests/{id}/questions/add")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> addQuestion(@PathVariable UUID id, @Valid @RequestBody QuestionIn body) {
+        UUID q = jdbc.sql("SELECT jupeb.practice_add(:t, :r::jsonb)").param("t", id).param("r", json.writeValueAsString(body.row())).query(UUID.class).single();
+        return Map.of("id", q);
+    }
+
+    /** a question corrected: in place until answered; afterwards a new version, the old one kept with the attempts that drew it */
+    @PutMapping("/practice-tests/{id}/questions/{question}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> editQuestion(@PathVariable UUID id, @PathVariable UUID question, @Valid @RequestBody QuestionIn body) {
+        UUID q = jdbc.sql("SELECT jupeb.practice_edit(:t, :q, :r::jsonb)").param("t", id).param("q", question).param("r", json.writeValueAsString(body.row()))
+                .query(UUID.class).single();
+        return Map.of("id", q, "newVersion", !q.equals(question));
+    }
+
+    public record ImageIn(@Size(max = 200) String filename, @NotBlank String contentType, @NotBlank String base64) {
+    }
+
+    @PostMapping("/practice-tests/{id}/questions/{question}/image")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> questionImage(@PathVariable UUID id, @PathVariable UUID question, @Valid @RequestBody ImageIn body) {
+        requireQuestion(id, question);
+        JupebPracticeImages.store(jdbc, files, question, body.filename(), body.contentType(), body.base64(), actor());
+        return Map.of("id", question, "image", true);
+    }
+
+    @PostMapping("/practice-tests/{id}/questions/{question}/image/remove")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> removeQuestionImage(@PathVariable UUID id, @PathVariable UUID question) {
+        requireQuestion(id, question);
+        JupebPracticeImages.remove(jdbc, files, question);
+        return Map.of("id", question, "image", false);
+    }
+
+    @GetMapping("/practice-tests/{id}/questions/{question}/image")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> questionImageContent(@PathVariable UUID id, @PathVariable UUID question) {
+        requireQuestion(id, question);
+        return JupebPracticeImages.stream(jdbc, files, question);
+    }
+
+    public record AnnouncementIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String session,
+                                 @NotBlank @Pattern(regexp = "ALL|APPLICANTS|ADMITTED|STUDENTS|CLASS|COMBINATION|PROGRAMME") String audience,
+                                 @Size(max = 80) String audienceRef, @NotBlank @Size(min = 3, max = 160) String title, @NotBlank @Size(min = 3, max = 5000) String body,
+                                 Boolean pinned, Boolean email, Boolean sms, LocalDate expiresOn) {
+    }
+
+    /** the audience's reference, checked: a class of the session, an existing combination, a programme; none for the others */
+    private String audienceRef(String session, String audience, String ref) {
+        String r = blankOf(ref);
+        switch (audience) {
+            case "CLASS" -> {
+                if (r == null || !Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.class WHERE id::text = :r AND session = :s)").param("r", r).param("s", session)
+                        .query(Boolean.class).single())) {
+                    throw new DomainRuleViolation("JUPEB_ANNOUNCE_AUDIENCE", "Choose a class of the " + session + " session.", new DomainRuleViolation.Remedy("Pick the class from the list.", "JUPEB Office"));
+                }
+                return r;
+            }
+            case "COMBINATION" -> {
+                if (r == null || !Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.combination WHERE upper(code) = upper(:r))").param("r", r).query(Boolean.class).single())) {
+                    throw new DomainRuleViolation("JUPEB_ANNOUNCE_AUDIENCE", "Choose a subject combination.", new DomainRuleViolation.Remedy("Pick the combination from the list.", "JUPEB Office"));
+                }
+                return r.toUpperCase();
+            }
+            case "PROGRAMME" -> {
+                if (!"SCIENCE".equals(r) && !"NON_SCIENCE".equals(r)) {
+                    throw new DomainRuleViolation("JUPEB_ANNOUNCE_AUDIENCE", "Choose Science or Non-Science.", new DomainRuleViolation.Remedy("Pick the programme.", "JUPEB Office"));
+                }
+                return r;
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
+    @GetMapping("/announcements")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> announcementList(@RequestParam(required = false) String session) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("sessions", sessions());
+        out.put("announcements", jdbc.sql("""
+                SELECT n.id, n.session, n.audience, n.audience_ref, n.title, n.body, n.pinned, n.send_email, n.send_sms, n.expires_on, n.published_at, n.notified,
+                       n.withdrawn_at, n.withdrawn_reason, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = n.created_by) AS created_by_name,
+                       CASE n.audience WHEN 'CLASS' THEN (SELECT k.name FROM jupeb.class k WHERE k.id::text = n.audience_ref) ELSE n.audience_ref END AS audience_name,
+                       (SELECT count(*) FROM jupeb.application a WHERE jupeb.audience_reaches(n.session, n.audience, n.audience_ref, a)) AS reach,
+                       (SELECT count(*) FROM jupeb.announcement_read r WHERE r.announcement_id = n.id) AS reads
+                  FROM jupeb.announcement n WHERE n.session = :s
+                 ORDER BY (n.withdrawn_at IS NOT NULL), n.pinned DESC, n.published_at DESC
+                """).param("s", s).query().listOfRows());
+        out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", s).query().listOfRows());
+        out.put("combinations", jdbc.sql("SELECT code, name FROM jupeb.combination WHERE active ORDER BY code").query().listOfRows());
+        return out;
+    }
+
+    /** how many a notice would reach now, before it is published */
+    @GetMapping("/announcements/reach")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> announcementReach(@RequestParam String session, @RequestParam String audience, @RequestParam(required = false) String ref) {
+        String a = audience.trim().toUpperCase();
+        if (!Set.of("ALL", "APPLICANTS", "ADMITTED", "STUDENTS", "CLASS", "COMBINATION", "PROGRAMME").contains(a)) throw new NotFound("audience", a);
+        String r = Set.of("CLASS", "COMBINATION", "PROGRAMME").contains(a) ? blankOf(ref) : null;
+        if (r == null && Set.of("CLASS", "COMBINATION", "PROGRAMME").contains(a)) return Map.of("count", 0);
+        return Map.of("count", jdbc.sql("SELECT jupeb.announcement_reach(:s, :a, :r)").param("s", session.trim()).param("a", a).param("r", r, Types.VARCHAR)
+                .query(Integer.class).single());
+    }
+
+    /** a notice published to its audience: on their dashboards at once, emailed and texted when asked */
+    @PostMapping("/announcements")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> announce(@Valid @RequestBody AnnouncementIn b) {
+        String ref = audienceRef(b.session(), b.audience(), b.audienceRef());
+        if (b.expiresOn() != null && b.expiresOn().isBefore(LocalDate.now(java.time.ZoneId.of("Africa/Lagos")))) {
+            throw new DomainRuleViolation("JUPEB_ANNOUNCE_EXPIRY", "A notice cannot expire before today.", new DomainRuleViolation.Remedy("Choose today or a later date, or none.", "JUPEB Office"));
+        }
+        UUID id = jdbc.sql("""
+                INSERT INTO jupeb.announcement (session, audience, audience_ref, title, body, pinned, send_email, send_sms, expires_on, created_by, created_office)
+                VALUES (:s, :a, :r, :t, :b, :p, :e, :m, :x, :by, nullif(current_setting('moaum.actor_office', true), '')) RETURNING id
+                """).param("s", b.session().trim()).param("a", b.audience()).param("r", ref, Types.VARCHAR).param("t", b.title().trim()).param("b", b.body().trim())
+                .param("p", Boolean.TRUE.equals(b.pinned())).param("e", Boolean.TRUE.equals(b.email())).param("m", Boolean.TRUE.equals(b.sms()))
+                .param("x", b.expiresOn(), Types.DATE).param("by", actor()).query(UUID.class).single();
+        int notified = jdbc.sql("SELECT jupeb.announcement_notify(:n)").param("n", id).query(Integer.class).single();
+        int reach = jdbc.sql("SELECT jupeb.announcement_reach(:s, :a, :r)").param("s", b.session().trim()).param("a", b.audience()).param("r", ref, Types.VARCHAR)
+                .query(Integer.class).single();
+        return Map.of("id", id, "reach", reach, "notified", notified);
+    }
+
+    @PostMapping("/announcements/{id}/withdraw")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> withdrawAnnouncement(@PathVariable UUID id, @Valid @RequestBody RevokeIn body) {
+        if (body.reason().trim().length() < 5) {
+            throw new DomainRuleViolation("JUPEB_ANNOUNCE_REASON", "Say why the notice is withdrawn.", new DomainRuleViolation.Remedy("Give the reason in a few words.", "JUPEB Office"));
+        }
+        int n = jdbc.sql("UPDATE jupeb.announcement SET withdrawn_at = now(), withdrawn_by = :by, withdrawn_reason = :r WHERE id = :id AND withdrawn_at IS NULL")
+                .param("by", actor()).param("r", body.reason().trim()).param("id", id).update();
+        if (n == 0) throw new NotFound("live announcement", id);
+        return Map.of("id", id, "withdrawn", true);
+    }
+
+    /** the active students of a session (or a class) and their identity cards: the live card's code, or none yet */
+    @GetMapping("/id-cards")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> idCards(@RequestParam(required = false) String session, @RequestParam(required = false) UUID classId) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("sessions", sessions());
+        out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", s).query().listOfRows());
+        out.put("students", jdbc.sql("""
+                SELECT a.id, a.application_no, a.exam_no, a.surname, a.first_name, a.middle_name, a.session, a.stream, a.next_of_kin_phone, a.state,
+                       c.code AS combination_code, c.name AS combination_name, k.name AS class_name,
+                       EXISTS (SELECT 1 FROM jupeb.document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.status NOT IN ('REJECTED', 'REPLACEMENT_REQUIRED')) AS has_passport,
+                       p.code AS card_code, p.issued_at AS card_issued_at,
+                       (SELECT count(*) FROM jupeb.paper r WHERE r.application_id = a.id AND r.kind = 'ID_CARD' AND r.revoked_at IS NOT NULL) AS replaced
+                  FROM jupeb.application a
+                  LEFT JOIN jupeb.combination c ON c.id = a.combination_id
+                  LEFT JOIN jupeb.class k ON k.id = a.class_id
+                  LEFT JOIN LATERAL (SELECT x.code, x.issued_at FROM jupeb.paper x WHERE x.application_id = a.id AND x.kind = 'ID_CARD' AND x.revoked_at IS NULL
+                                      ORDER BY x.issued_at DESC LIMIT 1) p ON true
+                 WHERE a.session = :s AND a.state IN ('STUDENT', 'COMPLETED') AND (CAST(:k AS uuid) IS NULL OR a.class_id = :k)
+                 ORDER BY k.name NULLS LAST, a.surname, a.first_name
+                """).param("s", s).param("k", classId, Types.OTHER).query().listOfRows());
+        return out;
+    }
+
+    public record IssueIn(@NotNull @Size(min = 1, max = 500) List<UUID> ids) {
+    }
+
+    /** cards issued (or their live codes returned) for the students chosen; one not eligible is listed with the reason */
+    @PostMapping("/id-cards/issue")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> issueCards(@Valid @RequestBody IssueIn body) {
+        List<Map<String, Object>> cards = new java.util.ArrayList<>();
+        List<Map<String, Object>> skipped = new java.util.ArrayList<>();
+        for (UUID id : new java.util.LinkedHashSet<>(body.ids())) {
+            Map<String, Object> a = jdbc.sql("""
+                    SELECT a.state, EXISTS (SELECT 1 FROM jupeb.document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.status NOT IN ('REJECTED', 'REPLACEMENT_REQUIRED')) AS photo,
+                           EXISTS (SELECT 1 FROM jupeb.paper x WHERE x.application_id = a.id AND x.kind = 'ID_CARD' AND x.revoked_at IS NULL) AS had
+                      FROM jupeb.application a WHERE a.id = :a
+                    """).param("a", id).query().listOfRows().stream().findFirst().orElse(null);
+            if (a == null) { skipped.add(Map.of("id", id, "reason", "No such JUPEB record.")); continue; }
+            if (!List.of("STUDENT", "COMPLETED").contains(String.valueOf(a.get("state")))) { skipped.add(Map.of("id", id, "reason", "Not an active student.")); continue; }
+            if (!Boolean.TRUE.equals(a.get("photo"))) { skipped.add(Map.of("id", id, "reason", "No passport photograph on file.")); continue; }
+            String code = jdbc.sql("SELECT jupeb.issue_paper(:a, 'ID_CARD', NULL, true, :by, nullif(current_setting('moaum.actor_office', true), ''))")
+                    .param("a", id).param("by", actor()).query(String.class).single();
+            if (!Boolean.TRUE.equals(a.get("had"))) {
+                jdbc.sql("SELECT jupeb.app_event(:a, 'ID_CARD_ISSUED', :n)").param("a", id).param("n", "Identity card " + code + " issued").query().listOfRows();
+            }
+            cards.add(Map.of("id", id, "code", code));
+        }
+        return Map.of("cards", cards, "skipped", skipped);
+    }
+
+    /** a lost or damaged card: its code stops verifying (revoked with the reason) and a new card is issued */
+    @PostMapping("/id-cards/{id}/replace")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> replaceCard(@PathVariable UUID id, @Valid @RequestBody RevokeIn body) {
+        requireApp(id);
+        String old = jdbc.sql("SELECT code FROM jupeb.paper WHERE application_id = :a AND kind = 'ID_CARD' AND revoked_at IS NULL ORDER BY issued_at DESC LIMIT 1")
+                .param("a", id).query(String.class).optional().orElseThrow(() -> new NotFound("identity card", id));
+        jdbc.sql("SELECT jupeb.revoke_paper(:c, :r, :by)").param("c", old).param("r", "Card replaced: " + body.reason().trim()).param("by", actor()).query().listOfRows();
+        String code = jdbc.sql("SELECT jupeb.issue_paper(:a, 'ID_CARD', NULL, true, :by, nullif(current_setting('moaum.actor_office', true), ''))")
+                .param("a", id).param("by", actor()).query(String.class).single();
+        jdbc.sql("SELECT jupeb.app_event(:a, 'ID_CARD_REPLACED', :n)").param("a", id).param("n", "Identity card " + old + " replaced by " + code + ": " + body.reason().trim())
+                .query().listOfRows();
+        return Map.of("id", id, "code", code, "replaced", old);
     }
 
     private static String blankOf(String s) {

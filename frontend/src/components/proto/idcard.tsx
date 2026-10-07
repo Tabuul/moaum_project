@@ -24,6 +24,18 @@ export interface IdCardData {
   kinPhone: string;
   photoSrc?: string | null;
   state?: "issued" | "blocked" | "expired";
+  /* V349 — a card of another programme (JUPEB) says what it is and carries a real verification code */
+  /** the tag under the photograph (default "Student") */
+  tag?: string;
+  /** the fields beside the photograph, in place of faculty, level, programme, blood group, admitted, graduates */
+  rows?: [label: string, value: string, mono?: boolean][];
+  /** how long the card holds, in place of "valid to <expiresShort>" */
+  validity?: string;
+  /** the verification QR (an image) and the address it opens, in place of the device mark */
+  qrSrc?: string | null;
+  verifyText?: string;
+  /** who signs for the University (default the Registrar) */
+  signatory?: string;
 }
 
 /* ── Code 128-B, drawn to the module (proto barcodeSVG / c128*) ── */
@@ -124,23 +136,27 @@ export function IdCardFront({ c }: { c: IdCardData }) {
               <path d="M15 124c0-21 15-34 35-34s35 13 35 34Z" fill="#8FA5B4" />
             </svg>
           )}
-          <span className="idc__tag">Student</span>
+          <span className="idc__tag">{c.tag ?? "Student"}</span>
         </div>
         <div className="idc__who">
           <div className="idc__name">{c.name}</div>
           <div className="idc__matric tnum">{c.matric}</div>
           <div className="idc__grid">
-            <Field label="Faculty" value={c.faculty} />
-            <Field label="Level" value={c.level} mono />
-            <Field label="Programme" value={c.prog} />
-            <Field label="Blood group" value={c.blood} mono />
-            <Field label="Admitted" value={c.admitted} mono />
-            <Field label="Graduates" value={c.graduates} mono />
+            {c.rows ? c.rows.map(([l, v, mono]) => <Field key={l} label={l} value={v} mono={mono} />) : (
+              <>
+                <Field label="Faculty" value={c.faculty} />
+                <Field label="Level" value={c.level} mono />
+                <Field label="Programme" value={c.prog} />
+                <Field label="Blood group" value={c.blood} mono />
+                <Field label="Admitted" value={c.admitted} mono />
+                <Field label="Graduates" value={c.graduates} mono />
+              </>
+            )}
           </div>
         </div>
       </div>
       <div className="idc__foot">
-        <span>Session <b className="tnum">{c.session}</b> &middot; valid to <b className="tnum">{c.expiresShort}</b></span>
+        <span>Session <b className="tnum">{c.session}</b> &middot; {c.validity ?? <>valid to <b className="tnum">{c.expiresShort}</b></>}</span>
         <span className="idc__ser tnum">{c.serial}</span>
       </div>
       {isVoid ? <div className="idc__void">{c.state === "blocked" ? "Blocked" : "Expired"}</div> : null}
@@ -163,14 +179,15 @@ export function IdCardBack({ c }: { c: IdCardData }) {
           <p>Any alteration or erasure renders this card invalid. Loss must be reported immediately to the Chief Security Officer of the University.</p>
         </div>
         <div className="idc__vfy">
-          <div className="idc__qr"><Qr /></div>
-          <div className="idc__vt">moaum.edu.ng/verify<br /><span className="tnum">{c.serial}</span></div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <div className="idc__qr">{c.qrSrc ? <img src={c.qrSrc} alt="Verification QR code" style={{ width: "100%", height: "100%" }} /> : <Qr />}</div>
+          <div className="idc__vt">{c.verifyText ?? "moaum.edu.ng/verify"}<br /><span className="tnum">{c.serial}</span></div>
           <div className="idc__kin">In an emergency<br /><b>{c.kinPhone}</b></div>
         </div>
       </div>
       <div className="idc__sig">
         <div><span />Holder&rsquo;s signature</div>
-        <div><span />Registrar</div>
+        <div><span />{c.signatory ?? "Registrar"}</div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341–V345, V347)
+# The JUPEB programme (V339, V341–V345, V347–V349)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -184,6 +184,33 @@ copies of them.
   kind and month (old-portal payments counted apart) and the school-fee position; attendance and results by subject; practice.
   Each table in Excel and PDF. Read only — the Bursary's figures are not changed.
 
+- **Documents kept (V348).** The file migration job's orphan sweep had removed every JUPEB document and passport from the
+  bucket an hour after upload (the JUPEB table was not on its list and had no foreign key). The sweep now asks the catalogue
+  for every `object_id` column, every such column references `platform.file_object`, and the eleven documents lost are in
+  `jupeb.document_lost` and marked for re-upload; a submitted candidate replaces a document marked for replacement from
+  Documents.
+- **Announcements (V349).** The JUPEB Office publishes a notice to a session's candidates — everyone, those not yet admitted,
+  the admitted, the active students, one class, one combination or one programme — after seeing how many it will reach. It
+  shows on each reached candidate's dashboard at once (pinned first, until it expires), with an unread count in the side menu,
+  and is emailed and texted (the title and a pointer to the portal) when the Office asks. A withdrawn application is reached by
+  nothing. A notice is withdrawn with a reason, never deleted; an email or a text already sent is not called back.
+- **Practice questions with formulas and images (V349).** Formulas are written between dollar signs (`$x^2$`, `$H_2O$`,
+  `$\frac{1}{2}mv^2$`, `$\sqrt{b^2-4ac}$`, `$\alpha$`, `$\to$`, `$30^\circ$`) in the question, the options and the
+  explanation, and drawn by the portal's own elements (`lib/mathtext.ts`, `MathText`) — never as HTML; the exports write them
+  plainly (x², H₂O, 1/2mv²). A question may carry one PNG or JPEG of up to 1 MB, kept privately like the documents and shown to
+  the office and to a student only inside an attempt that drew the question. The office types a question one at a time with
+  a live preview, or uploads a bank as before. A question already answered is never rewritten: an edit makes a new version
+  (taking the image along) and the attempts that used the old one keep it.
+- **The identity card (V349).** An active student with a passport photograph on file has a card — the University's card design,
+  marked JUPEB — whose QR carries a code issued like the other papers (`ID_CARD`) and verified at `/verify/jupeb/{code}`; the
+  verification shows the name, the application number, the session, the programme and the combination, never the NIN, the date
+  of birth or a contact. The examination number is printed but is not part of what the code states, so its arrival does not void
+  a card. The student sees their card; the JUPEB Office issues and prints cards for a class or those chosen (true to size, front
+  and back), and replaces a lost card — the old code is revoked with the reason and stops verifying.
+- **Report charts (V349).** The Reports page opens on a Dashboard of charts: the session's applications by stage, the programmes,
+  the largest combinations and states of origin, fees confirmed by month, the school-fee position, attendance and grades by
+  subject, and the practice scores.
+
 ## API
 
 - **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`.
@@ -191,14 +218,16 @@ copies of them.
   `/choice` (programme and combination), `/olevel`, `/documents/{kind}?sitting=` (with `/content`),
   `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance`, `/papers`, `/requests` (with `/{id}/cancel`),
   `/support`, and (V347) `/contact`, `/corrections`, `/timetable`, `/practice` (with `/{test}/start`, `/attempts/{id}`,
-  `/attempts/{id}/answers/{question}`, `/attempts/{id}/submit`).
+  `/attempts/{id}/answers/{question}`, `/attempts/{id}/submit`), and (V349) `/announcements` (with `/{id}/read`),
+  `/practice/attempts/{id}/questions/{question}/image`, `/id-card`.
 - **Public verification:** `/api/v1/verify/jupeb/{code}`.
 - **JUPEB Office:** `/api/v1/jupeb/office/...`, including `/subjects/offered`, `/combinations/offered`,
   `/subjects/{code}/units`, `/applications/{id}/papers`, `/papers/{code}/revoke`, `/requests`, `/applications/{id}/requests`,
   `/requests/{id}/decide`, `/applications/{id}/resume`, `/reminders` (with `/due`, `/run`, `/{kind}`), and (V347)
   `/old-portal-payments` (with `/import`), `/timetable` (with `/{id}`, `/{id}/remove`), `/practice-tests` (with `/{id}`,
-  `/{id}/questions`, `/{id}/questions/{q}/remove`) and `/reports?session=`. Reads are for jupeb, super and admin; writes for
-  jupeb and super.
+  `/{id}/questions`, `/{id}/questions/{q}/remove`) and `/reports?session=`, and (V349) `/announcements` (with `/reach`,
+  `/{id}/withdraw`), `/practice-tests/{id}/questions/add`, `/practice-tests/{id}/questions/{q}` (PUT), `.../{q}/image` (with
+  `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`). Reads are for jupeb, super and admin; writes for jupeb and super.
 - **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
   `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
   JUPEB records.
@@ -228,7 +257,13 @@ copies of them.
   submission, scored, attempts limited, no result written), the reports (Bursary refused), and ICT Support on the record (no
   reach → not found, the contact correction on the ledger, a capability not granted refused, the temporary password only on
   the candidate's ticket, one sign-in, never recorded).
-- `check.sql` properties 185–192 cover the rules on a brand-new database.
+- `JupebIT.announcementsPracticeImagesAndIdentityCard` covers V349: a notice refused to the Bursary, its reach told first and
+  matched, a class notice not reaching another class, the unread count and its reading, a withdrawn notice gone; a typed
+  question with a formula, a refused question and a refused fake PNG, the image seen by the office and by the student only in
+  their attempt, an answered question versioned with its image and the past attempt unchanged; the card refused without a
+  photograph, the same code twice, verified without the NIN or contacts, the office's list and issue, a replaced card no longer
+  verifying. `FileSweepIT` covers V348.
+- `check.sql` properties 185–194 cover the rules on a brand-new database.
 
 ## Not done
 

@@ -724,6 +724,114 @@ class JupebIT {
         assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.ticket_event WHERE ticket_id = :t AND action = 'SUPPORT_PASSWORD_RESET'").param("t", UUID.fromString(ticket)).query(Integer.class).single()).isEqualTo(1);
     }
 
+    /** V349: the office's announcements, a practice question with a formula and an image, the identity card */
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void announcementsPracticeImagesAndIdentityCard() {
+        String appNo = "S9" + tag + "04";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Aondo", "surname", "Iorkyaa", "sex", "Male", "phone", "08066667777", "dob", "3/4/2006",
+                "email", "zzv349." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+        UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+        String token = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Announce2026!")));
+        it.db(() -> jdbc.sql("SELECT jupeb.register_subjects(:a, :a, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'))").param("a", app).query(Integer.class).single());
+        UUID otherClass = it.db(() -> jdbc.sql("INSERT INTO jupeb.class (session, name) VALUES (:s, :n) RETURNING id").param("s", session).param("n", "ZZ Class " + tag).query(UUID.class).single());
+
+        // announcements: the Bursary does not publish; the reach is told first; a class the student is not in does not reach them
+        Map<String, Object> notice = new LinkedHashMap<>(Map.of("session", session, "audience", "STUDENTS", "title", "Mid-semester test " + tag,
+                "body", "The mid-semester test holds on Friday at 9 a.m. in the JUPEB Hall.", "email", true, "pinned", true));
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/announcements", notice))).isEqualTo(403);
+        int reach = ((Number) ok(it.get(office, "/api/v1/jupeb/office/announcements/reach?session=" + session + "&audience=STUDENTS")).get("count")).intValue();
+        assertThat(reach).isGreaterThanOrEqualTo(1);
+        Map<String, Object> published = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/announcements", notice));
+        assertThat(((Number) published.get("reach")).intValue()).isEqualTo(reach);
+        assertThat(((Number) published.get("notified")).intValue()).isEqualTo(reach);
+        String noticeId = String.valueOf(published.get("id"));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/announcements", Map.of("session", session, "audience", "CLASS", "audienceRef", otherClass.toString(),
+                "title", "For another class " + tag, "body", "Only that class reads this.")));
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/announcements", Map.of("session", session, "audience", "CLASS", "audienceRef", UUID.randomUUID().toString(),
+                "title", "No such class", "body", "Refused.")))).isEqualTo("JUPEB_ANNOUNCE_AUDIENCE");
+        List<Map<String, Object>> mine = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/announcements")).get("announcements");
+        assertThat(mine).extracting(a -> String.valueOf(a.get("title"))).contains("Mid-semester test " + tag).doesNotContain("For another class " + tag);
+        assertThat(((Number) ok(it.get(token, "/api/v1/jupeb/me")).get("unreadAnnouncements")).intValue()).isGreaterThanOrEqualTo(1);
+        int before = ((Number) ok(it.get(token, "/api/v1/jupeb/me")).get("unreadAnnouncements")).intValue();
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/announcements/" + noticeId + "/read", Map.of()));
+        assertThat(((Number) ok(it.get(token, "/api/v1/jupeb/me")).get("unreadAnnouncements")).intValue()).isEqualTo(before - 1);
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/announcements/" + noticeId + "/withdraw", Map.of("reason", "The test moved to Monday")));
+        mine = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/announcements")).get("announcements");
+        assertThat(mine).extracting(a -> String.valueOf(a.get("title"))).doesNotContain("Mid-semester test " + tag);
+
+        // a practice question typed with a formula and an image; seen by a student only inside an attempt that drew it; an answered question is versioned, never rewritten
+        UUID subject = jdbc.sql("SELECT sr.subject_id FROM jupeb.subject_registration sr JOIN jupeb.subject s ON s.id = sr.subject_id WHERE sr.application_id = :a ORDER BY s.code LIMIT 1")
+                .param("a", app).query(UUID.class).single();
+        Map<String, Object> test = new LinkedHashMap<>(Map.of("subjectId", subject.toString(), "title", "Energy " + tag, "durationMinutes", 10, "questionsPerAttempt", 1,
+                "attemptsAllowed", 2, "showAnswers", true, "open", false));
+        String testId = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/practice-tests", test)).get("id"));
+        String base = "/api/v1/jupeb/office/practice-tests/" + testId + "/questions";
+        String q1 = String.valueOf(ok(it.call(office, HttpMethod.POST, base + "/add", Map.of("row", Map.of("question", "The kinetic energy of a body is",
+                "a", "$mv$", "b", "$\\frac{1}{2}mv^2$", "answer", "B")))).get("id"));
+        assertThat(code(it.call(office, HttpMethod.POST, base + "/add", Map.of("row", Map.of("question", "Broken", "a", "x", "b", "y", "answer", "D"))))).isEqualTo("JUPEB_PRACTICE_QUESTION");
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R'};
+        assertThat(code(it.call(office, HttpMethod.POST, base + "/" + q1 + "/image", Map.of("filename", "d.png", "contentType", "image/png",
+                "base64", java.util.Base64.getEncoder().encodeToString("not a png".getBytes()))))).isEqualTo("JUPEB_DOC_TYPE");
+        ok(it.call(office, HttpMethod.POST, base + "/" + q1 + "/image", Map.of("filename", "diagram.png", "contentType", "image/png", "base64", java.util.Base64.getEncoder().encodeToString(png))));
+        assertThat(it.getBytes(office, base + "/" + q1 + "/image").getBody()).isEqualTo(png);
+        test.put("open", true);
+        ok(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/practice-tests/" + testId, test));
+        Map<String, Object> paper = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/" + testId + "/start", Map.of()));
+        String attempt = String.valueOf(((Map<String, Object>) paper.get("attempt")).get("id"));
+        Map<String, Object> q = ((List<Map<String, Object>>) paper.get("questions")).get(0);
+        assertThat(q.get("image")).isEqualTo(true);
+        assertThat(String.valueOf(q.get("stem"))).isEqualTo("The kinetic energy of a body is");
+        assertThat(it.getBytes(token, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/questions/" + q1 + "/image").getBody()).isEqualTo(png);
+        assertThat(status(it.get(token, "/api/v1/jupeb/me/practice/attempts/" + UUID.randomUUID() + "/questions/" + q1 + "/image"))).isEqualTo(404);
+        ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/answers/" + q1, Map.of("choice", "B")));
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/submit", Map.of()));
+        Map<String, Object> edited = ok(it.call(office, HttpMethod.PUT, base + "/" + q1, Map.of("row", Map.of("question", "The kinetic energy of a moving body is",
+                "a", "$mv$", "b", "$\\frac{1}{2}mv^2$", "c", "$mgh$", "answer", "B"))));
+        assertThat(edited.get("newVersion")).isEqualTo(true);
+        String q2 = String.valueOf(edited.get("id"));
+        assertThat(it.getBytes(office, base + "/" + q2 + "/image").getBody()).isEqualTo(png);
+        Map<String, Object> review = ok(it.get(token, "/api/v1/jupeb/me/practice/attempts/" + attempt));
+        assertThat(String.valueOf(((List<Map<String, Object>>) review.get("questions")).get(0).get("stem"))).isEqualTo("The kinetic energy of a body is");
+        assertThat(((Number) ((Map<String, Object>) review.get("attempt")).get("score")).intValue()).isEqualTo(1);
+
+        // the identity card: an active student with a passport photograph; verifiable; replaced when lost, the old code then refused
+        assertThat(code(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/id-card", Map.of()))).isEqualTo("JUPEB_ID_CARD_PHOTO");
+        it.db(() -> {
+            UUID doc = jdbc.sql("INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes) VALUES (:a, 'PASSPORT', 'p.png', 'image/png', 16) RETURNING id")
+                    .param("a", app).query(UUID.class).single();
+            return jdbc.sql("INSERT INTO jupeb.document_blob (document_id, bytes) VALUES (:d, :b)").param("d", doc).param("b", png).update();
+        });
+        String card = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/id-card", Map.of())).get("code"));
+        assertThat(ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/id-card", Map.of())).get("code")).isEqualTo(card);
+        Map<String, Object> verified = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + card, null));
+        assertThat(verified.get("genuine")).isEqualTo(true);
+        assertThat(verified.get("kind")).isEqualTo("ID_CARD");
+        assertThat(((Map<String, Object>) verified.get("facts")).get("validFor")).isEqualTo(session);
+        assertThat((Map<String, Object>) verified.get("facts")).doesNotContainKeys("nin", "dateOfBirth", "phone", "email");
+        assertThat(status(it.get(bursar, "/api/v1/jupeb/office/id-cards?session=" + session))).isEqualTo(403);
+        List<Map<String, Object>> students = (List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/id-cards?session=" + session)).get("students");
+        assertThat(students).filteredOn(r -> app.toString().equals(String.valueOf(r.get("id")))).extracting(r -> r.get("card_code")).containsExactly(card);
+        Map<String, Object> issued = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/id-cards/issue", Map.of("ids", List.of(app.toString(), UUID.randomUUID().toString()))));
+        assertThat((List<Map<String, Object>>) issued.get("cards")).extracting(c -> c.get("code")).containsExactly(card);
+        assertThat((List<?>) issued.get("skipped")).hasSize(1);
+        String fresh = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/id-cards/" + app + "/replace", Map.of("reason", "Lost at the hostel"))).get("code"));
+        assertThat(fresh).isNotEqualTo(card);
+        Map<String, Object> old = ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + card, null));
+        assertThat(old.get("genuine")).isEqualTo(false);
+        assertThat(old.get("revoked")).isEqualTo(true);
+        assertThat(ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + fresh, null)).get("genuine")).isEqualTo(true);
+    }
+
     private static Map<String, Object> oldRow(int row, String... pairs) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("row", row);

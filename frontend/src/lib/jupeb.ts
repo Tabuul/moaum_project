@@ -73,6 +73,8 @@ export interface Candidate {
   legacy_source: string | null; legacy_ref: string | null; legacy_batch: string | null; must_change_password: boolean;
   /** V344: the attendance standing, subject by subject, once a student */
   attendanceStanding: AttendanceStanding[];
+  /** V349: the JUPEB Office's notices that reach the candidate and are not yet opened */
+  unreadAnnouncements?: number;
 }
 
 export const STATE_LABEL: Record<string, string> = {
@@ -116,6 +118,7 @@ export const EVENT_LABEL: Record<string, string> = {
   CHANGE_REQUESTED: "Change requested", CHANGE_APPROVED: "Request approved", CHANGE_DECLINED: "Request declined", CHANGE_CANCELLED: "Request cancelled",
   IMPORTED: "Uploaded from the old portal", COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
   CONTACT_UPDATED: "Contact details updated", LEGACY_PAYMENT: "Old-portal payment put on the record", PASSWORD_RESET: "Password reset by ICT Support",
+  ID_CARD_ISSUED: "Identity card issued", ID_CARD_REPLACED: "Identity card replaced",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -210,7 +213,7 @@ export interface Slot {
   class_name: string | null; instructors: string | null; class_id?: string | null; subject_id?: string; session?: string;
 }
 /** V347: a practice attempt's paper — the answer key only after submission (the server decides) */
-export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null }
+export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null; image?: boolean }
 export interface PracticePaper {
   attempt: { id: string; number: number; startedAt: string; endsAt: string; submittedAt: string | null; score: number | null; total: number; percentage: number | null; answered: number; secondsLeft: number };
   test: { id: string; title: string; instructions: string | null; durationMinutes: number; showAnswers: boolean };
@@ -221,8 +224,14 @@ export const REQUEST_STATE: Record<string, [string, "info" | "ok" | "bad" | "gre
 };
 export const PAPER_KIND: Record<string, string> = {
   RESULT: "Statement of result", ADMISSION_LETTER: "Admission letter", ACCEPTANCE_LETTER: "Acceptance letter", STATUS_SLIP: "Admission status slip",
-  REGISTRATION_SLIP: "Registration slip", ACKNOWLEDGEMENT: "Application acknowledgement", RECEIPT: "Payment receipt",
+  REGISTRATION_SLIP: "Registration slip", ACKNOWLEDGEMENT: "Application acknowledgement", RECEIPT: "Payment receipt", ID_CARD: "Identity card",
 };
+/** V349: whom a notice of the JUPEB Office reaches */
+export const AUDIENCE: Record<string, string> = {
+  ALL: "Everyone in the session", APPLICANTS: "Applicants not yet admitted", ADMITTED: "Everyone admitted", STUDENTS: "Active students",
+  CLASS: "One class", COMBINATION: "One subject combination", PROGRAMME: "One programme",
+};
+export interface Announcement { id: string; title: string; body: string; pinned: boolean; published_at: string; expires_on: string | null; read: boolean }
 /** the next two sessions after one — where an admission may be deferred to */
 export const laterSessions = (session: string) => {
   const y = Number(session.slice(0, 4));

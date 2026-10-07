@@ -130,6 +130,15 @@ class JupebView {
             out.put("gradePoint", jdbc.sql("SELECT * FROM jupeb.grade_point(:id)").param("id", app).query().singleRow());
         }
         out.put("requests", requests(app));
+        /* V349: the notices that reach the candidate and are not yet opened, for the side menu */
+        if (!office) {
+            out.put("unreadAnnouncements", jdbc.sql("""
+                    SELECT count(*) FROM jupeb.announcement n JOIN jupeb.application a ON a.id = :id
+                     WHERE n.withdrawn_at IS NULL AND (n.expires_on IS NULL OR n.expires_on >= (now() AT TIME ZONE 'Africa/Lagos')::date)
+                       AND jupeb.audience_reaches(n.session, n.audience, n.audience_ref, a)
+                       AND NOT EXISTS (SELECT 1 FROM jupeb.announcement_read r WHERE r.announcement_id = n.id AND r.application_id = a.id)
+                    """).param("id", app).query(Integer.class).single());
+        }
         /* V344: the attendance standing, subject by subject, once a student */
         out.put("attendanceStanding", List.of("STUDENT", "COMPLETED").contains(String.valueOf(a.get("state"))) ? jdbc.sql("""
                 SELECT m.semester, s.code, s.title, m.total, m.counted, m.absent, m.rate, m.min_percent, m.verdict, m.at_risk, m.warnable

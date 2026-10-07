@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 193
+\set EXPECTED 194
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5661,6 +5661,75 @@ BEGIN
     PERFORM pg_temp.assert('A stored file is held by every table that points at it: each object id column references platform.file_object, so an object a JUPEB document (or any row) still shows is never removed',
         unheld IS NULL AND r_forget = 'REFUSED' AND n_lost_table = 1,
         format('unheld=%s forget=%s lost_table=%s', coalesce(unheld, 'none'), r_forget, n_lost_table));
+END $$;
+
+-- ── 194. V349: JUPEB — a notice reaches exactly its audience (the session, the stage, one class, combination or programme; never a withdrawn application) and is emailed only to those it reaches; a practice question answered once is never rewritten — an edit makes a new version that takes the image along, and a student sees an image only inside an attempt that drew it; the identity card is issued for an active student with a passport photograph, states no NIN, birth date or contact, and a replaced card stops verifying ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); app uuid; other uuid; k uuid; n_all int; n_class int; n_mine int; n_other int; n_notified int;
+        ann uuid; t uuid; q1 uuid; q2 uuid; att uuid; v_old_stem text; v_img_new boolean; v_visible boolean; v_hidden boolean; r_card text := 'ISSUED'; code1 text; code2 text;
+        facts jsonb; v1 jsonb; v2 jsonb;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKJUPEB349', 'Officer');
+        PERFORM jupeb.import_old_portal_students(jsonb_build_array(
+                    jsonb_build_object('row', 2, 'appNo', 'S0CHECK194001', 'firstName', 'Ada', 'surname', 'Check', 'sex', 'Female', 'phone', '08011112222', 'dob', '1/2/2005',
+                                       'email', 'zz.check194a@example.com', 'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345'),
+                    jsonb_build_object('row', 3, 'appNo', 'S0CHECK194002', 'firstName', 'Ben', 'surname', 'Check', 'sex', 'Male', 'phone', '08011113333', 'dob', '1/3/2005',
+                                       'email', 'zz.check194b@example.com', 'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')), ses, true, true, 'check.xlsx', who);
+        PERFORM set_config('moaum.jupeb_quiet', 'off', true);
+        app := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK194001');
+        other := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK194002');
+        PERFORM jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        INSERT INTO jupeb.class (session, name) VALUES (ses, 'CHECK 194 CLASS') RETURNING id INTO k;
+        UPDATE jupeb.application SET class_id = k WHERE id = app;
+        -- whom a notice reaches
+        n_all := jupeb.announcement_reach(ses, 'STUDENTS', NULL);
+        n_class := jupeb.announcement_reach(ses, 'CLASS', k::text);
+        INSERT INTO jupeb.announcement (session, audience, audience_ref, title, body, send_email, created_by) VALUES (ses, 'CLASS', k::text, 'Class notice', 'For the class only.', true, who)
+        RETURNING id INTO ann;
+        n_notified := jupeb.announcement_notify(ann);
+        n_mine := (SELECT count(*) FROM jupeb.application a WHERE a.id = app AND jupeb.audience_reaches(ses, 'CLASS', k::text, a));
+        n_other := (SELECT count(*) FROM jupeb.application a WHERE a.id = other AND jupeb.audience_reaches(ses, 'CLASS', k::text, a));
+        -- a question answered is versioned, its image along; the image only inside an attempt that drew it
+        t := (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = app ORDER BY subject_id LIMIT 1);
+        INSERT INTO jupeb.practice_test (subject_id, title, questions_per_attempt, attempts_allowed, open) VALUES (t, 'Check 194', 1, 1, true) RETURNING id INTO t;
+        q1 := jupeb.practice_add(t, jsonb_build_object('question', 'Energy is $\frac{1}{2}mv^2$?', 'a', 'Yes', 'b', 'No', 'answer', 'A'));
+        INSERT INTO jupeb.practice_image (question_id, filename, content_type, size_bytes) VALUES (q1, 'd.png', 'image/png', 4);
+        INSERT INTO jupeb.practice_image_blob (question_id, bytes) VALUES (q1, '\x89504e47'::bytea);
+        att := jupeb.practice_start(app, t);
+        v_visible := jupeb.practice_image_visible(app, att, q1);
+        v_hidden := jupeb.practice_image_visible(other, att, q1);
+        PERFORM jupeb.practice_answer_set(app, att, q1, 'A');
+        PERFORM jupeb.practice_submit(app, att);
+        q2 := jupeb.practice_edit(t, q1, jsonb_build_object('question', 'Kinetic energy is $\frac{1}{2}mv^2$?', 'a', 'Yes', 'b', 'No', 'answer', 'A'));
+        v_img_new := EXISTS (SELECT 1 FROM jupeb.practice_image_blob WHERE question_id = q2);
+        v_old_stem := (SELECT stem FROM jupeb.practice_question WHERE id = q1);
+        -- the identity card
+        BEGIN PERFORM jupeb.issue_paper(app, 'ID_CARD', NULL, true, who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN r_card := 'REFUSED';
+        END;
+        INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes) VALUES (app, 'PASSPORT', 'p.png', 'image/png', 4);
+        code1 := jupeb.issue_paper(app, 'ID_CARD', NULL, true, who, 'jupeb');
+        facts := (SELECT p.facts FROM jupeb.paper p WHERE p.code = code1);
+        PERFORM jupeb.revoke_paper(code1, 'Card replaced: lost', who);
+        code2 := jupeb.issue_paper(app, 'ID_CARD', NULL, true, who, 'jupeb');
+        v1 := jupeb.verify_paper(code1);
+        v2 := jupeb.verify_paper(code2);
+        RAISE EXCEPTION 'the V349 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V349: a notice reaches exactly its audience and is emailed to them alone; an answered question is versioned with its image; the image is seen only in an attempt that drew it; the identity card needs a photograph, states no NIN, birth date or contact, and a replaced card stops verifying',
+        n_all >= 1 AND n_class = 1 AND n_notified = 1 AND n_mine = 1 AND n_other = 0
+        AND v_visible AND NOT v_hidden AND q2 <> q1 AND v_img_new AND v_old_stem = 'Energy is $\frac{1}{2}mv^2$?'
+        AND r_card = 'REFUSED' AND facts->>'validFor' = ses AND NOT (facts ?| ARRAY['nin', 'dateOfBirth', 'email', 'phone'])
+        AND code2 <> code1 AND (v1->>'revoked')::boolean AND (v2->>'genuine')::boolean,
+        format('all=%s class=%s notified=%s mine=%s other=%s visible=%s/%s versioned=%s image=%s old=%s card=%s valid=%s codes=%s/%s revoked=%s genuine=%s',
+               n_all, n_class, n_notified, n_mine, n_other, v_visible, v_hidden, q2 <> q1, v_img_new, v_old_stem, r_card, facts->>'validFor', code1, code2,
+               v1->>'revoked', v2->>'genuine'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

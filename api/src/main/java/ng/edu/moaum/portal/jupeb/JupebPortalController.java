@@ -577,6 +577,72 @@ class JupebPortalController {
         return paper(app, attempt);
     }
 
+    /* ── V349: the JUPEB Office's announcements, a question's image inside an attempt, the identity card ── */
+
+    /** the notices that reach the candidate now: pinned first, newest next, each marked read or not */
+    @GetMapping("/announcements")
+    @Transactional(readOnly = true)
+    Map<String, Object> announcements(Authentication auth) {
+        UUID app = me(auth);
+        return Map.of("announcements", jdbc.sql("""
+                SELECT n.id, n.title, n.body, n.pinned, n.published_at, n.expires_on, r.read_at IS NOT NULL AS read
+                  FROM jupeb.announcement n JOIN jupeb.application a ON a.id = :a
+                  LEFT JOIN jupeb.announcement_read r ON r.announcement_id = n.id AND r.application_id = a.id
+                 WHERE n.withdrawn_at IS NULL AND (n.expires_on IS NULL OR n.expires_on >= (now() AT TIME ZONE 'Africa/Lagos')::date)
+                   AND jupeb.audience_reaches(n.session, n.audience, n.audience_ref, a)
+                 ORDER BY n.pinned DESC, n.published_at DESC LIMIT 200
+                """).param("a", app).query().listOfRows());
+    }
+
+    @PostMapping("/announcements/{id}/read")
+    @Transactional
+    Map<String, Object> readAnnouncement(Authentication auth, @PathVariable UUID id) {
+        UUID app = me(auth);
+        int n = jdbc.sql("""
+                INSERT INTO jupeb.announcement_read (announcement_id, application_id)
+                SELECT x.id, a.id FROM jupeb.announcement x JOIN jupeb.application a ON a.id = :a
+                 WHERE x.id = :n AND x.withdrawn_at IS NULL AND jupeb.audience_reaches(x.session, x.audience, x.audience_ref, a)
+                ON CONFLICT DO NOTHING
+                """).param("a", app).param("n", id).update();
+        if (n == 0 && !Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.announcement_read WHERE announcement_id = :n AND application_id = :a)")
+                .param("n", id).param("a", app).query(Boolean.class).single())) {
+            throw new NotFound("announcement", id);
+        }
+        return Map.of("read", true);
+    }
+
+    /** a question's image, only inside an attempt of the student's that drew the question */
+    @GetMapping("/practice/attempts/{attempt}/questions/{question}/image")
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> practiceImage(Authentication auth, @PathVariable UUID attempt, @PathVariable UUID question) {
+        UUID app = me(auth);
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT jupeb.practice_image_visible(:a, :t, :q)").param("a", app).param("t", attempt).param("q", question).query(Boolean.class).single())) {
+            throw new NotFound("question image", question);
+        }
+        return JupebPracticeImages.stream(jdbc, files, question);
+    }
+
+    /** the identity card's code, issued like the other JUPEB papers; an active student with a passport photograph on file has one */
+    @PostMapping("/id-card")
+    @Transactional
+    Map<String, Object> idCard(Authentication auth) {
+        UUID app = me(auth);
+        Map<String, Object> a = jdbc.sql("""
+                SELECT a.state, EXISTS (SELECT 1 FROM jupeb.document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT') AS photo
+                  FROM jupeb.application a WHERE a.id = :a
+                """).param("a", app).query().singleRow();
+        if (!List.of("STUDENT", "COMPLETED").contains(String.valueOf(a.get("state")))) {
+            throw new DomainRuleViolation("JUPEB_ID_CARD_NOT_YET", "The identity card is for an active JUPEB student.",
+                    new DomainRuleViolation.Remedy("It opens once your school fee activates your studentship.", "You"));
+        }
+        if (!Boolean.TRUE.equals(a.get("photo"))) {
+            throw new DomainRuleViolation("JUPEB_ID_CARD_PHOTO", "The card carries your passport photograph, and none is on file.",
+                    new DomainRuleViolation.Remedy("Ask the JUPEB Office to put your passport photograph on your record.", "JUPEB Office"));
+        }
+        String code = jdbc.sql("SELECT jupeb.issue_paper(:a, 'ID_CARD', NULL, false, :a, 'applicant')").param("a", app).query(String.class).single();
+        return jdbc.sql("SELECT code, issued_at, issued_office FROM jupeb.paper WHERE code = :c").param("c", code).query().singleRow();
+    }
+
     /* ── support: the University's desk, the JUPEB queue ── */
 
     private RequesterTickets.Requester requester(UUID app) {

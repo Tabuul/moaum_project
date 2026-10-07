@@ -294,6 +294,8 @@ export const ROUTES: Record<string, string> = {
   "jupeb/portal/admission": "/jupeb/portal?tab=admission",
   "jupeb/portal/payments": "/jupeb/portal?tab=payments",
   "jupeb/portal/subjects": "/jupeb/portal?tab=subjects",
+  "jupeb/portal/announcements": "/jupeb/portal?tab=announcements",
+  "jupeb/portal/idcard": "/jupeb/portal?tab=idcard",
   "jupeb/portal/timetable": "/jupeb/portal?tab=timetable",
   "jupeb/portal/practice": "/jupeb/portal?tab=practice",
   "jupeb/portal/attendance": "/jupeb/portal?tab=attendance",
@@ -317,6 +319,8 @@ export const ROUTES: Record<string, string> = {
   "jupeb/timetable": "/jupeb/timetable",
   "jupeb/practice": "/jupeb/practice",
   "jupeb/reports": "/jupeb/reports",
+  "jupeb/announcements": "/jupeb/announcements",
+  "jupeb/idcards": "/jupeb/idcards",
   "f/jupebfees": "/finance/jupeb-fees",
 };
 
@@ -403,6 +407,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/portal/admission": ["Admission", "Status checking, acceptance and screening"],
   "jupeb/portal/payments": ["Payments", "Your fees, references and receipts"],
   "jupeb/portal/subjects": ["Subjects", "Your subject combination"],
+  "jupeb/portal/announcements": ["Announcements", "Notices from the JUPEB Office"],
+  "jupeb/portal/idcard": ["ID Card", "Your JUPEB identity card"],
   "jupeb/portal/timetable": ["Timetable", "Your lectures, week by week"],
   "jupeb/portal/practice": ["Practice Tests", "Timed practice in your subjects — never part of your result"],
   "jupeb/portal/attendance": ["Attendance", "Your attendance, subject by subject"],
@@ -426,6 +432,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/timetable": ["JUPEB timetable", "The week's lectures of each subject, by class and semester"],
   "jupeb/practice": ["JUPEB practice tests", "Question banks and timed practice for the students — never a result"],
   "jupeb/reports": ["JUPEB reports", "Enrolment, fees, attendance, results and practice of a session"],
+  "jupeb/announcements": ["JUPEB announcements", "Notices to the session's candidates and students, on their dashboards and by email or text"],
+  "jupeb/idcards": ["JUPEB identity cards", "Cards for the active students, each verifiable by its QR code"],
   "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
 };
 

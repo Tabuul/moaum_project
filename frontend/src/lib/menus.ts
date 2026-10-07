@@ -1679,7 +1679,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "My JUPEB application",
         "open": true,
         "items": [
-          { "id": "jupeb/portal", "icon": "doc", "label": "Application" }
+          { "id": "jupeb/portal", "icon": "doc", "label": "Application" },
+          { "id": "jupeb/portal/announcements", "icon": "bell", "label": "Announcements" }
         ]
       },
       {
@@ -1702,6 +1703,7 @@ export const MENUS: Record<string, Menu> = {
         "open": true,
         "items": [
           { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" },
+          { "id": "jupeb/portal/announcements", "icon": "bell", "label": "Announcements" },
           { "id": "jupeb/portal/admission", "icon": "check", "label": "Admission" },
           { "id": "jupeb/portal/payments", "icon": "card", "label": "Payments" }
         ]
@@ -1734,6 +1736,7 @@ export const MENUS: Record<string, Menu> = {
         "open": true,
         "items": [
           { "id": "jupeb/portal", "icon": "home", "label": "Dashboard" },
+          { "id": "jupeb/portal/announcements", "icon": "bell", "label": "Announcements" },
           { "id": "jupeb/portal/admission", "icon": "check", "label": "Admission" },
           { "id": "jupeb/portal/payments", "icon": "card", "label": "Payments" }
         ]
@@ -1754,6 +1757,7 @@ export const MENUS: Record<string, Menu> = {
         "open": true,
         "items": [
           { "id": "jupeb/portal/documents", "icon": "doc", "label": "Documents" },
+          { "id": "jupeb/portal/idcard", "icon": "user", "label": "ID Card" },
           { "id": "jupeb/portal/requests", "icon": "swap", "label": "Change Requests" }
         ]
       },
@@ -1776,7 +1780,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "jupeb/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "jupeb/reports", "icon": "chart", "label": "Reports" }
+          { "id": "jupeb/reports", "icon": "chart", "label": "Reports" },
+          { "id": "jupeb/announcements", "icon": "bell", "label": "Announcements" }
         ]
       },
       {
@@ -1786,7 +1791,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/payments", "icon": "card", "label": "Payments" },
           { "id": "jupeb/requests", "icon": "doc", "label": "Change Requests" },
           { "id": "jupeb/import", "icon": "upload", "label": "Old-Portal Students" },
-          { "id": "jupeb/oldpayments", "icon": "card", "label": "Old-Portal Payments" }
+          { "id": "jupeb/oldpayments", "icon": "card", "label": "Old-Portal Payments" },
+          { "id": "jupeb/idcards", "icon": "print", "label": "ID Cards" }
         ]
       },
       {

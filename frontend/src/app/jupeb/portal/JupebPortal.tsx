@@ -25,15 +25,20 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
 import { brandedPrint, docSerial } from "@/lib/exportbrand";
+import QRCode from "qrcode";
+import { MathText } from "@/components/proto/MathText";
+import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, WEEKDAYS, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
-  SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Combination, type Doc, type FeeRef,
-  type PracticePaper, type Slot, type StepProblem,
+  SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Announcement, type Candidate, type Combination,
+  type Doc, type FeeRef, type PracticePaper, type Slot, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "results" | "documents" | "requests" | "password" | "support";
-const TAB_IDS: Tab[] = ["overview", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "results", "documents", "requests", "password", "support"];
+type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "results" | "documents" | "idcard"
+  | "requests" | "password" | "support";
+const TAB_IDS: Tab[] = ["overview", "announcements", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "results", "documents", "idcard",
+  "requests", "password", "support"];
 /** each section is its own item in the side menu (Shell routes jupeb/portal/<section> to /jupeb/portal?tab=<section>) */
 const routeOf = (t: Tab) => (t === "overview" ? "jupeb/portal" : `jupeb/portal/${t}`);
 type Act = (path: string, method?: string, body?: unknown) => Promise<Candidate | null>;
@@ -125,7 +130,10 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
   const shellMe: ShellMe = {
     actorId: "", activeOffice: "jupebcandidate", offices: ["jupebcandidate"], menu: guided ? "jupebapplicant" : admitted ? "jupebstudent" : "jupebcandidate",
     name: fullName(me), staffNumber: me.exam_no ?? me.application_no, sessionId: null, unit: `JUPEB ${me.session}`,
-    waiting: me.requests.some((r) => r.state === "PENDING") ? { "jupeb/portal/requests": "1" } : {},
+    waiting: {
+      ...(me.requests.some((r) => r.state === "PENDING") ? { "jupeb/portal/requests": "1" } : {}),
+      ...(me.unreadAnnouncements ? { "jupeb/portal/announcements": String(me.unreadAnnouncements) } : {}),
+    },
   };
   /* V345: a temporary password handed out by the JUPEB Office is changed before anything else */
   if (me.must_change_password) {
@@ -143,6 +151,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "profile": return <MyProfile me={me} act={act} onEdit={guided ? () => setTab("overview") : undefined} onRequests={() => setTab("requests")} />;
       case "password": return <ChangePassword onDone={(fresh) => { setMe(fresh); notify("Your password is changed."); }} />;
       case "support": return <SupportTab />;
+      case "announcements": return <Announcements onRead={() => void load()} />;
       default: break;
     }
     if (guided) return <><Profile me={me} /><Guided me={me} act={act} /></>;
@@ -155,6 +164,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
       case "results": return admitted ? <Results me={me} /> : notYet("Results", "once you are admitted");
       case "documents": return <DocumentCentre me={me} act={act} />;
+      case "idcard": return studying ? <IdCardSection me={me} /> : notYet("Your identity card", "once your studentship is activated by the school fee");
       case "requests": return <Requests me={me} act={act} />;
       default: return <><Profile me={me} /><Overview me={me} /></>;
     }
@@ -171,6 +181,10 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
         </Note>
       ) : null}
       {me.state === "DEFERRED" ? <Note kind="info" title={`Your admission is deferred to ${me.deferred_to ?? "a later session"}`}>The JUPEB Office resumes it in that session; you will be told, and your payments stand.</Note> : null}
+      {tab !== "announcements" && me.unreadAnnouncements ? (
+        <Note kind="info" title={`${me.unreadAnnouncements} new announcement${me.unreadAnnouncements === 1 ? "" : "s"} from the JUPEB Office`}
+          action={<Btn kind="ghost" onClick={() => setTab("announcements")}>Read</Btn>}>Notices for you: timetable changes, deadlines and the like.</Note>
+      ) : null}
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates on its own once the payment reaches the University.</Note> : null}
       {section}
     </Shell>
@@ -1259,7 +1273,12 @@ function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; se
           {q ? (
             <div className="card"><div className="card__body">
               <div className="sub2">Question {q.n} of {qs.length}</div>
-              <div className="b600" style={{ whiteSpace: "pre-line", margin: "var(--s-2) 0" }}>{q.stem}</div>
+              <div className="b600" style={{ margin: "var(--s-2) 0" }}><MathText text={q.stem} /></div>
+              {q.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/bff/api/v1/jupeb/me/practice/attempts/${paper.attempt.id}/questions/${q.id}/image`} alt={`Diagram for question ${q.n}`}
+                  style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: 360, objectFit: "contain", border: "1px solid var(--line)", borderRadius: "var(--r-sm)", background: "#fff", marginBottom: "var(--s-2)" }} />
+              ) : null}
               <div className="stack" style={{ gap: "var(--s-2)" }}>
                 {Object.entries(q.options).map(([letter, text]) => {
                   const mark = over && q.answer ? (letter === q.answer ? "ok" : letter === q.chosen ? "bad" : null) : null;
@@ -1267,14 +1286,14 @@ function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; se
                     <label key={letter} className="row" style={{ gap: "var(--s-2)", alignItems: "flex-start", cursor: over ? "default" : "pointer", padding: "6px 8px", borderRadius: "var(--r-sm)",
                       border: `1px solid ${mark === "ok" ? "var(--green)" : mark === "bad" ? "var(--red)" : "var(--line)"}` }}>
                       <input type="radio" name={`q-${q.id}`} checked={q.chosen === letter} disabled={over || busy} onChange={() => void choose(letter)} />
-                      <span><b>{letter}.</b> {text}</span>
+                      <span><b>{letter}.</b> <MathText text={text} /></span>
                     </label>
                   );
                 })}
               </div>
               {over ? (
                 <p className="mt-2">{q.correct ? <Pil kind="ok">Correct</Pil> : <Pil kind="bad">{q.chosen ? "Not correct" : "Not answered"}</Pil>}
-                  {q.answer ? <span className="sub2">{` The answer is ${q.answer}.`}{q.explanation ? ` ${q.explanation}` : ""}</span> : null}</p>
+                  {q.answer ? <span className="sub2">{` The answer is ${q.answer}. `}<MathText text={q.explanation} /></span> : null}</p>
               ) : null}
             </div></div>
           ) : null}
@@ -1290,6 +1309,86 @@ function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; se
         </PBody>
       </Panel>
     </div>
+  );
+}
+
+/* ── V349: the JUPEB Office's announcements, and the identity card ───────────────────────────────────── */
+
+function Announcements({ onRead }: { onRead: () => void }) {
+  const [list, setList] = useState<Announcement[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ announcements: Announcement[] }>("/api/v1/jupeb/me/announcements").then((r) => { if (live) { if (r.ok) setList(r.data.announcements); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, []);
+  async function read(ids: string[]) {
+    setBusy(true);
+    try {
+      for (const id of ids) await jcall(`/api/v1/jupeb/me/announcements/${id}/read`, "POST", {});
+      setList((l) => (l ? l.map((a) => (ids.includes(a.id) ? { ...a, read: true } : a)) : l));
+      onRead();
+    } finally { setBusy(false); }
+  }
+  if (!list) return <Note kind="info" title="Loading the announcements…">One moment.</Note>;
+  const unread = list.filter((a) => !a.read);
+  return (
+    <Panel title="Announcements from the JUPEB Office" right={unread.length ? <Btn kind="ghost" disabled={busy} onClick={() => void read(unread.map((a) => a.id))}>Mark all as read</Btn> : null}>
+      <PBody>
+        {!list.length ? <p className="sub2">No announcement for you yet. Notices from the JUPEB Office appear here, and by email or text when the Office sends them.</p> : (
+          <div className="stack">
+            {list.map((a) => (
+              <div key={a.id} className="card" style={{ borderLeft: `3px solid ${a.read ? "var(--line)" : "var(--primary)"}` }}><div className="card__body">
+                <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
+                  <span className={a.read ? "b600" : "b700"}>{a.title}</span>
+                  {a.pinned ? <Pil kind="info">Pinned</Pil> : null}{!a.read ? <Pil kind="warn">New</Pil> : null}
+                  <span className="grow" /><span className="sub2">{when(a.published_at)}{a.expires_on ? ` · until ${day(a.expires_on)}` : ""}</span>
+                </div>
+                <p style={{ whiteSpace: "pre-line", margin: "var(--s-2) 0 0" }}>{a.body}</p>
+                {!a.read ? <div className="row mt-2"><Btn kind="ghost" disabled={busy} onClick={() => void read([a.id])}>Mark as read</Btn></div> : null}
+              </div></div>
+            ))}
+          </div>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+function IdCardSection({ me }: { me: Candidate }) {
+  const [card, setCard] = useState<{ code: string; issued_at: string; issued_office: string | null } | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ code: string; issued_at: string; issued_office: string | null }>("/api/v1/jupeb/me/id-card", "POST", {}).then(async (r) => {
+      if (!live) return;
+      if (!r.ok) { setProblem(r.problem); return; }
+      setCard(r.data);
+      const url = `${window.location.origin}/verify/jupeb/${r.data.code}`;
+      const img = await QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 1, width: 220 });
+      if (live) setQr(img);
+    });
+    return () => { live = false; };
+  }, []);
+  if (problem) return <ProblemNotice problem={problem} />;
+  if (!card) return <Note kind="info" title="Loading your identity card…">One moment.</Note>;
+  const data: IdCardData = {
+    name: `${me.surname.toUpperCase()} ${me.first_name}${me.middle_name ? ` ${me.middle_name}` : ""}`, matric: me.application_no,
+    barcode: me.application_no.replace(/[^A-Za-z0-9]/g, ""), serial: card.code, faculty: "", prog: streamLabel(me.stream), level: "", session: me.session,
+    admitted: "", graduates: "", blood: "", expiresShort: "", kinPhone: me.next_of_kin_phone ?? "—",
+    photoSrc: me.has_passport ? `${PHOTO}&v=${encodeURIComponent(me.updated_at)}` : null, tag: "JUPEB",
+    rows: [["Programme", streamLabel(me.stream)], ["Combination", me.combination_code ?? "—", true], ["Class", me.class_name ?? "—"],
+      ["Exam No.", me.exam_no ?? "—", true], ["Subjects", me.registered.map((r) => r.code).join(", ") || "—", true], ["Session", me.session, true]],
+    validity: "valid for the session", qrSrc: qr, verifyText: `${typeof window === "undefined" ? "" : window.location.host}/verify/jupeb`, signatory: "JUPEB Office",
+  };
+  return (
+    <>
+      <Note kind="info" title="This is a picture of your card">The JUPEB Office prints and issues the card itself. Its QR code opens the University&rsquo;s record, so a card that is altered or lost and replaced does not verify.</Note>
+      <Panel title="Your JUPEB identity card" right={<span className="sub2 tnum">{card.code}</span>}>
+        <PBody><IdCardPair c={data} big /></PBody>
+      </Panel>
+    </>
   );
 }
 
