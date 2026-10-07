@@ -115,6 +115,7 @@ export const EVENT_LABEL: Record<string, string> = {
   SCREENING_NOT_CLEARED: "Not cleared at screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
   CHANGE_REQUESTED: "Change requested", CHANGE_APPROVED: "Request approved", CHANGE_DECLINED: "Request declined", CHANGE_CANCELLED: "Request cancelled",
   IMPORTED: "Uploaded from the old portal", COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
+  CONTACT_UPDATED: "Contact details updated", LEGACY_PAYMENT: "Old-portal payment put on the record", PASSWORD_RESET: "Password reset by ICT Support",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -195,7 +196,26 @@ export async function readSheet(file: File, aliases: Record<string, string>): Pr
 /** V343: what a change request asks, and the papers that carry a verification code */
 export const CHANGE_KIND: Record<string, string> = {
   WITHDRAW: "Withdraw my application", DEFER: "Defer my admission to a later session", CHANGE_COMBINATION: "Change my subject combination", CHANGE_PROGRAMME: "Change my programme (Science / Non-Science)",
+  CORRECT_DETAILS: "Correct my personal details",
 };
+/** V347: the identity details a student asks the JUPEB Office to correct (the contact details they keep themselves) */
+export const CORRECTION_FIELDS: [string, string][] = [
+  ["surname", "Surname"], ["first_name", "First name"], ["middle_name", "Middle name"], ["sex", "Sex"], ["date_of_birth", "Date of birth"], ["nin", "NIN"],
+  ["nationality", "Nationality"], ["state_of_origin", "State of origin"], ["lga", "LGA"],
+];
+export const WEEKDAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+/** V347: a week's lecture slot, as the office and the student read it */
+export interface Slot {
+  id: string; semester: number; weekday: number; starts_at: string; ends_at: string; venue: string | null; note: string | null; code: string; title: string;
+  class_name: string | null; instructors: string | null; class_id?: string | null; subject_id?: string; session?: string;
+}
+/** V347: a practice attempt's paper — the answer key only after submission (the server decides) */
+export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null }
+export interface PracticePaper {
+  attempt: { id: string; number: number; startedAt: string; endsAt: string; submittedAt: string | null; score: number | null; total: number; percentage: number | null; answered: number; secondsLeft: number };
+  test: { id: string; title: string; instructions: string | null; durationMinutes: number; showAnswers: boolean };
+  questions: PracticeQuestion[];
+}
 export const REQUEST_STATE: Record<string, [string, "info" | "ok" | "bad" | "grey" | "warn"]> = {
   PENDING: ["With the JUPEB Office", "warn"], APPROVED: ["Approved", "ok"], DECLINED: ["Declined", "bad"], CANCELLED: ["Cancelled", "grey"],
 };

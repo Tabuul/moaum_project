@@ -71,6 +71,18 @@ public class RequesterTickets {
         return Map.of("id", id, "number", number, "status", "SUBMITTED");
     }
 
+    /** V347: a requester's ticket sent by an agent to the office that decides (the JUPEB Office, the Bursary, the Director of ICT), the office told */
+    public void escalateToOffice(UUID ticket, String office, UUID by, String reason) {
+        jdbc.sql("SELECT helpdesk.escalate_to_office(:t, :o, :by, :r)").param("t", ticket).param("o", office).param("by", by).param("r", reason).query().singleRow();
+        notifier.escalatedToOffice(ticket, office, reason);
+    }
+
+    /** V347: an internal note on a requester's ticket, the requester never sees it */
+    public void internalNote(UUID ticket, UUID agent, String body) {
+        String name = jdbc.sql("SELECT helpdesk.person_name(:p)").param("p", agent).query(String.class).optional().orElse("ICT Support");
+        jdbc.sql("SELECT helpdesk.comment(:t, 'AGENT', :a, :n, true, :b)").param("t", ticket).param("a", agent).param("n", name).param("b", body).query(UUID.class).single();
+    }
+
     public Map<String, Object> detail(Requester r, UUID ticket) {
         requireMine(r, ticket);
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("""

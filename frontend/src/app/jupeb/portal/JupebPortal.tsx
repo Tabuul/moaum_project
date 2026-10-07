@@ -13,7 +13,7 @@
  * acceptance fee and letter, screening, the school fees, the subjects, attendance, results, the document centre and support.
  * Every amount is the server's; every call is scoped to the signed-in candidate.
  */
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -24,14 +24,16 @@ import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
+import { brandedPrint, docSerial } from "@/lib/exportbrand";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
-  ADMISSION_STATUS, CHANGE_KIND, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS, SCREENING_LABEL, STATE_SHORT,
-  day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Combination, type Doc, type FeeRef, type StepProblem,
+  ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, WEEKDAYS, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
+  SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Candidate, type Combination, type Doc, type FeeRef,
+  type PracticePaper, type Slot, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "profile" | "admission" | "payments" | "subjects" | "attendance" | "results" | "documents" | "requests" | "password" | "support";
-const TAB_IDS: Tab[] = ["overview", "profile", "admission", "payments", "subjects", "attendance", "results", "documents", "requests", "password", "support"];
+type Tab = "overview" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "results" | "documents" | "requests" | "password" | "support";
+const TAB_IDS: Tab[] = ["overview", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "results", "documents", "requests", "password", "support"];
 /** each section is its own item in the side menu (Shell routes jupeb/portal/<section> to /jupeb/portal?tab=<section>) */
 const routeOf = (t: Tab) => (t === "overview" ? "jupeb/portal" : `jupeb/portal/${t}`);
 type Act = (path: string, method?: string, body?: unknown) => Promise<Candidate | null>;
@@ -138,7 +140,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
   /* the profile, the password and support are always open; while the application is a draft every other item is the guided application */
   const section = (() => {
     switch (tab) {
-      case "profile": return <MyProfile me={me} onEdit={guided ? () => setTab("overview") : undefined} />;
+      case "profile": return <MyProfile me={me} act={act} onEdit={guided ? () => setTab("overview") : undefined} onRequests={() => setTab("requests")} />;
       case "password": return <ChangePassword onDone={(fresh) => { setMe(fresh); notify("Your password is changed."); }} />;
       case "support": return <SupportTab />;
       default: break;
@@ -148,6 +150,8 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "admission": return <Admission me={me} reload={load} />;
       case "payments": return <Payments me={me} reload={load} />;
       case "subjects": return admitted ? <Subjects me={me} act={act} /> : notYet("Subject registration", "once you are admitted");
+      case "timetable": return studying ? <Timetable me={me} /> : notYet("The timetable", "once your studentship is activated by the school fee");
+      case "practice": return admitted ? <Practice /> : notYet("Practice tests", "once you are admitted");
       case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
       case "results": return admitted ? <Results me={me} /> : notYet("Results", "once you are admitted");
       case "documents": return <DocumentCentre me={me} />;
@@ -170,7 +174,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
 
 /* ── My Profile: everything the University holds about the candidate, read from the record ────────────────── */
 
-function MyProfile({ me, onEdit }: { me: Candidate; onEdit?: () => void }) {
+function MyProfile({ me, act, onEdit, onRequests }: { me: Candidate; act: Act; onEdit?: () => void; onRequests: () => void }) {
   const sc = me.statusChecking;
   const status = sc.may_check && sc.status ? ADMISSION_STATUS[sc.status] : null;
   const v = (x: string | null | undefined) => (x && String(x).trim() ? x : "—");
@@ -238,10 +242,153 @@ function MyProfile({ me, onEdit }: { me: Candidate; onEdit?: () => void }) {
       </Panel>
       {onEdit ? (
         <Note kind="info" title="Your application is still open to you" action={<Btn kind="ghost" onClick={onEdit}>Continue the application</Btn>}>Correct any detail in the application&rsquo;s steps before you submit it.</Note>
+      ) : me.state === "WITHDRAWN" ? (
+        <Note kind="info" title="Your application is withdrawn">Its details are kept as they stand; ask the JUPEB Office if one must change.</Note>
       ) : (
-        <Note kind="info" title="A detail is wrong?">After submission the record is the JUPEB Office&rsquo;s. Ask for a correction under Help &amp; Support, with the evidence; the Office corrects it and you are told.</Note>
+        <>
+          <ContactDetails me={me} act={act} />
+          <CorrectionRequest me={me} act={act} onRequests={onRequests} />
+        </>
       )}
     </>
+  );
+}
+
+/* ── V347: the contact details the student keeps; a change of identity is asked of the JUPEB Office ─────────── */
+
+const PHONE = /^0\d{10}$/;
+
+function ContactDetails({ me, act }: { me: Candidate; act: Act }) {
+  const held = useMemo(() => ({
+    phone: me.phone ?? "", contactAddress: me.contact_address ?? "", permanentAddress: me.permanent_address ?? "", guardianName: me.guardian_name ?? "",
+    guardianPhone: me.guardian_phone ?? "", guardianAddress: me.guardian_address ?? "", nextOfKinName: me.next_of_kin_name ?? "",
+    nextOfKinPhone: me.next_of_kin_phone ?? "", nextOfKinRelationship: me.next_of_kin_relationship ?? "",
+  }), [me]);
+  const [f, setF] = useState<Record<string, string>>(held);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setF(held); }, [held]);
+  const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const bad = (k: string, required = false) => {
+    const v = (f[k] ?? "").trim();
+    if (!v) return required ? "Keep a phone number on your record" : undefined;
+    return PHONE.test(v) ? undefined : "Eleven digits, e.g. 08012345678";
+  };
+  const errors = { phone: bad("phone", true), guardianPhone: bad("guardianPhone"), nextOfKinPhone: bad("nextOfKinPhone") };
+  const changed = Object.keys(held).some((k) => (f[k] ?? "").trim() !== (held as Record<string, string>)[k]);
+  async function save() {
+    setBusy(true);
+    try {
+      const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()]));
+      if (await act("/api/v1/jupeb/me/contact", "PUT", body)) notify("Your contact details are saved.");
+    } finally { setBusy(false); }
+  }
+  const input = (k: string, label: string, o: { max?: number; error?: string; required?: boolean } = {}) => (
+    <Field id={`cd-${k}`} label={label} required={o.required} error={o.error}>
+      <input id={`cd-${k}`} className="ctl" value={f[k] ?? ""} onChange={set(k)} maxLength={o.max ?? 120} />
+    </Field>
+  );
+  return (
+    <Panel title="Update your contact details" right={<span className="sub2">Saved at once; the JUPEB Office sees the change on your record</span>}>
+      <PBody>
+        <div className="grid grid--3">
+          {input("phone", "Phone", { max: 11, error: errors.phone, required: true })}
+          <Field id="cd-email" label="Email" hint="Your sign-in; ask ICT Support to change it"><input id="cd-email" className="ctl" value={me.email} disabled /></Field>
+        </div>
+        <div className="grid grid--2">
+          <Field id="cd-ca" label="Contact address"><textarea id="cd-ca" className="ctl" rows={2} maxLength={300} value={f.contactAddress} onChange={set("contactAddress")} /></Field>
+          <Field id="cd-pa" label="Permanent home address"><textarea id="cd-pa" className="ctl" rows={2} maxLength={300} value={f.permanentAddress} onChange={set("permanentAddress")} /></Field>
+        </div>
+        <div className="eyebrow mt-3">Parent or guardian</div>
+        <div className="grid grid--3">{input("guardianName", "Name")}{input("guardianPhone", "Phone", { max: 11, error: errors.guardianPhone })}{input("guardianAddress", "Address", { max: 300 })}</div>
+        <div className="eyebrow mt-3">Next of kin</div>
+        <div className="grid grid--3">{input("nextOfKinName", "Name")}{input("nextOfKinPhone", "Phone", { max: 11, error: errors.nextOfKinPhone })}{input("nextOfKinRelationship", "Relationship", { max: 60 })}</div>
+        <div className="row mt-2">
+          <Btn kind="primary" disabled={busy || !changed || Object.values(errors).some(Boolean)} onClick={() => void save()}>{busy ? "Saving…" : "Save my contact details"}</Btn>
+          {changed ? <Btn kind="ghost" onClick={() => setF(held)}>Undo my changes</Btn> : null}
+        </div>
+      </PBody>
+    </Panel>
+  );
+}
+
+function CorrectionRequest({ me, act, onRequests }: { me: Candidate; act: Act; onRequests: () => void }) {
+  const present: Record<string, string> = {
+    surname: me.surname, first_name: me.first_name, middle_name: me.middle_name ?? "", sex: me.sex ?? "", date_of_birth: me.date_of_birth ?? "", nin: me.nin ?? "",
+    nationality: me.nationality ?? "", state_of_origin: me.state_of_origin ?? "", lga: me.lga ?? "",
+  };
+  const shown = (k: string, v: string) => (!v ? "—" : k === "sex" ? (v === "F" ? "Female" : v === "M" ? "Male" : v) : k === "date_of_birth" ? day(v)
+    : k === "nin" ? `${"•".repeat(Math.max(0, v.length - 4))}${v.slice(-4)}` : v);
+  const [to, setTo] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pending = me.requests.find((r) => r.state === "PENDING") ?? null;
+  const picked = Object.keys(to);
+  const toggle = (k: string, on: boolean) => {
+    const next = { ...to };
+    if (on) next[k] = k === "surname" || k === "first_name" || k === "middle_name" ? present[k] : "";
+    else delete next[k];
+    if (k === "state_of_origin" && !on) delete next.lga;
+    setTo(next);
+  };
+  const stateFor = to.state_of_origin ?? present.state_of_origin;
+  const problem = (k: string): string | undefined => {
+    const v = (to[k] ?? "").trim();
+    if (!v) return k === "middle_name" ? undefined : "Say what it should read";
+    if (k === "nin" && !/^\d{11}$/.test(v)) return "Eleven digits";
+    if (v.toUpperCase() === (present[k] ?? "").toUpperCase()) return "The same as your record";
+    return undefined;
+  };
+  const ready = picked.length > 0 && picked.every((k) => !problem(k)) && reason.trim().length >= 10;
+  async function send() {
+    setBusy(true);
+    try {
+      const changes = Object.fromEntries(picked.map((k) => [k, (to[k] ?? "").trim()]));
+      if (await act("/api/v1/jupeb/me/corrections", "POST", { changes, reason: reason.trim() })) {
+        notify("Your correction is with the JUPEB Office. You will be told of its decision.");
+        setTo({}); setReason("");
+      }
+    } finally { setBusy(false); }
+  }
+  if (pending) {
+    return (
+      <Note kind="info" title="A request of yours is with the JUPEB Office" action={<Btn kind="ghost" onClick={onRequests}>See your requests</Btn>}>
+        {`You asked to ${pending.words}, on ${day(pending.requested_at)}. One request is open at a time; a correction of your details can be asked once it is decided.`}
+      </Note>
+    );
+  }
+  const editor = (k: string) => {
+    const id = `cr-${k}`;
+    const common = { id, className: "ctl", value: to[k] ?? "", onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setTo({ ...to, [k]: e.target.value, ...(k === "state_of_origin" && to.lga !== undefined ? { lga: "" } : {}) }) };
+    switch (k) {
+      case "sex": return <select {...common}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select>;
+      case "date_of_birth": return <input {...common} type="date" />;
+      case "nationality": return <select {...common}><option value="">—</option>{NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}</select>;
+      case "state_of_origin": return <select {...common}><option value="">— Select a state —</option>{STATES.map((x) => <option key={x} value={x}>{x}</option>)}</select>;
+      case "lga": return <select {...common} disabled={!stateFor}><option value="">{stateFor ? "— Select an LGA —" : "Select a state first"}</option>{lgasOf(stateFor).map((l) => <option key={l} value={l}>{l}</option>)}</select>;
+      case "nin": return <input {...common} inputMode="numeric" maxLength={11} />;
+      default: return <input {...common} maxLength={80} />;
+    }
+  };
+  return (
+    <Panel title="Ask for a correction of your personal details">
+      <PBody>
+        <p className="sub2">Your name, sex, date of birth, NIN, nationality, state of origin and LGA are corrected only by the JUPEB Office, on evidence (birth certificate, NIN slip, sworn affidavit or
+          marriage certificate). Tick what is wrong and say what it should read; nothing changes until the Office approves.</p>
+        <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", margin: "var(--s-2) 0" }}>
+          {CORRECTION_FIELDS.map(([k, label]) => (
+            <label key={k} className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={k in to} onChange={(e) => toggle(k, e.target.checked)} /> {label}</label>
+          ))}
+        </div>
+        {picked.length ? (
+          <DTable noPrint pageSize={0} cols={["Detail", "Your record reads", "It should read"]} rows={CORRECTION_FIELDS.filter(([k]) => k in to).map(([k, label]) => [
+            label, shown(k, present[k]),
+            <Field key={k} id={`cr-${k}`} label="" error={problem(k)}>{editor(k)}</Field>,
+          ])} />
+        ) : null}
+        <Field id="cr-reason" label="Why, and the evidence you hold" required hint="At least ten characters"><textarea id="cr-reason" className="ctl" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+        <div className="row mt-2"><Btn kind="primary" disabled={busy || !ready} onClick={() => void send()}>{busy ? "Sending…" : "Send the correction to the JUPEB Office"}</Btn></div>
+      </PBody>
+    </Panel>
   );
 }
 
@@ -793,7 +940,9 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
   const admitted = !!f && ADMITTED.has(me.state);
   const screeningFirst = me.screeningSetting.screening_required && me.state === "ADMITTED" && me.screening_state !== "CLEARED";
   const rule = me.feeRule;
-  if (me.legacy_source) {
+  /* V347: once the JUPEB Office has put the old portal's payments on the record, the fees read as everyone's — what is paid and what is still owed */
+  const oldOnRecord = me.references.some((x) => x.channel === "Old portal");
+  if (me.legacy_source && !oldOnRecord) {
     return (
       <div className="stack">
         <Note kind="info" title="Your fees were handled on the old portal">{`You were registered on the old portal (${me.legacy_ref ?? me.application_no}). Fees you paid there are kept by the Bursary; if you are told a balance is owed here, the JUPEB Office will guide you.`}</Note>
@@ -809,6 +958,7 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
   }
   return (
     <div className="stack">
+      {me.legacy_source && oldOnRecord ? <Note kind="info" title="Your old-portal payments are on your record">The payments you made on the old portal are listed below as &ldquo;Old portal&rdquo;. Anything still owed is paid here.</Note> : null}
       <Panel title="Payment summary">
         <PBody>
           <DTable noPrint pageSize={0} cols={["Fee", "Amount|num", "Status"]} rows={[
@@ -833,7 +983,9 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
               : f.status !== "PAID" ? (
                 <div className="row mt-3" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
                   {!f.first_paid ? <PayBox kind="SCHOOL_FIRST" amount={Number(f.first_amount)} me={me} reload={reload} label="Pay first semester" /> : null}
-                  {f.first_paid && !f.second_paid ? <PayBox kind="SCHOOL_SECOND" amount={Number(f.second_amount)} me={me} reload={reload} label="Pay second semester" /> : null}
+                  {/* V347: the second instalment is the balance the server charges — the second share, or what an old-portal instalment left owing */}
+                  {f.first_paid && !f.second_paid && Number(f.outstanding) > 0 ? <PayBox kind="SCHOOL_SECOND" amount={Number(f.outstanding)} me={me} reload={reload}
+                    label={Number(f.outstanding) === Number(f.second_amount) ? "Pay second semester" : "Pay the balance"} /> : null}
                   {f.allow_full && Number(f.paid) === 0 ? <PayBox kind="SCHOOL_FULL" amount={Number(f.total)} me={me} reload={reload} label="Pay in full" /> : null}
                 </div>
               ) : null}
@@ -939,6 +1091,198 @@ function Attendance() {
       <Panel title="Recent classes">
         <PBody><DTable pageSize={20} cols={["Date", "Subject", "Status", "Time", "Remarks"]} rows={data.recent.filter((r) => !subject || r.code === subject).map((r) => [day(r.held_on), r.title,
           <Pil key="s" kind={r.status === "PRESENT" ? "ok" : r.status === "ABSENT" ? "bad" : r.status === "LATE" ? "warn" : "grey"}>{r.status.toLowerCase()}</Pil>, r.marked_time ?? "—", r.remarks ?? "—"])} /></PBody>
+      </Panel>
+    </div>
+  );
+}
+
+/* ── V347: the week's lectures, and the practice tests ──────────────────────────────────────────────── */
+
+function Timetable({ me }: { me: Candidate }) {
+  const [data, setData] = useState<{ session: string; slots: Slot[] } | null>(null);
+  const [semester, setSemester] = useState("1");
+  useEffect(() => {
+    let live = true;
+    void jcall<{ session: string; slots: Slot[] }>("/api/v1/jupeb/me/timetable").then((r) => {
+      if (!live) return;
+      if (r.ok) { setData(r.data); if (r.data.slots.length && !r.data.slots.some((x) => x.semester === 1)) setSemester("2"); } else notifyProblem(r.problem);
+    });
+    return () => { live = false; };
+  }, []);
+  if (!data) return <Note kind="info" title="Loading your timetable…">One moment.</Note>;
+  const rows = data.slots.filter((x) => String(x.semester) === semester);
+  const days = [...new Set(rows.map((x) => x.weekday))].sort((a, b) => a - b);
+  const print = () => brandedPrint(`JUPEB lecture timetable — ${semester === "1" ? "first" : "second"} semester`, `${fullName(me)} · ${me.application_no}${me.class_name ? ` · ${me.class_name}` : ""} · ${data.session}`,
+    ["Day", "Time", "Subject", "Venue", "Lecturer"], rows.map((x) => [WEEKDAYS[x.weekday], `${x.starts_at}–${x.ends_at}`, `${x.code} ${x.title}`, x.venue ?? "—", x.instructors ?? "—"]),
+    docSerial("JUPEBTT"), { orientation: "portrait" });
+  return (
+    <Panel title={`Lecture timetable · ${data.session}`} right={<span className="row">
+      <select className="ctl" style={{ width: 180 }} aria-label="Semester" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option></select>
+      {rows.length ? <Btn kind="ghost" onClick={print}>Print / PDF</Btn> : null}
+    </span>}>
+      <PBody>
+        {!rows.length ? <Note kind="info" title="No lectures on the timetable yet">The JUPEB Office publishes the timetable of your subjects here{me.class_name ? ` for ${me.class_name}` : ""}.</Note> : (
+          <div className="grid grid--3">
+            {days.map((d) => (
+              <div key={d} className="card"><div className="card__body">
+                <div className="b700">{WEEKDAYS[d]}</div>
+                {rows.filter((x) => x.weekday === d).map((x) => (
+                  <div key={x.id} style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-2)", marginTop: "var(--s-2)" }}>
+                    <div className="tnum b600">{x.starts_at}–{x.ends_at}</div>
+                    <div>{x.title} <span className="sub2">{x.code}</span></div>
+                    <div className="sub2">{[x.venue, x.instructors, x.class_name ? null : "all classes"].filter(Boolean).join(" · ") || "—"}</div>
+                    {x.note ? <div className="sub2">{x.note}</div> : null}
+                  </div>
+                ))}
+              </div></div>
+            ))}
+          </div>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+interface PracticeTest {
+  id: string; title: string; instructions: string | null; duration_minutes: number; questions_per_attempt: number; attempts_allowed: number; show_answers: boolean;
+  code: string; subject: string; questions: number; used: number; best: number | null; open_attempt: string | null; attempts: string;
+}
+interface PastAttempt { id: string; number: number; submittedAt: string; score: number; total: number; percentage: number }
+
+function Practice() {
+  const [tests, setTests] = useState<PracticeTest[] | null>(null);
+  const [paper, setPaper] = useState<PracticePaper | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ tests: PracticeTest[] }>("/api/v1/jupeb/me/practice").then((r) => { if (live) { if (r.ok) setTests(r.data.tests); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [tick]);
+  async function open(path: string, method = "GET") {
+    setBusy(true);
+    try {
+      const r = await jcall<PracticePaper>(path, method, method === "POST" ? {} : undefined);
+      if (r.ok) setPaper(r.data); else notifyProblem(r.problem);
+    } finally { setBusy(false); }
+  }
+  if (paper) return <PracticeRunner paper={paper} setPaper={setPaper} onClose={() => { setPaper(null); setTick((t) => t + 1); }} />;
+  if (!tests) return <Note kind="info" title="Loading your practice tests…">One moment.</Note>;
+  const past = (t: PracticeTest): PastAttempt[] => { try { return JSON.parse(t.attempts) as PastAttempt[]; } catch { return []; } };
+  return (
+    <div className="stack">
+      <Note kind="info" title="Practice, not examination">Practice tests prepare you for the JUPEB examination. They are timed and marked at once, and never count towards your result.</Note>
+      <Panel title="Practice tests of your subjects">
+        <PBody>
+          {!tests.length ? <p className="sub2">No practice test is open for your subjects yet. The JUPEB Office adds them here.</p> : (
+            <DTable noPrint pageSize={0} cols={["Subject", "Test", "Questions|num", "Time", "Attempts|num", "Best|num", ""]} rows={tests.map((t) => {
+              const left = t.attempts_allowed - Number(t.used);
+              return [`${t.code} · ${t.subject}`, t.title, Math.min(t.questions_per_attempt, Number(t.questions)), `${t.duration_minutes} min`, `${t.used}/${t.attempts_allowed}`,
+                t.best == null ? "—" : `${Number(t.best)}%`,
+                t.open_attempt ? <Btn key="b" kind="primary" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/attempts/${t.open_attempt}`)}>Resume</Btn>
+                  : left > 0 ? <Btn key="b" kind="secondary" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/${t.id}/start`, "POST")}>Start</Btn>
+                  : <span key="b" className="sub2">No attempts left</span>];
+            })} />
+          )}
+        </PBody>
+      </Panel>
+      {tests.some((t) => past(t).length) ? (
+        <Panel title="Your past attempts">
+          <PBody>
+            <DTable noPrint pageSize={0} cols={["Test", "Attempt|num", "Submitted", "Score|num", "", ""]} rows={tests.flatMap((t) => past(t).map((a) => [
+              t.title, a.number, when(a.submittedAt), `${a.score}/${a.total}`, `${Number(a.percentage)}%`,
+              <Btn key="r" kind="ghost" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/attempts/${a.id}`)}>Review</Btn>,
+            ]))} />
+          </PBody>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
+function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; setPaper: (p: PracticePaper) => void; onClose: () => void }) {
+  const over = !!paper.attempt.submittedAt;
+  const [at, setAt] = useState(0);
+  const [left, setLeft] = useState(paper.attempt.secondsLeft);
+  const [busy, setBusy] = useState(false);
+  const deadline = useRef(0);
+  const submitted = useRef(false);
+  const submit = useCallback(async () => {
+    if (submitted.current) return;
+    submitted.current = true;
+    setBusy(true);
+    try {
+      const r = await jcall<PracticePaper>(`/api/v1/jupeb/me/practice/attempts/${paper.attempt.id}/submit`, "POST", {});
+      if (r.ok) { setPaper(r.data); setAt(0); } else { submitted.current = false; notifyProblem(r.problem); }
+    } finally { setBusy(false); }
+  }, [paper.attempt.id, setPaper]);
+  useEffect(() => {
+    if (over) return;
+    deadline.current = Date.now() + paper.attempt.secondsLeft * 1000;
+    const t = setInterval(() => {
+      const s = Math.max(0, Math.round((deadline.current - Date.now()) / 1000));
+      setLeft(s);
+      if (s === 0) { clearInterval(t); void submit(); }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [over, paper.attempt.secondsLeft, submit]);
+  const qs = paper.questions;
+  const q = qs[at];
+  async function choose(letter: string) {
+    if (over || !q) return;
+    setPaper({ ...paper, questions: qs.map((x) => (x.id === q.id ? { ...x, chosen: letter } : x)) });
+    const r = await jcall(`/api/v1/jupeb/me/practice/attempts/${paper.attempt.id}/answers/${q.id}`, "PUT", { choice: letter });
+    if (!r.ok) notifyProblem(r.problem);
+  }
+  const answered = qs.filter((x) => x.chosen).length;
+  const mm = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  return (
+    <div className="stack">
+      <Panel title={`${paper.test.title} · attempt ${paper.attempt.number}`} right={over
+        ? <span className="row"><Pil kind={Number(paper.attempt.percentage) >= 50 ? "ok" : "warn"}>{`${paper.attempt.score}/${paper.attempt.total} · ${Number(paper.attempt.percentage)}%`}</Pil><Btn kind="ghost" onClick={onClose}>Back to the tests</Btn></span>
+        : <span className="row"><Pil kind={left < 60 ? "bad" : left < 300 ? "warn" : "info"}>{`Time left ${mm}`}</Pil><span className="sub2">{answered}/{qs.length} answered</span></span>}>
+        <PBody>
+          {paper.test.instructions && !over ? <p className="sub2" style={{ whiteSpace: "pre-line" }}>{paper.test.instructions}</p> : null}
+          {over && !paper.test.showAnswers ? <Note kind="info" title="Marked">This test shows which you got right, not the answers.</Note> : null}
+          <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: "var(--s-3)" }}>
+            {qs.map((x, i) => (
+              <button key={x.id} type="button" aria-label={`Question ${x.n}`} onClick={() => setAt(i)} className="btn btn--sm"
+                style={{ minWidth: 34, fontWeight: i === at ? 700 : 400, outline: i === at ? "2px solid var(--primary)" : undefined,
+                  background: over ? (x.correct ? "var(--green-bg)" : "var(--red-bg)") : x.chosen ? "var(--sky-bg)" : undefined }}>{x.n}</button>
+            ))}
+          </div>
+          {q ? (
+            <div className="card"><div className="card__body">
+              <div className="sub2">Question {q.n} of {qs.length}</div>
+              <div className="b600" style={{ whiteSpace: "pre-line", margin: "var(--s-2) 0" }}>{q.stem}</div>
+              <div className="stack" style={{ gap: "var(--s-2)" }}>
+                {Object.entries(q.options).map(([letter, text]) => {
+                  const mark = over && q.answer ? (letter === q.answer ? "ok" : letter === q.chosen ? "bad" : null) : null;
+                  return (
+                    <label key={letter} className="row" style={{ gap: "var(--s-2)", alignItems: "flex-start", cursor: over ? "default" : "pointer", padding: "6px 8px", borderRadius: "var(--r-sm)",
+                      border: `1px solid ${mark === "ok" ? "var(--green)" : mark === "bad" ? "var(--red)" : "var(--line)"}` }}>
+                      <input type="radio" name={`q-${q.id}`} checked={q.chosen === letter} disabled={over || busy} onChange={() => void choose(letter)} />
+                      <span><b>{letter}.</b> {text}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {over ? (
+                <p className="mt-2">{q.correct ? <Pil kind="ok">Correct</Pil> : <Pil kind="bad">{q.chosen ? "Not correct" : "Not answered"}</Pil>}
+                  {q.answer ? <span className="sub2">{` The answer is ${q.answer}.`}{q.explanation ? ` ${q.explanation}` : ""}</span> : null}</p>
+              ) : null}
+            </div></div>
+          ) : null}
+          <div className="row mt-3">
+            <Btn kind="ghost" disabled={at === 0} onClick={() => setAt(at - 1)}>Previous</Btn>
+            <Btn kind="ghost" disabled={at >= qs.length - 1} onClick={() => setAt(at + 1)}>Next</Btn>
+            <span className="grow" />
+            {!over ? <Btn kind="primary" disabled={busy} onClick={() => {
+              if (answered < qs.length && !window.confirm(`${qs.length - answered} question${qs.length - answered === 1 ? " is" : "s are"} not answered. Submit anyway?`)) return;
+              void submit();
+            }}>{busy ? "Marking…" : "Submit"}</Btn> : null}
+          </div>
+        </PBody>
       </Panel>
     </div>
   );
@@ -1064,6 +1408,7 @@ function Requests({ me, act }: { me: Candidate; act: Act }) {
           </PBody>
         </Panel>
       ) : <Note kind="info" title="No change can be asked for now">Your record as it stands takes no change request.</Note>}
+      {!open && me.state !== "WITHDRAWN" ? <p className="sub2">To correct your name, sex, date of birth, NIN, nationality, state or LGA, ask from My Profile; your phone, addresses, guardian and next of kin you update there yourself.</p> : null}
       <Panel title="Your requests">
         <PBody>
           <DTable noPrint pageSize={0} cols={["Asked", "Request", "Why", "Decision", "Note"]} rows={me.requests.map((r) => [

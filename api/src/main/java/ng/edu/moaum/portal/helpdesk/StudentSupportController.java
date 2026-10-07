@@ -733,10 +733,13 @@ class StudentSupportController {
         int pg = Math.max(1, page);
         String where = """
                   FROM helpdesk.support_action a
-                  JOIN people.student s ON s.id = a.student_id
-                  JOIN ref.programme p ON p.code = s.programme_code
+                  LEFT JOIN people.student s ON s.id = a.student_id
+                  LEFT JOIN ref.programme p ON p.code = s.programme_code
+                  LEFT JOIN jupeb.application ja ON ja.id = a.jupeb_application_id
                   LEFT JOIN helpdesk.ticket t ON t.id = a.ticket_id
-                 WHERE (:head OR EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY(sc.faculties) OR p.dept_code = ANY(sc.departments)))
+                 WHERE (:head
+                        OR (a.student_id IS NOT NULL AND EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY(sc.faculties) OR p.dept_code = ANY(sc.departments)))
+                        OR (a.jupeb_application_id IS NOT NULL AND 'VIEW_SUPPORT_AUDIT' = ANY (helpdesk.agent_jupeb_capabilities(:me))))
                    AND (:module::text IS NULL OR helpdesk.support_module(a.action) = :module)
                    AND (:action::text IS NULL OR a.action = :action)
                    AND (:agent::uuid IS NULL OR a.agent_id = :agent)
@@ -755,7 +758,8 @@ class StudentSupportController {
         out.put("rows", with.apply(cte + """
                 SELECT a.id, a.at, a.action, helpdesk.support_module(a.action) AS module, a.summary, a.reason, a.outcome, a.override, a.normal_rule, a.method,
                        a.payment_reference, a.session, a.semester, helpdesk.person_name(a.agent_id) AS agent, a.agent_office,
-                       s.id AS student_id, s.surname || ', ' || s.other_names AS student, coalesce(s.matric_no, s.admission_no) AS number,
+                       s.id AS student_id, a.jupeb_application_id, coalesce(s.surname || ', ' || s.other_names, ja.surname || ', ' || ja.first_name) AS student,
+                       coalesce(s.matric_no, s.admission_no, ja.application_no) AS number,
                        t.id AS ticket_id, t.number AS ticket_number, CASE WHEN t.status IN ('RESOLVED', 'CLOSED') THEN 'RESOLVED' ELSE a.outcome END AS result
                 """ + where + " ORDER BY a.at DESC LIMIT :n OFFSET :o").param("n", sz).param("o", (long) (pg - 1) * sz).query().listOfRows());
         out.put("page", pg);

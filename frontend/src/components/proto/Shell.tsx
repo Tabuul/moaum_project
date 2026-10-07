@@ -194,6 +194,7 @@ export const ROUTES: Record<string, string> = {
   "t/supportstudents": "/helpdesk/students",
   "t/supportpayments": "/helpdesk/payments",
   "t/supportaudit": "/helpdesk/audit",
+  "t/supportjupeb": "/helpdesk/jupeb",
   "t/helpdeskoffice": "/helpdesk/office",
   /* external examiners (V254): the examiner's workspace, and the desk */
   "x/dashboard": "/examiner",
@@ -293,6 +294,8 @@ export const ROUTES: Record<string, string> = {
   "jupeb/portal/admission": "/jupeb/portal?tab=admission",
   "jupeb/portal/payments": "/jupeb/portal?tab=payments",
   "jupeb/portal/subjects": "/jupeb/portal?tab=subjects",
+  "jupeb/portal/timetable": "/jupeb/portal?tab=timetable",
+  "jupeb/portal/practice": "/jupeb/portal?tab=practice",
   "jupeb/portal/attendance": "/jupeb/portal?tab=attendance",
   "jupeb/portal/results": "/jupeb/portal?tab=results",
   "jupeb/portal/documents": "/jupeb/portal?tab=documents",
@@ -310,6 +313,10 @@ export const ROUTES: Record<string, string> = {
   "jupeb/attendance": "/jupeb/attendance",
   "jupeb/requests": "/jupeb/requests",
   "jupeb/import": "/jupeb/import",
+  "jupeb/oldpayments": "/jupeb/import/payments",
+  "jupeb/timetable": "/jupeb/timetable",
+  "jupeb/practice": "/jupeb/practice",
+  "jupeb/reports": "/jupeb/reports",
   "f/jupebfees": "/finance/jupeb-fees",
 };
 
@@ -352,6 +359,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/helpdeskoffice": ["Support Escalations", "Tickets the support desk has referred to your office for a decision"],
   "t/supportstudents": ["Student Support", "A student's record in support mode: what your posting lets you see and correct, every act on the ledger"],
   "t/supportpayments": ["Payment Support", "A student's payment found by any number, diagnosed, verified and its entitlement refreshed through the existing services — never marked paid"],
+  "t/supportjupeb": ["JUPEB Student Support", "A JUPEB record in support mode: contact details, password, payments and activation, through the JUPEB services — every act on the ledger"],
   "t/supportaudit": ["Support Action History", "Every act ICT Support did on a student, with the ticket, the reason, the result and the overrides"],
   "x/dashboard": ["Examiner Workspace", "The projects assigned to you, their deadlines, and what has gone in"],
   "x/projects": ["My Assigned Projects", "Every project the University has sent you"],
@@ -395,6 +403,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/portal/admission": ["Admission", "Status checking, acceptance and screening"],
   "jupeb/portal/payments": ["Payments", "Your fees, references and receipts"],
   "jupeb/portal/subjects": ["Subjects", "Your subject combination"],
+  "jupeb/portal/timetable": ["Timetable", "Your lectures, week by week"],
+  "jupeb/portal/practice": ["Practice Tests", "Timed practice in your subjects — never part of your result"],
   "jupeb/portal/attendance": ["Attendance", "Your attendance, subject by subject"],
   "jupeb/portal/results": ["Results", "Your JUPEB results"],
   "jupeb/portal/documents": ["Documents", "Your letters, slips and statements"],
@@ -412,6 +422,10 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/attendance": ["JUPEB attendance", "Registers, corrections, instructors and reports"],
   "jupeb/requests": ["JUPEB change requests", "Withdrawals, deferments and changes asked for after submission"],
   "jupeb/import": ["Upload students from the old portal", "Registered JUPEB students, each given a login"],
+  "jupeb/oldpayments": ["Old-portal payments", "Payments made on the old portal, put on each student's record once"],
+  "jupeb/timetable": ["JUPEB timetable", "The week's lectures of each subject, by class and semester"],
+  "jupeb/practice": ["JUPEB practice tests", "Question banks and timed practice for the students — never a result"],
+  "jupeb/reports": ["JUPEB reports", "Enrolment, fees, attendance, results and practice of a session"],
   "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
 };
 

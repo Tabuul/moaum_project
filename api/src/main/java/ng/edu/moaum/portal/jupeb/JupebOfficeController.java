@@ -873,6 +873,205 @@ class JupebOfficeController {
         return out;
     }
 
+    /* ── V347: the old portal's payments, put on the record ── */
+
+    public record OldPaymentsIn(@NotNull @Size(max = 500) List<Map<String, Object>> rows, boolean dayFirst, boolean commit, @Size(max = 200) String fileName) {
+    }
+
+    /** the old portal's payment export judged row by row (a preview writes nothing); on the upload each matched, successful, new payment is a confirmed fee */
+    @PostMapping("/old-portal-payments/import")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> importOldPayments(@Valid @RequestBody OldPaymentsIn body) {
+        String out = jdbc.sql("SELECT jupeb.import_old_portal_payments(:r::jsonb, :d, :c, :f, :by)::text")
+                .param("r", json.writeValueAsString(body.rows())).param("d", body.dayFirst()).param("c", body.commit())
+                .param("f", body.fileName(), Types.VARCHAR).param("by", actor()).query(String.class).single();
+        return json.readValue(out, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    @GetMapping("/old-portal-payments")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> oldPayments(@RequestParam(required = false) String session) {
+        return jdbc.sql("""
+                SELECT l.batch_ref, l.old_reference, l.app_no, l.kind, l.purpose, l.amount, l.paid_on, l.imported_at, f.reference,
+                       a.id AS application_id, a.surname || ', ' || a.first_name AS name, a.session
+                  FROM jupeb.legacy_payment l JOIN jupeb.application a ON a.id = l.application_id JOIN jupeb.fee_reference f ON f.id = l.fee_reference_id
+                 WHERE (:s::text IS NULL OR a.session = :s) ORDER BY l.imported_at DESC, l.row_no LIMIT 2000
+                """).param("s", session == null || session.isBlank() ? null : session.trim(), Types.VARCHAR).query().listOfRows();
+    }
+
+    /* ── V347: the timetable ── */
+
+    public record SlotIn(@NotBlank String session, @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(2) int semester, UUID classId,
+                         @NotNull UUID subjectId, @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(7) int weekday,
+                         @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String startsAt,
+                         @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String endsAt,
+                         @Size(max = 120) String venue, @Size(max = 300) String note) {
+    }
+
+    @GetMapping("/timetable")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> timetable(@RequestParam String session, @RequestParam(required = false) Integer semester) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("slots", jdbc.sql("""
+                SELECT t.id, t.session, t.semester, t.class_id, k.name AS class_name, t.subject_id, s.code, s.title, t.weekday,
+                       to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
+                       (SELECT string_agg(p.surname || ', ' || p.given_names, '; ' ORDER BY p.surname) FROM attendance.instructor i JOIN iam.person p ON p.id = i.person_id
+                         WHERE i.context = 'JUPEB' AND i.session = t.session AND i.subject_ref = t.subject_id AND i.ended_at IS NULL
+                           AND (t.class_id IS NULL OR i.class_ref IS NULL OR i.class_ref = t.class_id)) AS instructors
+                  FROM jupeb.timetable_slot t JOIN jupeb.subject s ON s.id = t.subject_id LEFT JOIN jupeb.class k ON k.id = t.class_id
+                 WHERE t.active AND t.session = :s AND (:sem::int IS NULL OR t.semester = :sem)
+                 ORDER BY t.semester, t.weekday, t.starts_at, k.name NULLS FIRST
+                """).param("s", session.trim()).param("sem", semester, Types.INTEGER).query().listOfRows());
+        out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", session.trim()).query().listOfRows());
+        out.put("subjects", jdbc.sql("SELECT id, code, title FROM jupeb.subject WHERE active ORDER BY code").query().listOfRows());
+        return out;
+    }
+
+    @PostMapping("/timetable")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> addSlot(@Valid @RequestBody SlotIn b) {
+        UUID id = jdbc.sql("""
+                INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, venue, note, created_by)
+                VALUES (:s, :sem, :c, :sub, :w, :st::time, :en::time, :v, :n, :by) RETURNING id
+                """).param("s", b.session().trim()).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
+                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
+                .param("by", actor()).query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
+    @PutMapping("/timetable/{id}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> editSlot(@PathVariable UUID id, @Valid @RequestBody SlotIn b) {
+        int n = jdbc.sql("""
+                UPDATE jupeb.timetable_slot SET semester = :sem, class_id = :c, subject_id = :sub, weekday = :w, starts_at = :st::time, ends_at = :en::time, venue = :v, note = :n
+                 WHERE id = :id AND active
+                """).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
+                .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
+                .param("id", id).update();
+        if (n == 0) throw new NotFound("timetable slot", id);
+        return Map.of("id", id);
+    }
+
+    @PostMapping("/timetable/{id}/remove")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> removeSlot(@PathVariable UUID id) {
+        int n = jdbc.sql("UPDATE jupeb.timetable_slot SET active = false WHERE id = :id AND active").param("id", id).update();
+        if (n == 0) throw new NotFound("timetable slot", id);
+        return Map.of("id", id, "removed", true);
+    }
+
+    /* ── V347: practice tests ── */
+
+    public record PracticeIn(@NotNull UUID subjectId, @NotBlank @Size(min = 3, max = 160) String title, @Size(max = 2000) String instructions,
+                             @jakarta.validation.constraints.Min(5) @jakarta.validation.constraints.Max(240) int durationMinutes,
+                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(200) int questionsPerAttempt,
+                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(20) int attemptsAllowed, boolean showAnswers, boolean open) {
+    }
+
+    @GetMapping("/practice-tests")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> practiceTests() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("tests", jdbc.sql("""
+                SELECT t.id, t.subject_id, s.code, s.title AS subject, t.title, t.instructions, t.duration_minutes, t.questions_per_attempt, t.attempts_allowed,
+                       t.show_answers, t.open, t.updated_at,
+                       (SELECT count(*) FROM jupeb.practice_question q WHERE q.test_id = t.id AND q.active) AS questions,
+                       (SELECT count(*) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.submitted_at IS NOT NULL) AS attempts,
+                       (SELECT count(DISTINCT p.application_id) FROM jupeb.practice_attempt p WHERE p.test_id = t.id) AS students,
+                       (SELECT round(avg(p.percentage), 1) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.submitted_at IS NOT NULL) AS average
+                  FROM jupeb.practice_test t JOIN jupeb.subject s ON s.id = t.subject_id ORDER BY s.code, t.title
+                """).query().listOfRows());
+        out.put("subjects", jdbc.sql("SELECT id, code, title FROM jupeb.subject WHERE active ORDER BY code").query().listOfRows());
+        return out;
+    }
+
+    @PostMapping("/practice-tests")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> addPracticeTest(@Valid @RequestBody PracticeIn b) {
+        UUID id = jdbc.sql("""
+                INSERT INTO jupeb.practice_test (subject_id, title, instructions, duration_minutes, questions_per_attempt, attempts_allowed, show_answers, open, created_by)
+                VALUES (:s, :t, :i, :d, :q, :a, :sh, :o, :by) RETURNING id
+                """).param("s", b.subjectId()).param("t", b.title().trim()).param("i", blankOf(b.instructions()), Types.VARCHAR).param("d", b.durationMinutes())
+                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open()).param("by", actor())
+                .query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
+    @PutMapping("/practice-tests/{id}")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> editPracticeTest(@PathVariable UUID id, @Valid @RequestBody PracticeIn b) {
+        if (b.open() && Boolean.FALSE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.practice_question WHERE test_id = :id AND active)").param("id", id).query(Boolean.class).single())) {
+            throw new DomainRuleViolation("JUPEB_PRACTICE_EMPTY", "A test is opened once it has questions.", new DomainRuleViolation.Remedy("Upload its questions first.", "JUPEB Office"));
+        }
+        int n = jdbc.sql("""
+                UPDATE jupeb.practice_test SET subject_id = :s, title = :t, instructions = :i, duration_minutes = :d, questions_per_attempt = :q, attempts_allowed = :a,
+                       show_answers = :sh, open = :o, updated_at = now() WHERE id = :id
+                """).param("s", b.subjectId()).param("t", b.title().trim()).param("i", blankOf(b.instructions()), Types.VARCHAR).param("d", b.durationMinutes())
+                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open()).param("id", id).update();
+        if (n == 0) throw new NotFound("practice test", id);
+        return Map.of("id", id);
+    }
+
+    @GetMapping("/practice-tests/{id}")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> practiceTest(@PathVariable UUID id) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("questions", jdbc.sql("""
+                SELECT q.id, q.ordinal, q.stem, q.option_a, q.option_b, q.option_c, q.option_d, q.option_e, q.answer, q.explanation,
+                       (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct IS NOT NULL) AS answered,
+                       (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct) AS right_answers
+                  FROM jupeb.practice_question q WHERE q.test_id = :id AND q.active ORDER BY q.ordinal
+                """).param("id", id).query().listOfRows());
+        return out;
+    }
+
+    public record QuestionsIn(@NotNull @Size(max = 1000) List<Map<String, Object>> rows, boolean replace) {
+    }
+
+    @PostMapping("/practice-tests/{id}/questions")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> uploadQuestions(@PathVariable UUID id, @Valid @RequestBody QuestionsIn body) {
+        String out = jdbc.sql("SELECT jupeb.practice_upload(:t, :r::jsonb, :rep)::text").param("t", id).param("r", json.writeValueAsString(body.rows()))
+                .param("rep", body.replace()).query(String.class).single();
+        return json.readValue(out, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    @PostMapping("/practice-tests/{id}/questions/{question}/remove")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> removeQuestion(@PathVariable UUID id, @PathVariable UUID question) {
+        int n = jdbc.sql("UPDATE jupeb.practice_question SET active = false WHERE id = :q AND test_id = :t AND active").param("q", question).param("t", id).update();
+        if (n == 0) throw new NotFound("practice question", question);
+        return Map.of("removed", true);
+    }
+
+    /* ── V347: the office's reports ── */
+
+    @GetMapping("/reports")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> reports(@RequestParam String session) {
+        Map<String, Object> out = new LinkedHashMap<>(json.readValue(jdbc.sql("SELECT jupeb.report(:s)::text").param("s", session.trim()).query(String.class).single(),
+                new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+        out.put("sessions", jdbc.sql("SELECT DISTINCT session FROM jupeb.application ORDER BY session DESC").query(String.class).list());
+        return out;
+    }
+
+    private static String blankOf(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
     /* ── the office's settings: numbering, screening, the documents asked for ── */
 
     @GetMapping("/settings")

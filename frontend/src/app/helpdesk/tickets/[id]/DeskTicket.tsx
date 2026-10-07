@@ -86,7 +86,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
               {!settled ? <Btn kind="ghost" disabled={busy} onClick={() => { setQueueTo(""); setDialog("transfer"); }}>Transfer to a Queue</Btn> : null}
               {!settled && t.status !== "WAITING_FOR_OFFICE" ? <Btn kind="ghost" disabled={busy} onClick={() => { setOfficeTo(offices[0]?.code ?? ""); setDialog("office"); }}>Escalate to an Office</Btn> : null}
               <Btn kind="ghost" disabled={busy} onClick={() => { setAgent(""); setDialog("escalate"); }}>Escalate to a Person</Btn>
-              {t.requester_number || t.requester_email ? <Btn kind="ghost" disabled={busy} onClick={() => setDialog("reset")}>Send Password Reset Link</Btn> : null}
+              {t.requester_kind !== "JUPEB" && (t.requester_number || t.requester_email) ? <Btn kind="ghost" disabled={busy} onClick={() => setDialog("reset")}>Send Password Reset Link</Btn> : null}
               <select className="ctl" value={t.priority} disabled={busy} onChange={(e) => void call("/priority", { priority: e.target.value }, `${t.number}: priority ${PRIORITY[e.target.value]?.[0] ?? e.target.value}`)} aria-label="Priority">
                 {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]} priority</option>)}
               </select>
@@ -117,18 +117,19 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
       ) : null}
 
       <div className="grid grid--2">
-        <Panel title="Requester" right={t.requester_kind === "STUDENT" ? "Student" : "Member of staff"}>
+        <Panel title="Requester" right={t.requester_kind === "STUDENT" ? "Student" : t.requester_kind === "JUPEB" ? "JUPEB candidate" : "Member of staff"}>
           <PBody>
             <div className="stack">
               <KvGrid cls="grid--2" pairs={[
                 ["Name", <strong key="n">{t.requester_name}</strong>],
-                [t.requester_kind === "STUDENT" ? "Matriculation number" : "Staff number", <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
+                [t.requester_kind === "STUDENT" ? "Matriculation number" : t.requester_kind === "JUPEB" ? "JUPEB application number" : "Staff number", <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
                 ["Email", t.requester_email ? <a key="e" className="lnk" href={`mailto:${t.requester_email}`}>{t.requester_email}</a> : "—"],
                 ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
                 ["Department", t.department ?? "—"],
                 ["Faculty", t.faculty ?? "—"],
               ]} />
               {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn>{parse<Record<string, string>>(t.details, {}).payment_reference ? <LinkBtn size="sm" href={`/helpdesk/payments/${encodeURIComponent(parse<Record<string, string>>(t.details, {}).payment_reference.trim())}?ticket=${t.id}`}>Payment Support</LinkBtn> : <LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn>}</div>
+              : t.requester_kind === "JUPEB" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}`}>Open the JUPEB Record in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn></div>
               : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
             </div>
           </PBody>

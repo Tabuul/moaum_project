@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341–V345)
+# The JUPEB programme (V339, V341–V345, V347)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -36,6 +36,9 @@ copies of them.
 - **JUPEB subjects are not catalogue courses.** The Board examines JUPEB subjects; the units printed on the statement
   (BIO 001 …) are `jupeb.subject_unit`.
 - **The O'Level is stored separately.** The undergraduate O'Level store is keyed on JAMB records.
+- **Practice tests are the JUPEB module's own (V347).** The University's CBT engine (V322) is bound to `people.student`
+  and the catalogue's course offerings, which a JUPEB candidate does not have; reusing it would mean putting candidates on
+  the undergraduate register. `jupeb.practice_*` is a small engine of its own: never a result, never an examination.
 - **Attendance is a new engine (schema `attendance`).** The University's register (`registration.attendance`) records
   only present/absent for undergraduate offerings. The engine is shaped by context (JUPEB now) for later reuse.
 
@@ -141,18 +144,64 @@ copies of them.
   not). Application-step reminders only while the application window is open. Every reminder is logged; JUPEB settings show
   the rules, who is due now, and "send due reminders now".
 
+- **ICT Support on JUPEB records (V347).** The same desk, capabilities and support ledger as the students' (V346). An agent
+  reaches JUPEB records through a live posting on the JUPEB Support queue, a University-wide posting, or a posting on the JUPEB
+  Office (`helpdesk.agent_reaches_jupeb`), and does only what those postings carry (`helpdesk.agent_jupeb_capabilities`; the
+  Head of the desk, the Director of ICT, admin and super have all). An agent without that reach gets *not found*. The acts:
+  read the record (the documents and fees only with their capabilities); correct the contact details with a reason; reset the
+  password — the JUPEB portal's own one-hour link, or, on the candidate's own ticket only, a random 12-character temporary
+  password (bcrypt, never recorded, shown once) that works for one sign-in within 24 hours and is changed at it (a second sign-in
+  with it is refused `AUTH_TEMP_PASSWORD_SPENT`); ask the gateway again about a JUPEB payment through `PaymentsService.verify`
+  (never a payment created or marked paid); re-apply the activation a confirmed school fee earns (`jupeb.activate_if_due`);
+  raise a ticket for the candidate; escalate to the JUPEB Office, the Bursary or the Director of ICT. Every act is a row of
+  `helpdesk.support_action` with `jupeb_application_id` (and no `student_id`), on the ticket's timeline when there is one; the
+  candidate is told. The ticket screen's "send password reset" is refused for a JUPEB ticket (`SUPPORT_JUPEB_RESET`): it is
+  the University's own reset and must not reach another account through a shared email.
+- **Old-portal payments (V347).** The old JUPEB portal's payment export — App No, reference, purpose (or a semester column),
+  amount, date, status — is judged row by row (a preview writes nothing), then each successful payment of a student found by
+  the old App No (never by name) is posted once as a confirmed `jupeb.fee_reference` on the channel `Old portal`, with its old
+  reference kept in `jupeb.legacy_payment` (unique). A failed or pending row, an unreadable amount or date, an unknown App No,
+  a repeated reference, or a fee already paid is listed and never posted. "School fees" naming no instalment is the full fee
+  only when the amount covers the student's school fee; otherwise it is listed for the office to say which. The amount is the
+  old portal's receipt; the Bursary's fee settings are not changed. Once a student's old payments are on the record the daily
+  fee reminders resume for what is still owed, and the student's Payments page shows the balance and the pay buttons. The
+  second instalment is charged as the balance the Bursary's fee leaves owing (`jupeb.new_fee_reference`): for a first share
+  paid here that is exactly the second share; for an old-portal instalment of another amount it is what remains, so no
+  balance is ever left without a way to pay it (and none is charged once the fee is paid).
+- **The student's own details (V347).** Phone, contact and permanent addresses, guardian and next of kin are the student's to
+  update from My Profile (the phone is never blanked; each change on the trail as `CONTACT_UPDATED`). Name, sex, date of birth,
+  NIN, nationality, state of origin and LGA are asked of the JUPEB Office as a `CORRECT_DETAILS` change request — each field
+  with its present and corrected value — and applied only when the Office approves; a school fee already charged stays as it
+  was charged.
+- **Timetable (V347).** Weekly slots of a subject in a session and semester, for one class or every class; a class is never
+  booked twice in the same hour (`JUPEB_SLOT_CLASH`); the lecturer shown is the instructor assigned on Attendance. The student
+  sees the slots of their own subjects and class, and prints them.
+- **Practice tests (V347).** A test of one subject with a question bank uploaded from Excel or CSV (question, options A–E,
+  answer, explanation — each row checked), opened only with questions. An attempt draws its questions at random, is timed and
+  marked by the server (an attempt past its time is marked on the next read); the answer key and explanations reach the student
+  only after submission and only where the test shows them; attempts are limited per student. Never a result.
+- **Reports (V347).** For a session: applications by state, programme, combination, state of origin and class; confirmed fees by
+  kind and month (old-portal payments counted apart) and the school-fee position; attendance and results by subject; practice.
+  Each table in Excel and PDF. Read only — the Bursary's figures are not changed.
+
 ## API
 
 - **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`.
 - **Candidate** (`OFFICE_applicant`, scoped to the token's application): `/api/v1/jupeb/me`, plus `/biodata`,
   `/choice` (programme and combination), `/olevel`, `/documents/{kind}?sitting=` (with `/content`),
-  `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance`, `/papers`, `/requests` (with `/{id}/cancel`) and
-  `/support`.
+  `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance`, `/papers`, `/requests` (with `/{id}/cancel`),
+  `/support`, and (V347) `/contact`, `/corrections`, `/timetable`, `/practice` (with `/{test}/start`, `/attempts/{id}`,
+  `/attempts/{id}/answers/{question}`, `/attempts/{id}/submit`).
 - **Public verification:** `/api/v1/verify/jupeb/{code}`.
 - **JUPEB Office:** `/api/v1/jupeb/office/...`, including `/subjects/offered`, `/combinations/offered`,
   `/subjects/{code}/units`, `/applications/{id}/papers`, `/papers/{code}/revoke`, `/requests`, `/applications/{id}/requests`,
-  `/requests/{id}/decide`, `/applications/{id}/resume`, `/reminders` (with `/due`, `/run`, `/{kind}`). Reads are for jupeb,
-  super and admin; writes for jupeb and super.
+  `/requests/{id}/decide`, `/applications/{id}/resume`, `/reminders` (with `/due`, `/run`, `/{kind}`), and (V347)
+  `/old-portal-payments` (with `/import`), `/timetable` (with `/{id}`, `/{id}/remove`), `/practice-tests` (with `/{id}`,
+  `/{id}/questions`, `/{id}/questions/{q}/remove`) and `/reports?session=`. Reads are for jupeb, super and admin; writes for
+  jupeb and super.
+- **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
+  `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
+  JUPEB records.
 - **Attendance:** `/api/v1/attendance/jupeb/...` — options, registers, marks, lock/unlock, changes, photo, reports,
   instructors, policy. Lecturers are scoped by assignment.
 - **Fees:** `/api/v1/jupeb/fees`. Reads for bursar, jupeb, super, admin and audit; writes and bank confirmations for
@@ -173,7 +222,13 @@ copies of them.
   sent once and not again the same day, and the student's own standing.
 - `JupebIT.oldPortalStudentsAreUploadedWithLogins` covers the old-portal upload (preview, bad email, the login once, sign-in
   on the old App No, the forced password change, re-upload skipped, no fee reminder); `applicationToResult` the Board list.
-- `check.sql` properties 185–190 cover the rules on a brand-new database.
+- `JupebIT.supportOldPaymentsSelfServiceTimetablePracticeAndReports` covers V347: the student's contact details (and the phone
+  kept), a correction asked and approved, the old portal's payments (Bursary refused, preview, a failed row, an ambiguous
+  "school fees", posted once, not twice, then the second instalment charged as the balance it leaves), a slot and its clash, a practice test (opened only with questions, no key before
+  submission, scored, attempts limited, no result written), the reports (Bursary refused), and ICT Support on the record (no
+  reach → not found, the contact correction on the ledger, a capability not granted refused, the temporary password only on
+  the candidate's ticket, one sign-in, never recorded).
+- `check.sql` properties 185–192 cover the rules on a brand-new database.
 
 ## Not done
 

@@ -1102,6 +1102,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -1293,6 +1294,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -1436,6 +1438,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -1740,6 +1743,8 @@ export const MENUS: Record<string, Menu> = {
         "open": true,
         "items": [
           { "id": "jupeb/portal/subjects", "icon": "book", "label": "Subjects" },
+          { "id": "jupeb/portal/timetable", "icon": "calendar", "label": "Timetable" },
+          { "id": "jupeb/portal/practice", "icon": "clock", "label": "Practice Tests" },
           { "id": "jupeb/portal/attendance", "icon": "cal", "label": "Attendance" },
           { "id": "jupeb/portal/results", "icon": "chart", "label": "Results" }
         ]
@@ -1770,7 +1775,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "jupeb/dashboard", "icon": "home", "label": "Dashboard" }
+          { "id": "jupeb/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "jupeb/reports", "icon": "chart", "label": "Reports" }
         ]
       },
       {
@@ -1779,7 +1785,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/applications", "icon": "doc", "label": "Applications" },
           { "id": "jupeb/payments", "icon": "card", "label": "Payments" },
           { "id": "jupeb/requests", "icon": "doc", "label": "Change Requests" },
-          { "id": "jupeb/import", "icon": "upload", "label": "Old-Portal Students" }
+          { "id": "jupeb/import", "icon": "upload", "label": "Old-Portal Students" },
+          { "id": "jupeb/oldpayments", "icon": "card", "label": "Old-Portal Payments" }
         ]
       },
       {
@@ -1787,6 +1794,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "jupeb/catalogue", "icon": "book", "label": "Subjects & Combinations" },
           { "id": "jupeb/classes", "icon": "user", "label": "Classes" },
+          { "id": "jupeb/timetable", "icon": "calendar", "label": "Timetable" },
+          { "id": "jupeb/practice", "icon": "clock", "label": "Practice Tests" },
           { "id": "jupeb/attendance", "icon": "check", "label": "Attendance" },
           { "id": "jupeb/examination", "icon": "upload", "label": "Examination Numbers" },
           { "id": "jupeb/results", "icon": "chart", "label": "Results" }
@@ -2173,6 +2182,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
@@ -2199,6 +2209,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]

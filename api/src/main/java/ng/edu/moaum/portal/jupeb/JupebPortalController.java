@@ -50,6 +50,8 @@ class JupebPortalController {
     private static final Set<String> TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
     private static final Set<String> SUPPORT = Set.of("JUPEB");
 
+    private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
+
     private final JdbcClient jdbc;
     private final JupebView view;
     private final FileObjects files;
@@ -359,7 +361,7 @@ class JupebPortalController {
             throw new DomainRuleViolation("JUPEB_PASSWORD_SAME", "Choose a password different from the one you signed in with.",
                     new DomainRuleViolation.Remedy("At least eight characters, different from the temporary one.", "You"));
         }
-        jdbc.sql("UPDATE jupeb.account SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL WHERE id = :id")
+        jdbc.sql("UPDATE jupeb.account SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE id = :id")
                 .param("h", encoder.encode(body.newPassword())).param("id", acc.get("id")).update();
         return mine(auth);
     }
@@ -422,6 +424,157 @@ class JupebPortalController {
                  WHERE r.context = 'JUPEB' AND k.member_ref = :a ORDER BY r.held_on DESC, s.title LIMIT 200
                 """).param("a", app).query().listOfRows());
         return out;
+    }
+
+    /* ── V347: the student keeps their own contact details; a change of identity is a request the JUPEB Office decides ── */
+
+    public record ContactIn(@Pattern(regexp = "^(0[0-9]{10})?$", message = "an eleven-digit Nigerian number") String phone,
+                            @Size(max = 300) String contactAddress, @Size(max = 300) String permanentAddress,
+                            @Size(max = 120) String guardianName, @Pattern(regexp = "^(0[0-9]{10})?$", message = "an eleven-digit Nigerian number") String guardianPhone,
+                            @Size(max = 300) String guardianAddress, @Size(max = 120) String nextOfKinName,
+                            @Pattern(regexp = "^(0[0-9]{10})?$", message = "an eleven-digit Nigerian number") String nextOfKinPhone,
+                            @Size(max = 60) String nextOfKinRelationship) {
+    }
+
+    private static final String[][] CONTACT = {
+            {"phone", "phone"}, {"contact_address", "contact address"}, {"permanent_address", "permanent address"}, {"guardian_name", "guardian"},
+            {"guardian_phone", "guardian's phone"}, {"guardian_address", "guardian's address"}, {"next_of_kin_name", "next of kin"},
+            {"next_of_kin_phone", "next of kin's phone"}, {"next_of_kin_relationship", "next of kin's relationship"}};
+
+    /** the contact details, at any time: what changed is on the record's trail; the phone is never blanked */
+    @PutMapping("/contact")
+    @Transactional
+    Map<String, Object> contact(Authentication auth, @Valid @RequestBody ContactIn b) {
+        UUID app = me(auth);
+        if ("WITHDRAWN".equals(state(app))) {
+            throw new DomainRuleViolation("JUPEB_WITHDRAWN", "A withdrawn application is not changed.", new DomainRuleViolation.Remedy("Ask the JUPEB Office.", "JUPEB Office"));
+        }
+        Map<String, Object> before = jdbc.sql("SELECT phone, contact_address, permanent_address, guardian_name, guardian_phone, guardian_address, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship FROM jupeb.application WHERE id = :id")
+                .param("id", app).query().singleRow();
+        Map<String, String> next = new java.util.LinkedHashMap<>();
+        next.put("phone", blank(b.phone()));
+        next.put("contact_address", blank(b.contactAddress()));
+        next.put("permanent_address", blank(b.permanentAddress()));
+        next.put("guardian_name", blank(b.guardianName()));
+        next.put("guardian_phone", blank(b.guardianPhone()));
+        next.put("guardian_address", blank(b.guardianAddress()));
+        next.put("next_of_kin_name", blank(b.nextOfKinName()));
+        next.put("next_of_kin_phone", blank(b.nextOfKinPhone()));
+        next.put("next_of_kin_relationship", blank(b.nextOfKinRelationship()));
+        if (next.get("phone") == null) {
+            throw new DomainRuleViolation("JUPEB_PHONE_REQUIRED", "Keep a phone number on your record.", new DomainRuleViolation.Remedy("Enter it as 08012345678.", "You"));
+        }
+        List<String> changed = new java.util.ArrayList<>();
+        for (String[] f : CONTACT) {
+            if (!java.util.Objects.equals(before.get(f[0]) == null ? null : String.valueOf(before.get(f[0])), next.get(f[0]))) changed.add(f[1]);
+        }
+        if (changed.isEmpty()) return mine(auth);
+        jdbc.sql("""
+                UPDATE jupeb.application SET phone = :phone, contact_address = :ca, permanent_address = :pa, guardian_name = :gn, guardian_phone = :gp,
+                       guardian_address = :ga, next_of_kin_name = :kn, next_of_kin_phone = :kp, next_of_kin_relationship = :kr WHERE id = :id
+                """).param("phone", next.get("phone")).param("ca", next.get("contact_address"), Types.VARCHAR).param("pa", next.get("permanent_address"), Types.VARCHAR)
+                .param("gn", next.get("guardian_name"), Types.VARCHAR).param("gp", next.get("guardian_phone"), Types.VARCHAR).param("ga", next.get("guardian_address"), Types.VARCHAR)
+                .param("kn", next.get("next_of_kin_name"), Types.VARCHAR).param("kp", next.get("next_of_kin_phone"), Types.VARCHAR).param("kr", next.get("next_of_kin_relationship"), Types.VARCHAR)
+                .param("id", app).update();
+        jdbc.sql("SELECT jupeb.app_event(:a, 'CONTACT_UPDATED', :n)").param("a", app).param("n", "Updated by the student: " + String.join(", ", changed)).query().listOfRows();
+        return mine(auth);
+    }
+
+    public record CorrectionIn(@jakarta.validation.constraints.NotNull Map<String, String> changes, @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    /** name, sex, date of birth, NIN, nationality, state or LGA: asked of the JUPEB Office, applied only when it approves */
+    @PostMapping("/corrections")
+    @Transactional
+    Map<String, Object> correction(Authentication auth, @Valid @RequestBody CorrectionIn body) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.request_correction(:a, :c::jsonb, :r, :a, 'applicant')").param("a", app)
+                .param("c", JSON.writeValueAsString(body.changes())).param("r", body.reason()).query(UUID.class).single();
+        return mine(auth);
+    }
+
+    /* ── V347: the timetable and the practice tests ── */
+
+    /** the week's lectures of the student's subjects, for their class (and the slots for every class) */
+    @GetMapping("/timetable")
+    @Transactional(readOnly = true)
+    Map<String, Object> timetable(Authentication auth, @RequestParam(required = false) Integer semester) {
+        UUID app = me(auth);
+        Map<String, Object> a = jdbc.sql("SELECT session, class_id FROM jupeb.application WHERE id = :id").param("id", app).query().singleRow();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", a.get("session"));
+        out.put("slots", jdbc.sql("""
+                SELECT t.id, t.semester, t.weekday, to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
+                       s.code, s.title, k.name AS class_name,
+                       (SELECT string_agg(p.surname || ', ' || p.given_names, '; ' ORDER BY p.surname) FROM attendance.instructor i JOIN iam.person p ON p.id = i.person_id
+                         WHERE i.context = 'JUPEB' AND i.session = t.session AND i.subject_ref = t.subject_id AND i.ended_at IS NULL
+                           AND (i.class_ref IS NULL OR i.class_ref = :class)) AS instructors
+                  FROM jupeb.timetable_slot t JOIN jupeb.subject s ON s.id = t.subject_id LEFT JOIN jupeb.class k ON k.id = t.class_id
+                 WHERE t.active AND t.session = :ses AND (:sem::int IS NULL OR t.semester = :sem)
+                   AND (t.class_id IS NULL OR t.class_id = :class)
+                   AND t.subject_id IN (SELECT subject_id FROM jupeb.practice_subjects(:app))
+                 ORDER BY t.semester, t.weekday, t.starts_at
+                """).param("ses", a.get("session")).param("sem", semester, Types.INTEGER).param("class", a.get("class_id"), Types.OTHER).param("app", app)
+                .query().listOfRows());
+        return out;
+    }
+
+    /** the practice tests of the student's subjects, with the attempts left and the best score */
+    @GetMapping("/practice")
+    @Transactional(readOnly = true)
+    Map<String, Object> practice(Authentication auth) {
+        UUID app = me(auth);
+        return Map.of("tests", jdbc.sql("""
+                SELECT t.id, t.title, t.instructions, t.duration_minutes, t.questions_per_attempt, t.attempts_allowed, t.show_answers, s.code, s.title AS subject,
+                       (SELECT count(*) FROM jupeb.practice_question q WHERE q.test_id = t.id AND q.active) AS questions,
+                       (SELECT count(*) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app) AS used,
+                       (SELECT max(p.percentage) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NOT NULL) AS best,
+                       (SELECT p.id FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NULL) AS open_attempt,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'number', p.number, 'submittedAt', p.submitted_at, 'score', p.score, 'total', p.total,
+                                                                     'percentage', p.percentage) ORDER BY p.number), '[]'::jsonb)::text
+                          FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NOT NULL) AS attempts
+                  FROM jupeb.practice_test t JOIN jupeb.subject s ON s.id = t.subject_id
+                 WHERE t.open AND t.subject_id IN (SELECT subject_id FROM jupeb.practice_subjects(:app))
+                 ORDER BY s.code, t.title
+                """).param("app", app).query().listOfRows());
+    }
+
+    private Map<String, Object> paper(UUID app, UUID attempt) {
+        return JSON.readValue(jdbc.sql("SELECT jupeb.practice_paper(:a, :t)::text").param("a", app).param("t", attempt).query(String.class).single(),
+                new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    @PostMapping("/practice/{test}/start")
+    @Transactional
+    Map<String, Object> startPractice(Authentication auth, @PathVariable UUID test) {
+        UUID app = me(auth);
+        UUID attempt = jdbc.sql("SELECT jupeb.practice_start(:a, :t)").param("a", app).param("t", test).query(UUID.class).single();
+        return paper(app, attempt);
+    }
+
+    @GetMapping("/practice/attempts/{attempt}")
+    @Transactional
+    Map<String, Object> practiceAttempt(Authentication auth, @PathVariable UUID attempt) {
+        return paper(me(auth), attempt);
+    }
+
+    public record ChoiceIn(@Size(max = 1) String choice) {
+    }
+
+    @PutMapping("/practice/attempts/{attempt}/answers/{question}")
+    @Transactional
+    Map<String, Object> answerPractice(Authentication auth, @PathVariable UUID attempt, @PathVariable UUID question, @Valid @RequestBody ChoiceIn body) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.practice_answer_set(:a, :t, :q, :c)").param("a", app).param("t", attempt).param("q", question).param("c", body.choice(), Types.VARCHAR).query().listOfRows();
+        return Map.of("saved", true);
+    }
+
+    @PostMapping("/practice/attempts/{attempt}/submit")
+    @Transactional
+    Map<String, Object> submitPractice(Authentication auth, @PathVariable UUID attempt) {
+        UUID app = me(auth);
+        jdbc.sql("SELECT jupeb.practice_submit(:a, :t)").param("a", app).param("t", attempt).query().listOfRows();
+        return paper(app, attempt);
     }
 
     /* ── support: the University's desk, the JUPEB queue ── */

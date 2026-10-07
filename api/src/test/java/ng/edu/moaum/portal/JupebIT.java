@@ -571,6 +571,159 @@ class JupebIT {
                 .param("a", created).query(Integer.class).single()).isZero();
     }
 
+    /** V347: ICT Support on JUPEB records, the old portal's payments, the student's own contact details and corrections, the timetable, practice tests, the reports */
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void supportOldPaymentsSelfServiceTimetablePracticeAndReports() {
+        // a student from the old portal, signed in with their own password
+        String appNo = "S7" + tag + "03";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Ngozi", "surname", "Terkimbi", "sex", "Female", "phone", "08055556666", "dob", "3/4/2006",
+                "email", "zzv347." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+        UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+        String token = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Practice2026!")));
+        it.db(() -> jdbc.sql("SELECT jupeb.register_subjects(:a, :a, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'))").param("a", app).query(Integer.class).single());
+
+        // the student keeps their own contact details, never without a phone; a correction of identity waits for the office
+        Map<String, Object> contact = new LinkedHashMap<>(Map.of("phone", "08077778888", "contactAddress", "No. 3 Hostel Road, Makurdi", "nextOfKinName", "Mrs Terkimbi"));
+        Map<String, Object> mine = ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/contact", contact));
+        assertThat(mine.get("phone")).isEqualTo("08077778888");
+        assertThat(code(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/contact", Map.of("contactAddress", "Nowhere")))).isEqualTo("JUPEB_PHONE_REQUIRED");
+        mine = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/corrections", Map.of("changes", Map.of("surname", "Terkimbi-Ade", "nin", "12345678901"),
+                "reason", "My surname changed by marriage; the NIN was never entered")));
+        assertThat(String.valueOf(mine.get("surname"))).isEqualTo("TERKIMBI");
+        Map<String, Object> pending = ((List<Map<String, Object>>) mine.get("requests")).get(0);
+        assertThat(pending.get("kind")).isEqualTo("CORRECT_DETAILS");
+        assertThat(String.valueOf(pending.get("words"))).contains("surname").contains("TERKIMBI-ADE");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/requests/" + pending.get("id") + "/decide", Map.of("approve", true, "note", "Marriage certificate sighted")));
+        assertThat(jdbc.sql("SELECT surname || '/' || nin FROM jupeb.application WHERE id = :a").param("a", app).query(String.class).single()).isEqualTo("TERKIMBI-ADE/12345678901");
+
+        // the old portal's payments: the Bursary does not post them; a preview writes nothing; posted once as a confirmed fee
+        Map<String, Object> pay = new LinkedHashMap<>();
+        pay.put("rows", List.of(oldRow(2, "appNo", appNo, "reference", "OLD-" + tag + "-1", "purpose", "School Fees 1st Instalment", "amount", "75000", "date", "12/11/2024", "status", "Success"),
+                oldRow(3, "appNo", appNo, "reference", "OLD-" + tag + "-2", "purpose", "School Fees 2nd Instalment", "amount", "50000", "date", "12/02/2025", "status", "Pending"),
+                oldRow(4, "appNo", appNo, "reference", "OLD-" + tag + "-3", "purpose", "School Fees", "amount", "30000", "date", "14/02/2025", "status", "Success")));
+        pay.put("dayFirst", true);
+        pay.put("commit", false);
+        pay.put("fileName", "payments.xlsx");
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay))).isEqualTo(403);
+        Map<String, Object> previewed = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay));
+        assertThat(((Number) previewed.get("valid")).intValue()).isEqualTo(1);
+        assertThat(((Number) previewed.get("invalid")).intValue()).isEqualTo(1);
+        // "school fees" naming no instalment, and short of the full fee, is asked about, never posted as the full fee
+        assertThat(((Number) previewed.get("review")).intValue()).isEqualTo(1);
+        pay.put("commit", true);
+        assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay)).get("applied")).intValue()).isEqualTo(1);
+        assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay)).get("applied")).intValue()).isZero();
+        List<Map<String, Object>> refs = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me")).get("references");
+        assertThat(refs).extracting(r -> r.get("kind") + "/" + r.get("channel") + "/" + (r.get("confirmed_at") != null)).containsExactly("SCHOOL_FIRST/Old portal/true");
+        // the old portal's first instalment (75,000) differs from the share now set: the second instalment is the balance, nothing left unpayable
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("session", session);
+        rule.put("applicationFee", 15000);
+        rule.put("checkingFee", 1000);
+        rule.put("acceptanceFee", 15000);
+        rule.put("firstPercent", 70);
+        rule.put("allowFull", true);
+        rule.put("activation", "FIRST_INSTALMENT");
+        rule.put("indigeneState", "Benue");
+        rule.put("schoolFees", List.of(Map.of("category", "OTHER", "indigene", true, "amount", 180000), Map.of("category", "SCIENCE", "indigene", true, "amount", 195000),
+                Map.of("category", "OTHER", "indigene", false, "amount", 200000), Map.of("category", "SCIENCE", "indigene", false, "amount", 215000)));
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/jupeb/fees", rule));
+        Map<String, Object> owed = (Map<String, Object>) ok(it.get(token, "/api/v1/jupeb/me")).get("fees");
+        BigDecimal balance = new BigDecimal(String.valueOf(owed.get("total"))).subtract(new BigDecimal("75000"));
+        assertThat(new BigDecimal(String.valueOf(owed.get("outstanding")))).isEqualByComparingTo(balance);
+        assertThat(new BigDecimal(String.valueOf(owed.get("second_amount")))).isNotEqualByComparingTo(balance);
+        Map<String, Object> second = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_SECOND", null));
+        assertThat(new BigDecimal(String.valueOf(second.get("amount")))).isEqualByComparingTo(balance);
+
+        // the timetable: a class is never double-booked; the student sees their subjects' slots
+        UUID subject = jdbc.sql("SELECT sr.subject_id FROM jupeb.subject_registration sr JOIN jupeb.subject s ON s.id = sr.subject_id WHERE sr.application_id = :a ORDER BY s.code LIMIT 1")
+                .param("a", app).query(UUID.class).single();
+        Map<String, Object> slot = new LinkedHashMap<>(Map.of("session", session, "semester", 1, "subjectId", subject.toString(), "weekday", 3, "startsAt", "08:00", "endsAt", "10:00", "venue", "JUPEB Hall"));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot));
+        slot.put("startsAt", "09:00");
+        slot.put("endsAt", "11:00");
+        assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/timetable", slot))).isEqualTo("JUPEB_SLOT_CLASH");
+        List<Map<String, Object>> slots = (List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/timetable")).get("slots");
+        assertThat(slots).extracting(x -> x.get("venue")).contains("JUPEB Hall");
+
+        // a practice test: opened only with questions; the answer key never sent before submission; scored by the server; attempts limited
+        Map<String, Object> test = new LinkedHashMap<>(Map.of("subjectId", subject.toString(), "title", "Practice " + tag, "durationMinutes", 10, "questionsPerAttempt", 2,
+                "attemptsAllowed", 1, "showAnswers", true, "open", false));
+        String testId = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/practice-tests", test)).get("id"));
+        test.put("open", true);
+        assertThat(code(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/practice-tests/" + testId, test))).isEqualTo("JUPEB_PRACTICE_EMPTY");
+        Map<String, Object> upload = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/practice-tests/" + testId + "/questions", Map.of("replace", false, "rows", List.of(
+                Map.of("row", 2, "question", "The unit of force?", "a", "Newton", "b", "Joule", "c", "Watt", "answer", "A", "explanation", "F = ma, in newtons"),
+                Map.of("row", 3, "question", "The unit of energy?", "a", "Newton", "b", "Joule", "answer", "B"),
+                Map.of("row", 4, "question", "Broken", "a", "x", "b", "y", "answer", "E")))));
+        assertThat(((Number) upload.get("added")).intValue()).isEqualTo(2);
+        assertThat((List<?>) upload.get("refused")).hasSize(1);
+        ok(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/practice-tests/" + testId, test));
+        Map<String, Object> paper = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/" + testId + "/start", Map.of()));
+        List<Map<String, Object>> questions = (List<Map<String, Object>>) paper.get("questions");
+        assertThat(questions).hasSize(2).allSatisfy(q -> assertThat(q).doesNotContainKeys("answer", "explanation", "correct"));
+        String attempt = String.valueOf(((Map<String, Object>) paper.get("attempt")).get("id"));
+        for (Map<String, Object> q : questions) {
+            String right = String.valueOf(q.get("stem")).contains("force") ? "A" : "B";
+            ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/answers/" + q.get("id"), Map.of("choice", right)));
+        }
+        Map<String, Object> scored = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/submit", Map.of()));
+        assertThat(((Number) ((Map<String, Object>) scored.get("attempt")).get("score")).intValue()).isEqualTo(2);
+        assertThat((List<Map<String, Object>>) scored.get("questions")).allSatisfy(q -> assertThat(q).containsKeys("answer", "correct"));
+        assertThat(code(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/" + testId + "/start", Map.of()))).isEqualTo("JUPEB_PRACTICE_ATTEMPTS");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.result WHERE application_id = :a").param("a", app).query(Integer.class).single()).isZero();
+
+        // the office's report reads the session; the Bursary does not read it
+        Map<String, Object> report = ok(it.get(office, "/api/v1/jupeb/office/reports?session=" + session));
+        assertThat(((Number) ((Map<String, Object>) ((Map<String, Object>) report.get("enrolment")).get("totals")).get("fromOldPortal")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(report).containsKeys("fees", "attendance", "results", "practice");
+        assertThat(status(it.get(bursar, "/api/v1/jupeb/office/reports?session=" + session))).isEqualTo(403);
+
+        // ICT Support on the JUPEB record: reached only through a posting that reaches JUPEB; its acts on the ledger, on the candidate's own ticket
+        UUID agentId = it.person("ZZ-JUPEB-CPO-" + tag, "ZZJUPEBCPO" + tag);
+        UUID faculty = it.person("ZZ-FAC-CPO-" + tag, "ZZFACCPO" + tag);
+        it.db(() -> {
+            jdbc.sql("INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (:p, 'JUPEB_SUPPORT', 'GLOBAL', NULL, ARRAY['VIEW_STUDENT','EDIT_CONTACT','RESET_PASSWORD','VIEW_PAYMENTS'])")
+                    .param("p", agentId).update();
+            return jdbc.sql("INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (:p, 'ICT_SUPPORT', 'FACULTY', 'SC', ARRAY['VIEW_STUDENT','RESET_PASSWORD'])")
+                    .param("p", faculty).update();
+        });
+        String cpo = TestTokens.token(agentId, List.of("ictagent"));
+        String outsider = TestTokens.token(faculty, List.of("ictagent"));
+        assertThat(status(it.get(outsider, "/api/v1/helpdesk/support/jupeb/" + app))).isEqualTo(404);
+        assertThat(code(it.get(outsider, "/api/v1/helpdesk/support/jupeb?q=" + appNo))).isEqualTo("SUPPORT_JUPEB_SCOPE");
+        assertThat((List<Map>) ok(it.get(cpo, "/api/v1/helpdesk/support/jupeb?q=" + appNo)).get("rows")).extracting(r -> String.valueOf(r.get("id"))).containsExactly(app.toString());
+        Map<String, Object> rec = ok(it.get(cpo, "/api/v1/helpdesk/support/jupeb/" + app));
+        assertThat(rec).containsKeys("record", "payments", "tickets", "actions", "account");
+        Map<String, Object> fix = new LinkedHashMap<>(Map.of("phone", "08099990000", "contactAddress", "No. 3 Hostel Road, Makurdi", "nextOfKinName", "Mrs Terkimbi", "reason", "The candidate's new line, confirmed by call"));
+        ok(it.call(cpo, HttpMethod.PUT, "/api/v1/helpdesk/support/jupeb/" + app + "/contact", fix));
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE jupeb_application_id = :a AND action = 'CONTACT_EDITED' AND student_id IS NULL").param("a", app).query(Integer.class).single()).isEqualTo(1);
+        assertThat(code(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/tickets", Map.of("subject", "x", "description", "y")))).isEqualTo("SUPPORT_CAPABILITY");
+        assertThat(code(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/password", Map.of("method", "TEMPORARY", "reason", "At the desk")))).isEqualTo("SUPPORT_TICKET_REQUIRED");
+        String ticket = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/support", Map.of("category", "JUPEB", "subject", "I cannot sign in",
+                "description", "My password stopped working", "details", Map.of("jupeb_issue", "Other")))).get("id"));
+        Map<String, Object> reset = ok(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/password", Map.of("method", "TEMPORARY", "reason", "Identity checked at the desk", "ticket", ticket)));
+        String tempPw = String.valueOf(reset.get("temporaryPassword"));
+        assertThat(tempPw).hasSize(12);
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", "Practice2026!")))).isNotEqualTo(200);
+        Map<String, Object> once = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", tempPw)));
+        assertThat(once).containsKey("token");
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", tempPw)))).isEqualTo("AUTH_TEMP_PASSWORD_SPENT");
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE jupeb_application_id = :a AND action = 'PASSWORD_RESET' AND method = 'TEMPORARY_PASSWORD' AND new_value IS NULL AND ticket_id = :t")
+                .param("a", app).param("t", UUID.fromString(ticket)).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.ticket_event WHERE ticket_id = :t AND action = 'SUPPORT_PASSWORD_RESET'").param("t", UUID.fromString(ticket)).query(Integer.class).single()).isEqualTo(1);
+    }
+
     private static Map<String, Object> oldRow(int row, String... pairs) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("row", row);

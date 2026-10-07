@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 191
+\set EXPECTED 192
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5520,6 +5520,107 @@ BEGIN
         format('blocked=%s period=%s checks=%s added=%s marked=%s rule=%s noticket=%s ev=%s/%s dropped=%s kept=%s/%s closed=%s fees=%s unconfirmed=%s refreshed=%s refs=%s/%s units=%s pw=%s temp=%s caps_for=%s caps=%s',
                r_blocked, r_period, n_checks, added->>'overridden', v_marked, v_rule, r_noticket, n_ev, left(v_ev_detail, 60), dropped->>'overridden', n_kept, v_drop_status, r_closed,
                r_fees, r_unconfirmed, refreshed->'after'->>'paidInFull', n_refs_before, n_refs_after, r_units, r_pw, r_temp, caps_for, r_caps));
+END $$;
+
+-- ── 192. V347: JUPEB — the old portal's payments posted once as confirmed fees (matched by App No, never a failed or repeated one) and the student then reached by fee reminders; a correction of identity details applied only on the office's approval; a practice test scored by the server with the answer key hidden until submission; a class never double-booked; ICT Support reaches JUPEB records only through a posting that does, its acts on the same ledger and only on the candidate's own ticket; the report reads the session ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); app uuid; prev jsonb; done jsonb; again jsonb; v_kinds text[]; v_fee_status text;
+        v_exempt_before boolean; v_exempt_after boolean; req uuid; v_surname_pending text; v_surname_after text; v_dob_after date; r_same text; msg text;
+        t uuid; att uuid; q1 uuid; paper_before jsonb; paper_after jsonb; v_score int; r_clash text; s1 uuid; k uuid; agent uuid; tkt uuid; r_ticket text;
+        caps_none text[]; caps_jupeb text[]; n_led int; rep jsonb; r_temp text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKJUPEB347', 'Officer');
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        done := jupeb.import_old_portal_students(jsonb_build_array(jsonb_build_object('row', 2, 'appNo', 'S0CHECK192001', 'firstName', 'Ada', 'surname', 'Check',
+                     'sex', 'Female', 'phone', '08011112222', 'dob', '1/2/2005', 'email', 'zz.check192@example.com',
+                     'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')), ses, true, true, 'check.xlsx', who);
+        PERFORM set_config('moaum.jupeb_quiet', 'off', true);
+        app := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK192001');
+        PERFORM jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        v_exempt_before := jupeb.reminder_exempt(app, 'SCHOOL_FEE_UNPAID');
+        -- the old portal's payments: a preview writes nothing; a failed one, an unknown App No and a repeat are listed, not posted
+        prev := jupeb.import_old_portal_payments(jsonb_build_array(
+                    jsonb_build_object('row', 2, 'appNo', 's0check192001', 'reference', 'OLD-192-A', 'purpose', 'School Fees (First Instalment)', 'amount', '80,000', 'date', '15/11/2024', 'status', 'Successful'),
+                    jsonb_build_object('row', 3, 'appNo', 'S0CHECK192001', 'reference', 'OLD-192-B', 'purpose', 'School Fees (Second Instalment)', 'amount', '40000', 'date', '15/01/2025', 'status', 'Failed'),
+                    jsonb_build_object('row', 4, 'appNo', 'S0NOSUCH192', 'reference', 'OLD-192-C', 'purpose', 'Acceptance Fee', 'amount', '10000', 'date', '01/10/2024', 'status', 'Paid'),
+                    jsonb_build_object('row', 5, 'appNo', 'S0CHECK192001', 'reference', 'OLD-192-A', 'purpose', 'School Fees (First Instalment)', 'amount', '80000', 'date', '15/11/2024', 'status', 'Paid')),
+                true, false, 'pay.xlsx', who);
+        done := jupeb.import_old_portal_payments(jsonb_build_array(
+                    jsonb_build_object('row', 2, 'appNo', 's0check192001', 'reference', 'OLD-192-A', 'purpose', 'School Fees (First Instalment)', 'amount', '80,000', 'date', '15/11/2024', 'status', 'Successful')),
+                true, true, 'pay.xlsx', who);
+        again := jupeb.import_old_portal_payments(jsonb_build_array(
+                    jsonb_build_object('row', 2, 'appNo', 'S0CHECK192001', 'reference', 'old-192-a', 'purpose', 'School Fees (First Instalment)', 'amount', '80000', 'date', '15/11/2024', 'status', 'Successful')),
+                true, true, 'pay.xlsx', who);
+        v_kinds := ARRAY(SELECT kind || ':' || channel FROM jupeb.fee_reference WHERE application_id = app AND confirmed_at IS NOT NULL ORDER BY kind);
+        v_fee_status := (SELECT paid::text FROM jupeb.school_fees(app));
+        v_exempt_after := jupeb.reminder_exempt(app, 'SCHOOL_FEE_UNPAID');
+        -- a correction of identity details: pending, then applied on approval
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        req := jupeb.request_correction(app, jsonb_build_object('surname', 'Checkmore', 'date_of_birth', '2005-02-01'), 'My surname is misspelt on the old portal record', app, 'applicant');
+        v_surname_pending := (SELECT surname FROM jupeb.application WHERE id = app);
+        BEGIN PERFORM jupeb.request_correction(app, jsonb_build_object('surname', 'X'), 'Another request while one is pending', app, 'applicant');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_same := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM jupeb.decide_change(req, true, 'Birth certificate sighted', who, 'jupeb');
+        SELECT surname, date_of_birth INTO v_surname_after, v_dob_after FROM jupeb.application WHERE id = app;
+        -- a practice test: the answer key hidden until submission, then the score
+        t := (SELECT id FROM jupeb.subject s WHERE s.id IN (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = app) ORDER BY s.code LIMIT 1);
+        INSERT INTO jupeb.practice_test (subject_id, title, questions_per_attempt, attempts_allowed, open) VALUES (t, 'Check practice', 2, 1, true) RETURNING id INTO t;
+        PERFORM jupeb.practice_upload(t, jsonb_build_array(jsonb_build_object('row', 2, 'question', 'Two and two?', 'a', '3', 'b', '4', 'answer', 'B', 'explanation', 'Count them'),
+                                                          jsonb_build_object('row', 3, 'question', 'Three and one?', 'a', '4', 'b', '5', 'answer', 'A'),
+                                                          jsonb_build_object('row', 4, 'question', 'Bad row', 'a', '1', 'b', '2', 'answer', 'D')), false);
+        att := jupeb.practice_start(app, t);
+        paper_before := jupeb.practice_paper(app, att);
+        q1 := (SELECT id FROM jupeb.practice_question WHERE test_id = t AND stem = 'Two and two?');
+        PERFORM jupeb.practice_answer_set(app, att, q1, 'b');
+        PERFORM jupeb.practice_submit(app, att);
+        paper_after := jupeb.practice_paper(app, att);
+        v_score := (SELECT score FROM jupeb.practice_attempt WHERE id = att);
+        -- a class is never booked twice in the same hour
+        s1 := (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = app ORDER BY subject_id LIMIT 1);
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '08:00', '10:00', 'LT 1');
+        BEGIN
+            INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '09:00', '11:00', 'LT 2');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_clash := split_part(msg, ':', 1);
+        END;
+        -- ICT Support: no reach without a posting that reaches JUPEB; the JUPEB queue's posting does; the act on the ledger, only on the candidate's ticket
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKJUPEBAGENT', 'Agent') RETURNING id INTO agent;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, 'ICT_SUPPORT', 'FACULTY', 'SC', ARRAY['RESET_PASSWORD']);
+        caps_none := helpdesk.agent_jupeb_capabilities(agent);
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, 'JUPEB_SUPPORT', 'GLOBAL', NULL, ARRAY['VIEW_STUDENT', 'EDIT_CONTACT']);
+        caps_jupeb := helpdesk.agent_jupeb_capabilities(agent);
+        PERFORM set_config('moaum.actor_id', agent::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        tkt := helpdesk.submit('JUPEB', gen_random_uuid(), 'Someone else', NULL, 'someone@example.com', NULL, NULL, NULL, 'JUPEB', 'Not theirs', 'Another candidate''s ticket', jsonb_build_object('jupeb_issue', 'Other'));
+        BEGIN PERFORM helpdesk.record_jupeb_support_action(app, tkt, 'CONTACT_EDITED', 'phone', '08011112222', '08033334444', 'Wrong ticket');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_ticket := split_part(msg, ':', 1); END;
+        PERFORM helpdesk.record_jupeb_support_action(app, NULL, 'CONTACT_EDITED', 'phone', '08011112222', '08033334444', 'The student reported a new number at the desk');
+        n_led := (SELECT count(*) FROM helpdesk.support_action WHERE jupeb_application_id = app AND student_id IS NULL);
+        BEGIN
+            UPDATE jupeb.account SET temp_expires_at = now() + interval '1 day', temp_issued_by = agent, must_change_password = false
+             WHERE id = (SELECT account_id FROM jupeb.application WHERE id = app);
+        EXCEPTION WHEN check_violation THEN r_temp := 'REFUSED';
+        END;
+        rep := jupeb.report(ses);
+        RAISE EXCEPTION 'the V347 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V347: old-portal payments posted once as confirmed fees and the student then reminded; a correction applied only on approval; a practice test scored by the server, its key hidden until submission; no double-booked class; ICT Support reaches JUPEB only through a posting that does, on the same ledger and the candidate''s own ticket; the report reads the session',
+        (prev->>'valid')::int = 1 AND (prev->>'invalid')::int = 2 AND (prev->>'exists')::int = 1 AND (done->>'applied')::int = 1 AND (again->>'applied')::int = 0
+        AND v_kinds = ARRAY['SCHOOL_FIRST:Old portal'] AND v_fee_status::numeric = 80000 AND v_exempt_before AND NOT v_exempt_after
+        AND v_surname_pending = 'CHECK' AND r_same = 'JUPEB_CHANGE_PENDING' AND v_surname_after = 'CHECKMORE' AND v_dob_after = '2005-02-01'
+        AND NOT (paper_before->'questions'->0 ? 'answer') AND (paper_after->'questions'->0 ? 'answer') AND v_score = 1 AND jsonb_array_length(paper_before->'questions') = 2
+        AND r_clash = 'JUPEB_SLOT_CLASH' AND caps_none = '{}'::text[] AND caps_jupeb = ARRAY['EDIT_CONTACT', 'VIEW_STUDENT'] AND r_ticket = 'SUPPORT_TICKET' AND n_led = 1
+        AND r_temp = 'REFUSED' AND (rep->'enrolment'->'totals'->>'fromOldPortal')::int >= 1 AND jsonb_typeof(rep->'results') = 'array',
+        format('prev=%s/%s/%s applied=%s again=%s kinds=%s fees=%s exempt=%s/%s pending=%s same=%s after=%s/%s key=%s/%s score=%s clash=%s caps=%s/%s ticket=%s ledger=%s temp=%s old=%s',
+               prev->>'valid', prev->>'invalid', prev->>'exists', done->>'applied', again->>'applied', v_kinds, v_fee_status, v_exempt_before, v_exempt_after,
+               v_surname_pending, r_same, v_surname_after, v_dob_after, paper_before->'questions'->0 ? 'answer', paper_after->'questions'->0 ? 'answer', v_score,
+               r_clash, caps_none, caps_jupeb, r_ticket, n_led, r_temp, rep->'enrolment'->'totals'->>'fromOldPortal'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

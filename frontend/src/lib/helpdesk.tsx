@@ -6,7 +6,7 @@ import { KvGrid, Pil } from "@/components/proto/ui";
 export interface TicketRow {
   id: string; number: string; subject: string; status: string; priority: string; created_at: string; updated_at: string;
   resolved_at: string | null; closed_at: string | null; reopen_count: number;
-  category_code: string; category: string; requester_kind: "STUDENT" | "STAFF"; requester_name: string; requester_number: string | null; requester_email: string | null;
+  category_code: string; category: string; requester_kind: "STUDENT" | "STAFF" | "JUPEB"; requester_name: string; requester_number: string | null; requester_email: string | null;
   department_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null;
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
   /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */

@@ -688,6 +688,11 @@ class HelpdeskController {
         requireVisible(auth, id);
         Map<String, Object> t = jdbc.sql("SELECT number, status, requester_kind, requester_id, requester_number, requester_email, requester_name FROM helpdesk.ticket WHERE id = :id").param("id", id).query().singleRow();
         if ("CLOSED".equals(t.get("status"))) throw new DomainRuleViolation("HELPDESK_CLOSED", "A closed ticket takes no further act.", new DomainRuleViolation.Remedy("Reopen it first.", "Directorate of ICT"));
+        // V347: a JUPEB candidate's account is the JUPEB portal's, never found by the University's own reset (an email shared with another account must not reset that one)
+        if ("JUPEB".equals(t.get("requester_kind"))) {
+            throw new DomainRuleViolation("SUPPORT_JUPEB_RESET", "A JUPEB candidate's password is the JUPEB portal's, reset from their record.",
+                    new DomainRuleViolation.Remedy("Open the JUPEB record in support mode from this ticket and reset the password there.", "You"));
+        }
         String identifier = t.get("requester_number") != null && !String.valueOf(t.get("requester_number")).isBlank() ? String.valueOf(t.get("requester_number")) : (String) t.get("requester_email");
         if (identifier == null || identifier.isBlank()) throw new DomainRuleViolation("HELPDESK_NO_IDENTIFIER", "The ticket names no account to reset.", new DomainRuleViolation.Remedy("Ask the requester for their matriculation or staff number.", "Directorate of ICT"));
         if ("STUDENT".equals(t.get("requester_kind"))) {

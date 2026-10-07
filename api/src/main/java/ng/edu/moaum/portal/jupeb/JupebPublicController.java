@@ -181,6 +181,8 @@ class JupebPublicController {
     private Map<String, Object> accountOf(String identifier) {
         return jdbc.sql("""
                 SELECT acc.id, acc.email, acc.password_hash, acc.failed_attempts, acc.locked_until,
+                       acc.temp_expires_at IS NOT NULL AS temporary,
+                       (acc.temp_expires_at IS NOT NULL AND (acc.temp_used_at IS NOT NULL OR acc.temp_expires_at <= now())) AS temporary_spent,
                        a.id AS application_id, a.application_no, a.surname, a.first_name, a.middle_name, a.phone
                   FROM jupeb.account acc
                   JOIN LATERAL (SELECT * FROM jupeb.application x WHERE x.account_id = acc.id
@@ -216,6 +218,14 @@ class JupebPublicController {
                     .param("n", next).param("l", lock).param("id", account).update());
             noteFailure(source);
             throw badCredentials();
+        }
+        if (Boolean.TRUE.equals(a.get("temporary_spent"))) {
+            /* V347: a temporary password from ICT Support opens one session, until its time; spent or lapsed, it opens nothing */
+            throw new DomainRuleViolation("AUTH_TEMP_PASSWORD_SPENT", "This temporary password has expired or was already used.",
+                    new DomainRuleViolation.Remedy("Reset your password from the sign-in page with the email you applied with, or ask ICT Support for a new one.", "ICT Support"));
+        }
+        if (Boolean.TRUE.equals(a.get("temporary"))) {
+            tx.execute(st -> jdbc.sql("UPDATE jupeb.account SET temp_used_at = now() WHERE id = :id AND temp_used_at IS NULL").param("id", a.get("id")).update());
         }
         return issue(a);
     }
@@ -294,7 +304,7 @@ class JupebPublicController {
         UUID account = (UUID) r.get("account_id");
         AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB password reset", null, null), () -> tx.execute(st -> {
             jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE id = :id").param("id", r.get("id")).update();
-            jdbc.sql("UPDATE jupeb.account SET password_hash = :h, failed_attempts = 0, locked_until = NULL, must_change_password = false WHERE id = :id").param("h", hash).param("id", account).update();
+            jdbc.sql("UPDATE jupeb.account SET password_hash = :h, failed_attempts = 0, locked_until = NULL, must_change_password = false, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE id = :id").param("h", hash).param("id", account).update();
             return null;
         }));
         String email = jdbc.sql("SELECT email FROM jupeb.account WHERE id = :id").param("id", account).query(String.class).single();

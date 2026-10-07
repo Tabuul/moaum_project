@@ -1394,6 +1394,7 @@ export function JupebOldPortalImport() {
   return (
     <>
       <PageHead title="Upload students from the old portal" eyebrow={<Link href="/jupeb/applications">← JUPEB applications</Link>}
+        actions={<LinkBtn kind="ghost" href="/jupeb/import/payments">Their old-portal payments →</LinkBtn>}
         description="The JUPEB students already registered on the old portal, uploaded from its export: each becomes a JUPEB student here with a login — the old App No as the username and a temporary password the student changes at first sign-in." />
       {done ? (
         <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} student${done.applied === 1 ? "" : "s"} uploaded`}

@@ -242,3 +242,30 @@ method), "Your payment issue has been resolved. Your verified payment has been s
 The Head of the Support Desk ticks the new capabilities on the postings that need them (Agents, Queues and Routing).
 Until then nothing new is reachable: an agent whose posting carries no RESET_PASSWORD can no longer send a student's
 reset from the ticket screen (the Head and the Director still can).
+
+# Part III — JUPEB records (V347)
+
+ICT Support reaches the JUPEB programme's candidates and students with the same capabilities and the same ledger. The
+JUPEB module already depended on the helpdesk (its candidates' tickets), so the support screens for JUPEB records live in
+the JUPEB package (`JupebSupportController`, `/api/v1/helpdesk/support/jupeb`) and write the ledger through
+`helpdesk.record_jupeb_support_action`; the helpdesk never imports JUPEB code (no module cycle).
+
+- **Reach.** A JUPEB record is reached through a live posting on the `JUPEB_SUPPORT` queue, a `GLOBAL` posting, or a
+  posting scoped to the JUPEB Office; the capabilities are those postings' (`helpdesk.agent_jupeb_capabilities`). Without
+  reach, the search says so (`SUPPORT_JUPEB_SCOPE`) and a record is *not found*.
+- **The ledger.** `helpdesk.support_action` names exactly one subject: `student_id` or `jupeb_application_id`
+  (`ck_hd_sa_subject`). A JUPEB act on a ticket must be on that candidate's own ticket (`SUPPORT_TICKET`).
+- **The acts.** View (VIEW_STUDENT; documents with VIEW_DOCUMENTS; payments with VIEW_PAYMENTS or INVESTIGATE_PAYMENT),
+  contact correction (EDIT_CONTACT), password reset (RESET_PASSWORD: the JUPEB portal's one-hour link, or a temporary
+  password on the ticket — one sign-in within 24 hours, changed at it), gateway verification (VERIFY_PAYMENT, through
+  `PaymentsService.verify`), activation refresh (SYNC_ENTITLEMENT, `jupeb.activate_if_due`), a ticket raised for the
+  candidate (CREATE_TICKET), escalation to the JUPEB Office, the Bursary or the Director of ICT. Identity details stay the
+  JUPEB Office's (the candidate's `CORRECT_DETAILS` request); no admission, grade, fee, refund or "mark as paid" exists here.
+- **The screens.** Menu → *JUPEB Student Support* (`/helpdesk/jupeb`, `/helpdesk/jupeb/{id}?ticket=`); the ticket screen of
+  a JUPEB ticket links to it, and no longer offers the University's own reset there (`SUPPORT_JUPEB_RESET`).
+- **The audit.** The Support Action History lists JUPEB acts to the Head and to agents whose JUPEB postings carry
+  VIEW_SUPPORT_AUDIT.
+- **Tests.** `JupebIT.supportOldPaymentsSelfServiceTimetablePracticeAndReports` (reach, ledger, capabilities, the
+  temporary password once) and `check.sql` property 192.
+- **After deployment.** The Head of the Support Desk posts the agents who serve JUPEB candidates on the JUPEB Support queue
+  with the capabilities they need. Until then only the Head, the Director of ICT, admin and super reach JUPEB records.
