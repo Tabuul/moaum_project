@@ -284,6 +284,20 @@ public class ResultsService {
      *  lecturer's office reaches only the sheets of courses allocated to that lecturer (as lecturer, second
      *  examiner or co-lecturer). The check is here, on the record, not on the menu: a sheet id typed into the
      *  address bar is refused the same way. */
+    /** V357: the sheet as this person may reach it — for the held scripts, which keep to the same scope as the sheet */
+    Sheets.Row reach(UUID id) {
+        return own(id);
+    }
+
+    /** V357: a stage is taken, and a sheet returned, only by the desk whose stage it is — on the server, as the screen shows it */
+    private static void requireDesk(Sheets.Row r, String act) {
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if (!Sheets.DESK.getOrDefault(r.stage(), List.of()).contains(office)) {
+            throw new AccessDeniedException(r.courseCode() + " is at " + r.stage().toLowerCase().replace('_', ' ') + "; that stage is "
+                    + act + " by " + Sheets.deskName(r.stage()) + ", not by this office.");
+        }
+    }
+
     private Sheets.Row own(UUID id) {
         Sheets.Row r = repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
         // V314: the GST office reaches GST sheets, the EPS office EPS sheets, and neither the other's
@@ -591,6 +605,7 @@ public class ResultsService {
     @Transactional
     public Map<String, Object> advance(UUID id, String comment, String minute) {
         Sheets.Row r = own(id);
+        requireDesk(r, "ENTRY".equals(r.stage()) ? "submitted" : "approved");
         // V318: a submission from entry by someone who does not teach the course is on the lecturer's behalf — it says why,
         // and the chain records it so. The sheet then moves through every desk as any other; the person who submitted it
         // cannot take the next stage (BR-006).
@@ -608,7 +623,8 @@ public class ResultsService {
 
     @Transactional
     public Map<String, Object> giveBack(UUID id, String comment) {
-        own(id);
+        Sheets.Row r = own(id);
+        if (!"ENTRY".equals(r.stage()) && !"PUBLISHED".equals(r.stage())) requireDesk(r, "returned");
         if (comment == null || comment.isBlank()) {
             throw new DomainRuleViolation("RES_RETURN_SAYS_WHY", "A sheet is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the lecturer must correct.", "The desk returning it"));

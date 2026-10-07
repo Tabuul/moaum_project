@@ -29,6 +29,7 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
     outcome: String(h.outcome ?? "GRADED"), note: h.note == null ? null : String(h.note), state: String(h.state ?? "HELD"),
     enteredBy: h.entered_by == null ? null : String(h.entered_by), enteredAt: String(h.entered_at ?? ""), releasedAt: h.released_at == null ? null : String(h.released_at),
     lapsedAt: h.lapsed_at == null ? null : String(h.lapsed_at), closesOn: h.closes_on == null ? null : String(h.closes_on),
+    waitingSince: h.waiting_since == null ? null : String(h.waiting_since),
   })) : [];
   const office = me.ok ? me.data.activeOffice : null;
   const own = office === "lecturer" || office === "exams" || office === "academic";

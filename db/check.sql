@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 200
+\set EXPECTED 201
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1479,6 +1479,8 @@ BEGIN
     PERFORM set_config('moaum.actor_id', a2::text, true);
     PERFORM set_config('moaum.actor_office', 'exams', true);
     st := assessment.advance(sh, NULL);
+    -- V357: the desk holding the sheet returns it
+    PERFORM set_config('moaum.actor_office', 'hod', true);
     PERFORM assessment.return_sheet(sh, 'two candidates recorded as absent had in fact sat the paper');
     SELECT stage, returned_times INTO st, n FROM assessment.score_sheet WHERE id = sh;
     PERFORM pg_temp.assert('A returned sheet goes back to entry, and the return is on the record',
@@ -1486,9 +1488,12 @@ BEGIN
 
     FOR i IN 1..7 LOOP
         PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        -- V357: each stage by its own desk
+        PERFORM set_config('moaum.actor_office', (assessment.stage_offices((SELECT stage FROM assessment.score_sheet WHERE id = sh)))[1], true);
         st := assessment.advance(sh, NULL);
     END LOOP;
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
     ok := false;
     BEGIN
         PERFORM assessment.advance(sh, NULL);
@@ -6215,6 +6220,101 @@ BEGIN
         format('before=%s first=%s classes=%s exists=%s tt=%s/%s lect=%s/%s cal=%s/%s/%s set=%s ca=%s pol=%s feesoffice=%s nosession=%s fees=%s/%s later=%s nothing=%s after=%s log=%s mine=%s all=%s',
                v_plan_before, r_first, v_classes, r_exists, v_tt, v_slot_class, v_lect, v_lect_class, v_cal, v_first_day, v_planned, v_set, v_ca, v_pol,
                r_fees_office, r_no_session, v_fees, v_fee, r_later, r_nothing, v_plan_after, n_log, n_mine, n_all));
+END $$;
+
+-- ── 201. V357: each stage of a sheet is taken (and a sheet returned) only by its own desk; a script is held only on a sheet at entry, and a mark released only into a sheet at entry — an approval while the sheet is with a later desk waits, does not lapse, and is released when the sheet is returned; a published sheet tells each student by email, with one text a day ──
+DO $$
+DECLARE o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid();
+        sh1 uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid(); sh3 uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); late uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid();
+        stg text; wrong text; n_refused int := 0; n_taken int := 0; r_return text; r_hold text; hid uuid; msg text;
+        had_sem boolean; old_late date; v_wait timestamptz; v_state_wait text; v_state_lapse text; v_state_after text; v_mark boolean; v_mark_before boolean;
+        n_mail int; n_text int; n_mail2 int; n_text2 int; v_same boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        VALUES ('CHK 357', 'Check Desks', 3, 1, 100, 'MTC', 'Core', 'LIVE'), ('CHK 358', 'Check Publication', 3, 1, 100, 'MTC', 'Core', 'LIVE'),
+               ('CHK 359', 'Check Waiting', 3, 1, 100, 'MTC', 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'CHK 357', '9999/0000', 1), (o2, 'CHK 358', '9999/0000', 1), (o3, 'CHK 359', '9999/0000', 1);
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh1, o1), (sh2, o2), (sh3, o3);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/99/993571', 'MOAUM/CHK/99/3571', 'CHECKDESK', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+               (late, 'MOAUM/ADM/99/993572', 'MOAUM/CHK/99/3572', 'CHECKWAIT', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, email, phone) VALUES (st, 'zz.check201@example.com', '08012340201')
+        ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone;
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh1, st, 30, 40), (sh2, st, 20, 30);
+
+        -- each stage refused to another desk, taken by its own; a return refused to a desk not holding the sheet
+        LOOP
+            stg := (SELECT stage FROM assessment.score_sheet WHERE id = sh1);
+            EXIT WHEN stg = 'PUBLISHED';
+            wrong := CASE WHEN stg = 'FACULTY_BOARD' THEN 'hod' ELSE 'dean' END;
+            PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+            PERFORM set_config('moaum.actor_office', wrong, true);
+            BEGIN
+                PERFORM assessment.advance(sh1, NULL, 'SEN/9999/357');
+            EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+                IF split_part(msg, ':', 1) = 'RES_NOT_YOUR_STAGE' THEN n_refused := n_refused + 1; END IF;
+            END;
+            IF stg = 'DEPT_BOARD' THEN
+                PERFORM set_config('moaum.actor_office', 'exams', true);
+                BEGIN PERFORM assessment.return_sheet(sh1, 'not mine to return');
+                EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_return := split_part(msg, ':', 1); END;
+            END IF;
+            PERFORM set_config('moaum.actor_office', (assessment.stage_offices(stg))[1], true);
+            PERFORM assessment.advance(sh1, NULL, CASE WHEN stg = 'SENATE' THEN 'SEN/9999/357' END);
+            n_taken := n_taken + 1;
+        END LOOP;
+        n_mail := (SELECT count(*) FROM platform.notice WHERE channel = 'EMAIL' AND about_kind = 'student' AND about_id = st AND subject = 'Your result in CHK 357 is published'
+                     AND body NOT LIKE '%70%');
+        n_text := (SELECT count(*) FROM platform.notice WHERE channel = 'SMS' AND about_kind = 'student' AND about_id = st AND subject = 'Results published');
+        -- a second sheet published the same day: another email, no second text
+        UPDATE assessment.score_sheet SET stage = 'SENATE' WHERE id = sh2;
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'dregistrar', true);
+        PERFORM assessment.advance(sh2, NULL, 'SEN/9999/358');
+        n_mail2 := (SELECT count(*) FROM platform.notice WHERE channel = 'EMAIL' AND about_kind = 'student' AND about_id = st AND subject LIKE 'Your result in CHK 35_ is published');
+        n_text2 := (SELECT count(*) FROM platform.notice WHERE channel = 'SMS' AND about_kind = 'student' AND about_id = st AND subject = 'Results published');
+
+        -- a script is held only on a sheet at entry
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM assessment.hold_script(sh2, 'MOAUM/CHK/99/3572', 20, 30, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_hold := split_part(msg, ':', 1); END;
+        -- held at entry; the sheet moves on; the registration approved in time: the mark waits, off the sheet
+        SELECT EXISTS (SELECT 1 FROM policy.semester WHERE session = '9999/0000' AND number = 1) INTO had_sem;
+        IF NOT had_sem THEN INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), '9999/0000', 1, 'CLOSED'); END IF;
+        SELECT late_registration_closes INTO old_late FROM policy.semester WHERE session = '9999/0000' AND number = 1;
+        UPDATE policy.semester SET late_registration_closes = current_date + 7 WHERE session = '9999/0000' AND number = 1;
+        hid := assessment.hold_script(sh3, 'MOAUM/CHK/99/3572', 20, 30, NULL, NULL);
+        UPDATE assessment.score_sheet SET stage = 'DEPT_BOARD' WHERE id = sh3;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (reg, late, '9999/0000', 1, 100, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, o3, 3, 'APPROVED');
+        SELECT state, waiting_since INTO v_state_wait, v_wait FROM assessment.held_script WHERE id = hid;
+        v_mark_before := EXISTS (SELECT 1 FROM assessment.latest_scores(sh3) x WHERE x.student_id = late);
+        -- past the late-registration date it does not lapse while it waits
+        UPDATE policy.semester SET late_registration_closes = current_date - 1 WHERE session = '9999/0000' AND number = 1;
+        PERFORM assessment.lapse_held_scripts();
+        v_state_lapse := (SELECT state FROM assessment.held_script WHERE id = hid);
+        -- the Head of Department returns the sheet: the waiting mark is released into it
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM assessment.return_sheet(sh3, 'a held script waits for the sheet');
+        v_state_after := (SELECT state FROM assessment.held_script WHERE id = hid);
+        v_mark := EXISTS (SELECT 1 FROM assessment.latest_scores(sh3) x WHERE x.student_id = late AND x.total = 50);
+        UPDATE policy.semester SET late_registration_closes = old_late WHERE session = '9999/0000' AND number = 1;
+        v_same := (SELECT array_agg(s ORDER BY s) FROM unnest(assessment.stage_offices('ENTRY')) s) = ARRAY['eps', 'exams', 'gst', 'lecturer'];
+        RAISE EXCEPTION 'the V357 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V357: each of the eight stages refused to another desk and taken by its own, a return refused to a desk not holding the sheet; one email a published sheet (no mark in it) and one text a day; a script held only at entry; an approval while the sheet is with a later desk waits, does not lapse, and is released when the sheet is returned',
+        n_refused = 8 AND n_taken = 8 AND r_return = 'RES_NOT_YOUR_STAGE' AND n_mail = 1 AND n_text = 1 AND n_mail2 = 2 AND n_text2 = 1
+        AND r_hold = 'HELD_SHEET_NOT_AT_ENTRY' AND v_state_wait = 'HELD' AND v_wait IS NOT NULL AND NOT v_mark_before AND v_state_lapse = 'HELD'
+        AND v_state_after = 'RELEASED' AND v_mark AND v_same,
+        format('refused=%s taken=%s return=%s mail=%s text=%s mail2=%s text2=%s hold=%s wait=%s/%s before=%s lapse=%s after=%s mark=%s entry=%s',
+               n_refused, n_taken, r_return, n_mail, n_text, n_mail2, n_text2, r_hold, v_state_wait, v_wait IS NOT NULL, v_mark_before, v_state_lapse, v_state_after, v_mark, v_same));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

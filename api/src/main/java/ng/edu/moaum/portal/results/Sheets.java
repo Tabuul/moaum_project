@@ -25,6 +25,21 @@ public final class Sheets {
             "SENATE", List.of("registrar", "dregistrar"),
             "PUBLISHED", List.of());
 
+    /** V357: the desk of a stage, in words (assessment.stage_desk_name) */
+    public static String deskName(String stage) {
+        return switch (stage) {
+            case "ENTRY" -> "the lecturer";
+            case "VERIFICATION" -> "the Programme Examinations Officer";
+            case "DEPT_BOARD" -> "the Head of Department";
+            case "FACULTY_SCRUTINY" -> "the Faculty Examinations Officer";
+            case "FACULTY_COMPILATION" -> "the Faculty Officer";
+            case "FACULTY_BOARD" -> "the Dean";
+            case "RECORDS" -> "Exams & Records";
+            case "SENATE" -> "the Registrar";
+            default -> "no desk";
+        };
+    }
+
     /** The spine a student sees: six stages over nine desks. */
     public static int spine(String stage) {
         return switch (stage) {

@@ -40,9 +40,23 @@ class HeldScriptsController {
             + "'OFFICE_dean','OFFICE_records','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final ResultsService results;
 
-    HeldScriptsController(JdbcClient jdbc) {
+    HeldScriptsController(JdbcClient jdbc, ResultsService results) {
         this.jdbc = jdbc;
+        this.results = results;
+    }
+
+    /** V357: the held scripts of a sheet keep to the sheet's own scope — a lecturer their own courses', a desk its programme,
+     *  department or faculty — and a script is held only while the sheet is at entry (the database refuses it otherwise too) */
+    private Sheets.Row reach(UUID sheet, boolean holding) {
+        Sheets.Row r = results.reach(sheet);
+        if (holding && !"ENTRY".equals(r.stage())) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("HELD_SHEET_NOT_AT_ENTRY", "The sheet of " + r.courseCode() + " is at "
+                    + r.stage().toLowerCase().replace('_', ' ') + "; a script is held only while the sheet is with the lecturer.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Ask the desk holding the sheet to return it, with the reason.", "The desk holding it"));
+        }
+        return r;
     }
 
     public record HoldIn(@NotBlank @Size(max = 40) String number, Integer ca, Integer exam,
@@ -101,6 +115,7 @@ class HeldScriptsController {
     @PreAuthorize(READERS)
     @Transactional
     List<Map<String, Object>> held(@PathVariable UUID id) {
+        reach(id, false);
         jdbc.sql("SELECT assessment.lapse_held_scripts()").query(Integer.class).single();
         return list(id);
     }
@@ -110,6 +125,7 @@ class HeldScriptsController {
     @PreAuthorize(ENTRY)
     @Transactional
     Map<String, Object> hold(@PathVariable UUID id, @Valid @RequestBody HoldIn body) {
+        reach(id, true);
         UUID held = jdbc.sql("SELECT assessment.hold_script(:s, :n, :ca, :ex, :o, :note)")
                 .param("s", id).param("n", body.number().trim())
                 .param("ca", body.ca(), Types.INTEGER).param("ex", body.exam(), Types.INTEGER)
@@ -127,6 +143,7 @@ class HeldScriptsController {
     @PreAuthorize(ENTRY)
     @Transactional
     Map<String, Object> holdBulk(@PathVariable UUID id, @Valid @RequestBody BulkIn body) throws tools.jackson.core.JacksonException {
+        reach(id, true);
         String json = new tools.jackson.databind.ObjectMapper().writeValueAsString(body.rows());
         List<UUID> before = jdbc.sql("SELECT id FROM assessment.held_script WHERE sheet_id = :s").param("s", id).query(UUID.class).list();
         int n = jdbc.sql("SELECT assessment.hold_scripts_bulk(:s, cast(:rows as jsonb))")
@@ -141,6 +158,12 @@ class HeldScriptsController {
     @PreAuthorize(ENTRY)
     @Transactional
     Map<String, Object> withdraw(@PathVariable UUID id, @PathVariable UUID held) {
+        reach(id, false);
+        // the script withdrawn is one of this sheet's — not any held script by its id
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM assessment.held_script WHERE id = :h AND sheet_id = :s)").param("h", held).param("s", id)
+                .query(Boolean.class).single())) {
+            throw new ng.edu.moaum.portal.shared.NotFound("held script", held);
+        }
         jdbc.sql("SELECT assessment.withdraw_held_script(:h)").param("h", held).update();
         return Map.of("id", held, "held", list(id));
     }

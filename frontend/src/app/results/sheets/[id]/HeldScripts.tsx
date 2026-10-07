@@ -164,7 +164,8 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
             <span className="tnum" key="c">{h.ca ?? "—"}</span>,
             <span className="tnum" key="e">{h.exam ?? "—"}</span>,
             <span className="sub2" key="o">{h.outcome === "GRADED" ? "Graded" : h.outcome.charAt(0) + h.outcome.slice(1).toLowerCase()}</span>,
-            <span key="s"><Pil kind={STATE[h.state]?.[0] ?? "grey"}>{STATE[h.state]?.[1] ?? h.state}</Pil>{h.state === "RELEASED" ? <div className="sub2">{day(h.releasedAt)}</div> : h.state === "LAPSED" ? <div className="sub2">{day(h.lapsedAt)}</div> : null}{h.note ? <div className="sub2">{h.note}</div> : null}</span>,
+            <span key="s">{h.state === "HELD" && h.waitingSince ? <Pil kind="warn">Registration approved — released when the sheet is returned to entry</Pil>
+              : <Pil kind={STATE[h.state]?.[0] ?? "grey"}>{STATE[h.state]?.[1] ?? h.state}</Pil>}{h.state === "RELEASED" ? <div className="sub2">{day(h.releasedAt)}</div> : h.state === "LAPSED" ? <div className="sub2">{day(h.lapsedAt)}</div> : null}{h.note ? <div className="sub2">{h.note}</div> : null}</span>,
             <span className="sub2" key="w">{h.enteredBy ?? "—"}<div>{day(h.enteredAt)}</div></span>,
             own && h.state === "HELD" ? <Btn key="x" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Withdraw the held script for ${h.number}? Hold it again if the mark was right.`)) void call(`/${h.id}`, "DELETE", null, `${courseCode}: held script for ${h.number} withdrawn`); }}>Withdraw</Btn> : <span key="x" />,
           ])} texts={items.map((h) => `${h.number} ${h.surname} ${h.otherNames} ${h.state}`)} />

@@ -96,6 +96,8 @@ export interface HeldScript {
   ca: number | null; exam: number | null; outcome: string; note: string | null;
   state: "HELD" | "RELEASED" | "LAPSED" | "WITHDRAWN" | string;
   enteredBy: string | null; enteredAt: string; releasedAt: string | null; lapsedAt: string | null; closesOn: string | null;
+  /** V357: the registration was approved while the sheet was with a later desk — released when the sheet comes back to entry */
+  waitingSince?: string | null;
 }
 
 export interface SheetListing {

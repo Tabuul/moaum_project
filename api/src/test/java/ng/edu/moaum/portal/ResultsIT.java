@@ -144,8 +144,19 @@ class ResultsIT {
         assertThat(submitted.getStatusCode().value()).as(String.valueOf(submitted.getBody())).isEqualTo(200);
         assertThat(submitted.getBody().get("stage")).isEqualTo("VERIFICATION");
 
-        // the same person does not take two consecutive stages
-        assertThat(it.call(lect, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(422);
+        // the lecturer does not take the next stage: it is not theirs (V357; the same person twice in a row is refused too — BR-006,
+        // ResultPipelineIT's officer who submitted on the lecturer's behalf and may not verify)
+        assertThat(it.call(lect, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
+        // V357: a stage is taken only by its own desk, on the server — the Head of Department may not verify the sheet
+        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
+        // V357: held scripts keep to the sheet's scope, and a script is held only while the sheet is at entry
+        String held = "/api/v1/results/sheets/" + sheet + "/held";
+        assertThat(it.call(stranger, HttpMethod.GET, held, null).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(stranger, HttpMethod.POST, held, Map.of("number", "MOAUM/MTC/94/9999", "ca", 10, "exam", 20)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> pastEntry = it.call(lect, HttpMethod.POST, held, Map.of("number", "MOAUM/MTC/94/9999", "ca", 10, "exam", 20));
+        assertThat(pastEntry.getStatusCode().value()).as(String.valueOf(pastEntry.getBody())).isEqualTo(422);
+        assertThat(pastEntry.getBody().get("code")).isEqualTo("HELD_SHEET_NOT_AT_ENTRY");
+        assertThat(it.getList(lect, held).getStatusCode().value()).isEqualTo(200);
 
         // V318: a desk outside the sheet's scope does not reach it — a Head of Department of another department, an Examinations
         // Officer of another programme, and an officer whose grant names no scope at all
@@ -157,6 +168,11 @@ class ResultsIT {
         assertThat(it.call(ItSupport.token("exams"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
 
         assertThat(it.call(exams, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getBody().get("stage")).isEqualTo("DEPT_BOARD");
+        // V357: at the Head of Department's desk, the Faculty Examinations Officer may not take it on, nor the Programme
+        // Examinations Officer return it
+        assertThat(it.call(facultyExams, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(exams, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/return", Map.of("comment", "not this desk's to return")).getStatusCode().value())
+                .isEqualTo(403);
 
         // returned, with the reason, back to entry
         ResponseEntity<Map> back = it.call(hod, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/return",
@@ -173,11 +189,25 @@ class ResultsIT {
             assertThat(r.getStatusCode().value()).as(office + ": " + r.getBody()).isEqualTo(200);
         }
         String registrar = ItSupport.token("registrar");
+        // V357: Exams & Records may not publish; the Registrar does, on the minute
+        assertThat(it.call(ItSupport.token("records"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of("minute", "SEN/2095/01")).getStatusCode().value())
+                .isEqualTo(403);
+        it.db(() -> jdbc.sql("INSERT INTO people.student_contact (student_id, email, phone) VALUES (:s, 'zz.results.9001@example.com', '08012349001') "
+                + "ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone").param("s", s1).update());
         assertThat(it.call(registrar, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> published = it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance",
                 Map.of("minute", "SEN/2095/01"));
         assertThat(published.getStatusCode().value()).as(String.valueOf(published.getBody())).isEqualTo(200);
         assertThat(published.getBody().get("stage")).isEqualTo("PUBLISHED");
+        // V357: each student is told the result is published — by email, with no mark in it — and by a text
+        List<Map<String, Object>> told = jdbc.sql("SELECT channel, subject, body FROM platform.notice WHERE about_kind = 'student' AND about_id = :s AND created_at > now() - interval '1 hour'")
+                .param("s", s1).query().listOfRows();
+        assertThat(told).anySatisfy(n -> {
+            assertThat(n.get("channel")).isEqualTo("EMAIL");
+            assertThat(n.get("subject")).isEqualTo("Your result in ZZR 301 is published");
+            assertThat(String.valueOf(n.get("body"))).doesNotContain("75").doesNotContain("Grade");
+        });
+        assertThat(told).anySatisfy(n -> assertThat(n.get("subject")).isEqualTo("Results published"));
 
         ResponseEntity<Map> after = it.get(academic, "/api/v1/results/sheets/" + sheet);
         List<Map<String, Object>> marks = (List<Map<String, Object>>) after.getBody().get("marks");
@@ -200,6 +230,15 @@ class ResultsIT {
         });
         assertThat((List<?>) body.get("grades")).anySatisfy(g -> assertThat(((Map<?, ?>) g).get("grade")).isEqualTo("A"));
         assertThat((List<?>) body.get("weeks")).as("a submitted sheet gives at least one week").isNotEmpty();
+    }
+
+    /** V357: the server's rule of who takes each stage is the table the screens read */
+    @Test
+    void theServersStageDesksAreTheScreens() {
+        for (Map.Entry<String, List<String>> e : ng.edu.moaum.portal.results.Sheets.DESK.entrySet()) {
+            List<String> server = jdbc.sql("SELECT unnest(assessment.stage_offices(:s))").param("s", e.getKey()).query(String.class).list();
+            assertThat(server).as(e.getKey()).containsExactlyInAnyOrderElementsOf(e.getValue());
+        }
     }
 
     private String examSessionId() {
