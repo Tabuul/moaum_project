@@ -19,6 +19,8 @@ interface Fees {
   rule: { session: string; application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null; updated_by: string | null };
   schoolFees: { category: string; indigene: boolean; amount: number; own: boolean }[];
   faculties: { code: string; name: string; category: string; stated: boolean }[];
+  /** V356: the latest earlier session with fees of its own, when this one has none */
+  carryFrom?: string | null;
   history: { session: string; application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string; updated_at: string; updated_office: string | null }[];
 }
 
@@ -55,6 +57,15 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
       notify("The JUPEB fees are saved. Fees already charged keep their amounts."); setTick((t) => t + 1);
     } finally { setBusy(false); }
   }
+  async function carry(from: string) {
+    if (!window.confirm(`Carry ${from}'s own fees and school fees, unchanged, into ${d!.session}? Change them after if they differ.`)) return;
+    setBusy(true);
+    try {
+      const r = await jcall("/api/v1/jupeb/fees/carry", "POST", { from, to: d!.session }, `JUPEB fees of ${from} carried into ${d!.session}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(`${d!.session} now has its own fees, as ${from}'s.`); setTick((t) => t + 1);
+    } finally { setBusy(false); }
+  }
   const pct = Number(f.firstPercent || 0);
   const ro = !canWrite;
   return (
@@ -69,6 +80,12 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
         Last changed {when(d.rule.updated_at)}{d.rule.updated_by ? ` by ${d.rule.updated_by}` : ""}{d.rule.updated_office ? ` (${d.rule.updated_office})` : ""}.
         {session !== "*" && !d.own && canWrite ? " Saving here gives the session a rule of its own." : ""}
       </Note>
+      {session !== "*" && !d.own && d.carryFrom ? (
+        <Note kind="info" title={`${d.carryFrom} has fees of its own; ${d.session} has none`}
+          action={canWrite ? <Btn kind="secondary" disabled={busy} onClick={() => void carry(d.carryFrom!)}>{`Carry ${d.carryFrom}'s fees`}</Btn> : undefined}>
+          {`Until it has its own, ${d.session} takes the default below. Carrying copies ${d.carryFrom}'s fees and school fees, unchanged; fees already charged keep their amounts.`}
+        </Note>
+      ) : null}
       <Panel title="Fees">
         <PBody>
           <div className="grid grid--3">

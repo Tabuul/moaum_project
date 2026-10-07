@@ -351,6 +351,7 @@ class JupebSupportController {
                     UPDATE jupeb.account SET password_hash = :h, must_change_password = true, failed_attempts = 0, locked_until = NULL,
                            temp_expires_at = :until, temp_issued_by = :by, temp_used_at = NULL WHERE id = :acc
                     """).param("h", encoder.encode(pw.toString())).param("until", until).param("by", a.id()).param("acc", account).update();
+            JupebView.endSessions(jdbc, account, null, "temporary password issued by ICT Support");
             jdbc.sql("SELECT jupeb.app_event(:a, 'PASSWORD_RESET', 'A temporary password was issued by ICT Support at the desk')").param("a", id).query().listOfRows();
             act(id, ticket, "PASSWORD_RESET", null, null, null, reason, Map.of("method", "TEMPORARY_PASSWORD",
                     "summary", "Temporary password issued at the desk: one sign-in, changed at it, within 24 hours"));

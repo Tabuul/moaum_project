@@ -218,8 +218,12 @@ class JupebTeachingController {
         UUID p = me(auth);
         String s = session();
         List<UUID> classes = myClasses(p, s, subject);
-        return jdbc.sql("SELECT * FROM jupeb.practice_topics_class(:s, :sub, :k)").param("s", s).param("sub", subject)
-                .param("k", classes.contains(null) || classes.size() > 1 ? null : classes.get(0), Types.OTHER).query().listOfRows();
+        if (classes.contains(null)) {
+            return jdbc.sql("SELECT * FROM jupeb.practice_topics_class(:s, :sub, NULL)").param("s", s).param("sub", subject).query().listOfRows();
+        }
+        /* V356: of the classes this lecturer teaches only */
+        return jdbc.sql("SELECT * FROM jupeb.practice_topics_classes(:s, :sub, :k)").param("s", s).param("sub", subject)
+                .param("k", classes.toArray(new UUID[0])).query().listOfRows();
     }
 
     /** the notices this lecturer published, with how many they reach and have read */

@@ -241,6 +241,18 @@ class JupebView {
     private static final tools.jackson.databind.ObjectMapper READER = new tools.jackson.databind.ObjectMapper();
 
     /** a jsonb column read as text, as plain maps and lists, for the other JUPEB controllers (V350) */
+    /** V356: every session of a JUPEB account ended — after its password changes — but the one in use, when one is given */
+    static int endSessions(JdbcClient jdbc, UUID account, String keepSidHex, String reason) {
+        byte[] keep = null;
+        if (keepSidHex != null && !keepSidHex.isBlank()) {
+            try { keep = java.util.HexFormat.of().parseHex(keepSidHex); } catch (IllegalArgumentException notHex) { keep = null; }
+        }
+        return jdbc.sql("""
+                UPDATE platform.session SET ended_at = now(), ended_reason = :r
+                 WHERE ended_at IS NULL AND person_id IN (SELECT id FROM jupeb.application WHERE account_id = :acc) AND (CAST(:keep AS bytea) IS NULL OR id <> CAST(:keep AS bytea))
+                """).param("r", reason).param("acc", account).param("keep", keep, java.sql.Types.BINARY).update();
+    }
+
     static Object readJson(String text) {
         return text == null || "null".equals(text) ? null : READER.readValue(text, Object.class);
     }

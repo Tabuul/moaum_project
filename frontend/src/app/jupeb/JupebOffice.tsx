@@ -1475,6 +1475,81 @@ function CurrentSession({ s, canWrite, onSaved }: { s: Settings; canWrite: boole
   );
 }
 
+interface RolloverItem { item: string; label: string; whose: string; from_count: number; to_count: number; state: "READY" | "DONE" | "NOTHING"; note: string; carried_at?: string | null }
+interface Rollover {
+  from: string; to: string; items: RolloverItem[]; onCalendar: boolean;
+  windows: { window_type: string; label: string; state: string; opens_at?: string | null; closes_at?: string | null }[];
+  history: { item: string; carried: number; skipped: number; note?: string | null; at: string; actor_name?: string | null; from_session: string }[];
+  result?: { item: string; carried: number; skipped: number; note: string | null };
+}
+const ROLL_STATE: Record<RolloverItem["state"], [string, "info" | "ok" | "grey"]> = { READY: ["To carry", "info"], DONE: ["Has its own", "ok"], NOTHING: ["Nothing to carry", "grey"] };
+
+/** V356: the next session set up from the one before — item by item, only when the JUPEB Office says so, never over what it already has */
+function NextSession({ current, canWrite }: { current: string; canWrite: boolean }) {
+  const start = Number(current.slice(0, 4));
+  const [from, setFrom] = useState(current);
+  const [to, setTo] = useState(`${start + 1}/${start + 2}`);
+  const [d, setD] = useState<Rollover | null>(null);
+  const [ask, setAsk] = useState<RolloverItem | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void jcall<Rollover>(`/api/v1/jupeb/office/rollover?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((r) => { if (!live) return; if (r.ok) setD(r.data); else notifyProblem(r.problem); });
+    return () => { live = false; };
+  }, [from, to]);
+  const y = Number(from.slice(0, 4));
+  async function carry(it: RolloverItem) {
+    setBusy(true);
+    try {
+      const r = await jcall<Rollover>(`/api/v1/jupeb/office/rollover/${it.item.toLowerCase()}`, "POST", { from, to }, `JUPEB ${to}: ${it.label} carried from ${from}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      setD(r.data); setAsk(null);
+      const x = r.data.result;
+      notify(`${it.label}: ${x?.carried ?? 0} carried into ${to}${x?.skipped ? ` (${x.note ?? `${x.skipped} left`})` : ""}.`);
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel title="Plan the next session" right={<span className="row">
+      <select className="ctl" style={{ width: 130 }} aria-label="From the session" value={from} onChange={(e) => { setFrom(e.target.value); const n = Number(e.target.value.slice(0, 4)); setTo(`${n + 1}/${n + 2}`); }}>
+        {[start - 1, start, start + 1].map((n) => <option key={n} value={`${n}/${n + 1}`}>{`${n}/${n + 1}`}</option>)}</select>
+      <span className="sub2">into</span>
+      <select className="ctl" style={{ width: 130 }} aria-label="Into the session" value={to} onChange={(e) => setTo(e.target.value)}>
+        {[y + 1, y + 2].map((n) => <option key={n} value={`${n}/${n + 1}`}>{`${n}/${n + 1}`}</option>)}</select>
+    </span>}>
+      <PBody>
+        <p className="sub2">{`Set ${to} up from ${from}, one item at a time. Nothing is carried until you say so, nothing over what ${to} already has of its own, and every carry is on the record. Students and applications are never moved; the fees are the Bursary's to carry, and the application windows the Director of ICT's to open.`}</p>
+        {!d ? <p className="sub2">Loading…</p> : (
+          <>
+            <DTable noPrint pageSize={0} cols={["Item", `In ${d.from}|num`, `In ${d.to}|num`, "State", "What is carried", "|mid"]} rows={d.items.map((it) => [
+              <span key="l"><b>{it.label}</b>{it.whose !== "JUPEB Office" ? <span className="sub2" style={{ display: "block" }}>{`The ${it.whose}'s`}</span> : null}</span>,
+              it.from_count, it.to_count,
+              <span key="s"><Pil kind={ROLL_STATE[it.state][1]}>{ROLL_STATE[it.state][0]}</Pil>{it.carried_at ? <span className="sub2" style={{ display: "block" }}>{`Carried ${when(it.carried_at)}`}</span> : null}</span>,
+              <span key="n" className="sub2">{it.note}</span>,
+              it.item === "FEES" ? (it.state === "READY" ? <Link key="b" href="/finance/jupeb-fees">The Bursary&rsquo;s page</Link> : null)
+                : canWrite && it.state === "READY" ? <Btn key="b" kind="secondary" disabled={busy} onClick={() => setAsk(it)}>Carry</Btn> : null])} />
+            <div className="row mt-2" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+              {d.windows.map((w) => <Pil key={w.window_type} kind={w.state === "OPEN" ? "ok" : "grey"}>{`${w.label} for ${d.to}: ${w.state.toLowerCase().replace(/_/g, " ")}`}</Pil>)}
+              <span className="sub2">The Director of ICT opens the windows; nothing here opens them.</span>
+            </div>
+            {!d.onCalendar ? <Note kind="info" title={`${d.to} is not yet on the University's calendar of sessions`}>The JUPEB Office may plan it now; the Bursary can carry the fees once the session is on the calendar.</Note> : null}
+            {d.history.length ? <p className="sub2 mt-2">{`Carried into ${d.to}: ${d.history.map((h) => `${ROLL_LABEL[h.item] ?? h.item} from ${h.from_session} (${h.carried}${h.skipped ? `, ${h.skipped} left` : ""}) ${when(h.at)}${h.actor_name ? ` by ${h.actor_name}` : ""}`).join("; ")}.`}</p> : null}
+          </>
+        )}
+      </PBody>
+      {ask && d ? (
+        <Modal title={`Carry ${ask.label.toLowerCase()} into ${d.to}`} onClose={() => setAsk(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void carry(ask)}>{busy ? "Carrying…" : "Carry"}</Btn></>}>
+          <p>{`${ask.from_count} from ${d.from} into ${d.to}, which has none of its own.`}</p>
+          <p className="sub2">{ask.note}</p>
+          <p className="sub2">{`Once carried, change it in ${d.to} itself; ${d.from} is not touched.`}</p>
+        </Modal>
+      ) : null}
+    </Panel>
+  );
+}
+const ROLL_LABEL: Record<string, string> = { SETTINGS: "settings", CLASSES: "classes", CALENDAR: "calendar", TIMETABLE: "timetable", CA_PARTS: "assessment parts",
+  ATTENDANCE_POLICY: "minimum attendance", LECTURERS: "lecturers", FEES: "fees" };
+
 export function JupebSettings({ canWrite }: { canWrite: boolean }) {
   const [session, setSession] = useState("");
   const [s, setS] = useState<Settings | null>(null);
@@ -1514,6 +1589,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
     <>
       <PageHead title="JUPEB settings" description="Numbering, screening and the documents asked for. The fees are the Bursary's." actions={<SessionPick sessions={s.sessions} value={s.session} onChange={setSession} />} />
       <CurrentSession s={s} canWrite={canWrite} onSaved={(x) => { setS(x); setSession(x.currentSession ?? ""); }} />
+      <NextSession key={s.currentSession ?? s.session} current={s.currentSession ?? s.session} canWrite={canWrite} />
       <Panel title="Numbering and screening" right={s.own ? <Pil kind="info">Own rule for {s.session}</Pil> : <Pil kind="grey">The default applies</Pil>}>
         <PBody>
           <div className="grid grid--3">

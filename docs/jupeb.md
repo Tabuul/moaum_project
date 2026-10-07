@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341–V345, V347–V355)
+# The JUPEB programme (V339, V341–V345, V347–V356)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -341,6 +341,26 @@ copies of them.
   topics, weakest first; a lecturer and the office see a subject's (a class's, or all). A mock examination is a practice test
   sat once within its window (the CBT mocks on the calendar); its score, marking and answers are held until the office releases
   the results. Mocks run on the JUPEB practice engine — the University's CBT engine serves registered University students only.
+- **The next session from the last (V356).** On Settings, "Plan the next session" shows, for each item, what the session it
+  comes from holds and what the next already holds: numbering and screening (not its dates, the examination month or results),
+  the classes, the calendar (a year on, marked planned), the timetable (both semesters), the parts of the continuous
+  assessment, the minimum attendance and the lecturers' assignments (a lecturer no longer in service is not carried). The JUPEB
+  Office carries an item only when it says so, never over what the next session has of its own; the lectures and lecturers
+  that name classes wait for the classes (matched by name). Every carry is on the record (`jupeb.session_rollover`). The
+  fees are the Bursary's alone: its JUPEB fees page offers to carry the last session's own fees, unchanged, into a session on
+  the University's calendar that has none. The application windows are shown and stay the Director of ICT's. Students and
+  applications are never moved.
+- **The access review (V356).** Every JUPEB endpoint was checked against who may reach it (office, Bursary, lecturer, student,
+  ICT Support, the public verifier): each is guarded on the server; a student reads and changes only their own record, a
+  lecturer only their subjects and classes, ICT Support only through postings that reach JUPEB records; documents and images
+  are private, sniffed for their type and served with `nosniff` and a sandbox; SQL takes its values as parameters; exports are
+  text cells; no notice carries a password, a NIN or an account number; a verification code carries 60 random bits. Fixed: a
+  temporary password opens the portal only to change it — refused on the server for anything else; a new password, a reset
+  and a temporary password from ICT Support end the account's other sessions (and its other reset links); a reset link is
+  spent once even when used twice at once; "forgot password" sends one link in two minutes and five an hour, with the same
+  answer either way; a lecturer of some classes sees their classes' practice by topic, not every class's. Also fixed, found by
+  the review: a reset link always failed (a timestamp read wrongly), and a locked account's sign-in failed instead of saying it
+  was locked.
 
 ## API
 
@@ -364,7 +384,8 @@ copies of them.
   `/tell`), `/settings/session-check`, and (V355) `/board` (with `/mark`, `/export?which=ready|changed|sent`, `/photos.zip`),
   `/ca/components` (PUT), `/ca/sheet`, `/ca/scores` (PUT), `/ca/lock`, `/ca/unlock`, `/exams` (with `/upload`, `/{id}` PUT,
   `/{id}/remove`, `/publish`), `/applications/{id}/exams`, `/practice-topics`, `/practice-tests/{id}/release`,
-  `/practice-tests/{id}/topics`. Reads are for jupeb, super and admin; writes for jupeb and super.
+  `/practice-tests/{id}/topics`, and (V356) `/rollover?from=&to=` (with `/{item}` POST). Reads are for jupeb, super and admin;
+  writes for jupeb and super.
 - **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
   `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
   JUPEB records.
@@ -376,8 +397,8 @@ copies of them.
   `/notices/{id}/withdraw`, and (V355) `/ca` (GET, PUT), `/topics`) — `OFFICE_lecturer` only, their own assignments.
 - **The student (V353–V355):** `/api/v1/jupeb/me/units` (with `/{id}/syllabus`), `/subject-option` (PUT), `/calendar`, `/clearance`,
   `/exams`, `/ca`, `/practice/topics`.
-- **Fees:** `/api/v1/jupeb/fees`. Reads for bursar, jupeb, super, admin and audit; writes and bank confirmations for
-  bursar and super.
+- **Fees:** `/api/v1/jupeb/fees` (and, V356, `/carry`). Reads for bursar, jupeb, super, admin and audit; writes, bank
+  confirmations and carrying a session's fees for bursar and super.
 
 ## Tests
 
@@ -438,9 +459,20 @@ copies of them.
   `JupebAttendanceIT.topicsCoveredAndTheLecturersAssessment` the topics of a register (another course's refused, another
   lecturer not let in), the coverage scoped to the lecturer's subjects, and the lecturer's assessment (their class only, the
   maximum, another class refused, not once locked).
-- `check.sql` properties 185–199 cover the rules on a brand-new database.
+- `JupebIT.nextSessionFromTheLastAndPasswordsThatEndSessions` covers V356: the plan (the Bursary refused), classes carried once
+  (the Bursary refused, a second carry refused), the fees refused to the office, an unknown item, an earlier session refused;
+  the Bursary carrying the fees (the office refused) and the history; a temporary password refused for anything but reading and
+  changing it, a new password ending the other session, one forgotten-password link in two minutes, a reset link ending every
+  session and the other links and refused a second time, and five failures locking the account with "locked" said.
+- `check.sql` properties 185–200 cover the rules on a brand-new database.
 
 ## Not done
 
 - **Document uploads accept PDF, JPEG or PNG up to 5 MB.** There is no virus scanning, as elsewhere on the portal.
 - **The move into 200 level (direct entry) is not built.** It is a decision for the University.
+- **The sign-in throttle by connection reads the first `X-Forwarded-For` entry**, as the portal's other public doors do; a
+  forged header escapes that throttle, though not the five-failure lock on each account. A portal-wide trusted-proxy rule is
+  the remedy, not a JUPEB one.
+- **A reset link sits in the email outbox's body (`platform.notice`)**, as for every portal reset. No portal screen shows a
+  notice's body (the outbox screen lists subjects only); only direct database access could read an unexpired link within its
+  hour.

@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 199
+\set EXPECTED 200
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6117,6 +6117,104 @@ BEGIN
                v_problems, r_notready, v_ready, v_changed, v_facts, r_note, v_after, v_stage, n_topics, r_topic, v_covered, r_range, v_total, v_out, v_complete, r_locked,
                v_rem1, v_rem2, n_rem, v_upload, n_before, n_after, v_iss_papers, v_admit IS NULL, v_tagged, r_tag, r_mock_ck, r_window,
                v_paper->'attempt'->>'score', v_paper->'attempt'->>'resultsHeld', n_topics_before, n_topics_after));
+END $$;
+
+-- ── 200. V356: the next JUPEB session is set up from the last item by item, only into what it does not have of its own — the classes before the lectures and lecturers that name them (a class matched by name), a lecturer who has left not carried, the calendar a year on and planned; the fees only by the Bursary, into a session on the University's calendar; every carry on the record; a lecturer's practice by topic counts their classes only ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); gone uuid := gen_random_uuid(); stays uuid := gen_random_uuid(); fr text := '2088/2089'; t text := '2089/2090'; msg text;
+        gov uuid; ka uuid; kb uuid; ka2 uuid; v_plan_before text; r_first text; r_exists text; r_fees_office text; r_no_session text; r_later text; r_nothing text;
+        v_classes jsonb; v_tt jsonb; v_lect jsonb; v_cal jsonb; v_fees jsonb; v_set jsonb; v_ca jsonb; v_pol jsonb;
+        v_slot_class text; v_lect_class text; v_first_day date; v_planned boolean; v_fee numeric; v_plan_after text; n_log int;
+        acct uuid; acct2 uuid; atp uuid; app1 uuid; app2 uuid; tst uuid; q uuid; att uuid; n_mine int; n_all int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKROLL356', 'Officer');
+        INSERT INTO iam.person (id, surname, given_names, ended_on, ended_reason) VALUES (gone, 'CHECKROLL356', 'Gone', current_date - 1, 'retired');
+        INSERT INTO iam.person (id, surname, given_names) VALUES (stays, 'CHECKROLL356', 'Stays');
+        gov := (SELECT id FROM jupeb.subject WHERE code = 'GOV');
+        -- 2088/2089 as a session set up in full
+        INSERT INTO jupeb.setting (session, application_prefix, screening_required, screening_venue, screening_starts_on, exam_month, updated_by)
+        VALUES (fr, 'JUPEB/APP', true, 'JUPEB Hall', date '2088-11-02', 'July 2089', who);
+        INSERT INTO jupeb.class (session, name, capacity, created_by) VALUES (fr, 'CHK A', 40, who) RETURNING id INTO ka;
+        INSERT INTO jupeb.class (session, name, capacity, created_by) VALUES (fr, 'CHK B', 40, who) RETURNING id INTO kb;
+        INSERT INTO jupeb.calendar_event (session, ord, starts_on, title, marker, for_students, created_by) VALUES (fr, 1, date '2088-09-25', 'Teaching commences 2088', 'TEACHING_STARTS', true, who);
+        INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, room_id, course_code)
+        VALUES (fr, 1, ka, gov, 2, '08:00', '09:00', (SELECT id FROM jupeb.room WHERE code = 'LR8'), 'GOV 001');
+        INSERT INTO jupeb.ca_component (session, code, title, max_score, created_by) VALUES (fr, 'TEST1', 'First test', 15, who);
+        INSERT INTO attendance.policy (context, session, min_percent, min_classes, updated_by) VALUES ('JUPEB', fr, 75, 5, who);
+        INSERT INTO attendance.instructor (context, session, subject_ref, class_ref, person_id, assigned_by) VALUES ('JUPEB', fr, gov, ka, stays, who), ('JUPEB', fr, gov, NULL, gone, who);
+        INSERT INTO jupeb.fee_setting (session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_by, updated_office)
+        VALUES (fr, 16000, 1200, 16000, 60, true, 'FIRST_INSTALMENT', 'Benue', who, 'bursar');
+        INSERT INTO jupeb.school_fee (session, category, indigene, amount, updated_by, updated_office) VALUES (fr, 'SCIENCE', false, 230000, who, 'bursar');
+        v_plan_before := (SELECT string_agg(item || '=' || state, ',' ORDER BY item) FROM jupeb.rollover_plan(fr, t));
+        -- the lectures and lecturers name classes the next session has not: the classes first
+        BEGIN PERFORM jupeb.rollover_carry(fr, t, 'TIMETABLE', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_first := split_part(msg, ':', 1); END;
+        v_classes := jupeb.rollover_carry(fr, t, 'CLASSES', who, 'jupeb');
+        BEGIN PERFORM jupeb.rollover_carry(fr, t, 'CLASSES', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_exists := split_part(msg, ':', 1); END;
+        v_tt := jupeb.rollover_carry(fr, t, 'TIMETABLE', who, 'jupeb');
+        v_lect := jupeb.rollover_carry(fr, t, 'LECTURERS', who, 'jupeb');
+        v_cal := jupeb.rollover_carry(fr, t, 'CALENDAR', who, 'jupeb');
+        v_set := jupeb.rollover_carry(fr, t, 'SETTINGS', who, 'jupeb');
+        v_ca := jupeb.rollover_carry(fr, t, 'CA_PARTS', who, 'jupeb');
+        v_pol := jupeb.rollover_carry(fr, t, 'ATTENDANCE_POLICY', who, 'jupeb');
+        ka2 := (SELECT id FROM jupeb.class WHERE session = t AND name = 'CHK A');
+        v_slot_class := (SELECT k.name FROM jupeb.timetable_slot s JOIN jupeb.class k ON k.id = s.class_id WHERE s.session = t);
+        v_lect_class := (SELECT coalesce(k.name, 'every class') FROM attendance.instructor i LEFT JOIN jupeb.class k ON k.id = i.class_ref WHERE i.session = t AND i.person_id = stays);
+        SELECT starts_on, planned INTO v_first_day, v_planned FROM jupeb.calendar_event WHERE session = t;
+        -- the fees: the Bursary's, into a session on the University's calendar; never the JUPEB Office's
+        BEGIN PERFORM jupeb.rollover_carry(fr, t, 'FEES', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_fees_office := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.carry_fees(fr, t, who, 'bursar');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_no_session := split_part(msg, ':', 1); END;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), t, date '2089-09-01', date '2090-08-31') ON CONFLICT (name) DO NOTHING;
+        v_fees := jupeb.carry_fees(fr, t, who, 'bursar');
+        v_fee := jupeb.school_fee_amount(t, 'SCIENCE', false);
+        BEGIN PERFORM jupeb.rollover_carry(t, fr, 'CLASSES', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_later := split_part(msg, ':', 1); END;
+        BEGIN PERFORM jupeb.rollover_carry('2090/2091', '2091/2092', 'CA_PARTS', who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_nothing := split_part(msg, ':', 1); END;
+        v_plan_after := (SELECT string_agg(item || '=' || state, ',' ORDER BY item) FROM jupeb.rollover_plan(fr, t));
+        n_log := (SELECT count(*) FROM jupeb.session_rollover WHERE from_session = fr AND to_session = t);
+        -- a lecturer's classes only: two students, one in class A, practising Government by topic
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check200@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acct;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, class_id, state)
+        VALUES (acct, fr, 'CHECK200/0001', 'CHECK', 'A', 'zz.check200@example.com', 'NON_SCIENCE', (SELECT id FROM jupeb.combination WHERE code = 'SC-001'), ka, 'STUDENT') RETURNING id INTO app1;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check200b@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acct2;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, class_id, state)
+        VALUES (acct2, fr, 'CHECK200/0002', 'CHECK', 'B', 'zz.check200b@example.com', 'NON_SCIENCE', (SELECT id FROM jupeb.combination WHERE code = 'SC-001'), kb, 'STUDENT') RETURNING id INTO app2;
+        INSERT INTO jupeb.practice_test (subject_id, title, duration_minutes, questions_per_attempt, attempts_allowed, show_answers, open) VALUES (gov, 'CHK topics', 10, 1, 5, true, true) RETURNING id INTO tst;
+        INSERT INTO jupeb.practice_question (test_id, ordinal, stem, option_a, option_b, answer, unit_id, topic_id)
+        SELECT tst, 1, 'Government is', 'x', 'y', 'A', u.id, (SELECT x.id FROM jupeb.unit_topic x WHERE x.unit_id = u.id ORDER BY x.ord LIMIT 1)
+          FROM jupeb.subject_unit u WHERE u.code = 'GOV 001' RETURNING id INTO q;
+        FOR att IN SELECT unnest(ARRAY[app1, app2]) LOOP
+            INSERT INTO jupeb.practice_attempt (test_id, application_id, number, question_ids, ends_at, total, submitted_at) VALUES (tst, att, 1, ARRAY[q], now() + interval '1 hour', 1, now())
+            RETURNING id INTO atp;
+            INSERT INTO jupeb.practice_answer (attempt_id, question_id, chosen, correct) VALUES (atp, q, 'A', true);
+        END LOOP;
+        n_mine := (SELECT sum(students) FROM jupeb.practice_topics_classes(fr, gov, ARRAY[ka]));
+        n_all := (SELECT sum(students) FROM jupeb.practice_topics_class(fr, gov, NULL));
+        RAISE EXCEPTION 'the V356 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V356: the next session from the last, item by item, never over its own; the classes first, matched by name; a lecturer who left not carried; the calendar a year on, planned; the fees the Bursary''s alone, into a session on the calendar; every carry recorded; a lecturer''s classes only',
+        v_plan_before = 'ATTENDANCE_POLICY=READY,CALENDAR=READY,CA_PARTS=READY,CLASSES=READY,FEES=READY,LECTURERS=READY,SETTINGS=READY,TIMETABLE=READY'
+        AND r_first = 'JUPEB_ROLLOVER_CLASSES_FIRST' AND (v_classes->>'carried')::int = 2 AND r_exists = 'JUPEB_ROLLOVER_EXISTS'
+        AND (v_tt->>'carried')::int = 1 AND v_slot_class = 'CHK A' AND (v_lect->>'carried')::int = 1 AND (v_lect->>'skipped')::int = 1 AND v_lect_class = 'CHK A'
+        AND (v_cal->>'carried')::int = 1 AND v_first_day = date '2089-09-25' AND v_planned
+        AND (v_set->>'carried')::int = 1 AND (v_ca->>'carried')::int = 1 AND (v_pol->>'carried')::int = 1
+        AND r_fees_office = 'JUPEB_ROLLOVER_FEES' AND r_no_session = 'JUPEB_ROLLOVER_NO_SESSION' AND (v_fees->>'carried')::int = 2 AND v_fee = 230000
+        AND r_later = 'JUPEB_ROLLOVER_LATER' AND r_nothing = 'JUPEB_ROLLOVER_NOTHING'
+        AND v_plan_after = 'ATTENDANCE_POLICY=DONE,CALENDAR=DONE,CA_PARTS=DONE,CLASSES=DONE,FEES=DONE,LECTURERS=DONE,SETTINGS=DONE,TIMETABLE=DONE' AND n_log = 8
+        AND n_mine = 1 AND n_all = 2,
+        format('before=%s first=%s classes=%s exists=%s tt=%s/%s lect=%s/%s cal=%s/%s/%s set=%s ca=%s pol=%s feesoffice=%s nosession=%s fees=%s/%s later=%s nothing=%s after=%s log=%s mine=%s all=%s',
+               v_plan_before, r_first, v_classes, r_exists, v_tt, v_slot_class, v_lect, v_lect_class, v_cal, v_first_day, v_planned, v_set, v_ca, v_pol,
+               r_fees_office, r_no_session, v_fees, v_fee, r_later, r_nothing, v_plan_after, n_log, n_mine, n_all));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -1389,6 +1389,100 @@ class JupebIT {
         }
     }
 
+    /** V356: the next session set up from the last item by item by the JUPEB Office (never over its own, never the fees), the fees
+     *  carried by the Bursary alone; and the access review — a temporary password opens the portal only to change it (on the
+     *  server), a new password ends the account's other sessions, a reset link is spent once and ends every session, and a
+     *  forgotten password is not mailed again and again */
+    @Test
+    @SuppressWarnings("unchecked")
+    void nextSessionFromTheLastAndPasswordsThatEndSessions() throws Exception {
+        String from = "2093/2094";
+        String to = "2094/2095";
+        String path = "/api/v1/jupeb/office/rollover";
+        try {
+            it.db(() -> {
+                jdbc.sql("INSERT INTO jupeb.class (session, name, capacity) VALUES (:s, :n, 30)").param("s", from).param("n", "ZZ Roll " + tag).update();
+                jdbc.sql("""
+                        INSERT INTO jupeb.fee_setting (session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_office)
+                        VALUES (:s, 17000, 1000, 17000, 70, true, 'FIRST_INSTALMENT', 'Benue', 'bursar')
+                        """).param("s", from).update();
+                return jdbc.sql("INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), :t, date '2094-09-01', date '2095-08-31') ON CONFLICT (name) DO NOTHING")
+                        .param("t", to).update();
+            });
+            assertThat(status(it.get(bursar, path + "?from=" + from + "&to=" + to))).isEqualTo(403);
+            Map<String, Object> plan = ok(it.get(office, path + "?from=" + from + "&to=" + to));
+            Map<String, String> states = new LinkedHashMap<>();
+            ((List<Map<String, Object>>) plan.get("items")).forEach(i -> states.put(String.valueOf(i.get("item")), String.valueOf(i.get("state"))));
+            assertThat(states).containsEntry("CLASSES", "READY").containsEntry("FEES", "READY").containsEntry("TIMETABLE", "NOTHING");
+            assertThat((List<?>) plan.get("windows")).hasSize(2);
+            Map<String, Object> carry = Map.of("from", from, "to", to);
+            assertThat(status(it.call(bursar, HttpMethod.POST, path + "/classes", carry))).isEqualTo(403);
+            Map<String, Object> carried = ok(it.call(office, HttpMethod.POST, path + "/classes", carry));
+            assertThat(((Map<String, Object>) carried.get("result")).get("carried")).isEqualTo(1);
+            assertThat(code(it.call(office, HttpMethod.POST, path + "/classes", carry))).isEqualTo("JUPEB_ROLLOVER_EXISTS");
+            assertThat(code(it.call(office, HttpMethod.POST, path + "/fees", carry))).isEqualTo("JUPEB_ROLLOVER_FEES");
+            assertThat(status(it.call(office, HttpMethod.POST, path + "/students", carry))).isEqualTo(404);
+            assertThat(code(it.call(office, HttpMethod.POST, path + "/classes", Map.of("from", to, "to", from)))).isEqualTo("JUPEB_ROLLOVER_LATER");
+            // the fees: the Bursary's alone, unchanged
+            assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry))).isEqualTo(403);
+            assertThat(ok(it.get(bursar, "/api/v1/jupeb/fees?session=" + to)).get("carryFrom")).isEqualTo(from);
+            Map<String, Object> fees = ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/carry", carry));
+            assertThat(fees.get("own")).isEqualTo(true);
+            assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) fees.get("rule")).get("application_fee")))).isEqualByComparingTo("17000");
+            plan = ok(it.get(office, path + "?from=" + from + "&to=" + to));
+            assertThat((List<Map<String, Object>>) plan.get("history")).extracting(h -> h.get("item")).contains("CLASSES", "FEES");
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM jupeb.session_rollover WHERE to_session = :t").param("t", to).update();
+                jdbc.sql("DELETE FROM jupeb.class WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
+                jdbc.sql("DELETE FROM jupeb.school_fee WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
+                jdbc.sql("DELETE FROM jupeb.fee_setting WHERE session IN (:f, :t)").param("f", from).param("t", to).update();
+                return jdbc.sql("DELETE FROM policy.academic_session WHERE name = :t").param("t", to).update();
+            });
+        }
+
+        // a temporary password opens the portal to read and to change it — nothing else, on the server
+        String appNo = "SC" + tag + "09";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Terver", "surname", "Iorliam", "sex", "Male", "phone", "08066661111", "dob", "3/4/2006",
+                "email", "zzv356." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+        UUID account = jdbc.sql("SELECT account_id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+        String first = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        String second = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        assertThat(status(it.get(first, "/api/v1/jupeb/me"))).isEqualTo(200);
+        assertThat(code(it.call(first, HttpMethod.POST, "/api/v1/jupeb/me/id-card", Map.of()))).isEqualTo("JUPEB_PASSWORD_CHANGE_FIRST");
+        // a new password ends the account's other sessions; this one stays
+        ok(it.call(first, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Review2026!a")));
+        assertThat(status(it.get(first, "/api/v1/jupeb/me"))).isEqualTo(200);
+        assertThat(status(it.get(second, "/api/v1/jupeb/me"))).isEqualTo(401);
+        assertThat(code(it.call(first, HttpMethod.POST, "/api/v1/jupeb/me/id-card", Map.of()))).isNotEqualTo("JUPEB_PASSWORD_CHANGE_FIRST");
+        // a forgotten password: one link in two minutes, the same answer
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/forgot", Map.of("identifier", appNo)))).isEqualTo(202);
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/forgot", Map.of("identifier", appNo)))).isEqualTo(202);
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.password_reset WHERE account_id = :a").param("a", account).query(Integer.class).single()).isEqualTo(1);
+        // a reset link: spent once; it ends every session and the account's other links
+        String raw = "zz-reset-" + tag.toLowerCase() + "-0123456789abcdef";
+        String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        it.db(() -> jdbc.sql("INSERT INTO jupeb.password_reset (account_id, token_hash, expires_at) VALUES (:a, :h, now() + interval '1 hour')").param("a", account).param("h", hash).update());
+        String third = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/reset", Map.of("token", raw, "password", "Review2026!b"))).get("token"));
+        assertThat(status(it.get(first, "/api/v1/jupeb/me"))).isEqualTo(401);
+        assertThat(status(it.get(third, "/api/v1/jupeb/me"))).isEqualTo(200);
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/reset", Map.of("token", raw, "password", "Review2026!c")))).isEqualTo("AUTH_RESET_TOKEN");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.password_reset WHERE account_id = :a AND used_at IS NULL").param("a", account).query(Integer.class).single()).isZero();
+        // five failures lock the account; the right password then is told so (not an error)
+        for (int i = 0; i < 5; i++) {
+            assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", "Wrong2026!" + i)))).isEqualTo("AUTH_BAD_CREDENTIALS");
+        }
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", "Review2026!b")))).isEqualTo("AUTH_LOCKED");
+    }
+
     private Map<String, Object> boardRow(UUID app) {
         return ((List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/board?session=" + session)).get("rows")).stream()
                 .filter(r -> app.toString().equals(String.valueOf(r.get("application_id")))).findFirst().orElseThrow();

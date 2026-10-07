@@ -67,9 +67,22 @@ class JupebPortalController {
     /** the signed-in candidate's application; a token whose subject is not a JUPEB application is answered as not found */
     private UUID me(Authentication auth) {
         UUID id = UUID.fromString(auth.getName());
-        boolean ok = jdbc.sql("SELECT true FROM jupeb.application WHERE id = :id").param("id", id).query(Boolean.class).optional().orElse(false);
-        if (!ok) throw new NotFound("JUPEB application", id);
+        Boolean mustChange = jdbc.sql("SELECT coalesce(acc.must_change_password, false) FROM jupeb.application a LEFT JOIN jupeb.account acc ON acc.id = a.account_id WHERE a.id = :id")
+                .param("id", id).query(Boolean.class).optional().orElse(null);
+        if (mustChange == null) throw new NotFound("JUPEB application", id);
+        /* V356: a temporary password (from the JUPEB Office or ICT Support) opens the portal to read and to choose a password — on the server, not only on the page */
+        if (mustChange && writing()) {
+            throw new DomainRuleViolation("JUPEB_PASSWORD_CHANGE_FIRST", "Choose your own password first: a temporary password only opens the portal to change it.",
+                    new DomainRuleViolation.Remedy("Change your password, then carry on.", "You"));
+        }
         return id;
+    }
+
+    /** whether this request changes anything, other than the password itself */
+    private static boolean writing() {
+        if (!(org.springframework.web.context.request.RequestContextHolder.getRequestAttributes() instanceof org.springframework.web.context.request.ServletRequestAttributes s)) return false;
+        jakarta.servlet.http.HttpServletRequest r = s.getRequest();
+        return !"GET".equalsIgnoreCase(r.getMethod()) && !"HEAD".equalsIgnoreCase(r.getMethod()) && !r.getRequestURI().endsWith("/api/v1/jupeb/me/password");
     }
 
     private String state(UUID app) {
@@ -363,6 +376,10 @@ class JupebPortalController {
         }
         jdbc.sql("UPDATE jupeb.account SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE id = :id")
                 .param("h", encoder.encode(body.newPassword())).param("id", acc.get("id")).update();
+        /* V356: every other session of the account ends with the old password; this one stays */
+        String sid = auth instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t ? t.getToken().getClaimAsString("sid") : null;
+        JupebView.endSessions(jdbc, (UUID) acc.get("id"), sid, "password changed");
+        jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE account_id = :a AND used_at IS NULL").param("a", acc.get("id")).update();
         return mine(auth);
     }
 

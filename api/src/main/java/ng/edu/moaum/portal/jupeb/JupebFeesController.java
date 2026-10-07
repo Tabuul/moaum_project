@@ -77,6 +77,10 @@ class JupebFeesController {
                 SELECT f.code, f.name, coalesce(fc.category, 'OTHER') AS category, fc.id IS NOT NULL AS stated
                   FROM ref.faculty f LEFT JOIN jupeb.fee_category fc ON fc.faculty_code = f.code ORDER BY f.name
                 """).query().listOfRows());
+        /* V356: a session without its own fees, after one with its own — the Bursary may carry those forward */
+        out.put("carryFrom", "*".equals(s) ? null : jdbc.sql("""
+                SELECT max(session) AS d FROM jupeb.fee_setting WHERE session <> '*' AND session < :s AND NOT EXISTS (SELECT 1 FROM jupeb.fee_setting x WHERE x.session = :s)
+                """).param("s", s).query().singleRow().get("d"));
         out.put("history", jdbc.sql("""
                 SELECT session, application_fee, checking_fee, acceptance_fee, first_percent, allow_full, activation, indigene_state, updated_at, updated_office FROM jupeb.fee_setting ORDER BY session DESC
                 """).query().listOfRows());
@@ -129,6 +133,22 @@ class JupebFeesController {
                     .param("office", ctx.actorOffice(), Types.VARCHAR).update();
         }
         return read("*".equals(s) ? null : s);
+    }
+
+    public record CarryIn(@NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String from, @NotBlank @Pattern(regexp = "^\\d{4}/\\d{4}$") String to) {
+    }
+
+    /** V356: a session's own fees and school fees carried, unchanged, into a later session without its own — the Bursary's act alone */
+    @PostMapping("/carry")
+    @PreAuthorize(BURSAR)
+    @Transactional
+    Map<String, Object> carry(@Valid @RequestBody CarryIn b) {
+        var ctx = AuditContextHolder.required();
+        String r = jdbc.sql("SELECT jupeb.carry_fees(:f, :t, :by, :o)::text").param("f", b.from()).param("t", b.to()).param("by", ctx.actorId())
+                .param("o", ctx.actorOffice(), Types.VARCHAR).query(String.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(read(b.to()));
+        out.put("result", JupebView.readJson(r));
+        return out;
     }
 
     public record Category(@NotBlank String faculty, @NotBlank @Pattern(regexp = "SCIENCE|OTHER") String category) {

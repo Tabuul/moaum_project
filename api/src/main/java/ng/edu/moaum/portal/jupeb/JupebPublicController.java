@@ -180,7 +180,8 @@ class JupebPublicController {
     /** the account behind an email or an application number, with its latest application */
     private Map<String, Object> accountOf(String identifier) {
         return jdbc.sql("""
-                SELECT acc.id, acc.email, acc.password_hash, acc.failed_attempts, acc.locked_until,
+                SELECT acc.id, acc.email, acc.password_hash, acc.failed_attempts, coalesce(acc.locked_until > now(), false) AS locked,
+                       to_char(acc.locked_until AT TIME ZONE 'Africa/Lagos', 'HH24:MI') AS locked_until_text,
                        acc.temp_expires_at IS NOT NULL AS temporary,
                        (acc.temp_expires_at IS NOT NULL AND (acc.temp_used_at IS NOT NULL OR acc.temp_expires_at <= now())) AS temporary_spent,
                        a.id AS application_id, a.application_no, a.surname, a.first_name, a.middle_name, a.phone
@@ -206,10 +207,10 @@ class JupebPublicController {
             throw badCredentials();
         }
         UUID account = (UUID) a.get("id");
-        OffsetDateTime lockedUntil = (OffsetDateTime) a.get("locked_until");
-        if (lockedUntil != null && lockedUntil.isAfter(OffsetDateTime.now())) {
+        /* V356: the time is compared in the database — the driver gives a java.sql.Timestamp, which a cast to OffsetDateTime refused */
+        if (Boolean.TRUE.equals(a.get("locked"))) {
             throw new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
-                    + lockedUntil.toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
+                    + a.get("locked_until_text") + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
         }
         if (!encoder.matches(body.password(), String.valueOf(a.get("password_hash")))) {
             int next = ((Number) a.get("failed_attempts")).intValue() + 1;
@@ -268,7 +269,12 @@ class JupebPublicController {
     @PostMapping("/forgot")
     ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body) {
         Map<String, Object> a = accountOf(body.identifier());
-        if (a != null) {
+        /* V356: one link every two minutes, five an hour, for an account — so an inbox is not flooded; the answer is the same either way */
+        boolean flooded = a != null && Boolean.TRUE.equals(jdbc.sql("""
+                SELECT count(*) FILTER (WHERE created_at > now() - interval '2 minutes') > 0 OR count(*) FILTER (WHERE created_at > now() - interval '1 hour') >= 5
+                  FROM jupeb.password_reset WHERE account_id = :a
+                """).param("a", a.get("id")).query(Boolean.class).single());
+        if (a != null && !flooded) {
             byte[] raw = new byte[24];
             random.nextBytes(raw);
             String token = HexFormat.of().formatHex(raw);
@@ -294,17 +300,24 @@ class JupebPublicController {
 
     @PostMapping("/reset")
     SignedIn reset(@Valid @RequestBody Reset body) {
-        Map<String, Object> r = jdbc.sql("SELECT id, account_id, expires_at, used_at FROM jupeb.password_reset WHERE token_hash = :h")
+        /* V356: whether the link is spent or lapsed is decided in the database (a cast of its timestamp failed every reset before) */
+        Map<String, Object> r = jdbc.sql("SELECT id, account_id, used_at IS NOT NULL OR expires_at <= now() AS spent FROM jupeb.password_reset WHERE token_hash = :h")
                 .param("h", sha256(body.token().trim())).query().listOfRows().stream().findFirst().orElse(null);
-        if (r == null || r.get("used_at") != null || ((OffsetDateTime) r.get("expires_at")).isBefore(OffsetDateTime.now())) {
+        if (r == null || Boolean.TRUE.equals(r.get("spent"))) {
             throw new DomainRuleViolation("AUTH_RESET_TOKEN", "This reset link has expired or was already used.",
                     new DomainRuleViolation.Remedy("Ask for a new one from the JUPEB sign-in page; it is good for an hour and used once.", "You"));
         }
         String hash = encoder.encode(body.password());
         UUID account = (UUID) r.get("account_id");
         AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB password reset", null, null), () -> tx.execute(st -> {
-            jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE id = :id").param("id", r.get("id")).update();
+            /* V356: the link is spent once — a second use racing the first finds it spent; the account's other links and every session end */
+            if (jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE id = :id AND used_at IS NULL").param("id", r.get("id")).update() == 0) {
+                throw new DomainRuleViolation("AUTH_RESET_TOKEN", "This reset link has expired or was already used.",
+                        new DomainRuleViolation.Remedy("Ask for a new one from the JUPEB sign-in page; it is good for an hour and used once.", "You"));
+            }
+            jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE account_id = :a AND used_at IS NULL").param("a", account).update();
             jdbc.sql("UPDATE jupeb.account SET password_hash = :h, failed_attempts = 0, locked_until = NULL, must_change_password = false, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE id = :id").param("h", hash).param("id", account).update();
+            JupebView.endSessions(jdbc, account, null, "password reset");
             return null;
         }));
         String email = jdbc.sql("SELECT email FROM jupeb.account WHERE id = :id").param("id", account).query(String.class).single();
