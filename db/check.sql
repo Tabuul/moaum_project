@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 194
+\set EXPECTED 195
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5730,6 +5730,71 @@ BEGIN
         format('all=%s class=%s notified=%s mine=%s other=%s visible=%s/%s versioned=%s image=%s old=%s card=%s valid=%s codes=%s/%s revoked=%s genuine=%s',
                n_all, n_class, n_notified, n_mine, n_other, v_visible, v_hidden, q2 <> q1, v_img_new, v_old_stem, r_card, facts->>'validFor', code1, code2,
                v1->>'revoked', v2->>'genuine'));
+END $$;
+
+-- ── 195. V350: a JUPEB withdrawal opens a refund claim with the fees paid on the portal (none when nothing was paid); the Bursary raises a refund only once the candidate gave the account, through finance.refund, never beyond what was paid on the payment in all, maker and checker different; a claim with a refund raised is not declined; the paid refund is on the record; the day book names every JUPEB fee; practice results weakest first; a notice to one student reaches no other ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); ses text := jupeb.current_session(); app uuid; other uuid; claim uuid; ref text;
+        n_claim_other int; r_details text; r_over text; r_same text; r_decline text; rf uuid; v_status text; v_paid numeric; n_ev int; v_label text; msg text;
+        t uuid; att uuid; v_first uuid; n_reach int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (maker, 'CHECKREFUND350', 'Maker'), (checker, 'CHECKREFUND350', 'Checker');
+        PERFORM jupeb.import_old_portal_students(jsonb_build_array(
+                    jsonb_build_object('row', 2, 'appNo', 'S0CHECK195001', 'firstName', 'Ada', 'surname', 'Check', 'sex', 'Female', 'phone', '08011112222', 'dob', '1/2/2005',
+                                       'email', 'zz.check195a@example.com', 'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345'),
+                    jsonb_build_object('row', 3, 'appNo', 'S0CHECK195002', 'firstName', 'Ben', 'surname', 'Check', 'sex', 'Male', 'phone', '08011113333', 'dob', '1/3/2005',
+                                       'email', 'zz.check195b@example.com', 'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')), ses, true, true, 'check.xlsx', maker);
+        app := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK195001');
+        other := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK195002');
+        INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at, confirmed_at, channel)
+        VALUES (app, 'ACCEPTANCE', 'CHECK195-ACC', 75000, ses, now(), now(), 'Bank') RETURNING reference INTO ref;
+        -- the withdrawal opens the claim; one with nothing paid opens none
+        UPDATE jupeb.application SET state = 'WITHDRAWN', withdrawn_at = now() WHERE id IN (app, other);
+        claim := (SELECT id FROM jupeb.refund_claim WHERE application_id = app);
+        n_claim_other := (SELECT count(*) FROM jupeb.refund_claim WHERE application_id = other);
+        BEGIN PERFORM jupeb.propose_claim_refund(claim, ref, 50000, 'Withdrawal');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_details := split_part(msg, ':', 1); END;
+        UPDATE jupeb.refund_claim SET bank_name = 'First Bank', account_name = 'Ada Check', account_number = '3012345678', details_at = now() WHERE id = claim;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        rf := jupeb.propose_claim_refund(claim, ref, 50000, 'Withdrawal before lectures');
+        BEGIN PERFORM jupeb.propose_claim_refund(claim, ref, 30000, 'The rest');
+        EXCEPTION WHEN check_violation THEN r_over := 'REFUSED'; END;
+        BEGIN PERFORM jupeb.decline_refund_claim(claim, 'Not refundable', maker);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_decline := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.approve_refund(rf);
+        EXCEPTION WHEN check_violation THEN r_same := 'REFUSED'; END;
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund(rf);
+        PERFORM finance.pay_refund(rf);
+        v_status := jupeb.refund_claim_state(claim)->>'status';
+        v_paid := (jupeb.refund_claim_state(claim)->>'paid')::numeric;
+        n_ev := (SELECT count(*) FROM jupeb.application_event WHERE application_id = app AND kind IN ('REFUND_CLAIM_OPENED', 'REFUND_PROPOSED', 'REFUND_PAID'));
+        v_label := (SELECT purpose FROM finance.day_book(current_date, current_date) WHERE reference = 'CHECK195-ACC');
+        -- practice results, and a notice to one student
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        UPDATE jupeb.application SET state = 'STUDENT', withdrawn_at = NULL WHERE id = other;
+        PERFORM jupeb.register_subjects(other, maker, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        t := (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = other ORDER BY subject_id LIMIT 1);
+        INSERT INTO jupeb.practice_test (subject_id, title, questions_per_attempt, attempts_allowed, open) VALUES (t, 'Check 195', 1, 1, true) RETURNING id INTO t;
+        PERFORM jupeb.practice_upload(t, jsonb_build_array(jsonb_build_object('row', 2, 'question', 'Q?', 'a', '1', 'b', '2', 'answer', 'B')), false);
+        att := jupeb.practice_start(other, t);
+        PERFORM jupeb.practice_answer_set(other, att, (SELECT id FROM jupeb.practice_question WHERE test_id = t), 'A');
+        PERFORM jupeb.practice_submit(other, att);
+        v_first := (SELECT application_id FROM jupeb.practice_results(ses) ORDER BY average, name LIMIT 1);
+        n_reach := jupeb.announcement_reach(ses, 'STUDENT', other::text);
+        RAISE EXCEPTION 'the V350 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V350: a withdrawal opens a refund claim (none when nothing was paid); the Bursary refunds through finance.refund only to the account given, never beyond what was paid, maker and checker apart, a raised claim not declined; the day book names the fee; practice results weakest first; a notice to one student reaches one',
+        claim IS NOT NULL AND n_claim_other = 0 AND r_details = 'JUPEB_REFUND_DETAILS' AND r_over = 'REFUSED' AND r_decline = 'JUPEB_REFUND_RAISED' AND r_same = 'REFUSED'
+        AND v_status = 'REFUND_PAID' AND v_paid = 50000 AND n_ev = 3 AND v_label = 'JUPEB acceptance fee' AND v_first = other AND n_reach = 1,
+        format('claim=%s other=%s details=%s over=%s decline=%s same=%s status=%s paid=%s events=%s label=%s first=%s reach=%s',
+               claim IS NOT NULL, n_claim_other, r_details, r_over, r_decline, r_same, v_status, v_paid, n_ev, v_label, v_first = other, n_reach));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

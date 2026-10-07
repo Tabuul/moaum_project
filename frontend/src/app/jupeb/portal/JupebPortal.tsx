@@ -32,7 +32,7 @@ import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, WEEKDAYS, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
   SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Announcement, type Candidate, type Combination,
-  type Doc, type FeeRef, type PracticePaper, type Slot, type StepProblem,
+  type Doc, type FeeRef, type PracticePaper, type RefundClaim, type Slot, type StepProblem,
 } from "@/lib/jupeb";
 
 type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "results" | "documents" | "idcard"
@@ -157,7 +157,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
     if (guided) return <><Profile me={me} /><Guided me={me} act={act} /></>;
     switch (tab) {
       case "admission": return <Admission me={me} reload={load} />;
-      case "payments": return <Payments me={me} reload={load} />;
+      case "payments": return <Payments me={me} reload={load} act={act} />;
       case "subjects": return admitted ? <Subjects me={me} act={act} /> : notYet("Subject registration", "once you are admitted");
       case "timetable": return studying ? <Timetable me={me} /> : notYet("The timetable", "once your studentship is activated by the school fee");
       case "practice": return admitted ? <Practice /> : notYet("Practice tests", "once you are admitted");
@@ -173,7 +173,9 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
   return (
     <Shell route={routeOf(tab)} me={shellMe}>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn">{`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.`}</Note> : null}
+      {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn"
+        action={me.refundClaim && tab !== "payments" ? <Btn kind="ghost" onClick={() => setTab("payments")}>{me.refundClaim.state.status === "AWAITING_DETAILS" ? "Give your account" : "See your refund"}</Btn> : undefined}>
+        {`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.${me.refundClaim ? " Your refund claim is with the Bursary." : ""}`}</Note> : null}
       {tab !== "attendance" ? <AttendanceWarning me={me} onOpen={() => setTab("attendance")} /> : null}
       {tab !== "documents" && !guided && me.documents.some((d) => d.status === "REPLACEMENT_REQUIRED" || d.status === "REJECTED") ? (
         <Note kind="bad" title="A document must be uploaded again" action={<Btn kind="ghost" onClick={() => setTab("documents")}>Open Documents</Btn>}>
@@ -954,8 +956,66 @@ function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Cand
   );
 }
 
-function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }) {
+/* ── V350: the refund claim a withdrawal opened: the fees paid, the account to pay into, the Bursary's decision ── */
+
+const CLAIM_WORDS: Record<string, [string, "ok" | "info" | "bad" | "grey" | "warn", string]> = {
+  AWAITING_DETAILS: ["Give your account", "warn", "Give the bank account a refund would be paid into; the Bursary then decides."],
+  WITH_BURSARY: ["With the Bursary", "info", "The Bursary is considering your claim under its rules."],
+  REFUND_PROPOSED: ["Refund being approved", "info", "The Bursary has raised a refund; a second officer approves it before it is paid."],
+  REFUND_APPROVED: ["Refund approved", "info", "Your refund is approved and will be paid into the account you gave."],
+  REFUND_PAID: ["Refund paid", "ok", "Your refund has been paid into the account you gave."],
+  DECLINED: ["Declined", "bad", "The Bursary decided not to refund your fees."],
+};
+const REFUND_STATE: Record<string, string> = { PROPOSED: "Awaiting approval", APPROVED: "Approved, to be paid", PAID: "Paid", REJECTED: "Not approved" };
+
+function RefundClaimPanel({ claim, act }: { claim: RefundClaim; act: Act }) {
+  const locked = !!claim.declined_at || claim.refunds.some((r) => r.state !== "REJECTED");
+  const [f, setF] = useState({ bankName: claim.bank_name ?? "", accountName: claim.account_name ?? "", accountNumber: "" });
+  const [busy, setBusy] = useState(false);
+  const w = CLAIM_WORDS[claim.state.status] ?? [claim.state.status, "grey", ""];
+  async function save() {
+    setBusy(true);
+    try {
+      if (await act("/api/v1/jupeb/me/refund-details", "PUT", { bankName: f.bankName.trim(), accountName: f.accountName.trim(), accountNumber: f.accountNumber.trim() })) {
+        notify("Your account is with the Bursary for the refund decision.");
+        setF({ ...f, accountNumber: "" });
+      }
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel title="Refund of your JUPEB fees" right={<Pil kind={w[1]}>{w[0]}</Pil>}>
+      <PBody>
+        <p className="sub2">{w[2]} Any refund is the Bursary&rsquo;s decision under its own rules; you are told of it by email and here.</p>
+        {claim.declined_reason ? <Note kind="bad" title="The Bursary's reason">{claim.declined_reason}</Note> : null}
+        <DTable noPrint pageSize={0} cols={["Fee paid", "Reference", "Amount|num", "Paid on"]} rows={claim.payments.map((p) => [FEE_KIND[p.kind] ?? p.kind, p.reference, naira(p.amount), day(p.paidOn)])} />
+        {claim.refunds.length ? (
+          <DTable noPrint pageSize={0} cols={["Refund", "Against", "Amount|num", "Status"]} rows={claim.refunds.map((r) => [r.reference, r.source, naira(r.amount),
+            <Pil key="s" kind={r.state === "PAID" ? "ok" : r.state === "REJECTED" ? "grey" : "info"}>{REFUND_STATE[r.state] ?? r.state}</Pil>])} />
+        ) : null}
+        {locked ? (
+          claim.account_number ? <p className="sub2 mt-1">{`Paid into: ${claim.bank_name} · ${claim.account_name} · ${claim.account_number}`}</p> : null
+        ) : (
+          <>
+            <div className="eyebrow mt-2">The account a refund is paid into{claim.account_number ? ` (now ${claim.bank_name} · ${claim.account_number})` : ""}</div>
+            <div className="grid grid--3">
+              <Field id="rf-bank" label="Bank" required><input id="rf-bank" className="ctl" maxLength={120} value={f.bankName} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></Field>
+              <Field id="rf-name" label="Account name" required hint="As the bank holds it"><input id="rf-name" className="ctl" maxLength={200} value={f.accountName} onChange={(e) => setF({ ...f, accountName: e.target.value })} /></Field>
+              <Field id="rf-num" label="Account number" required hint="Ten digits (NUBAN)" error={f.accountNumber && !/^\d{10}$/.test(f.accountNumber) ? "Ten digits" : undefined}>
+                <input id="rf-num" className="ctl" inputMode="numeric" maxLength={10} autoComplete="off" value={f.accountNumber} onChange={(e) => setF({ ...f, accountNumber: e.target.value.replace(/\D/g, "") })} /></Field>
+            </div>
+            <div className="row"><Btn kind="primary" disabled={busy || f.bankName.trim().length < 2 || f.accountName.trim().length < 2 || !/^\d{10}$/.test(f.accountNumber)} onClick={() => void save()}>
+              {busy ? "Saving…" : claim.account_number ? "Change the account" : "Give the account"}</Btn></div>
+          </>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+function Payments({ me, reload, act }: { me: Candidate; reload: () => Promise<void>; act: Act }) {
   const f = me.fees;
+  /* V350: a withdrawn candidate's refund claim comes first */
+  const claim = me.refundClaim ? <RefundClaimPanel claim={me.refundClaim} act={act} /> : null;
   const admitted = !!f && ADMITTED.has(me.state);
   const screeningFirst = me.screeningSetting.screening_required && me.state === "ADMITTED" && me.screening_state !== "CLEARED";
   const rule = me.feeRule;
@@ -964,6 +1024,7 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
   if (me.legacy_source && !oldOnRecord) {
     return (
       <div className="stack">
+        {claim}
         <Note kind="info" title="Your fees were handled on the old portal">{`You were registered on the old portal (${me.legacy_ref ?? me.application_no}). Fees you paid there are kept by the Bursary; if you are told a balance is owed here, the JUPEB Office will guide you.`}</Note>
         {me.references.length ? (
           <Panel title="Payments made here">
@@ -977,6 +1038,7 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
   }
   return (
     <div className="stack">
+      {claim}
       {me.legacy_source && oldOnRecord ? <Note kind="info" title="Your old-portal payments are on your record">The payments you made on the old portal are listed below as &ldquo;Old portal&rdquo;. Anything still owed is paid here.</Note> : null}
       <Panel title="Payment summary">
         <PBody>

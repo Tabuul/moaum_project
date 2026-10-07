@@ -1175,7 +1175,9 @@ class JupebOfficeController {
         out.put("announcements", jdbc.sql("""
                 SELECT n.id, n.session, n.audience, n.audience_ref, n.title, n.body, n.pinned, n.send_email, n.send_sms, n.expires_on, n.published_at, n.notified,
                        n.withdrawn_at, n.withdrawn_reason, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = n.created_by) AS created_by_name,
-                       CASE n.audience WHEN 'CLASS' THEN (SELECT k.name FROM jupeb.class k WHERE k.id::text = n.audience_ref) ELSE n.audience_ref END AS audience_name,
+                       CASE n.audience WHEN 'CLASS' THEN (SELECT k.name FROM jupeb.class k WHERE k.id::text = n.audience_ref)
+                                       WHEN 'STUDENT' THEN (SELECT upper(x.surname) || ', ' || x.first_name || ' (' || x.application_no || ')' FROM jupeb.application x WHERE x.id::text = n.audience_ref)
+                                       ELSE n.audience_ref END AS audience_name,
                        (SELECT count(*) FROM jupeb.application a WHERE jupeb.audience_reaches(n.session, n.audience, n.audience_ref, a)) AS reach,
                        (SELECT count(*) FROM jupeb.announcement_read r WHERE r.announcement_id = n.id) AS reads
                   FROM jupeb.announcement n WHERE n.session = :s
@@ -1231,6 +1233,52 @@ class JupebOfficeController {
                 .param("by", actor()).param("r", body.reason().trim()).param("id", id).update();
         if (n == 0) throw new NotFound("live announcement", id);
         return Map.of("id", id, "withdrawn", true);
+    }
+
+    /* ── V350: practice results, student by student, and advice to one student ── */
+
+    /** each student who practised: tests, attempts, average and best, the last attempt, each subject's average — weakest first */
+    @GetMapping("/practice-results")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> practiceResults(@RequestParam(required = false) String session, @RequestParam(required = false) UUID classId) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("sessions", sessions());
+        out.put("classes", jdbc.sql("SELECT id, name FROM jupeb.class WHERE session = :s ORDER BY name").param("s", s).query().listOfRows());
+        out.put("students", jdbc.sql("""
+                SELECT r.application_id, r.application_no, r.name, r.class_name, r.combination_code, r.tests, r.attempts, r.average, r.best, r.last_at,
+                       r.subjects::text AS subjects, r.advised_at
+                  FROM jupeb.practice_results(:s) r JOIN jupeb.application a ON a.id = r.application_id
+                 WHERE (CAST(:k AS uuid) IS NULL OR a.class_id = :k)
+                 ORDER BY r.average, r.name
+                """).param("s", s).param("k", classId, Types.OTHER).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("subjects", JupebView.readJson(String.valueOf(r.get("subjects"))));
+                    return m;
+                }).toList());
+        return out;
+    }
+
+    public record AdviceIn(@NotBlank @Size(min = 3, max = 160) String title, @NotBlank @Size(min = 3, max = 5000) String body, Boolean email, Boolean sms) {
+    }
+
+    /** a notice to one student — on their dashboard at once, by email and text when asked — kept like any announcement */
+    @PostMapping("/applications/{id}/advise")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> advise(@PathVariable UUID id, @Valid @RequestBody AdviceIn b) {
+        requireApp(id);
+        String s = jdbc.sql("SELECT session FROM jupeb.application WHERE id = :id").param("id", id).query(String.class).single();
+        UUID n = jdbc.sql("""
+                INSERT INTO jupeb.announcement (session, audience, audience_ref, title, body, send_email, send_sms, created_by, created_office)
+                VALUES (:s, 'STUDENT', :r, :t, :b, :e, :m, :by, nullif(current_setting('moaum.actor_office', true), '')) RETURNING id
+                """).param("s", s).param("r", id.toString()).param("t", b.title().trim()).param("b", b.body().trim()).param("e", Boolean.TRUE.equals(b.email()))
+                .param("m", Boolean.TRUE.equals(b.sms())).param("by", actor()).query(UUID.class).single();
+        int notified = jdbc.sql("SELECT jupeb.announcement_notify(:n)").param("n", n).query(Integer.class).single();
+        jdbc.sql("SELECT jupeb.app_event(:a, 'PRACTICE_ADVICE', :t)").param("a", id).param("t", "Advised by the JUPEB Office: " + b.title().trim()).query().listOfRows();
+        return Map.of("id", n, "notified", notified);
     }
 
     /** the active students of a session (or a class) and their identity cards: the live card's code, or none yet */

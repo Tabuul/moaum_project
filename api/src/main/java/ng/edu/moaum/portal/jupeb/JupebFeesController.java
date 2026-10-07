@@ -20,6 +20,7 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -169,6 +170,65 @@ class JupebFeesController {
     }
 
     public record Manual(@NotBlank @Size(max = 120) String channel, @NotBlank @Size(max = 600) String reason) {
+    }
+
+    /* ── V350: the refund claims of withdrawn JUPEB candidates, decided by the Bursary through its own refund workflow ── */
+
+    /** the claims, with the payments, the refunds raised on them and where each stands; the account number whole only to the Bursary */
+    @GetMapping("/refund-claims")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> refundClaims(Authentication auth, @RequestParam(required = false) String status) {
+        boolean bursary = auth.getAuthorities().stream().anyMatch(g -> Set.of("OFFICE_bursar", "OFFICE_super").contains(g.getAuthority()));
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT c.id, c.application_id, a.application_no, upper(a.surname) || ', ' || a.first_name || coalesce(' ' || a.middle_name, '') AS name, a.session,
+                       a.email, a.phone, c.opened_at, c.payments::text AS payments, c.paid_total, c.bank_name, c.account_name, c.account_number, c.details_at,
+                       c.declined_at, c.declined_reason, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = c.declined_by) AS declined_by_name,
+                       jupeb.refund_claim_state(c.id)::text AS state,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'reference', f.reference, 'source', x.reference, 'amount', f.amount, 'state', f.state,
+                                                                     'proposedAt', f.proposed_at, 'approvedAt', f.approved_at, 'paidAt', f.paid_at, 'rejectedWhy', f.rejected_why)
+                                                  ORDER BY f.proposed_at), '[]'::jsonb)::text
+                          FROM jupeb.refund_claim_refund x JOIN finance.refund f ON f.id = x.refund_id WHERE x.claim_id = c.id) AS refunds
+                  FROM jupeb.refund_claim c JOIN jupeb.application a ON a.id = c.application_id
+                 ORDER BY c.declined_at IS NOT NULL, c.opened_at DESC LIMIT 500
+                """).query().listOfRows();
+        String want = status == null || status.isBlank() ? null : status.trim().toUpperCase();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>(r);
+            m.put("state", JupebView.readJson(String.valueOf(r.get("state"))));
+            m.put("payments", JupebView.readJson(String.valueOf(r.get("payments"))));
+            m.put("refunds", JupebView.readJson(String.valueOf(r.get("refunds"))));
+            Object n = r.get("account_number");
+            if (!bursary && n != null) m.put("account_number", "••••••" + String.valueOf(n).substring(6));
+            if (want != null && !want.equals(String.valueOf(((Map<?, ?>) m.get("state")).get("status")))) continue;
+            out.add(m);
+        }
+        return out;
+    }
+
+    public record ClaimRefundIn(@NotBlank @Size(max = 60) String reference, @NotNull @DecimalMin("0.01") BigDecimal amount, @NotBlank @Size(min = 5, max = 400) String reason) {
+    }
+
+    /** a refund raised on a claim against one of the candidate's payments: it then waits in Refunds for a second officer's approval */
+    @PostMapping("/refund-claims/{id}/refunds")
+    @PreAuthorize(BURSAR)
+    @Transactional
+    Map<String, Object> proposeClaimRefund(@PathVariable java.util.UUID id, @Valid @RequestBody ClaimRefundIn b) {
+        java.util.UUID refund = jdbc.sql("SELECT jupeb.propose_claim_refund(:c, :r, :a, :w)").param("c", id).param("r", b.reference()).param("a", b.amount())
+                .param("w", b.reason()).query(java.util.UUID.class).single();
+        return jdbc.sql("SELECT id, reference, amount, state FROM finance.refund WHERE id = :id").param("id", refund).query().singleRow();
+    }
+
+    public record DeclineIn(@NotBlank @Size(min = 5, max = 1000) String reason) {
+    }
+
+    @PostMapping("/refund-claims/{id}/decline")
+    @PreAuthorize(BURSAR)
+    @Transactional
+    Map<String, Object> declineClaim(@PathVariable java.util.UUID id, @Valid @RequestBody DeclineIn b) {
+        jdbc.sql("SELECT jupeb.decline_refund_claim(:c, :r, :by)").param("c", id).param("r", b.reason()).param("by", AuditContextHolder.required().actorId()).query().listOfRows();
+        return Map.of("id", id, "declined", true);
     }
 
     /** a payment made at the bank, confirmed by the Bursar from the teller: the reason is kept on the spine */

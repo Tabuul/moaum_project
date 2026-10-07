@@ -75,6 +75,9 @@ export interface Candidate {
   attendanceStanding: AttendanceStanding[];
   /** V349: the JUPEB Office's notices that reach the candidate and are not yet opened */
   unreadAnnouncements?: number;
+  /** V350: the refund claim a withdrawal opened; the student's practice attempts (the office's view) */
+  refundClaim?: RefundClaim | null;
+  practice?: PracticeTry[];
 }
 
 export const STATE_LABEL: Record<string, string> = {
@@ -119,6 +122,8 @@ export const EVENT_LABEL: Record<string, string> = {
   IMPORTED: "Uploaded from the old portal", COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
   CONTACT_UPDATED: "Contact details updated", LEGACY_PAYMENT: "Old-portal payment put on the record", PASSWORD_RESET: "Password reset by ICT Support",
   ID_CARD_ISSUED: "Identity card issued", ID_CARD_REPLACED: "Identity card replaced",
+  REFUND_CLAIM_OPENED: "Refund claim opened with the Bursary", REFUND_DETAILS_GIVEN: "Account for a refund given", REFUND_PROPOSED: "Refund raised by the Bursary",
+  REFUND_DECLINED: "Refund claim declined by the Bursary", REFUND_PAID: "Refund paid by the Bursary", PRACTICE_ADVICE: "Advised on practice tests",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -229,8 +234,16 @@ export const PAPER_KIND: Record<string, string> = {
 /** V349: whom a notice of the JUPEB Office reaches */
 export const AUDIENCE: Record<string, string> = {
   ALL: "Everyone in the session", APPLICANTS: "Applicants not yet admitted", ADMITTED: "Everyone admitted", STUDENTS: "Active students",
-  CLASS: "One class", COMBINATION: "One subject combination", PROGRAMME: "One programme",
+  CLASS: "One class", COMBINATION: "One subject combination", PROGRAMME: "One programme", STUDENT: "One student",
 };
+/** V350: the refund claim a withdrawal opens, decided by the Bursary through its own refund workflow */
+export interface RefundClaim {
+  id: string; opened_at: string; payments: { reference: string; kind: string; amount: number; channel: string | null; paidOn: string }[]; paid_total: number;
+  bank_name: string | null; account_name: string | null; account_number: string | null; details_at: string | null; declined_at: string | null; declined_reason: string | null;
+  state: { status: string; raised: number; paid: number };
+  refunds: { reference: string; source: string; amount: number; state: string; proposedAt: string; paidAt: string | null }[];
+}
+export interface PracticeTry { title: string; code: string; subject: string; number: number; submitted_at: string; score: number; total: number; percentage: number }
 export interface Announcement { id: string; title: string; body: string; pinned: boolean; published_at: string; expires_on: string | null; read: boolean }
 /** the next two sessions after one — where an admission may be deferred to */
 export const laterSessions = (session: string) => {

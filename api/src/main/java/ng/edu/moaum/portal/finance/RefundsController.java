@@ -52,12 +52,14 @@ class RefundsController {
         return jdbc.sql("""
                 SELECT r.id, r.reference, r.student_id, r.payer, r.reason, r.amount, r.bank_name, r.account_name, r.account_last4,
                        r.state, r.proposed_at, r.approved_at, r.rejected_why, r.paid_at, r.source_reference,
-                       coalesce(st.matric_no, st.admission_no) AS number,
+                       coalesce(st.matric_no, st.admission_no, ja.application_no) AS number,
                        pp.surname || ', ' || pp.given_names AS proposed_by_name,
                        CASE WHEN ap.id IS NULL THEN NULL ELSE ap.surname || ', ' || ap.given_names END AS approved_by_name,
                        r.proposed_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS proposed_by_me
                   FROM finance.refund r
                   LEFT JOIN people.student st ON st.id = r.student_id
+                  LEFT JOIN jupeb.fee_reference jf ON jf.reference = r.source_reference
+                  LEFT JOIN jupeb.application ja ON ja.id = jf.application_id
                   LEFT JOIN iam.person pp ON pp.id = r.proposed_by
                   LEFT JOIN iam.person ap ON ap.id = r.approved_by
                  WHERE (:state::text IS NULL OR r.state = :state)
@@ -72,8 +74,9 @@ class RefundsController {
     Map<String, Object> transaction(@RequestParam String reference) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT s.kind, s.amount, s.confirmed_at, s.channel, s.receipt_no,
-                       coalesce(stu.surname || ', ' || stu.other_names, cand.surname || ', ' || cand.other_names) AS payer,
-                       coalesce(stu.matric_no, stu.admission_no, app.application_no) AS number,
+                       coalesce(stu.surname || ', ' || stu.other_names, cand.surname || ', ' || cand.other_names,
+                                upper(ja.surname) || ', ' || ja.first_name || coalesce(' ' || ja.middle_name, '')) AS payer,
+                       coalesce(stu.matric_no, stu.admission_no, app.application_no, ja.application_no) AS number,
                        stu.id AS student_id, pr.purpose
                   FROM finance.reference_state(:r) s
                   LEFT JOIN finance.payment_reference pr ON pr.reference = upper(btrim(:r))
@@ -81,6 +84,8 @@ class RefundsController {
                   LEFT JOIN admissions.fee_reference fr ON fr.reference = upper(btrim(:r))
                   LEFT JOIN admissions.application app ON app.id = fr.application_id
                   LEFT JOIN admissions.candidate cand ON cand.id = app.candidate_id
+                  LEFT JOIN jupeb.fee_reference jf ON jf.reference = upper(btrim(:r))
+                  LEFT JOIN jupeb.application ja ON ja.id = jf.application_id
                  WHERE s.amount IS NOT NULL
                 """).param("r", reference).query().listOfRows();
         if (rows.isEmpty()) {

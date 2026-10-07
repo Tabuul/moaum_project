@@ -832,6 +832,112 @@ class JupebIT {
         assertThat(ok(it.anon(HttpMethod.GET, "/api/v1/verify/jupeb/" + fresh, null)).get("genuine")).isEqualTo(true);
     }
 
+    /** V350: a withdrawal opens a refund claim the Bursary decides through its own maker–checker refunds; practice results and advice */
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void withdrawalRefundsThroughTheBursaryAndPracticeResults() {
+        String appNo = "S8" + tag + "05";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Mnena", "surname", "Ityavyar", "sex", "Female", "phone", "08077776666", "dob", "3/4/2006",
+                "email", "zzv350." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        String temporary = String.valueOf(((List<Map<String, Object>>) done.get("credentials")).get(0).get("password"));
+        UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+        String token = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", temporary))).get("token"));
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "Refund2026!")));
+        it.db(() -> jdbc.sql("SELECT jupeb.register_subjects(:a, :a, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'))").param("a", app).query(Integer.class).single());
+        Map<String, Object> pay = new LinkedHashMap<>();
+        pay.put("rows", List.of(oldRow(2, "appNo", appNo, "reference", "OLD-" + tag + "-R1", "purpose", "School Fees 1st Instalment", "amount", "75000", "date", "12/11/2024", "status", "Success")));
+        pay.put("dayFirst", true);
+        pay.put("commit", true);
+        pay.put("fileName", "payments.xlsx");
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay));
+        String paid = jdbc.sql("SELECT reference FROM jupeb.fee_reference WHERE application_id = :a AND confirmed_at IS NOT NULL").param("a", app).query(String.class).single();
+
+        // practice results, weakest first, and the office's advice to one student
+        UUID subject = jdbc.sql("SELECT sr.subject_id FROM jupeb.subject_registration sr JOIN jupeb.subject s ON s.id = sr.subject_id WHERE sr.application_id = :a ORDER BY s.code LIMIT 1")
+                .param("a", app).query(UUID.class).single();
+        String testId = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/practice-tests", Map.of("subjectId", subject.toString(), "title", "Weak " + tag,
+                "durationMinutes", 10, "questionsPerAttempt", 2, "attemptsAllowed", 1, "showAnswers", true, "open", false))).get("id"));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/practice-tests/" + testId + "/questions", Map.of("replace", false, "rows", List.of(
+                Map.of("row", 2, "question", "One?", "a", "1", "b", "2", "answer", "A"), Map.of("row", 3, "question", "Two?", "a", "1", "b", "2", "answer", "B")))));
+        ok(it.call(office, HttpMethod.PUT, "/api/v1/jupeb/office/practice-tests/" + testId, Map.of("subjectId", subject.toString(), "title", "Weak " + tag,
+                "durationMinutes", 10, "questionsPerAttempt", 2, "attemptsAllowed", 1, "showAnswers", true, "open", true)));
+        Map<String, Object> paper = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/" + testId + "/start", Map.of()));
+        String attempt = String.valueOf(((Map<String, Object>) paper.get("attempt")).get("id"));
+        for (Map<String, Object> q : (List<Map<String, Object>>) paper.get("questions")) {
+            ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/answers/" + q.get("id"), Map.of("choice", "A")));
+        }
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/practice/attempts/" + attempt + "/submit", Map.of()));
+        List<Map<String, Object>> results = (List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/practice-results?session=" + session)).get("students");
+        Map<String, Object> mine = results.stream().filter(r -> app.toString().equals(String.valueOf(r.get("application_id")))).findFirst().orElseThrow();
+        assertThat(new BigDecimal(String.valueOf(mine.get("average")))).isEqualByComparingTo("50");
+        assertThat((List<Map<String, Object>>) mine.get("subjects")).hasSize(1);
+        assertThat(status(it.get(bursar, "/api/v1/jupeb/office/practice-results?session=" + session))).isEqualTo(403);
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/advise", Map.of("title", "Study", "body", "Study harder")))).isEqualTo(403);
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/advise", Map.of("title", "Your practice tests " + tag,
+                "body", "Your average is 50%. Read your notes daily.", "email", true)));
+        assertThat((List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me/announcements")).get("announcements"))
+                .extracting(a -> String.valueOf(a.get("title"))).contains("Your practice tests " + tag);
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application a WHERE a.id <> :a AND jupeb.audience_reaches(:s, 'STUDENT', :r, a)")
+                .param("a", app).param("s", session).param("r", app.toString()).query(Integer.class).single()).isZero();
+        Map<String, Object> view = ok(it.get(office, "/api/v1/jupeb/office/applications/" + app));
+        assertThat((List<?>) view.get("practice")).hasSize(1);
+        assertThat(((List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/practice-results?session=" + session)).get("students")).stream()
+                .filter(r -> app.toString().equals(String.valueOf(r.get("application_id")))).findFirst().orElseThrow().get("advised_at")).isNotNull();
+
+        // the withdrawal opens the claim; nothing is raised without the account; the account is the candidate's to give
+        ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/requests", Map.of("kind", "WITHDRAW", "reason", "I have gained admission elsewhere this year")));
+        String request = String.valueOf(((List<Map<String, Object>>) ok(it.get(token, "/api/v1/jupeb/me")).get("requests")).get(0).get("id"));
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/requests/" + request + "/decide", Map.of("approve", true, "note", "Withdrawn as asked")));
+        Map<String, Object> claim = (Map<String, Object>) ok(it.get(token, "/api/v1/jupeb/me")).get("refundClaim");
+        assertThat(((Map<String, Object>) claim.get("state")).get("status")).isEqualTo("AWAITING_DETAILS");
+        assertThat((List<Map<String, Object>>) claim.get("payments")).extracting(x -> x.get("reference")).containsExactly(paid);
+        String claimId = String.valueOf(claim.get("id"));
+        assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds",
+                Map.of("reference", paid, "amount", 50000, "reason", "Withdrawal before lectures")))).isEqualTo("JUPEB_REFUND_DETAILS");
+        assertThat(status(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details", Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "12345")))).isEqualTo(400);
+        claim = (Map<String, Object>) ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details",
+                Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "3012345678"))).get("refundClaim");
+        assertThat(claim.get("account_number")).isEqualTo("••••••5678");
+        assertThat(((Map<String, Object>) claim.get("state")).get("status")).isEqualTo("WITH_BURSARY");
+        Map<String, Object> asBursary = ((List<Map<String, Object>>) it.callList(bursar, HttpMethod.GET, "/api/v1/jupeb/fees/refund-claims", null).getBody()).stream()
+                .filter(c -> claimId.equals(String.valueOf(c.get("id")))).findFirst().orElseThrow();
+        assertThat(asBursary.get("account_number")).isEqualTo("3012345678");
+        Map<String, Object> asOffice = ((List<Map<String, Object>>) it.callList(office, HttpMethod.GET, "/api/v1/jupeb/fees/refund-claims", null).getBody()).stream()
+                .filter(c -> claimId.equals(String.valueOf(c.get("id")))).findFirst().orElseThrow();
+        assertThat(asOffice.get("account_number")).isEqualTo("••••••5678");
+        assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds", Map.of("reference", paid, "amount", 1000, "reason", "Not the office's")))).isEqualTo(403);
+
+        // the Bursary raises a refund through its own workflow: never beyond what was paid on the payment; maker and checker differ
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds",
+                Map.of("reference", paid, "amount", 80000, "reason", "Withdrawal before lectures")))).isEqualTo(422);
+        Map<String, Object> raised = ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds",
+                Map.of("reference", paid, "amount", 50000, "reason", "Withdrawal before lectures")));
+        String refundId = String.valueOf(raised.get("id"));
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds",
+                Map.of("reference", paid, "amount", 30000, "reason", "The rest")))).isEqualTo(422);
+        assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/decline", Map.of("reason", "Not refundable")))).isEqualTo("JUPEB_REFUND_RAISED");
+        assertThat(code(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details", Map.of("bankName", "Other Bank", "accountName", "Mnena Ityavyar", "accountNumber", "3099999999"))))
+                .isEqualTo("JUPEB_REFUND_LOCKED");
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/approve", Map.of()))).isEqualTo(422);
+        String checker = TestTokens.token(it.person("ZZJUPEB-BURSAR2-" + tag, "ZZJUPEBBURSARTWO" + tag), List.of("bursar"));
+        ok(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/approve", Map.of()));
+        ok(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/pay", Map.of()));
+        claim = (Map<String, Object>) ok(it.get(token, "/api/v1/jupeb/me")).get("refundClaim");
+        assertThat(((Map<String, Object>) claim.get("state")).get("status")).isEqualTo("REFUND_PAID");
+        assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) claim.get("state")).get("paid")))).isEqualByComparingTo("50000");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application_event WHERE application_id = :a AND kind IN ('REFUND_CLAIM_OPENED', 'REFUND_PROPOSED', 'REFUND_PAID')")
+                .param("a", app).query(Integer.class).single()).isEqualTo(3);
+        List<Map<String, Object>> refunds = (List<Map<String, Object>>) it.callList(bursar, HttpMethod.GET, "/api/v1/finance/refunds", null).getBody();
+        assertThat(refunds).filteredOn(r -> refundId.equals(String.valueOf(r.get("id")))).extracting(r -> r.get("number")).containsExactly(appNo);
+    }
+
     private static Map<String, Object> oldRow(int row, String... pairs) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("row", row);

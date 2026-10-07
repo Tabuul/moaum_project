@@ -130,6 +130,22 @@ class JupebView {
             out.put("gradePoint", jdbc.sql("SELECT * FROM jupeb.grade_point(:id)").param("id", app).query().singleRow());
         }
         out.put("requests", requests(app));
+        /* V350: the refund claim a withdrawal opened, with the refunds raised on it — the account number never whole here */
+        out.put("refundClaim", jdbc.sql("""
+                SELECT c.id, c.opened_at, c.payments::text AS payments, c.paid_total, c.bank_name, c.account_name,
+                       CASE WHEN c.account_number IS NULL THEN NULL ELSE '••••••' || right(c.account_number, 4) END AS account_number,
+                       c.details_at, c.declined_at, c.declined_reason, jupeb.refund_claim_state(c.id)::text AS state,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('reference', f.reference, 'source', x.reference, 'amount', f.amount, 'state', f.state,
+                                                                     'proposedAt', f.proposed_at, 'paidAt', f.paid_at) ORDER BY f.proposed_at), '[]'::jsonb)::text
+                          FROM jupeb.refund_claim_refund x JOIN finance.refund f ON f.id = x.refund_id WHERE x.claim_id = c.id) AS refunds
+                  FROM jupeb.refund_claim c WHERE c.application_id = :id
+                """).param("id", app).query().listOfRows().stream().findFirst().map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("payments", parse(String.valueOf(r.get("payments"))));
+                    m.put("state", parse(String.valueOf(r.get("state"))));
+                    m.put("refunds", parse(String.valueOf(r.get("refunds"))));
+                    return (Object) m;
+                }).orElse(null));
         /* V349: the notices that reach the candidate and are not yet opened, for the side menu */
         if (!office) {
             out.put("unreadAnnouncements", jdbc.sql("""
@@ -145,6 +161,12 @@ class JupebView {
                   FROM attendance.member_summary('JUPEB', :id, :s) m JOIN jupeb.subject s ON s.id = m.subject_ref ORDER BY s.title, m.semester
                 """).param("id", app).param("s", session).query().listOfRows() : List.of());
         if (office) {
+            /* V350: the student's practice attempts, for the JUPEB Office's advice */
+            out.put("practice", jdbc.sql("""
+                    SELECT t.title, s.code, s.title AS subject, p.number, p.submitted_at, p.score, p.total, p.percentage
+                      FROM jupeb.practice_attempt p JOIN jupeb.practice_test t ON t.id = p.test_id JOIN jupeb.subject s ON s.id = t.subject_id
+                     WHERE p.application_id = :id AND p.submitted_at IS NOT NULL ORDER BY p.submitted_at DESC LIMIT 200
+                    """).param("id", app).query().listOfRows());
             out.put("papers", papers(app));
             out.put("events", jdbc.sql("""
                     SELECT e.kind, e.note, e.at, e.actor_office, p.surname || ', ' || p.given_names AS actor_name
@@ -209,6 +231,13 @@ class JupebView {
 
     private Object parse(String text) {
         return text == null ? null : json.readValue(text, Object.class);
+    }
+
+    private static final tools.jackson.databind.ObjectMapper READER = new tools.jackson.databind.ObjectMapper();
+
+    /** a jsonb column read as text, as plain maps and lists, for the other JUPEB controllers (V350) */
+    static Object readJson(String text) {
+        return text == null || "null".equals(text) ? null : READER.readValue(text, Object.class);
     }
 
     /** what still stands between the application and its submission */

@@ -11,6 +11,7 @@ import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui"
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { JupebClaims } from "./JupebClaims";
 
 export interface Refund {
   id: string; reference: string; student_id: string | null; payer: string; reason: string; amount: number;
@@ -110,6 +111,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
       </Note>
 
       {said ? <Note kind="ok" title={said}>It waits for a second officer to approve it before any money leaves the University.</Note> : null}
+      <JupebClaims may={may} onChanged={() => router.refresh()} />
       {err ? <ProblemNotice problem={err} /> : null}
 
       <Tiles items={[

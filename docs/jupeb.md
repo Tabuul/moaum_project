@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341–V345, V347–V349)
+# The JUPEB programme (V339, V341–V345, V347–V350)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -211,6 +211,21 @@ copies of them.
   the largest combinations and states of origin, fees confirmed by month, the school-fee position, attendance and grades by
   subject, and the practice scores.
 
+- **Refunds on withdrawal (V350).** A withdrawal that takes effect opens a refund claim (`jupeb.refund_claim`) in the Bursary's
+  queue with every fee the candidate paid on the portal; the candidate gives the account (bank, name, ten-digit number) on
+  Payments. The Bursary decides under its own rules, on the Refunds page: it raises a refund against one of the payments —
+  `finance.propose_refund`, so it then waits for a second officer's approval and is marked paid, exactly like any other refund
+  (`jupeb.refund_claim_refund` links them) — or declines the claim with a reason the candidate reads. No refund exceeds what was
+  paid on a payment, counting the refunds already raised against it (a rule now for every refund, not only JUPEB's). The
+  account number is whole only to the Bursary. The candidate is told when the claim opens, when it is declined and when a
+  refund is paid — never the amount or the account. A reset of the operational data that clears the refunds clears the links.
+- **Practice results and advice (V350).** The JUPEB Office dashboard lists every student who practised — tests, attempts,
+  average, best, the last attempt and each subject's average — weakest first, with the Office's own "only below N%" filter and
+  when each was last advised; each student's record shows their attempts. "Advise" sends a notice to that one student
+  (announcement audience `STUDENT`), on their dashboard and, when asked, by email and text, with the advice written first from
+  their results and edited by the Office.
+- **The day book (V350)** names the JUPEB admission status checking and acceptance fees (they read as school fees before).
+
 ## API
 
 - **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`.
@@ -263,7 +278,13 @@ copies of them.
   their attempt, an answered question versioned with its image and the past attempt unchanged; the card refused without a
   photograph, the same code twice, verified without the NIN or contacts, the office's list and issue, a replaced card no longer
   verifying. `FileSweepIT` covers V348.
-- `check.sql` properties 185–194 cover the rules on a brand-new database.
+- `JupebIT.withdrawalRefundsThroughTheBursaryAndPracticeResults` covers V350: the practice results (average, subjects, the
+  Bursary refused), the advice reaching that student alone and dated on the list; the withdrawal opening the claim, no refund
+  without the account, a short account number refused, the account masked except to the Bursary, the office refused a refund,
+  more than was paid refused (alone and in all), the maker refused as checker, a raised claim not declined nor its account
+  changed, the second officer approving and paying, the claim then paid, the events, and the Bursary's list naming the JUPEB
+  number.
+- `check.sql` properties 185–195 cover the rules on a brand-new database.
 
 ## Not done
 

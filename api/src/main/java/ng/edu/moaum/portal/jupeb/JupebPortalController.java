@@ -611,6 +611,37 @@ class JupebPortalController {
         return Map.of("read", true);
     }
 
+    /* ── V350: the account a refund of a withdrawn candidate's fees is paid into ── */
+
+    public record RefundDetailsIn(@NotBlank @Size(min = 2, max = 120) String bankName, @NotBlank @Size(min = 2, max = 200) String accountName,
+                                  @NotBlank @Pattern(regexp = "^[0-9]{10}$", message = "the ten-digit account number (NUBAN)") String accountNumber) {
+    }
+
+    /** given once the claim is open, and changed until the Bursary raises a refund to it (after a rejected one, again) */
+    @PutMapping("/refund-details")
+    @Transactional
+    Map<String, Object> refundDetails(Authentication auth, @Valid @RequestBody RefundDetailsIn b) {
+        UUID app = me(auth);
+        Map<String, Object> c = jdbc.sql("""
+                SELECT c.id, c.declined_at, EXISTS (SELECT 1 FROM jupeb.refund_claim_refund x JOIN finance.refund f ON f.id = x.refund_id
+                                                     WHERE x.claim_id = c.id AND f.state <> 'REJECTED') AS raised
+                  FROM jupeb.refund_claim c WHERE c.application_id = :a
+                """).param("a", app).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new DomainRuleViolation("JUPEB_REFUND_CLAIM", "There is no refund claim on your record.",
+                        new DomainRuleViolation.Remedy("A claim opens when a withdrawal takes effect after fees were paid on the portal.", "JUPEB Office")));
+        if (c.get("declined_at") != null) {
+            throw new DomainRuleViolation("JUPEB_REFUND_DECLINED", "The Bursary declined this refund claim.", new DomainRuleViolation.Remedy("Ask the Bursary if you disagree.", "Bursary"));
+        }
+        if (Boolean.TRUE.equals(c.get("raised"))) {
+            throw new DomainRuleViolation("JUPEB_REFUND_LOCKED", "The Bursary has already raised a refund to the account you gave.",
+                    new DomainRuleViolation.Remedy("Ask the Bursary to change it.", "Bursary"));
+        }
+        jdbc.sql("UPDATE jupeb.refund_claim SET bank_name = :b, account_name = :n, account_number = :x, details_at = now() WHERE id = :id")
+                .param("b", b.bankName().trim()).param("n", b.accountName().trim()).param("x", b.accountNumber()).param("id", c.get("id")).update();
+        jdbc.sql("SELECT jupeb.app_event(:a, 'REFUND_DETAILS_GIVEN', 'Account for a refund given by the candidate')").param("a", app).query().listOfRows();
+        return mine(auth);
+    }
+
     /** a question's image, only inside an attempt of the student's that drew the question */
     @GetMapping("/practice/attempts/{attempt}/questions/{question}/image")
     @Transactional(readOnly = true)

@@ -18,6 +18,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { DocViewer, viewerClick, type ViewDoc } from "./DocViewer";
+import { AdviceDialog, PracticeWatch, adviceFor, type Advice } from "./PracticeWatch";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
   stateKind, streamLabel, when, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper,
@@ -51,7 +52,7 @@ interface Dash {
   byStream: { stream: string; applications: number; admitted: number; students: number }[]; tickets: number; resultsPublished: boolean;
 }
 
-export function JupebDashboard() {
+export function JupebDashboard({ canWrite = false }: { canWrite?: boolean }) {
   const [session, setSession] = useSession();
   const [d, setD] = useState<Dash | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -110,6 +111,7 @@ export function JupebDashboard() {
           <PBody><DTable pageSize={10} cols={["Programme", "Applications|num", "Admitted|num", "Students|num"]} rows={d.byStream.map((r) => [r.stream, r.applications, r.admitted, r.students])} /></PBody>
         </Panel>
       </div>
+      <PracticeWatch session={d.session} canWrite={canWrite} />
       <Panel title="Support" right={<Link href="/helpdesk">Open the support desk</Link>}>
         <PBody><p className="sub2">{d.tickets} open ticket(s) in the JUPEB support queue.</p></PBody>
       </Panel>
@@ -409,6 +411,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
         </Panel>
       ) : null}
       <RequestsAndPapers c={c} canWrite={canWrite} onChange={setC} />
+      <PracticeAndRefund c={c} canWrite={canWrite} />
       <Panel title="Timeline">
         <PBody><DTable noPrint pageSize={0} cols={["When", "What", "Note", "By"]} rows={c.events.map((e) => [when(e.at), EVENT_LABEL[e.kind] ?? e.kind, e.note ?? "—", e.actor_name ?? e.actor_office ?? "—"])} /></PBody>
       </Panel>
@@ -449,6 +452,42 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
 }
 
 /* ── V343: change requests, verifiable papers and reminders ───────────────────────────────────── */
+
+/* ── V350: the student's practice attempts (and advice), and the refund claim a withdrawal opened ── */
+
+const CLAIM_STATUS: Record<string, [string, "ok" | "info" | "bad" | "grey" | "warn"]> = {
+  AWAITING_DETAILS: ["Waiting for the candidate's account", "warn"], WITH_BURSARY: ["With the Bursary", "info"], REFUND_PROPOSED: ["Refund raised, awaiting approval", "info"],
+  REFUND_APPROVED: ["Refund approved, to be paid", "info"], REFUND_PAID: ["Refund paid", "ok"], DECLINED: ["Declined by the Bursary", "bad"],
+};
+
+function PracticeAndRefund({ c, canWrite }: { c: Candidate; canWrite: boolean }) {
+  const [advise, setAdvise] = useState<Advice | null>(null);
+  const tries = c.practice ?? [];
+  const claim = c.refundClaim;
+  const avg = tries.length ? Math.round((10 * tries.reduce((a, t) => a + Number(t.percentage), 0)) / tries.length) / 10 : null;
+  return (
+    <>
+      {tries.length ? (
+        <Panel title={`Practice tests — ${tries.length} attempt${tries.length === 1 ? "" : "s"}, average ${avg}%`}
+          right={canWrite ? <Btn kind="secondary" onClick={() => setAdvise(adviceFor({ application_id: c.id, name: `${c.surname.toUpperCase()}, ${c.first_name}`, average: avg }))}>Advise the student</Btn> : null}>
+          <PBody><DTable noPrint pageSize={10} cols={["Submitted", "Subject", "Test", "Attempt|num", "Score|num", "%|num"]} rows={tries.map((t) => [
+            when(t.submitted_at), `${t.code} · ${t.subject}`, t.title, t.number, `${t.score}/${t.total}`,
+            <Pil key="p" kind={Number(t.percentage) < 40 ? "bad" : Number(t.percentage) < 50 ? "warn" : "ok"}>{`${Number(t.percentage)}%`}</Pil>])} /></PBody>
+        </Panel>
+      ) : null}
+      {claim ? (
+        <Panel title="Refund claim (the Bursary decides)" right={<Pil kind={(CLAIM_STATUS[claim.state.status] ?? [claim.state.status, "grey"])[1]}>{(CLAIM_STATUS[claim.state.status] ?? [claim.state.status])[0]}</Pil>}>
+          <PBody>
+            <KvGrid cls="grid--4" pairs={[["Opened", day(claim.opened_at)], ["Paid on the portal", naira(claim.paid_total)], ["Refund raised", naira(claim.state.raised)], ["Refund paid", naira(claim.state.paid)]]} />
+            {claim.declined_reason ? <Note kind="bad" title="Declined by the Bursary">{claim.declined_reason}</Note> : null}
+            <p className="sub2 mt-1">{claim.account_number ? `Account given: ${claim.bank_name} · ${claim.account_name} · ${claim.account_number}` : "The candidate has not yet given the account a refund would be paid into."}</p>
+          </PBody>
+        </Panel>
+      ) : null}
+      {advise ? <AdviceDialog advice={advise} onClose={() => setAdvise(null)} onSent={() => setAdvise(null)} /> : null}
+    </>
+  );
+}
 
 const OFFICE_CHANGE: Record<string, string> = {
   WITHDRAW: "Withdraw the application", DEFER: "Defer the admission", CHANGE_COMBINATION: "Change the combination", CHANGE_PROGRAMME: "Change the programme",

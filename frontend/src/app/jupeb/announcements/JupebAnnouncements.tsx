@@ -77,6 +77,7 @@ export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
     } finally { setBusy(false); }
   }
   const audienceWords = (a: Row) => a.audience === "PROGRAMME" ? `Programme: ${streamLabel(a.audience_ref)}` : a.audience === "CLASS" ? `Class: ${a.audience_name ?? "—"}`
+    : a.audience === "STUDENT" ? `Student: ${a.audience_name ?? "—"} (advice)`
     : a.audience === "COMBINATION" ? `Combination: ${a.audience_ref}` : AUDIENCE[a.audience] ?? a.audience;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -90,7 +91,7 @@ export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
           <PBody>
             <div className="grid grid--3">
               <Field id="an-aud" label="To"><select id="an-aud" className="ctl" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value, ref: "" })}>
-                {Object.entries(AUDIENCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+                {Object.entries(AUDIENCE).filter(([k]) => k !== "STUDENT").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
               {form.audience === "CLASS" ? (
                 <Field id="an-ref" label="Class" required><select id="an-ref" className="ctl" value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}>
                   <option value="">— Choose —</option>{(data?.classes ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
