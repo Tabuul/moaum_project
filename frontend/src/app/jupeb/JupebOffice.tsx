@@ -1197,8 +1197,41 @@ export function JupebClasses({ canWrite }: { canWrite: boolean }) {
 interface Settings {
   session: string; sessions: SessionRow[]; own: boolean;
   setting: { application_prefix: string; screening_required: boolean; screening_venue: string | null; screening_starts_on: string | null; screening_ends_on: string | null; screening_instructions: string | null; results_published_at: string | null; exam_month: string | null };
+  /** V351: the JUPEB programme's current session (named by the Office, else the University's) */
+  currentSession?: string; namedSession?: string | null; universitySession?: string;
   documentKinds: { code: string; label: string; required: boolean; image: boolean; active: boolean; ord: number }[];
   fees: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number; allow_full: boolean; activation: string; indigene_state: string };
+}
+
+/** V351: the JUPEB programme's own current session — new applications are filed under it and every JUPEB screen opens on it, not on the University's */
+function CurrentSession({ s, canWrite, onSaved }: { s: Settings; canWrite: boolean; onSaved: (x: Settings) => void }) {
+  const start = Number((s.currentSession ?? s.session).slice(0, 4));
+  const options = [start - 1, start, start + 1].map((y) => `${y}/${y + 1}`);
+  const [pick, setPick] = useState(s.namedSession ?? "");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await jcall<Settings>("/api/v1/jupeb/office/settings/current-session", "PUT", { session: pick || null }, `JUPEB current session: ${pick || "the University's"}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(`The JUPEB current session is ${r.data.currentSession}.`);
+      onSaved(r.data);
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel title="Current JUPEB session" right={<Pil kind="info">{s.currentSession}</Pil>}>
+      <PBody>
+        <p className="sub2">{`The JUPEB programme runs to its own calendar: new applications are filed under this session, with its windows and its fees, and every JUPEB screen opens on it. Students already filed under an earlier session stay there. The University's current session (${s.universitySession ?? "—"}) is not changed.`}</p>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <select className="ctl" style={{ width: 260 }} aria-label="Current JUPEB session" value={pick} onChange={(e) => setPick(e.target.value)} disabled={!canWrite}>
+            <option value="">{`The University's (${s.universitySession ?? "—"})`}</option>
+            {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          {canWrite ? <Btn kind="primary" disabled={busy || pick === (s.namedSession ?? "")} onClick={() => void save()}>{busy ? "Saving…" : "Make it current"}</Btn> : null}
+        </div>
+      </PBody>
+    </Panel>
+  );
 }
 
 export function JupebSettings({ canWrite }: { canWrite: boolean }) {
@@ -1239,6 +1272,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
   return (
     <>
       <PageHead title="JUPEB settings" description="Numbering, screening and the documents asked for. The fees are the Bursary's." actions={<SessionPick sessions={s.sessions} value={s.session} onChange={setSession} />} />
+      <CurrentSession s={s} canWrite={canWrite} onSaved={(x) => { setS(x); setSession(x.currentSession ?? ""); }} />
       <Panel title="Numbering and screening" right={s.own ? <Pil kind="info">Own rule for {s.session}</Pil> : <Pil kind="grey">The default applies</Pil>}>
         <PBody>
           <div className="grid grid--3">

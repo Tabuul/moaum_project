@@ -174,7 +174,7 @@ copies of them.
   with its present and corrected value — and applied only when the Office approves; a school fee already charged stays as it
   was charged.
 - **Timetable (V347).** Weekly slots of a subject in a session and semester, for one class or every class; a class is never
-  booked twice in the same hour (`JUPEB_SLOT_CLASH`); the lecturer shown is the instructor assigned on Attendance. The student
+  booked twice in the same hour (`JUPEB_SLOT_CLASH`; since V351 a room either — see below); the lecturer shown is the instructor assigned on Attendance. The student
   sees the slots of their own subjects and class, and prints them.
 - **Practice tests (V347).** A test of one subject with a question bank uploaded from Excel or CSV (question, options A–E,
   answer, explanation — each row checked), opened only with questions. An attempt draws its questions at random, is timed and
@@ -225,6 +225,32 @@ copies of them.
   (announcement audience `STUDENT`), on their dashboard and, when asked, by email and text, with the advice written first from
   their results and edited by the Office.
 - **The day book (V350)** names the JUPEB admission status checking and acceptance fees (they read as school fees before).
+- **The JUPEB programme's own current session (V351).** The JUPEB session used to follow the University's current academic
+  session. The JUPEB programme runs to its own calendar, so the JUPEB Office names its current session on Settings
+  (`jupeb.setting.current_session`, on the default row): new applications are filed under it (so its application and
+  status-checking windows and its fees apply to them) and every JUPEB screen opens on it (`policy.application_session('JUPEB…')`, hence `jupeb.current_session()`); cleared, the
+  University's applies again. The University's own current session is never changed by it. Set to **2026/2027** by V351, as the
+  JUPEB Office asked. Changing it later moves no one: an application stays in the session it was filed under.
+- **The intake made under 2025/2026, re-filed (V352).** Until V351 the JUPEB session was the University's 2025/2026, so the
+  JUPEB windows the Director of ICT opened in October 2026 and the applications made on the portal since were filed under
+  2025/2026 while the programme running is 2026/2027. V352 re-filed them under 2026/2027, as the JUPEB Office asked: the JUPEB
+  application and admission-status-checking windows with their history and the Director's dates (the move is on the window's
+  history); every application made on the portal (not an old-portal upload, not a deferred admission) with its subject
+  registrations and its payments — a payment keeps its reference, amount, channel and date, only the session it is counted in
+  changes, and the school fee already charged stays as charged; and the empty attendance register held since September for
+  every class. The papers issued for a moved application stated 2025/2026, so each was revoked with the reason; printed again
+  it is issued with a new code (the identity card too, when the student opens it). The application keeps its number and
+  admission reference; its trail records the move and the candidate was told by email and text.
+- **The Board's timetable (V351).** A slot carries the course as the Board's timetable prints it (`GEO 001`, kept upper case with
+  one space) and whether it is a practical. The office and the students see the week as the University prints it — the days down
+  the side, the hours across, `GEO 001 (LR8)`, `PHY PRACTICAL (LAB)`, BREAK for an hour no lecture of the programme uses (a student's own week keeps the
+  programme's day, so an hour free only for them is blank, not a break) — and print it as the branded
+  PDF. Lectures of different subjects run side by side (each student takes three); what is refused is a room holding two
+  lectures at once (`LR 8` and `lr8` are one room) or a class, when a slot names one, booked twice. The office checks its week
+  against the Board's rules: every course at least three hours, every practical at least two, every slot with its room. V351 put
+  the 2026/2027 first-semester timetable on the record (56 slots, for every class) where the Board's sheet writes MAT, VSA and
+  CRS for the subjects MTH, VAR and CRS/ISS; on Wednesday 12:00–1:00 the sheet puts ACC 002 and GOV 002 both in LR8, so GOV 002's
+  room is left for the office to confirm.
 
 ## API
 
@@ -242,7 +268,7 @@ copies of them.
   `/old-portal-payments` (with `/import`), `/timetable` (with `/{id}`, `/{id}/remove`), `/practice-tests` (with `/{id}`,
   `/{id}/questions`, `/{id}/questions/{q}/remove`) and `/reports?session=`, and (V349) `/announcements` (with `/reach`,
   `/{id}/withdraw`), `/practice-tests/{id}/questions/add`, `/practice-tests/{id}/questions/{q}` (PUT), `.../{q}/image` (with
-  `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`). Reads are for jupeb, super and admin; writes for jupeb and super.
+  `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`), and (V351) `/settings/current-session` (PUT). Reads are for jupeb, super and admin; writes for jupeb and super.
 - **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
   `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
   JUPEB records.
@@ -284,7 +310,16 @@ copies of them.
   more than was paid refused (alone and in all), the maker refused as checker, a raised claim not declined nor its account
   changed, the second officer approving and paying, the claim then paid, the events, and the Bursary's list naming the JUPEB
   number.
-- `check.sql` properties 185–195 cover the rules on a brand-new database.
+- `JupebIT.ownCurrentSessionAndTheBoardsTimetable` covers V351: the current session named only by the JUPEB Office (the Bursary
+  refused, 2031/2033 refused), the JUPEB windows following it and the University's not, cleared back to the University's; a
+  course code kept as the Board prints it, a practical side by side in another room, the same room (written differently)
+  refused.
+- V352 is a one-off re-filing with nothing to move on a brand-new database; it was run against a copy shaped like production
+  (the Director's windows with a superseded one, two portal students with card payments, subjects and papers, an old-portal
+  student, a deferred admission, three registers): the windows open for 2026/2027, the two students moved with their payments
+  and the school fee unchanged, the others left, twelve papers revoked and a reprint issued afresh, the second instalment
+  charged in 2026/2027 for what is left, a new applicant numbered under 2026, and a second run moving nothing.
+- `check.sql` properties 185–196 cover the rules on a brand-new database.
 
 ## Not done
 

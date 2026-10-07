@@ -907,7 +907,14 @@ class JupebOfficeController {
                          @NotNull UUID subjectId, @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(7) int weekday,
                          @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String startsAt,
                          @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{2}:\\d{2}$") String endsAt,
-                         @Size(max = 120) String venue, @Size(max = 300) String note) {
+                         @Size(max = 120) String venue, @Size(max = 300) String note,
+                         @jakarta.validation.constraints.Pattern(regexp = "^([A-Za-z]{2,4}(/[A-Za-z]{2,4})? ?[0-9]{3})?$", message = "a course code such as GEO 001") String courseCode,
+                         Boolean practical) {
+    }
+
+    private static String course(String code) {
+        String c = blankOf(code);
+        return c == null ? null : c.toUpperCase().replaceAll("^([A-Z/]+) ?([0-9]{3})$", "$1 $2");
     }
 
     @GetMapping("/timetable")
@@ -916,7 +923,7 @@ class JupebOfficeController {
     Map<String, Object> timetable(@RequestParam String session, @RequestParam(required = false) Integer semester) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("slots", jdbc.sql("""
-                SELECT t.id, t.session, t.semester, t.class_id, k.name AS class_name, t.subject_id, s.code, s.title, t.weekday,
+                SELECT t.id, t.session, t.semester, t.class_id, k.name AS class_name, t.subject_id, s.code, s.title, t.weekday, t.course_code, t.practical,
                        to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
                        (SELECT string_agg(p.surname || ', ' || p.given_names, '; ' ORDER BY p.surname) FROM attendance.instructor i JOIN iam.person p ON p.id = i.person_id
                          WHERE i.context = 'JUPEB' AND i.session = t.session AND i.subject_ref = t.subject_id AND i.ended_at IS NULL
@@ -935,9 +942,10 @@ class JupebOfficeController {
     @Transactional
     Map<String, Object> addSlot(@Valid @RequestBody SlotIn b) {
         UUID id = jdbc.sql("""
-                INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, venue, note, created_by)
-                VALUES (:s, :sem, :c, :sub, :w, :st::time, :en::time, :v, :n, :by) RETURNING id
+                INSERT INTO jupeb.timetable_slot (session, semester, class_id, subject_id, weekday, starts_at, ends_at, venue, note, course_code, practical, created_by)
+                VALUES (:s, :sem, :c, :sub, :w, :st::time, :en::time, :v, :n, :cc, :pr, :by) RETURNING id
                 """).param("s", b.session().trim()).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
+                .param("cc", course(b.courseCode()), Types.VARCHAR).param("pr", Boolean.TRUE.equals(b.practical()))
                 .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
                 .param("by", actor()).query(UUID.class).single();
         return Map.of("id", id);
@@ -948,9 +956,11 @@ class JupebOfficeController {
     @Transactional
     Map<String, Object> editSlot(@PathVariable UUID id, @Valid @RequestBody SlotIn b) {
         int n = jdbc.sql("""
-                UPDATE jupeb.timetable_slot SET semester = :sem, class_id = :c, subject_id = :sub, weekday = :w, starts_at = :st::time, ends_at = :en::time, venue = :v, note = :n
+                UPDATE jupeb.timetable_slot SET semester = :sem, class_id = :c, subject_id = :sub, weekday = :w, starts_at = :st::time, ends_at = :en::time, venue = :v, note = :n,
+                       course_code = :cc, practical = :pr
                  WHERE id = :id AND active
                 """).param("sem", b.semester()).param("c", b.classId(), Types.OTHER).param("sub", b.subjectId()).param("w", b.weekday())
+                .param("cc", course(b.courseCode()), Types.VARCHAR).param("pr", Boolean.TRUE.equals(b.practical()))
                 .param("st", b.startsAt()).param("en", b.endsAt()).param("v", blankOf(b.venue()), Types.VARCHAR).param("n", blankOf(b.note()), Types.VARCHAR)
                 .param("id", id).update();
         if (n == 0) throw new NotFound("timetable slot", id);
@@ -1368,6 +1378,10 @@ class JupebOfficeController {
         out.put("session", s);
         out.put("sessions", sessions());
         out.put("own", jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.setting WHERE session = :s)").param("s", s).query(Boolean.class).single());
+        /* V351: the programme's own current session, and the University's beside it */
+        out.put("currentSession", jdbc.sql("SELECT jupeb.current_session()").query(String.class).single());
+        out.put("namedSession", jdbc.sql("SELECT current_session FROM jupeb.setting WHERE session = '*'").query(String.class).optional().orElse(null));
+        out.put("universitySession", jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single());
         out.put("setting", jdbc.sql("""
                 SELECT application_prefix, screening_required, screening_venue, screening_starts_on::text AS screening_starts_on, screening_ends_on::text AS screening_ends_on,
                        screening_instructions, results_published_at, exam_month
@@ -1403,6 +1417,24 @@ class JupebOfficeController {
                 .param("m", b.examMonth() == null || b.examMonth().isBlank() ? null : b.examMonth().trim().toUpperCase(), Types.VARCHAR)
                 .param("by", actor()).update();
         return settings("*".equals(s) ? null : s);
+    }
+
+    public record CurrentSessionIn(@jakarta.validation.constraints.Pattern(regexp = "^([0-9]{4}/[0-9]{4})?$") String session) {
+    }
+
+    /** V351: the JUPEB programme's current session — new applications are filed under it and every JUPEB screen opens on it; empty, the University's */
+    @PutMapping("/settings/current-session")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> currentSession(@Valid @RequestBody CurrentSessionIn b) {
+        String s = blankOf(b.session());
+        if (s != null && Integer.parseInt(s.substring(5)) != Integer.parseInt(s.substring(0, 4)) + 1) {
+            throw new DomainRuleViolation("JUPEB_SESSION", "A session runs from one year into the next, as 2026/2027.", new DomainRuleViolation.Remedy("Correct the session.", "JUPEB Office"));
+        }
+        int n = jdbc.sql("UPDATE jupeb.setting SET current_session = :c, updated_by = :by, updated_at = now() WHERE session = '*'")
+                .param("c", s, Types.VARCHAR).param("by", actor()).update();
+        if (n == 0) throw new NotFound("JUPEB default setting", "*");
+        return settings(null);
     }
 
     public record DocumentKindIn(@NotBlank @Pattern(regexp = "^[A-Z][A-Z0-9_]{1,30}$") String code, @NotBlank @Size(max = 120) String label,

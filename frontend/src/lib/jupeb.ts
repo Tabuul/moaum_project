@@ -124,6 +124,7 @@ export const EVENT_LABEL: Record<string, string> = {
   ID_CARD_ISSUED: "Identity card issued", ID_CARD_REPLACED: "Identity card replaced",
   REFUND_CLAIM_OPENED: "Refund claim opened with the Bursary", REFUND_DETAILS_GIVEN: "Account for a refund given", REFUND_PROPOSED: "Refund raised by the Bursary",
   REFUND_DECLINED: "Refund claim declined by the Bursary", REFUND_PAID: "Refund paid by the Bursary", PRACTICE_ADVICE: "Advised on practice tests",
+  SESSION_REFILED: "Re-filed under another session",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -216,6 +217,8 @@ export const WEEKDAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 export interface Slot {
   id: string; semester: number; weekday: number; starts_at: string; ends_at: string; venue: string | null; note: string | null; code: string; title: string;
   class_name: string | null; instructors: string | null; class_id?: string | null; subject_id?: string; session?: string;
+  /** V351: the course as the Board's timetable prints it (GEO 001), and a practical */
+  course_code?: string | null; practical?: boolean;
 }
 /** V347: a practice attempt's paper — the answer key only after submission (the server decides) */
 export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null; image?: boolean }

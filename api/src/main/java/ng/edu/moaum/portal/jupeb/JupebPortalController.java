@@ -505,7 +505,7 @@ class JupebPortalController {
         out.put("session", a.get("session"));
         out.put("slots", jdbc.sql("""
                 SELECT t.id, t.semester, t.weekday, to_char(t.starts_at, 'HH24:MI') AS starts_at, to_char(t.ends_at, 'HH24:MI') AS ends_at, t.venue, t.note,
-                       s.code, s.title, k.name AS class_name,
+                       s.code, s.title, k.name AS class_name, t.course_code, t.practical,
                        (SELECT string_agg(p.surname || ', ' || p.given_names, '; ' ORDER BY p.surname) FROM attendance.instructor i JOIN iam.person p ON p.id = i.person_id
                          WHERE i.context = 'JUPEB' AND i.session = t.session AND i.subject_ref = t.subject_id AND i.ended_at IS NULL
                            AND (i.class_ref IS NULL OR i.class_ref = :class)) AS instructors
@@ -516,6 +516,22 @@ class JupebPortalController {
                  ORDER BY t.semester, t.weekday, t.starts_at
                 """).param("ses", a.get("session")).param("sem", semester, Types.INTEGER).param("class", a.get("class_id"), Types.OTHER).param("app", app)
                 .query().listOfRows());
+        /* V351: the programme's day — its first and last hour and the hours no lecture uses (BREAK) — from the whole timetable, not only this student's
+           subjects, so an hour free for them alone is not called a break */
+        out.put("frames", jdbc.sql("""
+                SELECT t.semester, t.lo AS "from", t.hi AS "to",
+                       (SELECT string_agg(h::text, ',' ORDER BY h) FROM generate_series(t.lo, t.hi - 1) h
+                         WHERE NOT EXISTS (SELECT 1 FROM jupeb.timetable_slot x WHERE x.session = :ses AND x.active AND x.semester = t.semester
+                                             AND x.starts_at < make_time(h + 1, 0, 0) AND make_time(h, 0, 0) < x.ends_at)) AS breaks
+                  FROM (SELECT semester, min(extract(hour FROM starts_at))::int AS lo, max(ceil(extract(epoch FROM ends_at) / 3600))::int AS hi
+                          FROM jupeb.timetable_slot WHERE session = :ses AND active GROUP BY semester) t
+                 ORDER BY t.semester
+                """).param("ses", a.get("session")).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> f = new java.util.LinkedHashMap<>(r);
+                    Object b = r.get("breaks");
+                    f.put("breaks", b == null ? List.of() : java.util.Arrays.stream(b.toString().split(",")).map(Integer::valueOf).toList());
+                    return f;
+                }).toList());
         return out;
     }
 

@@ -24,13 +24,13 @@ import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
-import { brandedPrint, docSerial } from "@/lib/exportbrand";
 import QRCode from "qrcode";
 import { MathText } from "@/components/proto/MathText";
 import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
+import { TimetableGrid, printGrid, type Frame } from "../TimetableGrid";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
-  ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, WEEKDAYS, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
+  ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
   SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Announcement, type Candidate, type Combination,
   type Doc, type FeeRef, type PracticePaper, type RefundClaim, type Slot, type StepProblem,
 } from "@/lib/jupeb";
@@ -1180,11 +1180,11 @@ function Attendance() {
 /* ── V347: the week's lectures, and the practice tests ──────────────────────────────────────────────── */
 
 function Timetable({ me }: { me: Candidate }) {
-  const [data, setData] = useState<{ session: string; slots: Slot[] } | null>(null);
+  const [data, setData] = useState<{ session: string; slots: Slot[]; frames?: Frame[] } | null>(null);
   const [semester, setSemester] = useState("1");
   useEffect(() => {
     let live = true;
-    void jcall<{ session: string; slots: Slot[] }>("/api/v1/jupeb/me/timetable").then((r) => {
+    void jcall<{ session: string; slots: Slot[]; frames?: Frame[] }>("/api/v1/jupeb/me/timetable").then((r) => {
       if (!live) return;
       if (r.ok) { setData(r.data); if (r.data.slots.length && !r.data.slots.some((x) => x.semester === 1)) setSemester("2"); } else notifyProblem(r.problem);
     });
@@ -1192,32 +1192,18 @@ function Timetable({ me }: { me: Candidate }) {
   }, []);
   if (!data) return <Note kind="info" title="Loading your timetable…">One moment.</Note>;
   const rows = data.slots.filter((x) => String(x.semester) === semester);
-  const days = [...new Set(rows.map((x) => x.weekday))].sort((a, b) => a - b);
-  const print = () => brandedPrint(`JUPEB lecture timetable — ${semester === "1" ? "first" : "second"} semester`, `${fullName(me)} · ${me.application_no}${me.class_name ? ` · ${me.class_name}` : ""} · ${data.session}`,
-    ["Day", "Time", "Subject", "Venue", "Lecturer"], rows.map((x) => [WEEKDAYS[x.weekday], `${x.starts_at}–${x.ends_at}`, `${x.code} ${x.title}`, x.venue ?? "—", x.instructors ?? "—"]),
-    docSerial("JUPEBTT"), { orientation: "portrait" });
+  const frame = data.frames?.find((f) => String(f.semester) === semester);
   return (
-    <Panel title={`Lecture timetable · ${data.session}`} right={<span className="row">
+    <Panel title={`Lecture timetable · ${semester === "1" ? "first" : "second"} semester ${data.session}`} right={<span className="row">
       <select className="ctl" style={{ width: 180 }} aria-label="Semester" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option></select>
-      {rows.length ? <Btn kind="ghost" onClick={print}>Print / PDF</Btn> : null}
+      {rows.length ? <Btn kind="ghost" onClick={() => printGrid(rows, data.session, Number(semester), `${fullName(me)} · ${me.application_no}${me.class_name ? ` · ${me.class_name}` : ""}`, frame)}>Print / PDF</Btn> : null}
     </span>}>
       <PBody>
         {!rows.length ? <Note kind="info" title="No lectures on the timetable yet">The JUPEB Office publishes the timetable of your subjects here{me.class_name ? ` for ${me.class_name}` : ""}.</Note> : (
-          <div className="grid grid--3">
-            {days.map((d) => (
-              <div key={d} className="card"><div className="card__body">
-                <div className="b700">{WEEKDAYS[d]}</div>
-                {rows.filter((x) => x.weekday === d).map((x) => (
-                  <div key={x.id} style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-2)", marginTop: "var(--s-2)" }}>
-                    <div className="tnum b600">{x.starts_at}–{x.ends_at}</div>
-                    <div>{x.title} <span className="sub2">{x.code}</span></div>
-                    <div className="sub2">{[x.venue, x.instructors, x.class_name ? null : "all classes"].filter(Boolean).join(" · ") || "—"}</div>
-                    {x.note ? <div className="sub2">{x.note}</div> : null}
-                  </div>
-                ))}
-              </div></div>
-            ))}
-          </div>
+          <>
+            <p className="sub2">The lectures and practicals of your subjects. Hover a lecture for the Office&rsquo;s note.</p>
+            <TimetableGrid slots={rows} frame={frame} />
+          </>
         )}
       </PBody>
     </Panel>

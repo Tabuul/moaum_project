@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 195
+\set EXPECTED 196
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5579,11 +5579,11 @@ BEGIN
         PERFORM jupeb.practice_submit(app, att);
         paper_after := jupeb.practice_paper(app, att);
         v_score := (SELECT score FROM jupeb.practice_attempt WHERE id = att);
-        -- a class is never booked twice in the same hour
+        -- a room is never booked twice in the same hour (V351: parallel lectures in other rooms are the rule)
         s1 := (SELECT subject_id FROM jupeb.subject_registration WHERE application_id = app ORDER BY subject_id LIMIT 1);
         INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '08:00', '10:00', 'LT 1');
         BEGIN
-            INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '09:00', '11:00', 'LT 2');
+            INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES (ses, 1, s1, 2, '09:00', '11:00', 'LT 1');
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_clash := split_part(msg, ':', 1);
         END;
         -- ICT Support: no reach without a posting that reaches JUPEB; the JUPEB queue's posting does; the act on the ledger, only on the candidate's ticket
@@ -5795,6 +5795,61 @@ BEGIN
         AND v_status = 'REFUND_PAID' AND v_paid = 50000 AND n_ev = 3 AND v_label = 'JUPEB acceptance fee' AND v_first = other AND n_reach = 1,
         format('claim=%s other=%s details=%s over=%s decline=%s same=%s status=%s paid=%s events=%s label=%s first=%s reach=%s',
                claim IS NOT NULL, n_claim_other, r_details, r_over, r_decline, r_same, v_status, v_paid, n_ev, v_label, v_first = other, n_reach));
+END $$;
+
+-- ── 196. V351: the JUPEB programme names its own current session — the JUPEB windows follow it, the University's stays as it is, and cleared the University's applies again; the 2026/2027 first-semester timetable is on the record, every course at least three hours a week and every practical at least two, each lecture with its course code; a room or a class is never booked twice in the same hour while lectures in other rooms run side by side; a course code is kept as the Board prints it ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); named text; uni text; v_cur text; v_app text; v_uni text; v_back text; r_bad text;
+        n_seed int; n_short int; n_prac int; n_short_prac int; n_nocode int; n_noroom int;
+        s1 uuid; s2 uuid; k uuid; v_code text; r_room text; r_class text; r_code text; n_side int; msg text;
+BEGIN
+    named := (SELECT current_session FROM jupeb.setting WHERE session = '*');
+    -- the timetable as the JUPEB Office gave it
+    n_seed := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active);
+    n_short := (SELECT count(*) FROM (SELECT course_code FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active AND NOT practical
+                                       GROUP BY course_code HAVING sum(ends_at - starts_at) < interval '3 hours') x);
+    n_prac := (SELECT count(DISTINCT subject_id) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active AND practical);
+    n_short_prac := (SELECT count(*) FROM (SELECT subject_id FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active AND practical
+                                            GROUP BY subject_id HAVING sum(ends_at - starts_at) < interval '2 hours') x);
+    n_nocode := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active AND NOT practical AND course_code IS NULL);
+    n_noroom := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2026/2027' AND semester = 1 AND active AND venue IS NULL);
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        uni := policy.application_session('POST_UTME_REGISTRATION');
+        UPDATE jupeb.setting SET current_session = '2031/2032' WHERE session = '*';
+        v_cur := jupeb.current_session();
+        v_app := policy.application_session('JUPEB_APPLICATION');
+        v_uni := policy.application_session('POST_UTME_REGISTRATION');
+        UPDATE jupeb.setting SET current_session = NULL WHERE session = '*';
+        v_back := jupeb.current_session();
+        BEGIN UPDATE jupeb.setting SET current_session = '2031-2032' WHERE session = '*';
+        EXCEPTION WHEN check_violation THEN r_bad := 'REFUSED'; END;
+        -- a room or a class never twice in the same hour; other rooms side by side
+        s1 := (SELECT id FROM jupeb.subject ORDER BY code LIMIT 1);
+        s2 := (SELECT id FROM jupeb.subject ORDER BY code OFFSET 1 LIMIT 1);
+        INSERT INTO jupeb.class (session, name) VALUES ('2031/2032', 'CHECK196 A') RETURNING id INTO k;
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, class_id, weekday, starts_at, ends_at, venue, course_code)
+        VALUES ('2031/2032', 1, s1, k, 1, '08:00', '10:00', 'LR8', 'geo001') RETURNING course_code INTO v_code;
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, 1, '09:00', '10:00', 'lr 8');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_room := split_part(msg, ':', 1); END;
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, class_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, k, 1, '09:00', '11:00', 'LR9');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_class := split_part(msg, ':', 1); END;
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, 1, '08:00', '10:00', 'LR9');
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue) VALUES ('2031/2032', 1, s2, 1, '10:00', '11:00', 'LR8');
+        n_side := (SELECT count(*) FROM jupeb.timetable_slot WHERE session = '2031/2032' AND active);
+        BEGIN INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, venue, course_code) VALUES ('2031/2032', 2, s1, 1, '08:00', '09:00', 'LR8', 'GEOGRAPHY 1');
+        EXCEPTION WHEN check_violation THEN r_code := 'REFUSED'; END;
+        RAISE EXCEPTION 'the V351 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V351: the JUPEB Office names the programme''s current session (2026/2027) and the JUPEB windows follow it, the University''s untouched, cleared the University''s again; the 2026/2027 first-semester timetable has every course three hours and every practical two, each lecture coded; a room or a class never twice in an hour, other rooms side by side; a course code as the Board prints it',
+        named = '2026/2027' AND v_cur = '2031/2032' AND v_app = '2031/2032' AND v_uni = uni AND v_back = uni AND r_bad = 'REFUSED'
+        AND n_seed = 56 AND n_short = 0 AND n_prac = 3 AND n_short_prac = 0 AND n_nocode = 0 AND n_noroom = 1
+        AND v_code = 'GEO 001' AND r_room = 'JUPEB_SLOT_CLASH' AND r_class = 'JUPEB_SLOT_CLASH' AND n_side = 3 AND r_code = 'REFUSED',
+        format('named=%s current=%s app=%s uni=%s/%s back=%s bad=%s seed=%s short=%s prac=%s short_prac=%s nocode=%s noroom=%s code=%s room=%s class=%s side=%s badcode=%s',
+               named, v_cur, v_app, v_uni, uni, v_back, r_bad, n_seed, n_short, n_prac, n_short_prac, n_nocode, n_noroom, v_code, r_room, r_class, n_side, r_code));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
