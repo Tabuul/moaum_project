@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341, V342, V343, V344)
+# The JUPEB programme (V339, V341–V345)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -92,6 +92,25 @@ copies of them.
   (`attendance.instructor`), checked on every call. The rate is (present + late) ÷ (classes − excused). A minimum
   percentage is the JUPEB Office's setting; **while none is set, nobody is judged.** Students see their own attendance
   only.
+- **Students registered on the old portal (V345).** JUPEB → Old-Portal Students (or the button on Applications) reads the
+  old portal's export (App No, First/Middle Name, Surname, Sex, LGA, Phone No, State, Date of Birth, NIN, Email; Programme
+  and Combination when present). Every row is judged first and nothing is written on the preview: App No, names and a valid,
+  unused email are required (a row to correct is skipped and exported for correction); an unreadable phone, NIN, sex or
+  date is left blank and said; a student already on the portal is skipped, so the same file can be uploaded again. Dates are
+  read day/month/year unless the office says otherwise (upload the file as the old portal gave it: Excel may turn 9/1/2004
+  into 1 September). Each student becomes an active JUPEB student of the session chosen, with the old App No as the
+  application number and username, marked as from the old portal; a **temporary password** is generated for each, shown to
+  the office once in a downloadable login sheet (never stored readable, never emailed), and must be changed at first sign-in;
+  each student can also be emailed a seven-day link to set their own password. Nothing else is announced while the records
+  are written; no fee reminder reaches them (what they paid on the old portal is the Bursary's), and the Payments tab says
+  so. Their programme is set by the combination they register.
+- **The list for examination numbers (V345).** JUPEB → Examination Numbers → *List for the Board*: the active students whose
+  three subjects are registered (without a number, or everyone), downloadable in **Excel** (columns Application Number,
+  Surname, …, JUPEB Examination Number — the very columns the examination-number upload reads, so the Board's returned list
+  is uploaded as it is) and **PDF** (landscape, on the letterhead, with signature lines). Students not yet registered are
+  counted, not listed.
+- **Documents viewed in a pop-up.** On the office's record and the candidate's own pages an uploaded document opens over the
+  page (previous/next, rotate and actual size for photos, download, open in a new tab, and the office's Verify / Problem).
 - **Acting on the attendance minimum (V344).** The JUPEB Office's policy (Attendance → Minimum attendance) has the minimum,
   an optional **warning band** (a student above the minimum by fewer than so many points is *close to the minimum*) and the
   **classes counted before a warning** (default 3, so one early absence is not a 0%). `attendance.jupeb_standing(session)` gives
@@ -152,7 +171,9 @@ copies of them.
   rules, preview and run.
 - `JupebAttendanceIT` also covers V344: the policy's band and classes, the standing list (office and admin only), the warning
   sent once and not again the same day, and the student's own standing.
-- `check.sql` properties 185–189 cover the rules on a brand-new database.
+- `JupebIT.oldPortalStudentsAreUploadedWithLogins` covers the old-portal upload (preview, bad email, the login once, sign-in
+  on the old App No, the forced password change, re-upload skipped, no fee reminder); `applicationToResult` the Board list.
+- `check.sql` properties 185–190 cover the rules on a brand-new database.
 
 ## Not done
 

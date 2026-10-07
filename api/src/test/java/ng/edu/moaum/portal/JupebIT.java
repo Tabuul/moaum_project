@@ -431,6 +431,16 @@ class JupebIT {
         assertThat((List<Map<String, Object>>) detail.get("examNoHistory")).extracting(h -> h.get("new_no")).containsExactly(examNo, examNo + "B");
         String held = examNo + "B";
 
+        // ── the list for the Board: students whose subjects are registered, those without a number by default (V345) ──
+        Map<String, Object> boardAll = ok(it.get(office, ub -> ub.path("/api/v1/jupeb/office/exam-number-list").queryParam("session", session).queryParam("which", "all").build()));
+        assertThat((List<Map<String, Object>>) boardAll.get("rows")).anySatisfy(r -> {
+            assertThat(r.get("application_no")).isEqualTo(number);
+            assertThat((List<String>) r.get("subject_codes")).containsExactlyInAnyOrder("ZZM" + tag, "ZZP" + tag, "ZZC" + tag);
+        });
+        Map<String, Object> boardPending = ok(it.get(office, ub -> ub.path("/api/v1/jupeb/office/exam-number-list").queryParam("session", session).build()));
+        assertThat((List<Map<String, Object>>) boardPending.get("rows")).noneMatch(r -> number.equals(r.get("application_no")));
+        assertThat(status(it.get(bursar, "/api/v1/jupeb/office/exam-number-list"))).isEqualTo(403);
+
         // ── results: imported whole, shown to the candidate only once published ──
         Map<String, Object> grades = Map.of("rows", List.of(Map.of("row", 2, "examNo", held, "subject", "ZZM" + tag, "grade", "A"),
                 Map.of("row", 3, "examNo", held, "subject", "ZZP" + tag, "grade", "B"), Map.of("row", 4, "examNo", held, "subject", "ZZC" + tag, "grade", "C")), "commit", true);
@@ -493,6 +503,79 @@ class JupebIT {
                 .contains("CREATED", "APPLICATION_FEE_CONFIRMED", "SUBMITTED", "RETURNED", "ELIGIBLE", "ADMITTED", "STATUS_CHECKING_CONFIRMED", "ACCEPTANCE_CONFIRMED",
                           "SCHOOL_FEE_CONFIRMED", "STUDENT", "SUBJECTS_REGISTERED", "EXAM_NO_ASSIGNED");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL'").param("a", app).query(Integer.class).single()).isGreaterThanOrEqualTo(8);
+    }
+
+    /** V345: the old portal's registered students, uploaded with logins: judged first, the App No as the username, a temporary password changed at first sign-in */
+    @Test
+    @SuppressWarnings("unchecked")
+    void oldPortalStudentsAreUploadedWithLogins() {
+        String app1 = "S0" + tag + "000001", app2 = "S0" + tag + "000002";
+        String mail = "zzold." + tag.toLowerCase() + "@example.com";
+        List<Map<String, Object>> rows = List.of(
+                oldRow(2, "appNo", app1, "firstName", "IWANGER", "middleName", "JOY", "surname", "UVA", "sex", "Female", "lga", "Ukum", "phone", "7052428202",
+                        "state", "Benue", "dob", "9/1/2004", "nin", "13181803004", "email", "zzbroken." + tag.toLowerCase() + "@gmail."),
+                oldRow(3, "appNo", app2, "firstName", "Paul", "middleName", "Shater", "surname", "Kegh", "sex", "Male", "lga", "Gboko", "phone", "8089894004",
+                        "state", "Benue", "dob", "21/10/2006", "nin", "1171459604", "email", mail));
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", rows);
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", false);
+        in.put("fileName", "old-portal.xlsx");
+        in.put("emailLinks", true);
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in))).isEqualTo(403);
+        Map<String, Object> preview = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        List<Map<String, Object>> judged = (List<Map<String, Object>>) preview.get("rows");
+        assertThat(judged.get(0).get("status")).isEqualTo("INVALID");
+        assertThat(String.valueOf(judged.get(0).get("message"))).contains("is not valid");
+        assertThat(judged.get(1).get("status")).isEqualTo("REVIEW");   // the NIN of ten digits is left out and said
+        assertThat(judged.get(1).get("phone")).isEqualTo("08089894004");
+        assertThat(judged.get(1).get("dob")).isEqualTo("2006-10-21");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application WHERE application_no = :n").param("n", app2).query(Integer.class).single()).isZero();
+
+        in.put("commit", true);
+        Map<String, Object> done = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        assertThat(((Number) done.get("applied")).intValue()).isEqualTo(1);
+        List<Map<String, Object>> creds = (List<Map<String, Object>>) done.get("credentials");
+        assertThat(creds).hasSize(1);
+        String temporary = String.valueOf(creds.get(0).get("password"));
+        assertThat(creds.get(0).get("applicationNo")).isEqualTo(app2);
+        assertThat(temporary).hasSize(10);
+        UUID created = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", app2).query(UUID.class).single();
+        assertThat(jdbc.sql("SELECT state || '/' || legacy_source || '/' || (nin IS NULL) FROM jupeb.application WHERE id = :a").param("a", created).query(String.class).single())
+                .isEqualTo("STUDENT/OLD_PORTAL/true");
+        // the temporary password is not kept readable; the student was emailed a link, not the password
+        assertThat(jdbc.sql("SELECT password_hash FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a").param("a", created)
+                .query(String.class).single()).startsWith("$2").doesNotContain(temporary);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL' AND body LIKE '%/jupeb/reset?token=%' AND body NOT LIKE '%' || :p || '%'")
+                .param("a", created).param("p", temporary).query(Integer.class).single()).isEqualTo(1);
+
+        // the student signs in on the old App No with the temporary password, and must choose their own first
+        Map<String, Object> signed = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2.toLowerCase(), "password", temporary)));
+        String token = String.valueOf(signed.get("token"));
+        Map<String, Object> mine = ok(it.get(token, "/api/v1/jupeb/me"));
+        assertThat(mine.get("must_change_password")).isEqualTo(true);
+        assertThat(mine.get("legacy_ref")).isEqualTo(app2);
+        assertThat(code(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", "wrong-password", "newPassword", "MyOwnPass2026"))))
+                .isEqualTo("JUPEB_PASSWORD_CURRENT");
+        mine = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "MyOwnPass2026")));
+        assertThat(mine.get("must_change_password")).isEqualTo(false);
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", temporary)))).isEqualTo(422);
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", mail, "password", "MyOwnPass2026")))).isEqualTo(200);
+
+        // the same file again adds nothing twice; no fee reminder goes to a student from the old portal
+        in.put("commit", false);
+        List<Map<String, Object>> again = (List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in)).get("rows");
+        assertThat(again.get(1).get("status")).isEqualTo("EXISTS");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.due_reminders(now() + interval '60 days') d WHERE d.application_id = :a AND d.kind = 'SCHOOL_FEE_UNPAID'")
+                .param("a", created).query(Integer.class).single()).isZero();
+    }
+
+    private static Map<String, Object> oldRow(int row, String... pairs) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("row", row);
+        for (int i = 0; i + 1 < pairs.length; i += 2) m.put(pairs[i], pairs[i + 1]);
+        return m;
     }
 
     private static Map<String, Object> grade(int sitting, String subject, String grade) {

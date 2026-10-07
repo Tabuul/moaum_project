@@ -294,7 +294,7 @@ class JupebPublicController {
         UUID account = (UUID) r.get("account_id");
         AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB password reset", null, null), () -> tx.execute(st -> {
             jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE id = :id").param("id", r.get("id")).update();
-            jdbc.sql("UPDATE jupeb.account SET password_hash = :h, failed_attempts = 0, locked_until = NULL WHERE id = :id").param("h", hash).param("id", account).update();
+            jdbc.sql("UPDATE jupeb.account SET password_hash = :h, failed_attempts = 0, locked_until = NULL, must_change_password = false WHERE id = :id").param("h", hash).param("id", account).update();
             return null;
         }));
         String email = jdbc.sql("SELECT email FROM jupeb.account WHERE id = :id").param("id", account).query(String.class).single();

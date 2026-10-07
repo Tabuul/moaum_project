@@ -17,6 +17,7 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles, KvGrid } from "
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { DocViewer, viewerClick, type ViewDoc } from "./DocViewer";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
   stateKind, streamLabel, when, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper,
@@ -183,7 +184,8 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
   return (
     <>
       <PageHead title="JUPEB applications" description="Every JUPEB candidate of the session, from draft to result. Open one to review, decide or correct it."
-        actions={<Btn kind="ghost" onClick={() => void exportAll()}>Export (Excel)</Btn>} />
+        actions={<span className="row">{canWrite ? <LinkBtn kind="secondary" href="/jupeb/import">Upload students from the old portal</LinkBtn> : null}
+          <LinkBtn kind="ghost" href="/jupeb/examination">List for exam numbers</LinkBtn><Btn kind="ghost" onClick={() => void exportAll()}>Export (Excel)</Btn></span>} />
       <Panel title="Filter">
         <PBody>
           <div className="grid grid--4">
@@ -254,6 +256,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [modal, setModal] = useState<{ kind: string; title: string; fields: Record<string, string> } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
     void jcall<Candidate>(`/api/v1/jupeb/office/applications/${id}`).then((r) => {
@@ -298,10 +301,16 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
   const docBase = `/api/bff/api/v1/jupeb/office/applications/${c.id}/documents`;
   const sq = (d: Doc) => (d.sitting ? `?sitting=${d.sitting}` : "");
   const fees = c.fees;
+  /* the uploaded documents, viewed one at a time in a pop-up (with the review actions) */
+  const viewable = c.documents.filter((d) => d.filename);
+  const viewDocs: ViewDoc[] = viewable.map((d) => ({
+    key: `${d.kind}:${d.sitting ?? ""}`, label: d.label, filename: d.filename, url: `${docBase}/${d.kind}/content${sq(d)}`,
+    sub: <>{d.exam_body ? `${d.exam_body}${d.exam_year ? ` ${d.exam_year}` : ""} · ` : ""}{d.status ? DOC_STATUS[d.status] ?? d.status : "Not reviewed"}{d.review_note ? ` — ${d.review_note}` : ""}</>,
+  }));
   return (
     <>
       <PageHead title={fullName(c)} eyebrow={<Link href={`/jupeb/applications?session=${encodeURIComponent(c.session)}`}>← JUPEB applications</Link>}
-        description={<>{c.application_no} · {c.session} · {streamLabel(c.stream)}{c.combination_code ? ` · ${c.combination_code}` : ""} · <Pil kind={stateKind(s)}>{STATE_SHORT[s] ?? s}</Pil></>}
+        description={<>{c.application_no} · {c.session}{c.legacy_source ? <> · <Pil kind="info">From the old portal</Pil></> : null} · {streamLabel(c.stream)}{c.combination_code ? ` · ${c.combination_code}` : ""} · <Pil kind={stateKind(s)}>{STATE_SHORT[s] ?? s}</Pil></>}
         actions={<span className="row" style={{ flexWrap: "wrap" }}><LinkBtn href={pdf("summary")}>Application summary</LinkBtn>
           {c.submitted_at ? <LinkBtn href={pdf("acknowledgement")}>Acknowledgement</LinkBtn> : null}
           {c.admission_decided_at ? <LinkBtn href={pdf("status")}>Status slip</LinkBtn> : null}
@@ -363,7 +372,8 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
       <Panel title="Documents">
         <PBody><DTable noPrint pageSize={0} cols={["Document", "File", "Uploaded", "Status", ...(canWrite ? ["Review|mid"] : [])]} rows={c.documents.map((d) => [
           <span key="l">{d.label}{d.required ? "" : <span className="sub2"> · optional</span>}{d.exam_body ? <div className="sub2">{d.exam_body}{d.exam_year ? ` ${d.exam_year}` : ""}</div> : null}{d.review_note ? <div className="sub2">{d.review_note}</div> : null}</span>,
-          d.filename ? <a key="f" href={`${docBase}/${d.kind}/content${sq(d)}`} target="_blank" rel="noreferrer">{d.filename}</a> : "—",
+          d.filename ? <a key="f" href={`${docBase}/${d.kind}/content${sq(d)}`} target="_blank" rel="noreferrer" title="View the document"
+            onClick={viewerClick(() => setViewing(viewable.indexOf(d)))}>{d.filename}</a> : "—",
           day(d.uploaded_at), d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status]}</Pil> : "—",
           ...(canWrite ? [d.filename ? <span key="r" className="row" style={{ gap: 4, justifyContent: "center" }}>
             <Btn kind="go" disabled={busy || d.status === "VERIFIED"} onClick={() => void act(`/documents/${d.kind}/review${sq(d)}`, { status: "VERIFIED" }, "Document verified")}>Verify</Btn>
@@ -402,6 +412,16 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
       <Panel title="Timeline">
         <PBody><DTable noPrint pageSize={0} cols={["When", "What", "Note", "By"]} rows={c.events.map((e) => [when(e.at), EVENT_LABEL[e.kind] ?? e.kind, e.note ?? "—", e.actor_name ?? e.actor_office ?? "—"])} /></PBody>
       </Panel>
+      {viewing != null && viewDocs.length ? (
+        <DocViewer docs={viewDocs} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} actions={canWrite ? (vd) => {
+          const d = viewable[viewDocs.findIndex((x) => x.key === vd.key)];
+          return d ? <>
+            <Btn kind="go" disabled={busy || d.status === "VERIFIED"} onClick={() => void act(`/documents/${d.kind}/review${sq(d)}`, { status: "VERIFIED" }, "Document verified")}>
+              {d.status === "VERIFIED" ? "Verified" : "Verify"}</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => { setViewing(null); open(`doc:${d.kind}`, `${d.label}: needs attention`, { status: "REPLACEMENT_REQUIRED", note: "", sitting: d.sitting ? String(d.sitting) : "" }); }}>Problem…</Btn>
+          </> : null;
+        } : undefined} />
+      ) : null}
       {modal ? (
         <Modal title={modal.title} onClose={() => setModal(null)} foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void submitModal()}>Save</Btn></>}>
           {modal.kind === "eligible" ? <Field id="m-el" label="Eligibility"><select id="m-el" className="ctl" value={modal.fields.eligible} onChange={(e) => setF("eligible", e.target.value)}><option value="yes">Eligible</option><option value="no">Not eligible (say why)</option></select></Field> : null}
@@ -745,11 +765,67 @@ function Batches({ kind, tick }: { kind: string; tick: number }) {
   );
 }
 
+interface BoardRow {
+  id: string; application_no: string; surname: string; first_name: string; middle_name: string | null; sex: string | null; date_of_birth: string | null; phone: string | null;
+  email: string; state_of_origin: string | null; lga: string | null; nin: string | null; stream: string | null; combination_code: string | null; class_name: string | null;
+  exam_no: string | null; subject_codes: string[]; subject_titles: string[];
+}
+interface BoardList { session: string; which: string; notRegistered: number; rows: BoardRow[] }
+
+/** the list sent to the Board for examination numbers, in Excel (whose columns the examination-number upload reads back) and PDF */
+function BoardListPanel() {
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [session, setSession] = useState("");
+  const [which, setWhich] = useState<"pending" | "all">("pending");
+  const [d, setD] = useState<BoardList | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.sessions); setSession((x) => x || r.data.session); } });
+    return () => { live = false; };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    if (session) void jcall<BoardList>(`/api/v1/jupeb/office/exam-number-list?session=${encodeURIComponent(session)}&which=${which}`).then((r) => { if (live) { if (r.ok) setD(r.data); else notifyProblem(r.problem); } });
+    return () => { live = false; };
+  }, [session, which]);
+  const subject = (r: BoardRow, i: number) => (r.subject_codes[i] ? `${r.subject_titles[i]} (${r.subject_codes[i]})` : "");
+  async function excel() {
+    if (!d) return;
+    const blob = await brandedXlsx(`JUPEB candidates for examination numbers — ${d.session}`,
+      ["Application Number", "Surname", "First Name", "Middle Name", "Sex", "Date of Birth", "Phone", "Email", "State of Origin", "LGA", "NIN", "Programme", "Combination",
+        "Subject 1", "Subject 2", "Subject 3", "Class", "JUPEB Examination Number"],
+      d.rows.map((r) => [r.application_no, r.surname.toUpperCase(), r.first_name, r.middle_name ?? "", r.sex === "F" ? "Female" : r.sex === "M" ? "Male" : "", r.date_of_birth ? day(r.date_of_birth) : "",
+        r.phone ?? "", r.email, r.state_of_origin ?? "", r.lga ?? "", r.nin ?? "", streamLabel(r.stream), r.combination_code ?? "", subject(r, 0), subject(r, 1), subject(r, 2), r.class_name ?? "", r.exam_no ?? ""]),
+      { sheetName: "Candidates", serial: docSerial("JUPEBEXAMLIST"), meta: [["Session", d.session], ["List", d.which === "all" ? "Every student with registered subjects" : "Students without a JUPEB examination number"]] });
+    downloadBlob(blob, `jupeb-exam-number-list-${d.session.replace("/", "-")}.xlsx`);
+  }
+  return (
+    <Panel title="List for the Board" right={<span className="row">
+      <Btn kind="primary" disabled={!d?.rows.length} onClick={() => void excel()}>Download Excel</Btn>
+      {d?.rows.length ? <LinkBtn kind="secondary" href={`/jupeb/exam-list/pdf?session=${encodeURIComponent(session)}&which=${which}`}>Download PDF</LinkBtn> : <Btn kind="secondary" disabled>Download PDF</Btn>}
+    </span>}>
+      <PBody>
+        <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+          <select className="ctl" style={{ width: 180 }} aria-label="Session" value={session} onChange={(e) => setSession(e.target.value)}>{sessions.map((x) => <option key={x.session} value={x.session}>{x.session}</option>)}</select>
+          <select className="ctl" style={{ width: 300 }} aria-label="Which students" value={which} onChange={(e) => setWhich(e.target.value as "pending" | "all")}>
+            <option value="pending">Without an examination number</option><option value="all">Every student with registered subjects</option></select>
+        </div>
+        <p className="sub2">The active JUPEB students of the session whose three subjects are registered. The Excel has the columns the upload above reads — Application Number, Surname and JUPEB Examination Number — so the list the Board returns with the numbers filled in can be uploaded as it is.</p>
+        {d && d.notRegistered ? <Note kind="info" title={`${d.notRegistered} student${d.notRegistered === 1 ? " has" : "s have"} not registered subjects yet`}>They are not on the list until they register their three subjects.</Note> : null}
+        {d ? <DTable pageSize={20} cols={["Application No", "Name", "Sex|mid", "Programme", "Combination", "Subjects", "Exam no"]} texts={d.rows.map((r) => `${r.application_no} ${r.surname} ${r.first_name}`)}
+          rows={d.rows.map((r) => [r.application_no, `${r.surname.toUpperCase()}, ${r.first_name}${r.middle_name ? ` ${r.middle_name}` : ""}`, r.sex ?? "—", streamLabel(r.stream), r.combination_code ?? "—",
+            (r.subject_codes ?? []).join(", ") || "—", r.exam_no ?? "—"])} /> : <p className="sub2">Loading…</p>}
+      </PBody>
+    </Panel>
+  );
+}
+
 export function JupebExamNumbers({ canWrite }: { canWrite: boolean }) {
   const [tick, setTick] = useState(0);
   return (
     <>
       <PageHead title="JUPEB examination numbers" description="The official numbers the Board issues, imported by application number. A number is never invented here, never shared by two candidates, and never overwritten without a reason." />
+      <BoardListPanel />
       {canWrite ? (
         <ImportBox title="Examination numbers" path="/api/v1/jupeb/office/exam-numbers/import" onDone={() => setTick((t) => t + 1)}
           aliases={{ "application number": "applicationNo", "application no": "applicationNo", "app no": "applicationNo", "appno": "applicationNo", "jupeb application number": "applicationNo",
@@ -1216,6 +1292,151 @@ export function JupebPayments({ canConfirm }: { canConfirm: boolean }) {
           <Field id="p-ch" label="Channel"><input id="p-ch" className="ctl" value={confirm.channel} onChange={(e) => setConfirm({ ...confirm, channel: e.target.value })} /></Field>
           <Field id="p-re" label="Teller and reason" required><textarea id="p-re" className="ctl" rows={3} value={confirm.reason} onChange={(e) => setConfirm({ ...confirm, reason: e.target.value })} /></Field>
         </Modal>
+      ) : null}
+    </>
+  );
+}
+
+/* ── V345: the students already registered on the old portal, uploaded with their logins ─────────── */
+
+interface OldRow { row: number; status: string; message: string; appNo: string | null; name: string; email: string | null; sex: string | null; phone: string | null;
+  nin: string | null; dob: string | null; state: string | null; lga: string | null; programme: string | null; combination: string | null }
+interface OldResult { rows: OldRow[]; valid: number; review: number; invalid: number; exists: number; committed: boolean; ref: string | null; applied: number;
+  credentials?: { row: number; applicationNo: string; name: string; email: string; password: string }[] }
+
+const OLD_ALIASES: Record<string, string> = {
+  "app no": "appNo", "application no": "appNo", "application number": "appNo", "app number": "appNo", "reg no": "appNo",
+  "first name": "firstName", "firstname": "firstName", "middle name": "middleName", "middlename": "middleName", "other name": "middleName", "other names": "middleName",
+  "surname": "surname", "last name": "surname", "lastname": "surname", "sex": "sex", "gender": "sex", "lga": "lga", "local government": "lga",
+  "phone no": "phone", "phone": "phone", "phone number": "phone", "gsm": "phone", "state": "state", "state of origin": "state",
+  "date of birth": "dob", "dob": "dob", "birth date": "dob", "nin": "nin", "email": "email", "email address": "email",
+  "programme": "programme", "program": "programme", "stream": "programme", "combination": "combination", "subject combination": "combination",
+};
+const OLD_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
+  VALID: ["Ready", "ok"], REVIEW: ["Ready — see note", "warn"], INVALID: ["To correct", "bad"], EXISTS: ["Already on the portal", "grey"],
+};
+
+/** /jupeb/import — the old portal's export uploaded: judged first, then each student given an account and a temporary password */
+export function JupebOldPortalImport() {
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [session, setSession] = useState("");
+  const [dayFirst, setDayFirst] = useState(true);
+  const [emailLinks, setEmailLinks] = useState(true);
+  const [file, setFile] = useState<string | null>(null);
+  const [rows, setRows] = useState<Record<string, string | number>[]>([]);
+  const [preview, setPreview] = useState<OldResult | null>(null);
+  const [done, setDone] = useState<{ applied: number; refs: string[]; credentials: NonNullable<OldResult["credentials"]> } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.sessions); setSession((s) => s || r.data.session); } });
+    return () => { live = false; };
+  }, []);
+  async function judge(list: Record<string, string | number>[], name: string | null) {
+    setBusy("Checking the rows…");
+    try {
+      const all: OldRow[] = [];
+      const sum = { valid: 0, review: 0, invalid: 0, exists: 0 };
+      for (let i = 0; i < list.length; i += 300) {
+        const r = await jcall<OldResult>("/api/v1/jupeb/office/old-portal-students/import", "POST", { rows: list.slice(i, i + 300), session, dayFirst, commit: false, fileName: name, emailLinks });
+        if (!r.ok) { notifyProblem(r.problem); return; }
+        all.push(...r.data.rows); sum.valid += r.data.valid; sum.review += r.data.review; sum.invalid += r.data.invalid; sum.exists += r.data.exists;
+      }
+      setPreview({ rows: all, ...sum, committed: false, ref: null, applied: 0 });
+    } finally { setBusy(null); }
+  }
+  async function pick(f: File | undefined) {
+    if (!f) return;
+    setDone(null); setPreview(null);
+    const list = await readSheet(f, OLD_ALIASES);
+    if (!list.length) { notifyProblem({ status: 400, title: "No rows found. The file needs a header row with App No, First Name, Surname and Email." }); return; }
+    setFile(f.name); setRows(list);
+    await judge(list, f.name);
+  }
+  async function upload() {
+    if (!preview) return;
+    const ready = new Set(preview.rows.filter((r) => r.status === "VALID" || r.status === "REVIEW").map((r) => String(r.row)));
+    const toSend = rows.filter((r) => ready.has(String(r.row)));
+    const credentials: NonNullable<OldResult["credentials"]> = [];
+    const refs: string[] = [];
+    let applied = 0;
+    try {
+      /* in parts, each its own batch: a temporary password is hashed for every student, which takes a moment each */
+      for (let i = 0; i < toSend.length; i += 100) {
+        setBusy(`Creating accounts… ${Math.min(i + 100, toSend.length)} of ${toSend.length}`);
+        const r = await jcall<OldResult>("/api/v1/jupeb/office/old-portal-students/import", "POST",
+          { rows: toSend.slice(i, i + 100), session, dayFirst, commit: true, fileName: file, emailLinks }, "JUPEB students uploaded from the old portal");
+        if (!r.ok) { notifyProblem(r.problem); break; }
+        applied += r.data.applied; if (r.data.ref) refs.push(r.data.ref); credentials.push(...(r.data.credentials ?? []));
+      }
+    } finally { setBusy(null); }
+    setDone({ applied, refs, credentials });
+    if (applied) notify(`${applied} student${applied === 1 ? "" : "s"} uploaded with their logins.`);
+  }
+  async function downloadLogins() {
+    if (!done) return;
+    const blob = await brandedXlsx(`JUPEB login details — ${session}`, ["Username (App No)", "Name", "Email", "Temporary password"],
+      done.credentials.map((c) => [c.applicationNo, c.name, c.email, c.password]),
+      { sheetName: "Logins", serial: docSerial("JUPEBLOGIN"), meta: [["Session", session], ["Upload", done.refs.join(", ")], ["Note", "Each student must change the temporary password at first sign-in"]] });
+    downloadBlob(blob, `jupeb-login-details-${session.replace("/", "-")}.xlsx`);
+  }
+  async function exportToCorrect() {
+    if (!preview) return;
+    const bad = preview.rows.filter((r) => r.status === "INVALID");
+    const byRow = new Map(rows.map((r) => [String(r.row), r]));
+    const blob = await brandedXlsx("JUPEB old-portal rows to correct", ["Row", "App No", "First Name", "Middle Name", "Surname", "Sex", "LGA", "Phone No", "State", "Date of Birth", "NIN", "Email", "What to correct"],
+      bad.map((b) => { const o = byRow.get(String(b.row)) ?? {}; return [b.row, String(o.appNo ?? ""), String(o.firstName ?? ""), String(o.middleName ?? ""), String(o.surname ?? ""), String(o.sex ?? ""),
+        String(o.lga ?? ""), String(o.phone ?? ""), String(o.state ?? ""), String(o.dob ?? ""), String(o.nin ?? ""), String(o.email ?? ""), b.message]; }),
+      { sheetName: "To correct", serial: docSerial("JUPEBFIX") });
+    downloadBlob(blob, "jupeb-old-portal-rows-to-correct.xlsx");
+  }
+  const ready = preview ? preview.valid + preview.review : 0;
+  return (
+    <>
+      <PageHead title="Upload students from the old portal" eyebrow={<Link href="/jupeb/applications">← JUPEB applications</Link>}
+        description="The JUPEB students already registered on the old portal, uploaded from its export: each becomes a JUPEB student here with a login — the old App No as the username and a temporary password the student changes at first sign-in." />
+      {done ? (
+        <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} student${done.applied === 1 ? "" : "s"} uploaded`}
+          action={done.credentials.length ? <Btn kind="primary" onClick={() => void downloadLogins()}>Download login details (Excel)</Btn> : null}>
+          {done.credentials.length
+            ? `Download the login details now: the temporary passwords are shown this once and kept nowhere. ${emailLinks ? "Each student was also emailed a link to set their own password." : ""} Upload ${done.refs.join(", ")}.`
+            : "Nothing new was uploaded."}
+        </Note>
+      ) : null}
+      <Panel title="1 · The file">
+        <PBody>
+          <div className="grid grid--3">
+            <Field id="op-session" label="Session the students are in"><select id="op-session" className="ctl" value={session} onChange={(e) => { setSession(e.target.value); setPreview(null); }}>
+              {sessions.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}</select></Field>
+            <Field id="op-dates" label="Dates written as" hint="When both numbers are 12 or less (9/1/2004)"><select id="op-dates" className="ctl" value={dayFirst ? "dmy" : "mdy"} onChange={(e) => { setDayFirst(e.target.value === "dmy"); setPreview(null); }}>
+              <option value="dmy">Day/month/year</option><option value="mdy">Month/day/year</option></select></Field>
+            <Field id="op-email" label="Email each student"><label className="row" style={{ gap: "var(--s-1)" }}><input id="op-email" type="checkbox" checked={emailLinks} onChange={(e) => setEmailLinks(e.target.checked)} /> a link to set their own password</label></Field>
+          </div>
+          <div className="row mt-2">
+            <label className="btn btn--primary btn--sm" style={{ cursor: busy ? "wait" : "pointer" }}>Choose the export (Excel or CSV)
+              <input type="file" hidden accept=".xlsx,.csv" disabled={!!busy || !session} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} /></label>
+            {file ? <span className="sub2">{file} · {rows.length} rows</span> : null}
+            {busy ? <span className="sub2">{busy}</span> : null}
+          </div>
+          <p className="sub2 mt-2">Columns read: App No, First Name, Middle Name, Surname, Sex, LGA, Phone No, State, Date of Birth, NIN, Email (and Programme, Combination where the file has them).
+            Upload the file as the old portal gave it: re-saving it in Excel can turn 9/1/2004 into a different date. A student already on the portal is skipped, so the same file may be uploaded again.</p>
+        </PBody>
+      </Panel>
+      {preview ? (
+        <Panel title={`2 · Check — ${ready} ready, ${preview.invalid} to correct, ${preview.exists} already on the portal`}
+          right={<span className="row">
+            {preview.invalid ? <Btn kind="ghost" onClick={() => void exportToCorrect()}>Rows to correct (Excel)</Btn> : null}
+            <Btn kind="primary" disabled={!!busy || ready === 0 || !!done} onClick={() => void upload()}>{`Upload ${ready} student${ready === 1 ? "" : "s"} and create their logins`}</Btn>
+          </span>}>
+          <PBody>
+            {preview.invalid ? <Note kind="bad" title={`${preview.invalid} row${preview.invalid === 1 ? "" : "s"} to correct`}>These are skipped. Correct them in the file (the export lists what to correct) and upload it again; the students already uploaded are skipped then.</Note> : null}
+            <DTable pageSize={50} cols={["Row|num", "App No", "Name", "Email", "Sex", "Phone", "Date of birth", "State / LGA", "Status", "Note"]}
+              texts={preview.rows.map((r) => `${r.appNo ?? ""} ${r.name} ${r.email ?? ""} ${r.message}`)}
+              rows={preview.rows.map((r) => [r.row, r.appNo ?? "—", r.name, r.email ?? "—", r.sex ?? "—", r.phone ?? "—", r.dob ? day(r.dob) : "—",
+                [r.state, r.lga].filter(Boolean).join(" / ") || "—",
+                <Pil key="s" kind={(OLD_STATUS[r.status] ?? [r.status, "grey"])[1]}>{(OLD_STATUS[r.status] ?? [r.status])[0]}</Pil>, r.message || "—"])} />
+          </PBody>
+        </Panel>
       ) : null}
     </>
   );

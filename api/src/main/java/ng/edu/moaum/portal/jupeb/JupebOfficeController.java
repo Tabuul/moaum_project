@@ -53,12 +53,14 @@ class JupebOfficeController {
     private final JupebView view;
     private final FileObjects files;
     private final String portalUrl;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files,
+    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files, tools.jackson.databind.ObjectMapper json,
                           @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.view = view;
         this.files = files;
+        this.json = json;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
@@ -426,6 +428,38 @@ class JupebOfficeController {
     }
 
     /** the Board's examination numbers, matched by application number: a preview, then a commit that writes nothing while a row is invalid */
+    /**
+     * The list sent to the Board for examination numbers: every active student of the session whose three subjects are
+     * registered (the Board examines those), without a number yet or everyone; with how many students have still to register.
+     * Its columns match the examination-number upload, so the list the Board returns with the numbers can be uploaded as it is.
+     */
+    @GetMapping("/exam-number-list")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> examNumberList(@RequestParam(required = false) String session, @RequestParam(defaultValue = "pending") String which) {
+        String s = sessionOr(session);
+        boolean all = "all".equalsIgnoreCase(which.trim());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("which", all ? "all" : "pending");
+        out.put("notRegistered", jdbc.sql("SELECT count(*) FROM jupeb.application WHERE session = :s AND state = 'STUDENT' AND subjects_registered_at IS NULL")
+                .param("s", s).query(Long.class).single());
+        out.put("rows", jdbc.sql("""
+                SELECT a.id, a.application_no, a.surname, a.first_name, a.middle_name, a.sex, a.date_of_birth::text AS date_of_birth, a.phone, a.email,
+                       a.state_of_origin, a.lga, a.nin, a.stream, c.code AS combination_code, cl.name AS class_name, a.exam_no,
+                       (SELECT coalesce(array_agg(sj.code ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
+                         WHERE r.application_id = a.id) AS subject_codes,
+                       (SELECT coalesce(array_agg(sj.title ORDER BY sj.code), '{}') FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
+                         WHERE r.application_id = a.id) AS subject_titles
+                  FROM jupeb.application a
+                  LEFT JOIN jupeb.combination c ON c.id = a.combination_id
+                  LEFT JOIN jupeb.class cl ON cl.id = a.class_id
+                 WHERE a.session = :s AND a.state IN ('STUDENT', 'COMPLETED') AND a.subjects_registered_at IS NOT NULL AND (:all OR a.exam_no IS NULL)
+                 ORDER BY c.code NULLS LAST, a.surname, a.first_name
+                """).param("s", s).param("all", all).query().listOfRows());
+        return out;
+    }
+
     @PostMapping("/exam-numbers/import")
     @PreAuthorize(WRITE)
     @Transactional
@@ -739,6 +773,103 @@ class JupebOfficeController {
         String sent = jdbc.sql("SELECT jupeb.send_reminders(now(), :p, 500, 'OFFICE')::text").param("p", portalUrl).query(String.class).single();
         Map<String, Object> out = new LinkedHashMap<>(reminders());
         out.put("result", sent);
+        return out;
+    }
+
+    /* ── the students already registered on the old portal, uploaded with their logins (V345) ── */
+
+    public record OldPortalIn(@NotNull @Size(max = 300) List<Map<String, Object>> rows, @NotBlank String session, boolean dayFirst, boolean commit,
+                              @Size(max = 200) String fileName, boolean emailLinks) {
+    }
+
+    private static final String PASSWORD_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789abcdefghjkmnpqrstuvwxyz";
+    private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+    private final org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12);
+
+    private static String temporaryPassword() {
+        StringBuilder b = new StringBuilder(10);
+        for (int i = 0; i < 10; i++) b.append(PASSWORD_LETTERS.charAt(RANDOM.nextInt(PASSWORD_LETTERS.length())));
+        return b.toString();
+    }
+
+    private static String sha256(String s) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * The old portal's export, judged row by row (a preview writes nothing); on the upload every importable row becomes an
+     * account and a student record with a temporary password, returned here once — the office hands them out; they are
+     * never stored readable — and, when asked, an email to each student with a link to set their own password. A student
+     * already on the portal is skipped; a row to correct is listed and skipped.
+     */
+    @PostMapping("/old-portal-students/import")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> importOldPortal(@Valid @RequestBody OldPortalIn body) {
+        String session = body.session().trim();
+        String judged = jdbc.sql("SELECT jupeb.import_old_portal_students(:r::jsonb, :s, :d, false, :f, :by)::text")
+                .param("r", json.writeValueAsString(body.rows())).param("s", session).param("d", body.dayFirst()).param("f", body.fileName(), Types.VARCHAR)
+                .param("by", actor()).query(String.class).single();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> preview = json.readValue(judged, Map.class);
+        if (!body.commit()) return preview;
+
+        /* a temporary password for each importable row, hashed as every JUPEB password is (bcrypt, cost 12) */
+        Set<String> importable = new java.util.HashSet<>();
+        for (Object o : (List<?>) preview.get("rows")) {
+            Map<?, ?> r = (Map<?, ?>) o;
+            if ("VALID".equals(r.get("status")) || "REVIEW".equals(r.get("status"))) importable.add(String.valueOf(r.get("row")));
+        }
+        Map<String, String> passwords = new java.util.concurrent.ConcurrentHashMap<>();
+        List<Map<String, Object>> rows = body.rows().parallelStream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>(r);
+            String row = String.valueOf(r.get("row"));
+            if (importable.contains(row)) {
+                String pw = temporaryPassword();
+                passwords.put(row, pw);
+                m.put("passwordHash", encoder.encode(pw));
+            }
+            return m;
+        }).toList();
+        String done = jdbc.sql("SELECT jupeb.import_old_portal_students(:r::jsonb, :s, :d, true, :f, :by)::text")
+                .param("r", json.writeValueAsString(rows)).param("s", session).param("d", body.dayFirst()).param("f", body.fileName(), Types.VARCHAR)
+                .param("by", actor()).query(String.class).single();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = new LinkedHashMap<>(json.readValue(done, Map.class));
+        List<Map<String, Object>> credentials = new java.util.ArrayList<>();
+        for (Object o : (List<?>) out.getOrDefault("created", List.of())) {
+            Map<?, ?> c = (Map<?, ?>) o;
+            String row = String.valueOf(c.get("row"));
+            UUID app = UUID.fromString(String.valueOf(c.get("applicationId")));
+            Map<String, Object> cred = new LinkedHashMap<>();
+            cred.put("row", c.get("row"));
+            cred.put("applicationNo", c.get("applicationNo"));
+            cred.put("name", c.get("name"));
+            cred.put("email", c.get("email"));
+            cred.put("password", passwords.get(row));
+            credentials.add(cred);
+            if (body.emailLinks()) {
+                byte[] raw = new byte[24];
+                RANDOM.nextBytes(raw);
+                String token = java.util.HexFormat.of().formatHex(raw);
+                jdbc.sql("""
+                        INSERT INTO jupeb.password_reset (account_id, token_hash, expires_at)
+                        SELECT a.account_id, :h, now() + interval '7 days' FROM jupeb.application a WHERE a.id = :id
+                        """).param("h", sha256(token)).param("id", app).update();
+                jdbc.sql("SELECT jupeb.tell(:id, :s, :b)").param("id", app).param("s", "Your JUPEB portal account is ready")
+                        .param("b", "Your JUPEB record from the old portal is now on the University's portal. Sign in at " + portalUrl + "/login with your "
+                                + "application number " + c.get("applicationNo") + " (or this email).\n\nSet your password with this link (it works for seven days): "
+                                + portalUrl + "/jupeb/reset?token=" + token + "\n\nIf the JUPEB Office gave you a temporary password, you may sign in with it instead; "
+                                + "you will be asked to choose your own.")
+                        .query().listOfRows();
+            }
+        }
+        out.remove("created");
+        out.put("credentials", credentials);
         return out;
     }
 

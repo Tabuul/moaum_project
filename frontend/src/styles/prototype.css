@@ -839,6 +839,9 @@
     box-shadow: 0 24px 60px rgba(6,20,28,.4); display: flex; flex-direction: column;
     max-height: calc(100vh - 68px); }
   .mdl__box.is-wide { max-width: 860px; }
+  /* a document viewed over the page: as large as the screen allows, the body given to the document */
+  .mdl__box.is-viewer { max-width: 1180px; height: calc(100vh - 68px); }
+  .mdl__box.is-viewer .mdl__body { flex: 1; padding: 0; gap: 0; overflow: hidden; }
   .mdl__head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 13px;
     border-bottom: 1px solid var(--line-2); }
   .mdl__head b { font-size: 16.5px; font-weight: 700; display: block; letter-spacing: -.2px; }
@@ -1708,6 +1711,7 @@ body.nav-slim .nav__item[aria-current="page"]::before { left: 0; }
   .row > .btn, .phead__a > .btn { flex: 1 1 auto; }
   .mdl { padding: 10px 8px 24px; align-items: flex-start; }
   .mdl__box, .mdl__box.is-wide { max-width: 100%; max-height: calc(100vh - 34px); border-radius: var(--r-md); }
+  .mdl__box.is-viewer { max-width: 100%; height: calc(100vh - 34px); }
   .mdl__head, .mdl__body, .mdl__foot { padding-left: 14px; padding-right: 14px; }
   .mdl__foot { border-radius: 0 0 var(--r-md) var(--r-md); }
   .mdl__foot .btn { flex: 1 1 auto; }

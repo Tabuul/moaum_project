@@ -72,7 +72,8 @@ class JupebView {
                    (SELECT fs.application_fee FROM jupeb.fee_setting_of(a.session) fs) AS application_fee,
                    jupeb.paid_at(a.id, 'STATUS_CHECKING') AS checking_paid_at, jupeb.paid_at(a.id, 'ACCEPTANCE') AS accepted_at,
                    EXISTS (SELECT 1 FROM jupeb.document p WHERE p.application_id = a.id AND p.kind = 'PASSPORT') AS has_passport,
-                   a.withdrawn_at, a.deferred_from, a.deferred_to
+                   a.withdrawn_at, a.deferred_from, a.deferred_to, a.legacy_source, a.legacy_ref, a.legacy_batch,
+                   (SELECT acc.must_change_password FROM jupeb.account acc WHERE acc.id = a.account_id) AS must_change_password
               FROM jupeb.application a
               LEFT JOIN ref.programme g ON g.code = a.programme_code
               LEFT JOIN ref.department d ON d.code = g.dept_code

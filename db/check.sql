@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 189
+\set EXPECTED 190
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5369,6 +5369,46 @@ BEGIN
         none_flag = 0 AND none_due = 0 AND bio_v = 'NOT_ELIGIBLE' AND bio_w AND chm_v = 'ELIGIBLE' AND chm_r
         AND words LIKE '%minimum of 75% in: Biology 50%' || '%' AND (warned->'byKind'->>'ATTENDANCE_LOW')::int = 1 AND NOT few,
         format('none=%s/%s bio=%s/%s chm=%s/%s words=%s warned=%s few=%s', none_flag, none_due, bio_v, bio_w, chm_v, chm_r, left(words, 60), warned, few));
+END $$;
+
+-- ── 190. V345: JUPEB students from the old portal — a preview writes nothing; a row without a valid email is refused and listed, an unreadable phone or NIN is left out and said; the upload makes STUDENT records on the old App No with a temporary password to change, announces nothing, and the same file again adds nothing; no fee reminder reaches them; their registration sets the programme from the combination ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); rows jsonb; prev jsonb; done jsonb; again jsonb; app uuid;
+        n_prev int; st_bad text; st_review text; phone text; dob text; v_state text; v_must boolean; v_told int; v_fee int; v_stream text; n_reg int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        rows := jsonb_build_array(
+            jsonb_build_object('row', 2, 'appNo', 'S0CHECK190001', 'firstName', 'IWANGER', 'surname', 'UVA', 'sex', 'Female', 'phone', '7052428202', 'dob', '9/1/2004',
+                               'nin', '13181803004', 'email', 'zz.check190.a@gmail.'),
+            jsonb_build_object('row', 3, 'appNo', 's0check190002', 'firstName', 'Paul', 'middleName', 'Shater', 'surname', 'Kegh', 'sex', 'Male', 'phone', '8089894004',
+                               'dob', '21/10/2006', 'nin', '1171459604', 'email', 'zz.check190.b@example.com',
+                               'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345'));
+        prev := jupeb.import_old_portal_students(rows, ses, true, false, 'check.xlsx', who);
+        n_prev := (SELECT count(*) FROM jupeb.application WHERE upper(application_no) LIKE 'S0CHECK190%');
+        st_bad := prev->'rows'->0->>'status';
+        st_review := prev->'rows'->1->>'status';
+        phone := prev->'rows'->1->>'phone';
+        dob := prev->'rows'->1->>'dob';
+        done := jupeb.import_old_portal_students(rows, ses, true, true, 'check.xlsx', who);
+        app := (SELECT id FROM jupeb.application WHERE application_no = 'S0CHECK190002');
+        SELECT a.state, acc.must_change_password INTO v_state, v_must FROM jupeb.application a JOIN jupeb.account acc ON acc.id = a.account_id WHERE a.id = app;
+        v_told := (SELECT count(*) FROM platform.notice WHERE about_id = app);
+        again := jupeb.import_old_portal_students(rows, ses, true, true, 'check.xlsx', who);
+        v_fee := (SELECT count(*) FROM jupeb.due_reminders(now() + interval '60 days') d WHERE d.application_id = app AND d.kind = 'SCHOOL_FEE_UNPAID');
+        n_reg := jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        v_stream := (SELECT stream FROM jupeb.application WHERE id = app);
+        RAISE EXCEPTION 'the V345 JUPEB check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V345: the old portal''s students — a preview writes nothing; a bad email refused, an unreadable NIN left out and said; STUDENT records on the old App No with a temporary password to change, announced to nobody, not twice, spared fee reminders; registration sets the programme',
+        n_prev = 0 AND st_bad = 'INVALID' AND st_review = 'REVIEW' AND phone = '08089894004' AND dob = '2006-10-21'
+        AND (done->>'applied')::int = 1 AND v_state = 'STUDENT' AND v_must AND v_told = 0
+        AND (again->>'applied')::int = 0 AND (again->>'exists')::int = 1 AND v_fee = 0 AND n_reg = 3 AND v_stream = 'NON_SCIENCE',
+        format('prev=%s bad=%s review=%s phone=%s dob=%s applied=%s state=%s must=%s told=%s again=%s/%s fee=%s reg=%s stream=%s',
+               n_prev, st_bad, st_review, phone, dob, done->>'applied', v_state, v_must, v_told, again->>'applied', again->>'exists', v_fee, n_reg, v_stream));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

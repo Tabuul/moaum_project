@@ -338,6 +338,32 @@ class JupebPortalController {
         return mine(auth);
     }
 
+    /* ── the candidate's own password (V345): a temporary one from the JUPEB Office is changed at first sign-in ── */
+
+    public record PasswordIn(@NotBlank @Size(max = 100) String currentPassword, @NotBlank @Size(min = 8, max = 100) String newPassword) {
+    }
+
+    private final org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12);
+
+    @PostMapping("/password")
+    @Transactional
+    Map<String, Object> password(Authentication auth, @Valid @RequestBody PasswordIn body) {
+        UUID app = me(auth);
+        Map<String, Object> acc = jdbc.sql("SELECT acc.id, acc.password_hash FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a")
+                .param("a", app).query().singleRow();
+        if (!encoder.matches(body.currentPassword(), String.valueOf(acc.get("password_hash")))) {
+            throw new DomainRuleViolation("JUPEB_PASSWORD_CURRENT", "The current password is not right.",
+                    new DomainRuleViolation.Remedy("Type the password you signed in with (the temporary one, if the JUPEB Office gave you one).", "You"));
+        }
+        if (body.newPassword().equals(body.currentPassword())) {
+            throw new DomainRuleViolation("JUPEB_PASSWORD_SAME", "Choose a password different from the one you signed in with.",
+                    new DomainRuleViolation.Remedy("At least eight characters, different from the temporary one.", "You"));
+        }
+        jdbc.sql("UPDATE jupeb.account SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL WHERE id = :id")
+                .param("h", encoder.encode(body.newPassword())).param("id", acc.get("id")).update();
+        return mine(auth);
+    }
+
     /* ── verifiable papers (V343): the code a paper's QR carries, issued by the server for the record as it stands ── */
 
     public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT") String kind,

@@ -128,6 +128,7 @@ export function Modal({
   children,
   foot,
   wide,
+  viewer,
   onClose,
 }: {
   title: ReactNode;
@@ -135,11 +136,13 @@ export function Modal({
   children: ReactNode;
   foot?: ReactNode;
   wide?: boolean;
+  /** a document or image shown large: the box fills the screen and the body is the document */
+  viewer?: boolean;
   onClose: () => void;
 }) {
   return (
     <div className="mdl" role="dialog" aria-modal="true" onClick={onClose} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-      <div className={`mdl__box${wide ? " is-wide" : ""}`} onClick={(e) => e.stopPropagation()} tabIndex={-1} autoFocus>
+      <div className={`mdl__box${wide ? " is-wide" : ""}${viewer ? " is-viewer" : ""}`} onClick={(e) => e.stopPropagation()} tabIndex={-1} autoFocus>
         <div className="mdl__head">
           <div style={{ minWidth: 0 }}>
             <b>{title}</b>

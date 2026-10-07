@@ -69,6 +69,8 @@ export interface Candidate {
   combinations?: Combination[];
   /** V343 */
   requests: ChangeRequest[]; papers?: Paper[]; withdrawn_at: string | null; deferred_from: string | null; deferred_to: string | null;
+  /** V345: uploaded from the old portal (its App No), and a temporary password still to be changed */
+  legacy_source: string | null; legacy_ref: string | null; legacy_batch: string | null; must_change_password: boolean;
   /** V344: the attendance standing, subject by subject, once a student */
   attendanceStanding: AttendanceStanding[];
 }
@@ -112,7 +114,7 @@ export const EVENT_LABEL: Record<string, string> = {
   SCREENING_PENDING: "Screening opened", SCREENING_SCHEDULED: "Screening scheduled", SCREENING_IN_PROGRESS: "Screening in progress", SCREENING_CLEARED: "Cleared at screening",
   SCREENING_NOT_CLEARED: "Not cleared at screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
   CHANGE_REQUESTED: "Change requested", CHANGE_APPROVED: "Request approved", CHANGE_DECLINED: "Request declined", CHANGE_CANCELLED: "Request cancelled",
-  COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
+  IMPORTED: "Uploaded from the old portal", COMBINATION_CHANGED: "Combination changed", WITHDRAWN: "Withdrawn", DEFERRED: "Admission deferred", PAPER_REVOKED: "Paper revoked",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];

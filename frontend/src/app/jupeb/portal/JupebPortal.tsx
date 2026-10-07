@@ -22,6 +22,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
+import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   ADMISSION_STATUS, CHANGE_KIND, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS, SCREENING_LABEL, STATE_SHORT,
@@ -112,6 +113,15 @@ export function JupebPortal() {
     actorId: "", activeOffice: "jupebcandidate", offices: ["jupebcandidate"],
     name: fullName(me), staffNumber: me.exam_no ?? me.application_no, sessionId: null, unit: `JUPEB ${me.session}`, waiting: {},
   };
+  /* V345: a temporary password handed out by the JUPEB Office is changed before anything else */
+  if (me.must_change_password) {
+    return (
+      <Shell route="jupeb/portal" me={shellMe}>
+        <Profile me={me} />
+        <ChangePassword forced onDone={(fresh) => { setMe(fresh); notify("Your password is changed."); }} />
+      </Shell>
+    );
+  }
   const guided = me.state === "DRAFT" || me.state === "RETURNED";
   const admitted = ADMITTED.has(me.state);
   const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
@@ -372,8 +382,24 @@ function OlevelStep({ me, act, errors, onSaved, onBack }: { me: Candidate; act: 
 const sittingQ = (d: Doc) => (d.sitting ? `?sitting=${d.sitting}` : "");
 const docUrl = (d: Doc) => `/api/bff/api/v1/jupeb/me/documents/${d.kind}/content${sittingQ(d)}`;
 
+/** the candidate's own uploaded documents, viewed in a pop-up */
+function useViewer(docs: Doc[]) {
+  const [viewing, setViewing] = useState<number | null>(null);
+  const viewable = docs.filter((d) => d.filename);
+  const list: ViewDoc[] = viewable.map((d) => ({
+    key: `${d.kind}:${d.sitting ?? ""}`, label: d.label, filename: d.filename, url: docUrl(d),
+    sub: <>{d.exam_body ? `${d.exam_body}${d.exam_year ? ` ${d.exam_year}` : ""} · ` : ""}{d.status ? DOC_STATUS[d.status] ?? d.status : "Uploaded"}</>,
+  }));
+  const link = (d: Doc, key: string) => (
+    <a key={key} href={docUrl(d)} target="_blank" rel="noreferrer" title="View the document" onClick={viewerClick(() => setViewing(viewable.indexOf(d)))}>{d.filename}</a>
+  );
+  const viewer = viewing != null && list.length ? <DocViewer docs={list} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} /> : null;
+  return { link, viewer };
+}
+
 function DocumentRows({ me, act, editable, errors }: { me: Candidate; act: Act; editable: boolean; errors?: Record<string, string> }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const { link, viewer } = useViewer(me.documents);
   const key = (d: Doc) => `${d.kind}:${d.sitting ?? ""}`;
   async function upload(d: Doc, file: File | undefined) {
     if (!file) return;
@@ -386,6 +412,8 @@ function DocumentRows({ me, act, editable, errors }: { me: Candidate; act: Act; 
     } finally { setBusy(null); }
   }
   return (
+    <>
+    {viewer}
     <DTable noPrint pageSize={0} cols={["Document", "Status", "File", "Uploaded", "Action|mid"]} rows={me.documents.map((d) => {
       const replace = d.status === "REJECTED" || d.status === "REPLACEMENT_REQUIRED";
       const can = editable || replace;
@@ -394,7 +422,7 @@ function DocumentRows({ me, act, editable, errors }: { me: Candidate; act: Act; 
         <span key="l"><b>{d.label}</b>{d.required ? <span className="sub2"> · required</span> : null}{d.exam_body ? <div className="sub2">{d.exam_body}{d.exam_year ? ` ${d.exam_year}` : ""}</div> : null}
           {d.review_note ? <div className="sub2">{d.review_note}</div> : null}{err ? <div className="ferr">{err}</div> : null}</span>,
         d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status] ?? d.status}</Pil> : <Pil key="s" kind={err ? "bad" : "grey"}>Not uploaded</Pil>,
-        d.filename ? <a key="f" href={docUrl(d)} target="_blank" rel="noreferrer">{d.filename}</a> : "—",
+        d.filename ? link(d, "f") : "—",
         day(d.uploaded_at),
         <span key="a" className="row" style={{ gap: "var(--s-1)", justifyContent: "center" }}>
           {can ? (
@@ -407,6 +435,7 @@ function DocumentRows({ me, act, editable, errors }: { me: Candidate; act: Act; 
         </span>,
       ];
     })} />
+    </>
   );
 }
 
@@ -639,11 +668,55 @@ function Admission({ me, reload }: { me: Candidate; reload: () => Promise<void> 
   );
 }
 
+/** the candidate's own password: forced after a temporary one from the JUPEB Office, otherwise when they wish */
+function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Candidate) => void }) {
+  const [f, setF] = useState({ current: "", next: "", again: "" });
+  const [busy, setBusy] = useState(false);
+  const short = f.next.length > 0 && f.next.length < 8;
+  const differs = f.again.length > 0 && f.again !== f.next;
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await jcall<Candidate>("/api/v1/jupeb/me/password", "POST", { currentPassword: f.current, newPassword: f.next });
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      setF({ current: "", next: "", again: "" });
+      onDone(r.data);
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel title={forced ? "Choose your own password" : "Change your password"}>
+      <PBody>
+        {forced ? <Note kind="info" title="You signed in with a temporary password">The JUPEB Office set up your account from the old portal&rsquo;s register. Choose your own password to continue; the temporary one stops working.</Note> : null}
+        <div className="grid grid--3">
+          <Field id="pw-cur" label={forced ? "Temporary password" : "Current password"} required><input id="pw-cur" className="ctl" type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
+          <Field id="pw-new" label="New password" required hint="At least eight characters" error={short ? "At least eight characters" : undefined}><input id="pw-new" className="ctl" type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
+          <Field id="pw-again" label="New password again" required error={differs ? "The two do not match" : undefined}><input id="pw-again" className="ctl" type="password" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} /></Field>
+        </div>
+        <div className="row"><Btn kind="primary" disabled={busy || !f.current || f.next.length < 8 || f.next !== f.again} onClick={() => void save()}>{busy ? "Saving…" : "Save my password"}</Btn></div>
+      </PBody>
+    </Panel>
+  );
+}
+
 function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }) {
   const f = me.fees;
   const admitted = !!f && ADMITTED.has(me.state);
   const screeningFirst = me.screeningSetting.screening_required && me.state === "ADMITTED" && me.screening_state !== "CLEARED";
   const rule = me.feeRule;
+  if (me.legacy_source) {
+    return (
+      <div className="stack">
+        <Note kind="info" title="Your fees were handled on the old portal">{`You were registered on the old portal (${me.legacy_ref ?? me.application_no}). Fees you paid there are kept by the Bursary; if you are told a balance is owed here, the JUPEB Office will guide you.`}</Note>
+        {me.references.length ? (
+          <Panel title="Payments made here">
+            <PBody><DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Confirmed", "Receipt|mid"]} rows={me.references.map((x: FeeRef) => [
+              FEE_KIND[x.kind] ?? x.kind, x.reference, naira(x.amount), x.confirmed_at ? day(x.confirmed_at) : "—",
+              x.confirmed_at ? <a key="a" href={`/jupeb/pdf/receipt?ref=${encodeURIComponent(x.reference)}`} target="_blank" rel="noreferrer">Receipt</a> : "—"])} /></PBody>
+          </Panel>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="stack">
       <Panel title="Payment summary">
@@ -692,7 +765,8 @@ function Payments({ me, reload }: { me: Candidate; reload: () => Promise<void> }
 }
 
 function Subjects({ me, act }: { me: Candidate; act: Act }) {
-  const offered = suiting(me.combinations, me.stream);
+  /* a student from the old portal has no programme recorded: every offered combination, and the one chosen decides it */
+  const offered = me.stream ? suiting(me.combinations, me.stream) : (me.combinations ?? []).filter((c) => c.offered);
   const [busy, setBusy] = useState(false);
   const [choice, setChoice] = useState<string>(me.combination_id && offered.some((c) => c.id === me.combination_id) ? me.combination_id : "");
   const chosen = offered.find((c) => c.id === choice) ?? null;
@@ -796,6 +870,7 @@ function Results({ me }: { me: Candidate }) {
 
 function DocumentCentre({ me }: { me: Candidate }) {
   const sc = me.statusChecking;
+  const { link, viewer } = useViewer(me.documents);
   const items: [string, string | null, string][] = [
     ["Application acknowledgement", me.submitted_at ? "/jupeb/pdf/acknowledgement" : null, "after submission"],
     ["Application summary", "/jupeb/pdf/summary", ""],
@@ -822,8 +897,9 @@ function DocumentCentre({ me }: { me: Candidate }) {
       </Panel>
       <Panel title="Your uploaded documents">
         <PBody>
+          {viewer}
           <DTable noPrint pageSize={0} cols={["Document", "File", "Status"]} rows={me.documents.filter((d) => d.filename).map((d) => [d.label,
-            <a key="f" href={docUrl(d)} target="_blank" rel="noreferrer">{d.filename}</a>, d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status] ?? d.status}</Pil> : "—"])} />
+            link(d, "f"), d.status ? <Pil key="s" kind={stateKind(d.status)}>{DOC_STATUS[d.status] ?? d.status}</Pil> : "—"])} />
         </PBody>
       </Panel>
     </div>

@@ -297,6 +297,7 @@ export const ROUTES: Record<string, string> = {
   "jupeb/payments": "/jupeb/payments",
   "jupeb/attendance": "/jupeb/attendance",
   "jupeb/requests": "/jupeb/requests",
+  "jupeb/import": "/jupeb/import",
   "f/jupebfees": "/finance/jupeb-fees",
 };
 
@@ -386,6 +387,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/payments": ["JUPEB payments", "Application, status checking, acceptance and school fees of the session"],
   "jupeb/attendance": ["JUPEB attendance", "Registers, corrections, instructors and reports"],
   "jupeb/requests": ["JUPEB change requests", "Withdrawals, deferments and changes asked for after submission"],
+  "jupeb/import": ["Upload students from the old portal", "Registered JUPEB students, each given a login"],
   "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
 };
 
