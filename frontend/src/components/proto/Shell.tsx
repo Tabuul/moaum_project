@@ -58,6 +58,7 @@ export const ROUTES: Record<string, string> = {
   "t/capsintake": "/admissions/caps",
   "t/applicants": "/admissions/applicants",
   "t/merit": "/admissions/merit",
+  "t/offers": "/admissions/offers",
   "t/de-screening": "/admissions/de-screening",
   "t/pgadmissions": "/admissions/postgraduate",
   "t/pgcourses": "/admissions/postgraduate/courses",

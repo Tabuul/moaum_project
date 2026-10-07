@@ -92,7 +92,7 @@ export { stepHref } from "@/lib/screening";
 
 /** the five screening forms print once the applicant has filled and submitted them (V273): not before the form is submitted */
 function formsPrintable(d: Admission): boolean {
-  return !!d.screeningRequired && ![...CHECKING_GATE, "PENDING", "NOT_ADMITTED", "DECLINED", "ADMITTED", "ACCEPTANCE_PENDING", "SCREENING_PENDING", "SCREENING_IN_REVIEW", "SCREENING_CORRECTION", "SCREENING_IN_PROGRESS", "SCREENING_SUBMITTED", "SCREENING_RETURNED", "CHANGE_OF_PROGRAMME_REQUIRED", "CHANGE_OF_PROGRAMME_PENDING"].includes(d.status);
+  return !!d.screeningRequired && ![...CHECKING_GATE, "PENDING", "NOT_ADMITTED", "DECLINED", "LAPSED", "ADMITTED", "ACCEPTANCE_PENDING", "SCREENING_PENDING", "SCREENING_IN_REVIEW", "SCREENING_CORRECTION", "SCREENING_IN_PROGRESS", "SCREENING_SUBMITTED", "SCREENING_RETURNED", "CHANGE_OF_PROGRAMME_REQUIRED", "CHANGE_OF_PROGRAMME_PENDING"].includes(d.status);
 }
 
 /** an offer the applicant has read, or may read now: the admission under way rather than Admission Status Checking (V295) */

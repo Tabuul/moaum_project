@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 201
+\set EXPECTED 202
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6315,6 +6315,143 @@ BEGIN
         AND v_state_after = 'RELEASED' AND v_mark AND v_same,
         format('refused=%s taken=%s return=%s mail=%s text=%s mail2=%s text2=%s hold=%s wait=%s/%s before=%s lapse=%s after=%s mark=%s entry=%s',
                n_refused, n_taken, r_return, n_mail, n_text, n_mail2, n_text2, r_hold, v_state_wait, v_wait IS NOT NULL, v_mark_before, v_state_lapse, v_state_after, v_mark, v_same));
+END $$;
+
+-- ── 202. V358: a published mark is corrected only by an amendment — raised by the desk of entry with its reason (the query answered CORRECTED linked), approved by each desk in turn, applied on the Senate minute as a new version with the original kept; refused by a desk, withdrawn only by its raiser. An offer neither accepted nor paid by its deadline is lapsed and then not taken up; each freed place is filled from the waiting list by the office's choice, in the order freed, never beyond the places freed ──
+DO $$
+DECLARE sh uuid; s1 uuid; q uuid := gen_random_uuid(); amd uuid; amd2 uuid; stg text; msg text; lect uuid := gen_random_uuid();
+        r_same text; r_split text; r_desk text; r_twice text; r_minute text; r_withdraw text; v_link boolean; v_total int; v_version int; v_was int; n_told int;
+        v_refused text;
+        v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); prog text; pname text; r record; apps uuid[] := ARRAY[]::uuid[];
+        n_past int; n_lapsed int; v_cand text; r_under text; r_fee text; n_vac int; n_wait int; r_many text; n_prom int; v_for uuid; v_basis text;
+        n_vac2 int; r_notwait text; r_days text; v_first uuid;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (lect, 'CHECKAMEND', 'Lecturer', 'zz.check202@example.com');
+        SELECT s.id INTO sh FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id WHERE o.course_code = 'ZZC 101' AND s.stage = 'PUBLISHED';
+        SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+        INSERT INTO people.student_contact (student_id, email, phone) VALUES (s1, 'zz.check202s@example.com', '08012340202')
+        ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone;
+        SELECT version INTO v_was FROM assessment.latest_scores(sh) x WHERE x.student_id = s1;
+        INSERT INTO assessment.result_query (id, ref, student_id, sheet_id, part, said, routed_dept, state, answer, answered_at, answered_by)
+        VALUES (q, 'QRY-9999-00202', s1, sh, 'CA', 'My CA was left out', 'MTC', 'CORRECTED', 'The CA script was found', now(), lect);
+        -- the same mark, a mark over the split, another desk: refused
+        BEGIN PERFORM assessment.raise_amendment(sh, s1, 30, 45, 'GRADED', 'nothing at all to change here', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_same := split_part(msg, ':', 1); END;
+        BEGIN PERFORM assessment.raise_amendment(sh, s1, 99, 1, 'GRADED', 'a CA beyond the course split', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_split := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM assessment.raise_amendment(sh, s1, 32, 45, 'GRADED', 'the CA script was found after the query', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_desk := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        amd := assessment.raise_amendment(sh, s1, 32, 45, 'GRADED', 'the CA script was found after the query', NULL);
+        v_link := (SELECT query_id = q FROM assessment.amendment WHERE id = amd);
+        BEGIN PERFORM assessment.raise_amendment(sh, s1, 33, 45, 'GRADED', 'a second one while the first is open', NULL);
+        EXCEPTION WHEN unique_violation THEN r_twice := 'refused'; END;
+        -- each desk in turn; Senate without its minute refused, then applied on it
+        LOOP
+            stg := (SELECT stage FROM assessment.amendment WHERE id = amd);
+            EXIT WHEN stg = 'APPLIED';
+            PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+            PERFORM set_config('moaum.actor_office', (assessment.stage_offices(stg))[1], true);
+            IF stg = 'SENATE' THEN
+                BEGIN PERFORM assessment.advance_amendment(amd, NULL, NULL);
+                EXCEPTION WHEN check_violation THEN r_minute := 'refused'; END;
+                PERFORM assessment.advance_amendment(amd, NULL, 'SEN/9999/202');
+            ELSE
+                PERFORM assessment.advance_amendment(amd, 'seen', NULL);
+            END IF;
+        END LOOP;
+        SELECT total, version INTO v_total, v_version FROM assessment.latest_scores(sh) x WHERE x.student_id = s1;
+        n_told := (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = s1 AND subject IN ('Your result in ZZC 101 is amended', 'Result amended'));
+        -- a second amendment refused at its desk; a third withdrawn only by its raiser
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        amd2 := assessment.raise_amendment(sh, s1, 32, 40, 'GRADED', 'an examination mark re-added in error', NULL);
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        PERFORM assessment.refuse_amendment(amd2, 'the script shows the published mark is right');
+        v_refused := (SELECT stage FROM assessment.amendment WHERE id = amd2);
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        amd2 := assessment.raise_amendment(sh, s1, 31, 45, 'GRADED', 'one more correction to be withdrawn', NULL);
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        BEGIN PERFORM assessment.withdraw_amendment(amd2, 'not mine to withdraw');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_withdraw := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM assessment.withdraw_amendment(amd2, 'raised on the wrong student');
+
+        -- offers: a session's policy, quota and pool of four
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT code, name INTO prog, pname FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+        VALUES (v_pol, '9993/9994', 4, 70, 30, 100, 0, 'CHECK CAC/9993/1', tstzrange(now(), NULL), 'IN_FORCE');
+        INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES (v_pol, 'NATIONAL_MERIT', 50), (v_pol, 'STATE_MERIT', 30), (v_pol, 'ELG', 10), (v_pol, 'LOCALITY', 10);
+        INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text) VALUES (v_pol, prog, 2, 'check', 'check', 'check');
+        INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES (v_pol, prog, 'English Language'), (v_pol, prog, 'Mathematics');
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (v_batch, '9993/9994', 'CAPS_DOWNLOAD', 'UTME', '\xB2'::bytea, 4, current_date, gen_random_uuid(), 'academic');
+        FOR r IN SELECT * FROM (VALUES ('W1', '20939990001', 'Kano', 'Nassarawa', 300, '000001'), ('W2', '20939990002', 'Benue', 'Makurdi', 290, '000002'),
+                                       ('W3', '20939990003', 'Benue', 'Gboko', 280, '000003'), ('W4', '20939990004', 'Benue', 'Vandeikya', 270, '000004')) AS t(tag, jamb, state, lga, utme, seq) LOOP
+            DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); ap uuid := gen_random_uuid();
+            BEGIN
+                INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+                VALUES (cr, v_batch, '9993/9994', r.jamb, '{}'::jsonb, 'CHECKWAIT', r.tag, prog, r.utme, 'UTME', 'M', r.state, r.lga);
+                INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+                VALUES (cand, '9993/9994', r.jamb, 'CHECKWAIT', r.tag, pname, 'UTME', 100, 'PROPOSED', cr);
+                INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+                VALUES (acct, '9993/9994', cand, r.jamb, lower(r.jamb) || '@example.com', '08030000002', crypt('x', gen_salt('bf', 12)));
+                INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, screening_score, score_entered_at, score_released_at)
+                VALUES (ap, acct, cand, '9993/9994', 'APP/93/' || r.seq, now(), now(), 50, now(), now());
+                apps := apps || ap;
+            END;
+        END LOOP;
+        -- W1 and W2 offered and released twenty days ago (W2 then declined ten days ago); W3 and W4 on the waiting list
+        UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'NM', decided_at = now() - interval '20 days', decision_released_at = now() - interval '20 days' WHERE id = apps[1];
+        UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'SM', decided_at = now() - interval '20 days', decision_released_at = now() - interval '20 days',
+               declined_at = now() - interval '10 days' WHERE id = apps[2];
+        UPDATE admissions.application SET decision = 'WAITING', decided_at = now() - interval '20 days', decision_released_at = now() - interval '20 days' WHERE id IN (apps[3], apps[4]);
+        UPDATE admissions.candidate SET offer_state = 'ADMITTED' WHERE id = (SELECT candidate_id FROM admissions.application WHERE id = apps[1]);
+        -- no deadline set: nothing lapses; fourteen days after release: W1 is past it
+        n_past := (SELECT count(*) FROM admissions.offers_past_deadline('9993/9994'));
+        INSERT INTO admissions.offer_deadline (session, days_after_release, set_by) VALUES ('9993/9994', 14, lect);
+        n_past := n_past * 10 + (SELECT count(*) FROM admissions.offers_past_deadline('9993/9994'));
+        n_lapsed := admissions.lapse_offers('9993/9994', NULL);
+        v_cand := (SELECT c.offer_state FROM admissions.candidate c JOIN admissions.application a ON a.candidate_id = c.id WHERE a.id = apps[1]);
+        BEGIN UPDATE admissions.application SET undertaking_at = now() WHERE id = apps[1];
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_under := split_part(msg, ':', 1); END;
+        BEGIN INSERT INTO admissions.fee_reference (application_id, kind, reference, amount) VALUES (apps[1], 'ACCEPTANCE', 'CHK-358-ACC', 1000);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_fee := split_part(msg, ':', 1); END;
+        -- two places freed (W2's declined first, then W1's lapsed); two waiting
+        n_vac := (SELECT count(*) FROM admissions.vacancies('9993/9994') WHERE programme = prog);
+        n_wait := (SELECT count(*) FROM admissions.waiting_list('9993/9994', prog));
+        v_first := (SELECT app_id FROM admissions.waiting_list('9993/9994', prog) ORDER BY rank LIMIT 1);
+        BEGIN PERFORM admissions.promote_waiting('9993/9994', prog, ARRAY[apps[3], apps[4], apps[1]], lect);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_many := split_part(msg, ':', 1); END;
+        BEGIN PERFORM admissions.promote_waiting('9993/9994', prog, ARRAY[apps[1]], lect);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notwait := split_part(msg, ':', 1); END;
+        n_prom := admissions.promote_waiting('9993/9994', prog, ARRAY[apps[3]], lect);
+        SELECT promoted_for, decision_basis INTO v_for, v_basis FROM admissions.application WHERE id = apps[3];
+        n_vac2 := (SELECT count(*) FROM admissions.vacancies('9993/9994') WHERE programme = prog);
+        -- the session's date passed with no days allowed: no promotion until the days are set
+        UPDATE admissions.offer_deadline SET accept_by = current_date - 1, days_after_release = NULL WHERE session = '9993/9994';
+        BEGIN PERFORM admissions.promote_waiting('9993/9994', prog, ARRAY[apps[4]], lect);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_days := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V358 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V358: a published mark amended only through the chain — the same mark, a mark over the split and another desk refused, one open at a time, the query linked, each desk in turn, applied on the Senate minute as a new version with the student told; refused by a desk; withdrawn only by its raiser. Offers lapse only past a deadline set, unpaid; a lapsed offer is not taken up; places freed are filled from the waiting list by choice, in the order freed, never beyond them, and not after the date without days allowed',
+        r_same = 'RES_AMEND_SAME' AND r_split = 'RES_AMEND_SPLIT' AND r_desk = 'RES_NOT_YOUR_STAGE' AND v_link AND r_twice = 'refused' AND r_minute = 'refused'
+        AND v_total = 77 AND v_version = v_was + 1 AND n_told = 2 AND v_refused = 'REFUSED' AND r_withdraw = 'RES_AMEND_NOT_YOURS'
+        AND n_past = 1 AND n_lapsed = 1 AND v_cand = 'LAPSED' AND r_under = 'ADMISSION_OFFER_LAPSED' AND r_fee = 'ADMISSION_OFFER_LAPSED'
+        AND n_vac = 2 AND n_wait = 2 AND v_first = apps[3] AND r_many = 'ADMISSION_NO_VACANCY' AND r_notwait = 'ADMISSION_NOT_WAITING'
+        AND n_prom = 1 AND v_for = apps[2] AND v_basis = 'SM' AND n_vac2 = 1 AND r_days = 'ADMISSION_DEADLINE_DAYS',
+        format('same=%s split=%s desk=%s link=%s twice=%s minute=%s total=%s version=%s/%s told=%s refused=%s withdraw=%s past=%s lapsed=%s cand=%s under=%s fee=%s vac=%s wait=%s first=%s many=%s notwait=%s prom=%s for=%s basis=%s vac2=%s days=%s',
+               r_same, r_split, r_desk, v_link, r_twice, r_minute, v_total, v_version, v_was, n_told, v_refused, r_withdraw, n_past, n_lapsed, v_cand, r_under, r_fee,
+               n_vac, n_wait, v_first = apps[3], r_many, r_notwait, n_prom, v_for = apps[2], v_basis, n_vac2, r_days));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

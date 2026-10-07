@@ -606,6 +606,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Upload PUTME Score" },
           { "id": "t/merit", "icon": "chart", "label": "Merit List" },
+          { "id": "t/offers", "icon": "cal", "label": "Offers & Waiting List" },
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },

@@ -12,6 +12,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/
 import { DTable } from "@/components/proto/DTable";
 import { Gate, Gates, Modal, Field, Step, TwoCol } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Amendments } from "./Amendments";
 
 const DESK_OF: Record<string, string> = {
   ENTRY: "lecturer", VERIFICATION: "exams", DEPT_BOARD: "hod", FACULTY_SCRUTINY: "facultyexams",
@@ -98,7 +99,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       {published ? (
-        <Note kind="ok" title="Senate has approved this result set and it is published" action={<><Btn kind="ghost">Raise an amendment</Btn> <Btn kind="ghost">View as a student</Btn></>}>
+        <Note kind="ok" title="Senate has approved this result set and it is published" >
           {s.candidates} students can now see their marks. Nothing on this sheet can be changed by anyone; a correction from this point is an amendment, which opens its own record and is reported to Senate at its next sitting. Minute <b>{detail.senateMinute}</b>.
         </Note>
       ) : mine && !s.blockedForYou ? (
@@ -164,6 +165,9 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
           texts={detail.marks.map((m) => `${m.surname} ${m.otherNames} ${m.number}`)}
         />
       </Panel>
+
+      {/* V358: a published mark is corrected only by an amendment through the chain */}
+      <Amendments sheetId={s.id} courseCode={s.courseCode} caMax={typeof s.caMax === "number" ? s.caMax : 40} published={published} actingOffice={actingOffice} marks={detail.marks} />
 
       <Note kind={published ? "ok" : "bad"} title={published ? "What the student sees: their mark, their grade and the date Senate approved it" : "What the student sees right now: nothing at all"}>
         {published

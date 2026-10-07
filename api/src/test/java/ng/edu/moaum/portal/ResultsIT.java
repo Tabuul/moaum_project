@@ -209,6 +209,33 @@ class ResultsIT {
         });
         assertThat(told).anySatisfy(n -> assertThat(n.get("subject")).isEqualTo("Results published"));
 
+        // V358: a published mark is corrected only by an amendment — raised by the course's lecturer (not a stranger), approved by
+        // each desk in turn (another desk refused), applied by the Registrar on the minute as a new version of the mark
+        String amend = "/api/v1/results/sheets/" + sheet + "/amendments";
+        Map<String, Object> raise = Map.of("studentId", s1.toString(), "ca", 32, "exam", 45, "reason", "The CA script found after the result query");
+        assertThat(it.call(stranger, HttpMethod.POST, amend, raise).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<List> raised = it.callList(lect, HttpMethod.POST, amend, raise);
+        assertThat(raised.getStatusCode().value()).as(String.valueOf(raised.getBody())).isEqualTo(200);
+        Map<String, Object> am = (Map<String, Object>) raised.getBody().get(0);
+        assertThat(am.get("stage")).isEqualTo("VERIFICATION");
+        String amId = String.valueOf(am.get("id"));
+        assertThat((List<Map<String, Object>>) (List<?>) it.getList(exams, "/api/v1/results/amendments").getBody()).extracting(x -> String.valueOf(x.get("id"))).contains(amId);
+        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance", Map.of()).getStatusCode().value()).isEqualTo(403);
+        for (String desk : List.of("exams", "hod", "facultyexams", "facultyofficer", "dean", "records")) {
+            ResponseEntity<List> r = it.callList(desks.get(desk), HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance", Map.of("comment", "seen"));
+            assertThat(r.getStatusCode().value()).as(desk + ": " + r.getBody()).isEqualTo(200);
+        }
+        assertThat(it.call(registrar, HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance", Map.of()).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<List> applied = it.callList(registrar, HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance", Map.of("minute", "SEN/2095/02"));
+        assertThat(applied.getStatusCode().value()).as(String.valueOf(applied.getBody())).isEqualTo(200);
+        assertThat(((Map<String, Object>) applied.getBody().get(0)).get("stage")).isEqualTo("APPLIED");
+        List<Map<String, Object>> marksAfter = (List<Map<String, Object>>) it.get(academic, "/api/v1/results/sheets/" + sheet).getBody().get("marks");
+        assertThat(marksAfter).anySatisfy(m -> {
+            assertThat(String.valueOf(m.get("studentId"))).isEqualTo(s1.toString());
+            assertThat(((Number) m.get("total")).intValue()).isEqualTo(77);
+            assertThat(m.get("amended")).isEqualTo(true);
+        });
+
         ResponseEntity<Map> after = it.get(academic, "/api/v1/results/sheets/" + sheet);
         List<Map<String, Object>> marks = (List<Map<String, Object>>) after.getBody().get("marks");
         assertThat(marks).extracting(m -> m.get("grade")).contains("A");

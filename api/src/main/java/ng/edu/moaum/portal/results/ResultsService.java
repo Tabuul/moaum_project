@@ -291,10 +291,15 @@ public class ResultsService {
 
     /** V357: a stage is taken, and a sheet returned, only by the desk whose stage it is — on the server, as the screen shows it */
     private static void requireDesk(Sheets.Row r, String act) {
+        requireStageDesk(r.stage(), r.courseCode(), act);
+    }
+
+    /** V358: the same rule for a stage of anything that passes the chain (an amendment of a published result) */
+    static void requireStageDesk(String stage, String what, String act) {
         String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
-        if (!Sheets.DESK.getOrDefault(r.stage(), List.of()).contains(office)) {
-            throw new AccessDeniedException(r.courseCode() + " is at " + r.stage().toLowerCase().replace('_', ' ') + "; that stage is "
-                    + act + " by " + Sheets.deskName(r.stage()) + ", not by this office.");
+        if (!Sheets.DESK.getOrDefault(stage, List.of()).contains(office)) {
+            throw new AccessDeniedException(what + " is at " + stage.toLowerCase().replace('_', ' ') + "; that stage is "
+                    + act + " by " + Sheets.deskName(stage) + ", not by this office.");
         }
     }
 

@@ -83,7 +83,7 @@ export const STATE_WORD: Record<ScreeningState, [string, "grey" | "info" | "ok" 
   PENDING: ["AWAITING SCREENING", "info"], IN_REVIEW: ["IN REVIEW", "info"], CORRECTION_REQUIRED: ["CORRECTION REQUIRED", "warn"], SUCCESSFUL: ["SUCCESSFUL", "ok"], UNSUCCESSFUL: ["UNSUCCESSFUL", "bad"],
   DRAFT: ["AWAITING SCREENING", "info"], SUBMITTED: ["AWAITING SCREENING", "info"], UNDER_REVIEW: ["IN REVIEW", "info"], RETURNED: ["CORRECTION REQUIRED", "warn"],
 };
-export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED", "SCREENING_CORRECTION", "APPLICATION_INCOMPLETE"].includes(status) ? "bad" : "info");
+export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "LAPSED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED", "SCREENING_CORRECTION", "APPLICATION_INCOMPLETE"].includes(status) ? "bad" : "info");
 export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—");
 export function parseTracker(t: string | null | undefined): TrackerStep[] { try { return t ? (JSON.parse(t) as TrackerStep[]) : []; } catch { return []; } }

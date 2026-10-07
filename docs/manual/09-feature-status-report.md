@@ -112,7 +112,7 @@ Only one module group has every row **IMPLEMENTED**: the **Staff module** (own r
 | Deferments (§3.21) | Wizard → three-desk decision chain with bounds → clock → registration gates → return; notices at every turn; letter; desk exports | Letter QR points to a route that does not exist; no settings screen for reasons |
 | Matriculation with the V263 format (§3.19) | Faculty lists → queries → confirmation → run or single issue → number, history and notice; configuration desk with exports; end-to-end test | Preview and history-search endpoints have no screen; the faculty list's "Fees" column is a placeholder; run-screen text is stale |
 | Finance and payments (§3.38–§3.40) | Schedule → charges → position and gates → reference → gateway or bank confirmation → receipt and verification; bank credits and refunds under maker–checker; reconciliation; NELFUND and wallet; general ledger | Quickteller and the PayDirect query API unverified against live services; ledger sync manual; payouts recorded, not executed; several finance screens lack confirmations and toasts |
-| Score sheets and the approval chain (§3.30, §3.34) | Session → sheets → entry and bulk upload → nine-stage chain with BR-006 → Senate minute → publication → broadsheet | Publication sends no notice; remind/escalate is a stub; no amendment path after publication; stage→office rule enforced only in the UI |
+| Score sheets and the approval chain (§3.30, §3.34) | Session → sheets → entry and bulk upload → nine-stage chain with BR-006 → Senate minute → publication → broadsheet | Remind/escalate is a stub. Closed: publication tells each student (V357); stage→office enforced on the server (V357); amendments of a published result through the chain (V358) |
 | Course registration by the student (§3.20) | Draft → gates (fees, deferment, units, carry-overs) → submit → HOD approve or return → add/drop → course form → exam card | No notice on approve/return; overload approval and the probation ceiling do not exist; office-created registration has no screen |
 | Academic structure and catalogue (§3.23) | Faculties, departments, programmes, course structures, curriculum binding, opening registration (Director of ICT) | `SENATE` course state never used; the upload screen's note still names HODs |
 | External examiners (§3.16) | Register → invitation and activation → appointment → project and documents → assignment → assessment → lock; reports; reminders; end-to-end test | Moderation feed backend only; no PDFs; the PG-roster link has no picker; the external result never feeds the PG research record |
@@ -125,9 +125,9 @@ Ranked by how many people meet the gap and how badly it misleads them. Each row 
 | # | Gap | Who it affects | Status | Evidence | Where |
 |---|---|---|---|---|---|
 | 1 | **Results publication sends no notice.** — CLOSED (V357: each student of a published sheet is told by email that the result in the course is published, with no grade in it, and by one text a day however many sheets are published). Senate's minute publishes a sheet; no email or SMS followed | Every student, every semester | NOT IMPLEMENTED | No `platform.queue_notice` on publish in `assessment.advance` / `ResultsService`; the only results notices are the query answer and the held-script notice | §3.30; *01* §7.2 |
-| 2 | **No correction path after a result query is answered CORRECTED.** A published sheet cannot be returned (`return_sheet` refuses PUBLISHED) or re-scored (`scores` refuses a sheet not at ENTRY); the Chain screen's "Raise an amendment" has no handler | Students with a corrected query; Exams and Records | NOT IMPLEMENTED / PLACEHOLDER | `QueriesController.java`; `Chain.tsx:91` | §3.32, §3.30; *01* §9.5 |
+| 2 | **No correction path after a result query is answered CORRECTED.** — CLOSED (V358: an amendment of one student's published mark, raised by the desk of entry with its reason and linked to the query answered CORRECTED, approved by each desk of the chain in turn, applied by the Registrar on the Senate minute as a new version of the mark with the original kept and the student told; refused by a desk with its reason, withdrawn only by its raiser — `assessment.amendment`, `/api/v1/results/sheets/{id}/amendments`, the Chain screen and the desk's own list). A published sheet could not be returned or re-scored, and "Raise an amendment" had no handler | Students with a corrected query; Exams and Records | NOT IMPLEMENTED / PLACEHOLDER | `QueriesController.java`; `Chain.tsx:91` | §3.32, §3.30; *01* §9.5 |
 | 3 | **Remind / escalate a late lecturer is a stub.** The buttons answer `202 "The notification module is not on the portal yet; nothing was sent"` | Examinations Officers, HODs, Deans in every results cycle | PLACEHOLDER | `ResultsController.java:181-188` | §3.30 |
-| 4 | **Offer lapse and waiting-list promotion do not exist.** No function moves WAITING → OFFERED or sets `LAPSED`; the screen text promises both | Every admission cycle; waiting-list candidates | NOT IMPLEMENTED / CONFIGURED BUT UNUSED | `ck_candidate_state`; no setter in `db/` or `api/` | §3.11, §3.12; *06* §2.11 |
+| 4 | **Offer lapse and waiting-list promotion do not exist.** — CLOSED (V358: the session's acceptance deadline set by the Admissions Office — a date, days after release, or the later of the two; none, nothing lapses; the offers past it, unaccepted and unpaid, lapsed when the office says so, each applicant told; a lapsed offer not taken up; each freed place filled from the programme's waiting list in merit order by the office's choice, its quota basis shown — Admissions › Offers & Waiting List). No function moved WAITING → OFFERED or set `LAPSED` | Every admission cycle; waiting-list candidates | NOT IMPLEMENTED / CONFIGURED BUT UNUSED | `ck_candidate_state`; no setter in `db/` or `api/` | §3.11, §3.12; *06* §2.11 |
 | 5 | **Applicant document upload has no UI; document review and Registry clearance recording have no screens.** Stage 7 of the ten-stage applicant flow cannot be reached from any screen | Every undergraduate applicant; the Registry | PARTIALLY IMPLEMENTED | `ApplicantController.java:108-121`; `ApplicantsController.java:455`, `:1391`; no caller in `frontend/src` | §3.11, §3.12, §4.2 |
 | 6 | **An employment cannot be created from the portal.** Nothing but `demo.sql` inserts `hrm.employment`, so the pay run, leave and movements work only on demo staff; there is no payslip PDF and no deduction beyond CRA and PAYE | Director of HRM, Bursar, every staff member | NOT IMPLEMENTED | `db/V069`; grep of `api/` for `INSERT INTO hrm.employment` | §3.42 |
 | 7 | **API keys are not enforced.** The register issues hashed keys with scopes and quotas; no filter reads `apimgmt.key`, so an issued key grants nothing and denies nothing. The screen says "rate-limited" | Director of ICT; any integrator | NOT IMPLEMENTED | No reader of `apimgmt.key` in `api/src/main/java` | §3.6; §5 |
@@ -299,7 +299,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Accept / undertaking / decline | IMPLEMENTED | `Screens3.tsx Accept` | No notice on decline |
 | Clearance checklist (applicant view) | IMPLEMENTED | `Screens3.tsx Clearance` | Read only; the officer's recording endpoint has no screen (§3.12) |
 | Matriculation page (applicant view) | IMPLEMENTED | `Screens3.tsx Matric` | Read only; matric format text outdated vs V263 |
-| Offer lapse (`LAPSED`) | CONFIGURED BUT UNUSED | `ck_candidate_state`; no setter found | |
+| Offer lapse (`LAPSED`) | IMPLEMENTED | V358 `admissions.lapse_offers`; `application.lapsed_at` | The candidate's `LAPSED` state set where it has its CAPS row (`ck_candidate_needs_caps`) |
 | In-app notices list on the applicant dashboard | IMPLEMENTED | Dashboard "Notices sent to you" | |
 | Application form print / PDF | IMPLEMENTED | `/applicant/apply` Print / Download | After submission |
 | Admission Progress: congratulations, official details, status, next step, tracker, acceptance entitlement (V269) | IMPLEMENTED | `applicant/Admission.tsx`, `admissions.admission_status`, `admission_tracker` | Steps dynamic to the path |
@@ -332,7 +332,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Screening register and screened pool | IMPLEMENTED | `ScreeningRegister.tsx`, `Screened.tsx` | |
 | Old-portal applicant migration | IMPLEMENTED | `MigrateApplicants.tsx`, `import_applicant` | |
 | Intake to the student register (admission numbers) | IMPLEMENTED | `people.intake`, `Admissions.tsx:49, 77-93` | Runs on ADMITTED, not only ACCEPTED. Dossier D listed the intake endpoint as backend-only; the Admissions page calls it |
-| Offer lapse / waiting-list promotion | NOT IMPLEMENTED | No function moves WAITING → OFFERED or sets LAPSED | UI text promises it |
+| Offer lapse / waiting-list promotion | IMPLEMENTED | V358 `offer_deadline`, `offers_past_deadline`, `lapse_offers`, `vacancies`, `waiting_list`, `promote_waiting`; `OffersController` | Decided by the Admissions Office (academic, registrar) |
 | Registrar menu entries for settings, CAPS, candidate data, screening, scores, merit, DE screening | PARTIALLY IMPLEMENTED | Guards name `registrar`; menu lists only Admissions, Admitted List and the CBT schedule | Reachable by URL |
 | Notices on application submission and on decline | NOT IMPLEMENTED | No `queue_notice` on either | |
 | Screening Review desk: queue, counts, filters, full form, decisions, policy per session (V269) | IMPLEMENTED | `admissions/screening-review/ScreeningReview.tsx`, `ScreeningReviewController` | Faculty offices bound to their faculty |
@@ -630,7 +630,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Template and marked-sheet exports | IMPLEMENTED | `template/route.ts`, `marked/route.ts` | |
 | Approval chain of nine stages, BR-006, minute on publish | IMPLEMENTED | `assessment.advance`; `Chain.tsx` | V357: each stage (and a return) by its own desk on the server — S-5 closed; publication tells each student |
 | Bulk forward from a desk | IMPLEMENTED | `Desk.tsx:50-71` | Sequential client calls |
-| "Raise an amendment" / "View as a student" on a published sheet | PLACEHOLDER | `Chain.tsx:91` (buttons with no handler) | No amendment path exists for a PUBLISHED sheet |
+| "Raise an amendment" on a published sheet | IMPLEMENTED | `Chain.tsx` → `Amendments.tsx`; `AmendmentsController` | V358: raised, approved desk by desk, applied on the minute; "View as a student" removed (it had no handler) |
 | Publication notifies students | NOT IMPLEMENTED | No `queue_notice` on publish | |
 | Re-sit / special sittings | IMPLEMENTED | `sheet_candidates`, `course_final` | A passed re-sit is recorded at the pass mark (40, "E") |
 | Second examiner acting at VERIFICATION | PARTIALLY IMPLEMENTED | `Sheets.DESK` maps VERIFICATION to `exams`; the second examiner gains read access only | UI text says "It goes to the second examiner" |
@@ -939,7 +939,7 @@ Objects in the schema (or endpoints in the API) that nothing in the application 
 | `apimgmt.key` scopes and quotas | columns | CONFIGURED BUT UNUSED | Stored by `apimgmt.issue_key`; no filter reads the key | A6 |
 | `iam.sign_in_event.outcome = MUST_CHANGE / ENDED`; `credential_event.kind = LOCKED / UNLOCKED` | values | CONFIGURED BUT UNUSED | Code writes the other outcomes only | A |
 | `governance.dsr.state = REFUSED` | state | CONFIGURED BUT UNUSED | No button reaches it | A5 |
-| `admissions.candidate.offer_state = LAPSED` | state | CONFIGURED BUT UNUSED | `ck_candidate_state`; no setter | B1, B2 |
+| `admissions.candidate.offer_state = LAPSED` | state | IMPLEMENTED | V358 `lapse_offers` | B1, B2 |
 | `admissions.session_policy.state = SUPERSEDED` | state | CONFIGURED BUT UNUSED | Nothing sets it | B2 |
 | `admissions.caps_batch.source = 'CAPS_API'` | value | CONFIGURED BUT UNUSED | Only file uploads exist | B2 |
 | `admissions.putme_exam.keep_programme`, `registration_deadline`, `kind` | columns | CONFIGURED BUT UNUSED | Saved by `saveExam`; never read by `putme_generate` or eligibility | B3 |
@@ -1068,7 +1068,7 @@ The office menus are hand-written; the guards are the law. *04* §4 compared eve
 | Student 360 Finance card; CGPA card | `Student360.tsx` | "NOT YET SERVED"; "—" although `/students/{id}/portal` returns fees and `student_gpa` exists | PLACEHOLDER |
 | Records & queries: fees, attendance | `RecordsService.FEES_NOT_SERVED`, `ATTENDANCE_NOT_SERVED` | A not-served sentence | PLACEHOLDER |
 | `/me` Appraisal / Appointment / Next increment tiles | `me/Self.tsx:37,73,87-89` | Always "—"; caption "Staff module, not yet on the portal" | PLACEHOLDER |
-| Results chain "Raise an amendment" / "View as a student" | `Chain.tsx:91` | Buttons with no handler | PLACEHOLDER |
+| Results chain "Raise an amendment" / "View as a student" | `Chain.tsx` | V358: the amendment works; "View as a student" removed | CLOSED |
 | Remind / escalate a late lecturer | `ResultsController.java:181-188` | `202` "nothing was sent" | PLACEHOLDER |
 | "Notify held candidates" (clearance) | `ClearanceController.notifyHeld` | `202` stub, "No notification module yet" | PLACEHOLDER |
 | Faculty matriculation list "Fees" column | `FacultyListScreen.tsx` | Renders "—" | PLACEHOLDER |
@@ -1116,7 +1116,7 @@ Texts that describe the portal as it was, or values that should come from config
 | Library student screen implying clearance from standing | `student/library` | Clearance is manual |
 | Score-sheet text "It goes to the second examiner" | results UI | VERIFICATION is the Examinations Officer's desk; the second examiner only reads |
 | Broadsheet "Withheld set shows as withheld, with the reason the Board recorded" | `BroadsheetScreen.tsx` | No withheld-set concept in the data |
-| Offer lapse / waiting-list promotion promised on the admissions desk | admissions UI | Neither exists |
+| Offer lapse / waiting-list promotion promised on the admissions desk | admissions UI | CLOSED (V358) |
 | Allocation overload "reported to the Dean" | `HINT` string | No report or notice |
 | HR dashboard title "Staff movements" | `titles.ts:360` | The page is the dashboard |
 | Eligibility title "Who may register CSC 311" | `titles.ts` | Fixed text for every course |
