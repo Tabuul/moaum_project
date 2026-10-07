@@ -57,11 +57,20 @@ class StudentPortalRepository {
         return jdbc.sql(STUDENT + " WHERE s.id = :id").param("id", id).query(Student.class).optional();
     }
 
-    record Account(UUID id, UUID studentId, String passwordHash, boolean mustChange, int failedAttempts, OffsetDateTime lockedUntil) {
+    /** V346: tempExpiresAt/tempUsedAt are set while the hash is a temporary password ICT Support issued — good once, until the time */
+    record Account(UUID id, UUID studentId, String passwordHash, boolean mustChange, int failedAttempts, OffsetDateTime lockedUntil,
+                   OffsetDateTime tempExpiresAt, OffsetDateTime tempUsedAt) {
+        boolean temporary() {
+            return tempExpiresAt != null;
+        }
+
+        boolean temporarySpent() {
+            return tempExpiresAt != null && (tempUsedAt != null || !tempExpiresAt.isAfter(OffsetDateTime.now()));
+        }
     }
 
     Optional<Account> account(UUID student) {
-        return jdbc.sql("SELECT id, student_id, password_hash, must_change, failed_attempts, locked_until FROM iam.student_account WHERE student_id = :s")
+        return jdbc.sql("SELECT id, student_id, password_hash, must_change, failed_attempts, locked_until, temp_expires_at, temp_used_at FROM iam.student_account WHERE student_id = :s")
                 .param("s", student).query(Account.class).optional();
     }
 
@@ -82,9 +91,30 @@ class StudentPortalRepository {
 
     UUID openAccount(UUID student, String hash, boolean mustChange) {
         UUID id = UUID.randomUUID();
-        jdbc.sql("INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (:id, :s, :h, :m) ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = EXCLUDED.must_change, failed_attempts = 0, locked_until = NULL")
+        jdbc.sql("INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (:id, :s, :h, :m) ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = EXCLUDED.must_change, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL")
                 .param("id", id).param("s", student).param("h", hash).param("m", mustChange).update();
         return id;
+    }
+
+    /** V346: a temporary password ICT Support issued — the hash only, a forced change, good once until the time; the account opened if there was none */
+    void issueTemporary(UUID student, String hash, UUID by, OffsetDateTime until) {
+        jdbc.sql("""
+                INSERT INTO iam.student_account (id, student_id, password_hash, must_change, temp_expires_at, temp_issued_by)
+                VALUES (gen_random_uuid(), :s, :h, true, :until, :by)
+                ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = true, failed_attempts = 0, locked_until = NULL,
+                    temp_expires_at = EXCLUDED.temp_expires_at, temp_issued_by = EXCLUDED.temp_issued_by, temp_used_at = NULL
+                """).param("s", student).param("h", hash).param("until", until).param("by", by).update();
+    }
+
+    /** V346: the temporary password has opened its one session */
+    void temporaryUsed(UUID student) {
+        jdbc.sql("UPDATE iam.student_account SET temp_used_at = now() WHERE student_id = :s AND temp_expires_at IS NOT NULL AND temp_used_at IS NULL")
+                .param("s", student).update();
+    }
+
+    UUID event(String identifier, UUID student, String outcome) {
+        return jdbc.sql("INSERT INTO iam.student_event (student_id, identifier, outcome) VALUES (:s, :i, :o) RETURNING id")
+                .param("s", student, Types.OTHER).param("i", identifier == null ? "" : identifier).param("o", outcome).query(UUID.class).single();
     }
 
     void failed(UUID student, int attempts, OffsetDateTime lockedUntil) {
@@ -98,7 +128,7 @@ class StudentPortalRepository {
     }
 
     void changePassword(UUID student, String hash) {
-        jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE student_id = :s")
+        jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE student_id = :s")
                 .param("h", hash).param("s", student).update();
     }
 

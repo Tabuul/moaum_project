@@ -235,7 +235,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
             </div>
             <div>
               <div className="eyebrow">Student records this posting may work on</div>
-              <div className="sub2 mb-1">Nothing by default. Each capability is granted here and enforced by the server on every call; status, programme, matriculation, results and money are never among them.</div>
+              <div className="sub2 mb-1">Nothing by default. Each capability is granted here, counts only for the students this posting&rsquo;s scope covers, and is enforced by the server on every call; results, grades, refunds, fees, amounts, matriculation and admission decisions are never among them.</div>
               {Object.entries(CAPABILITIES).map(([code, [label, hint]]) => (
                 <label key={code} className="row row--tight" style={{ cursor: "pointer", alignItems: "flex-start", marginBottom: 4 }}>
                   <input type="checkbox" className="chk" checked={post.capabilities.includes(code)} onChange={(e) => setPost({ ...post, capabilities: e.target.checked ? [...post.capabilities, code] : post.capabilities.filter((c) => c !== code) })} />

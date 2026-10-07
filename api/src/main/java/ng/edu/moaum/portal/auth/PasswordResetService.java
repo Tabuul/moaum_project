@@ -138,6 +138,69 @@ public class PasswordResetService {
         }));
     }
 
+    /** V346: what ICT Support is told of a reset it started: which reset, and where the link went — the addresses masked, never the token */
+    public record StudentReset(UUID resetId, String email, String phone) {
+    }
+
+    private static String mask(String v, boolean email) {
+        if (v == null || v.isBlank()) return null;
+        String t = v.trim();
+        if (email) {
+            int at = t.indexOf('@');
+            return at <= 1 ? "***" + (at >= 0 ? t.substring(at) : "") : t.charAt(0) + "***" + t.substring(at - 1);
+        }
+        return t.length() <= 4 ? "****" : "*".repeat(t.length() - 4) + t.substring(t.length() - 4);
+    }
+
+    /**
+     * V346: ICT Support starts a reset for one student, named by the record (never by an identifier that might name another
+     * account): the same one-hour, single-use link the student would ask for, to the email and phone the University reaches
+     * them at, saying the reset was started by ICT Support. Refused when the record holds no address to send it to.
+     */
+    public StudentReset forStudent(UUID student) {
+        return forStudent(student, null);
+    }
+
+    /**
+     * The same, with a fallback address: the email on the student's own support ticket, which the student gave while signed
+     * in — used only when the record holds no email, so a student whose record lacks an address can still be reached.
+     */
+    public StudentReset forStudent(UUID student, String ticketEmail) {
+        var row = jdbc.sql("SELECT r.email, r.phone FROM people.student s LEFT JOIN LATERAL people.student_reach(s.id) r ON true WHERE s.id = :s")
+                .param("s", student).query().listOfRows();
+        if (row.isEmpty()) {
+            throw new DomainRuleViolation("AUTH_NO_STUDENT", "No such student.", new DomainRuleViolation.Remedy("Open the student from the search.", "ICT Support"));
+        }
+        String email = (String) row.get(0).get("email");
+        String phone = (String) row.get(0).get("phone");
+        if ((email == null || email.isBlank()) && ticketEmail != null && EMAIL.matcher(ticketEmail.trim()).matches()) {
+            email = ticketEmail.trim().toLowerCase();
+        }
+        if ((email == null || email.isBlank()) && (phone == null || phone.isBlank())) {
+            throw new DomainRuleViolation("AUTH_NO_ADDRESS", "The record holds no email or phone to send a reset link to.",
+                    new DomainRuleViolation.Remedy("Correct the student's contact first, or issue a temporary password at the desk on the student's ticket.", "ICT Support"));
+        }
+        String token = HexFormat.of().formatHex(randomBytes());
+        String link = portalUrl + "/login/reset?token=" + token;
+        UUID id = jdbc.sql("INSERT INTO iam.password_reset (subject_kind, subject_id, token_hash, expires_at) VALUES ('STUDENT', :s, :h, now() + interval '1 hour') RETURNING id")
+                .param("s", student).param("h", sha256(token)).query(UUID.class).single();
+        if (email != null && !email.isBlank()) {
+            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'student', :ai)")
+                    .param("r", email).param("sub", "Your portal password reset")
+                    .param("b", "Your portal password reset has been initiated by ICT Support. Follow the secure instructions to create a new password: open this link "
+                            + "within the hour and choose a new one.\n\n" + link + "\n\nThe link works once. ICT Support never sees or sets your password. "
+                            + "If you did not ask for this, ignore this message and tell ICT Support; your password is unchanged.")
+                    .param("ai", student).query().listOfRows();
+        }
+        if (phone != null && !phone.isBlank()) {
+            jdbc.sql("SELECT platform.queue_notice('SMS', :r, :sub, :b, 'student', :ai)")
+                    .param("r", phone).param("sub", "Your portal password reset")
+                    .param("b", "MOAUM: ICT Support started your password reset. Choose a new password within the hour at " + link)
+                    .param("ai", student).query().listOfRows();
+        }
+        return new StudentReset(id, mask(email, true), mask(phone, false));
+    }
+
     /** the token names the account and the store; a new password is set once, and the token is spent. */
     public void reset(String token, String password, String ip) {
         if (token == null || token.isBlank()) {
@@ -163,8 +226,12 @@ public class PasswordResetService {
             switch (kind) {
                 case "STAFF" -> jdbc.sql("UPDATE iam.credential SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE person_id = :s")
                         .param("h", pwHash).param("s", subject).update();
-                case "STUDENT" -> jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE student_id = :s")
-                        .param("h", pwHash).param("s", subject).update();
+                // V346: the account is opened if it never was (the link proves the address on the record), and a temporary password ends
+                case "STUDENT" -> jdbc.sql("""
+                        INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (gen_random_uuid(), :s, :h, false)
+                        ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = false, failed_attempts = 0, locked_until = NULL,
+                            temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL
+                        """).param("h", pwHash).param("s", subject).update();
                 case "PGAPPLICANT" -> jdbc.sql("UPDATE admissions.pg_applicant SET password_hash = :h WHERE id = :s")
                         .param("h", pwHash).param("s", subject).update();
                 default -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = :h WHERE id = :s")

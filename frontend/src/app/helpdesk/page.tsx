@@ -43,7 +43,7 @@ export default async function HelpdeskPage({ searchParams }: { searchParams: Pro
           filters={{ q: s("q"), status, category: s("category"), priority: s("priority"), agent: s("agent"), queue: s("queue"), faculty: s("faculty"), department: s("department"), from: s("from"), to: s("to"), sort: s("sort") || "priority", dir: s("dir") || "desc", size: s("size") || "20" }} />
       )}
       <Suspense fallback={<DeskLaterFallback />}>
-        <DeskLater head={head} queues={queues.ok ? queues.data : []} />
+        <DeskLater head={head} queues={queues.ok ? queues.data : []} counts={counts.ok ? counts.data : null} />
       </Suspense>
     </Shell>
   );

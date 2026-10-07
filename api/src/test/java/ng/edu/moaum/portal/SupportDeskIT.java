@@ -231,12 +231,20 @@ class SupportDeskIT {
         assertThat(critical.getStatusCode().value()).as(String.valueOf(critical.getBody())).isEqualTo(200);
         ResponseEntity<Map> stats = it.get(head, "/api/v1/helpdesk/stats?queue=BURSARY_SUPPORT");
         assertThat(((Number) ((Map) path(stats.getBody(), "totals")).get("critical")).longValue()).isGreaterThanOrEqualTo(1L);
-        // the password reset goes through the portal's own door: a reset is recorded for the student, the student is told, the desk sees no password
+        // the password reset goes through the portal's own door: a reset is recorded for the student, the student is told, the desk sees no password.
+        // V346: for a student, only a posting that carries RESET_PASSWORD and covers the student resets it
+        ResponseEntity<Map> unauthorised = it.call(bursaryAgent, HttpMethod.POST, "/api/v1/helpdesk/tickets/" + id + "/password-reset", Map.of());
+        assertThat(unauthorised.getStatusCode().value()).isEqualTo(422);
+        assertThat(unauthorised.getBody().get("code")).isEqualTo("SUPPORT_CAPABILITY");
+        UUID posting = jdbc.sql("SELECT id FROM helpdesk.agent_assignment WHERE person_id = :p AND active AND queue_code = 'BURSARY_SUPPORT'").param("p", bursaryAgentId).query(UUID.class).single();
+        assertThat(it.call(head, HttpMethod.PUT, "/api/v1/helpdesk/admin/agents/" + posting, Map.of("capabilities", List.of("RESET_PASSWORD"))).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> reset = it.call(bursaryAgent, HttpMethod.POST, "/api/v1/helpdesk/tickets/" + id + "/password-reset", Map.of());
         assertThat(reset.getStatusCode().value()).as(String.valueOf(reset.getBody())).isEqualTo(200);
         assertThat(reset.getBody().keySet()).doesNotContain("password", "token", "link");
         assertThat(jdbc.sql("SELECT count(*) FROM iam.password_reset WHERE subject_id = :s AND used_at IS NULL AND expires_at > now()").param("s", student).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
         assertThat(((List<Map>) path(it.get(studentToken, "/api/v1/helpdesk/my/tickets/" + id).getBody(), "comments"))).extracting(c -> String.valueOf(c.get("body"))).anyMatch(b -> b.startsWith("A password reset link has been sent"));
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE student_id = :s AND action = 'PASSWORD_RESET' AND method = 'RESET_LINK' AND ticket_id = :t AND new_value IS NULL")
+                .param("s", student).param("t", UUID.fromString(String.valueOf(id))).query(Long.class).single()).isEqualTo(1L);
     }
 
     @Test

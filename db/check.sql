@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 190
+\set EXPECTED 191
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5409,6 +5409,117 @@ BEGIN
         AND (again->>'applied')::int = 0 AND (again->>'exists')::int = 1 AND v_fee = 0 AND n_reg = 3 AND v_stream = 'NON_SCIENCE',
         format('prev=%s bad=%s review=%s phone=%s dob=%s applied=%s state=%s must=%s told=%s again=%s/%s fee=%s reg=%s stream=%s',
                n_prev, st_bad, st_review, phone, dob, done->>'applied', v_state, v_must, v_told, again->>'applied', again->>'exists', v_fee, n_reg, v_stream));
+END $$;
+
+-- ── 191. V346: ICT Support resolves a student's problem through the engines, never around them — a support act filed on the ticket reaches its timeline; a capability reaches a student only through a posting that covers them; the registration window and the engine's menu are set aside only by an override written with the rule it set aside, never fees, units or a closed semester; a dropped course is kept as DROPPED; an entitlement is refreshed only for a confirmed payment and makes none; no password reaches the ledger and a temporary one always forces a change ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid; f_a text; d_a text; p_a text; f_b text; d_b text; st uuid := gen_random_uuid(); ses text := '2071/2072';
+        o_a uuid := gen_random_uuid(); o_b uuid := gen_random_uuid(); o_c uuid := gen_random_uuid(); o_d uuid := gen_random_uuid(); o_e uuid := gen_random_uuid();
+        reg1 uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); tkt uuid; msg text; q text;
+        r_blocked text; r_period text; r_fees text; r_units text; r_closed text; r_noticket text; r_unconfirmed text; r_pw text; r_temp text; r_caps text;
+        added jsonb; dropped jsonb; refreshed jsonb; n_checks int; v_marked boolean; v_rule text; n_ev int; v_ev_detail text; n_kept int; v_drop_status text;
+        caps_for text[]; n_refs_before int; n_refs_after int; v_ref text; v_ok_cap boolean := false;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKSUPPORTHEAD', 'Support');
+        SELECT d.faculty_code, d.code, p.code INTO f_a, d_a, p_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
+        SELECT d.faculty_code, d.code INTO f_b, d_b FROM ref.department d WHERE d.ended_on IS NULL AND d.faculty_code <> f_a ORDER BY d.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, make_date(2071, 10, 1), make_date(2072, 8, 31)) ON CONFLICT (name) DO NOTHING;
+        -- the first semester is not yet open (the window is shut); the second is closed (its registrations are history)
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), ses, 1, 'NOT_YET_OPEN'), (gen_random_uuid(), ses, 2, 'CLOSED');
+        -- the student owes nothing from any other session, so the Bursary's clearance reads this session alone
+        UPDATE finance.fee_schedule SET ended_at = now() WHERE ended_at IS NULL AND session < ses;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/71/710191', 'MOAUM/CHK/71/000191', 'CHECKSUPPORTREG', 'Student', p_a, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+            ('CHK 191A', 'On the menu', 3, 1, 100, d_a, 'LIVE'), ('CHK 191B', 'Mapped to no programme', 3, 1, 300, d_b, 'LIVE'),
+            ('CHK 191C', 'A second-semester course', 3, 2, 100, d_a, 'LIVE'), ('CHK 191D', 'Already registered', 3, 1, 100, d_a, 'LIVE'),
+            ('CHK 191E', 'Another on the menu', 3, 1, 100, d_a, 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level) VALUES ('CHK 191A', p_a, 100), ('CHK 191D', p_a, 100), ('CHK 191E', p_a, 100), ('CHK 191C', p_a, 100);
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_a, 'CHK 191A', ses, 1), (o_b, 'CHK 191B', ses, 1), (o_c, 'CHK 191C', ses, 2),
+                                                                               (o_d, 'CHK 191D', ses, 1), (o_e, 'CHK 191E', ses, 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (reg1, st, ses, 1, 100, 'APPROVED', now(), now()), (reg2, st, ses, 2, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg1, o_d, 3, 'APPROVED'), (reg2, o_c, 3, 'APPROVED');
+
+        -- the window shut: refused without an override, and the rule named
+        BEGIN PERFORM registration.support_add(st, ses, 1, o_a, false, who, 'asked'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_blocked := split_part(msg, ':', 1); END;
+        -- a course of another semester is never placed, override or not
+        BEGIN PERFORM registration.support_add(st, ses, 1, o_c, true, who, 'asked'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_period := split_part(msg, ':', 1); END;
+        n_checks := (SELECT count(*) FROM registration.support_add_checks(st, ses, 1, o_b));
+        -- a course mapped to no programme, the window shut: the override places it, the override named on the entry
+        added := registration.support_add(st, ses, 1, o_b, true, who, 'Portal fault: the course is missing from the student''s list');
+        v_marked := EXISTS (SELECT 1 FROM registration.entry WHERE registration_id = reg1 AND offering_id = o_b AND status = 'APPROVED' AND support_override_at IS NOT NULL);
+        v_rule := added->>'normalRule';
+        -- the override goes on the ledger only on a ticket, and the ticket's timeline takes it
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        BEGIN
+            PERFORM helpdesk.record_support_action(st, NULL, 'COURSE_ADDED', 'CHK 191B', 'Not registered', 'Registered', 'Portal fault', ses, 1,
+                    jsonb_build_object('override', true, 'normalRule', v_rule, 'description', 'Missing from the list'));
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_noticket := split_part(msg, ':', 1);
+        END;
+        tkt := helpdesk.submit('STUDENT', st, 'CHECKSUPPORTREG, Student', 'MOAUM/CHK/71/000191', 'check.support191@example.com', NULL, d_a, f_a, 'REGISTRATION', 'CHK 191B is missing', 'It is not on my list',
+                               jsonb_build_object('session', ses, 'semester', '1', 'level', '100'));
+        PERFORM helpdesk.record_support_action(st, tkt, 'COURSE_ADDED', 'CHK 191B', 'Not registered', 'Registered', 'Portal fault', ses, 1,
+                jsonb_build_object('override', true, 'normalRule', v_rule, 'description', 'Missing from the list', 'summary', 'CHK 191B added to the first semester registration'));
+        SELECT count(*), max(detail) INTO n_ev, v_ev_detail FROM helpdesk.ticket_event WHERE ticket_id = tkt AND action = 'SUPPORT_COURSE_ADDED';
+        -- a drop is refused while the window is shut, and with the override the course is marked DROPPED, never deleted
+        dropped := registration.support_drop(st, ses, 1, o_d, true, who, 'Registered in error by a portal fault');
+        SELECT count(*), max(status) INTO n_kept, v_drop_status FROM registration.entry WHERE registration_id = reg1 AND offering_id = o_d;
+        -- a closed semester's registration is history: not changed, override or not
+        BEGIN PERFORM registration.support_drop(st, ses, 2, o_c, true, who, 'asked'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_closed := split_part(msg, ':', 1); END;
+        -- the fees are never set aside: a schedule for the session, unpaid, refuses the override
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees', 50000, 100, p_a);
+        BEGIN PERFORM registration.support_add(st, ses, 1, o_a, true, who, 'asked'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_fees := split_part(msg, ':', 1); END;
+        -- an entitlement follows only a confirmed payment, and the refresh makes no payment
+        v_ref := finance.new_purpose_reference(st, ses, 50000, 'School fees ' || ses);
+        BEGIN PERFORM finance.refresh_entitlement(v_ref); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_unconfirmed := split_part(msg, ':', 1); END;
+        PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'teller for the check');
+        n_refs_before := (SELECT count(*) FROM finance.payment_reference WHERE student_id = st);
+        refreshed := finance.refresh_entitlement(v_ref);
+        n_refs_after := (SELECT count(*) FROM finance.payment_reference WHERE student_id = st);
+        -- the unit ceiling is never set aside either
+        UPDATE policy.level_limit SET max_units = 4, min_units = 0 WHERE level = 100;
+        BEGIN PERFORM registration.support_add(st, ses, 1, o_e, true, who, 'asked'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_units := split_part(msg, ':', 1); END;
+        -- no password on the ledger; a temporary password always forces the change
+        BEGIN
+            PERFORM helpdesk.record_support_action(st, NULL, 'PASSWORD_RESET', NULL, NULL, 'Secret123', 'Locked out', NULL, NULL, jsonb_build_object('method', 'TEMPORARY_PASSWORD'));
+        EXCEPTION WHEN check_violation THEN r_pw := 'REFUSED';
+        END;
+        BEGIN
+            INSERT INTO iam.student_account (id, student_id, password_hash, must_change, temp_expires_at, temp_issued_by)
+            VALUES (gen_random_uuid(), st, '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', false, now() + interval '1 day', who);
+        EXCEPTION WHEN check_violation THEN r_temp := 'REFUSED';
+        END;
+        -- a capability reaches a student only through a posting that covers them; a result-changing capability is not one
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKSUPPORTCPO', 'Agent') RETURNING id INTO agent;
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'GLOBAL', NULL, ARRAY['VIEW_STUDENT']);
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'FACULTY', f_b, ARRAY['OVERRIDE_REGISTRATION', 'RESET_PASSWORD']);
+        v_ok_cap := true;
+        caps_for := helpdesk.agent_capabilities_for(agent, st);
+        BEGIN
+            INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES (agent, q, 'GLOBAL', NULL, ARRAY['EDIT_RESULTS']);
+        EXCEPTION WHEN check_violation THEN r_caps := 'REFUSED';
+        END;
+        RAISE EXCEPTION 'the V346 support check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('ICT Support resolves through the engines, never around them: the window and the menu set aside only by an override named with the rule it set aside and filed on the ticket''s timeline; a course of another semester, unpaid fees, the unit ceiling and a closed semester never set aside; a drop marks DROPPED and keeps the entry; an entitlement refreshed only for a confirmed payment, making none; no password on the ledger; a temporary password forces a change; a capability reaches only the students its posting covers, and no result-changing one exists',
+        r_blocked = 'REG_BLOCKED' AND r_period = 'REG_RULE' AND n_checks = 16 AND (added->>'overridden')::boolean AND v_marked AND v_rule LIKE '%not on the engine%'
+        AND r_noticket = 'SUPPORT_OVERRIDE_TICKET' AND n_ev = 1 AND v_ev_detail LIKE 'NORMAL RULE: Registration blocked because %SUPPORT ACTION: Override approved because Portal fault%'
+        AND (dropped->>'overridden')::boolean AND n_kept = 1 AND v_drop_status = 'DROPPED' AND r_closed = 'REG_RULE'
+        AND r_fees = 'REG_RULE' AND r_unconfirmed = 'PAY_NOT_CONFIRMED' AND (refreshed->'after'->>'paidInFull')::boolean AND n_refs_before = n_refs_after
+        AND r_units = 'REG_RULE' AND r_pw = 'REFUSED' AND r_temp = 'REFUSED'
+        AND v_ok_cap AND caps_for = ARRAY['VIEW_STUDENT'] AND r_caps = 'REFUSED',
+        format('blocked=%s period=%s checks=%s added=%s marked=%s rule=%s noticket=%s ev=%s/%s dropped=%s kept=%s/%s closed=%s fees=%s unconfirmed=%s refreshed=%s refs=%s/%s units=%s pw=%s temp=%s caps_for=%s caps=%s',
+               r_blocked, r_period, n_checks, added->>'overridden', v_marked, v_rule, r_noticket, n_ev, left(v_ev_detail, 60), dropped->>'overridden', n_kept, v_drop_status, r_closed,
+               r_fees, r_unconfirmed, refreshed->'after'->>'paidInFull', n_refs_before, n_refs_after, r_units, r_pw, r_temp, caps_for, r_caps));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

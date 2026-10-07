@@ -84,6 +84,13 @@ export const ACTION: Record<string, string> = {
   SUBMITTED: "Ticket submitted", OPENED: "Ticket opened", STATUS_CHANGED: "Status changed", ASSIGNED: "Assigned", REASSIGNED: "Reassigned", ESCALATED: "Escalated",
   PRIORITY_CHANGED: "Priority changed", INTERNAL_NOTE: "Internal note", UPDATE: "Update", RESOLUTION: "Resolution added", REOPENED: "Reopened", CLOSED: "Closed", ATTACHMENT: "Attachment added",
   ROUTED: "Routed to a queue", QUEUED: "Queued, no agent", TRANSFERRED: "Transferred", WAITING: "Waiting on the requester", ESCALATED_TO_OFFICE: "Escalated to an office", OFFICE_ANSWERED: "The office answered", RETURNED: "Returned to the queue",
+  // V334/V346: the support acts done on the student's record for the ticket
+  SUPPORT_CONTACT_EDITED: "Support: contact corrected", SUPPORT_PERSONAL_EDITED: "Support: personal detail corrected", SUPPORT_FAMILY_EDITED: "Support: family detail corrected",
+  SUPPORT_PHOTO_REPLACED: "Support: photograph replaced", SUPPORT_CHANGE_REQUESTED: "Support: change requested of the Registry", SUPPORT_REGISTRATION_CHOSEN: "Support: courses chosen",
+  SUPPORT_COURSE_ADDED: "Support: course added", SUPPORT_COURSE_DROPPED: "Support: course dropped", SUPPORT_COURSE_RESTORED: "Support: course restored",
+  SUPPORT_REGISTRATION_SUBMITTED: "Support: registration submitted", SUPPORT_PASSWORD_RESET: "Support: password reset initiated", SUPPORT_PAYMENT_INVESTIGATED: "Support: payment investigated",
+  SUPPORT_PAYMENT_VERIFIED: "Support: payment verified", SUPPORT_ENTITLEMENT_REFRESHED: "Support: payment entitlement synchronized", SUPPORT_RECEIPT_REGENERATED: "Support: receipt regenerated",
+  SUPPORT_ESCALATED: "Support: escalated", SUPPORT_TICKET_CREATED: "Support: ticket raised at the desk", SUPPORT_TICKET_RESOLVED: "Support: ticket resolved",
 };
 export const statusWord = (s: string) => STATUS[s]?.[0] ?? s;
 export const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -104,6 +111,8 @@ export interface Counts {
   open: number; new: number; unassigned: number; urgent: number; critical: number; escalated: number; overdue: number; waiting: number;
   mine: number; mine_new: number; mine_in_progress: number; mine_waiting: number; mine_escalated: number; mine_overdue: number;
   latest_new: string | null; at: string; head: boolean;
+  /** V346: the open tickets of the kinds the support desk resolves from the student's record */
+  registration_issues?: number; payment_issues?: number; password_issues?: number;
 }
 /** a moment in words relative to now: "just now", "3 min ago", "2 h ago", "4 d ago" */
 export function ago(iso: string | null | undefined): string {

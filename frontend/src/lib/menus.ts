@@ -1100,6 +1100,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Governance" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
+{ "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -1289,6 +1291,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
+{ "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -1430,6 +1434,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
+{ "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
@@ -2082,6 +2088,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
+{ "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -2106,6 +2114,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
+{ "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
+{ "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

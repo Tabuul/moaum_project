@@ -111,7 +111,13 @@ public class StudentAuthService {
                         + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
             boolean ok = encoder.matches(password == null ? "" : password, a.passwordHash());
-            if (!ok && a.mustChange()) {
+            if (ok && a.temporarySpent()) {
+                /* V346: a temporary password from ICT Support opens one session, until its time; spent or lapsed, it opens nothing */
+                repo.event(matricNo, s.id(), "TEMP_PASSWORD_SPENT", ip);
+                return new DomainRuleViolation("AUTH_TEMP_PASSWORD_SPENT", "This temporary password has expired or was already used.",
+                        new DomainRuleViolation.Remedy("Ask ICT Support for a reset link, or a new temporary password at the desk; it is good for one sign-in.", "ICT Support"));
+            }
+            if (!ok && a.mustChange() && !a.temporary()) {
                 /* a migrated student whose password was never set signs in with their own number as the
                    password (username == password) and is then forced to choose a real one. This is the
                    default first password, granted at sign-in — so no 40,000 accounts are pre-hashed. */
@@ -130,6 +136,9 @@ public class StudentAuthService {
             Instant end = Instant.now().plus(SESSION_LENGTH);
             repo.openSession(sid, s.id(), end);
             repo.signedIn(s.id());
+            if (a.temporary()) {
+                repo.temporaryUsed(s.id());
+            }
             repo.event(matricNo, s.id(), "SIGNED_IN", ip);
             String name = s.surname() + ", " + s.otherNames();
             return new SignedIn(issuer.issue(s.id(), name, List.of("student"), sid, end), end, s.id(), s.matricNo(), s.surname(), s.otherNames(), a.mustChange());
@@ -198,7 +207,7 @@ public class StudentAuthService {
     public Map<String, Object> changePassword(UUID student, String current, String next) {
         StudentPortalRepository.Account a = repo.account(student).orElseThrow(() -> new NotFound("student account", student));
         boolean ok = encoder.matches(current == null ? "" : current, a.passwordHash());
-        if (!ok && a.mustChange()) {
+        if (!ok && a.mustChange() && !a.temporary()) {
             // the default first password is the student's own number (matric, or admission before it is
             // issued) — the same default sign-in grants, so changing from it here must accept it too
             StudentPortalRepository.Student s = repo.byId(student).orElse(null);
@@ -217,6 +226,33 @@ public class StudentAuthService {
         repo.changePassword(student, encoder.encode(next));
         repo.event("", student, "PASSWORD_CHANGED", null);
         return Map.of("changed", true);
+    }
+
+    /** V346: what ICT Support hands the student at the desk — once; the account keeps only its hash */
+    public record Temporary(String password, OffsetDateTime expiresAt, UUID eventId) {
+    }
+
+    static final Duration TEMPORARY_FOR = Duration.ofHours(24);
+    private static final String TEMP_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+
+    /**
+     * V346: a temporary password issued by ICT Support at the desk — random (twelve characters from SecureRandom, never a
+     * number the student is known by), kept only as a bcrypt hash, good for one sign-in within 24 hours, and changed at it;
+     * while it stands the matriculation-number first password opens nothing. The password is returned here once.
+     */
+    @Transactional
+    public Temporary issueTemporary(UUID student, UUID by) {
+        StudentPortalRepository.Student s = repo.byId(student).orElseThrow(() -> new NotFound("student", student));
+        String pw;
+        do {
+            StringBuilder b = new StringBuilder(12);
+            for (int i = 0; i < 12; i++) b.append(TEMP_LETTERS.charAt(random.nextInt(TEMP_LETTERS.length())));
+            pw = b.toString();
+        } while (pw.equalsIgnoreCase(s.matricNo() == null ? "" : s.matricNo()) || pw.equalsIgnoreCase(s.admissionNo() == null ? "" : s.admissionNo()));
+        OffsetDateTime until = OffsetDateTime.now().plus(TEMPORARY_FOR);
+        repo.issueTemporary(student, encoder.encode(pw), by, until);
+        UUID event = repo.event("", student, "TEMP_PASSWORD_ISSUED");
+        return new Temporary(pw, until, event);
     }
 
     /** the Registry opens or resets a student's account: a first password, changed at sign-in */

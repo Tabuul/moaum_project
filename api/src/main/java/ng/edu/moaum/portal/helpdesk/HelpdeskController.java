@@ -413,8 +413,11 @@ class HelpdeskController {
                        count(*) FILTER (WHERE t.escalated_to = :me OR (t.assigned_to = :me AND t.escalated_office IS NOT NULL)) AS mine_escalated,
                        count(*) FILTER (WHERE t.assigned_to = :me AND helpdesk.due_at(t.created_at, t.priority) < now()) AS mine_overdue,
                        max(t.created_at) FILTER (WHERE t.status = 'SUBMITTED') AS latest_new,
+                       count(*) FILTER (WHERE c.code = 'REGISTRATION') AS registration_issues,
+                       count(*) FILTER (WHERE c.code IN ('PAYMENT', 'GST') AND (c.code = 'PAYMENT' OR nullif(t.details->>'payment_reference', '') IS NOT NULL)) AS payment_issues,
+                       count(*) FILTER (WHERE c.code = 'LOGIN') AS password_issues,
                        now() AS at
-                  FROM helpdesk.ticket t
+                  FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
                  WHERE t.status NOT IN ('RESOLVED','CLOSED') AND (:head OR helpdesk.can_view(:me, t.id))
                 """).param("head", head(auth)).param("me", me(auth)).query().singleRow());
         out.put("head", head(auth));
@@ -672,17 +675,39 @@ class HelpdeskController {
         return Map.of("id", id, "office", office, "status", "WAITING_FOR_OFFICE");
     }
 
-    /** V328: the secure reset, through the portal's own door — a one-hour link to the address on the requester's account; the desk never sees a password */
+    /**
+     * V328: the secure reset, through the portal's own door — a one-hour link to the address on the requester's account; the desk
+     * never sees a password. V346: for a student the reset is the student's own (by the record, never by an identifier that might
+     * name another account), the agent's postings that cover the student must carry RESET_PASSWORD, and the act is on the support
+     * ledger and the ticket's timeline.
+     */
     @PostMapping("/tickets/{id}/password-reset")
     @PreAuthorize(AGENTS)
     @Transactional
     Map<String, Object> passwordReset(Authentication auth, @PathVariable UUID id, jakarta.servlet.http.HttpServletRequest request) {
         requireVisible(auth, id);
-        Map<String, Object> t = jdbc.sql("SELECT status, requester_kind, requester_number, requester_email, requester_name FROM helpdesk.ticket WHERE id = :id").param("id", id).query().singleRow();
+        Map<String, Object> t = jdbc.sql("SELECT number, status, requester_kind, requester_id, requester_number, requester_email, requester_name FROM helpdesk.ticket WHERE id = :id").param("id", id).query().singleRow();
         if ("CLOSED".equals(t.get("status"))) throw new DomainRuleViolation("HELPDESK_CLOSED", "A closed ticket takes no further act.", new DomainRuleViolation.Remedy("Reopen it first.", "Directorate of ICT"));
         String identifier = t.get("requester_number") != null && !String.valueOf(t.get("requester_number")).isBlank() ? String.valueOf(t.get("requester_number")) : (String) t.get("requester_email");
         if (identifier == null || identifier.isBlank()) throw new DomainRuleViolation("HELPDESK_NO_IDENTIFIER", "The ticket names no account to reset.", new DomainRuleViolation.Remedy("Ask the requester for their matriculation or staff number.", "Directorate of ICT"));
-        resets.forgot(identifier, request.getRemoteAddr());
+        if ("STUDENT".equals(t.get("requester_kind"))) {
+            UUID student = (UUID) t.get("requester_id");
+            if (!head(auth)) {
+                Object caps = jdbc.sql("SELECT helpdesk.agent_capabilities_for(:p, :s)").param("p", me(auth)).param("s", student).query().singleValue();
+                if (!SupportAccess.texts(caps).contains("RESET_PASSWORD")) {
+                    throw new DomainRuleViolation("SUPPORT_CAPABILITY", "Your posting does not carry resetting student passwords for this student.",
+                            new DomainRuleViolation.Remedy("Ask the Head of the ICT Support Desk to grant it on a posting that covers the student; until then, escalate the ticket.", "Head of ICT Support Desk"));
+                }
+            }
+            PasswordResetService.StudentReset sent = resets.forStudent(student, (String) t.get("requester_email"));
+            String to = String.join(" and ", java.util.stream.Stream.of(sent.email(), sent.phone()).filter(java.util.Objects::nonNull).toList());
+            jdbc.sql("SELECT helpdesk.record_support_action(:s, :t, 'PASSWORD_RESET', NULL, NULL, NULL, :r, NULL, NULL, :d::jsonb)")
+                    .param("s", student).param("t", id).param("r", "Requested on ticket " + t.get("number"))
+                    .param("d", JSON.writeValueAsString(Map.of("method", "RESET_LINK", "authEventId", sent.resetId().toString(), "summary", "Password reset initiated: a one-hour link sent to " + to)))
+                    .query(UUID.class).single();
+        } else {
+            resets.forgot(identifier, request.getRemoteAddr());
+        }
         String said = "A password reset link has been sent to the email address (and phone, where one is held) on your account. It is valid for one hour. "
                 + "Open it to choose a new password; the desk never sees or sets your password.";
         jdbc.sql("SELECT helpdesk.comment(:t, 'AGENT', :a, :n, false, :b)").param("t", id).param("a", me(auth)).param("n", myName(auth)).param("b", said).query(UUID.class).single();
@@ -1034,9 +1059,9 @@ class HelpdeskController {
                             String availability, LocalDate effectiveFrom, LocalDate effectiveTo, @Size(max = 500) String reason, List<String> capabilities) {
     }
 
-    /** V334: the student-record capabilities a posting may carry; anything else is refused here and by the database */
-    private static final Set<String> CAPABILITIES = Set.of("VIEW_STUDENT", "EDIT_CONTACT", "EDIT_PERSONAL", "EDIT_FAMILY", "EDIT_PHOTO", "REQUEST_CHANGE",
-            "VIEW_PAYMENTS", "VIEW_DOCUMENTS", "MANAGE_REGISTRATION", "EXPORT_STUDENTS");
+    /** V334, V346: the capabilities a posting may carry — the desk's one vocabulary (SupportAccess.ALL, helpdesk.support_capabilities());
+     *  anything else, a result, refund, fee, amount, matriculation or admission power among them, is refused here and by the database */
+    private static final Set<String> CAPABILITIES = Set.copyOf(SupportAccess.ALL);
 
     private static String capabilities(List<String> in) {
         if (in == null) return null;

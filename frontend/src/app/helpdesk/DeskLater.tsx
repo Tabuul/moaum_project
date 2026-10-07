@@ -2,13 +2,13 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { LinkBtn, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { ACTION, AVAILABILITY, PRIORITY, hours, statusWord, when, type Activity, type Queue, type Workload } from "@/lib/helpdesk";
+import { ACTION, AVAILABILITY, PRIORITY, hours, statusWord, when, type Activity, type Counts, type Queue, type Workload } from "@/lib/helpdesk";
 import { DeskStats, type Stats } from "./DeskStats";
 
 /** What the desk reads after the tickets (October 2026): the operations — the queues' load, the agents' load, the last acts — and
  *  the figures. An async server component streamed in behind the ticket workspace, so the slower analytics queries never
  *  hold the queue back; a figure that cannot be read leaves its panel saying so and nothing else. */
-export async function DeskLater({ head, queues }: { head: boolean; queues: Queue[] }) {
+export async function DeskLater({ head, queues, counts }: { head: boolean; queues: Queue[]; counts?: Counts | null }) {
   const [stats, activity, workload] = await Promise.all([
     api<Stats>("/api/v1/helpdesk/stats"),
     api<Activity[]>("/api/v1/helpdesk/activity?limit=15"),
@@ -19,6 +19,32 @@ export async function DeskLater({ head, queues }: { head: boolean; queues: Queue
   const acts = activity.ok ? activity.data : [];
   return (
     <>
+      <Panel title="Student support" right="Resolve from the student's record — every act on the ledger and the ticket">
+        <PBody>
+          <form action="/helpdesk/students" method="get" className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: "3 1 320px" }}>
+              <label htmlFor="dl-q">Student search</label>
+              <input id="dl-q" name="q" className="ctl" type="search" placeholder="Name, matriculation, JAMB or application number, student ID" />
+            </div>
+            <button type="submit" className="btn btn--primary btn--sm">Find the student</button>
+            <LinkBtn href="/helpdesk/payments" size="sm">Payment Support</LinkBtn>
+            <LinkBtn href="/helpdesk/audit" size="sm">Support Action History</LinkBtn>
+          </form>
+        </PBody>
+        <PBody>
+          <div className="grid grid--4">
+            {([["Course registration issues", counts?.registration_issues, "/helpdesk?category=REGISTRATION"], ["Payment issues", counts?.payment_issues, "/helpdesk?category=PAYMENT"],
+               ["Password reset requests", counts?.password_issues, "/helpdesk?category=LOGIN"], ["Escalated issues", counts?.escalated, "/helpdesk?status=escalated"]] as [string, number | undefined, string][]).map(([label, v, href]) => (
+              <Link key={label} className="tile" href={href} style={{ textDecoration: "none", color: "inherit" }}>
+                <span className="eyebrow">{label}</span>
+                <span className="n tnum">{v == null ? "—" : n(v)}</span>
+                <span className="c">open, within your scope</span>
+              </Link>
+            ))}
+          </div>
+        </PBody>
+      </Panel>
+
       <Panel title="Support operations" right={head ? <LinkBtn href="/helpdesk/agents" size="sm">Agents, queues and routing</LinkBtn> : "The queues you are posted on"}>
         {live.length ? (
           <DTable pageSize={0} noPrint cols={["Queue", "Office that decides", "Agents|mid", "Open|mid", "Unassigned|mid", "Waiting|mid", "Overdue|mid", "Critical|mid", "|num"]} rows={live.map((x) => [

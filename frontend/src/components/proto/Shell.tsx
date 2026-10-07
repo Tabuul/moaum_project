@@ -192,6 +192,8 @@ export const ROUTES: Record<string, string> = {
   "t/helpdesksettings": "/helpdesk/settings",
   "t/helpdeskagents": "/helpdesk/agents",
   "t/supportstudents": "/helpdesk/students",
+  "t/supportpayments": "/helpdesk/payments",
+  "t/supportaudit": "/helpdesk/audit",
   "t/helpdeskoffice": "/helpdesk/office",
   /* external examiners (V254): the examiner's workspace, and the desk */
   "x/dashboard": "/examiner",
@@ -339,6 +341,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/cohorts": ["Student Cohorts", "Who is in study, who has graduated, who is in spillover, and the register reconciled from the old portal"],
   "t/helpdeskoffice": ["Support Escalations", "Tickets the support desk has referred to your office for a decision"],
   "t/supportstudents": ["Student Support", "A student's record in support mode: what your posting lets you see and correct, every act on the ledger"],
+  "t/supportpayments": ["Payment Support", "A student's payment found by any number, diagnosed, verified and its entitlement refreshed through the existing services — never marked paid"],
+  "t/supportaudit": ["Support Action History", "Every act ICT Support did on a student, with the ticket, the reason, the result and the overrides"],
   "x/dashboard": ["Examiner Workspace", "The projects assigned to you, their deadlines, and what has gone in"],
   "x/projects": ["My Assigned Projects", "Every project the University has sent you"],
   "x/pending": ["Pending Reviews", "Assessments not yet submitted"],

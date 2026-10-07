@@ -11,7 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, readBase64, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
+import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, parse, readBase64, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
 
 type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | "transfer" | "office" | "wait" | "reset" | null;
 
@@ -128,7 +128,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
                 ["Department", t.department ?? "—"],
                 ["Faculty", t.faculty ?? "—"],
               ]} />
-              {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn></div>
+              {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn>{parse<Record<string, string>>(t.details, {}).payment_reference ? <LinkBtn size="sm" href={`/helpdesk/payments/${encodeURIComponent(parse<Record<string, string>>(t.details, {}).payment_reference.trim())}?ticket=${t.id}`}>Payment Support</LinkBtn> : <LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn>}</div>
               : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
             </div>
           </PBody>
