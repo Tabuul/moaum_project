@@ -18,6 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { day, jcall, when } from "@/lib/jupeb";
 import { LecturesDue } from "./LecturesDue";
+import { CoveragePanel, RegisterTopics } from "./Coverage";
 
 const BASE = "/api/v1/attendance/jupeb";
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
@@ -39,7 +40,7 @@ interface Register {
 }
 interface Change { changed_at: string; name: string; application_no: string; old_status: string | null; new_status: string; old_remarks: string | null; new_remarks: string | null; reason: string; changed_office: string | null; changed_by: string | null }
 interface Instructor { id: string; session: string; subject_code: string; subject_title: string; class_name: string | null; name: string; staff_number: string | null; email: string | null; assigned_at: string }
-type Tab = "lectures" | "registers" | "standing" | "reports" | "instructors" | "policy";
+type Tab = "lectures" | "registers" | "coverage" | "standing" | "reports" | "instructors" | "policy";
 
 const today = () => new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
 
@@ -59,7 +60,7 @@ export function JupebAttendance() {
   }, [session]);
   if (problem) return <ProblemNotice problem={problem} />;
   if (!o) return <Note kind="info" title="Loading attendance…">One moment.</Note>;
-  const tabs: { id: Tab; label: string }[] = [{ id: "lectures", label: "Lectures" }, { id: "registers", label: "Registers" }, ...(o.reader ? [{ id: "standing" as Tab, label: "Standing" }] : []), { id: "reports", label: "Reports" },
+  const tabs: { id: Tab; label: string }[] = [{ id: "lectures", label: "Lectures" }, { id: "registers", label: "Registers" }, { id: "coverage", label: "Coverage" }, ...(o.reader ? [{ id: "standing" as Tab, label: "Standing" }] : []), { id: "reports", label: "Reports" },
     ...(o.reader ? [{ id: "instructors" as Tab, label: "Instructors" }] : []), ...(o.office ? [{ id: "policy" as Tab, label: "Minimum attendance" }] : [])];
   return (
     <>
@@ -72,6 +73,7 @@ export function JupebAttendance() {
           <Tabs items={tabs} value={tab} onChange={setTab} look="line" label="Attendance" />
           {tab === "lectures" ? <LecturesDue session={o.session} office={o.office} onOpen={setOpen} /> : null}
           {tab === "registers" ? <Registers o={o} onOpen={setOpen} /> : null}
+          {tab === "coverage" ? <CoveragePanel session={o.session} /> : null}
           {tab === "standing" ? <Standing o={o} /> : null}
           {tab === "reports" ? <Reports o={o} /> : null}
           {tab === "instructors" ? <Instructors o={o} /> : null}
@@ -248,6 +250,7 @@ export function RegisterView({ id, onBack }: { id: string; onBack: () => void })
           {changed.length && pages > 1 ? <p className="hint">Save before moving to another page; unsaved marks on this page are lost.</p> : null}
         </PBody>
       </Panel>
+      <RegisterTopics registerId={r.id} heldOn={r.held_on} editable={r.mayMark} />
       {changes ? (
         <Panel title={`Corrections (${changes.length})`} right={<Btn kind="ghost" onClick={() => setChanges(null)}>Hide</Btn>}>
           <PBody><DTable pageSize={20} cols={["When", "Student", "From", "To", "Reason", "By"]} rows={changes.map((c) => [when(c.changed_at), `${c.name} (${c.application_no})`,

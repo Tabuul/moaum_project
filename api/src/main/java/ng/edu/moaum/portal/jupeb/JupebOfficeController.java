@@ -722,7 +722,7 @@ class JupebOfficeController {
 
     /* ── verifiable papers (V343) ── */
 
-    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT") String kind,
+    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT|ADMIT_CARD") String kind,
                           @Size(max = 60) String reference) {
     }
 
@@ -1181,7 +1181,17 @@ class JupebOfficeController {
     public record PracticeIn(@NotNull UUID subjectId, @NotBlank @Size(min = 3, max = 160) String title, @Size(max = 2000) String instructions,
                              @jakarta.validation.constraints.Min(5) @jakarta.validation.constraints.Max(240) int durationMinutes,
                              @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(200) int questionsPerAttempt,
-                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(20) int attemptsAllowed, boolean showAnswers, boolean open) {
+                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(20) int attemptsAllowed, boolean showAnswers, boolean open,
+                             @Pattern(regexp = "PRACTICE|MOCK") String kind, OffsetDateTime opensAt, OffsetDateTime closesAt) {
+    }
+
+    /** V355: a mock is sat once, within its window */
+    private static void mockRules(PracticeIn b) {
+        if (!"MOCK".equals(b.kind())) return;
+        if (b.attemptsAllowed() != 1 || b.opensAt() == null || b.closesAt() == null || !b.closesAt().isAfter(b.opensAt())) {
+            throw new DomainRuleViolation("JUPEB_MOCK_RULES", "A mock examination is sat once, within its window: one attempt, and the time it opens and closes.",
+                    new DomainRuleViolation.Remedy("Give one attempt and the window.", "JUPEB Office"));
+        }
     }
 
     @GetMapping("/practice-tests")
@@ -1191,7 +1201,8 @@ class JupebOfficeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("tests", jdbc.sql("""
                 SELECT t.id, t.subject_id, s.code, s.title AS subject, t.title, t.instructions, t.duration_minutes, t.questions_per_attempt, t.attempts_allowed,
-                       t.show_answers, t.open, t.updated_at,
+                       t.show_answers, t.open, t.updated_at, t.kind, t.opens_at, t.closes_at, t.results_released_at,
+                       (SELECT count(*) FROM jupeb.practice_question q WHERE q.test_id = t.id AND q.active AND q.topic_id IS NOT NULL) AS tagged,
                        (SELECT count(*) FROM jupeb.practice_question q WHERE q.test_id = t.id AND q.active) AS questions,
                        (SELECT count(*) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.submitted_at IS NOT NULL) AS attempts,
                        (SELECT count(DISTINCT p.application_id) FROM jupeb.practice_attempt p WHERE p.test_id = t.id) AS students,
@@ -1206,11 +1217,13 @@ class JupebOfficeController {
     @PreAuthorize(WRITE)
     @Transactional
     Map<String, Object> addPracticeTest(@Valid @RequestBody PracticeIn b) {
+        mockRules(b);
         UUID id = jdbc.sql("""
-                INSERT INTO jupeb.practice_test (subject_id, title, instructions, duration_minutes, questions_per_attempt, attempts_allowed, show_answers, open, created_by)
-                VALUES (:s, :t, :i, :d, :q, :a, :sh, :o, :by) RETURNING id
+                INSERT INTO jupeb.practice_test (subject_id, title, instructions, duration_minutes, questions_per_attempt, attempts_allowed, show_answers, open, kind, opens_at, closes_at, created_by)
+                VALUES (:s, :t, :i, :d, :q, :a, :sh, :o, coalesce(:k, 'PRACTICE'), :oa, :ca, :by) RETURNING id
                 """).param("s", b.subjectId()).param("t", b.title().trim()).param("i", blankOf(b.instructions()), Types.VARCHAR).param("d", b.durationMinutes())
-                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open()).param("by", actor())
+                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open())
+                .param("k", b.kind(), Types.VARCHAR).param("oa", b.opensAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ca", b.closesAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("by", actor())
                 .query(UUID.class).single();
         return Map.of("id", id);
     }
@@ -1222,11 +1235,13 @@ class JupebOfficeController {
         if (b.open() && Boolean.FALSE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.practice_question WHERE test_id = :id AND active)").param("id", id).query(Boolean.class).single())) {
             throw new DomainRuleViolation("JUPEB_PRACTICE_EMPTY", "A test is opened once it has questions.", new DomainRuleViolation.Remedy("Upload its questions first.", "JUPEB Office"));
         }
+        mockRules(b);
         int n = jdbc.sql("""
                 UPDATE jupeb.practice_test SET subject_id = :s, title = :t, instructions = :i, duration_minutes = :d, questions_per_attempt = :q, attempts_allowed = :a,
-                       show_answers = :sh, open = :o, updated_at = now() WHERE id = :id
+                       show_answers = :sh, open = :o, kind = coalesce(:k, kind), opens_at = :oa, closes_at = :ca, updated_at = now() WHERE id = :id
                 """).param("s", b.subjectId()).param("t", b.title().trim()).param("i", blankOf(b.instructions()), Types.VARCHAR).param("d", b.durationMinutes())
-                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open()).param("id", id).update();
+                .param("q", b.questionsPerAttempt()).param("a", b.attemptsAllowed()).param("sh", b.showAnswers()).param("o", b.open())
+                .param("k", b.kind(), Types.VARCHAR).param("oa", b.opensAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ca", b.closesAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("id", id).update();
         if (n == 0) throw new NotFound("practice test", id);
         return Map.of("id", id);
     }
@@ -1238,6 +1253,8 @@ class JupebOfficeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("questions", jdbc.sql("""
                 SELECT q.id, q.ordinal, q.stem, q.option_a, q.option_b, q.option_c, q.option_d, q.option_e, q.answer, q.explanation,
+                       (SELECT u.code FROM jupeb.subject_unit u WHERE u.id = q.unit_id) AS course, (SELECT x.sn FROM jupeb.unit_topic x WHERE x.id = q.topic_id) AS topic,
+                       CASE WHEN q.topic_id IS NOT NULL THEN jupeb.topic_label(q.topic_id) END AS topic_label,
                        EXISTS (SELECT 1 FROM jupeb.practice_image i WHERE i.question_id = q.id) AS has_image,
                        (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct IS NOT NULL) AS answered,
                        (SELECT count(*) FROM jupeb.practice_answer x WHERE x.question_id = q.id AND x.correct) AS right_answers
@@ -1247,6 +1264,29 @@ class JupebOfficeController {
     }
 
     public record QuestionsIn(@NotNull @Size(max = 1000) List<Map<String, Object>> rows, boolean replace) {
+    }
+
+    /** V355: a mock's results shown to the students who sat it */
+    @PostMapping("/practice-tests/{id}/release")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> releaseMock(@PathVariable UUID id) {
+        int n = jdbc.sql("UPDATE jupeb.practice_test SET results_released_at = now(), updated_at = now() WHERE id = :id AND kind = 'MOCK' AND results_released_at IS NULL")
+                .param("id", id).update();
+        if (n == 0) throw new DomainRuleViolation("JUPEB_MOCK_RELEASE", "Only a mock whose results are held is released.", new DomainRuleViolation.Remedy("Nothing more is needed.", "JUPEB Office"));
+        return Map.of("id", id, "released", true);
+    }
+
+    /** V355: the syllabus topics of a test's subject, for tagging its questions */
+    @GetMapping("/practice-tests/{id}/topics")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> practiceTopicChoices(@PathVariable UUID id) {
+        return jdbc.sql("""
+                SELECT u.code AS course, u.title AS course_title, u.semester, x.sn, x.topic FROM jupeb.practice_test t JOIN jupeb.subject_unit u ON u.subject_id = t.subject_id
+                  JOIN jupeb.unit_topic x ON x.unit_id = u.id AND x.sn IS NOT NULL AND x.topic IS NOT NULL
+                 WHERE t.id = :id ORDER BY u.semester, u.ord, x.ord
+                """).param("id", id).query().listOfRows();
     }
 
     @PostMapping("/practice-tests/{id}/questions")

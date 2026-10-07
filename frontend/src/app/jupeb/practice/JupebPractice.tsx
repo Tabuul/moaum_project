@@ -23,21 +23,30 @@ import { plainMath } from "@/lib/mathtext";
 interface Test {
   id: string; subject_id: string; code: string; subject: string; title: string; instructions: string | null; duration_minutes: number; questions_per_attempt: number;
   attempts_allowed: number; show_answers: boolean; open: boolean; updated_at: string; questions: number; attempts: number; students: number; average: number | null;
+  /** V355: a mock examination — one attempt in its window, results held until released; questions tagged to the syllabus */
+  kind?: "PRACTICE" | "MOCK"; opens_at?: string | null; closes_at?: string | null; results_released_at?: string | null; tagged?: number;
 }
 interface Question {
   id: string; ordinal: number; stem: string; option_a: string; option_b: string; option_c: string | null; option_d: string | null; option_e: string | null; answer: string;
-  explanation: string | null; answered: number; right_answers: number; has_image: boolean;
+  explanation: string | null; answered: number; right_answers: number; has_image: boolean; course?: string | null; topic?: string | null; topic_label?: string | null;
 }
-interface QForm { id: string | null; question: string; a: string; b: string; c: string; d: string; e: string; answer: string; explanation: string; image: File | null }
-const BLANK_Q: QForm = { id: null, question: "", a: "", b: "", c: "", d: "", e: "", answer: "A", explanation: "", image: null };
-interface Form { id: string | null; subjectId: string; title: string; instructions: string; durationMinutes: string; questionsPerAttempt: string; attemptsAllowed: string; showAnswers: boolean; open: boolean }
+interface QForm { id: string | null; question: string; a: string; b: string; c: string; d: string; e: string; answer: string; explanation: string; image: File | null; course: string; topic: string }
+const BLANK_Q: QForm = { id: null, question: "", a: "", b: "", c: "", d: "", e: "", answer: "A", explanation: "", image: null, course: "", topic: "" };
+interface Form { id: string | null; subjectId: string; title: string; instructions: string; durationMinutes: string; questionsPerAttempt: string; attemptsAllowed: string; showAnswers: boolean; open: boolean;
+  kind: "PRACTICE" | "MOCK"; opensAt: string; closesAt: string }
+interface TopicChoice { course: string; course_title: string; semester: number | null; sn: string; topic: string }
+/** a local date-time for an input, and back to an instant */
+const localInput = (iso: string | null | undefined) => { if (!iso) return ""; const d = new Date(iso); const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); };
+const instant = (v: string) => (v ? new Date(v).toISOString() : null);
 
 const ALIASES: Record<string, string> = {
   "question": "question", "questions": "question", "stem": "question", "question text": "question",
   "a": "a", "option a": "a", "b": "b", "option b": "b", "c": "c", "option c": "c", "d": "d", "option d": "d", "e": "e", "option e": "e",
   "answer": "answer", "correct answer": "answer", "correct option": "answer", "key": "answer", "explanation": "explanation", "solution": "explanation",
+  "course": "course", "course code": "course", "unit": "course", "topic": "topic", "topic no": "topic", "topic s n": "topic", "s n": "topic",
 };
-const EMPTY: Form = { id: null, subjectId: "", title: "", instructions: "", durationMinutes: "30", questionsPerAttempt: "20", attemptsAllowed: "3", showAnswers: true, open: false };
+const EMPTY: Form = { id: null, subjectId: "", title: "", instructions: "", durationMinutes: "30", questionsPerAttempt: "20", attemptsAllowed: "3", showAnswers: true, open: false,
+  kind: "PRACTICE", opensAt: "", closesAt: "" };
 
 export function JupebPractice({ canWrite }: { canWrite: boolean }) {
   const [tests, setTests] = useState<Test[] | null>(null);
@@ -59,9 +68,16 @@ export function JupebPractice({ canWrite }: { canWrite: boolean }) {
   const reload = () => setTick((t) => t + 1);
 
   const bodyOf = (f: Form) => ({ subjectId: f.subjectId, title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes),
-    questionsPerAttempt: Number(f.questionsPerAttempt), attemptsAllowed: Number(f.attemptsAllowed), showAnswers: f.showAnswers, open: f.open });
+    questionsPerAttempt: Number(f.questionsPerAttempt), attemptsAllowed: f.kind === "MOCK" ? 1 : Number(f.attemptsAllowed), showAnswers: f.showAnswers, open: f.open,
+    kind: f.kind, opensAt: f.kind === "MOCK" ? instant(f.opensAt) : null, closesAt: f.kind === "MOCK" ? instant(f.closesAt) : null });
   const formOf = (t: Test, patch: Partial<Form> = {}): Form => ({ id: t.id, subjectId: t.subject_id, title: t.title, instructions: t.instructions ?? "", durationMinutes: String(t.duration_minutes),
-    questionsPerAttempt: String(t.questions_per_attempt), attemptsAllowed: String(t.attempts_allowed), showAnswers: t.show_answers, open: t.open, ...patch });
+    questionsPerAttempt: String(t.questions_per_attempt), attemptsAllowed: String(t.attempts_allowed), showAnswers: t.show_answers, open: t.open,
+    kind: t.kind ?? "PRACTICE", opensAt: localInput(t.opens_at), closesAt: localInput(t.closes_at), ...patch });
+  async function release(t: Test) {
+    if (!window.confirm(`Release the results of "${t.title}" to the students who sat it?`)) return;
+    const r = await jcall(`/api/v1/jupeb/office/practice-tests/${t.id}/release`, "POST", {}, `JUPEB mock results released: ${t.title}`);
+    if (r.ok) { notify("The results are released."); reload(); } else notifyProblem(r.problem);
+  }
   async function save(f: Form) {
     setBusy(true);
     try {
@@ -74,30 +90,36 @@ export function JupebPractice({ canWrite }: { canWrite: boolean }) {
     } finally { setBusy(false); }
   }
   const n = (v: string, lo: number, hi: number) => { const x = Number(v); return Number.isInteger(x) && x >= lo && x <= hi; };
-  const formOk = form && form.subjectId && form.title.trim().length >= 3 && n(form.durationMinutes, 5, 240) && n(form.questionsPerAttempt, 1, 200) && n(form.attemptsAllowed, 1, 20);
+  const formOk = form && form.subjectId && form.title.trim().length >= 3 && n(form.durationMinutes, 5, 240) && n(form.questionsPerAttempt, 1, 200) && n(form.attemptsAllowed, 1, 20)
+    && (form.kind !== "MOCK" || (form.opensAt && form.closesAt && form.closesAt > form.opensAt));
 
   return (
     <>
       <PageHead title="JUPEB practice tests" description="Timed practice in each subject, marked at once. Questions are drawn at random from the test's bank; the answer key reaches a student only after they submit. Never part of a result."
-        actions={canWrite ? <Btn kind="primary" disabled={!subjects.length} onClick={() => setForm({ ...EMPTY })}>New practice test</Btn> : null} />
+        actions={canWrite ? <span className="row"><Btn kind="secondary" disabled={!subjects.length} onClick={() => setForm({ ...EMPTY, kind: "MOCK", attemptsAllowed: "1", showAnswers: false })}>New mock examination</Btn>
+          <Btn kind="primary" disabled={!subjects.length} onClick={() => setForm({ ...EMPTY })}>New practice test</Btn></span> : null} />
       <Panel title="Tests">
         <PBody>
           {!tests ? <p className="sub2">Loading…</p> : !tests.length ? <Note kind="info" title="No practice test yet">{canWrite ? "Create a test for a subject, upload its questions, then open it to the students." : "The JUPEB Office has not created any."}</Note> : (
             <DTable pageSize={0} cols={["Subject", "Test", "Bank|num", "Per attempt|num", "Time", "Attempts allowed|num", "Students|num", "Attempts|num", "Average|num", "Status", ""]} rows={tests.map((t) => [
-              `${t.code} · ${t.subject}`, t.title, t.questions, t.questions_per_attempt, `${t.duration_minutes} min`, t.attempts_allowed, t.students, t.attempts, t.average == null ? "—" : `${Number(t.average)}%`,
-              t.open ? <Pil key="s" kind="ok">Open</Pil> : <Pil key="s" kind="grey">Closed</Pil>,
+              `${t.code} · ${t.subject}`, <span key="t">{t.title}{t.kind === "MOCK" ? <span className="sub2">{` · mock, ${when(t.opens_at ?? "")} – ${when(t.closes_at ?? "")}`}</span> : null}</span>,
+              `${t.questions}${t.tagged ? ` (${t.tagged} by topic)` : ""}`, t.questions_per_attempt, `${t.duration_minutes} min`, t.attempts_allowed, t.students, t.attempts, t.average == null ? "—" : `${Number(t.average)}%`,
+              <span key="s" className="row" style={{ gap: 4 }}>{t.open ? <Pil kind="ok">Open</Pil> : <Pil kind="grey">Closed</Pil>}
+                {t.kind === "MOCK" ? (t.results_released_at ? <Pil kind="info">Results released</Pil> : <Pil kind="warn">Results held</Pil>) : null}</span>,
               <span key="a" className="row">
                 <Btn kind="ghost" onClick={() => setOpen(t)}>Questions</Btn>
                 {canWrite ? <Btn kind="ghost" onClick={() => setForm(formOf(t))}>Edit</Btn> : null}
                 {canWrite ? <Btn kind={t.open ? "ghost" : "secondary"} disabled={busy} onClick={() => void save(formOf(t, { open: !t.open }))}>{t.open ? "Close" : "Open"}</Btn> : null}
+                {canWrite && t.kind === "MOCK" && !t.results_released_at && t.attempts ? <Btn kind="secondary" onClick={() => void release(t)}>Release results</Btn> : null}
               </span>,
             ])} />
           )}
         </PBody>
       </Panel>
       {open ? <QuestionBank test={open} canWrite={canWrite} onChanged={reload} onClose={() => setOpen(null)} /> : null}
+      {subjects.length ? <TopicStanding subjects={subjects} /> : null}
       {form ? (
-        <Modal title={form.id ? "Edit the practice test" : "New practice test"} onClose={() => setForm(null)}
+        <Modal title={form.id ? (form.kind === "MOCK" ? "Edit the mock examination" : "Edit the practice test") : form.kind === "MOCK" ? "New mock examination" : "New practice test"} onClose={() => setForm(null)}
           foot={<><Btn kind="ghost" onClick={() => setForm(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !formOk} onClick={() => void save(form)}>{busy ? "Saving…" : "Save"}</Btn></>}>
           <div className="grid grid--2">
             <Field id="pt-sub" label="Subject" required><select id="pt-sub" className="ctl" value={form.subjectId} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}>
@@ -105,14 +127,41 @@ export function JupebPractice({ canWrite }: { canWrite: boolean }) {
             <Field id="pt-title" label="Title" required><input id="pt-title" className="ctl" maxLength={160} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
             <Field id="pt-dur" label="Time allowed (minutes)" required hint="5 to 240"><input id="pt-dur" className="ctl" type="number" min={5} max={240} value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} /></Field>
             <Field id="pt-q" label="Questions per attempt" required hint="Drawn at random from the bank"><input id="pt-q" className="ctl" type="number" min={1} max={200} value={form.questionsPerAttempt} onChange={(e) => setForm({ ...form, questionsPerAttempt: e.target.value })} /></Field>
-            <Field id="pt-att" label="Attempts allowed per student" required hint="1 to 20"><input id="pt-att" className="ctl" type="number" min={1} max={20} value={form.attemptsAllowed} onChange={(e) => setForm({ ...form, attemptsAllowed: e.target.value })} /></Field>
+            {form.kind === "MOCK" ? <>
+              <Field id="pt-from" label="Sat from" required><input id="pt-from" className="ctl" type="datetime-local" value={form.opensAt} onChange={(e) => setForm({ ...form, opensAt: e.target.value })} /></Field>
+              <Field id="pt-to" label="Until" required error={form.closesAt && form.opensAt && form.closesAt <= form.opensAt ? "After it opens" : undefined}><input id="pt-to" className="ctl" type="datetime-local" value={form.closesAt} onChange={(e) => setForm({ ...form, closesAt: e.target.value })} /></Field>
+            </> : <Field id="pt-att" label="Attempts allowed per student" required hint="1 to 20"><input id="pt-att" className="ctl" type="number" min={1} max={20} value={form.attemptsAllowed} onChange={(e) => setForm({ ...form, attemptsAllowed: e.target.value })} /></Field>}
             <Field id="pt-show" label="After submission"><label className="row" style={{ gap: "var(--s-1)" }}><input id="pt-show" type="checkbox" checked={form.showAnswers} onChange={(e) => setForm({ ...form, showAnswers: e.target.checked })} /> show the answers and explanations</label></Field>
           </div>
+          {form.kind === "MOCK" ? <p className="sub2">A mock examination is sat once, within its window; the students see their results only when you release them.</p> : null}
           <Field id="pt-ins" label="Instructions"><textarea id="pt-ins" className="ctl" rows={3} maxLength={2000} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} /></Field>
           {form.id ? <Field id="pt-open" label="Open to the students"><label className="row" style={{ gap: "var(--s-1)" }}><input id="pt-open" type="checkbox" checked={form.open} onChange={(e) => setForm({ ...form, open: e.target.checked })} /> open (needs questions)</label></Field> : null}
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/** V355: a subject's practice by syllabus topic across the current session's students, weakest first (mocks included) */
+function TopicStanding({ subjects }: { subjects: { id: string; code: string; title: string }[] }) {
+  const [subject, setSubject] = useState("");
+  const [rows, setRows] = useState<{ topic_id: string; label: string; students: number; answered: number; percentage: number }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (subject) void jcall<NonNullable<typeof rows>>(`/api/v1/jupeb/office/practice-topics?subject=${subject}`).then((r) => { if (!live) return; if (r.ok) setRows(r.data); else notifyProblem(r.problem); });
+    return () => { live = false; };
+  }, [subject]);
+  return (
+    <Panel title="Topics, weakest first" right={<select className="ctl" style={{ width: 220 }} aria-label="Subject" value={subject} onChange={(e) => { setRows(null); setSubject(e.target.value); }}>
+      <option value="">— Choose a subject —</option>{subjects.map((x) => <option key={x.id} value={x.id}>{`${x.code} — ${x.title}`}</option>)}</select>}>
+      <PBody>
+        <p className="sub2">How the session&rsquo;s students answered the questions of each topic of the syllabus — the mocks included — so the topics to teach again are seen. A question not tagged to a topic is not counted.</p>
+        {!subject ? null : !rows ? <p className="sub2">Loading…</p> : !rows.length ? <p className="sub2">No question tagged to a topic has been answered in this subject yet.</p> : (
+          <DTable pageSize={20} cols={["Topic", "Students|num", "Answers|num", "Right|num"]} rows={rows.map((x) => [x.label, x.students, x.answered,
+            <Pil key="p" kind={Number(x.percentage) >= 70 ? "ok" : Number(x.percentage) >= 50 ? "info" : "warn"}>{`${Number(x.percentage)}%`}</Pil>])} />
+        )}
+      </PBody>
+    </Panel>
   );
 }
 
@@ -123,11 +172,18 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   const [edit, setEdit] = useState<QForm | null>(null);
+  const [choices, setChoices] = useState<TopicChoice[]>([]);
   useEffect(() => {
     let live = true;
     void jcall<{ questions: Question[] }>(`/api/v1/jupeb/office/practice-tests/${test.id}`).then((r) => { if (!live) return; if (r.ok) setRows(r.data.questions); else notifyProblem(r.problem); });
     return () => { live = false; };
   }, [test.id, tick]);
+  useEffect(() => {
+    let live = true;
+    void jcall<TopicChoice[]>(`/api/v1/jupeb/office/practice-tests/${test.id}/topics`).then((r) => { if (live && r.ok) setChoices(r.data); });
+    return () => { live = false; };
+  }, [test.id]);
+  const courses = [...new Map(choices.map((c) => [c.course, c])).values()];
   const changed = () => { setTick((t) => t + 1); onChanged(); };
   const base = `/api/v1/jupeb/office/practice-tests/${test.id}/questions`;
   async function upload(file: File | undefined) {
@@ -171,7 +227,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
     if (!edit) return;
     setBusy(true);
     try {
-      const row = { question: edit.question, a: edit.a, b: edit.b, c: edit.c, d: edit.d, e: edit.e, answer: edit.answer, explanation: edit.explanation };
+      const row = { question: edit.question, a: edit.a, b: edit.b, c: edit.c, d: edit.d, e: edit.e, answer: edit.answer, explanation: edit.explanation, course: edit.course, topic: edit.course ? edit.topic : "" };
       const r = edit.id ? await jcall<{ id: string; newVersion?: boolean }>(`${base}/${edit.id}`, "PUT", { row }) : await jcall<{ id: string }>(`${base}/add`, "POST", { row });
       if (!r.ok) { notifyProblem(r.problem); return; }
       if (edit.image && !(await putImage(r.data.id, edit.image))) { changed(); return; }
@@ -181,9 +237,9 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
     } finally { setBusy(false); }
   }
   function template() {
-    downloadBlob(buildXlsx(["Question", "A", "B", "C", "D", "E", "Answer", "Explanation"], [
-      ["The SI unit of force is", "Newton", "Joule", "Watt", "Pascal", "", "A", "F = ma, measured in newtons"],
-      ["The kinetic energy of a body is", "$mv$", "$\\frac{1}{2}mv^2$", "$mgh$", "$\\frac{1}{2}kx^2$", "", "B", "$E_k = \\frac{1}{2}mv^2$"],
+    downloadBlob(buildXlsx(["Question", "A", "B", "C", "D", "E", "Answer", "Explanation", "Course", "Topic"], [
+      ["The SI unit of force is", "Newton", "Joule", "Watt", "Pascal", "", "A", "F = ma, measured in newtons", "PHY 001", "1"],
+      ["The kinetic energy of a body is", "$mv$", "$\\frac{1}{2}mv^2$", "$mgh$", "$\\frac{1}{2}kx^2$", "", "B", "$E_k = \\frac{1}{2}mv^2$", "PHY 001", "2"],
     ], "Questions"), "jupeb-practice-questions-template.xlsx");
   }
   async function exportBank() {
@@ -195,7 +251,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
   }
   const options = (q: Question) => ([["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d], ["E", q.option_e]] as [string, string | null][]).filter(([, v]) => v);
   const formOf = (q: Question): QForm => ({ id: q.id, question: q.stem, a: q.option_a, b: q.option_b, c: q.option_c ?? "", d: q.option_d ?? "", e: q.option_e ?? "", answer: q.answer,
-    explanation: q.explanation ?? "", image: null });
+    explanation: q.explanation ?? "", image: null, course: q.course ?? "", topic: q.topic ?? "" });
   const letters = edit ? (["A", "B", "C", "D", "E"] as const).filter((l) => (edit[l.toLowerCase() as "a"] ?? "").trim()) : [];
   return (
     <Panel title={`${test.code} · ${test.title} — question bank`} right={<span className="row">
@@ -214,6 +270,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
             {busy ? <span className="sub2">Working…</span> : null}
           </div>
         ) : null}
+        {canWrite ? <p className="sub2 mt-1">Tag a question to its course and syllabus topic (in the upload, the columns Course — such as PHY 001 — and Topic — the topic&rsquo;s S/N in the syllabus) and the students&rsquo; and classes&rsquo; weakest topics are seen.</p> : null}
         {canWrite ? <p className="sub2 mt-1">Formulas go between dollar signs: <code>$x^2$</code>, <code>$H_2O$</code>, <code>$\frac{"{1}{2}"}mv^2$</code>, <code>$\sqrt{"{b^2-4ac}"}$</code>, <code>$\alpha$</code>, <code>$\to$</code>, <code>$30^\circ$</code>. A diagram is attached to a question as a PNG or JPEG of up to 1 MB.</p> : null}
         {refused.length ? <Note kind="bad" title={`${refused.length} row${refused.length === 1 ? "" : "s"} not added`}>{refused.map((x) => `Row ${x.row}: ${x.reason}`).join(" · ")}</Note> : null}
         {rows && rows.length ? (
@@ -224,7 +281,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={`/api/bff${base}/${q.id}/image`} alt={`Diagram of question ${q.ordinal}`} style={{ display: "block", maxWidth: 220, maxHeight: 140, objectFit: "contain", marginTop: 6, border: "1px solid var(--line)", background: "#fff" }} />
               ) : null}{q.explanation ? <div className="sub2 mt-1">Explanation: <MathText text={q.explanation} /></div> : null}</span>,
-              <span key="o" className="sub2">{options(q).map(([k, v]) => <span key={k} style={{ display: "block" }}><b>{k}.</b> <MathText text={v} /></span>)}</span>,
+              <span key="o" className="sub2">{options(q).map(([k, v]) => <span key={k} style={{ display: "block" }}><b>{k}.</b> <MathText text={v} /></span>)}{q.topic_label ? <span style={{ display: "block", marginTop: 4 }}>{`Topic: ${q.topic_label}`}</span> : null}</span>,
               q.answer, Number(q.answered), Number(q.answered) ? `${Number(q.right_answers)} (${Math.round((100 * Number(q.right_answers)) / Number(q.answered))}%)` : "—",
               ...(canWrite ? [<span key="a" className="stack" style={{ gap: 4 }}>
                 <Btn kind="ghost" onClick={() => setEdit(formOf(q))}>Edit</Btn>
@@ -249,6 +306,12 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
                 <Field id="pq-ans" label="Answer" required><select id="pq-ans" className="ctl" value={edit.answer} onChange={(e) => setEdit({ ...edit, answer: e.target.value })}>
                   {(["A", "B", "C", "D", "E"] as const).map((l) => <option key={l} value={l} disabled={!letters.includes(l)}>{l}</option>)}</select></Field>
                 <Field id="pq-img" label={edit.id ? "Replace the image" : "Image"} hint="PNG or JPEG, up to 1 MB"><input id="pq-img" type="file" accept="image/png,image/jpeg" onChange={(e) => setEdit({ ...edit, image: e.target.files?.[0] ?? null })} /></Field>
+              </div>
+              <div className="grid grid--2">
+                <Field id="pq-course" label="Course" hint="Of the syllabus — so the weakest topics are seen"><select id="pq-course" className="ctl" value={edit.course} onChange={(e) => setEdit({ ...edit, course: e.target.value, topic: "" })}>
+                  <option value="">— Not tagged —</option>{courses.map((c) => <option key={c.course} value={c.course}>{`${c.course} ${c.course_title}`}</option>)}</select></Field>
+                <Field id="pq-topic" label="Topic"><select id="pq-topic" className="ctl" value={edit.topic} disabled={!edit.course} onChange={(e) => setEdit({ ...edit, topic: e.target.value })}>
+                  <option value="">— The course only —</option>{choices.filter((c) => c.course === edit.course).map((c) => <option key={c.sn} value={c.sn}>{`${c.sn}. ${c.topic}`}</option>)}</select></Field>
               </div>
               <Field id="pq-x" label="Explanation" hint="Shown after submission where the test shows answers"><textarea id="pq-x" className="ctl" rows={3} maxLength={4000} value={edit.explanation} onChange={(e) => setEdit({ ...edit, explanation: e.target.value })} /></Field>
             </div>

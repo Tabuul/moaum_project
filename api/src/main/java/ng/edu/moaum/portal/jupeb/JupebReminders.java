@@ -50,6 +50,10 @@ class JupebReminders {
             String sent = AuditContextHolder.with(new AuditContext(NOBODY, "jupeb", "JUPEB reminders", null, null), () -> tx.execute(status ->
                     jdbc.sql("SELECT jupeb.send_reminders(now(), :p, 500, 'SCHEDULE')::text").param("p", portalUrl).query(String.class).single()));
             LOG.info("jupeb reminders: {}", sent);
+            /* V355: the calendar's reminders — to the students, the JUPEB Office and the lecturers, each once */
+            String calendar = AuditContextHolder.with(new AuditContext(NOBODY, "jupeb", "JUPEB calendar reminders", null, null), () -> tx.execute(status ->
+                    jdbc.sql("SELECT jupeb.send_calendar_reminders(now(), :p)::text").param("p", portalUrl).query(String.class).single()));
+            LOG.info("jupeb calendar reminders: {}", calendar);
         } catch (RuntimeException e) {
             LOG.warn("jupeb reminders did not run: {}", e.getMessage());
         }

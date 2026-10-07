@@ -16,6 +16,8 @@ import { TimetableGrid } from "../TimetableGrid";
 import { SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "../Syllabus";
 import { LecturesDue, STATE_WORD, lectureName, type Lecture } from "../attendance/LecturesDue";
 import { RegisterView } from "../attendance/JupebAttendance";
+import { CoveragePanel } from "../attendance/Coverage";
+import { CaSheetEditor } from "../ca/CaSheet";
 
 interface Assignment { subject_id: string; code: string; title: string; class_id: string | null; class_name: string | null; students: number }
 interface Workspace {
@@ -24,7 +26,7 @@ interface Workspace {
 }
 interface Student { id: string; application_no: string; name: string; class_name: string | null; exam_no: string | null; classes: number | null; attendance_rate: number | null; verdict: string | null; attempts: number; practice_average: number | null; practice_best: number | null }
 interface Notice { id: string; title: string; body: string; send_email: boolean; published_at: string; withdrawn_at: string | null; withdrawn_reason: string | null; audience_name: string; reach: number; reads: number }
-type Tab = "today" | "week" | "students" | "courses" | "notices";
+type Tab = "today" | "week" | "students" | "assessment" | "courses" | "notices";
 
 export function JupebTeaching() {
   const [w, setW] = useState<Workspace | null>(null);
@@ -47,7 +49,7 @@ export function JupebTeaching() {
           {open ? <RegisterView id={open} onBack={() => setOpen(null)} /> : (
             <>
               <Tabs<Tab> look="line" value={tab} onChange={setTab} items={[{ id: "today", label: "Today" }, { id: "week", label: "My week" }, { id: "students", label: "My students" },
-                { id: "courses", label: "Courses" }, { id: "notices", label: "Notices" }]} />
+                { id: "assessment", label: "Assessment" }, { id: "courses", label: "Courses" }, { id: "notices", label: "Notices" }]} />
               {tab === "today" ? (
                 <>
                   <LecturesDue session={w.session} office={false} onOpen={setOpen} />
@@ -75,7 +77,8 @@ export function JupebTeaching() {
                 </Panel>
               ) : null}
               {tab === "students" ? <MyStudents w={w} /> : null}
-              {tab === "courses" ? <Courses w={w} /> : null}
+              {tab === "assessment" ? <Assessment w={w} /> : null}
+              {tab === "courses" ? <><Courses w={w} /><CoveragePanel session={w.session} /></> : null}
               {tab === "notices" ? <Notices w={w} /> : null}
             </>
           )}
@@ -106,8 +109,42 @@ function MyStudents({ w }: { w: Workspace }) {
               r.attendance_rate == null ? "—" : <span key="a" style={{ color: r.verdict === "NOT_ELIGIBLE" ? "var(--bad)" : undefined }}>{`${Number(r.attendance_rate).toFixed(1)}%`}</span>,
               r.attempts, r.practice_average == null ? "—" : `${Number(r.practice_average).toFixed(1)}%`, r.practice_best == null ? "—" : `${Number(r.practice_best).toFixed(1)}%`])} />
         )}
+        {subject ? <WeakTopics subject={subject} /> : null}
       </PBody>
     </Panel>
+  );
+}
+
+/** V355: the assessment sheet of a subject this lecturer teaches — their classes' students; not once the office locks it */
+function Assessment({ w }: { w: Workspace }) {
+  const subjects = [...new Map(w.assignments.map((a) => [a.subject_id, a])).values()];
+  const [subject, setSubject] = useState(subjects[0]?.subject_id ?? "");
+  return (
+    <Panel title="Continuous assessment" right={<select className="ctl" style={{ width: 260 }} aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)}>
+      {subjects.map((a) => <option key={a.subject_id} value={a.subject_id}>{`${a.title} (${a.code})`}</option>)}</select>}>
+      <PBody>
+        <p className="sub2">Enter each student&rsquo;s score in each part of the assessment, within its maximum. Once the JUPEB Office locks the subject, the scores are final for the Board.</p>
+        {subject ? <CaSheetEditor key={subject} url={`/api/v1/jupeb/teaching/ca?subject=${subject}`} saveUrl="/api/v1/jupeb/teaching/ca" canEdit /> : null}
+      </PBody>
+    </Panel>
+  );
+}
+
+/** V355: a subject's students' practice by syllabus topic, weakest first */
+function WeakTopics({ subject }: { subject: string }) {
+  const [rows, setRows] = useState<{ topic_id: string; label: string; students: number; answered: number; percentage: number }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<{ topic_id: string; label: string; students: number; answered: number; percentage: number }[]>(`/api/v1/jupeb/teaching/topics?subject=${subject}`).then((r) => { if (live && r.ok) setRows(r.data); });
+    return () => { live = false; };
+  }, [subject]);
+  if (!rows || !rows.length) return <p className="sub2 mt-2">No practice questions tagged to the syllabus have been answered yet, so there is no topic to show.</p>;
+  return (
+    <>
+      <div className="eyebrow mt-3">The class&rsquo;s weakest topics in practice</div>
+      <DTable pageSize={10} cols={["Topic", "Students|num", "Questions answered|num", "Right|num"]} rows={rows.map((t) => [t.label, t.students, t.answered,
+        <span key="p" style={{ color: Number(t.percentage) < 50 ? "var(--bad)" : undefined }}>{`${Number(t.percentage).toFixed(1)}%`}</span>])} />
+    </>
   );
 }
 

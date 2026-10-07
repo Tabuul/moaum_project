@@ -6,14 +6,14 @@ import { qrMatrix } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument, type DocumentMeta } from "@/lib/document/pdf";
 import { formatDocDate } from "@/lib/document/institution";
-import { ADMISSION_STATUS, FEE_KIND, feeCategoryLabel, fullName, streamLabel, type Candidate } from "@/lib/jupeb";
+import { ADMISSION_STATUS, EXAM_KIND, FEE_KIND, feeCategoryLabel, fullName, streamLabel, type Candidate, type ExamPaper, type MyExams } from "@/lib/jupeb";
 
 export const dynamic = "force-dynamic";
 
 /** the papers that carry a verification code (V343), by the route's name */
 const PAPER: Record<string, string> = {
   acknowledgement: "ACKNOWLEDGEMENT", status: "STATUS_SLIP", letter: "ADMISSION_LETTER", acceptance: "ACCEPTANCE_LETTER",
-  receipt: "RECEIPT", slip: "REGISTRATION_SLIP", result: "RESULT",
+  receipt: "RECEIPT", slip: "REGISTRATION_SLIP", result: "RESULT", admit: "ADMIT_CARD",
 };
 
 const money = (n: number | string | null | undefined) => (n == null ? "-" : "NGN " + Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -42,7 +42,8 @@ async function passport(c: Candidate, office: boolean): Promise<DocumentMeta["ph
  * endpoint decides who may). Each paper is issued only when the record supports it — the server's record, never the page's:
  * the status slip and the admission letter once the candidate may see the decision (the status checking fee confirmed),
  * the acceptance letter on the confirmed acceptance fee, a receipt for a confirmed payment, the slip after registration, the
- * statement after publication.
+ * statement after publication. The examination admit card (V355) only for a student cleared to sit, with an examination
+ * number, once the examination timetable is published — the server refuses its verification code otherwise, and so is it refused.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ doc: string }> }) {
   const { doc } = await params;
@@ -64,6 +65,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
   const paidRef = (kind: string) => c.references.find((r) => r.kind === kind && r.confirmed_at) ?? null;
   let pdf: PdfDocument;
   let name: string;
+  let code: string | null = null;
 
   if (doc === "acknowledgement") {
     if (!c.submitted_at) return refuse("The acknowledgement is issued once the application is submitted.");
@@ -175,6 +177,28 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
       notes.forEach((r) => pdf.paragraph(`${r.title}: ${(r.units ?? []).map((u) => `${u.code} ${u.title}`).join("; ")}.`, 8.5));
     }
     name = `jupeb-statement-of-result-${c.exam_no ?? c.application_no}`;
+  } else if (doc === "admit") {
+    const issued = await api<{ code: string }>(office ? `/api/v1/jupeb/office/applications/${c.id}/papers` : "/api/v1/jupeb/me/papers", { method: "POST", body: { kind: "ADMIT_CARD", reference: null } });
+    if (!issued.ok || !c.exam_no) return refuse("The admit card is issued to a student cleared for the examination, with an examination number, once the examination timetable is published.");
+    code = issued.data.code;
+    const ex = office ? await api<ExamPaper[]>(`/api/v1/jupeb/office/applications/${c.id}/exams`) : await api<MyExams>("/api/v1/jupeb/me/exams");
+    if (!ex.ok) return NextResponse.json(ex.problem, { status: ex.problem.status });
+    const papers = Array.isArray(ex.data) ? ex.data : ex.data.papers;
+    const subjects = [...new Set(papers.map((x) => `${x.subject_title}${x.option_title ? ` (${x.option_title})` : ""}`))];
+    pdf = paper("FORM", { title: "JUPEB examination admit card", reference: c.exam_no, subtitle: `${c.session} JUPEB examination`, unit: "JUPEB Office" });
+    pdf.keyValues([["Name", `${c.surname.toUpperCase()} ${c.first_name}${c.middle_name ? ` ${c.middle_name}` : ""}`], ["Examination number", c.exam_no], ["Application number", c.application_no],
+      ["Programme", streamLabel(c.stream)], ["Combination", c.combination_code ?? "-"], ["Centre", inst.name], ["Subjects", subjects.join(", ") || c.registered.map((r) => r.title).join(", ")]], 1);
+    pdf.heading("Your papers");
+    pdf.table(["Day", "Time", "Subject", "Paper", "Venue"], papers.map((x) => [formatDocDate(x.day, inst), `${x.starts_at}${x.ends_at ? ` - ${x.ends_at}` : ""}`,
+      x.subject_code, `${x.title} (${EXAM_KIND[x.kind] ?? x.kind})`, x.centre ?? "-"]), { serial: true });
+    pdf.heading("Instructions", 9.5);
+    [
+      "Bring this card and your JUPEB identity card to every paper; a candidate whose face does not match the photograph is not admitted.",
+      "Be at the venue before each paper starts. The Board may move a paper; the JUPEB portal always shows the timetable as it stands.",
+      "The QR code below opens the University's record of this card; an altered card does not verify.",
+    ].forEach((t, i) => pdf.paragraph(`${i + 1}. ${t}`, 8.5));
+    pdf.signatures([{ designation: "Candidate" }, { designation: "JUPEB Office" }]);
+    name = `jupeb-admit-card-${c.exam_no}`;
   } else if (doc === "summary") {
     pdf = paper("FORM", { title: "JUPEB application summary", reference: c.application_no, subtitle: `${c.session} academic session`, unit: "JUPEB Office" });
     pdf.heading("Biodata");
@@ -194,16 +218,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
   /* V343: the verification code, issued by the server for the record as it stands; its QR opens the public verifier. A paper the
      record does not support as verifiable (an unpublished statement printed by the office) carries none */
   const kind = PAPER[doc];
-  if (kind) {
+  if (kind && !code) {
     const issued = await api<{ code: string }>(office ? `/api/v1/jupeb/office/applications/${c.id}/papers` : "/api/v1/jupeb/me/papers",
       { method: "POST", body: { kind, reference: doc === "receipt" ? url.searchParams.get("ref") : null } });
-    if (issued.ok) {
-      const h = req.headers;
-      const host = h.get("x-forwarded-host") ?? h.get("host");
-      const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : url.origin;
-      pdf.space(6);
-      pdf.qr(qrMatrix(`${origin}/verify/jupeb/${issued.data.code}`), `Verify at ${origin}/verify/jupeb with the code ${issued.data.code}`, 64);
-    }
+    if (issued.ok) code = issued.data.code;
+  }
+  if (code) {
+    const h = req.headers;
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : url.origin;
+    pdf.space(6);
+    pdf.qr(qrMatrix(`${origin}/verify/jupeb/${code}`), `Verify at ${origin}/verify/jupeb with the code ${code}`, 64);
   }
   const bytes = pdf.finish();
   return new NextResponse(Buffer.from(bytes), {

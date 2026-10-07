@@ -1,4 +1,4 @@
-# The JUPEB programme (V339, V341–V345, V347–V350)
+# The JUPEB programme (V339, V341–V345, V347–V355)
 
 The JUPEB module takes a candidate from application to admission, payment, studentship, subject registration, the
 official JUPEB examination number and the published result. It uses the portal's existing services rather than new
@@ -304,6 +304,43 @@ copies of them.
   today's lectures each opening its register, the semester's unrecorded ones, the week, their students' attendance and practice
   in the subject, the courses and their syllabus, and notices to the students of a subject (and class) they teach — on the
   dashboard and by email, never by text; the office sees every notice. Nothing else is theirs to read.
+- **Registering the candidates with the Board (V355).** On Board & Examination, each active student of the session: not sent
+  (ready, or what is missing said plainly — the option of an either/or subject, the passport photograph, sex, date of birth,
+  NIN, phone, state and LGA), or the Board's stage the office records from the Board's portal (sent, confirmed, correction
+  asked — with what the Board asks —, corrected, withdrawn — with why). What was sent is kept with its fingerprint, so a record
+  changed since it was sent is flagged with the facts that changed, before the Board's data-alignment deadline (and its
+  penalty date) on the calendar. The office exports the records to send (ready; changed; or every one sent) to Excel with
+  every fact the Board asks for, and the passport photographs as a ZIP of JPEGs named by application number. The Board's own
+  upload format is not invented — the export carries the facts for the office to key or paste in. Every stage is on the
+  student's record. Nothing is sent to the Board by the portal.
+- **Syllabus coverage (V355).** Taking a lecture's register, its instructor (or the office) ticks the topics of the course's
+  syllabus the lecture covered — a timetabled lecture its course's, a register opened by hand the subject's courses of the
+  semester; a locked register only by the office. Each course's coverage (topics covered of its syllabus, the lectures
+  recorded, the last time, its lecturers) on Attendance → Coverage for the office before the Board's monitoring of lectures,
+  and on JUPEB Teaching for a lecturer's own subjects.
+- **Continuous assessment (V355).** The JUPEB Office sets the session's parts (a test, an assignment …) and the most each is
+  marked out of — never assumed; a maximum is never set below a score already entered, and a part taken off is set aside with
+  its scores kept. Each subject's sheet is entered by its lecturers (their own classes' students only) or the office; a score
+  above its part's maximum is refused, a cleared score kept empty, never deleted. The office locks a subject when final for
+  the Board (due on the calendar); locked, nothing is entered; unlocked only with a reason, kept with who and when. The student
+  sees their assessment subject by subject only once locked. Excel of any sheet.
+- **Reminders from the calendar (V355).** The daily reminder job also reads the calendar's marked deadlines: the students
+  (of a session event marked for them) a week and a day before; the JUPEB Office staff 14, 7 and 1 days before each marked
+  date, with where the office stands (Board registration not sent, changed or to correct; assessment not locked or
+  incomplete; the examination timetable not published); the lecturers 14, 7 and 2 days before the assessment is due, if a
+  subject of theirs is incomplete. Each reminder once, logged; nothing personal in a notice.
+- **The examination timetable and admit cards (V355).** The Board's timetable uploaded from its sheet (the subject by the
+  portal's code, the Board's code or prefix — CRS, ISS — or its title; the paper; CBT, written, practical or oral; the date and
+  hours, a spreadsheet's date and time cells read too; the centre) or entered paper by paper; a row that cannot be read is
+  named and left. Published, each student sees their own papers (of an either/or subject, the option they sit), and a student
+  cleared for the examination with an examination number prints an admit card: who they are, the photograph, the Board's
+  number, the subjects and the papers, with a verification code — refused otherwise. The card's code verifies the subjects and
+  the examination's dates, not the papers' hours, so a moved paper does not void it.
+- **Practice by topic, and mock examinations (V355).** A practice question is tagged to its course and syllabus topic (in the
+  upload, the columns Course and Topic — its S/N); a course or topic the syllabus lacks is refused. A student sees their
+  topics, weakest first; a lecturer and the office see a subject's (a class's, or all). A mock examination is a practice test
+  sat once within its window (the CBT mocks on the calendar); its score, marking and answers are held until the office releases
+  the results. Mocks run on the JUPEB practice engine — the University's CBT engine serves registered University students only.
 
 ## API
 
@@ -324,16 +361,21 @@ copies of them.
   `/remove`), `/id-cards` (with `/issue`, `/{id}/replace`), and (V351) `/settings/current-session` (PUT), and (V353) `/syllabus`,
   `/units/{id}/syllabus`, `/combinations/units`, `/combinations/{code}/units`, `/applications/{id}/subject-option` (PUT), and (V354)
   `/calendar` (with `/{id}`, `/{id}/remove`, `/copy`, `/confirm`), `/rooms` (with `/{id}`), `/timetable/copy`, `/clearance` (with
-  `/tell`), `/settings/session-check`. Reads are for jupeb, super and admin; writes for jupeb and super.
+  `/tell`), `/settings/session-check`, and (V355) `/board` (with `/mark`, `/export?which=ready|changed|sent`, `/photos.zip`),
+  `/ca/components` (PUT), `/ca/sheet`, `/ca/scores` (PUT), `/ca/lock`, `/ca/unlock`, `/exams` (with `/upload`, `/{id}` PUT,
+  `/{id}/remove`, `/publish`), `/applications/{id}/exams`, `/practice-topics`, `/practice-tests/{id}/release`,
+  `/practice-tests/{id}/topics`. Reads are for jupeb, super and admin; writes for jupeb and super.
 - **ICT Support (V347):** `/api/v1/helpdesk/support/jupeb` (search), `/{id}?ticket=`, `/{id}/contact`, `/{id}/password`,
   `/{id}/payments/{reference}/verify`, `/{id}/refresh`, `/{id}/tickets`, `/{id}/escalate` — for agents whose postings reach
   JUPEB records.
 - **Attendance:** `/api/v1/attendance/jupeb/...` — options, registers, marks, lock/unlock, changes, photo, reports,
-  instructors, policy, and (V354) `/lectures`, `/slots/{id}/register`, `/slots/{id}/not-held` (with `/withdraw`, the office's).
+  instructors, policy, and (V354) `/lectures`, `/slots/{id}/register`, `/slots/{id}/not-held` (with `/withdraw`, the office's),
+  and (V355) `/registers/{id}/topics` (GET, PUT), `/coverage`.
   Lecturers are scoped by assignment.
 - **The lecturer (V354):** `/api/v1/jupeb/teaching` (with `/subjects/{id}/students`, `/units/{id}/syllabus`, `/notices`,
-  `/notices/{id}/withdraw`) — `OFFICE_lecturer` only, their own assignments.
-- **The student (V353, V354):** `/api/v1/jupeb/me/units` (with `/{id}/syllabus`), `/subject-option` (PUT), `/calendar`, `/clearance`.
+  `/notices/{id}/withdraw`, and (V355) `/ca` (GET, PUT), `/topics`) — `OFFICE_lecturer` only, their own assignments.
+- **The student (V353–V355):** `/api/v1/jupeb/me/units` (with `/{id}/syllabus`), `/subject-option` (PUT), `/calendar`, `/clearance`,
+  `/exams`, `/ca`, `/practice/topics`.
 - **Fees:** `/api/v1/jupeb/fees`. Reads for bursar, jupeb, super, admin and audit; writes and bank confirmations for
   bursar and super.
 
@@ -384,7 +426,19 @@ copies of them.
   subject's students told; the clearance and the notice of what is outstanding; the session checks);
   `JupebAttendanceIT.lecturesFromTheTimetableAndTheLecturersWorkspace` the lectures due, a register a lecture, not held, and
   the lecturer's workspace and notices, scoped.
-- `check.sql` properties 185–198 cover the rules on a brand-new database.
+- `JupebIT.boardRegistrationAssessmentExaminationTimetableAndMockExamination` covers V355: a record not ready (said plainly)
+  and refused, completed and exported with its photograph in the ZIP, sent (the Bursary refused), changed since (the phone
+  flagged), a correction refused without what the Board asks, corrected and matching again; the parts of the assessment (the
+  Bursary refused), a score above its maximum refused, a maximum below a score refused, nothing to the student until locked,
+  locked (twice refused, nothing entered), unlocked only with a reason, a score cleared kept empty; the timetable uploaded (a
+  date cell and a fraction of a day read, an unknown subject named), nothing to the student until published, then their own
+  papers (CRS, not ISS), the admit card refused until cleared with a number, then verified; a mock refused with two attempts,
+  questions tagged (a course and a topic the syllabus lacks refused), the result held (not in the list, nor the weakest
+  topics), one attempt only, released once (the Bursary refused), then scored with the topic, and a mock not yet open refused.
+  `JupebAttendanceIT.topicsCoveredAndTheLecturersAssessment` the topics of a register (another course's refused, another
+  lecturer not let in), the coverage scoped to the lecturer's subjects, and the lecturer's assessment (their class only, the
+  maximum, another class refused, not once locked).
+- `check.sql` properties 185–199 cover the rules on a brand-new database.
 
 ## Not done
 

@@ -26,6 +26,7 @@ function rows(f: Facts | null | undefined): [string, string][] {
   add("admittedOn", "Admitted on", day); add("acceptedOn", "Accepted on", day); add("registeredOn", "Subjects registered", day);
   add("subjects", "Subjects", (v) => (Array.isArray(v) ? v.join(", ") : String(v))); add("gradePoint", "Grade point");
   add("validFor", "Valid for the session");
+  add("examinations", "Examination dates");
   add("reference", "Payment reference"); add("fee", "Fee", (v) => FEE_KIND[String(v)] ?? String(v)); add("amount", "Amount", naira); add("paidOn", "Paid on", day);
   return out;
 }

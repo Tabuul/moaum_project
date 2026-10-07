@@ -20,6 +20,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { DocViewer, viewerClick, type ViewDoc } from "./DocViewer";
 import { AdviceDialog, PracticeWatch, adviceFor, type Advice } from "./PracticeWatch";
 import { SEMESTER, SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "./Syllabus";
+import { BoardPanel, ExamTimetablePanel } from "./examination/ExamYear";
 import {
   DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
   stateKind, streamLabel, when, eventDates, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper, type Registered, type CalendarEvent, type ClearanceCheck,
@@ -343,6 +344,7 @@ export function JupebApplication({ id, canWrite }: { id: string; canWrite: boole
           {["ADMITTED", "STUDENT", "COMPLETED"].includes(s) ? <LinkBtn href={pdf("letter")}>Admission letter</LinkBtn> : null}
           {c.accepted_at ? <LinkBtn href={pdf("acceptance")}>Acceptance letter</LinkBtn> : null}
           {c.subjects_registered_at ? <LinkBtn href={pdf("slip")}>Registration slip</LinkBtn> : null}
+          {s === "STUDENT" && c.exam_no ? <LinkBtn href={pdf("admit")}>Admit card</LinkBtn> : null}
           {c.registered.some((r) => r.grade) ? <LinkBtn href={pdf("result")}>Statement of result</LinkBtn> : null}</span>} />
       <div className="card"><div className="card__body" style={{ display: "flex", flexDirection: "row", gap: "var(--s-4)", alignItems: "center", flexWrap: "wrap" }}>
         {c.has_passport
@@ -952,10 +954,18 @@ function BoardListPanel() {
 
 export function JupebExamNumbers({ canWrite }: { canWrite: boolean }) {
   const [tick, setTick] = useState(0);
+  const [session, setSession] = useState("");
+  useEffect(() => {
+    let live = true;
+    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) setSession(r.data.session); });
+    return () => { live = false; };
+  }, []);
   return (
     <>
       <PageHead title="JUPEB examination numbers" description="The official numbers the Board issues, imported by application number. A number is never invented here, never shared by two candidates, and never overwritten without a reason." />
+      <BoardPanel session={session} canWrite={canWrite} />
       <ClearancePanel canWrite={canWrite} />
+      <ExamTimetablePanel session={session} canWrite={canWrite} />
       <BoardListPanel />
       {canWrite ? (
         <ImportBox title="Examination numbers" path="/api/v1/jupeb/office/exam-numbers/import" onDone={() => setTick((t) => t + 1)}

@@ -314,6 +314,52 @@ class AttendanceController {
         return JupebDocuments.stream(jdbc, files, member, "PASSPORT", null, true);
     }
 
+    /* ── V355: the syllabus covered in the lectures ── */
+
+    /** the topics this lecture may tick (its course's; a register opened by hand, the subject's courses of the semester) and those it covered */
+    @GetMapping("/registers/{id}/topics")
+    @PreAuthorize(ANY)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> topics(Authentication auth, @PathVariable UUID id) {
+        readable(auth, id);
+        return jdbc.sql("SELECT *, first_covered::text AS first_on FROM jupeb.register_topics(:id)").param("id", id).query().listOfRows();
+    }
+
+    public record TopicsIn(@NotNull @Size(max = 400) List<UUID> topicIds) {
+    }
+
+    /** the topics a lecture covered, ticked by its instructor (or the office); a locked register only by the office */
+    @PutMapping("/registers/{id}/topics")
+    @PreAuthorize(ANY)
+    @Transactional
+    List<Map<String, Object>> setTopics(Authentication auth, @PathVariable UUID id, @Valid @RequestBody TopicsIn body) {
+        Map<String, Object> r = readable(auth, id);
+        boolean mine = office(auth) || (r.get("locked_at") == null && mayTake(auth, String.valueOf(r.get("session")), (UUID) r.get("subject_ref"), (UUID) r.get("class_ref")));
+        if (!mine) throw new AccessDeniedException(r.get("locked_at") == null ? "You are not assigned to this register." : "The register is locked; the JUPEB Office corrects it.");
+        jdbc.sql("SELECT jupeb.set_register_topics(:id, :t, :by)").param("id", id).param("t", body.topicIds().toArray(new UUID[0])).param("by", me(auth)).query(Integer.class).single();
+        return topics(auth, id);
+    }
+
+    /** each course's coverage of its syllabus in the session's lectures — an instructor's own subjects only */
+    @GetMapping("/coverage")
+    @PreAuthorize(ANY)
+    @Transactional(readOnly = true)
+    Map<String, Object> coverage(Authentication auth, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester) {
+        String s = sessionOr(session);
+        int sem = semester != null ? semester : jdbc.sql("SELECT jupeb.current_semester(:s, NULL)").param("s", s).query(Integer.class).single();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("semester", sem);
+        out.put("monitoring", jdbc.sql("""
+                SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, title FROM jupeb.calendar_event WHERE session = :s AND marker = 'LECTURE_MONITORING' AND removed_at IS NULL
+                """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("rows", jdbc.sql("""
+                SELECT c.*, c.last_covered::text AS last_on FROM jupeb.coverage(:s, :sem) c
+                 WHERE :all OR EXISTS (SELECT 1 FROM attendance.instructor i WHERE i.context = 'JUPEB' AND i.person_id = :p AND i.session = :s AND i.subject_ref = c.subject_id AND i.ended_at IS NULL)
+                """).param("s", s).param("sem", sem).param("all", reader(auth)).param("p", me(auth)).query().listOfRows());
+        return out;
+    }
+
     /* ── V354: the lectures due, from the timetable ── */
 
     /** the timetabled lectures from one day to another (today by default), each recorded, open, not held, due, missed or to come —

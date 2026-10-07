@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 198
+\set EXPECTED 199
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -5998,6 +5998,125 @@ BEGIN
         format('cal=%s teach=%s reg=%s exams=%s sem=%s/%s/%s copy=%s exam28=%s title28=%s planned=%s again=%s room=%s closed=%s renamed=%s tt=%s gry=%s mat=%s/%s ttagain=%s same=%s day=%s notheld=%s states=%s/%s marked=%s reach=%s/%s cleared=%s out=%s',
                n_cal, v_teach, v_reg, v_exams, v_sem_now, v_sem_before, v_sem_after, n_copy, v_exam28, v_title28, v_planned, r_cal, r_room, r_closed, v_renamed, n_tt, v_gry,
                v_mat, v_mat_note, r_tt, ra = ra2, r_day, r_notheld, v_state_a, v_state_b, r_marked, v_reach_mine, v_reach_other, v_clear, v_out));
+END $$;
+
+-- ── 199. V355: a record goes to the Board only when ready, and one changed since it was sent is flagged with what changed until the correction is sent; a correction asked is said; the topics a lecture covered are its course's and count to the course's coverage; an assessment score is within its part's maximum, the total out of the parts', and a locked subject takes none; a calendar reminder is sent once; the examination timetable is read from an upload, its papers shown to a student once published (the option they sit), and an admit card only for one cleared; a practice question names a course and topic of the syllabus; a mock is sat once, in its window, its results held until released ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); today date := (now() AT TIME ZONE 'Africa/Lagos')::date; wd int := extract(isodow FROM (now() AT TIME ZONE 'Africa/Lagos')::date)::int;
+        acct uuid; app uuid; sub uuid; iss uuid; gov uuid; msg text;
+        v_problems text[]; r_notready text; v_ready boolean; v_changed boolean; v_facts text[]; v_after boolean; r_note text; v_stage text;
+        slot uuid; reg uuid; n_topics int; t1 uuid; t2 uuid; other_topic uuid; r_topic text; v_covered int;
+        c1 uuid; c2 uuid; r_range text; v_total numeric; v_out numeric; v_complete boolean; r_locked text;
+        ev uuid; v_rem1 jsonb; v_rem2 jsonb; n_rem int;
+        v_upload jsonb; n_before int; n_after int; v_iss_papers int; v_admit jsonb;
+        tst uuid; q1 uuid; r_tag text; v_tagged boolean; mock uuid; r_mock_ck text; r_window text; att uuid; v_paper jsonb; n_topics_before int; n_topics_after int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM set_config('moaum.jupeb_quiet', 'on', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKEXAMYEAR355', 'Officer');
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check199@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acct;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, stream, combination_id, state)
+        VALUES (acct, ses, 'CHECK199/0001', 'CHECK', 'Board', 'zz.check199@example.com', 'NON_SCIENCE', (SELECT id FROM jupeb.combination WHERE code = 'SC-001'), 'STUDENT')
+        RETURNING id INTO app;
+        PERFORM jupeb.register_subjects(app, who, (SELECT id FROM jupeb.combination WHERE code = 'SC-001'));
+        sub := (SELECT id FROM jupeb.subject WHERE code = 'CRS/ISS');
+        gov := (SELECT id FROM jupeb.subject WHERE code = 'GOV');
+        iss := (SELECT id FROM jupeb.board_subject WHERE prefix = 'ISS');
+        -- the Board: not ready, then ready and sent; a change flagged; a correction asked and sent
+        v_problems := jupeb.board_problems(app);
+        BEGIN PERFORM jupeb.board_mark(ARRAY[app], ses, 'SENT', NULL, NULL, who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notready := split_part(msg, ':', 1); END;
+        UPDATE jupeb.application SET sex = 'F', date_of_birth = '2007-01-02', nin = '12345678901', phone = '08012340199', state_of_origin = 'Benue', lga = 'Makurdi' WHERE id = app;
+        PERFORM jupeb.choose_option(app, sub, iss, false, NULL);
+        INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes) VALUES (app, 'PASSPORT', 'p.jpg', 'image/jpeg', 10);
+        v_ready := (SELECT ready FROM jupeb.board_status(ses) WHERE application_id = app);
+        PERFORM jupeb.board_mark(ARRAY[app], ses, 'SENT', NULL, NULL, who, 'jupeb');
+        UPDATE jupeb.application SET phone = '08012340299' WHERE id = app;
+        SELECT changed, changed_facts INTO v_changed, v_facts FROM jupeb.board_status(ses) WHERE application_id = app;
+        BEGIN PERFORM jupeb.board_mark(ARRAY[app], ses, 'CORRECTION_NEEDED', '', NULL, who, 'jupeb');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_note := split_part(msg, ':', 1); END;
+        PERFORM jupeb.board_mark(ARRAY[app], ses, 'CORRECTED', 'Phone corrected', NULL, who, 'jupeb');
+        SELECT changed, stage INTO v_after, v_stage FROM jupeb.board_status(ses) WHERE application_id = app;
+        -- the syllabus covered: a lecture's topics are its course's
+        INSERT INTO jupeb.timetable_slot (session, semester, subject_id, weekday, starts_at, ends_at, room_id, course_code)
+        VALUES ('2031/2032', 1, gov, wd, '07:00', '08:00', (SELECT id FROM jupeb.room WHERE code = 'LR8'), 'GOV 001') RETURNING id INTO slot;
+        reg := jupeb.open_lecture_register(slot, today, who);
+        n_topics := (SELECT count(*) FROM jupeb.register_topics(reg));
+        SELECT topic_id INTO t1 FROM jupeb.register_topics(reg) ORDER BY ord LIMIT 1;
+        SELECT topic_id INTO t2 FROM jupeb.register_topics(reg) ORDER BY ord OFFSET 1 LIMIT 1;
+        other_topic := (SELECT x.id FROM jupeb.unit_topic x JOIN jupeb.subject_unit u ON u.id = x.unit_id WHERE u.code = 'GOV 002' LIMIT 1);
+        BEGIN PERFORM jupeb.set_register_topics(reg, ARRAY[t1, other_topic], who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_topic := split_part(msg, ':', 1); END;
+        PERFORM jupeb.set_register_topics(reg, ARRAY[t1, t2], who);
+        v_covered := (SELECT covered FROM jupeb.coverage('2031/2032', 1) WHERE code = 'GOV 001');
+        -- continuous assessment
+        INSERT INTO jupeb.ca_component (session, code, title, max_score, ord) VALUES (ses, 'CHK199A', 'Test one', 10, 1) RETURNING id INTO c1;
+        INSERT INTO jupeb.ca_component (session, code, title, max_score, ord) VALUES (ses, 'CHK199B', 'Assignment', 20, 2) RETURNING id INTO c2;
+        BEGIN PERFORM jupeb.ca_save(app, gov, c1, 12, who, 'lecturer');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_range := split_part(msg, ':', 1); END;
+        PERFORM jupeb.ca_save(app, gov, c1, 8, who, 'lecturer');
+        PERFORM jupeb.ca_save(app, gov, c2, 15, who, 'lecturer');
+        SELECT total, out_of, complete INTO v_total, v_out, v_complete FROM jupeb.ca_sheet(ses, gov, NULL) WHERE application_id = app;
+        INSERT INTO jupeb.ca_lock (session, subject_id, locked_by) VALUES (ses, gov, who);
+        BEGIN PERFORM jupeb.ca_save(app, gov, c1, 9, who, 'lecturer');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_locked := split_part(msg, ':', 1); END;
+        -- a reminder, once
+        INSERT INTO jupeb.calendar_event (session, starts_on, title, for_students) VALUES (ses, today + 7, 'Check 199 lecture-free day', true) RETURNING id INTO ev;
+        v_rem1 := jupeb.send_calendar_reminders(now(), '');
+        v_rem2 := jupeb.send_calendar_reminders(now(), '');
+        n_rem := (SELECT count(*) FROM jupeb.calendar_reminder WHERE event_id = ev AND audience = 'STUDENTS');
+        -- the examination timetable: uploaded, held until published; the option the student sits; no admit card uncleared
+        n_before := (SELECT count(*) FROM jupeb.exam_schedule(app, false));
+        v_upload := jupeb.exam_paper_upload(ses, jsonb_build_array(
+            jsonb_build_object('row', 2, 'subject', 'GOV', 'paper', 'Government Paper I', 'kind', 'CBT', 'date', '2027-07-26', 'start', '09:00', 'end', '11:00'),
+            jsonb_build_object('row', 3, 'subject', 'ISS', 'paper', 'Islamic Studies Paper I', 'kind', 'PAPER', 'date', '27/07/2027', 'start', '09:00', 'end', '11:00'),
+            jsonb_build_object('row', 4, 'subject', 'CRS', 'paper', 'Christian Religious Studies Paper I', 'date', '2027-07-27', 'start', '09:00', 'end', '11:00'),
+            jsonb_build_object('row', 5, 'subject', 'Astronomy', 'paper', 'Stars', 'date', '2027-07-28', 'start', '09:00', 'end', '11:00')), false, who);
+        INSERT INTO jupeb.exam_timetable (session, published_at, published_by) VALUES (ses, now(), who)
+        ON CONFLICT (session) DO UPDATE SET published_at = now();
+        n_after := (SELECT count(*) FROM jupeb.exam_schedule(app, false) WHERE title LIKE '%Paper I');
+        v_iss_papers := (SELECT count(*) FROM jupeb.exam_schedule(app, false) WHERE title LIKE 'Christian%');
+        v_admit := jupeb.paper_facts(app, 'ADMIT_CARD', NULL, true);
+        -- practice by topic; the mock
+        INSERT INTO jupeb.practice_test (subject_id, title, questions_per_attempt, attempts_allowed, open) VALUES (gov, 'Check 199 practice', 1, 3, true) RETURNING id INTO tst;
+        q1 := jupeb.practice_add(tst, jsonb_build_object('question', 'Q?', 'a', '1', 'b', '2', 'answer', 'A', 'course', 'gov001', 'topic', '1'));
+        v_tagged := (SELECT unit_id IS NOT NULL AND topic_id IS NOT NULL FROM jupeb.practice_question WHERE id = q1);
+        BEGIN PERFORM jupeb.practice_add(tst, jsonb_build_object('question', 'Q2?', 'a', '1', 'b', '2', 'answer', 'A', 'course', 'GOV 009'));
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_tag := split_part(msg, ':', 1); END;
+        BEGIN INSERT INTO jupeb.practice_test (subject_id, title, kind, attempts_allowed, opens_at, closes_at) VALUES (gov, 'Check 199 bad mock', 'MOCK', 2, now(), now() + interval '1 hour');
+        EXCEPTION WHEN check_violation THEN r_mock_ck := 'REFUSED'; END;
+        INSERT INTO jupeb.practice_test (subject_id, title, kind, questions_per_attempt, attempts_allowed, open, opens_at, closes_at)
+        VALUES (gov, 'Check 199 mock', 'MOCK', 1, 1, true, now() + interval '1 day', now() + interval '2 days') RETURNING id INTO mock;
+        PERFORM jupeb.practice_add(mock, jsonb_build_object('question', 'M?', 'a', '1', 'b', '2', 'answer', 'A', 'course', 'GOV 001', 'topic', '1'));
+        BEGIN PERFORM jupeb.practice_start(app, mock);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_window := split_part(msg, ':', 1); END;
+        UPDATE jupeb.practice_test SET opens_at = now() - interval '1 hour' WHERE id = mock;
+        att := jupeb.practice_start(app, mock);
+        PERFORM jupeb.practice_answer_set(app, att, (SELECT question_ids[1] FROM jupeb.practice_attempt WHERE id = att), 'A');
+        PERFORM jupeb.practice_submit(app, att);
+        v_paper := jupeb.practice_paper(app, att);
+        n_topics_before := (SELECT count(*) FROM jupeb.practice_topics(app));
+        UPDATE jupeb.practice_test SET results_released_at = now() WHERE id = mock;
+        n_topics_after := (SELECT count(*) FROM jupeb.practice_topics(app));
+        RAISE EXCEPTION 'the V355 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('JUPEB V355: to the Board only when ready, a change flagged until corrected; a lecture''s topics its course''s, counted to its coverage; an assessment within its maxima, locked against change; a reminder once; the examination timetable from an upload, published, the option sat; no admit card uncleared; practice by syllabus topic; a mock once, in its window, results held until released',
+        'No passport photograph' = ANY (v_problems) AND 'Say which is taken: Christian / Islamic Religious Studies' = ANY (v_problems) AND r_notready = 'JUPEB_BOARD_NOT_READY' AND v_ready
+        AND v_changed AND v_facts = ARRAY['phone'] AND r_note = 'JUPEB_BOARD_NOTE' AND NOT v_after AND v_stage = 'CORRECTED'
+        AND n_topics > 1 AND r_topic = 'JUPEB_COVERAGE_TOPIC' AND v_covered = 2
+        AND r_range = 'JUPEB_CA_RANGE' AND v_total = 23 AND v_out = 30 AND v_complete AND r_locked = 'JUPEB_CA_LOCKED'
+        AND (v_rem1->>'students')::int >= 1 AND (v_rem2->>'students')::int = 0 AND n_rem = 1
+        AND (v_upload->>'added')::int = 3 AND jsonb_array_length(v_upload->'refused') = 1 AND n_before = 0 AND n_after = 2 AND v_iss_papers = 0 AND v_admit IS NULL
+        AND v_tagged AND r_tag = 'JUPEB_PRACTICE_TOPIC' AND r_mock_ck = 'REFUSED' AND r_window = 'JUPEB_MOCK_WINDOW'
+        AND (v_paper->'attempt'->>'score') IS NULL AND (v_paper->'attempt'->>'resultsHeld')::boolean AND n_topics_before = 0 AND n_topics_after = 1,
+        format('problems=%s notready=%s ready=%s changed=%s/%s note=%s after=%s/%s topics=%s topic=%s covered=%s range=%s total=%s/%s complete=%s locked=%s rem=%s/%s/%s upload=%s before=%s after=%s crs=%s admit=%s tagged=%s tag=%s mockck=%s window=%s paper=%s held=%s pt=%s/%s',
+               v_problems, r_notready, v_ready, v_changed, v_facts, r_note, v_after, v_stage, n_topics, r_topic, v_covered, r_range, v_total, v_out, v_complete, r_locked,
+               v_rem1, v_rem2, n_rem, v_upload, n_before, n_after, v_iss_papers, v_admit IS NULL, v_tagged, r_tag, r_mock_ck, r_window,
+               v_paper->'attempt'->>'score', v_paper->'attempt'->>'resultsHeld', n_topics_before, n_topics_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

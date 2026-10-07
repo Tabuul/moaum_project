@@ -1750,6 +1750,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/portal/timetable", "icon": "calendar", "label": "Timetable" },
           { "id": "jupeb/portal/practice", "icon": "clock", "label": "Practice Tests" },
           { "id": "jupeb/portal/attendance", "icon": "cal", "label": "Attendance" },
+          { "id": "jupeb/portal/exams", "icon": "doc", "label": "Examination" },
           { "id": "jupeb/portal/results", "icon": "chart", "label": "Results" }
         ]
       },
@@ -1805,7 +1806,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/timetable", "icon": "calendar", "label": "Timetable" },
           { "id": "jupeb/practice", "icon": "clock", "label": "Practice Tests" },
           { "id": "jupeb/attendance", "icon": "check", "label": "Attendance" },
-          { "id": "jupeb/examination", "icon": "upload", "label": "Examination Numbers" },
+          { "id": "jupeb/ca", "icon": "doc", "label": "Continuous Assessment" },
+          { "id": "jupeb/examination", "icon": "upload", "label": "Board & Examination" },
           { "id": "jupeb/results", "icon": "chart", "label": "Results" }
         ]
       },

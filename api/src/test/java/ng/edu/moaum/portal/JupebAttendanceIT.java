@@ -198,6 +198,79 @@ class JupebAttendanceIT {
         }
     }
 
+    /** V355: the topics a lecture covered, ticked by its instructor with the register and counted to the course's coverage (a lecturer
+     *  sees their own subjects'); the continuous assessment a lecturer enters — their classes' students only, within each part's
+     *  maximum, not once the office has locked the subject */
+    @Test
+    void topicsCoveredAndTheLecturersAssessment() {
+        UUID unit = UUID.randomUUID();
+        UUID part = UUID.randomUUID();
+        StringBuilder letters = new StringBuilder();
+        for (char c : tag.toCharArray()) letters.append(Character.isDigit(c) ? (char) ('G' + (c - '0')) : c);
+        String course = "ZQ" + letters.substring(0, 3) + " 001";
+        List<UUID> topics = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        try {
+            it.db(() -> {
+                jdbc.sql("INSERT INTO jupeb.subject_unit (id, subject_id, code, title, ord, semester) VALUES (:id, :s, :c, 'Cells and tissues', 1, 1)")
+                        .param("id", unit).param("s", s1).param("c", course).update();
+                for (int i = 0; i < topics.size(); i++) {
+                    jdbc.sql("INSERT INTO jupeb.unit_topic (id, unit_id, ord, sn, topic) VALUES (:id, :u, :o, :sn, :t)").param("id", topics.get(i)).param("u", unit)
+                            .param("o", i + 1).param("sn", String.valueOf(i + 1)).param("t", "Topic " + (i + 1)).update();
+                }
+                return jdbc.sql("INSERT INTO jupeb.ca_component (id, session, code, title, max_score) VALUES (:id, :s, :c, 'Class test', 20)").param("id", part).param("s", session)
+                        .param("c", "ZZ" + tag).update();
+            });
+            assertThat(status(it.callList(office, HttpMethod.POST, "/api/v1/attendance/jupeb/instructors",
+                    Map.of("session", session, "subjectId", s1, "classId", classA, "staff", staffNumber)))).isEqualTo(200);
+
+            // the register's topics: its course's; two ticked; a topic of no course of the lecture refused; another lecturer not let in
+            String reg = String.valueOf(open(lecturer, s1, classA).get("id"));
+            String path = "/api/v1/attendance/jupeb/registers/" + reg + "/topics";
+            List<Map<String, Object>> list = it.callList(lecturer, HttpMethod.GET, path, null).getBody();
+            assertThat(list).extracting(x -> x.get("topic_id").toString()).containsExactly(topics.get(0).toString(), topics.get(1).toString(), topics.get(2).toString());
+            list = it.callList(lecturer, HttpMethod.PUT, path, Map.of("topicIds", List.of(topics.get(0), topics.get(1)))).getBody();
+            assertThat(list).filteredOn(x -> Boolean.TRUE.equals(x.get("here"))).hasSize(2);
+            assertThat(list).filteredOn(x -> Boolean.TRUE.equals(x.get("here"))).extracting(x -> x.get("first_on")).containsOnly(LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString());
+            assertThat(code(it.call(lecturer, HttpMethod.PUT, path, Map.of("topicIds", List.of(UUID.randomUUID()))))).isEqualTo("JUPEB_COVERAGE_TOPIC");
+            String stranger = TestTokens.token(it.person("ZZATT-LEC2-" + tag, "ZZATTSTRANGER"), List.of("lecturer"));
+            assertThat(status(it.call(stranger, HttpMethod.PUT, path, Map.of("topicIds", List.of(topics.get(2)))))).isEqualTo(404);
+            Map<String, Object> cov = ok(it.get(lecturer, ub -> ub.path("/api/v1/attendance/jupeb/coverage").queryParam("session", session).queryParam("semester", 1).build()));
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) cov.get("rows");
+            assertThat(rows).extracting(r -> r.get("subject_id").toString()).containsOnly(s1.toString());
+            assertThat(rows).filteredOn(r -> course.equals(r.get("code"))).extracting(r -> r.get("covered") + "/" + r.get("topics")).containsExactly("2/3");
+            assertThat((List<Map<String, Object>>) ok(it.get(stranger, ub -> ub.path("/api/v1/attendance/jupeb/coverage").queryParam("session", session).queryParam("semester", 1).build()))
+                    .get("rows")).isEmpty();
+
+            // the lecturer's assessment: class A's student only; within the maximum; not another class's; not once locked
+            Map<String, Object> sheet = ok(it.get(lecturer, "/api/v1/jupeb/teaching/ca?subject=" + s1));
+            assertThat((List<Map<String, Object>>) sheet.get("rows")).extracting(r -> r.get("application_id").toString()).containsExactly(studentA.toString());
+            assertThat(status(it.get(lecturer, "/api/v1/jupeb/teaching/ca?subject=" + s2))).isEqualTo(404);
+            assertThat(code(it.call(lecturer, HttpMethod.PUT, "/api/v1/jupeb/teaching/ca",
+                    Map.of("subjectId", s1, "scores", List.of(Map.of("applicationId", studentA, "componentId", part, "score", 21)))))).isEqualTo("JUPEB_CA_RANGE");
+            assertThat(status(it.call(lecturer, HttpMethod.PUT, "/api/v1/jupeb/teaching/ca",
+                    Map.of("subjectId", s1, "scores", List.of(Map.of("applicationId", studentB, "componentId", part, "score", 12)))))).isEqualTo(403);
+            sheet = ok(it.call(lecturer, HttpMethod.PUT, "/api/v1/jupeb/teaching/ca",
+                    Map.of("subjectId", s1, "scores", List.of(Map.of("applicationId", studentA, "componentId", part, "score", 17.5)))));
+            Map<String, Object> scores = (Map<String, Object>) ((List<Map<String, Object>>) sheet.get("rows")).get(0).get("scores");
+            assertThat(new java.math.BigDecimal(String.valueOf(scores.get(part.toString())))).isEqualByComparingTo("17.5");
+            assertThat(jdbc.sql("SELECT entered_office FROM jupeb.ca_score WHERE application_id = :a AND component_id = :c").param("a", studentA).param("c", part)
+                    .query(String.class).single()).isEqualTo("lecturer");
+            ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/ca/lock", Map.of("session", session, "subjectId", s1)));
+            assertThat(code(it.call(lecturer, HttpMethod.PUT, "/api/v1/jupeb/teaching/ca",
+                    Map.of("subjectId", s1, "scores", List.of(Map.of("applicationId", studentA, "componentId", part, "score", 18)))))).isEqualTo("JUPEB_CA_LOCKED");
+            assertThat(status(it.callList(lecturer, HttpMethod.GET, "/api/v1/jupeb/teaching/topics?subject=" + s1, null))).isEqualTo(200);
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM jupeb.lecture_topic WHERE topic_id IN (SELECT id FROM jupeb.unit_topic WHERE unit_id = :u)").param("u", unit).update();
+                jdbc.sql("DELETE FROM jupeb.unit_topic WHERE unit_id = :u").param("u", unit).update();
+                jdbc.sql("DELETE FROM jupeb.subject_unit WHERE id = :u").param("u", unit).update();
+                jdbc.sql("DELETE FROM jupeb.ca_score WHERE component_id = :c").param("c", part).update();
+                jdbc.sql("DELETE FROM jupeb.ca_lock WHERE session = :s AND subject_id = :x").param("s", session).param("x", s1).update();
+                return jdbc.sql("DELETE FROM jupeb.ca_component WHERE id = :c").param("c", part).update();
+            });
+        }
+    }
+
     @Test
     void anInstructorTakesTheirOwnRegisterAndTheOfficeCorrectsALockedOne() {
         // not yet assigned: nothing to take

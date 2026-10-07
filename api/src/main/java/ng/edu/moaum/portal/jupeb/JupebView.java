@@ -259,6 +259,33 @@ class JupebView {
         return out;
     }
 
+    /** V355: a subject's continuous-assessment sheet for a session (one class, or all): the parts and their maxima, each student's scores,
+     *  the total and whether complete, and the subject's lock */
+    static Map<String, Object> caSheet(org.springframework.jdbc.core.simple.JdbcClient jdbc, String session, UUID subject, UUID klass) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("subject", jdbc.sql("SELECT id, code, title FROM jupeb.subject WHERE id = :s").param("s", subject).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("JUPEB subject", subject)));
+        out.put("components", jdbc.sql("SELECT id, code, title, max_score, ord FROM jupeb.ca_component WHERE session = :s AND active ORDER BY ord, code").param("s", session).query().listOfRows());
+        out.put("lock", jdbc.sql("""
+                SELECT l.locked_at, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = l.locked_by) AS locked_by
+                  FROM jupeb.ca_lock l WHERE l.session = :s AND l.subject_id = :sub AND l.unlocked_at IS NULL
+                """).param("s", session).param("sub", subject).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("unlocks", jdbc.sql("""
+                SELECT l.unlocked_at, l.unlock_reason, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = l.unlocked_by) AS unlocked_by
+                  FROM jupeb.ca_lock l WHERE l.session = :s AND l.subject_id = :sub AND l.unlocked_at IS NOT NULL ORDER BY l.unlocked_at DESC
+                """).param("s", session).param("sub", subject).query().listOfRows());
+        out.put("rows", jdbc.sql("""
+                SELECT application_id, application_no, name, class_name, exam_no, scores::text AS scores, total, out_of, complete
+                  FROM jupeb.ca_sheet(:s, :sub, :k)
+                """).param("s", session).param("sub", subject).param("k", klass, java.sql.Types.OTHER).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("scores", readJson(String.valueOf(r.get("scores"))));
+                    return m;
+                }).toList());
+        return out;
+    }
+
     /** what still stands between the application and its submission */
     List<String> missing(UUID app) {
         return jdbc.sql("SELECT unnest(jupeb.missing(:id))").param("id", app).query(String.class).list();

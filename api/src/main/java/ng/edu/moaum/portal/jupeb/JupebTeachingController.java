@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -155,6 +156,70 @@ class JupebTeachingController {
                 """).param("u", id).param("p", me(auth)).query(Boolean.class).single();
         if (!mine) throw new NotFound("course unit", id);
         return JupebView.unitSyllabus(jdbc, id);
+    }
+
+    /* ── V355: the continuous assessment of the subjects this lecturer teaches, and their practice by topic ── */
+
+    /** the assessment sheet of a subject this lecturer teaches — their class's students (every class's when they teach every class) */
+    @GetMapping("/ca")
+    @Transactional(readOnly = true)
+    Map<String, Object> assessment(Authentication auth, @RequestParam UUID subject) {
+        UUID p = me(auth);
+        String s = session();
+        List<UUID> classes = myClasses(p, s, subject);
+        Map<String, Object> out = new LinkedHashMap<>(JupebView.caSheet(jdbc, s, subject, null));
+        if (!classes.contains(null)) {
+            out.put("rows", ((List<Map<String, Object>>) out.get("rows")).stream()
+                    .filter(r -> jdbc.sql("SELECT class_id FROM jupeb.application WHERE id = :a").param("a", r.get("application_id")).query(UUID.class).optional().map(classes::contains).orElse(false))
+                    .toList());
+        }
+        out.put("due", jdbc.sql("""
+                SELECT coalesce(deadline_on, starts_on)::text FROM jupeb.calendar_event WHERE session = :s AND marker = 'CA_SUBMISSION' AND removed_at IS NULL
+                """).param("s", s).query(String.class).optional().orElse(null));
+        return out;
+    }
+
+    /** the classes of the subject this lecturer teaches this session (a null: every class); not theirs, not found */
+    private List<UUID> myClasses(UUID p, String s, UUID subject) {
+        List<UUID> classes = jdbc.sql("SELECT class_ref FROM attendance.instructor WHERE context = 'JUPEB' AND person_id = :p AND session = :s AND subject_ref = :sub AND ended_at IS NULL")
+                .param("p", p).param("s", s).param("sub", subject).query((rs, i) -> (UUID) rs.getObject(1)).list();
+        if (classes.isEmpty()) throw new NotFound("subject", subject);
+        return classes;
+    }
+
+    public record ScoreIn(@NotNull UUID applicationId, @NotNull UUID componentId, java.math.BigDecimal score) {
+    }
+
+    public record ScoresIn(@NotNull UUID subjectId, @NotNull @Size(max = 3000) List<@Valid ScoreIn> scores) {
+    }
+
+    /** scores entered for students of this lecturer's classes in the subject; the subject not locked */
+    @org.springframework.web.bind.annotation.PutMapping("/ca")
+    @Transactional
+    Map<String, Object> saveAssessment(Authentication auth, @Valid @RequestBody ScoresIn b) {
+        UUID p = me(auth);
+        String s = session();
+        List<UUID> classes = myClasses(p, s, b.subjectId());
+        for (ScoreIn x : b.scores()) {
+            if (!classes.contains(null)) {
+                UUID k = jdbc.sql("SELECT class_id FROM jupeb.application WHERE id = :a").param("a", x.applicationId()).query(UUID.class).optional().orElse(null);
+                if (k == null || !classes.contains(k)) throw new AccessDeniedException("That student is not in a class you teach.");
+            }
+            jdbc.sql("SELECT jupeb.ca_save(:a, :s, :c, :v, :by, 'lecturer')").param("a", x.applicationId()).param("s", b.subjectId()).param("c", x.componentId())
+                    .param("v", x.score(), Types.NUMERIC).param("by", p).query().listOfRows();
+        }
+        return assessment(auth, b.subjectId());
+    }
+
+    /** a subject this lecturer teaches: its students' practice by syllabus topic, weakest first */
+    @GetMapping("/topics")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> topics(Authentication auth, @RequestParam UUID subject) {
+        UUID p = me(auth);
+        String s = session();
+        List<UUID> classes = myClasses(p, s, subject);
+        return jdbc.sql("SELECT * FROM jupeb.practice_topics_class(:s, :sub, :k)").param("s", s).param("sub", subject)
+                .param("k", classes.contains(null) || classes.size() > 1 ? null : classes.get(0), Types.OTHER).query().listOfRows();
     }
 
     /** the notices this lecturer published, with how many they reach and have read */

@@ -29,7 +29,7 @@ import { MathText } from "@/components/proto/MathText";
 import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { TimetableGrid, printGrid, type Frame } from "../TimetableGrid";
 import { SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "../Syllabus";
-import { eventDates, type CalendarEvent, type ClearanceCheck } from "@/lib/jupeb";
+import { EXAM_KIND, eventDates, type CalendarEvent, type ClearanceCheck, type MyExams } from "@/lib/jupeb";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import {
   ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
@@ -37,9 +37,9 @@ import {
   type Doc, type FeeRef, type PracticePaper, type RefundClaim, type Slot, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "results" | "documents" | "idcard"
+type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "exams" | "results" | "documents" | "idcard"
   | "requests" | "password" | "support";
-const TAB_IDS: Tab[] = ["overview", "announcements", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "results", "documents", "idcard",
+const TAB_IDS: Tab[] = ["overview", "announcements", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "exams", "results", "documents", "idcard",
   "requests", "password", "support"];
 /** each section is its own item in the side menu (Shell routes jupeb/portal/<section> to /jupeb/portal?tab=<section>) */
 const routeOf = (t: Tab) => (t === "overview" ? "jupeb/portal" : `jupeb/portal/${t}`);
@@ -164,7 +164,8 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "timetable": return studying ? <Timetable me={me} /> : notYet("The timetable", "once your studentship is activated by the school fee");
       case "practice": return admitted ? <Practice /> : notYet("Practice tests", "once you are admitted");
       case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
-      case "results": return admitted ? <Results me={me} /> : notYet("Results", "once you are admitted");
+      case "exams": return studying ? <Exams /> : notYet("The examination", "once your studentship is activated by the school fee");
+      case "results": return admitted ? <><Results me={me} /><MyAssessment /></> : notYet("Results", "once you are admitted");
       case "documents": return <DocumentCentre me={me} act={act} />;
       case "idcard": return studying ? <IdCardSection me={me} /> : notYet("Your identity card", "once your studentship is activated by the school fee");
       case "requests": return <Requests me={me} act={act} />;
@@ -1306,17 +1307,22 @@ function Timetable({ me }: { me: Candidate }) {
 interface PracticeTest {
   id: string; title: string; instructions: string | null; duration_minutes: number; questions_per_attempt: number; attempts_allowed: number; show_answers: boolean;
   code: string; subject: string; questions: number; used: number; best: number | null; open_attempt: string | null; attempts: string;
+  kind?: "PRACTICE" | "MOCK"; opens_at?: string | null; closes_at?: string | null; results_released_at?: string | null;
 }
-interface PastAttempt { id: string; number: number; submittedAt: string; score: number; total: number; percentage: number }
+interface PastAttempt { id: string; number: number; submittedAt: string; score: number | null; total: number; percentage: number | null }
+interface TopicStanding { topic_id: string; subject_code: string; label: string; answered: number; correct: number; percentage: number }
 
 function Practice() {
   const [tests, setTests] = useState<PracticeTest[] | null>(null);
   const [paper, setPaper] = useState<PracticePaper | null>(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [topics, setTopics] = useState<TopicStanding[]>([]);
+  const [now, setNow] = useState("");
   useEffect(() => {
     let live = true;
-    void jcall<{ tests: PracticeTest[] }>("/api/v1/jupeb/me/practice").then((r) => { if (live) { if (r.ok) setTests(r.data.tests); else notifyProblem(r.problem); } });
+    void jcall<{ tests: PracticeTest[] }>("/api/v1/jupeb/me/practice").then((r) => { if (live) { if (r.ok) { setTests(r.data.tests); setNow(new Date().toISOString()); } else notifyProblem(r.problem); } });
+    void jcall<TopicStanding[]>("/api/v1/jupeb/me/practice/topics").then((r) => { if (live && r.ok) setTopics(r.data); });
     return () => { live = false; };
   }, [tick]);
   async function open(path: string, method = "GET") {
@@ -1331,26 +1337,42 @@ function Practice() {
   const past = (t: PracticeTest): PastAttempt[] => { try { return JSON.parse(t.attempts) as PastAttempt[]; } catch { return []; } };
   return (
     <div className="stack">
-      <Note kind="info" title="Practice, not examination">Practice tests prepare you for the JUPEB examination. They are timed and marked at once, and never count towards your result.</Note>
+      <Note kind="info" title="Practice, not examination">Practice tests prepare you for the JUPEB examination. They are timed and marked at once, and never count towards your result.
+        A mock examination is sat once, within its window, and its result is shown when the JUPEB Office releases it.</Note>
       <Panel title="Practice tests of your subjects">
         <PBody>
           {!tests.length ? <p className="sub2">No practice test is open for your subjects yet. The JUPEB Office adds them here.</p> : (
             <DTable noPrint pageSize={0} cols={["Subject", "Test", "Questions|num", "Time", "Attempts|num", "Best|num", ""]} rows={tests.map((t) => {
               const left = t.attempts_allowed - Number(t.used);
-              return [`${t.code} · ${t.subject}`, t.title, Math.min(t.questions_per_attempt, Number(t.questions)), `${t.duration_minutes} min`, `${t.used}/${t.attempts_allowed}`,
-                t.best == null ? "—" : `${Number(t.best)}%`,
+              const mock = t.kind === "MOCK";
+              const notYetOpen = mock && !!t.opens_at && !!now && t.opens_at > now;
+              const closed = mock && !!t.closes_at && !!now && t.closes_at <= now;
+              return [`${t.code} · ${t.subject}`, <span key="t">{t.title}{mock ? <span className="sub2" style={{ display: "block" }}>{`Mock examination · ${when(t.opens_at ?? "")} – ${when(t.closes_at ?? "")}`}</span> : null}</span>,
+                Math.min(t.questions_per_attempt, Number(t.questions)), `${t.duration_minutes} min`, `${t.used}/${t.attempts_allowed}`,
+                mock && !t.results_released_at ? (Number(t.used) ? <Pil key="h" kind="info">Result held</Pil> : "—") : t.best == null ? "—" : `${Number(t.best)}%`,
                 t.open_attempt ? <Btn key="b" kind="primary" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/attempts/${t.open_attempt}`)}>Resume</Btn>
+                  : notYetOpen ? <span key="b" className="sub2">{`Opens ${when(t.opens_at ?? "")}`}</span>
+                  : closed && left > 0 ? <span key="b" className="sub2">Closed</span>
                   : left > 0 ? <Btn key="b" kind="secondary" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/${t.id}/start`, "POST")}>Start</Btn>
                   : <span key="b" className="sub2">No attempts left</span>];
             })} />
           )}
         </PBody>
       </Panel>
+      {topics.length ? (
+        <Panel title="Your topics, weakest first">
+          <PBody>
+            <p className="sub2">How you have answered the questions of each topic of the syllabus in your practice — the topics to read again come first.</p>
+            <DTable noPrint pageSize={10} cols={["Subject", "Topic", "Answered|num", "Right|num", "Score|num"]} rows={topics.map((x) => [x.subject_code, x.label, x.answered, x.correct,
+              <Pil key="p" kind={Number(x.percentage) >= 70 ? "ok" : Number(x.percentage) >= 50 ? "info" : "warn"}>{`${Number(x.percentage)}%`}</Pil>])} />
+          </PBody>
+        </Panel>
+      ) : null}
       {tests.some((t) => past(t).length) ? (
         <Panel title="Your past attempts">
           <PBody>
             <DTable noPrint pageSize={0} cols={["Test", "Attempt|num", "Submitted", "Score|num", "", ""]} rows={tests.flatMap((t) => past(t).map((a) => [
-              t.title, a.number, when(a.submittedAt), `${a.score}/${a.total}`, `${Number(a.percentage)}%`,
+              t.title, a.number, when(a.submittedAt), a.score == null ? "Held" : `${a.score}/${a.total}`, a.percentage == null ? "—" : `${Number(a.percentage)}%`,
               <Btn key="r" kind="ghost" disabled={busy} onClick={() => void open(`/api/v1/jupeb/me/practice/attempts/${a.id}`)}>Review</Btn>,
             ]))} />
           </PBody>
@@ -1398,17 +1420,19 @@ function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; se
   const mm = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
   return (
     <div className="stack">
-      <Panel title={`${paper.test.title} · attempt ${paper.attempt.number}`} right={over
-        ? <span className="row"><Pil kind={Number(paper.attempt.percentage) >= 50 ? "ok" : "warn"}>{`${paper.attempt.score}/${paper.attempt.total} · ${Number(paper.attempt.percentage)}%`}</Pil><Btn kind="ghost" onClick={onClose}>Back to the tests</Btn></span>
+      <Panel title={`${paper.test.title} · ${paper.test.kind === "MOCK" ? "mock examination" : `attempt ${paper.attempt.number}`}`} right={over
+        ? <span className="row">{paper.attempt.resultsHeld ? <Pil kind="info">Submitted — result held</Pil>
+          : <Pil kind={Number(paper.attempt.percentage) >= 50 ? "ok" : "warn"}>{`${paper.attempt.score}/${paper.attempt.total} · ${Number(paper.attempt.percentage)}%`}</Pil>}<Btn kind="ghost" onClick={onClose}>Back to the tests</Btn></span>
         : <span className="row"><Pil kind={left < 60 ? "bad" : left < 300 ? "warn" : "info"}>{`Time left ${mm}`}</Pil><span className="sub2">{answered}/{qs.length} answered</span></span>}>
         <PBody>
           {paper.test.instructions && !over ? <p className="sub2" style={{ whiteSpace: "pre-line" }}>{paper.test.instructions}</p> : null}
-          {over && !paper.test.showAnswers ? <Note kind="info" title="Marked">This test shows which you got right, not the answers.</Note> : null}
+          {over && paper.attempt.resultsHeld ? <Note kind="info" title="Your mock examination is submitted">Its result is shown here when the JUPEB Office releases the results.</Note>
+            : over && !paper.test.showAnswers ? <Note kind="info" title="Marked">This test shows which you got right, not the answers.</Note> : null}
           <div className="row" style={{ flexWrap: "wrap", gap: 6, marginBottom: "var(--s-3)" }}>
             {qs.map((x, i) => (
               <button key={x.id} type="button" aria-label={`Question ${x.n}`} onClick={() => setAt(i)} className="btn btn--sm"
                 style={{ minWidth: 34, fontWeight: i === at ? 700 : 400, outline: i === at ? "2px solid var(--primary)" : undefined,
-                  background: over ? (x.correct ? "var(--green-bg)" : "var(--red-bg)") : x.chosen ? "var(--sky-bg)" : undefined }}>{x.n}</button>
+                  background: over && !paper.attempt.resultsHeld ? (x.correct ? "var(--green-bg)" : "var(--red-bg)") : x.chosen ? "var(--sky-bg)" : undefined }}>{x.n}</button>
             ))}
           </div>
           {q ? (
@@ -1432,7 +1456,7 @@ function PracticeRunner({ paper, setPaper, onClose }: { paper: PracticePaper; se
                   );
                 })}
               </div>
-              {over ? (
+              {over && !paper.attempt.resultsHeld ? (
                 <p className="mt-2">{q.correct ? <Pil kind="ok">Correct</Pil> : <Pil kind="bad">{q.chosen ? "Not correct" : "Not answered"}</Pil>}
                   {q.answer ? <span className="sub2">{` The answer is ${q.answer}. `}<MathText text={q.explanation} /></span> : null}</p>
               ) : null}
@@ -1544,6 +1568,55 @@ function Results({ me }: { me: Candidate }) {
         {gp && gp.bonus ? <p className="hint">One point added: all three subjects are passed.</p> : null}
       </PBody>
     </Panel>
+  );
+}
+
+/** V355: the continuous assessment of each subject, once the JUPEB Office has locked it */
+function MyAssessment() {
+  const [d, setD] = useState<{ components: { id: string; code: string; title: string; max_score: number }[]; subjects: { id: string; code: string; title: string; locked_at: string | null; scores: Record<string, number | null>; total: number | null }[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<NonNullable<typeof d>>("/api/v1/jupeb/me/ca").then((r) => { if (live && r.ok) setD(r.data); });
+    return () => { live = false; };
+  }, []);
+  if (!d || !d.components.length || !d.subjects.some((s) => s.locked_at)) return null;
+  const outOf = d.components.reduce((n, c) => n + Number(c.max_score), 0);
+  const fmt = (n: number | null | undefined) => (n == null ? "—" : String(Number(n)));
+  return (
+    <Panel title="Continuous assessment">
+      <PBody>
+        <p className="sub2">Your continuous assessment in each subject, as the JUPEB Office has made it final for the Board. A subject not yet final shows nothing.</p>
+        <DTable noPrint pageSize={0} cols={["Subject", ...d.components.map((c) => `${c.title} /${Number(c.max_score)}|num`), `Total /${outOf}|num`]}
+          rows={d.subjects.map((s) => [s.title, ...d.components.map((c) => (s.locked_at ? fmt(s.scores?.[c.id]) : "")), s.locked_at ? fmt(s.total) : <span key="n" className="sub2">Not yet final</span>])} />
+      </PBody>
+    </Panel>
+  );
+}
+
+/** V355: the examination — the dates, the papers of the student's subjects once the JUPEB Office publishes the timetable, and the admit card */
+function Exams() {
+  const [d, setD] = useState<MyExams | null>(null);
+  useEffect(() => {
+    let live = true;
+    void jcall<MyExams>("/api/v1/jupeb/me/exams").then((r) => { if (!live) return; if (r.ok) setD(r.data); else notifyProblem(r.problem); });
+    return () => { live = false; };
+  }, []);
+  if (!d) return <Note kind="info" title="Loading your examination…">One moment.</Note>;
+  return (
+    <div className="stack">
+      {d.examinations ? <Note kind="info" title={`The JUPEB examination: ${day(d.examinations.starts_on)}${d.examinations.ends_on && d.examinations.ends_on !== d.examinations.starts_on ? ` – ${day(d.examinations.ends_on)}` : ""}`}>
+        {`${d.examinations.title}. Your examination number: ${d.examNo ?? "not yet assigned"}.`}</Note> : null}
+      <Panel title={`Your examination timetable · ${d.session}`} right={d.admitCard ? <LinkBtn kind="primary" href="/jupeb/pdf/admit">Admit card</LinkBtn> : null}>
+        <PBody>
+          {!d.published ? <p className="sub2">The JUPEB Office publishes the timetable of the examination here once the Board releases it. You are told when it is published.</p>
+            : !d.papers.length ? <p className="sub2">No paper of your subjects is on the published timetable. Ask the JUPEB Office.</p> : (
+              <DTable noPrint pageSize={0} cols={["Day", "Time", "Subject", "Paper", "Centre"]} rows={d.papers.map((x) => [day(x.day), `${x.starts_at}${x.ends_at ? ` – ${x.ends_at}` : ""}`,
+                `${x.subject_title}${x.option_title ? ` (${x.option_title})` : ""}`, `${x.title} · ${EXAM_KIND[x.kind] ?? x.kind}`, x.centre ?? "—"])} />
+            )}
+          {d.published && !d.admitCard ? <p className="sub2 mt-2">{d.cleared ? "Your admit card is issued when your examination number is assigned." : "Your admit card is issued once you are cleared for the examination — see your clearance on the overview."}</p> : null}
+        </PBody>
+      </Panel>
+    </div>
   );
 }
 

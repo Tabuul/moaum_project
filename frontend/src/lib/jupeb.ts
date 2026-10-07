@@ -132,6 +132,8 @@ export const EVENT_LABEL: Record<string, string> = {
   REFUND_CLAIM_OPENED: "Refund claim opened with the Bursary", REFUND_DETAILS_GIVEN: "Account for a refund given", REFUND_PROPOSED: "Refund raised by the Bursary",
   REFUND_DECLINED: "Refund claim declined by the Bursary", REFUND_PAID: "Refund paid by the Bursary", PRACTICE_ADVICE: "Advised on practice tests",
   SESSION_REFILED: "Re-filed under another session", SUBJECT_OPTION: "Subject option chosen",
+  BOARD_SENT: "Sent to the JUPEB Board", BOARD_CONFIRMED: "Registration confirmed by the Board", BOARD_CORRECTION_NEEDED: "Correction asked by the Board",
+  BOARD_CORRECTED: "Correction sent to the Board", BOARD_WITHDRAWN: "Withdrawn from the Board's registration",
 };
 export const OLEVEL_GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9", "AR"];
 export const OLEVEL_EXAMS = ["WAEC", "NECO", "NABTEB", "GCE", "OTHER"];
@@ -234,8 +236,10 @@ export interface Slot {
 /** V347: a practice attempt's paper — the answer key only after submission (the server decides) */
 export interface PracticeQuestion { id: string; n: number; stem: string; options: Record<string, string>; chosen: string | null; answer?: string; correct?: boolean; explanation?: string | null; image?: boolean }
 export interface PracticePaper {
-  attempt: { id: string; number: number; startedAt: string; endsAt: string; submittedAt: string | null; score: number | null; total: number; percentage: number | null; answered: number; secondsLeft: number };
-  test: { id: string; title: string; instructions: string | null; durationMinutes: number; showAnswers: boolean };
+  attempt: { id: string; number: number; startedAt: string; endsAt: string; submittedAt: string | null; score: number | null; total: number; percentage: number | null; answered: number; secondsLeft: number;
+    /** V355: a mock examination's result, held until the JUPEB Office releases it */
+    resultsHeld?: boolean };
+  test: { id: string; title: string; instructions: string | null; durationMinutes: number; showAnswers: boolean; kind?: "PRACTICE" | "MOCK" };
   questions: PracticeQuestion[];
 }
 export const REQUEST_STATE: Record<string, [string, "info" | "ok" | "bad" | "grey" | "warn"]> = {
@@ -244,7 +248,12 @@ export const REQUEST_STATE: Record<string, [string, "info" | "ok" | "bad" | "gre
 export const PAPER_KIND: Record<string, string> = {
   RESULT: "Statement of result", ADMISSION_LETTER: "Admission letter", ACCEPTANCE_LETTER: "Acceptance letter", STATUS_SLIP: "Admission status slip",
   REGISTRATION_SLIP: "Registration slip", ACKNOWLEDGEMENT: "Application acknowledgement", RECEIPT: "Payment receipt", ID_CARD: "Identity card",
+  ADMIT_CARD: "Examination admit card",
 };
+/** V355: a paper of the JUPEB examination, as the candidate sits it */
+export interface ExamPaper { paper_id: string; subject_code: string; subject_title: string; option_title: string | null; title: string; kind: string; sits_on: string; day: string; starts_at: string; ends_at: string | null; centre: string | null; note: string | null }
+export interface MyExams { session: string; published: boolean; examinations: { starts_on: string; ends_on: string | null; title: string } | null; examNo: string | null; papers: ExamPaper[]; cleared: boolean; admitCard: boolean }
+export const EXAM_KIND: Record<string, string> = { CBT: "CBT", PAPER: "Written paper", PRACTICAL: "Practical", ORAL: "Oral" };
 /** V349: whom a notice of the JUPEB Office reaches */
 export const AUDIENCE: Record<string, string> = {
   ALL: "Everyone in the session", APPLICANTS: "Applicants not yet admitted", ADMITTED: "Everyone admitted", STUDENTS: "Active students",

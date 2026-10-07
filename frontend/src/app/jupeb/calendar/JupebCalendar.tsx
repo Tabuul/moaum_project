@@ -83,7 +83,7 @@ export function JupebCalendar({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB calendar" description="The session's dates: the JUPEB Board's calendar and the University's own JUPEB events. The portal works from the marked ones — teaching starts, the second semester starts, the Board's registration, the examinations and the results."
+      <PageHead title="JUPEB calendar" description="The session's dates: the JUPEB Board's calendar and the University's own JUPEB events. The portal works from the marked ones — teaching starts, the second semester starts, the Board's registration, the examinations and the results. The marked deadlines are reminded by the daily job: the students a week and a day before theirs, the JUPEB Office 14, 7 and 1 days before each, the lecturers before the continuous assessment is due."
         actions={<select className="ctl" aria-label="Session" value={d.session} onChange={(e) => setSession(e.target.value)}>{d.sessions.map((x) => <option key={x}>{x}</option>)}</select>} />
       {planned ? <Note kind="info" title="A planned calendar">{`These dates were carried forward a year from the session before. Check them against the Board's calendar for ${d.session} when it is published, correct any that differ, and confirm.`}</Note> : null}
       <KvGrid cls="grid--4" pairs={[["Session", `${d.session}${d.session === d.currentSession ? " (current)" : ""}`], ["Semester now", d.session === d.currentSession ? (d.semester === 2 ? "Second" : "First") : "—"],

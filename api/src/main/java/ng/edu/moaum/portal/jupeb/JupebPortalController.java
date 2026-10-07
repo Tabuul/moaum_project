@@ -368,7 +368,7 @@ class JupebPortalController {
 
     /* ── verifiable papers (V343): the code a paper's QR carries, issued by the server for the record as it stands ── */
 
-    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT") String kind,
+    public record PaperIn(@NotBlank @Pattern(regexp = "RESULT|ADMISSION_LETTER|ACCEPTANCE_LETTER|STATUS_SLIP|REGISTRATION_SLIP|ACKNOWLEDGEMENT|RECEIPT|ADMIT_CARD") String kind,
                           @Size(max = 60) String reference) {
     }
 
@@ -607,6 +607,61 @@ class JupebPortalController {
         return mine(auth);
     }
 
+    /* ── V355: the examination — the student's own papers and admit card; their assessment once final; their weakest topics ── */
+
+    @GetMapping("/exams")
+    @Transactional(readOnly = true)
+    Map<String, Object> exams(Authentication auth) {
+        UUID app = me(auth);
+        Map<String, Object> a = jdbc.sql("SELECT session, exam_no, state FROM jupeb.application WHERE id = :a").param("a", app).query().singleRow();
+        String s = String.valueOf(a.get("session"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("published", jdbc.sql("SELECT EXISTS (SELECT 1 FROM jupeb.exam_timetable WHERE session = :s AND published_at IS NOT NULL)").param("s", s).query(Boolean.class).single());
+        out.put("examinations", jdbc.sql("""
+                SELECT starts_on::text AS starts_on, ends_on::text AS ends_on, title FROM jupeb.calendar_event WHERE session = :s AND marker = 'EXAMINATIONS' AND removed_at IS NULL
+                """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("examNo", a.get("exam_no"));
+        out.put("papers", jdbc.sql("SELECT *, sits_on::text AS day FROM jupeb.exam_schedule(:a, false)").param("a", app).query().listOfRows());
+        out.put("cleared", "STUDENT".equals(a.get("state")) && jdbc.sql("SELECT coalesce((SELECT cleared FROM jupeb.exam_clearance(:s) WHERE application_id = :a), false)")
+                .param("s", s).param("a", app).query(Boolean.class).single());
+        out.put("admitCard", jdbc.sql("SELECT jupeb.paper_facts(:a, 'ADMIT_CARD', NULL, false) IS NOT NULL").param("a", app).query(Boolean.class).single());
+        return out;
+    }
+
+    /** the student's continuous assessment, subject by subject — only once the JUPEB Office has locked the subject's */
+    @GetMapping("/ca")
+    @Transactional(readOnly = true)
+    Map<String, Object> assessment(Authentication auth) {
+        UUID app = me(auth);
+        String s = jdbc.sql("SELECT session FROM jupeb.application WHERE id = :a").param("a", app).query(String.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("components", jdbc.sql("SELECT id, code, title, max_score FROM jupeb.ca_component WHERE session = :s AND active ORDER BY ord, code").param("s", s).query().listOfRows());
+        out.put("subjects", jdbc.sql("""
+                SELECT sj.id, sj.code, sj.title, l.locked_at,
+                       (SELECT coalesce(jsonb_object_agg(c.id::text, x.score), '{}'::jsonb)::text FROM jupeb.ca_component c
+                          LEFT JOIN jupeb.ca_score x ON x.component_id = c.id AND x.application_id = r.application_id AND x.subject_id = r.subject_id
+                         WHERE c.session = :s AND c.active AND l.locked_at IS NOT NULL) AS scores,
+                       CASE WHEN l.locked_at IS NOT NULL THEN (SELECT sum(x.score) FROM jupeb.ca_score x JOIN jupeb.ca_component c ON c.id = x.component_id AND c.active
+                                                                WHERE x.application_id = r.application_id AND x.subject_id = r.subject_id) END AS total
+                  FROM jupeb.subject_registration r JOIN jupeb.subject sj ON sj.id = r.subject_id
+                  LEFT JOIN jupeb.ca_lock l ON l.session = :s AND l.subject_id = r.subject_id AND l.unlocked_at IS NULL
+                 WHERE r.application_id = :a ORDER BY sj.title
+                """).param("s", s).param("a", app).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+                    m.put("scores", JupebView.readJson(String.valueOf(r.get("scores"))));
+                    return m;
+                }).toList());
+        return out;
+    }
+
+    /** the student's practice by syllabus topic, weakest first (a mock's only once released) */
+    @GetMapping("/practice/topics")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> practiceTopics(Authentication auth) {
+        return jdbc.sql("SELECT * FROM jupeb.practice_topics(:a)").param("a", me(auth)).query().listOfRows();
+    }
+
     /** the practice tests of the student's subjects, with the attempts left and the best score */
     @GetMapping("/practice")
     @Transactional(readOnly = true)
@@ -616,10 +671,13 @@ class JupebPortalController {
                 SELECT t.id, t.title, t.instructions, t.duration_minutes, t.questions_per_attempt, t.attempts_allowed, t.show_answers, s.code, s.title AS subject,
                        (SELECT count(*) FROM jupeb.practice_question q WHERE q.test_id = t.id AND q.active) AS questions,
                        (SELECT count(*) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app) AS used,
-                       (SELECT max(p.percentage) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NOT NULL) AS best,
+                       CASE WHEN t.kind = 'MOCK' AND t.results_released_at IS NULL THEN NULL
+                            ELSE (SELECT max(p.percentage) FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NOT NULL) END AS best,
+                       t.kind, t.opens_at, t.closes_at, t.results_released_at,
                        (SELECT p.id FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NULL) AS open_attempt,
-                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'number', p.number, 'submittedAt', p.submitted_at, 'score', p.score, 'total', p.total,
-                                                                     'percentage', p.percentage) ORDER BY p.number), '[]'::jsonb)::text
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'number', p.number, 'submittedAt', p.submitted_at, 'total', p.total, 'score',
+                                                                     CASE WHEN t.kind = 'MOCK' AND t.results_released_at IS NULL THEN NULL ELSE p.score END, 'percentage',
+                                                                     CASE WHEN t.kind = 'MOCK' AND t.results_released_at IS NULL THEN NULL ELSE p.percentage END) ORDER BY p.number), '[]'::jsonb)::text
                           FROM jupeb.practice_attempt p WHERE p.test_id = t.id AND p.application_id = :app AND p.submitted_at IS NOT NULL) AS attempts
                   FROM jupeb.practice_test t JOIN jupeb.subject s ON s.id = t.subject_id
                  WHERE t.open AND t.subject_id IN (SELECT subject_id FROM jupeb.practice_subjects(:app))
