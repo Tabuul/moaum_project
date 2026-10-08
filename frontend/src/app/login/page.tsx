@@ -2,6 +2,9 @@ import { API_URL } from "@/lib/api";
 import type { PublicWindows } from "@/components/ApplicationClosed";
 import { Login } from "./Login";
 
+/** the tab reads as the CMS sign-in's does, with the portal's own name */
+export const metadata = { title: "MOAUM Portal: Portal Login | Rev. Fr. Moses Orshio Adasu University, Makurdi" };
+
 export const dynamic = "force-dynamic";
 
 /** one door; whether single sign-on is connected is the API's to say */

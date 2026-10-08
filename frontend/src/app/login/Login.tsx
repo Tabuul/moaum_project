@@ -2,16 +2,17 @@
 
 import { notifyProblem } from "@/components/proto/Toast";
 /**
- * viewLogin — proto/part3.html, as drawn: the brand, the card, the number, the
- * password. One door: the number typed says whether a student, a member of staff
- * or an applicant is signing in, and the portal opens on that person's own side.
+ * The sign-in page, drawn as the University's CMS sign-in is (cms.moaum.edu.ng): the brand card with the crest turning in
+ * its orbits, and the form beside it. One door: the number typed says whether a student, a member of staff or an applicant
+ * is signing in, and the portal opens on that person's own side.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Btn, Ico, Note, PageHead } from "@/components/proto/ui";
+import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import css from "./Login.module.css";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
 const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
@@ -30,6 +31,21 @@ function whoIs(id: string): string {
   return "A member of staff, on the staff number";
 }
 
+/** the line icons the form uses, drawn as the CMS draws them */
+function Icon({ name, className }: { name: "shield" | "user" | "lock" | "eye" | "eyeoff"; className?: string }) {
+  const paths: Record<string, ReactNode> = {
+    shield: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+    lock: <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+    eye: <><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0" /><circle cx="12" cy="12" r="3" /></>,
+    eyeoff: <><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c4.98 0 9.2 3.13 10.88 7.55a1 1 0 0 1 0 .7 10.97 10.97 0 0 1-1.44 2.49" /><path d="M14.08 14.16a3 3 0 0 1-4.24-4.24" /><path d="M17.48 17.5A10.75 10.75 0 0 1 1.12 12.55a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 4.45-5.14" /><path d="m2 2 20 20" /></>,
+  };
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={name === "shield" ? 2 : 1.5}
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">{paths[name]}</svg>
+  );
+}
+
 export function Login({ next, sso, ssoProblem = null }: {
   next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
   /** V312: which application windows are open — no longer shown here: the sign-in page is for signing in alone, and applicants reach their application pages directly */
@@ -43,6 +59,10 @@ export function Login({ next, sso, ssoProblem = null }: {
   const [problem, setProblem] = useState<Problem | null>(null);
 
   async function signIn() {
+    if (!uid.trim() || !pw) {
+      setProblem({ status: 400, title: "Enter your username and password", detail: "Both are needed to sign in." });
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
@@ -64,53 +84,116 @@ export function Login({ next, sso, ssoProblem = null }: {
   const who = whoIs(uid);
 
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
-        </div>
-      </div>
-      <div className="login-panel">
-        <form className="login-card" onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
-          <PageHead title="Sign in" />
-          <div className="field">
-            <label htmlFor="uid">Username</label>
-            <input id="uid" value={uid} placeholder="MOAUM/CSC/23/1487 · MOAUM/STF/1142 · 202699168863AH" autoComplete="username" onChange={(e) => setUid(e.target.value)} />
-            <div className="hint">{who || "Students: the matriculation number. Staff: the staff number or email. Applicants: the JAMB or application number, or the email you registered with."}</div>
-          </div>
-          <div className="field">
-            <label htmlFor="pw">Password</label>
-            <div className="pwrow">
-              <input id="pw" type={showPw ? "text" : "password"} value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} />
-              <button
-                type="button"
-                className="pweye"
-                onClick={() => setShowPw((v) => !v)}
-                aria-label={showPw ? "Hide password" : "Show password"}
-                aria-pressed={showPw}
-                title={showPw ? "Hide password" : "Show password"}
-              >
-                <Ico name={showPw ? "eyeoff" : "eye"} size={18} stroke="currentColor" w={1.9} />
-              </button>
+    <main className={css.page}>
+      <aside className={css.aside}>
+        <div className={css.card}>
+          <div className={css.cardBg} aria-hidden="true" />
+          <div className={css.cardDots} aria-hidden="true" />
+          <div className={css.blobCrimson} aria-hidden="true" />
+          <div className={css.blobAmber} aria-hidden="true" />
+          <div className={css.sheen} aria-hidden="true" />
+
+          <div className={css.brand}>
+            <div className={css.crestBox}>
+              <span className={css.ringA} aria-hidden="true" />
+              <span className={css.ring} aria-hidden="true" />
+              <span className={css.ringB} aria-hidden="true" />
+              <span className={css.ripple} aria-hidden="true" />
+              <span className={css.ripple2} aria-hidden="true" />
+              <div className={css.scene}>
+                <div className={css.halo}>
+                  <div className={css.coin}>
+                    <div className={css.face}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/crest.png" alt="Crest of Rev. Fr. Moses Orshio Adasu University, Makurdi" />
+                    </div>
+                    <div className={`${css.face} ${css.faceBack}`} aria-hidden="true">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/crest.png" alt="" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className={css.titleBlock}>
+              <p className={css.uni}>Rev. Fr. Moses Orshio Adasu University, Makurdi</p>
+              <h1 className={css.title}>MOAUM Portal<span className={css.titleDot} aria-hidden="true" /></h1>
+              <span className={css.bar} aria-hidden="true" />
+              <p className={css.lead}>The one sign-in for the University&rsquo;s students, staff and applicants, and every office&rsquo;s desk.</p>
             </div>
           </div>
-          {problem ? <ProblemNotice problem={problem} /> : null}
-          {ssoProblem ? <Note kind="bad" title="Single sign-on did not complete">{ssoProblem}</Note> : null}
-          <Btn kind="primary" size="md" type="submit" disabled={busy || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</Btn>
-          {sso?.enabled ? (
-            <a className="btn btn--ghost btn--md" href="/api/auth/sso/start" style={{ width: "100%" }}>{sso.label}</a>
-          ) : null}
-          <div className="login-help">
-            <Link href="/login/forgot">Forgot your password?</Link>
-          </div>
-        </form>
-      </div>
-    </div>
+
+          <p className={css.motto}>
+            <span>Scientia Liberatio Populorum</span>
+            <span>Knowledge for the liberation of the people</span>
+          </p>
+        </div>
+      </aside>
+
+      <section className={css.main}>
+        <div className={css.mainLines} aria-hidden="true">
+          <svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" fill="none">
+            <defs>
+              <linearGradient id="plog-a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0f172a" stopOpacity="0.055" /><stop offset="1" stopColor="#0f172a" stopOpacity="0.005" /></linearGradient>
+              <linearGradient id="plog-b" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#0284c7" stopOpacity="0.06" /><stop offset="1" stopColor="#0284c7" stopOpacity="0.005" /></linearGradient>
+            </defs>
+            <polygon points="-80,-40 520,-80 300,300" fill="url(#plog-a)" />
+            <polygon points="300,300 520,-80 780,180" fill="url(#plog-b)" stroke="#94a3b8" strokeWidth="1" opacity="0.22" vectorEffect="non-scaling-stroke" />
+            <polygon points="1060,-60 1700,-20 1700,330 1320,420" fill="url(#plog-b)" />
+            <polygon points="1320,420 1700,330 1700,430" fill="url(#plog-a)" stroke="#94a3b8" strokeWidth="1" opacity="0.22" vectorEffect="non-scaling-stroke" />
+            <path d="M0 250 L1600 120" stroke="#0f172a" strokeWidth="1" opacity="0.035" vectorEffect="non-scaling-stroke" />
+          </svg>
+        </div>
+        <div className={css.mainDots} aria-hidden="true" />
+
+        <div className={css.formWrap}>
+          <p className={css.eyebrow}><Icon name="shield" className={css.eyebrowIcon} />Secure sign-in</p>
+          <h2 className={css.heading}>Portal Login</h2>
+          <p className={css.sub}>For the University&rsquo;s students, staff and applicants. Sign in to open your portal.</p>
+
+          <form className={css.form} noValidate onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
+            <div className={css.fieldBlock}>
+              <div className={css.labelRow}>
+                <label htmlFor="uid" className={css.label}>Username<span className={css.req} aria-hidden="true">*</span></label>
+              </div>
+              <div className={css.inputBox}>
+                <Icon name="user" className={css.inputIcon} />
+                <input id="uid" className={css.input} value={uid} placeholder="Matric, staff or JAMB number, or email" autoComplete="username" required
+                  aria-describedby="uid-hint" onChange={(e) => setUid(e.target.value)} />
+              </div>
+              <div id="uid-hint" className={css.hint}>{who || "Students: the matriculation number. Staff: the staff number or email. Applicants: the JAMB or application number, or the email you registered with."}</div>
+            </div>
+
+            <div className={css.fieldBlock}>
+              <div className={css.labelRow}>
+                <label htmlFor="pw" className={css.label}>Password<span className={css.req} aria-hidden="true">*</span></label>
+                <Link href="/login/forgot" className={css.forgot}>Forgot password?</Link>
+              </div>
+              <div className={css.inputBox}>
+                <Icon name="lock" className={css.inputIcon} />
+                <input id="pw" className={`${css.input} ${css.inputPw}`} type={showPw ? "text" : "password"} value={pw} autoComplete="current-password" required
+                  autoCapitalize="none" spellCheck={false} onChange={(e) => setPw(e.target.value)} />
+                <button type="button" className={css.eye} onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"}
+                  aria-pressed={showPw} title={showPw ? "Hide password" : "Show password"}>
+                  <Icon name={showPw ? "eyeoff" : "eye"} className={css.eyeIcon} />
+                </button>
+              </div>
+            </div>
+
+            {problem || ssoProblem ? (
+              <div className={css.notices}>
+                {problem ? <ProblemNotice problem={problem} /> : null}
+                {ssoProblem ? <Note kind="bad" title="Single sign-on did not complete">{ssoProblem}</Note> : null}
+              </div>
+            ) : null}
+
+            <button type="submit" className={css.submit} disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+            {sso?.enabled ? <a className={css.sso} href="/api/auth/sso/start">{sso.label}</a> : null}
+          </form>
+
+          <p className={css.foot}>Already reported a problem signing in? <Link href="/track">Track your ICT support ticket</Link></p>
+        </div>
+      </section>
+    </main>
   );
 }
