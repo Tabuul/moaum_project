@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 212
+\set EXPECTED 213
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7131,6 +7131,68 @@ BEGIN
                  AND k_agr = 'Core' AND b_agr = 'Core', false),
         format('gst=%s ent=%s mth=%s ges=%s bus=%s | stats=%s required=%s state=%s gate=%s | gst exam=%s exams office=%s | claimed=%s family=%s/%s exam=%s | returned=%s/%s',
                g_gst, g_ent, g_mth, g_ges, g_bus, n_stats, e.required, e.state, r_gate, r_gst_exam, v_exam_office, g_bus2, n_assigned, g_mth_family, v_exam_after, k_agr, b_agr));
+END $$;
+
+-- ── V368: an upload keeps an EPS classification and a course given back; every move is listed; the old-portal reconciliation reads refunds by their payment ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); S text := '9972/9973'; pa text := 'C00023'; dept text; st uuid := gen_random_uuid();
+        g_bus text; g_mth text; k_agr text; b_agr text; k_agr2 text; g_agr2 text; rel_agr2 timestamptz; n_return int; n_claim int; n_upload int; v_conf timestamptz; mv uuid;
+        ref text; rf text; imp uuid; v_status text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9972-10-01', date '9973-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+        -- the upload: a course classified EPS is the EPS office's, whatever its code; one classified GST outside the families is no office's
+        PERFORM catalogue.import_catalogue(jsonb_build_array(
+            jsonb_build_object('code', 'BUS 941', 'title', 'Check Business Creation', 'units', '2', 'level', '300', 'semester', '1', 'ownerDepartment', dept, 'offeringProgramme', pa, 'classification', 'EPS'),
+            jsonb_build_object('code', 'MTH 942', 'title', 'Check General Mathematics', 'units', '3', 'level', '100', 'semester', '1', 'ownerDepartment', dept, 'offeringProgramme', pa, 'classification', 'GST'),
+            jsonb_build_object('code', 'AGR 943', 'title', 'Check Introductory Agriculture', 'units', '2', 'level', '100', 'semester', '1', 'ownerDepartment', dept, 'offeringProgramme', pa, 'classification', 'GST')),
+            true, 'v368.xlsx');
+        SELECT general_office INTO g_bus FROM catalogue.course WHERE code = 'BUS 941';
+        SELECT general_office INTO g_mth FROM catalogue.course WHERE code = 'MTH 942';
+        -- given back, it stays given back: the next upload marking it GST changes neither the course nor its binding
+        PERFORM catalogue.return_general_course('AGR 943', 'a departmental course');
+        PERFORM catalogue.import_catalogue(jsonb_build_array(
+            jsonb_build_object('code', 'AGR 943', 'title', 'Check Introductory Agriculture', 'units', '2', 'level', '100', 'semester', '1', 'ownerDepartment', dept, 'offeringProgramme', pa, 'classification', 'GST')),
+            true, 'v368-again.xlsx');
+        SELECT kind INTO k_agr FROM catalogue.course WHERE code = 'AGR 943';
+        SELECT basis INTO b_agr FROM catalogue.course_offer WHERE course_code = 'AGR 943' AND programme_code = pa AND level = 100;
+        -- an office takes it back on purpose
+        PERFORM catalogue.claim_general_course('AGR 943', 'GST');
+        SELECT kind, general_office, general_released_at INTO k_agr2, g_agr2, rel_agr2 FROM catalogue.course WHERE code = 'AGR 943';
+        -- every move kept with its cause, and confirmed by the office it touches
+        SELECT count(*) FILTER (WHERE cause = 'RETURN'), count(*) FILTER (WHERE cause = 'CLAIM') INTO n_return, n_claim FROM catalogue.general_reclassification WHERE course_code = 'AGR 943';
+        SELECT id INTO mv FROM catalogue.general_reclassification WHERE course_code = 'AGR 943' AND cause = 'CLAIM';
+        PERFORM catalogue.confirm_reclassification(mv);
+        SELECT confirmed_at INTO v_conf FROM catalogue.general_reclassification WHERE id = mv;
+        -- the old-portal reconciliation: a student whose GST payment here was refunded is not refused the old portal's as a duplicate
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(S, 5000, NULL, NULL, NULL, NULL, current_date, 'V368 check', who, 'bursar');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/72/972001', 'MOAUM/CHK/72/9721', 'ZZV368A', 'Refunded', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+        ref := finance.new_purpose_reference(st, S, 5000, 'GST fee ' || S);
+        PERFORM finance.confirm_payment(ref, 'Bank transfer', 'V368 check');
+        rf := finance.propose_refund(st, 'ZZV368A Refunded', 'V368 check: duplicate', 5000, NULL, NULL, NULL, ref);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf));
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        imp := (finance.legacy_gst_new_import('v368.xlsx', S, 'check')).id;
+        PERFORM finance.legacy_gst_stage(imp, jsonb_build_array(jsonb_build_object('transactionId', 'CHK-V368-1', 'reference', 'CHK-V368-OLD', 'matric', 'MOAUM/CHK/72/9721',
+                                                                                    'paymentType', 'GST', 'amount', '5000', 'paidAt', '9972-10-15', 'session', S, 'status', 'SUCCESS')));
+        PERFORM finance.legacy_gst_match(imp);
+        PERFORM finance.legacy_gst_validate(imp);
+        SELECT rc.status INTO v_status FROM finance.legacy_gst_payment p JOIN finance.legacy_gst_reconciliation rc ON rc.payment_id = p.id WHERE p.source_transaction_id = 'CHK-V368-1';
+        RAISE EXCEPTION 'the V368 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V368: an upload classified EPS files the course with the EPS office and one classified GST outside the families with nobody; a course given back stays its department''s through the next upload until an office claims it; every move is kept with its cause and confirmed; a refunded GST payment does not make an old-portal payment a duplicate',
+        coalesce(g_bus = 'EPS' AND g_mth IS NULL AND k_agr = 'Core' AND b_agr = 'Core' AND k_agr2 = 'GST' AND g_agr2 = 'GST' AND rel_agr2 IS NULL
+                 AND n_return = 1 AND n_claim = 1 AND v_conf IS NOT NULL AND v_status = 'MATCHED', false),
+        format('bus=%s mth=%s | after upload=%s/%s | claimed=%s/%s/%s | moves return=%s claim=%s confirmed=%s | legacy=%s',
+               g_bus, g_mth, k_agr, b_agr, k_agr2, g_agr2, rel_agr2, n_return, n_claim, v_conf IS NOT NULL, v_status));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

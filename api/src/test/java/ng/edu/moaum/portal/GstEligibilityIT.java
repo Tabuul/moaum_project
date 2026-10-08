@@ -257,6 +257,17 @@ class GstEligibilityIT {
         assertThat(jdbc.sql("SELECT kind FROM catalogue.course WHERE code = :c").param("c", dept).query(String.class).single()).isEqualTo("Core");
         assertThat(jdbc.sql("SELECT basis FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :b").param("c", dept).param("b", PROG_B).query(String.class).single()).isEqualTo("Core");
         assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("entitlement")).get("required")).isEqualTo(false);
+        // V368: both moves are listed for the office to confirm; the EPS office neither confirms on the GST door nor reaches a GST move
+        List<Map<String, Object>> moves = l(it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION).getBody().get("reclassified")).stream()
+                .filter(x -> dept.equals(x.get("course_code"))).toList();
+        assertThat(moves).extracting(x -> x.get("cause")).containsExactlyInAnyOrder("CLAIM", "RETURN");
+        assertThat(moves).allSatisfy(x -> { assertThat(x.get("confirmed_at")).isNull(); assertThat(x.get("given_back")).isEqualTo(true); });
+        String move = String.valueOf(moves.stream().filter(x -> "RETURN".equals(x.get("cause"))).findFirst().orElseThrow().get("id"));
+        assertThat(it.call(ItSupport.token("eps"), HttpMethod.POST, "/api/v1/gst/GST/reclassified/" + move + "/confirm", Map.of()).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("eps"), HttpMethod.POST, "/api/v1/gst/EPS/reclassified/" + move + "/confirm", Map.of()).getStatusCode().value()).isEqualTo(404);
+        ResponseEntity<Map> confirmed = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/reclassified/" + move + "/confirm", Map.of());
+        assertThat(confirmed.getStatusCode().value()).as(String.valueOf(confirmed.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT confirmed_office FROM catalogue.general_reclassification WHERE id = :id").param("id", UUID.fromString(move)).query(String.class).single()).isEqualToIgnoringCase("GST");
     }
 
     @Test

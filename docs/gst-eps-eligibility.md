@@ -223,3 +223,23 @@ The "paid, not required" list is also on the Bursary's Fee Setup page and at `GE
 - **Tests.** check.sql properties 211 (refund, review, offerings) and 212 (classification); GstEligibilityIT adds the
   classification, the open-all, the Bursary's decision and the gateway check at the API. FinancialAnalyticsIT moved to its
   own session (2081/2082) and cleans only its own rows, so it no longer collides with DefermentIT and StudentPortalIT.
+
+## 13. V368 — uploads keep the classification, every move listed, old-portal refunds
+
+- **A course upload no longer undoes V367.** A row classified EPS files a new or updated course under the EPS office
+  (GST is still left to the code families). A course an office gave back to its department carries
+  `catalogue.course.general_released_at`; a later upload's status G or GST classification leaves it Core, and a
+  programme binding to it with basis GST is stored as Core. Taking the course again (claim) clears the mark.
+- **Every move listed.** `catalogue.general_reclassification` keeps each move of a course between the GST office, the EPS
+  office and its department: before and after, the cause (RULE = the V367 classification on deploy, CLAIM, RETURN,
+  FAMILY, UPLOAD, EDIT), the reason, who and when. V367's moves were backfilled from the audit record; later ones are
+  written by a trigger. On the GST/EPS courses page, *Courses moved to or from this office* lists the moves that touched
+  the office, the unconfirmed first, with where each course stands now and **Confirm**, **This office's** (claim) or
+  **Give back to its department** beside each. Confirming (`POST /api/v1/gst/{office}/reclassified/{id}/confirm`, the
+  office itself) records who and when; nothing else changes.
+- **Old-portal GST reconciliation.** `finance.legacy_gst_validate_one` and `finance.legacy_gst_resolve` matched a refund on
+  the refund's own number, the same fault V367 fixed for the entitlement, so an old-portal payment from a student whose
+  portal GST payment had been refunded came out DUPLICATE. They now match on `source_reference`; such a payment comes out
+  MATCHED.
+- **Tests.** check.sql property 213; GstEligibilityIT lists and confirms the moves (another office: 403 on the GST door,
+  404 on its own).

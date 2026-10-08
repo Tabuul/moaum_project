@@ -520,6 +520,8 @@ class GstController {
         // V367: the code families that make a course the office's, and the courses an upload marked general that no office runs
         out.put("families", families());
         out.put("unassigned", unassigned(s));
+        // V368: every move that touched the office's courses — the reclassification of V367, a claim, a course given back, an upload — to confirm
+        out.put("reclassified", reclassified(o));
         out.put("offerHistory", jdbc.sql("""
                 SELECT h.course_code, h.programme_code, p.name AS programme, h.level, h.ended_at, h.reason, h.registrations_carried
                   FROM catalogue.course_offer_history h
@@ -720,6 +722,34 @@ class GstController {
         }
         jdbc.sql("SELECT code FROM catalogue.return_general_course(:c, :r)").param("c", c).param("r", body.reason().trim()).query(String.class).single();
         return Map.of("code", c, "kind", "Core");
+    }
+
+    /** V368: the office confirms a move that touched its courses is right (or takes or gives back the course instead) */
+    @PostMapping("/{office}/reclassified/{id}/confirm")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> confirmMove(@PathVariable String office, @PathVariable UUID id) {
+        String o = manage(office);
+        boolean ours = jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.general_reclassification WHERE id = :id AND (before_office = :o OR after_office = :o))")
+                .param("id", id).param("o", o).query(Boolean.class).single();
+        if (!ours) throw new ng.edu.moaum.portal.shared.NotFound("move", id);
+        jdbc.sql("SELECT id FROM catalogue.confirm_reclassification(:id)").param("id", id).query(UUID.class).single();
+        return Map.of("id", id, "confirmed", true);
+    }
+
+    /** the moves that touched the office's courses, the unconfirmed first, with where each course stands now */
+    private List<Map<String, Object>> reclassified(String office) {
+        return jdbc.sql("""
+                SELECT m.id, m.course_code, c.title, c.kind, c.general_office AS office_now, c.general_released_at IS NOT NULL AS given_back,
+                       m.before_office, m.after_office, m.before_kind, m.after_kind, m.cause, m.reason, m.changed_at, m.changed_office,
+                       m.confirmed_at, m.confirmed_office, d.name AS department,
+                       (SELECT count(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes
+                  FROM catalogue.general_reclassification m
+                  JOIN catalogue.course c ON c.code = m.course_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE m.before_office = :o OR m.after_office = :o
+                 ORDER BY (m.confirmed_at IS NULL) DESC, m.changed_at DESC LIMIT 500
+                """).param("o", office).query().listOfRows();
     }
 
     /** the acting office when it is the GST or the EPS office, else null */

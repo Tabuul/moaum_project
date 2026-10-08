@@ -10,10 +10,23 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
-import { num } from "@/lib/gst";
+import { dayOf, num } from "@/lib/gst";
 
 export interface GstFamily { prefix: string; office: "GST" | "EPS" | string; added_at: string }
 export interface UnassignedCourse { code: string; title: string; level: number; semester: number; units: number; dept_code: string | null; department: string | null; programmes: number; offered_this_session: boolean }
+/** V368: one move of a course between the offices and its department, read from the record kept of every move */
+export interface CourseMove {
+  id: string; course_code: string; title: string; kind: string; office_now: string | null; given_back: boolean; department: string | null; programmes: number;
+  before_office: string | null; after_office: string | null; before_kind: string | null; after_kind: string;
+  cause: "RULE" | "CLAIM" | "RETURN" | "FAMILY" | "UPLOAD" | "EDIT"; reason: string | null; changed_at: string; changed_office: string | null;
+  confirmed_at: string | null; confirmed_office: string | null;
+}
+
+const CAUSE_WORD: Record<CourseMove["cause"], string> = {
+  RULE: "Classified on deploy (V367)", CLAIM: "Taken by an office", RETURN: "Given back to its department",
+  FAMILY: "A code family", UPLOAD: "A course upload", EDIT: "A course edit",
+};
+const where = (office: string | null, kind: string | null) => office ? `${office} office` : kind === "GST" ? "General, no office" : "Its department";
 
 export function GstClassification({ office, may, families, unassigned }: { office: "GST" | "EPS"; may: boolean; families: GstFamily[]; unassigned: UnassignedCourse[] }) {
   const router = useRouter();
@@ -66,6 +79,56 @@ export function GstClassification({ office, may, families, unassigned }: { offic
           </span> : <span key="a" />,
         ])} />
       ) : null}
+    </Panel>
+  );
+}
+
+/** V368: every move that touched the office's courses — what the V367 classification did on deploy, a claim, a course given back,
+ *  an upload — with where the course stands now. The office confirms a move is right, or takes the course or gives it back instead. */
+export function GstMoves({ office, may, moves }: { office: "GST" | "EPS"; may: boolean; moves: CourseMove[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const open = moves.filter((m) => !m.confirmed_at).length;
+
+  async function call(path: string, body: unknown, reason: string, done: string) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/gst${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      notify(done);
+      router.refresh();
+    } finally { setBusy(false); }
+  }
+  const slug = (code: string) => encodeURIComponent(code.replace(/ /g, "_"));
+
+  if (!moves.length) return null;
+  return (
+    <Panel title="COURSES MOVED TO OR FROM THIS OFFICE" right={<span className="sub2">{open ? `${num(open)} to confirm` : "all confirmed"}</span>}>
+      {open ? (
+        <PBody>
+          <Note kind="info" title="Check each move">
+            These courses came to the {office} office or left it — most when the classification ran on deploy. Confirm a move that is right; take a course
+            this office runs but lost, or give back to its department one it does not run. A course given back stays its department&rsquo;s even if a later
+            course upload marks it G.
+          </Note>
+        </PBody>
+      ) : null}
+      <DTable pageSize={20} cols={["Course", "Moved|mid", "Now|mid", "How", "Confirmed", "|mid"]} rows={moves.map((m) => {
+        const ours = m.office_now === office;
+        return [
+          <span key="c"><b className="tnum">{m.course_code}</b><div className="sub2">{m.title}{m.department ? ` · ${m.department}` : ""} · {num(m.programmes)} programme{m.programmes === 1 ? "" : "s"}</div></span>,
+          <span key="m" className="sub2">{where(m.before_office, m.before_kind)} &rarr; {where(m.after_office, m.after_kind)}</span>,
+          <Pil key="n" kind={ours ? "ok" : m.office_now ? "info" : "grey"}>{where(m.office_now, m.kind)}{m.given_back ? " (given back)" : ""}</Pil>,
+          <span key="h" className="sub2">{CAUSE_WORD[m.cause]}<div>{dayOf(m.changed_at)}{m.changed_office ? ` · ${m.changed_office.toUpperCase()}` : ""}</div>{m.reason ? <div>{m.reason}</div> : null}</span>,
+          m.confirmed_at ? <span key="k" className="sub2">{dayOf(m.confirmed_at)}{m.confirmed_office ? ` · ${m.confirmed_office.toUpperCase()}` : ""}</span> : <Pil key="k" kind="warn">To confirm</Pil>,
+          may ? <span key="a" className="row row--inline row--tight">
+            {!m.confirmed_at ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void call(`/${office}/reclassified/${m.id}/confirm`, {}, `${m.course_code} move confirmed by the ${office} office`, `${m.course_code}: move confirmed`)}>Confirm</Btn> : null}
+            {!ours ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Take ${m.course_code} as a ${office} course? Its students then owe the GST fee for it, and this office examines it.`)) void call(`/${office}/courses/${slug(m.course_code)}/claim`, {}, `${m.course_code} taken by the ${office} office`, `${m.course_code} is now a ${office} course`); }}>This office&rsquo;s</Btn> : null}
+            {ours ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const why = window.prompt(`Give ${m.course_code} back to its department as a Core course? Say why:`, "A departmental course, not run by this office"); if (why && why.trim()) void call(`/courses/${slug(m.course_code)}/return`, { reason: why.trim() }, `${m.course_code} given back to its department: ${why.trim()}`, `${m.course_code} is its department's again`); }}>Give back to its department</Btn> : null}
+          </span> : <span key="a" />,
+        ];
+      })} />
     </Panel>
   );
 }

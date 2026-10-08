@@ -16,7 +16,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { STAGE_WORD, dayOf, num, type GstCourseRow, type GstGap, type GstOffice } from "@/lib/gst";
 import { GstGapsNote } from "@/components/gst/GstGapsNote";
-import { GstClassification, type GstFamily, type UnassignedCourse } from "@/components/gst/GstClassification";
+import { GstClassification, GstMoves, type CourseMove, type GstFamily, type UnassignedCourse } from "@/components/gst/GstClassification";
 
 export interface CatalogueCourse { code: string; title: string; units: number; level: number; semester: number; dept_code: string; department: string; state: string; ended_on: string | null; general_office: string; ca_max: number | null; programmes: number; offers: string | null; offered_this_session: boolean }
 export interface GstCoursesData {
@@ -29,6 +29,8 @@ export interface GstCoursesData {
   gaps?: GstGap[];
   /** V367: the code families that make a course the office's, and the courses marked general that no office runs */
   families?: GstFamily[]; unassigned?: UnassignedCourse[];
+  /** V368: every move that touched the office's courses, the unconfirmed first */
+  reclassified?: CourseMove[];
 }
 
 type Act = { kind: "new" } | { kind: "edit"; course: CatalogueCourse } | { kind: "offers"; course: CatalogueCourse } | { kind: "offer"; course: CatalogueCourse } | { kind: "lecturer"; offering: GstCourseRow };
@@ -144,6 +146,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
       ) : null}
 
       {data.families ? <GstClassification office={o} may={may} families={data.families} unassigned={data.unassigned ?? []} /> : null}
+      {data.reclassified ? <GstMoves office={o} may={may} moves={data.reclassified} /> : null}
 
       <Panel title={`${word} CATALOGUE`} right={<span className="sub2">{num(data.catalogue.length)} course{data.catalogue.length === 1 ? "" : "s"}</span>}>
         {data.catalogue.length ? <DTable pageSize={30} cols={["S/N|num", "Course", "Level|mid", "Sem|mid", "Units|num", "Department", "Programmes|num", "Status|mid", "Actions"]} rows={data.catalogue.map((c, i) => [
