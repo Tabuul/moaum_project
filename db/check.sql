@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 208
+\set EXPECTED 209
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6771,6 +6771,74 @@ BEGIN
         AND v_status = 'SUBMITTED' AND v_score = 0.5 AND v_max = 4 AND v_reason LIKE 'no contact for 2 minutes%',
         format('gst=%s enabled=%s short=%s pool=%s easy=%s hard=%s ver=%s frozen=%s kept=%s cleared=%s level=%s status=%s score=%s/%s reason=%s',
                v_gst_default, r_not_enabled, r_short, r_pool, v_easy, v_hard, v_ver, v_frozen, v_kept, v_cleared, v_level, v_status, v_score, v_max, v_reason));
+END $$;
+
+-- ── 209. V365: JUPEB on the one CBT engine — a subject not allowed CBT is refused; a JUPEB student sits only admitted, registered for the
+--            subject and with the semester's share of the school fee paid; the attempt names the JUPEB candidate; the result goes into the
+--            part of the JUPEB continuous assessment the office named, scaled to its maximum, through the JUPEB Office's own door ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := '2092/2093'; prog text; sub uuid; s2 uuid; s3 uuid; comb uuid; acc uuid; acc2 uuid; app uuid; app2 uuid;
+        ex assessment.cbt_exam; a assessment.cbt_attempt; q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid(); comp uuid;
+        r_not_enabled text; r_not_student text; r_not_reg text; r_fees text; r_paid text; v_kind text; v_cand int; v_written int; v_ca numeric; r_exam_sheet text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '2092-10-01', date '2093-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV365A', 'V365 Check Subject') RETURNING id INTO sub;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV365B', 'V365 Check Two') RETURNING id INTO s2;
+        INSERT INTO jupeb.subject (code, title) VALUES ('ZZV365C', 'V365 Check Three') RETURNING id INTO s3;
+        INSERT INTO jupeb.combination (code, name, subject1, subject2, subject3) VALUES ('ZZV365', 'V365 combination', sub, s2, s3) RETURNING id INTO comb;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.v365a@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.v365b@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc2;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at, exam_no)
+        VALUES (acc, ses, 'JUPEB/APP/2092/936501', 'ZZVTHREESIXFIVE', 'Candidate', 'zz.v365a@example.com', prog, comb, 'Benue', 'STUDENT', now(), 'ZZV365-0001') RETURNING id INTO app;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state)
+        VALUES (acc2, ses, 'JUPEB/APP/2092/936502', 'ZZVTHREESIXFIVE', 'Applicant', 'zz.v365b@example.com', prog, comb, 'Benue', 'ADMITTED') RETURNING id INTO app2;
+        BEGIN
+            ex := assessment.cbt_new_jupeb_exam(sub, ses, 1, 'V365 not yet a CBT subject', NULL, 30, 0, 'FIXED', false, false, 40, 1, 'STANDARD', 'REMOTE', 2, 'WARN', 'CONTINUE', NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_not_enabled := split_part(SQLERRM, ':', 1); END;
+        PERFORM jupeb.set_subject_cbt(sub, true);
+        ex := assessment.cbt_new_jupeb_exam(sub, ses, 1, 'V365 JUPEB test', NULL, 30, 0, 'FIXED', false, false, 40, 1, 'STANDARD', 'REMOTE', 2, 'WARN', 'CONTINUE',
+                                            now() - interval '1 minute', now() + interval '2 hours');
+        INSERT INTO assessment.question (id, jupeb_subject_id, stem, options, answer, kind, marks) VALUES (q1, sub, 'V365 one', '["a","b"]', 0, 'MCQ', 1), (q2, sub, 'V365 two', '["a","b"]', 1, 'MCQ', 1);
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2);
+        INSERT INTO jupeb.ca_component (session, code, title, max_score) VALUES (ses, 'ZZV365', 'V365 CBT test', 20) RETURNING id INTO comp;
+        BEGIN
+            PERFORM assessment.cbt_configure(ex.id, '{"sheetComponent": "EXAM"}');
+        EXCEPTION WHEN check_violation THEN r_exam_sheet := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.cbt_configure(ex.id, jsonb_build_object('sheetComponent', 'CA', 'jupebCaComponentId', comp));
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        r_not_student := split_part(assessment.cbt_eligibility(ex.id, app2), ':', 1);
+        r_not_reg := split_part(assessment.cbt_eligibility(ex.id, app), ':', 1);
+        INSERT INTO jupeb.subject_registration (application_id, subject_id, session) VALUES (app, sub, ses);
+        r_fees := split_part(assessment.cbt_eligibility(ex.id, app), ':', 1);
+        INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at, confirmed_at)
+        VALUES (app, 'SCHOOL_FIRST', 'ZZV365-SF1', 1000, ses, now() + interval '1 day', now());
+        r_paid := coalesce(assessment.cbt_eligibility(ex.id, app), 'ELIGIBLE');
+        PERFORM set_config('moaum.actor_id', app::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        a := assessment.cbt_start(ex.id, app, '10.0.0.5', 'check');
+        v_kind := CASE WHEN a.jupeb_application_id = app AND a.student_id IS NULL AND a.candidate_id = app THEN 'JUPEB' END;
+        PERFORM assessment.cbt_save_answers(a.id, a.token, jsonb_build_array(jsonb_build_object('q', q1, 'a', jsonb_build_array(0)), jsonb_build_object('q', q2, 'a', jsonb_build_array(1))));
+        PERFORM assessment.cbt_submit(a.id, a.token);
+        SELECT count(*) INTO v_cand FROM assessment.cbt_candidates(ex.id) c WHERE c.student_id = app AND c.attempt_status = 'SUBMITTED' AND c.eligible;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        PERFORM assessment.cbt_exam_action(ex.id, 'close', NULL);
+        PERFORM assessment.cbt_exam_action(ex.id, 'complete', NULL);
+        PERFORM assessment.cbt_results_action(ex.id, 'approve');
+        v_written := assessment.cbt_to_sheet(ex.id);
+        SELECT score INTO v_ca FROM jupeb.ca_score WHERE application_id = app AND subject_id = sub AND component_id = comp;
+        RAISE EXCEPTION 'the V365 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V365: JUPEB on the one CBT engine — a subject not allowed is refused; admitted, registered and paid; the attempt names the JUPEB candidate; the result into the named part of the JUPEB CA',
+        r_not_enabled = 'CBT_COURSE_NOT_ENABLED' AND r_exam_sheet = 'CBT_SETTING' AND r_not_student = 'CBT_JUPEB_NOT_STUDENT' AND r_not_reg = 'CBT_JUPEB_SUBJECT_NOT_REGISTERED'
+        AND r_fees = 'CBT_JUPEB_FEES' AND r_paid = 'ELIGIBLE' AND v_kind = 'JUPEB' AND v_cand = 1 AND v_written = 1 AND v_ca = 20,
+        format('enabled=%s sheet=%s student=%s reg=%s fees=%s paid=%s kind=%s cand=%s written=%s ca=%s', r_not_enabled, r_exam_sheet, r_not_student, r_not_reg, r_fees, r_paid, v_kind, v_cand, v_written, v_ca));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

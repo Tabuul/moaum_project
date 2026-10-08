@@ -227,3 +227,24 @@ delta; all read through the indexes listed in section F.
   review screen, and the University's words on submission. Face signals use the browser's own `FaceDetector` where it exists; head-pose
   signals need a proctoring library and are not claimed.
 - Tests: `CbtEngineIT`, `CbtExamIT` (a sat question corrected as a new version), `QuestionImportIT` (blocked batch), check.sql 208.
+
+## J. V365 — JUPEB on the same engine
+
+- **Candidates of two kinds.** `cbt_attempt.student_id` (a University student) or `jupeb_application_id` (a JUPEB student), exactly one;
+  `candidate_id` is whichever it is, and every lookup (the active-attempt index, attempt counts, the monitor, the candidate record) uses it.
+- **Subjects, not offerings.** A JUPEB Office examination names `jupeb_subject_id` in place of a course offering (`cbt_new_jupeb_exam`);
+  a subject is examined by CBT only once the JUPEB Office allows it (`jupeb.subject.cbt_enabled`, `jupeb.set_subject_cbt`,
+  `PUT /api/v1/cbt/catalogue/jupeb/{id}`). Its bank is on `assessment.question.jupeb_subject_id`, named `JUPEB:<code>` on the screens and the
+  API, frozen by version as every bank is; only the JUPEB Office (and the Super Administrator) reads or writes it, and the JUPEB Office works
+  in no other bank.
+- **Eligibility** (`cbt_jupeb_eligibility`): admitted (state STUDENT), registered for the subject in the session, and the Bursary's share of
+  the school fee for the semester paid (`jupeb.school_fees`: the first share for the first semester, the whole fee after) —
+  `CBT_JUPEB_NOT_STUDENT`, `CBT_JUPEB_SUBJECT_NOT_REGISTERED`, `CBT_JUPEB_FEES`.
+- **Results**: never the Board's mark. A JUPEB examination counts towards a part of the JUPEB continuous assessment the office set
+  (`jupeb_ca_component_id`, sheet component CA) or nowhere; `cbt_to_jupeb_ca` writes each candidate's best approved percentage scaled to
+  that part's maximum through `jupeb.ca_save`, so the registration, the range and the lock are judged where they always were.
+- **Doors**: one candidate implementation (`CbtCandidateDoor`) behind the University student's `/api/v1/me/cbt` and the JUPEB student's
+  `/api/v1/jupeb/me/cbt` (a JUPEB application's token; a temporary password writes nothing until changed). The same list and examination
+  room: `/jupeb/portal?tab=cbt` and `/jupeb/portal/cbt/room/[attempt]`. The JUPEB Office's desk is `/jupeb/cbt` and `/jupeb/question-bank`.
+- JUPEB's practice tests (V348) stay self-study, not examinations.
+- Tests: `JupebCbtIT`, check.sql 209.

@@ -14,7 +14,11 @@ import { ATTEMPT_WORD, ELIGIBILITY_WORD, EXAM_TYPE_WORD, EXAM_WORD, codeOf, num,
 
 export const tokenKey = (attemptId: string) => `cbt-token:${attemptId}`;
 
-export function MyExams({ data, s }: { data: Data; s: Me }) {
+/** the candidate who acknowledges the instructions: a University student (s) or, from V365, a JUPEB student (who) — and the door their examinations are behind */
+export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", roomBase = "/student/cbt/room", feesHref = "/student/fees" }: {
+  data: Data; s?: Me; who?: { name: string; number: string }; apiBase?: string; roomBase?: string; feesHref?: string;
+}) {
+  const person = who ?? { name: s ? `${s.surname} ${s.otherNames}` : "", number: s ? s.matricNo ?? s.admissionNo ?? "" : "" };
   const router = useRouter();
   const [open, setOpen] = useState<MyExam | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -28,11 +32,11 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
   async function start(x: MyExam) {
     setBusy(true); setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/me/cbt/exams/${x.exam_id}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const r = await fetch(`${apiBase}/exams/${x.exam_id}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const j = await r.json().catch(() => null);
       if (!r.ok) { const p = (j as Problem) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
       try { sessionStorage.setItem(tokenKey(j.attemptId), j.token); } catch { /* the room asks again if the key is not kept */ }
-      router.push(`/student/cbt/room/${j.attemptId}`);
+      router.push(`${roomBase}/${j.attemptId}`);
     } finally { setBusy(false); }
   }
 
@@ -40,7 +44,7 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
     if (x.attempt_status === "IN_PROGRESS") return <Pil kind="info">Attempt in progress</Pil>;
     if (!x.eligibility) return <Pil kind="ok">Eligible — you may start</Pil>;
     const code = codeOf(x.eligibility) ?? "";
-    const kind = code === "GST_PAYMENT_REQUIRED" || code === "CBT_FEES_NOT_CLEARED" || code === "CBT_COURSE_NOT_REGISTERED" || code === "CBT_STUDENT_INACTIVE" ? "bad" : code === "CBT_EXAM_NOT_STARTED" ? "info" : "grey";
+    const kind = code === "GST_PAYMENT_REQUIRED" || code === "CBT_FEES_NOT_CLEARED" || code === "CBT_JUPEB_FEES" || code === "CBT_COURSE_NOT_REGISTERED" || code === "CBT_JUPEB_SUBJECT_NOT_REGISTERED" || code === "CBT_STUDENT_INACTIVE" || code === "CBT_JUPEB_NOT_STUDENT" ? "bad" : code === "CBT_EXAM_NOT_STARTED" ? "info" : "grey";
     return <Pil kind={kind}>{ELIGIBILITY_WORD[code] ?? textOf(x.eligibility)}</Pil>;
   };
 
@@ -57,7 +61,10 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href="/student/gst">GST &amp; EPS</LinkBtn>}>You cannot start a GST CBT examination until your GST fee for the session is paid and confirmed. One payment covers both GST and EPS.</Note>
       ) : null}
       {rows.some((r) => codeOf(r.eligibility) === "CBT_FEES_NOT_CLEARED") ? (
-        <Note kind="bad" title="SCHOOL FEES NOT CLEARED" action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>A CBT examination of a University course is sat once the session&rsquo;s school fees are cleared for examinations.</Note>
+        <Note kind="bad" title="SCHOOL FEES NOT CLEARED" action={<LinkBtn kind="primary" href={feesHref}>Fees &amp; payments</LinkBtn>}>A CBT examination of a University course is sat once the session&rsquo;s school fees are cleared for examinations.</Note>
+      ) : null}
+      {rows.some((r) => codeOf(r.eligibility) === "CBT_JUPEB_FEES") ? (
+        <Note kind="bad" title="JUPEB SCHOOL FEE NOT PAID" action={<LinkBtn kind="primary" href={feesHref}>Payments</LinkBtn>}>A JUPEB CBT examination is sat once the semester&rsquo;s share of your JUPEB school fee is paid.</Note>
       ) : null}
       {!rows.length ? <Note kind="info" title="No CBT examination on your courses yet">An examination appears here once the examining office publishes it for a course on your submitted registration.</Note> : null}
       {rows.map((x) => {
@@ -117,8 +124,8 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
             <li>Your answers are saved as you go. If your connection drops, remain on the screen while it reconnects; the clock keeps running on the server.</li>
             <li>The examination ends at the end of your time, or at the close of the window, whichever is earlier; whatever you have answered is submitted and scored.</li>
           </ul>
-          {open.instructions ? <Note kind="info" title={open.office === "EXAMS" ? "From the examining office" : `From the ${open.office} office`}>{open.instructions}</Note> : null}
-          <label className="row row--inline row--tight mt-2"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the instructions and I am {s.surname} {s.otherNames} ({s.matricNo ?? s.admissionNo}).</label>
+          {open.instructions ? <Note kind="info" title={open.office === "EXAMS" ? "From the examining office" : open.office === "JUPEB" ? "From the JUPEB Office" : `From the ${open.office} office`}>{open.instructions}</Note> : null}
+          <label className="row row--inline row--tight mt-2"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the instructions and I am {person.name} ({person.number}).</label>
         </Modal>
       ) : null}
     </>

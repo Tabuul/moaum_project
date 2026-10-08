@@ -94,6 +94,14 @@ class CbtCourseController {
         return out;
     }
 
+    /** V365: allow a JUPEB subject to be examined by CBT, or withdraw it — the JUPEB Office's own subjects */
+    @PutMapping("/jupeb/{id}")
+    @PreAuthorize("hasAnyAuthority('OFFICE_jupeb','OFFICE_super')")
+    @Transactional
+    Map<String, Object> setJupeb(@PathVariable java.util.UUID id, @Valid @RequestBody Switch in) {
+        return jdbc.sql("SELECT id, code, title, cbt_enabled FROM jupeb.set_subject_cbt(:id, :on)").param("id", id).param("on", in.enabled()).query().singleRow();
+    }
+
     /** allow a course to be examined by CBT, or withdraw it (refused while an examination of it is still to be completed) */
     @PutMapping("/{code}")
     @PreAuthorize(SETTERS)

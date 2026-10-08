@@ -50,11 +50,11 @@ class CbtExamController {
     private static final String READERS =
             "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super',"
-            + "'OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean')";
-    private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_exams','OFFICE_facultyexams','OFFICE_records','OFFICE_super')";
+            + "'OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_jupeb')";
+    private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_exams','OFFICE_facultyexams','OFFICE_records','OFFICE_super','OFFICE_jupeb')";
     /** after publication a result is changed, or withdrawn, only with stronger authority */
     private static final String STRONGER = "hasAnyAuthority('OFFICE_super','OFFICE_registrar')";
-    private static final Set<String> OFFICES = Set.of("GST", "EPS", "EXAMS");
+    private static final Set<String> OFFICES = Set.of("GST", "EPS", "EXAMS", "JUPEB");
     /** V364: the offices that run the University's own CBT examinations, and those that only read them within their scope */
     private static final Set<String> EXAMS_MANAGERS = Set.of("exams", "facultyexams", "records", "super");
     private static final Set<String> EXAMS_ONLY = Set.of("exams", "facultyexams", "hod", "dean");
@@ -71,7 +71,9 @@ class CbtExamController {
         this.scope = scope;
     }
 
-    public record ExamIn(@NotBlank String office, @NotNull UUID offeringId, @NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions,
+    /** an examination over a course offering, or (V365, office JUPEB) over a JUPEB subject in a session and semester */
+    public record ExamIn(@NotBlank String office, UUID offeringId, UUID jupebSubjectId, @Size(max = 9) String session, Integer semester,
+                         @NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions,
                          Integer durationMinutes, Integer totalQuestions, String selection, Boolean randomizeQuestions, Boolean randomizeOptions,
                          BigDecimal passMark, Integer attemptLimit, String securityMode, String venue, Integer violationLimit, String violationAction,
                          String secondSession, OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit, Map<String, Object> settings) {
@@ -119,6 +121,10 @@ class CbtExamController {
         if (EXAMS_ONLY.contains(acting) && !"EXAMS".equals(office)) {
             throw new AccessDeniedException("An examinations officer reads the University's own CBT examinations; " + office + " examinations are that office's.");
         }
+        // V365: the JUPEB Office reads its own examinations, and the University's offices read no JUPEB examination but as readers
+        if ("jupeb".equals(acting) && !"JUPEB".equals(office)) {
+            throw new AccessDeniedException("The JUPEB Office reads its own examinations; " + office + " examinations are that office's.");
+        }
         return office;
     }
 
@@ -139,17 +145,25 @@ class CbtExamController {
 
     private Map<String, Object> examRow(UUID id) {
         return jdbc.sql("""
-                SELECT e.*, assessment.cbt_live_state(e) AS live_state, c.title AS course_title, c.units, c.level AS course_level, c.ca_max,
+                SELECT e.*, assessment.cbt_live_state(e) AS live_state, coalesce(c.title, js.title) AS course_title, c.units, c.level AS course_level, c.ca_max,
+                       js.code AS subject_code,
                        (SELECT count(*) FROM assessment.cbt_pool(e.id)) AS pool_size,
                        (SELECT coalesce(sum(marks), 0) FROM assessment.cbt_pool(e.id)) AS pool_marks,
                        assessment.cbt_paper_ready(e.id) AS paper_problem,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS created_by_name,
                        (SELECT count(*) FROM assessment.score_sheet s WHERE s.offering_id = e.offering_id) > 0 AS has_sheet,
                        (SELECT s.stage FROM assessment.score_sheet s WHERE s.offering_id = e.offering_id) AS sheet_stage
-                  FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code
+                  FROM assessment.cbt_exam e LEFT JOIN catalogue.course c ON c.code = e.course_code LEFT JOIN jupeb.subject js ON js.id = e.jupeb_subject_id
                   LEFT JOIN iam.person p ON p.id = e.created_by
                  WHERE e.id = :id
-                """).param("id", id).query().listOfRows().stream().findFirst().map(CbtExamController::plain).orElseThrow(() -> new NotFound("examination", id.toString()));
+                """).param("id", id).query().listOfRows().stream().findFirst().map(CbtExamController::plain).map(CbtExamController::named)
+                .orElseThrow(() -> new NotFound("examination", id.toString()));
+    }
+
+    /** V365: a JUPEB examination is named by its subject's code where a University one is by its course's */
+    static Map<String, Object> named(Map<String, Object> row) {
+        if (row.get("course_code") == null && row.get("subject_code") != null) row.put("course_code", row.get("subject_code"));
+        return row;
     }
 
     /** a row as the screen reads it: a database array (the detectors, the counted events) becomes a JSON list */
@@ -217,15 +231,16 @@ class CbtExamController {
         // V364: an examinations officer's list is their department's or faculty's courses
         OfficeScope.Bound b = "EXAMS".equals(o) ? scope.bound(null, null, null) : new OfficeScope.Bound(null, null, null);
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT e.id, e.reference, e.title, e.course_code, c.title AS course_title, e.session, e.semester, e.state, e.results_state, assessment.cbt_live_state(e) AS live_state,
+                SELECT e.id, e.reference, e.title, coalesce(e.course_code, js.code) AS course_code, coalesce(c.title, js.title) AS course_title, e.session, e.semester, e.state, e.results_state, assessment.cbt_live_state(e) AS live_state,
                        e.starts_at, e.ends_at, e.duration_minutes, e.selection, e.total_questions, e.security_mode, e.venue, e.pass_mark, e.published_at, e.completed_at,
                        (SELECT count(*) FROM assessment.cbt_pool(e.id)) AS pool_size,
                        (SELECT count(DISTINCT cr.student_id) FROM registration.entry en JOIN registration.course_registration cr ON cr.id = en.registration_id
-                         WHERE en.offering_id = e.offering_id AND en.status IN ('REGISTERED', 'APPROVED') AND cr.status IN ('SUBMITTED', 'APPROVED', 'LOCKED')) AS candidates,
-                       (SELECT count(DISTINCT a.student_id) FROM assessment.cbt_attempt a WHERE a.exam_id = e.id) AS started,
+                         WHERE en.offering_id = e.offering_id AND en.status IN ('REGISTERED', 'APPROVED') AND cr.status IN ('SUBMITTED', 'APPROVED', 'LOCKED'))
+                       + (SELECT count(DISTINCT r.application_id) FROM jupeb.subject_registration r WHERE r.subject_id = e.jupeb_subject_id AND r.session = e.session) AS candidates,
+                       (SELECT count(DISTINCT a.candidate_id) FROM assessment.cbt_attempt a WHERE a.exam_id = e.id) AS started,
                        (SELECT count(*) FROM assessment.cbt_attempt a WHERE a.exam_id = e.id AND a.status = 'IN_PROGRESS') AS writing,
-                       (SELECT count(DISTINCT a.student_id) FROM assessment.cbt_attempt a WHERE a.exam_id = e.id AND a.score IS NOT NULL) AS scored
-                  FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code
+                       (SELECT count(DISTINCT a.candidate_id) FROM assessment.cbt_attempt a WHERE a.exam_id = e.id AND a.score IS NOT NULL) AS scored
+                  FROM assessment.cbt_exam e LEFT JOIN catalogue.course c ON c.code = e.course_code LEFT JOIN jupeb.subject js ON js.id = e.jupeb_subject_id
                  WHERE e.office = :o AND e.session = :s AND (:sem::int IS NULL OR e.semester = :sem)
                    AND (:st::text IS NULL OR e.state = :st OR assessment.cbt_live_state(e) = :st)
                    AND ((e.archived_at IS NOT NULL) = :arch)
@@ -239,6 +254,15 @@ class CbtExamController {
         out.put("session", s);
         out.put("semester", semester);
         out.put("archived", archived);
+        if ("JUPEB".equals(o)) {
+            // V365: the JUPEB Office examines its subjects, each only once allowed CBT
+            out.put("subjects", jdbc.sql("""
+                    SELECT s.id, s.code, s.title, s.cbt_enabled,
+                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id AND q.active) AS questions,
+                           (SELECT count(DISTINCT r.application_id) FROM jupeb.subject_registration r WHERE r.subject_id = s.id AND r.session = :s) AS registered
+                      FROM jupeb.subject s WHERE s.active ORDER BY s.code
+                    """).param("s", s).query().listOfRows());
+        }
         out.put("rows", rows);
         out.put("sessions", jdbc.sql("SELECT name, state FROM policy.academic_session ORDER BY name DESC").query().listOfRows());
         out.put("offerings", jdbc.sql("""
@@ -257,6 +281,10 @@ class CbtExamController {
 
     private String session(String session) {
         if (session != null && !session.isBlank()) return session.trim();
+        if ("jupeb".equals(acting())) {
+            String j = jdbc.sql("SELECT jupeb.current_session()").query(String.class).optional().orElse(null);
+            if (j != null) return j;
+        }
         return jdbc.sql("""
                 SELECT name FROM policy.academic_session ORDER BY (state = 'CURRENT') DESC, (state = 'OPEN') DESC, name DESC LIMIT 1
                 """).query(String.class).optional().orElse("");
@@ -270,6 +298,27 @@ class CbtExamController {
     Map<String, Object> create(@Valid @RequestBody ExamIn in) {
         String o = office(in.office());
         manage(o);
+        if ("JUPEB".equals(o)) {
+            if (in.jupebSubjectId() == null) {
+                throw new DomainRuleViolation("CBT_SUBJECT_REQUIRED", "A JUPEB examination names its subject.", new DomainRuleViolation.Remedy("Choose the subject.", "You"));
+            }
+            UUID jid = jdbc.sql("""
+                    SELECT (assessment.cbt_new_jupeb_exam(:sub, :ses, :sem, :t, :i, :d, :n, :sel, :rq, :ro, :pm, :al, :sec, :v, :vl, :va, :ss, :sa, :ea)).id
+                    """)
+                    .param("sub", in.jupebSubjectId()).param("ses", session(in.session())).param("sem", in.semester() == null ? 1 : in.semester()).param("t", in.title())
+                    .param("i", in.instructions(), Types.VARCHAR).param("d", in.durationMinutes(), Types.INTEGER).param("n", in.totalQuestions(), Types.INTEGER)
+                    .param("sel", in.selection(), Types.VARCHAR).param("rq", in.randomizeQuestions(), Types.BOOLEAN).param("ro", in.randomizeOptions(), Types.BOOLEAN)
+                    .param("pm", in.passMark(), Types.NUMERIC).param("al", in.attemptLimit(), Types.INTEGER).param("sec", in.securityMode(), Types.VARCHAR)
+                    .param("v", in.venue(), Types.VARCHAR).param("vl", in.violationLimit(), Types.INTEGER).param("va", in.violationAction(), Types.VARCHAR)
+                    .param("ss", in.secondSession(), Types.VARCHAR).param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE)
+                    .query(UUID.class).single();
+            if (in.partialCredit() != null) jdbc.sql("UPDATE assessment.cbt_exam SET partial_credit = :pc WHERE id = :id").param("pc", in.partialCredit()).param("id", jid).update();
+            configure(jid, in.settings());
+            return exam(jid);
+        }
+        if (in.offeringId() == null) {
+            throw new DomainRuleViolation("CBT_OFFERING_REQUIRED", "An examination is created over a course offering.", new DomainRuleViolation.Remedy("Choose the offering.", "You"));
+        }
         if ("EXAMS".equals(o)) {
             jdbc.sql("SELECT course_code FROM catalogue.offering WHERE id = :o").param("o", in.offeringId()).query(String.class).optional().ifPresent(scope::assertCourseInScope);
         }
@@ -305,10 +354,15 @@ class CbtExamController {
                   FROM assessment.cbt_exam_question eq JOIN assessment.question q ON q.id = eq.question_id
                  WHERE eq.exam_id = :id ORDER BY eq.ordinal, q.stem
                 """).param("id", id).query().listOfRows());
+        boolean jupeb = "JUPEB".equals(e.get("office"));
         out.put("bank", jdbc.sql("""
                 SELECT coalesce(topic, 'Untitled topic') AS topic, count(*) FILTER (WHERE active) AS active, count(*) AS total, coalesce(sum(marks) FILTER (WHERE active), 0) AS marks
-                  FROM assessment.question WHERE course_code = :c GROUP BY topic ORDER BY topic NULLS FIRST
-                """).param("c", e.get("course_code")).query().listOfRows());
+                  FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END GROUP BY topic ORDER BY topic NULLS FIRST
+                """).param("c", e.get("course_code")).param("sub", jupeb ? e.get("jupeb_subject_id") : null, Types.OTHER).query().listOfRows());
+        if (jupeb) {
+            out.put("caComponents", jdbc.sql("SELECT id, code, title, max_score FROM jupeb.ca_component WHERE session = :s AND active ORDER BY ord, code")
+                    .param("s", e.get("session")).query().listOfRows());
+        }
         out.put("blueprintRows", jdbc.sql("SELECT value, questions FROM assessment.cbt_blueprint WHERE exam_id = :id ORDER BY CASE value WHEN 'EASY' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'HARD' THEN 3 ELSE 4 END, value")
                 .param("id", id).query().listOfRows());
         out.put("topics", jdbc.sql("""
@@ -382,10 +436,12 @@ class CbtExamController {
             throw new DomainRuleViolation("CBT_STATE", "The paper of a " + state.toLowerCase() + " examination is not changed.", new DomainRuleViolation.Remedy("Withdraw the examination first if nobody has sat it.", "You"));
         }
         String course = (String) e.get("course_code");
+        Object subject = "JUPEB".equals(e.get("office")) ? e.get("jupeb_subject_id") : null;
         jdbc.sql("DELETE FROM assessment.cbt_exam_question WHERE exam_id = :id").param("id", id).update();
         int ordinal = 0;
         for (PaperQuestion q : in.questions()) {
-            boolean ok = jdbc.sql("SELECT EXISTS (SELECT 1 FROM assessment.question WHERE id = :q AND course_code = :c)").param("q", q.id()).param("c", course).query(Boolean.class).single();
+            boolean ok = jdbc.sql("SELECT EXISTS (SELECT 1 FROM assessment.question WHERE id = :q AND CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END)")
+                    .param("q", q.id()).param("c", course).param("sub", subject, Types.OTHER).query(Boolean.class).single();
             if (!ok) throw new DomainRuleViolation("CBT_QUESTION_NOT_OF_COURSE", "A question on the paper is not in " + course + "'s bank.", new DomainRuleViolation.Remedy("Pick questions from the course's own bank.", "You"));
             jdbc.sql("INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal, marks) VALUES (:e, :q, :o, :m) ON CONFLICT (exam_id, question_id) DO UPDATE SET ordinal = EXCLUDED.ordinal, marks = EXCLUDED.marks")
                     .param("e", id).param("q", q.id()).param("o", ++ordinal).param("m", q.marks(), Types.INTEGER).update();
@@ -484,18 +540,21 @@ class CbtExamController {
         out.put("exam", head);
         out.put("counts", jdbc.sql("SELECT * FROM assessment.cbt_monitor_counts(:id)").param("id", id).query().singleRow());
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT a.id AS attempt_id, a.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names, a.number AS attempt_no,
+                SELECT a.id AS attempt_id, a.candidate_id AS student_id, coalesce(s.matric_no, s.admission_no, ja.exam_no, ja.application_no) AS number,
+                       coalesce(s.surname, upper(ja.surname)) AS surname, coalesce(s.other_names, ja.first_name || coalesce(' ' || ja.middle_name, '')) AS other_names, a.number AS attempt_no,
                        a.status AS attempt_status, a.started_at, a.ends_at, a.submitted_at, a.last_activity_at, a.violations, a.answered, cardinality(a.question_ids) AS questions,
                        a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, a.updated_at, a.finished_reason
-                  FROM assessment.cbt_attempt a JOIN people.student s ON s.id = a.student_id
+                  FROM assessment.cbt_attempt a LEFT JOIN people.student s ON s.id = a.student_id LEFT JOIN jupeb.application ja ON ja.id = a.jupeb_application_id
                  WHERE a.exam_id = :id AND (:since::timestamptz IS NULL OR a.updated_at > :since)
                  ORDER BY a.updated_at LIMIT 5000
                 """).param("id", id).param("since", since, Types.TIMESTAMP_WITH_TIMEZONE).query().listOfRows();
         out.put("rows", rows);
         out.put("events", jdbc.sql("""
                 SELECT ev.id, ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, coalesce(ev.severity, assessment.cbt_event_severity(ev.kind)) AS severity,
-                       ev.question_no, ev.duration_ms, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names
-                  FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id JOIN people.student s ON s.id = a.student_id
+                       ev.question_no, ev.duration_ms, coalesce(s.matric_no, s.admission_no, ja.exam_no, ja.application_no) AS number,
+                       coalesce(s.surname, upper(ja.surname)) AS surname, coalesce(s.other_names, ja.first_name) AS other_names
+                  FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id LEFT JOIN people.student s ON s.id = a.student_id
+                  LEFT JOIN jupeb.application ja ON ja.id = a.jupeb_application_id
                  WHERE ev.exam_id = :id AND (ev.violation OR ev.kind IN ('TERMINATED', 'AUTO_SUBMITTED', 'MULTIPLE_LOGIN', 'NETWORK_DISCONNECT', 'DISCONNECT_TIMEOUT',
                                                                          'CAMERA_DECLINED', 'MULTIPLE_FACES', 'TIME_MANIPULATION_ATTEMPT', 'FACE_NOT_DETECTED'))
                    AND (:since::timestamptz IS NULL OR ev.at > :since)
@@ -519,18 +578,18 @@ class CbtExamController {
                 SELECT a.id, a.number, a.status, a.started_at, a.ends_at, a.submitted_at, a.last_activity_at, a.violations, a.answered, cardinality(a.question_ids) AS questions,
                        a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, a.ip, a.user_agent, a.finished_reason, a.finished_office,
                        a.camera_consent_at, a.camera_declined_at
-                  FROM assessment.cbt_attempt a WHERE a.exam_id = :id AND a.student_id = :s ORDER BY a.number
+                  FROM assessment.cbt_attempt a WHERE a.exam_id = :id AND a.candidate_id = :s ORDER BY a.number
                 """).param("id", id).param("s", student).query().listOfRows());
         out.put("events", jdbc.sql("""
                 SELECT ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, ev.ip, coalesce(ev.severity, assessment.cbt_event_severity(ev.kind)) AS severity, ev.question_no, ev.duration_ms
                   FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id
-                 WHERE a.exam_id = :id AND a.student_id = :s ORDER BY ev.at
+                 WHERE a.exam_id = :id AND a.candidate_id = :s ORDER BY ev.at
                 """).param("id", id).param("s", student).query().listOfRows());
         out.put("versions", jdbc.sql("""
                 SELECT r.attempt_id, r.version, r.score, r.max_marks, r.percentage, r.grade, r.passed, r.outcome, r.reason, r.changed_at, r.changed_office,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS changed_by
                   FROM assessment.cbt_result r JOIN assessment.cbt_attempt a ON a.id = r.attempt_id LEFT JOIN iam.person p ON p.id = r.changed_by
-                 WHERE a.exam_id = :id AND a.student_id = :s ORDER BY r.attempt_id, r.version
+                 WHERE a.exam_id = :id AND a.candidate_id = :s ORDER BY r.attempt_id, r.version
                 """).param("id", id).param("s", student).query().listOfRows());
         return out;
     }
@@ -546,7 +605,7 @@ class CbtExamController {
     }
 
     private UUID attemptOf(UUID exam, UUID attempt) {
-        return jdbc.sql("SELECT student_id FROM assessment.cbt_attempt WHERE id = :a AND exam_id = :e").param("a", attempt).param("e", exam)
+        return jdbc.sql("SELECT candidate_id FROM assessment.cbt_attempt WHERE id = :a AND exam_id = :e").param("a", attempt).param("e", exam)
                 .query(UUID.class).optional().orElseThrow(() -> new NotFound("attempt", attempt.toString()));
     }
 

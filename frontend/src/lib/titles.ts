@@ -908,6 +908,18 @@ export const TITLES: Record<string, [string, string]> = {
     "GST Courses",
     "The General Studies courses on the catalogue, the session's offerings, their lecturers, registrations and score sheets"
   ],
+  "jupeb/cbt": [
+    "JUPEB CBT Examinations",
+    "The JUPEB subjects' computer-based examinations on the University's one engine"
+  ],
+  "jupeb/bank": [
+    "JUPEB Question Bank",
+    "The JUPEB subjects' CBT question banks, each change kept as a version"
+  ],
+  "jupeb/portal/cbt": [
+    "CBT Examinations",
+    "Your JUPEB computer-based examinations: when they open, whether you may sit, the instructions, and your released results"
+  ],
   "t/unicbt": [
     "CBT Examinations",
     "The University's own computer-based examinations of its CBT courses, on the one engine GST, EPS and JUPEB share"

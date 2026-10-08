@@ -41,8 +41,10 @@ import org.springframework.web.bind.annotation.RestController;
 class QuestionBankController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean','OFFICE_academic',"
-            + "'OFFICE_registrar','OFFICE_dregistrar','OFFICE_gst','OFFICE_eps','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    private static final String AUTHORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super')";
+            + "'OFFICE_registrar','OFFICE_dregistrar','OFFICE_gst','OFFICE_eps','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_jupeb')";
+    private static final String AUTHORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb')";
+    /** V365: a JUPEB subject's bank is named "JUPEB:<subject code>" wherever a course's is named by its code */
+    static final String JUPEB_PREFIX = "JUPEB:";
     private static final Set<String> KINDS = Set.of("MCQ", "TRUE_FALSE", "MULTI");
 
     private final JdbcClient jdbc;
@@ -52,7 +54,7 @@ class QuestionBankController {
         this.jdbc = jdbc;
     }
 
-    public record Question(@NotBlank @Size(max = 10) String course, @Size(max = 120) String topic, @NotBlank @Size(max = 4000) String stem,
+    public record Question(@NotBlank @Size(max = 30) String course, @Size(max = 120) String topic, @NotBlank @Size(max = 4000) String stem,
                            @NotNull List<@Size(max = 500) String> options, Integer answer, List<Integer> answers, @Size(max = 12) String kind,
                            @Size(max = 10) String difficulty, Integer marks, @Size(max = 2000) String explanation) {
     }
@@ -74,6 +76,37 @@ class QuestionBankController {
         return "gst".equals(acting) ? "GST" : "eps".equals(acting) ? "EPS" : null;
     }
 
+    /** V365: a bank — a course's (course) or a JUPEB subject's (subject) — and the name it goes by */
+    record Bank(String course, UUID subject, String label) {
+    }
+
+    private static String acting() {
+        return AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+    }
+
+    /** the bank a name means, held to the acting office: a JUPEB subject's is the JUPEB Office's alone, and the JUPEB Office works in no other */
+    private Bank bank(String key) {
+        String k = key == null ? "" : key.trim();
+        if (k.toUpperCase().startsWith(JUPEB_PREFIX)) {
+            if (!Set.of("jupeb", "super").contains(acting())) throw new AccessDeniedException("A JUPEB subject's question bank is the JUPEB Office's.");
+            String code = k.substring(JUPEB_PREFIX.length()).trim();
+            UUID sid = jdbc.sql("SELECT id FROM jupeb.subject WHERE upper(code) = upper(:c)").param("c", code).query(UUID.class).optional()
+                    .orElseThrow(() -> new NotFound("JUPEB subject", code));
+            return new Bank(null, sid, JUPEB_PREFIX + code.toUpperCase());
+        }
+        if ("jupeb".equals(acting())) throw new AccessDeniedException("The JUPEB Office works in its own subjects' question banks.");
+        scoped(k);
+        return new Bank(k, null, k);
+    }
+
+    /** the bank a question is in, held to the acting office as bank() holds a name */
+    private Bank bankOf(UUID question) {
+        Map<String, Object> q = jdbc.sql("""
+                SELECT q.course_code, s.code AS subject FROM assessment.question q LEFT JOIN jupeb.subject s ON s.id = q.jupeb_subject_id WHERE q.id = :id
+                """).param("id", question).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("question", question.toString()));
+        return bank(q.get("course_code") != null ? (String) q.get("course_code") : JUPEB_PREFIX + q.get("subject"));
+    }
+
     private void scoped(String course) {
         String o = actingOffice();
         if (o == null) return;
@@ -86,6 +119,17 @@ class QuestionBankController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam(required = false) String office) {
+        if ("jupeb".equals(acting()) || "JUPEB".equalsIgnoreCase(office == null ? "" : office.trim())) {
+            if (!Set.of("jupeb", "super").contains(acting())) throw new AccessDeniedException("JUPEB subjects' question banks are the JUPEB Office's.");
+            // V365: the JUPEB Office's banks are its subjects'
+            return jdbc.sql("""
+                    SELECT 'JUPEB:' || s.code AS code, s.title, 'JUPEB' AS kind, 'JUPEB' AS general_office, NULL::int AS level, NULL::int AS semester, NULL::int AS units,
+                           CASE WHEN s.active THEN 'LIVE' ELSE 'ENDED' END AS state, s.cbt_enabled,
+                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id AND q.active) AS questions,
+                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id) AS total
+                      FROM jupeb.subject s WHERE s.active ORDER BY s.code
+                    """).query().listOfRows();
+        }
         String o = actingOffice() != null ? actingOffice() : office == null || office.isBlank() ? null : office.trim().toUpperCase();
         return jdbc.sql("""
                 SELECT c.code, c.title, c.kind, c.general_office, c.level, c.semester, c.units, c.state, c.cbt_enabled,
@@ -104,19 +148,19 @@ class QuestionBankController {
                                   @RequestParam(required = false) String difficulty, @RequestParam(required = false) String kind,
                                   @RequestParam(required = false) String status, @RequestParam(defaultValue = "1") int page,
                                   @RequestParam(defaultValue = "1000") int size) {
-        scoped(course);
+        Bank b = bank(course);
         // V364: searched and paged on the server — the text, the topic, the difficulty, the kind, the status (ACTIVE, INACTIVE, ARCHIVED; default every one not archived)
         String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
         int sz = Math.max(1, Math.min(size, 1000)), pg = Math.max(1, page);
         String where = """
-                 WHERE q.course_code = :c
+                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END
                    AND (:q::text IS NULL OR lower(q.stem) LIKE :q OR lower(coalesce(q.topic, '')) LIKE :q OR lower(coalesce(q.explanation, '')) LIKE :q)
                    AND (:topic::text IS NULL OR lower(btrim(coalesce(q.topic, ''))) = lower(btrim(:topic)))
                    AND (:diff::text IS NULL OR q.difficulty = upper(:diff)) AND (:kind::text IS NULL OR q.kind = upper(:kind))
                    AND CASE coalesce(:st, 'CURRENT') WHEN 'ACTIVE' THEN q.active WHEN 'INACTIVE' THEN NOT q.active AND q.archived_at IS NULL
                         WHEN 'ARCHIVED' THEN q.archived_at IS NOT NULL WHEN 'ALL' THEN true ELSE q.archived_at IS NULL END
                 """;
-        java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec.param("c", course)
+        java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec.param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER)
                 .param("q", q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%", Types.VARCHAR).param("topic", blank(topic), Types.VARCHAR)
                 .param("diff", blank(difficulty), Types.VARCHAR).param("kind", blank(kind), Types.VARCHAR).param("st", st, Types.VARCHAR);
         long total = bind.apply(jdbc.sql("SELECT count(*) FROM assessment.question q" + where)).query(Long.class).single();
@@ -141,8 +185,8 @@ class QuestionBankController {
                        count(*) FILTER (WHERE difficulty = 'HARD' AND active) AS hard,
                        count(*) FILTER (WHERE active) AS total,
                        coalesce(sum(marks) FILTER (WHERE active), 0) AS marks
-                  FROM assessment.question WHERE course_code = :c GROUP BY topic ORDER BY topic NULLS FIRST
-                """).param("c", course).query().listOfRows();
+                  FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END GROUP BY topic ORDER BY topic NULLS FIRST
+                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows);
         out.put("total", total);
@@ -157,9 +201,7 @@ class QuestionBankController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> versions(@PathVariable UUID id) {
-        String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
-                .orElseThrow(() -> new NotFound("question", id.toString()));
-        scoped(course);
+        bankOf(id);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT v.version, v.kind, v.stem, v.options::text AS options, to_jsonb(v.answers)::text AS answers, v.explanation, v.marks, v.topic, v.difficulty, v.created_at,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS created_by,
@@ -211,15 +253,14 @@ class QuestionBankController {
     @PreAuthorize(AUTHORS)
     @Transactional
     Map<String, Object> add(@Valid @RequestBody Question body) {
-        String course = body.course().trim();
-        scoped(course);
+        Bank b = bank(body.course());
         Checked c = check(body.kind(), body.options(), body.answer(), body.answers());
         UUID id = jdbc.sql("""
-                INSERT INTO assessment.question (course_code, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by)
-                VALUES (:c, :t, :s, :o::jsonb, :a, :as, :k, coalesce(:d, 'MEDIUM'), coalesce(:m, 1), :x, nullif(current_setting('moaum.actor_id', true), '')::uuid)
+                INSERT INTO assessment.question (course_code, jupeb_subject_id, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by)
+                VALUES (:c, :sub, :t, :s, :o::jsonb, :a, :as, :k, coalesce(:d, 'MEDIUM'), coalesce(:m, 1), :x, nullif(current_setting('moaum.actor_id', true), '')::uuid)
                 RETURNING id
                 """)
-                .param("c", course).param("t", blank(body.topic()), Types.VARCHAR).param("s", body.stem().trim()).param("o", mapper.writeValueAsString(c.options()))
+                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("t", blank(body.topic()), Types.VARCHAR).param("s", body.stem().trim()).param("o", mapper.writeValueAsString(c.options()))
                 .param("a", c.answer()).param("as", c.answers().toArray(new Integer[0])).param("k", c.kind())
                 .param("d", body.difficulty() == null || body.difficulty().isBlank() ? null : body.difficulty().toUpperCase(), Types.VARCHAR)
                 .param("m", body.marks(), Types.INTEGER).param("x", blank(body.explanation()), Types.VARCHAR)
@@ -235,7 +276,7 @@ class QuestionBankController {
         Map<String, Object> q = jdbc.sql("""
                 SELECT q.course_code, q.archived_at, assessment.question_in_live_exam(q.id) AS live FROM assessment.question q WHERE q.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("question", id.toString()));
-        scoped((String) q.get("course_code"));
+        bankOf(id);
         Checked c = check(body.kind(), body.options(), body.answer(), body.answers());
         if (q.get("live") != null) {
             throw new DomainRuleViolation("CBT_QUESTION_IN_LIVE_EXAM", "This question is on the paper of " + q.get("live") + ", which is published to candidates; its paper is fixed until it closes.",
@@ -264,7 +305,7 @@ class QuestionBankController {
     }
 
     /** V364: allOrNothing (the default) imports nothing while any row has an error; false imports the valid rows and reports the rest */
-    public record ImportIn(@NotBlank @Size(max = 10) String course, Boolean dryRun, @Size(max = 200) String fileName, Boolean allOrNothing, @NotNull @Size(max = 5000) List<@Valid ImportRow> rows) {
+    public record ImportIn(@NotBlank @Size(max = 30) String course, Boolean dryRun, @Size(max = 200) String fileName, Boolean allOrNothing, @NotNull @Size(max = 5000) List<@Valid ImportRow> rows) {
     }
 
     private static final java.util.regex.Pattern WS = java.util.regex.Pattern.compile("\\s+");
@@ -310,21 +351,25 @@ class QuestionBankController {
     @PreAuthorize(AUTHORS)
     @Transactional
     Map<String, Object> importQuestions(@Valid @RequestBody ImportIn in) {
-        String course = in.course().trim();
-        scoped(course);
-        Map<String, Object> courseRow = jdbc.sql("SELECT code, cbt_enabled, state FROM catalogue.course WHERE code = :c").param("c", course).query().listOfRows().stream().findFirst()
-                .orElseThrow(() -> new NotFound("course", course));
+        Bank b = bank(in.course());
+        String course = b.label();
+        Map<String, Object> courseRow = (b.subject() != null
+                ? jdbc.sql("SELECT code, cbt_enabled, CASE WHEN active THEN 'LIVE' ELSE 'ENDED' END AS state FROM jupeb.subject WHERE id = :s").param("s", b.subject())
+                : jdbc.sql("SELECT code, cbt_enabled, state FROM catalogue.course WHERE code = :c").param("c", b.course()))
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("course", course));
         // V364: the CBT bank is filled for a course the University examines by CBT
         if (!Boolean.TRUE.equals(courseRow.get("cbt_enabled"))) {
             throw new DomainRuleViolation("CBT_COURSE_NOT_ENABLED", course + " is not a CBT course, so its CBT bank is not imported.",
-                    new DomainRuleViolation.Remedy("The Academic Office, the Registry or Examinations and Records allows a course to be examined by CBT.", "Academic Office"));
+                    new DomainRuleViolation.Remedy(b.subject() != null ? "The JUPEB Office allows a subject to be examined by CBT." : "The Academic Office, the Registry or Examinations and Records allows a course to be examined by CBT.",
+                            b.subject() != null ? "JUPEB Office" : "Academic Office"));
         }
         if ("ENDED".equals(courseRow.get("state"))) {
             throw new DomainRuleViolation("CBT_COURSE_ENDED", course + " has ended.", new DomainRuleViolation.Remedy("Import into a running course.", "You"));
         }
         boolean dry = Boolean.TRUE.equals(in.dryRun());
         boolean allOrNothing = !Boolean.FALSE.equals(in.allOrNothing());
-        Set<String> inBank = new java.util.HashSet<>(jdbc.sql("SELECT lower(regexp_replace(btrim(stem), '\\s+', ' ', 'g')) FROM assessment.question WHERE course_code = :c").param("c", course).query(String.class).list());
+        Set<String> inBank = new java.util.HashSet<>(jdbc.sql("SELECT lower(regexp_replace(btrim(stem), '\\s+', ' ', 'g')) FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END")
+                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query(String.class).list());
         Set<String> seen = new java.util.HashSet<>();
         List<Map<String, Object>> findings = new java.util.ArrayList<>();
         int valid = 0, errors = 0, dupFile = 0, dupBank = 0, imported = 0;
@@ -356,7 +401,8 @@ class QuestionBankController {
                 if (marks < 1 || marks > 100) { codes.add("MARKS_INVALID"); messages.add("marks are a whole number from 1 to 100"); }
             }
             // V364: the row's own course, when the sheet names one, is this course; never another, and never one created on the way
-            if (r.courseCode() != null && !r.courseCode().isBlank() && !norm(r.courseCode()).replace(" ", "").equals(norm(course).replace(" ", ""))) {
+            if (r.courseCode() != null && !r.courseCode().isBlank()
+                    && !norm(r.courseCode()).replace(" ", "").replaceFirst("^jupeb:", "").equals(norm(course).replace(" ", "").replaceFirst("^jupeb:", ""))) {
                 codes.add("COURSE_MISMATCH"); messages.add("the row names " + r.courseCode().trim() + "; this import is for " + course);
             }
             boolean active = true;
@@ -388,10 +434,10 @@ class QuestionBankController {
                 ImportRow r = (ImportRow) w[1];
                 @SuppressWarnings("unchecked") List<Integer> answers = (List<Integer>) w[4];
                 jdbc.sql("""
-                        INSERT INTO assessment.question (course_code, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by, active)
-                        VALUES (:c, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid, :act)
+                        INSERT INTO assessment.question (course_code, jupeb_subject_id, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by, active)
+                        VALUES (:c, :sub, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid, :act)
                         """)
-                        .param("c", course).param("t", blank(r.topic()), Types.VARCHAR).param("s", (String) w[2]).param("o", mapper.writeValueAsString(w[3]))
+                        .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("t", blank(r.topic()), Types.VARCHAR).param("s", (String) w[2]).param("o", mapper.writeValueAsString(w[3]))
                         .param("a", answers.get(0)).param("as", answers.toArray(new Integer[0])).param("k", (String) w[5]).param("d", (String) w[6]).param("m", (int) w[7])
                         .param("x", blank(r.explanation()), Types.VARCHAR).param("act", (boolean) w[8]).update();
                 f.put("status", "IMPORTED");
@@ -421,9 +467,7 @@ class QuestionBankController {
     @PreAuthorize(AUTHORS)
     @Transactional
     Map<String, Object> setActive(@PathVariable UUID id, @RequestBody Active body) {
-        String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
-                .orElseThrow(() -> new NotFound("question", id.toString()));
-        scoped(course);
+        bankOf(id);
         if (body.active() && jdbc.sql("SELECT archived_at IS NOT NULL FROM assessment.question WHERE id = :id").param("id", id).query(Boolean.class).single()) {
             throw new DomainRuleViolation("CBT_QUESTION_ARCHIVED", "An archived question is not made active.", new DomainRuleViolation.Remedy("Restore it from the archive first.", "You"));
         }
@@ -436,9 +480,7 @@ class QuestionBankController {
     @PreAuthorize(AUTHORS)
     @Transactional
     Map<String, Object> archive(@PathVariable UUID id, @RequestBody Archived body) {
-        String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
-                .orElseThrow(() -> new NotFound("question", id.toString()));
-        scoped(course);
+        bankOf(id);
         if (body.archived()) {
             String live = jdbc.sql("SELECT assessment.question_in_live_exam(:id)").param("id", id).query(String.class).optional().orElse(null);
             if (live != null) {

@@ -1764,6 +1764,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/portal/subjects", "icon": "book", "label": "Subjects" },
           { "id": "jupeb/portal/timetable", "icon": "calendar", "label": "Timetable" },
           { "id": "jupeb/portal/practice", "icon": "clock", "label": "Practice Tests" },
+          { "id": "jupeb/portal/cbt", "icon": "cap", "label": "CBT Examinations" },
           { "id": "jupeb/portal/attendance", "icon": "cal", "label": "Attendance" },
           { "id": "jupeb/portal/exams", "icon": "doc", "label": "Examination" },
           { "id": "jupeb/portal/results", "icon": "chart", "label": "Results" }
@@ -1820,6 +1821,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/classes", "icon": "user", "label": "Classes" },
           { "id": "jupeb/timetable", "icon": "calendar", "label": "Timetable" },
           { "id": "jupeb/practice", "icon": "clock", "label": "Practice Tests" },
+          { "id": "jupeb/cbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "jupeb/bank", "icon": "flask", "label": "Question Bank" },
           { "id": "jupeb/attendance", "icon": "check", "label": "Attendance" },
           { "id": "jupeb/ca", "icon": "doc", "label": "Continuous Assessment" },
           { "id": "jupeb/examination", "icon": "upload", "label": "Board & Examination" },

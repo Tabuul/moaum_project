@@ -2,7 +2,7 @@
  *  candidate's examinations, attempt and result. The words for every state live here so the screens agree. */
 
 /** V364: EXAMS is the University's examinations office, for every other CBT-enabled course */
-export type CbtOffice = "GST" | "EPS" | "EXAMS";
+export type CbtOffice = "GST" | "EPS" | "EXAMS" | "JUPEB";
 export type ExamState = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED" | "COMPLETED" | "CANCELLED";
 export type LiveState = ExamState | "UPCOMING" | "OPEN" | "ENDED";
 export type ResultsState = "PENDING" | "AUTO_SCORED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED";
@@ -15,7 +15,10 @@ export interface CbtExamRow {
   pool_size: number; candidates: number; started: number; writing: number; scored: number;
 }
 export interface CbtOffering { id: string; course_code: string; title: string; units: number; level: number; semester: number; session: string; questions: number }
-export interface CbtExamList { office: CbtOffice; session: string; semester: number | null; archived?: boolean; rows: CbtExamRow[]; sessions: { name: string; state: string }[]; offerings: CbtOffering[]; now: string }
+/** V365: a JUPEB subject the JUPEB Office may examine by CBT */
+export interface JupebSubject { id: string; code: string; title: string; cbt_enabled: boolean; questions: number; registered: number }
+export interface CbtExamList { office: CbtOffice; session: string; semester: number | null; archived?: boolean; rows: CbtExamRow[]; sessions: { name: string; state: string }[]; offerings: CbtOffering[]; subjects?: JupebSubject[]; now: string }
+export interface CaComponent { id: string; code: string; title: string; max_score: number }
 
 /** V364: the examination's further settings, as the API keeps them */
 export type ExamType = "EXAMINATION" | "TEST" | "QUIZ" | "MOCK" | "RESIT";
@@ -55,6 +58,8 @@ export interface CbtExam extends Omit<CbtExamRow, "candidates" | "started" | "wr
   results: { versions: number; amendments: number }; now: string;
   /** V364: the blueprint's rows, and the topics the pool holds */
   blueprintRows: { value: string; questions: number }[]; topics: { topic: string; questions: number }[];
+  /** V365: a JUPEB examination's subject, and the parts of the JUPEB continuous assessment it may count towards */
+  jupeb_subject_id?: string | null; jupeb_ca_component_id?: string | null; caComponents?: CaComponent[];
 }
 
 export interface Candidate {
@@ -150,6 +155,7 @@ export const ELIGIBILITY_WORD: Record<string, string> = {
   CBT_COURSE_NOT_REGISTERED: "Course not registered", GST_PAYMENT_REQUIRED: "GST fee not paid", CBT_PAPER_EMPTY: "Paper not ready", CBT_POOL_TOO_SMALL: "Paper not ready", CBT_PAPER_SIZE: "Paper not ready",
   CBT_ATTEMPT_LIMIT: "Attempts used", CBT_FEES_NOT_CLEARED: "School fees not cleared", CBT_COURSE_NOT_ENABLED: "Not a CBT course", CBT_BLUEPRINT_SHORT: "Paper not ready",
   CBT_BLUEPRINT_TOTAL: "Paper not ready", CBT_BLUEPRINT_EMPTY: "Paper not ready",
+  CBT_JUPEB_FEES: "School fee share not paid", CBT_JUPEB_SUBJECT_NOT_REGISTERED: "Subject not registered", CBT_JUPEB_NOT_STUDENT: "Not yet a JUPEB student",
 };
 
 export const codeOf = (why: string | null | undefined): string | null => (why ? why.split(":")[0] : null);

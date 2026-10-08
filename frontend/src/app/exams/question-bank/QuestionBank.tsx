@@ -51,7 +51,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
       x.marks, x.topic ?? "", x.difficulty, x.explanation ?? "", x.archived_at ? "ARCHIVED" : x.active ? "ACTIVE" : "INACTIVE", x.version ?? 1]);
     downloadBlob(await brandedXlsx(`${course} question bank`, head, body, { sheetName: "Questions", serial: docSerial("QBK"), sub: `${questions.length} questions · keys included: keep this file within the office`, noSerialColumn: true }), `${(course ?? "bank").replace(/\s+/g, "-")}-question-bank.xlsx`);
   }
-  const may = ["lecturer", "hod", "exams", "dean", "gst", "eps", "super"].includes(actingOffice ?? "");
+  const may = ["lecturer", "hod", "exams", "dean", "gst", "eps", "super", "jupeb"].includes(actingOffice ?? "");
   const [q, setQ] = useState<Draft>({ ...EMPTY, options: [...EMPTY.options] });
   const [editing, setEditing] = useState<Question | null>(null);
   const [e, setE] = useState<Draft>({ ...EMPTY });

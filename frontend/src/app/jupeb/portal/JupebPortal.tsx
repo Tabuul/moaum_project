@@ -24,6 +24,7 @@ import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
+import { JupebCbt } from "./JupebCbt";
 import QRCode from "qrcode";
 import { MathText } from "@/components/proto/MathText";
 import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
@@ -37,9 +38,9 @@ import {
   type Doc, type FeeRef, type PracticePaper, type RefundClaim, type Slot, type StepProblem,
 } from "@/lib/jupeb";
 
-type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "attendance" | "exams" | "results" | "documents" | "idcard"
+type Tab = "overview" | "announcements" | "profile" | "admission" | "payments" | "subjects" | "timetable" | "practice" | "cbt" | "attendance" | "exams" | "results" | "documents" | "idcard"
   | "requests" | "password" | "support";
-const TAB_IDS: Tab[] = ["overview", "announcements", "profile", "admission", "payments", "subjects", "timetable", "practice", "attendance", "exams", "results", "documents", "idcard",
+const TAB_IDS: Tab[] = ["overview", "announcements", "profile", "admission", "payments", "subjects", "timetable", "practice", "cbt", "attendance", "exams", "results", "documents", "idcard",
   "requests", "password", "support"];
 /** each section is its own item in the side menu (Shell routes jupeb/portal/<section> to /jupeb/portal?tab=<section>) */
 const routeOf = (t: Tab) => (t === "overview" ? "jupeb/portal" : `jupeb/portal/${t}`);
@@ -163,6 +164,8 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "subjects": return admitted ? <Subjects me={me} act={act} /> : notYet("Subject registration", "once you are admitted");
       case "timetable": return studying ? <Timetable me={me} /> : notYet("The timetable", "once your studentship is activated by the school fee");
       case "practice": return admitted ? <Practice /> : notYet("Practice tests", "once you are admitted");
+      /* V365: the University's one CBT engine, behind the JUPEB door */
+      case "cbt": return admitted ? <JupebCbt who={{ name: `${me.surname.toUpperCase()} ${me.first_name}${me.middle_name ? ` ${me.middle_name}` : ""}`, number: me.exam_no ?? me.application_no }} /> : notYet("CBT examinations", "once you are admitted");
       case "attendance": return studying ? <Attendance /> : notYet("Attendance", "once your studentship is activated by the school fee");
       case "exams": return studying ? <Exams /> : notYet("The examination", "once your studentship is activated by the school fee");
       case "results": return admitted ? <><Results me={me} /><MyAssessment /></> : notYet("Results", "once you are admitted");

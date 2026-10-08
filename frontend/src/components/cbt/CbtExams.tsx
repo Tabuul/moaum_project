@@ -10,10 +10,11 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import type { Problem } from "@/lib/api";
-import { COUNTABLE, DETECTOR_WORD, EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, whenAt, type CbtExamList, type CbtOffice, type Detector, type ExamType } from "@/lib/cbt";
+import { COUNTABLE, DETECTOR_WORD, EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, whenAt, type CaComponent, type CbtExamList, type CbtOffice, type Detector, type ExamType, type JupebSubject } from "@/lib/cbt";
 
 /** the office's name in a heading: the University's examinations office reads as the University's CBT */
 export const officeWord = (o: CbtOffice) => (o === "EXAMS" ? "University" : o);
+const SUBJECT_REQUIRED = "Choose the subject";
 
 const SEM = (n: number | null | undefined) => (n == null ? "Whole session" : n === 1 ? "First semester" : n === 2 ? "Second semester" : "Third semester");
 
@@ -33,12 +34,15 @@ export interface ExamForm {
   /* V364 */
   examType: ExamType; negativeMarks: string; allowBack: boolean; allowReview: boolean; fullscreenRequired: boolean; detectors: Detector[]; countedEvents: string[];
   warnAt: string; finalWarnAt: string; disconnectMinutes: string; proctoring: "NONE" | "CAMERA"; scoreOnSubmit: boolean; sheetComponent: "EXAM" | "CA" | "NONE";
+  /** V365: the part of the JUPEB continuous assessment a JUPEB examination counts towards */
+  jupebCaComponentId: string;
 }
 export const EMPTY_FORM: ExamForm = {
   title: "", instructions: "", durationMinutes: "60", selection: "FIXED", totalQuestions: "0", randomizeQuestions: true, randomizeOptions: false, passMark: "40", attemptLimit: "1",
   securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "", partialCredit: false,
   examType: "EXAMINATION", negativeMarks: "0", allowBack: true, allowReview: true, fullscreenRequired: true, detectors: ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"],
   countedEvents: ["TAB_SWITCH", "WINDOW_BLUR", "FULLSCREEN_EXIT"], warnAt: "", finalWarnAt: "", disconnectMinutes: "", proctoring: "NONE", scoreOnSubmit: false, sheetComponent: "EXAM",
+  jupebCaComponentId: "",
 };
 export const formBody = (f: ExamForm) => ({
   title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes) || 60, totalQuestions: Number(f.totalQuestions) || 0,
@@ -49,13 +53,14 @@ export const formBody = (f: ExamForm) => ({
     examType: f.examType, negativeMarks: Number(f.negativeMarks) || 0, allowBack: f.allowBack, allowReview: f.allowBack && f.allowReview, fullscreenRequired: f.fullscreenRequired,
     detectors: f.detectors, countedEvents: f.countedEvents, warnAt: f.warnAt ? Number(f.warnAt) : null, finalWarnAt: f.finalWarnAt ? Number(f.finalWarnAt) : null,
     disconnectMinutes: f.disconnectMinutes ? Number(f.disconnectMinutes) : null, proctoring: f.proctoring, scoreOnSubmit: f.scoreOnSubmit, sheetComponent: f.sheetComponent,
+    ...(f.jupebCaComponentId ? { jupebCaComponentId: f.jupebCaComponentId } : {}),
   },
 });
 
 const toggle = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
 
 /** the configuration fields, shared by the create form and the setup tab */
-export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean }) {
+export function ExamFields({ f, set, locked, jupeb }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean; jupeb?: { components: CaComponent[] } }) {
   const dis = !!locked;
   return (
     <>
@@ -106,8 +111,19 @@ export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Parti
       <div className="grid grid--3">
         <Field id="x-proc" label="Camera proctoring" hint={f.proctoring === "CAMERA" ? "By the candidate's consent; face signals only, no video kept, no microphone" : "No camera"}><select id="x-proc" className="ctl" disabled={dis} value={f.proctoring} onChange={(e) => set({ proctoring: e.target.value as ExamForm["proctoring"] })}><option value="NONE">None</option><option value="CAMERA">Camera, by consent</option></select></Field>
         <Field id="x-sos" label="The candidate's score" hint="By default the result is seen only once published"><select id="x-sos" className="ctl" disabled={dis} value={f.scoreOnSubmit ? "1" : "0"} onChange={(e) => set({ scoreOnSubmit: e.target.value === "1" })}><option value="0">Once the results are published</option><option value="1">On submission</option></select></Field>
-        <Field id="x-sheet" label="On the score sheet"><select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent} onChange={(e) => set({ sheetComponent: e.target.value as ExamForm["sheetComponent"] })}><option value="EXAM">As the examination</option><option value="CA">As continuous assessment</option><option value="NONE">Not at all (a quiz or mock)</option></select></Field>
+        {jupeb ? (
+          <Field id="x-sheet" label="Into the JUPEB continuous assessment" hint="The Board examines JUPEB; a CBT result counts only towards the assessment part the office set">
+            <select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent === "CA" ? f.jupebCaComponentId || "CA" : "NONE"}
+              onChange={(e) => set(e.target.value === "NONE" ? { sheetComponent: "NONE", jupebCaComponentId: "" } : { sheetComponent: "CA", jupebCaComponentId: e.target.value === "CA" ? "" : e.target.value })}>
+              <option value="NONE">Not at all (practice, a mock)</option>
+              {jupeb.components.map((c) => <option key={c.id} value={c.id}>{c.title} (out of {Number(c.max_score)})</option>)}
+            </select>
+          </Field>
+        ) : (
+          <Field id="x-sheet" label="On the score sheet"><select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent} onChange={(e) => set({ sheetComponent: e.target.value as ExamForm["sheetComponent"] })}><option value="EXAM">As the examination</option><option value="CA">As continuous assessment</option><option value="NONE">Not at all (a quiz or mock)</option></select></Field>
+        )}
       </div>
+      {jupeb && !jupeb.components.length ? <div className="sub2">No part of this session&rsquo;s JUPEB continuous assessment is set yet; the office sets them on Continuous Assessment.</div> : null}
       <Field id="x-instr" label="Instructions to candidates" hint="Shown before the start, under the University's standard instructions"><textarea id="x-instr" className="ctl" rows={3} value={f.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
     </>
   );
@@ -121,6 +137,11 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
   const [offering, setOffering] = useState("");
   const [f, setF] = useState<ExamForm>(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
+  const jupeb = office === "JUPEB";
+  const [subjectId, setSubjectId] = useState("");
+  const [semester, setSemester] = useState("1");
+  const subjects: JupebSubject[] = data.subjects ?? [];
+  const cbtSubjects = subjects.filter((x) => x.cbt_enabled);
   const rows = data.rows;
   const open = rows.filter((r) => r.live_state === "OPEN").length;
   const upcoming = rows.filter((r) => r.live_state === "UPCOMING" || r.live_state === "SCHEDULED").length;
@@ -139,11 +160,23 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
   async function create() {
     setBusy(true);
     try {
-      const r = await fetch("/api/bff/api/v1/cbt/exams", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Create the CBT examination ${f.title}`) }, body: JSON.stringify({ office, offeringId: offering, ...formBody(f) }) });
+      const target = jupeb ? { jupebSubjectId: subjectId, session: data.session, semester: Number(semester) } : { offeringId: offering };
+      const r = await fetch("/api/bff/api/v1/cbt/exams", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Create the CBT examination ${f.title}`) }, body: JSON.stringify({ office, ...target, ...formBody(f) }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       notify(`${j.reference} created as a draft`);
       router.push(`${base}/cbt/${j.id}`);
+    } finally { setBusy(false); }
+  }
+
+  async function setSubject(x: JupebSubject, on: boolean) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/cbt/catalogue/jupeb/${x.id}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${on ? "Allow" : "Withdraw"} CBT for the JUPEB subject ${x.code}`) }, body: JSON.stringify({ enabled: on }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      notify(`${x.title} ${on ? "may now be examined by CBT" : "is no longer examined by CBT"}`);
+      router.refresh();
     } finally { setBusy(false); }
   }
 
@@ -156,7 +189,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           <label htmlFor="cx-sem" className="sub2">Semester</label>
           <select id="cx-sem" className="ctl" value={data.semester == null ? "" : String(data.semester)} onChange={(e) => go(q({ semester: e.target.value }))}><option value="">Whole session</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select>
           <Btn kind="ghost" onClick={() => go(q({ archived: data.archived ? "" : "true" }))}>{data.archived ? "Current examinations" : "Archived"}</Btn>
-          {canManage ? <Btn kind="primary" onClick={() => { setF({ ...EMPTY_FORM }); setOffering(data.offerings[0]?.id ?? ""); setCreating(true); }}>Create examination</Btn> : null}
+          {canManage ? <Btn kind="primary" onClick={() => { setF({ ...EMPTY_FORM, sheetComponent: jupeb ? "NONE" : "EXAM" }); setOffering(data.offerings[0]?.id ?? ""); setSubjectId(cbtSubjects[0]?.id ?? ""); setCreating(true); }}>Create examination</Btn> : null}
         </span>} />
       <Tiles items={[
         ["EXAMINATIONS", num(rows.length), null, `${data.session} · ${SEM(data.semester).toLowerCase()}`],
@@ -179,18 +212,42 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           ])} texts={rows.map((r) => `${r.reference} ${r.title} ${r.course_code} ${r.live_state}`)} />
         ) : <PBody><div className="sub2">No examination for {data.session}{data.semester ? ` ${SEM(data.semester).toLowerCase()}` : ""} yet.{canManage ? " Create one over an offering of the office's courses." : ""}</div></PBody>}
       </Panel>
-      {!data.offerings.length ? <Note kind="info" title={office === "EXAMS" ? `No CBT course of yours is offered in ${data.session}` : `No ${office} course is offered in ${data.session}`}>{office === "EXAMS" ? "An examination is created over an offering of a course the University allows to be examined by CBT (CBT courses), within your department or faculty." : `An examination is created over an offering; offer the course for the session on ${office} Courses first.`}</Note> : null}
+      {jupeb ? (
+        <Panel title="JUPEB subjects examined by CBT" right={<span className="sub2">{cbtSubjects.length} of {subjects.length} allowed</span>}>
+          {subjects.length ? (
+            <DTable pageSize={25} cols={["Subject", "Registered|num", "Questions|num", "CBT|mid", "|num"]} rows={subjects.map((x) => [
+              <span key="s"><b className="tnum">{x.code}</b><div className="sub2">{x.title}</div></span>,
+              <span key="r" className="tnum">{num(x.registered)}</span>, <span key="q" className="tnum">{num(x.questions)}</span>,
+              x.cbt_enabled ? <Pil key="c" kind="ok">CBT</Pil> : <Pil key="c" kind="grey">Not CBT</Pil>,
+              canManage ? (x.cbt_enabled ? <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void setSubject(x, false)}>Withdraw</Btn> : <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void setSubject(x, true)}>Allow CBT</Btn>) : <span key="a" />,
+            ])} texts={subjects.map((x) => `${x.code} ${x.title}`)} />
+          ) : <PBody><div className="sub2">No active JUPEB subject.</div></PBody>}
+        </Panel>
+      ) : null}
+      {!jupeb && !data.offerings.length ? <Note kind="info" title={office === "EXAMS" ? `No CBT course of yours is offered in ${data.session}` : `No ${office} course is offered in ${data.session}`}>{office === "EXAMS" ? "An examination is created over an offering of a course the University allows to be examined by CBT (CBT courses), within your department or faculty." : `An examination is created over an offering; offer the course for the session on ${office} Courses first.`}</Note> : null}
 
       {creating ? (
         <Modal title="Create a CBT examination" sub={`${word} · ${data.session}`} wide onClose={() => setCreating(false)}
-          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || !offering || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || (jupeb ? !subjectId : !offering) || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
+          {jupeb ? (
+            <div className="grid grid--2">
+              <Field id="x-subject" label="Subject" required hint={cbtSubjects.length ? "A subject the JUPEB Office has allowed CBT; the paper is drawn from its own bank" : "Allow a subject CBT first, in the panel below"}>
+                <select id="x-subject" className="ctl" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+                  {!cbtSubjects.length ? <option value="">{SUBJECT_REQUIRED}</option> : null}
+                  {cbtSubjects.map((x) => <option key={x.id} value={x.id}>{x.code} — {x.title} · {x.questions} active question{x.questions === 1 ? "" : "s"}</option>)}
+                </select>
+              </Field>
+              <Field id="x-jsem" label="Semester"><select id="x-jsem" className="ctl" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option></select></Field>
+            </div>
+          ) : (
           <Field id="x-off" label="Course offering" required hint="A CBT course of the office offered this session; the paper is drawn from that course's question bank">
             <select id="x-off" className="ctl" value={offering} onChange={(e) => setOffering(e.target.value)}>
               {data.offerings.map((o) => <option key={o.id} value={o.id}>{o.course_code} — {o.title} · semester {o.semester} · {o.questions} active question{o.questions === 1 ? "" : "s"}</option>)}
             </select>
           </Field>
-          <ExamFields f={f} set={(p) => setF({ ...f, ...p })} />
-          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only students registered on the offering whose {office === "EXAMS" ? "school fees are cleared for examinations" : "GST fee is paid (where the Bursar’s rule requires it)"} can sit it; the server judges that at the start, not the button.</div>
+          )}
+          <ExamFields f={f} set={(p) => setF({ ...f, ...p })} jupeb={jupeb ? { components: [] } : undefined} />
+          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only {jupeb ? "JUPEB students registered for the subject whose share of the semester’s school fee is paid" : `students registered on the offering whose ${office === "EXAMS" ? "school fees are cleared for examinations" : "GST fee is paid (where the Bursar’s rule requires it)"}`} can sit it; the server judges that at the start, not the button.{jupeb ? " The part of the continuous assessment it counts towards is set on the examination once created." : ""}</div>
         </Modal>
       ) : null}
     </>

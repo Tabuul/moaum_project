@@ -39,8 +39,9 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     fullscreenRequired: exam.fullscreen_required !== false, detectors: exam.detectors ?? EMPTY_FORM.detectors, countedEvents: exam.counted_events ?? EMPTY_FORM.countedEvents,
     warnAt: exam.warn_at == null ? "" : String(exam.warn_at), finalWarnAt: exam.final_warn_at == null ? "" : String(exam.final_warn_at),
     disconnectMinutes: exam.disconnect_minutes == null ? "" : String(exam.disconnect_minutes), proctoring: exam.proctoring ?? "NONE", scoreOnSubmit: !!exam.score_on_submit,
-    sheetComponent: exam.sheet_component ?? "EXAM",
+    sheetComponent: exam.sheet_component ?? "EXAM", jupebCaComponentId: exam.jupeb_ca_component_id ?? "",
   }));
+  const bankName = exam.office === "JUPEB" ? `JUPEB:${exam.course_code}` : exam.course_code;
   const [bpDim, setBpDim] = useState<"" | "DIFFICULTY" | "TOPIC">(exam.blueprint ?? "");
   const [bpRows, setBpRows] = useState<Record<string, string>>(() => Object.fromEntries((exam.blueprintRows ?? []).map((r) => [r.value, String(r.questions)])));
   const [ask, setAsk] = useState<{ action: string; title: string; text: string; reason: boolean } | null>(null);
@@ -56,12 +57,12 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
 
   useEffect(() => {
     if (tab !== "paper" || bank) return;
-    fetch(`/api/bff/api/v1/cbt/questions?course=${encodeURIComponent(exam.course_code)}`).then(async (r) => {
+    fetch(`/api/bff/api/v1/cbt/questions?course=${encodeURIComponent(bankName)}`).then(async (r) => {
       const j = await r.json().catch(() => null);
       if (!r.ok) { setBankProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       setBank(j.rows as BankQuestion[]);
     }).catch((e) => setBankProblem({ status: 500, title: String(e) }));
-  }, [tab, bank, exam.course_code]);
+  }, [tab, bank, bankName]);
 
   async function run(work: () => Promise<Record<string, unknown> | null>) {
     setBusy(true);
@@ -123,7 +124,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
           <Panel title="Configuration" right={editable ? <Btn kind="primary" disabled={busy || !f.title.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Btn> : exam.state === "PUBLISHED" && canManage ? <Btn kind="secondary" disabled={busy} onClick={() => void save()}>Save closing time & instructions</Btn> : <span className="sub2">Read only</span>}>
             <PBody>
               {exam.state === "PUBLISHED" ? <div className="sub2 mb-2">The examination is published: its paper and rules are fixed. The title, the instructions and the closing time may still change.</div> : null}
-              <ExamFields f={f} set={(p) => setF({ ...f, ...p })} locked={!editable} />
+              <ExamFields f={f} set={(p) => setF({ ...f, ...p })} locked={!editable} jupeb={exam.office === "JUPEB" ? { components: exam.caComponents ?? [] } : undefined} />
             </PBody>
           </Panel>
           <Panel title="Lifecycle" right={<span className="sub2">Created {whenAt(exam.created_at)}{exam.created_by_name ? ` by ${exam.created_by_name}` : ""}{exam.created_office ? ` (${exam.created_office})` : ""}</span>}>
@@ -166,7 +167,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
               {exam.selection === "RANDOM"
                 ? `Each candidate draws ${exam.total_questions} questions from the pool by their own seed. Leave the pool empty to draw from the course's whole active bank, or pick the questions it draws from. `
                 : "The questions in the order listed; shuffled per candidate when the question order says so. "}
-              Marks come from the bank unless overridden on the paper. The correct options never leave the server. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(exam.course_code)}`}>Open the {exam.course_code} bank</LinkBtn>
+              Marks come from the bank unless overridden on the paper. The correct options never leave the server. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(bankName)}`}>Open the {exam.course_code} bank</LinkBtn>
             </div>
             {!bank ? <div className="sub2">Loading the bank…</div> : (
               <DTable pageSize={50} cols={["On paper|mid", "#|mid", "Question", "Topic|mid", "Kind|mid", "Difficulty|mid", "Marks|num", "Order|mid"]} rows={[...bank].sort((a, b) => (picked.indexOf(a.id) === -1 ? 1e9 : picked.indexOf(a.id)) - (picked.indexOf(b.id) === -1 ? 1e9 : picked.indexOf(b.id))).map((q) => {
