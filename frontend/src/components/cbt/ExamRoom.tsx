@@ -73,6 +73,15 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   useEffect(() => { endsAtRef.current = endsAt; }, [endsAt]);
   useEffect(() => { offsetRef.current = offset; }, [offset]);
   useEffect(() => { currentRef.current = current; }, [current]);
+  // the current question's number kept in view inside the navigator (which scrolls on its own on a wide screen) — never the page
+  const navGridRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const grid = navGridRef.current;
+    const btn = grid?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!grid || !btn || grid.scrollHeight <= grid.clientHeight) return;
+    if (btn.offsetTop < grid.scrollTop) grid.scrollTop = btn.offsetTop - 6;
+    else if (btn.offsetTop + btn.offsetHeight > grid.scrollTop + grid.clientHeight) grid.scrollTop = btn.offsetTop + btn.offsetHeight - grid.clientHeight + 6;
+  }, [current]);
 
   const exam = room?.exam;
   const detectors = useMemo(() => new Set<Detector>(exam?.detectors ?? ALL_DETECTORS), [exam?.detectors]);
@@ -549,7 +558,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
                 <span className="sub2">{allowBack ? "Questions · tap to go to one" : "Questions · this paper moves forward only"}</span>
                 <button type="button" className={`btn btn--ghost btn--sm ${css.navToggle}`} onClick={() => setNavOpen(false)}>Close</button>
               </div>
-              <div className={css.navGrid}>
+              <div className={css.navGrid} ref={navGridRef}>
                 {questions.map((x, i) => {
                   const done = (answers[x.id] ?? []).length > 0;
                   const fl = flagged.includes(x.id);
