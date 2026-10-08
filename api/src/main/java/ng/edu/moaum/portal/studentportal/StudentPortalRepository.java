@@ -298,6 +298,11 @@ class StudentPortalRepository {
     }
 
     /** whether the student's confirmed school-fee payments cover the charge up to and including a semester */
+    /** V361: whether a school fee of the session applies to the student (a ₦0 line stated on purpose counts) */
+    boolean feeStated(UUID student, String session) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.fee_stated(:s, :ses)").param("s", student).param("ses", session).query(Boolean.class).single());
+    }
+
     boolean semesterCleared(UUID student, String session, int semester) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")
                 .param("s", student).param("ses", session).param("sem", semester).query(Boolean.class).single());

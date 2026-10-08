@@ -214,6 +214,27 @@ class StudentIT {
         }
     }
 
+    /** V361: one student's record is read within the office's bound — the Head of the student's own department reads it,
+     *  the Head of another department (on none of its courses) is refused the record, the portal view and the photograph */
+    @Test
+    void aStudentsRecordIsReadWithinTheOfficesOwnScope() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        String own = it.officer("hod", "department", department);
+        String other = it.officer("hod", "department",
+                jdbc.sql("SELECT code FROM ref.department WHERE code <> :d AND faculty_code IS NOT NULL ORDER BY code LIMIT 1").param("d", department).query(String.class).single());
+        assertThat(as(own, "/api/v1/student/students/" + STUDENT).getStatusCode().value()).isEqualTo(200);
+        for (String path : List.of("", "/portal", "/passport")) {
+            assertThat(as(other, "/api/v1/student/students/" + STUDENT + path).getStatusCode().value()).as(path).isEqualTo(403);
+        }
+        // the University's offices read it as before
+        assertThat(get("/api/v1/student/students/" + STUDENT).getStatusCode().value()).isEqualTo(200);
+    }
+
+    @SuppressWarnings("rawtypes")
+    ResponseEntity<Map> as(String bearer, String path) {
+        return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer).retrieve().toEntity(Map.class);
+    }
+
     @Test
     void anIntakeOnASessionWithNoCandidatesBringsNobodyOnto() {
         ResponseEntity<Map> r = post("/api/v1/student/intake/2097/2098", Map.of());

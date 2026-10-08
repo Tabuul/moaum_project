@@ -22,7 +22,8 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   const [sel, setSel] = useState<number>(fees.balance);
   const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session) ?? null;
   const justPaid = paid ? fees.references.find((r) => r.reference === paid) ?? null : null;
-  const noCharge = fees.due === 0;
+  // V361: "no charge" is a charge not yet stated; a ₦0 charge the Bursary stated on purpose is a charge
+  const noCharge = fees.stated === false || (fees.stated === undefined && fees.due === 0);
   const w = fees.window ?? null;   // V288: the portal's school-fees window
   const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
   const canPay = !w || w.state === "OPEN";
@@ -41,7 +42,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : "Cleared"}</span></div>
       </div>
       {noCharge ? (
-        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>The Bursar states the session&rsquo;s fee schedule; your charge is computed from it the moment it is stated. Nothing is paid against a charge that does not exist.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
+        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>The Bursar states the session&rsquo;s fee schedule; your charge is computed from it the moment it is stated. Nothing is paid against a charge that does not exist, and course registration for the session opens only once it is stated and paid.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
       ) : fees.schemeProblem ? (
         <Note kind="info" title="What a payment releases is not yet stated">{fees.schemeProblem}</Note>
       ) : fees.clearsRegistration ? (

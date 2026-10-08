@@ -131,10 +131,54 @@ class StudentController {
         return out;
     }
 
+    /**
+     * V361: one student's record is read within the office's bound, as the register is. A Head of Department, an
+     * Examinations Officer, a SIWES Coordinator or a lecturer reads the students of their own department (or programme),
+     * and a Dean, a Faculty Officer or a Faculty Examinations Officer those of their faculty — and also a student registered
+     * on a course of their own (a lecturer: a course they teach), so a class list still opens every student on it. Every
+     * other office that reads the record reads the University's.
+     */
+    private void reachStudent(UUID id) {
+        boolean dept = scope.actingDepartmentOffice();
+        boolean fac = scope.actingFacultyOffice();
+        if (!dept && !fac) return;
+        java.util.Map<String, Object> s = jdbc.sql("""
+                SELECT p.code, p.dept_code, p.faculty_code FROM people.student st JOIN ref.programme p ON p.code = st.programme_code WHERE st.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElse(null);
+        if (s == null) return;   // an unknown student is answered as not found, not as out of scope
+        String prog = scope.actingProgramme();
+        boolean within = prog != null ? prog.equalsIgnoreCase(String.valueOf(s.get("code")))
+                : scope.within((String) s.get("faculty_code"), (String) s.get("dept_code"), null);
+        if (within) return;
+        boolean onCourse;
+        if (scope.actingLecturer()) {
+            onCourse = Boolean.TRUE.equals(jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id
+                                     JOIN catalogue.offering o ON o.id = e.offering_id
+                                    WHERE r.student_id = :s AND (o.lecturer_id = :me OR o.second_examiner_id = :me
+                                          OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :me)))
+                    """).param("s", id).param("me", scope.actorId()).query(Boolean.class).single());
+        } else {
+            String d = dept ? scope.actingDept() : null;
+            String f = fac ? scope.actingFaculty() : null;
+            onCourse = (d != null || f != null) && Boolean.TRUE.equals(jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id
+                                     JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                                     JOIN ref.department dd ON dd.code = c.dept_code
+                                    WHERE r.student_id = :s AND (c.dept_code = :d OR dd.faculty_code = :f))
+                    """).param("s", id).param("d", d, java.sql.Types.VARCHAR).param("f", f, java.sql.Types.VARCHAR).query(Boolean.class).single());
+        }
+        if (!onCourse) {
+            throw new org.springframework.security.access.AccessDeniedException("This student is outside your " + (fac ? "faculty" : "department")
+                    + " and on none of its courses; this office reads the records within its own scope.");
+        }
+    }
+
     /** One record entire. The session decides which registrations it shows. */
     @GetMapping("/students/{id}")
     @PreAuthorize(READERS)
     StudentRecord record(@PathVariable UUID id, @RequestParam(required = false) String session) {
+        reachStudent(id);
         return students.record(id, blankToNull(session));
     }
 
@@ -143,6 +187,7 @@ class StudentController {
     @GetMapping("/students/{id}/portal")
     @PreAuthorize(READERS)
     java.util.Map<String, Object> portal(@PathVariable UUID id) {
+        reachStudent(id);
         java.util.Map<String, Object> out = portal.me(id);
         // V360: the school fees go only to the offices that read them
         if (!readsFees()) {
@@ -156,6 +201,7 @@ class StudentController {
     @GetMapping("/students/{id}/passport")
     @PreAuthorize(READERS)
     org.springframework.http.ResponseEntity<byte[]> passport(@PathVariable UUID id) {
+        reachStudent(id);
         return portal.passportImage(id)
                 .map(img -> org.springframework.http.ResponseEntity.ok()
                         .contentType(org.springframework.http.MediaType.IMAGE_JPEG)

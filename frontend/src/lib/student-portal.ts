@@ -13,6 +13,8 @@ export interface PaymentRef {
 export interface PortalWindow { configured: boolean; state: "OPEN" | "SCHEDULED" | "CLOSED" | "EXPIRED"; phase: "NORMAL" | "LATE" | "NONE"; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; reason: string | null }
 export interface Fees {
   session: string;
+  /** V361: whether the Bursary has stated a school fee for the student this session (a ₦0 line on purpose counts) */
+  stated?: boolean;
   window?: PortalWindow;
   charges: Charge[];
   due: number;

@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 204
+\set EXPECTED 205
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6588,6 +6588,40 @@ BEGIN
         AND v_end AND v_twice AND v_scored AND NOT v_scored2 AND n_score_mail = 1 AND v_score_hidden,
         format('cut=%s class=%s mat=%s asg=%s mail=%s sms=%s marked=%s hidden=%s endorsed=%s/%s scored=%s/%s scoremail=%s scorehidden=%s',
                v_cut, n_class, n_mat, n_asg, n_mail, n_sms, v_marked, v_mark_hidden, v_end, v_twice, v_scored, v_scored2, n_score_mail, v_score_hidden));
+END $$;
+
+-- ── 205. V361: a session's school fees must be stated for the student before they are cleared — with no fee line that applies to them, course registration is refused with the reason (not "not fully paid") and no semester is cleared; a ₦0 line stated on purpose clears without a payment; a fee stated is cleared only when paid ──
+DO $$
+DECLARE s1 uuid; reg uuid := gen_random_uuid(); officer uuid := gen_random_uuid(); msg text; r_submit text;
+        v_stated0 boolean; v_cleared0 boolean; v_stated_free boolean; v_cleared_free boolean; v_cleared_owed boolean; v_cleared_paid boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+        -- 9997/9998: nothing stated for the student
+        v_stated0 := finance.fee_stated(s1, '9997/9998');
+        v_cleared0 := finance.semester_cleared(s1, '9997/9998', 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, s1, '9997/9998', 1, 100, 'DRAFT');
+        BEGIN PERFORM registration.student_submit(reg);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_submit := split_part(msg, ':', 1); END;
+        -- the Bursary states ₦0 on purpose for the programme: stated, and cleared with nothing paid
+        INSERT INTO finance.fee_schedule (id, session, item, amount, programme_code, kind, ord) VALUES (gen_random_uuid(), '9997/9998', 'School Fees', 0, 'C00023', 'FEE', 1);
+        v_stated_free := finance.fee_stated(s1, '9997/9998');
+        v_cleared_free := finance.semester_cleared(s1, '9997/9998', 1);
+        -- a fee stated is cleared only when paid
+        UPDATE finance.fee_schedule SET amount = 50000 WHERE session = '9997/9998' AND programme_code = 'C00023' AND item = 'School Fees';
+        v_cleared_owed := finance.semester_cleared(s1, '9997/9998', 1);
+        INSERT INTO finance.payment_reference (id, student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (gen_random_uuid(), s1, '9997/9998', 'CHK-361-PAID', 'School fees (full session)', 50000, now() + interval '1 day', now(), officer, 'BANK', 'RCT-CHK-361');
+        v_cleared_paid := finance.semester_cleared(s1, '9997/9998', 1);
+        RAISE EXCEPTION 'the V361 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V361: nothing stated, nothing cleared and registration refused with the reason; ₦0 stated on purpose clears without payment; a fee stated clears only when paid',
+        NOT v_stated0 AND NOT v_cleared0 AND r_submit = 'REG_FEES_NOT_STATED' AND v_stated_free AND v_cleared_free AND NOT v_cleared_owed AND v_cleared_paid,
+        format('stated0=%s cleared0=%s submit=%s free=%s/%s owed=%s paid=%s', v_stated0, v_cleared0, r_submit, v_stated_free, v_cleared_free, v_cleared_owed, v_cleared_paid));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
