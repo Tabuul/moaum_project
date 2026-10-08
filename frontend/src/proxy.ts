@@ -40,6 +40,8 @@ const OPEN_EXACT = new Set([
      ticket number and the email it was raised with open the ticket, and the API limits the lookups */
   "/track",
   "/api/bff/api/v1/helpdesk/track",
+  /* help asked of the desk from the sign-in page (V363; the page itself is under /login); the API limits each connection */
+  "/api/bff/api/v1/helpdesk/sign-in-help",
   /* Interswitch PayDirect's doors (V299; the one address for both messages, Oct 2026) when the API has no public address of its
      own and the portal forwards to it: Interswitch has no session. The API answers them as it answers them directly — a
      notification believed only with its credentials. Exactly these three, not the Bursary's /paydirect desk. */

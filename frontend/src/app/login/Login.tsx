@@ -131,7 +131,7 @@ export function Login({ next, sso, ssoProblem = null }: {
             {sso?.enabled ? <a className={css.sso} href="/api/auth/sso/start">{sso.label}</a> : null}
           </form>
 
-          <p className={css.foot}>Already reported a problem signing in? <Link href="/track">Track your ICT support ticket</Link></p>
+          <p className={css.foot}>Cannot sign in? <Link href="/login/help">Ask ICT Support for help</Link> · <Link href="/track">Track a request</Link></p>
         </div>
     </AuthLayout>
   );

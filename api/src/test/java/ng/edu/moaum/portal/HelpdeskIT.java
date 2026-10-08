@@ -203,4 +203,63 @@ class HelpdeskIT {
         assertThat(bad.getStatusCode().value()).isEqualTo(422);
         it.call(director, HttpMethod.PUT, "/api/v1/helpdesk/admin/settings", Map.of("notifyAgentsOnNew", true));
     }
+
+    /**
+     * V363: a person who cannot sign in asks the desk from the sign-in page. The request is a Login Issues ticket that names
+     * no account — not even when the number typed is a real student's — the acknowledgement carries nothing the request
+     * typed, the person tracks it like any ticket, and the desk sees it marked as asked by someone not signed in.
+     */
+    @Test
+    void aPersonWhoCannotSignInAsksTheDeskAndTheRequestNamesNoAccount() {
+        String email = "zz-help-" + UUID.randomUUID().toString().substring(0, 8) + "@example.edu";
+        Map<String, String> details = Map.of("account_type", "Student portal", "username", "MOAUM/MTC/95/9701", "error", "Invalid password", "smuggled", "not asked");
+
+        // the questions are the desk's own for Login Issues
+        ResponseEntity<Map> form = org.springframework.web.client.RestClient.builder().baseUrl("http://localhost:" + port)
+                .defaultStatusHandler(status -> true, (request, response) -> { }).build()
+                .get().uri("/api/v1/helpdesk/sign-in-help").retrieve().toEntity(Map.class);
+        assertThat(form.getStatusCode().value()).as(String.valueOf(form.getBody())).isEqualTo(200);
+        assertThat(path(form.getBody(), "open")).isEqualTo(true);
+        assertThat(String.valueOf(path(form.getBody(), "fields"))).contains("account_type").contains("username");
+
+        // a name carrying a web address is refused; so is a request with no email
+        ResponseEntity<Map> badName = anonymous("/api/v1/helpdesk/sign-in-help", Map.of("name", "Visit www.example.com", "email", email, "description", "x", "details", details));
+        assertThat(badName.getStatusCode().value()).as(String.valueOf(badName.getBody())).isEqualTo(422);
+        ResponseEntity<Map> noEmail = anonymous("/api/v1/helpdesk/sign-in-help", Map.of("name", "Ada Okafor", "email", "", "description", "x", "details", details));
+        assertThat(noEmail.getStatusCode().value()).isEqualTo(400);
+
+        ResponseEntity<Map> asked = anonymous("/api/v1/helpdesk/sign-in-help", Map.of("name", "Ada Okafor", "email", email, "phone", "08030000000",
+                "description", "The reset link never arrives.", "details", details));
+        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
+        String number = String.valueOf(path(asked.getBody(), "number"));
+        assertThat(number).matches("TICK-\\d{4}-\\d{5}");
+        assertThat(asked.getBody()).containsOnlyKeys("number", "status");
+
+        // the ticket names no account, though the number given is a real student's; nothing the form did not ask is kept
+        Map<String, Object> row = jdbc.sql("""
+                SELECT t.id, t.requester_kind, t.requester_id = t.id AS self, t.department_code, t.requester_number, t.details::text AS details, c.code AS category
+                  FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id WHERE t.number = :n
+                """).param("n", number).query().singleRow();
+        assertThat(row.get("requester_kind")).isEqualTo("PUBLIC");
+        assertThat(row.get("self")).isEqualTo(true);
+        assertThat(row.get("department_code")).isNull();
+        assertThat(row.get("category")).isEqualTo("LOGIN");
+        assertThat(row.get("requester_number")).isEqualTo("MOAUM/MTC/95/9701");
+        assertThat(String.valueOf(row.get("details"))).doesNotContain("smuggled");
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.ticket WHERE number = :n AND requester_kind = 'STUDENT'").param("n", number).query(Long.class).single()).isZero();
+
+        // the acknowledgement says what the University says, and nothing the request typed
+        String ack = jdbc.sql("SELECT body FROM platform.notice WHERE recipient = :e AND subject LIKE '%' || :n || '%' ORDER BY created_at LIMIT 1")
+                .param("e", email).param("n", number).query(String.class).single();
+        assertThat(ack).contains(number).doesNotContain("Ada").doesNotContain("reset link never arrives");
+
+        // tracked like any ticket, with its number and the email
+        ResponseEntity<Map> tracked = anonymous("/api/v1/helpdesk/track", Map.of("number", number, "email", email.toUpperCase()));
+        assertThat(tracked.getStatusCode().value()).as(String.valueOf(tracked.getBody())).isEqualTo(200);
+
+        // the desk sees it, marked as asked by someone not signed in
+        ResponseEntity<Map> desk = it.get(director, "/api/v1/helpdesk/tickets/" + row.get("id"));
+        assertThat(desk.getStatusCode().value()).as(String.valueOf(desk.getBody())).isEqualTo(200);
+        assertThat(path(desk.getBody(), "requester_kind")).isEqualTo("PUBLIC");
+    }
 }

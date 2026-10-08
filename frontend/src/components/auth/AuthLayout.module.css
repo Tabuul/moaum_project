@@ -293,9 +293,9 @@
   transition: border-color 0.3s ease-out, box-shadow 0.3s ease-out;
 }
 .panel :global(.field textarea) { padding: 12px 16px; }
-/* every field fills its column, as the CMS's do: the portal's cap on a single-line input (globals.css, 460px; 200px for a
-   number) is for the wide desk screens, and here it left the text fields shorter than the selects and the address beside them */
-.panel :global(.field > input:not(.pchk):not([type="checkbox"]):not([type="radio"])) { width: 100%; max-width: none; }
+/* every field fills the panel's column, as the CMS's do: the panel is already narrow, so the portal's 460px hold on a field
+   standing alone (globals.css) is not wanted here, and every control is the same length */
+.panel :global(.field > :is(input, select, textarea):not(.pchk):not([type="checkbox"]):not([type="radio"])) { width: 100%; max-width: none; }
 .panel :global(.field input:focus), .panel :global(.field select:focus), .panel :global(.field textarea:focus), .panel :global(.ctl:focus) {
   border-color: #1a2438;
   box-shadow: 0 0 0 4px rgba(26, 36, 56, 0.15);

@@ -10,7 +10,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Attachments, DetailsGrid, PriorityPil, StatusPil, Timeline, when, type Ticket } from "@/lib/helpdesk";
+import { Attachments, DetailsGrid, PriorityPil, StatusPil, Timeline, requesterKind, requesterNumberLabel, when, type Ticket } from "@/lib/helpdesk";
 
 export function OfficeTicket({ t }: { t: Ticket }) {
   const router = useRouter();
@@ -63,11 +63,11 @@ export function OfficeTicket({ t }: { t: Ticket }) {
       ) : null}
 
       <div className="grid grid--2">
-        <Panel title="Requester" right={t.requester_kind === "STUDENT" ? "Student" : "Member of staff"}>
+        <Panel title="Requester" right={t.requester_kind === "STAFF" ? "Member of staff" : requesterKind(t.requester_kind)}>
           <PBody>
             <KvGrid cls="grid--2" pairs={[
               ["Name", <strong key="n">{t.requester_name}</strong>],
-              [t.requester_kind === "STUDENT" ? "Matriculation number" : "Staff number", <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
+              [requesterNumberLabel(t.requester_kind), <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
               ["Email", t.requester_email ?? "—"],
               ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
               ["Department", t.department ?? "—"],

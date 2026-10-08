@@ -37,7 +37,7 @@ export function Forgot() {
           <PageHead title="Reset your password" description="Staff, students and applicants." />
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
-              Check the email (and phone) on your account. The link is good for an hour. If nothing arrives, the address on your account may differ from the one you expect &mdash; ask the Registry to check it. (A staff account can only be emailed when its username is an email address.)
+              Check the email (and phone) on your account. The link is good for an hour. If nothing arrives, the address on your account may differ from the one you expect &mdash; <Link href="/login/help">ask ICT Support for help</Link>. (A staff account can only be emailed when its username is an email address.)
             </Note>
           ) : (
             <>

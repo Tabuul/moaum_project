@@ -68,13 +68,17 @@
   .rpt__table tbody tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-/* Professional input sizing (at the user's request): a single-line text or
-   number field reads better at a natural width than stretched across a whole
-   panel. Only labelled form fields are capped; textareas, selects and the small
-   native checkboxes keep their width. Narrow columns are unaffected — this only
-   stops a field growing absurdly wide on a large screen. */
-.field > input:not(.pchk):not([type="checkbox"]):not([type="radio"]) { max-width: 460px; }
-.field > input.tnum { max-width: 200px; }
+/* Field sizing (at the user's request, Sept 2026; made even, Oct 2026: "make sure
+   the input fields are equal, not one longer than another"). Every control of a
+   labelled field — text, number, date, select or text box alike — is the same
+   length as its neighbours:
+   - fields side by side in a grid fill their column, so each row lines up and a
+     full-width field under them ends where they end;
+   - a field standing on its own is held to 460px, so it does not stretch across a
+     wide panel, and the field above or below it is held the same.
+   The small native checkboxes and radios keep their own size. */
+.field > :is(input, select, textarea):not(.pchk):not([type="checkbox"]):not([type="radio"]) { max-width: 460px; }
+.grid > .field > :is(input, select, textarea):not(.pchk):not([type="checkbox"]):not([type="radio"]) { max-width: none; }
 
 /* ── responsive hardening (mobile & tablet) ──────────────────────────────
    The shell, grids and .tablewrap are already responsive (prototype.css).

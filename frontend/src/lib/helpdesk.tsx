@@ -6,11 +6,19 @@ import { KvGrid, Pil } from "@/components/proto/ui";
 export interface TicketRow {
   id: string; number: string; subject: string; status: string; priority: string; created_at: string; updated_at: string;
   resolved_at: string | null; closed_at: string | null; reopen_count: number;
-  category_code: string; category: string; requester_kind: "STUDENT" | "STAFF" | "JUPEB"; requester_name: string; requester_number: string | null; requester_email: string | null;
+  category_code: string; category: string; requester_kind: "STUDENT" | "STAFF" | "JUPEB" | "PUBLIC"; requester_name: string; requester_number: string | null; requester_email: string | null;
   department_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null;
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
   /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */
   queue_code: string | null; queue: string | null; escalated_office: string | null; office: string | null; waiting_since: string | null;
+}
+/** who raised a ticket, in a word; V363's PUBLIC asked from the sign-in page while not signed in, and nothing it says is proven */
+export function requesterKind(kind: string): string {
+  return kind === "STUDENT" ? "Student" : kind === "JUPEB" ? "JUPEB candidate" : kind === "PUBLIC" ? "Not signed in" : "Staff";
+}
+/** what the requester's number is: the record's own, or (V363) only what the person typed */
+export function requesterNumberLabel(kind: string): string {
+  return kind === "STUDENT" ? "Matriculation number" : kind === "JUPEB" ? "JUPEB application number" : kind === "PUBLIC" ? "Number given (unconfirmed)" : "Staff number";
 }
 export interface Comment { id: string; author_kind: "REQUESTER" | "AGENT" | "SYSTEM"; author_name: string; internal: boolean; body: string; created_at: string }
 export interface Attachment { id: string; comment_id: string | null; uploaded_kind: string; uploader_name: string; filename: string; content_type: string; bytes: number; internal: boolean; uploaded_at: string }

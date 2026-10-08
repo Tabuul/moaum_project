@@ -13,7 +13,7 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/pr
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import { AVAILABILITY, PRIORITY, PriorityPil, STATUS, StatusPil, when, type Agent, type Category, type Counts, type Queue, type TicketRow } from "@/lib/helpdesk";
+import { AVAILABILITY, PRIORITY, PriorityPil, STATUS, StatusPil, requesterKind, when, type Agent, type Category, type Counts, type Queue, type TicketRow } from "@/lib/helpdesk";
 import { Ago, Due } from "@/components/helpdesk/Clock";
 
 export interface Filters { q: string; status: string; category: string; priority: string; agent: string; queue: string; faculty: string; department: string; from: string; to: string; sort: string; dir: string; size: string }
@@ -227,7 +227,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
                   {r.escalated ? <Pil kind="warn">Escalated</Pil> : null}
                   {r.office ? <Pil kind="warn">With {r.office}</Pil> : null}
                 </div></span>,
-              <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {r.requester_kind === "STUDENT" ? "Student" : "Staff"}</div></span>,
+              <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {requesterKind(r.requester_kind)}</div></span>,
               <span key="c" className="sub2">{r.category}</span>,
               <span key="s">{r.subject}{r.faculty ? <div className="sub2">{r.faculty}{r.department ? ` · ${r.department}` : ""}</div> : null}</span>,
               <span key="qu" className={r.queue ? "" : "sub2"}>{r.queue ?? "No queue"}</span>,

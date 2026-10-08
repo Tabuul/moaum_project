@@ -52,7 +52,8 @@ class TicketNotifier {
 
     private void toRequester(T t, String subject, String body) {
         if (t.requesterEmail() == null || t.requesterEmail().isBlank()) return;
-        String kind = "STUDENT".equals(t.requesterKind()) ? "student" : "person";
+        // V363: a request from the sign-in page names no one; its notices are about the ticket itself
+        String kind = "STUDENT".equals(t.requesterKind()) ? "student" : "PUBLIC".equals(t.requesterKind()) ? "ticket" : "person";
         notices.queueEmail(t.requesterEmail(), subject, body, kind, t.requesterId(), List.of());
     }
 
@@ -118,11 +119,23 @@ class TicketNotifier {
 
     void submitted(UUID id) {
         T t = load(id);
-        toRequester(t, "ICT Support Ticket Received — " + t.number(),
-                "Dear " + t.requesterName() + ",\n\nYour ticket has been received by the Directorate of ICT.\n\n"
-                        + "Ticket number: " + t.number() + "\nSubject: " + t.subject() + "\nCategory: " + t.category() + "\nSubmitted: " + java.time.LocalDate.now() + "\n\n"
-                        + "Quote the ticket number in any follow-up. You will be told when the desk opens it, when work begins, and when it is resolved.\n"
-                        + trackingLines(t) + "\nDirectorate of ICT");
+        if ("PUBLIC".equals(t.requesterKind())) {
+            // V363: asked from the sign-in page by someone not signed in, to an address nobody has confirmed — the notice says only
+            // what the University says, and nothing the request typed (no name, no subject), so it cannot carry another's words
+            toRequester(t, "ICT Support Ticket Received — " + t.number(),
+                    "Your request for help signing in has been received by the Directorate of ICT.\n\n"
+                            + "Ticket number: " + t.number() + "\nSubmitted: " + java.time.LocalDate.now() + "\n\n"
+                            + "The desk confirms who you are before it changes anything on an account, and may call the phone number you gave. "
+                            + "It never asks for your password.\n"
+                            + "If you did not ask for help signing in, ignore this email; nothing has been changed.\n"
+                            + trackingLines(t) + "\nDirectorate of ICT");
+        } else {
+            toRequester(t, "ICT Support Ticket Received — " + t.number(),
+                    "Dear " + t.requesterName() + ",\n\nYour ticket has been received by the Directorate of ICT.\n\n"
+                            + "Ticket number: " + t.number() + "\nSubject: " + t.subject() + "\nCategory: " + t.category() + "\nSubmitted: " + java.time.LocalDate.now() + "\n\n"
+                            + "Quote the ticket number in any follow-up. You will be told when the desk opens it, when work begins, and when it is resolved.\n"
+                            + trackingLines(t) + "\nDirectorate of ICT");
+        }
         String line = t.number() + " from " + t.requesterName() + " (" + t.category() + (t.queue() == null ? "" : " · " + t.queue() + " queue") + "): " + t.subject() + "\n\nOpen it: " + deskLink(t) + "\n";
         if (t.assignedTo() != null) {
             // V328: routed straight to an agent — they are told, nobody else need be

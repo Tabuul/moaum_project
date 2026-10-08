@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 206
+\set EXPECTED 207
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6649,6 +6649,44 @@ BEGIN
     PERFORM pg_temp.assert('V362: unstated fees clear nothing from the schedule''s first session (the examination, the results), though the position reads paid in full on nothing; a session before the schedule is taken as stated; the unpaid registrations are listed',
         v_from IS NOT NULL AND v_before AND NOT v_after AND v_full AND NOT v_exam AND NOT v_results AND v_count >= 1 AND v_listed = 'NOT_STATED',
         format('from=%s before=%s after=%s full=%s exam=%s results=%s listed=%s/%s', v_from, v_before, v_after, v_full, v_exam, v_results, v_count, v_listed));
+END $$;
+
+-- ── 207. V363: a person who cannot sign in asks the desk from the sign-in page — a Login Issues ticket that names no account (its requester is itself, no department or faculty), routed as any other; a name is letters, an option one of those offered, and an email keeps at most three such requests open ──
+DO $$
+DECLARE t1 uuid; v_kind text; v_self boolean; v_dept text; v_cat text; v_number text; v_routed boolean;
+        bad_name boolean := false; bad_option boolean := false; fourth boolean := false; v_open int;
+        d jsonb := '{"account_type": "Student portal", "username": "MOAUM/ZZ/99/0001", "error": "Invalid password"}';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        t1 := helpdesk.submit_public('Ada Okafor', 'zz-v363@example.com', '08030000000', d, 'The reset link never arrives.');
+        PERFORM helpdesk.route(t1);
+        SELECT t.requester_kind, t.requester_id = t.id, t.department_code, c.code, t.requester_number, t.queue_code IS NOT NULL OR t.assigned_to IS NOT NULL
+          INTO v_kind, v_self, v_dept, v_cat, v_number, v_routed
+          FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id WHERE t.id = t1;
+        BEGIN
+            PERFORM helpdesk.submit_public('Visit www.example.com', 'zz-v363@example.com', NULL, d, 'x');
+        EXCEPTION WHEN check_violation THEN bad_name := true;
+        END;
+        BEGIN
+            PERFORM helpdesk.submit_public('Ada Okafor', 'zz-v363@example.com', NULL, d || '{"account_type": "Bank account"}', 'x');
+        EXCEPTION WHEN check_violation THEN bad_option := true;
+        END;
+        PERFORM helpdesk.submit_public('Ada Okafor', 'zz-v363@example.com', NULL, d, 'second');
+        PERFORM helpdesk.submit_public('Ada Okafor', 'ZZ-V363@example.com', NULL, d, 'third');
+        BEGIN
+            PERFORM helpdesk.submit_public('Ada Okafor', 'zz-v363@example.com', NULL, d, 'fourth');
+        EXCEPTION WHEN check_violation THEN fourth := true;
+        END;
+        SELECT count(*) INTO v_open FROM helpdesk.ticket WHERE requester_kind = 'PUBLIC' AND requester_email = 'zz-v363@example.com';
+        RAISE EXCEPTION 'the V363 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V363: sign-in help from a person not signed in is a Login Issues ticket naming no account, routed; a name is letters, an option one offered; three open per email',
+        v_kind = 'PUBLIC' AND v_self AND v_dept IS NULL AND v_cat = 'LOGIN' AND v_number = 'MOAUM/ZZ/99/0001' AND v_routed AND bad_name AND bad_option AND fourth AND v_open = 3,
+        format('kind=%s self=%s dept=%s cat=%s number=%s routed=%s bad_name=%s bad_option=%s fourth=%s open=%s', v_kind, v_self, v_dept, v_cat, v_number, v_routed, bad_name, bad_option, fourth, v_open));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

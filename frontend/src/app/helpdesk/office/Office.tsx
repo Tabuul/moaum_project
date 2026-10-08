@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { PriorityPil, StatusPil, when, type TicketRow } from "@/lib/helpdesk";
+import { PriorityPil, StatusPil, requesterKind, when, type TicketRow } from "@/lib/helpdesk";
 import type { OfficeData } from "./page";
 
 export function Office({ data }: { data: OfficeData }) {
@@ -12,7 +12,7 @@ export function Office({ data }: { data: OfficeData }) {
   const overdue = data.waiting.filter((t) => t.overdue).length;
   const row = (t: TicketRow, waiting: boolean) => [
     <span key="n"><Link className="lnk tnum b600" href={`/helpdesk/office/${t.id}`}>{t.number}</Link>{t.overdue ? <div><Pil kind="bad">Overdue</Pil></div> : null}</span>,
-    <span key="r"><strong>{t.requester_name}</strong><div className="sub2 tnum">{t.requester_number ?? t.requester_email ?? ""} · {t.requester_kind === "STUDENT" ? "Student" : "Staff"}</div></span>,
+    <span key="r"><strong>{t.requester_name}</strong><div className="sub2 tnum">{t.requester_number ?? t.requester_email ?? ""} · {requesterKind(t.requester_kind)}</div></span>,
     <span key="c" className="sub2">{t.category}{t.queue ? <div>{t.queue}</div> : null}</span>,
     <span key="s">{t.subject}</span>,
     <PriorityPil key="p" priority={t.priority} />,

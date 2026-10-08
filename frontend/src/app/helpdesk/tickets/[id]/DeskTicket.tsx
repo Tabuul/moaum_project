@@ -11,7 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, parse, readBase64, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
+import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, parse, readBase64, requesterKind, requesterNumberLabel, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
 
 type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | "transfer" | "office" | "wait" | "reset" | null;
 
@@ -117,12 +117,17 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
       ) : null}
 
       <div className="grid grid--2">
-        <Panel title="Requester" right={t.requester_kind === "STUDENT" ? "Student" : t.requester_kind === "JUPEB" ? "JUPEB candidate" : "Member of staff"}>
+        <Panel title="Requester" right={t.requester_kind === "STAFF" ? "Member of staff" : requesterKind(t.requester_kind)}>
           <PBody>
             <div className="stack">
+              {t.requester_kind === "PUBLIC" ? (
+                <Note kind="bad" title="Asked from the sign-in page, not signed in">
+                  Nothing here is proven: the name, the number and the email are what the person typed. Confirm who they are &mdash; a call to the phone they gave, or in person with their identity card &mdash; before acting on any account. A reset link goes only to the address the account already holds.
+                </Note>
+              ) : null}
               <KvGrid cls="grid--2" pairs={[
                 ["Name", <strong key="n">{t.requester_name}</strong>],
-                [t.requester_kind === "STUDENT" ? "Matriculation number" : t.requester_kind === "JUPEB" ? "JUPEB application number" : "Staff number", <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
+                [requesterNumberLabel(t.requester_kind), <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
                 ["Email", t.requester_email ? <a key="e" className="lnk" href={`mailto:${t.requester_email}`}>{t.requester_email}</a> : "—"],
                 ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
                 ["Department", t.department ?? "—"],
@@ -130,7 +135,8 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
               ]} />
               {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn>{parse<Record<string, string>>(t.details, {}).payment_reference ? <LinkBtn size="sm" href={`/helpdesk/payments/${encodeURIComponent(parse<Record<string, string>>(t.details, {}).payment_reference.trim())}?ticket=${t.id}`}>Payment Support</LinkBtn> : <LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn>}</div>
               : t.requester_kind === "JUPEB" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}`}>Open the JUPEB Record in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn></div>
-              : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
+              : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div>
+              : t.requester_kind === "PUBLIC" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Search for the number given</LinkBtn></div> : null}
             </div>
           </PBody>
         </Panel>

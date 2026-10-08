@@ -32,7 +32,12 @@ export function RefereeForm({ token }: { token: string }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/bff/api/v1/pg/referee/${encodeURIComponent(token)}`, { cache: "no-store" });
+      const r = await fetch(`/api/bff/api/v1/pg/referee/${encodeURIComponent(token)}`, { cache: "no-store" }).catch(() => null);
+      if (!r) {
+        // the network failed before any answer: say so, rather than leave the page blank
+        setProblem({ status: 503, title: "The portal could not be reached just now.", detail: "Check your connection and open the link from the email again." });
+        return;
+      }
       const j = await r.json().catch(() => null);
       if (r.ok && j && j.found) setCtx(j as Ctx);
       else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." });
@@ -55,6 +60,8 @@ export function RefereeForm({ token }: { token: string }) {
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setDone(true);
+    } catch {
+      setProblem({ status: 503, title: "The portal could not be reached just now.", detail: "Your reference was not sent. Check your connection and submit it again." });
     } finally { setBusy(false); }
   }
 

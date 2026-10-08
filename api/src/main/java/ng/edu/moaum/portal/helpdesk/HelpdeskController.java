@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -23,6 +22,7 @@ import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.Throttle;
 
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -96,9 +96,11 @@ class HelpdeskController {
     private final JdbcClient jdbc;
     private final TicketNotifier notifier;
     private final PasswordResetService resets;
+    private final Throttle throttle;
 
-    HelpdeskController(FileObjects files, JdbcClient jdbc, TicketNotifier notifier, PasswordResetService resets) {
+    HelpdeskController(FileObjects files, JdbcClient jdbc, TicketNotifier notifier, PasswordResetService resets, Throttle throttle) {
         this.jdbc = jdbc;
+        this.throttle = throttle;
         this.files = files;
         this.notifier = notifier;
         this.resets = resets;
@@ -1205,27 +1207,14 @@ class HelpdeskController {
     public record Track(@NotBlank @Size(max = 20) String number, @NotBlank @Size(max = 200) String email) {
     }
 
-    /** the public page is answered at most this many times a quarter-hour for one address or one email, so the number space cannot be walked */
-    private static final int TRACK_LIMIT = 12;
-    private final ConcurrentHashMap<String, long[]> trackAttempts = new ConcurrentHashMap<>();
-
-    private void throttle(String key) {
-        long now = System.currentTimeMillis();
-        long[] slot = trackAttempts.compute(key, (k, v) -> v == null || now - v[0] > 15 * 60_000L ? new long[] {now, 1} : new long[] {v[0], v[1] + 1});
-        if (trackAttempts.size() > 50_000) trackAttempts.clear();
-        if (slot[1] > TRACK_LIMIT) {
-            throw new DomainRuleViolation("HELPDESK_TRACK_SLOW_DOWN", "Too many lookups in a short time.",
-                    new DomainRuleViolation.Remedy("Wait a quarter of an hour and try again, or sign in to the portal to see your tickets.", "Directorate of ICT"));
-        }
-    }
-
     /** a ticket number and the email it was raised with; nothing internal, no attachments, no names at all */
     @PostMapping("/track")
     @Transactional(readOnly = true)
     Map<String, Object> track(@Valid @RequestBody Track body, jakarta.servlet.http.HttpServletRequest request) {
         String number = body.number().trim().toUpperCase();
-        throttle("ip:" + ClientAddress.of(request));   // the edge's own entry, not one a caller wrote (V359)
-        throttle("email:" + body.email().trim().toLowerCase());
+        // V363: the shared limit, by the edge's own address (V359) and by the email asked about; 429 with the minutes to wait
+        throttle.take(Throttle.Door.TRACK, ClientAddress.of(request));
+        throttle.take(Throttle.Door.TRACK, "email:" + body.email().trim().toLowerCase());
         Map<String, Object> t = jdbc.sql("""
                 SELECT t.id, t.number, t.subject, c.name AS category, t.status, t.priority, t.created_at, t.updated_at, t.resolved_at, t.closed_at,
                        t.resolution_summary, t.reopen_count
