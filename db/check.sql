@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 209
+\set EXPECTED 210
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4225,6 +4225,8 @@ BEGIN
         INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
         SELECT 'GST 993', 'Check Legacy GST', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
         INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 993', 'C00023', 100, 'GST');
+        -- V366: the fee is owed for a GST course the session runs, so the session runs it
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'GST 993', '9993/9994', 1);
         INSERT INTO people.student (id, admission_no, matric_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
             (sa, 'MOAUM/ADM/93/000001', 'MOAUM/CHK/93/0001', '93000001ZA', 'ZZCHKLEGA', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now()),
             (sb, 'MOAUM/ADM/93/000002', 'MOAUM/CHK/93/0002', NULL, 'ZZCHKLEGB', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now()),
@@ -6839,6 +6841,153 @@ BEGIN
         r_not_enabled = 'CBT_COURSE_NOT_ENABLED' AND r_exam_sheet = 'CBT_SETTING' AND r_not_student = 'CBT_JUPEB_NOT_STUDENT' AND r_not_reg = 'CBT_JUPEB_SUBJECT_NOT_REGISTERED'
         AND r_fees = 'CBT_JUPEB_FEES' AND r_paid = 'ELIGIBLE' AND v_kind = 'JUPEB' AND v_cand = 1 AND v_written = 1 AND v_ca = 20,
         format('enabled=%s sheet=%s student=%s reg=%s fees=%s paid=%s kind=%s cand=%s written=%s ca=%s', r_not_enabled, r_exam_sheet, r_not_student, r_not_reg, r_fees, r_paid, v_kind, v_cand, v_written, v_ca));
+END $$;
+
+-- ── V366: GST & EPS owed only for a course the student must take — the programme's offering at the level, a carryover, never level alone ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9978/9979'; S0 text := '9977/9978'; pa text := 'C00023'; pb text := 'C00061'; dept text;
+        a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); b3 uuid := gen_random_uuid(); b4 uuid := gen_random_uuid(); b5 uuid := gen_random_uuid();
+        b6 uuid := gen_random_uuid(); a6 uuid := gen_random_uuid(); a7 uuid := gen_random_uuid(); a9 uuid := gen_random_uuid();
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid(); p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); p3 uuid := gen_random_uuid();
+        sh1 uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid(); sh3 uuid := gen_random_uuid(); r uuid; ref text;
+        e1 record; e2 record; e3 record; e4 record; e5 record; e6 record; e6a record; e7 record; e7n record; e9 record; e11 record; g1 record; g4 record; g4p record; g7 record;
+        r_gate1 text; r_gate4 text; r_gate4all text; r_gate1all text; r_gate7 text; r_gate7paid text; r_ref4 text; n_pay4 int; n_refund4 int;
+        menu_a1 boolean; menu_a6 boolean; menu_b5 boolean; carry_b5 boolean; n_pop int; n_mismatch int; pop_b4 record; sem2_a1 boolean; sem2_a2 boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S0, date '9977-10-01', date '9978-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9978-10-01', date '9979-08-31') ON CONFLICT (name) DO NOTHING;
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = false, covers_eps = true WHERE id = 1;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+        -- one canonical course each: GST 981 at 100 and GST 982 at 200 for both programmes; EPS 983 at 300 for programme A alone
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('GST 981', 'Check Use of English', 2, 1, 100, dept, 'GST', 'LIVE'),
+            ('GST 982', 'Check Philosophy and Logic', 2, 2, 200, dept, 'GST', 'LIVE'),
+            ('EPS 983', 'Check Venture Creation', 2, 1, 300, dept, 'GST', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('GST 981', pa, 100, 'GST'), ('GST 981', pb, 100, 'GST'), ('GST 982', pa, 200, 'GST'), ('GST 982', pb, 200, 'GST'), ('EPS 983', pa, 300, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES
+            (o1, 'GST 981', S, 1), (o2, 'GST 982', S, 2), (o3, 'EPS 983', S, 1), (p1, 'GST 981', S0, 1), (p2, 'GST 982', S0, 2), (p3, 'EPS 983', S0, 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a1, 'MOAUM/ADM/78/978001', 'MOAUM/CHK/78/9801', 'ZZV366A', 'Hundred', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (a2, 'MOAUM/ADM/78/978002', 'MOAUM/CHK/78/9802', 'ZZV366B', 'TwoHundred', pa, 'UTME', S0, 100, 200, 'ACTIVE', now()),
+            (b3, 'MOAUM/ADM/78/978003', 'MOAUM/CHK/78/9803', 'ZZV366C', 'ThreeHundredB', pb, 'UTME', S0, 100, 300, 'ACTIVE', now()),
+            (b4, 'MOAUM/ADM/78/978004', 'MOAUM/CHK/78/9804', 'ZZV366D', 'FourHundredB', pb, 'UTME', S0, 100, 400, 'ACTIVE', now()),
+            (b5, 'MOAUM/ADM/78/978005', 'MOAUM/CHK/78/9805', 'ZZV366E', 'CarryGst', pb, 'UTME', S0, 100, 300, 'ACTIVE', now()),
+            (b6, 'MOAUM/ADM/78/978006', 'MOAUM/CHK/78/9806', 'ZZV366F', 'PassedBoth', pb, 'UTME', S0, 100, 400, 'ACTIVE', now()),
+            (a6, 'MOAUM/ADM/78/978007', 'MOAUM/CHK/78/9807', 'ZZV366G', 'RepeatsLevel', pa, 'UTME', S0, 100, 100, 'ACTIVE', now()),
+            (a7, 'MOAUM/ADM/78/978008', 'MOAUM/CHK/78/9808', 'ZZV366H', 'EpsAtThree', pa, 'UTME', S0, 100, 300, 'ACTIVE', now()),
+            (a9, 'MOAUM/ADM/78/978009', 'MOAUM/CHK/78/9809', 'ZZV366I', 'CarryEps', pa, 'UTME', S0, 100, 400, 'ACTIVE', now());
+        -- last session's record: b5 failed GST 981; b6 passed GST 981 and GST 982; a6 passed GST 981; a9 failed EPS 983 — all published
+        r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, b5, S0, 1, 200, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, p1, 2, 'APPROVED');
+        r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, b6, S0, 1, 300, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, p1, 2, 'APPROVED');
+        r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, b6, S0, 2, 300, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, p2, 2, 'APPROVED');
+        r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, a6, S0, 1, 100, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, p1, 2, 'APPROVED');
+        r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, a9, S0, 1, 300, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, p3, 2, 'APPROVED');
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES
+            (sh1, p1, 'PUBLISHED', 'SEN/9978/01', now(), now()), (sh2, p2, 'PUBLISHED', 'SEN/9978/01', now(), now()), (sh3, p3, 'PUBLISHED', 'SEN/9978/01', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES
+            (sh1, b5, 10, 15, 'GRADED'), (sh1, b6, 30, 40, 'GRADED'), (sh1, a6, 30, 40, 'GRADED'), (sh2, b6, 30, 40, 'GRADED'), (sh3, a9, 10, 15, 'GRADED');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(S, 8000, NULL, NULL, NULL, NULL, current_date, 'V366 check', who, 'bursar');
+
+        SELECT * INTO e1 FROM finance.gst_eps_eligibility(a1, S);    -- TEST 1
+        SELECT * INTO g1 FROM finance.gst_entitlement(a1, S);
+        r_gate1 := split_part(coalesce(registration.gst_gate(a1, S, 'GST 981'), 'OPEN'), ':', 1);   -- TEST 15
+        SELECT * INTO e2 FROM finance.gst_eps_eligibility(a2, S);    -- TEST 2
+        SELECT * INTO e3 FROM finance.gst_eps_eligibility(b3, S);    -- TEST 3, 8
+        SELECT * INTO e4 FROM finance.gst_eps_eligibility(b4, S);    -- TEST 4, 10, 13
+        SELECT * INTO g4 FROM finance.gst_entitlement(b4, S);
+        r_gate4 := coalesce(registration.gst_gate(b4, S, 'GST 981'), 'OPEN');
+        BEGIN PERFORM finance.new_gst_reference(b4, S); r_ref4 := 'ALLOWED'; EXCEPTION WHEN check_violation THEN r_ref4 := split_part(SQLERRM, ':', 1); END;
+        SELECT * INTO e5 FROM finance.gst_eps_eligibility(b5, S);    -- TEST 5
+        SELECT * INTO e6 FROM finance.gst_eps_eligibility(b6, S);    -- TEST 6
+        SELECT * INTO e6a FROM finance.gst_eps_eligibility(a6, S);   -- passed, repeating the level
+        SELECT * INTO e7 FROM finance.gst_eps_eligibility(a7, S);    -- TEST 7, 14
+        r_gate7 := split_part(coalesce(registration.gst_gate(a7, S, 'EPS 983'), 'OPEN'), ':', 1);
+        SELECT * INTO e9 FROM finance.gst_eps_eligibility(a9, S);    -- TEST 9
+        -- the registration menu agrees: GST 981 on a1's form, not on a6's (passed), on b5's as a carryover
+        SELECT EXISTS (SELECT 1 FROM registration.student_menu(a1, S, 1) WHERE course_code = 'GST 981' AND NOT carryover) INTO menu_a1;
+        SELECT EXISTS (SELECT 1 FROM registration.student_menu(a6, S, 1) WHERE course_code = 'GST 981') INTO menu_a6;
+        SELECT EXISTS (SELECT 1 FROM registration.student_menu(b5, S, 1) WHERE course_code = 'GST 981' AND carryover) INTO menu_b5;
+        SELECT EXISTS (SELECT 1 FROM registration.carryovers(b5) WHERE course_code = 'GST 981') INTO carry_b5;
+        -- the whole-registration rule holds a student who owes the fee, never one who does not (TEST 13, 18)
+        UPDATE finance.gst_setting SET required_for_all = true WHERE id = 1;
+        r_gate1all := split_part(coalesce(registration.gst_gate(a1, S, 'ZZZ 101'), 'OPEN'), ':', 1);
+        r_gate4all := coalesce(registration.gst_gate(b4, S, 'ZZZ 101'), 'OPEN');
+        UPDATE finance.gst_setting SET required_for_all = false WHERE id = 1;
+        -- the offices' population is the same answer, student for student; a semester narrows it to the courses run in it
+        SELECT count(*), count(*) FILTER (WHERE p.required IS DISTINCT FROM e.required OR p.gst_required IS DISTINCT FROM e.gst_required OR p.eps_required IS DISTINCT FROM e.eps_required
+                                                 OR p.gst_reason IS DISTINCT FROM e.gst_reason OR p.eps_reason IS DISTINCT FROM e.eps_reason)
+          INTO n_pop, n_mismatch
+          FROM finance.gst_population(S, NULL) p CROSS JOIN LATERAL finance.gst_eps_eligibility(p.student_id, S) e
+         WHERE p.student_id IN (a1, a2, b3, b4, b5, b6, a6, a7, a9);
+        SELECT gst_required INTO sem2_a1 FROM finance.gst_population(S, 2) WHERE student_id = a1;
+        SELECT gst_required INTO sem2_a2 FROM finance.gst_population(S, 2) WHERE student_id = a2;
+        -- TEST 14: the EPS student pays the one GST fee and the EPS course opens
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        ref := finance.new_gst_reference(a7, S);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment(ref, 'Bank transfer', 'V366 check');
+        SELECT * INTO g7 FROM finance.gst_entitlement(a7, S);
+        r_gate7paid := coalesce(registration.gst_gate(a7, S, 'EPS 983'), 'OPEN');
+        -- TEST 12: a payment no course requires stands, flagged for review — not deleted, not refunded
+        ref := finance.new_purpose_reference(b4, S, 8000, 'GST fee ' || S);
+        PERFORM finance.confirm_payment(ref, 'Bank transfer', 'V366 check');
+        SELECT * INTO g4p FROM finance.gst_entitlement(b4, S);
+        SELECT * INTO pop_b4 FROM finance.gst_population(S, NULL) WHERE student_id = b4;
+        SELECT count(*) INTO n_pay4 FROM finance.payment_reference WHERE student_id = b4 AND purpose LIKE 'GST fee %' AND confirmed_at IS NOT NULL;
+        SELECT count(*) INTO n_refund4 FROM finance.refund WHERE reference = ref;
+        -- where the GST payment does not cover EPS, an EPS course alone owes no GST fee
+        UPDATE finance.gst_setting SET covers_eps = false WHERE id = 1;
+        SELECT * INTO e7n FROM finance.gst_eps_eligibility(a7, S);
+        UPDATE finance.gst_setting SET covers_eps = true WHERE id = 1;
+        -- TEST 11: the approved change of programme is read at once — B to A brings EPS 983 at 300
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        UPDATE people.student SET programme_code = pa WHERE id = b3;
+        SELECT * INTO e11 FROM finance.gst_eps_eligibility(b3, S);
+        RAISE EXCEPTION 'the V366 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V366: GST & EPS are owed for a course the student must take — the programme''s offering at the level, a carryover — never for the level alone; the gate, the reference, the menu and the offices'' population read the one answer',
+        coalesce(
+            -- TEST 1, 15: 100 level, GST 981 offered — required, unpaid, held
+            e1.required AND e1.gst_required AND e1.gst_reason = 'GST_REQUIRED_COURSE_OFFERING' AND e1.gst_courses = ARRAY['GST 981'] AND g1.state = 'NOT_PAID' AND r_gate1 = 'GST_PAYMENT_REQUIRED'
+            -- TEST 2: 200 level, GST 982
+            AND e2.required AND e2.gst_courses = ARRAY['GST 982']
+            -- TEST 3, 8: 300 level in B, no GST course, no EPS 983 — nothing
+            AND NOT e3.required AND e3.gst_reason = 'GST_NOT_APPLICABLE' AND e3.eps_reason = 'EPS_NOT_APPLICABLE'
+            -- TEST 4, 10, 13: 400 level in B — nothing owed, no reference, no gate even under the whole-registration rule
+            AND NOT e4.required AND g4.state = 'NOT_REQUIRED' AND r_gate4 = 'OPEN' AND r_ref4 = 'GST_NOT_REQUIRED' AND r_gate4all = 'OPEN' AND r_gate1all = 'GST_PAYMENT_REQUIRED'
+            -- TEST 5: 300 level with GST 981 failed — a carryover, and the menu and registration.carryovers say so too
+            AND e5.required AND e5.gst_reason = 'GST_REQUIRED_CARRYOVER' AND e5.gst_carryovers = ARRAY['GST 981'] AND menu_b5 AND carry_b5
+            -- TEST 6: 400 level, both passed — nothing; a student repeating 100 level who passed GST 981 is not offered it again
+            AND NOT e6.required AND e6.gst_reason = 'GST_NOT_APPLICABLE' AND NOT e6a.required AND e6a.gst_reason = 'GST_ALREADY_COMPLETED' AND menu_a1 AND NOT menu_a6
+            -- TEST 7, 14: 300 level in A, EPS 983 offered — the one GST fee owed for EPS, held until paid, open after
+            AND e7.required AND NOT e7.gst_required AND e7.eps_required AND e7.eps_reason = 'EPS_REQUIRED_COURSE_OFFERING' AND r_gate7 = 'GST_PAYMENT_REQUIRED'
+            AND g7.state = 'PAID' AND r_gate7paid = 'OPEN' AND NOT e7n.required AND e7n.eps_required AND e7n.reason = 'EPS_NOT_COVERED_BY_GST_FEE'
+            -- TEST 9: 400 level with EPS 983 failed
+            AND e9.eps_required AND e9.eps_reason = 'EPS_REQUIRED_CARRYOVER'
+            -- TEST 11: programme changed from B to A — recalculated on the new programme
+            AND e11.eps_required AND e11.required
+            -- TEST 12: paid though nothing requires it — kept, flagged for review, no refund made
+            AND g4p.state = 'PAID' AND g4p.review AND NOT g4p.required AND pop_b4.review AND n_pay4 = 1 AND n_refund4 = 0
+            -- the population, student for student; semester 2 runs GST 982 and not GST 981
+            AND n_pop = 9 AND n_mismatch = 0 AND NOT sem2_a1 AND sem2_a2, false),
+        format('e1=%s/%s/%s/%s g1=%s gate1=%s | e2=%s/%s | e3=%s/%s/%s | e4=%s g4=%s gate4=%s ref4=%s all4=%s all1=%s | e5=%s/%s/%s menu=%s carry=%s | e6=%s/%s e6a=%s/%s menu_a1=%s menu_a6=%s | e7=%s/%s/%s/%s gate7=%s paid=%s after=%s e7n=%s/%s/%s | e9=%s/%s | e11=%s/%s | g4p=%s/%s/%s pop=%s pay=%s refund=%s | pop=%s mismatch=%s sem2=%s/%s',
+               e1.required, e1.gst_required, e1.gst_reason, e1.gst_courses, g1.state, r_gate1, e2.required, e2.gst_courses, e3.required, e3.gst_reason, e3.eps_reason,
+               e4.required, g4.state, r_gate4, r_ref4, r_gate4all, r_gate1all, e5.required, e5.gst_reason, e5.gst_carryovers, menu_b5, carry_b5,
+               e6.required, e6.gst_reason, e6a.required, e6a.gst_reason, menu_a1, menu_a6, e7.required, e7.gst_required, e7.eps_required, e7.eps_reason, r_gate7, g7.state, r_gate7paid,
+               e7n.required, e7n.eps_required, e7n.reason, e9.eps_required, e9.eps_reason, e11.eps_required, e11.required, g4p.state, g4p.review, g4p.required, pop_b4.review, n_pay4, n_refund4,
+               n_pop, n_mismatch, sem2_a1, sem2_a2));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

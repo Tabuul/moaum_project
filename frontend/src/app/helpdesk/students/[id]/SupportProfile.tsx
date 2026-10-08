@@ -20,6 +20,8 @@ import {
   type Checks, type CurrentRegistration, type Rule, type SupportProfile as Profile,
 } from "@/lib/support";
 import type { RegistrationView } from "@/lib/student-portal";
+import type { GstEpsExplain } from "@/lib/gst";
+import { GstEligibilityView } from "@/components/gst/GstEligibilityView";
 
 type Tab = "profile" | "registration" | "payments" | "documents" | "history" | "tickets";
 const TABS: Tab[] = ["profile", "registration", "payments", "documents", "history", "tickets"];
@@ -31,7 +33,7 @@ type Problem = Parameters<typeof notifyProblem>[0];
 
 interface HistoryRow { id: string; session: string; semester: number; status: string; level: number; units?: number; submitted_at?: string | null; approved_at?: string | null; entries?: { courseCode: string; title: string; units: number; status: string }[] }
 interface Reg { view: RegistrationView; current: CurrentRegistration; issues: string[]; history: { history?: HistoryRow[] } | HistoryRow[]; manage: boolean; override: boolean }
-interface Pay { fees: Record<string, unknown> | null; session: string; capabilities: string[]; references: { reference: string; session: string; purpose: string; amount: number; generated_at: string; confirmed_at: string | null; channel: string | null; receipt_no: string | null; status: string; gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null }[] }
+interface Pay { fees: Record<string, unknown> | null; session: string; capabilities: string[]; gstEps?: GstEpsExplain | null; references: { reference: string; session: string; purpose: string; amount: number; generated_at: string; confirmed_at: string | null; channel: string | null; receipt_no: string | null; status: string; gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null }[] }
 interface Docs { admission: Record<string, unknown>[]; issued: Record<string, unknown>[]; receipts: Record<string, unknown>[] }
 interface CourseAct { verb: "add" | "drop" | "restore"; offering: string; code: string; title: string; units: number; checks: Checks | null; reason: string; override: boolean; description: string }
 interface TicketField { key: string; label: string; type?: string; required?: boolean; options?: string[]; hint?: string }
@@ -406,6 +408,12 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
               ])} />
             </>
           )}
+        </Panel>
+      ) : null}
+      {/* V366: "I am seeing a GST fee but I don't offer GST" — why the student owes GST/EPS or not, from the answer the fee and the gate read; nothing here marks a payment */}
+      {tabNow === "payments" && pay?.gstEps ? (
+        <Panel title={`GST & EPS eligibility · ${pay.gstEps.session}`} right={<span className="sub2">Read only — a payment is the Bursary&rsquo;s; a missing course, the Academic Office&rsquo;s</span>}>
+          <PBody><GstEligibilityView data={pay.gstEps} /></PBody>
         </Panel>
       ) : null}
 

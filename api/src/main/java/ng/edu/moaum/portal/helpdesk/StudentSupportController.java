@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ng.edu.moaum.portal.auth.PasswordResetService;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
+import ng.edu.moaum.portal.shared.GstEpsExplain;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.student.StudentService;
 import ng.edu.moaum.portal.studentportal.StudentAuthService;
@@ -418,8 +419,10 @@ class StudentSupportController {
         } else {
             out.add("No registration has been started for this semester.");
         }
-        if (view.get("gst") instanceof Map<?, ?> g && Boolean.TRUE.equals(g.get("required")) && !Boolean.TRUE.equals(g.get("entitled"))) {
-            out.add("The GST fee for the session is not paid; GST/EPS courses stay locked until it is.");
+        // V366: only a student a GST/EPS course requires the fee of is held by it; the reason names which (the programme's offering, a carryover, a registration)
+        if (view.get("gst") instanceof Map<?, ?> g && Boolean.TRUE.equals(g.get("required")) && !Boolean.TRUE.equals(g.get("entitled"))
+                && List.of("NOT_PAID", "PENDING").contains(String.valueOf(g.get("state")))) {
+            out.add("The GST fee for the session is not paid; GST/EPS courses stay locked until it is" + (g.get("reason") == null ? "." : " (" + g.get("reason") + ")."));
         }
         return out;
     }
@@ -778,7 +781,7 @@ class StudentSupportController {
     @GetMapping("/students/{id}/payments")
     @PreAuthorize(AGENTS)
     @Transactional(readOnly = true)
-    Map<String, Object> payments(Authentication auth, @PathVariable UUID id) {
+    Map<String, Object> payments(Authentication auth, @PathVariable UUID id, @RequestParam(required = false) String session) {
         SupportAccess.Access a = support.on(auth, id);
         can(a, "VIEW_PAYMENTS");
         Map<String, Object> me = portal.me(id);
@@ -795,6 +798,9 @@ class StudentSupportController {
                                       WHERE e.reference = r.reference ORDER BY e.received_at DESC LIMIT 1) ge ON true
                  WHERE r.student_id = :s ORDER BY r.generated_at DESC LIMIT 200
                 """).param("s", id).query().listOfRows());
+        // V366: "I am seeing a GST fee but I don't offer GST" — the desk reads why, from the same answer the fee and the gate read; it changes nothing
+        String ses = session != null && session.matches("\\d{4}/\\d{4}") ? session : me.get("session") == null ? null : String.valueOf(me.get("session"));
+        if (ses != null) out.put("gstEps", GstEpsExplain.read(jdbc, id, ses));
         out.put("capabilities", List.copyOf(a.caps()));
         return out;
     }

@@ -391,11 +391,16 @@ public class StudentPortalService {
         return out;
     }
 
-    /** GST & EPS (V314): the fee stated for the student, the entitlement a confirmed payment grants, the references, the courses */
+    /**
+     * GST & EPS (V314): the fee stated for the student, the entitlement a confirmed payment grants, the references, the courses.
+     * V366: whether a GST or EPS course requires the fee of them at all this session, and why — the courses are the ones that
+     * concern them (the programme's offering at their level, a carryover, a registration), not every course of their level.
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> gst(UUID id, String session) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
+        out.put("eligibility", repo.gstExplain(id, session).get("eligibility"));
         out.put("entitlement", repo.gstEntitlement(id, session));
         out.put("setting", repo.gstSetting());
         out.put("references", repo.gstReferences(id));

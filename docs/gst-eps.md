@@ -114,3 +114,12 @@ shows the locked courses, the reason and a PAY GST FEE button; the API refuses w
 Backend authorisation on every endpoint; payment verification on the ledger only; the two offices separated
 in the API and in the results module; the fee and the rule Bursar-only; every table audited; score changes are
 versions with reasons.
+
+## K. V366 — owed only for a course the student must take
+
+The full implementation report (root cause, the eligibility algorithm, what changed in each part, the tests, the
+production reconciliation) is in [gst-eps-eligibility.md](gst-eps-eligibility.md). In one line: the GST fee is
+owed only when a GST or EPS course requires it of the student in the session — the programme's offering at their
+level that runs in the session and they have not passed, a carryover that runs in the session, or a course on their
+registration — read live by `finance.gst_eps_rows`, and every door (the fee, the reference, the gate, the menu,
+the dashboards, CBT, the support desk) reads that one answer.

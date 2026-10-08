@@ -2,7 +2,9 @@
 /** The GST and EPS office dashboards (V314): the figures in all and by level, faculty, department and programme, the payment and
  *  result shares, the quick questions, the courses — every number counted in the database from the one population, scoped by
  *  the filters in the address so a view is a link. The GST office sees General Studies; the EPS office sees Entrepreneurship
- *  Studies, whose entitlement is the GST payment. Click a bar to drill from faculty to department to programme to the students. */
+ *  Studies, whose entitlement is the GST payment. Click a bar to drill from faculty to department to programme to the students.
+ *  V366: the figures are of the students a GST/EPS course concerns — the programme's offering at their level, a carryover — and
+ *  the rest are counted as not applicable, never as unpaid. */
 import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -53,8 +55,8 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
   const keys = [{ l: "Students", c: VZ.axis }, { l: eps ? "Entitled (GST paid)" : "GST paid", c: VZ.s3 }, { l: `${word} registered`, c: VZ.s1 }];
   const rows = groups.map((g) => ({ l: nameOf(g), v: [Number(g.total), Number(g.paid), Number(g.registered)], key: codeOf(g) }));
 
-  const HEAD = [`S/N`, level === "programme" ? "Programme" : level === "department" ? "Department" : "Faculty", "Students", "Required", "GST paid", "GST not paid", `${word} registered`, "Paid, not registered", "Male", "Female", ...(eps ? [] : ["Revenue (₦)", "Outstanding (₦)"])];
-  const body = () => groups.map((g, i) => [i + 1, nameOf(g), Number(g.total), Number(g.required), Number(g.paid), Number(g.unpaid), Number(g.registered), Number(g.paid_not_registered), Number(g.male), Number(g.female), ...(eps ? [] : [Number(g.revenue), Number(g.outstanding)])]);
+  const HEAD = [`S/N`, level === "programme" ? "Programme" : level === "department" ? "Department" : "Faculty", "Students", "Eligible", "Carryover", "Not applicable", "GST paid", "GST not paid", `${word} registered`, `${word} not registered`, "Completed", "Paid, not registered", "Male", "Female", ...(eps ? [] : ["Revenue (₦)", "Outstanding (₦)"])];
+  const body = () => groups.map((g, i) => [i + 1, nameOf(g), Number(g.total), Number(g.required), Number(g.carryover ?? 0), Number(g.not_applicable ?? 0), Number(g.paid), Number(g.unpaid), Number(g.registered), Number(g.not_registered), Number(g.completed ?? 0), Number(g.paid_not_registered), Number(g.male), Number(g.female), ...(eps ? [] : [Number(g.revenue), Number(g.outstanding)])]);
   const sub = `${scopeWords}`;
   const exportAs = async (kind: "xlsx" | "pdf") => {
     setBusy(true);
@@ -77,22 +79,26 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
   );
 
   const tiles: [React.ReactNode, React.ReactNode, string | null | undefined, React.ReactNode?][] = eps ? [
-    ["ELIGIBLE THROUGH GST PAYMENT", num(t.paid), "var(--green-ink)", `${num(t.total)} students required by their programmes`],
-    ["EPS REGISTERED", num(t.registered), null, `${pct(t.registered, t.total)} of students · ${num(t.course_registrations)} course registrations`],
+    ["TOTAL EPS ELIGIBLE STUDENTS", num(t.required), null, `${num(t.carryover)} through a carryover · ${num(t.population)} undergraduates in view`],
+    ["EPS PAID (GST PAYMENT)", num(t.paid), "var(--green-ink)", `${pct(t.paid, t.required)} of the eligible${Number(t.exempt) ? ` · ${num(t.exempt)} with no fee` : ""}`],
+    ["EPS UNPAID", num(t.unpaid), t.unpaid ? "var(--red-ink)" : null, `${num(t.pending)} with a reference open · ${num(t.not_stated)} with no fee stated`],
+    ["EPS REGISTERED", num(t.registered), null, `${num(t.course_registrations)} course registrations`],
     ["EPS NOT REGISTERED", num(t.not_registered), t.not_registered ? "var(--red-ink)" : null, `${num(t.paid_not_registered)} entitled but not yet registered`],
-    ["GST NOT PAID", num(t.unpaid), t.unpaid ? "var(--red-ink)" : null, "No entitlement until the GST fee is paid"],
+    ["EPS CARRYOVER STUDENTS", num(t.carryover), t.carryover ? "var(--red-ink)" : null, "A failed EPS course run again this session"],
+    ["EPS COMPLETED", num(t.completed), "var(--green-ink)", `${num(t.outstanding_students)} still owing an EPS course`],
+    ["NOT APPLICABLE", num(t.not_applicable), null, "No EPS course offered to them at their level, none carried over — never counted unpaid"],
     ["ACTIVE EPS COURSES", num(r.activeCourses), null, `${num(r.totalCourses)} offered ${SEM(data.semester).toLowerCase()}`],
-    ["RESULTS PENDING", num(r.pending), r.pending ? "var(--red-ink)" : null, "Sheets still at entry"],
-    ["RESULTS SUBMITTED", num(r.submitted), null, "On the chain, not yet published"],
-    ["RESULTS PUBLISHED", num(r.published), "var(--green-ink)", "Published by Senate"],
+    ["RESULTS", `${num(r.pending)} · ${num(r.submitted)} · ${num(r.published)}`, null, "Pending · submitted · published"],
   ] : [
-    ["TOTAL GST STUDENTS", num(t.total), null, `${num(t.required)} required by their programmes`],
-    ["GST FEE PAID", num(t.paid), "var(--green-ink)", `${pct(t.paid, t.total)} of students`],
-    ["GST FEE NOT PAID", num(t.unpaid), t.unpaid ? "var(--red-ink)" : null, `${num(t.pending)} with a reference open · ${num(t.not_stated)} with no fee stated`],
+    ["TOTAL GST ELIGIBLE STUDENTS", num(t.required), null, `${num(t.carryover)} through a carryover · ${num(t.population)} undergraduates in view`],
+    ["GST PAID", num(t.paid), "var(--green-ink)", `${pct(t.paid, t.required)} of the eligible${Number(t.exempt) ? ` · ${num(t.exempt)} with no fee` : ""}`],
+    ["GST UNPAID", num(t.unpaid), t.unpaid ? "var(--red-ink)" : null, `${num(t.pending)} with a reference open · ${num(t.not_stated)} with no fee stated`],
     ["GST REGISTERED", num(t.registered), null, `${num(t.course_registrations)} course registrations`],
-    ["PAID, NOT REGISTERED", num(t.paid_not_registered), t.paid_not_registered ? "var(--red-ink)" : null, `${num(t.registered_unpaid)} registered without paying`],
-    ["ACTIVE GST COURSES", num(r.activeCourses), null, `${num(r.totalCourses)} offered ${SEM(data.semester).toLowerCase()}`],
-    ["GST REVENUE", naira(t.revenue), null, `${naira(t.outstanding)} outstanding`],
+    ["GST NOT REGISTERED", num(t.not_registered), t.not_registered ? "var(--red-ink)" : null, `${num(t.paid_not_registered)} paid but not registered · ${num(t.registered_unpaid)} registered without paying`],
+    ["GST CARRYOVER STUDENTS", num(t.carryover), t.carryover ? "var(--red-ink)" : null, "A failed GST course run again this session"],
+    ["GST COMPLETED", num(t.completed), "var(--green-ink)", `${num(t.outstanding_students)} still owing a GST course`],
+    ["NOT APPLICABLE", num(t.not_applicable), null, "No GST course offered to them at their level, none carried over — never counted unpaid"],
+    ["GST REVENUE", naira(t.revenue), null, `${naira(t.outstanding)} outstanding${Number(t.review) ? ` · ${num(t.review)} paid though not required` : ""}`],
     ["RESULTS", `${num(r.pending)} · ${num(r.submitted)} · ${num(r.published)}`, null, "Pending · submitted · published"],
   ];
 
@@ -171,7 +177,8 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
           </div>
           <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
             <span className="sub2">Quick questions:</span>
-            {QUICK.map((q) => <Btn key={q.key} kind="secondary" size="sm" onClick={() => go(withFilter(q.filters))}>{eps ? q.label.replace("paid GST", "are entitled").replace("have not paid", "are not entitled") : q.label}</Btn>)}
+            {QUICK.map((q) => <Btn key={q.key} kind="secondary" size="sm" onClick={() => go(q.filters.eligibility ? studentsHref(q.filters) : withFilter(q.filters))}>{eps ? q.label.replace("paid GST", "are entitled").replace("have not paid", "are not entitled") : q.label}</Btn>)}
+            {!eps && Number(t.review) ? <Btn kind="secondary" size="sm" onClick={() => go(studentsHref({ eligibility: "REVIEW" }))}>Paid, not required ({num(t.review)})</Btn> : null}
             <Btn kind="secondary" size="sm" onClick={() => go(withFilter({ fac: "", dept: "", prog: "" }))}>By faculty</Btn>
           </div>
         </PBody>
@@ -186,7 +193,7 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
         <Panel title={eps ? "ENTITLEMENT THROUGH GST PAYMENT" : "GST PAYMENT STATUS"} right={<span className="sub2">click a slice to filter</span>}>
           <PBody>
             <Donut items={[{ l: "Paid", v: Number(t.paid), c: VZ.good }, { l: "Not paid", v: Number(t.unpaid) - Number(t.pending), c: VZ.crit }, { l: "Reference open", v: Number(t.pending), c: VZ.warn }, { l: "No fee stated", v: Number(t.not_stated), c: VZ.axis }]}
-              capLabel="students" capValue={num(t.total)}
+              capLabel="eligible" capValue={num(t.required)}
               onPick={(item) => go(withFilter({ payment: item.l === "Paid" ? "PAID" : item.l === "Not paid" ? "NOT_PAID" : item.l === "Reference open" ? "PENDING" : "NOT_STATED" }))} />
           </PBody>
         </Panel>
@@ -199,8 +206,9 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
           <div className="sub2">{level === "faculty" ? "Click a faculty to see its departments, a department to see its programmes, a programme to see its students." : level === "department" ? `${facultyOf(f.fac)} · click a department for its programmes.` : `${departments.find((d) => d.code === f.dept)?.name ?? f.dept} · click a programme for its students.`}</div>
           {rows.length ? <GroupBars rows={rows} keys={keys} onPick={(row) => { if (level === "programme") go(studentsHref({ prog: row.key })); else go(withFilter({ [keyOf()]: row.key ?? "" })); }} /> : <div className="sub2">Nothing to show for these filters.</div>}
         </PBody>
-        {groups.length ? <DTable pageSize={20} cols={["S/N|num", level === "programme" ? "Programme" : level === "department" ? "Department" : "Faculty", "Students|num", "GST paid|num", "Not paid|num", `${word} registered|num`, "Paid, not registered|num", ...(eps ? [] : ["Revenue|num"]), "Open|mid"]} rows={groups.map((g, i) => [
-          <span key="n" className="tnum sub2">{i + 1}</span>, <b key="l">{nameOf(g)}</b>, <span key="t" className="tnum">{num(g.total)}</span>, <span key="p" className="tnum ink-green">{num(g.paid)}</span>,
+        {groups.length ? <DTable pageSize={20} cols={["S/N|num", level === "programme" ? "Programme" : level === "department" ? "Department" : "Faculty", "Eligible|num", "Carryover|num", "Not applicable|num", "GST paid|num", "Not paid|num", `${word} registered|num`, "Paid, not registered|num", ...(eps ? [] : ["Revenue|num"]), "Open|mid"]} rows={groups.map((g, i) => [
+          <span key="n" className="tnum sub2">{i + 1}</span>, <b key="l">{nameOf(g)}</b>, <span key="t" className="tnum">{num(g.required)}</span>, <span key="c" className="tnum">{num(g.carryover)}</span>,
+          <span key="na" className="tnum sub2">{num(g.not_applicable)}</span>, <span key="p" className="tnum ink-green">{num(g.paid)}</span>,
           <span key="u" className="tnum ink-red">{num(g.unpaid)}</span>, <span key="r" className="tnum">{num(g.registered)}</span>, <span key="x" className="tnum">{num(g.paid_not_registered)}</span>,
           ...(eps ? [] : [<span key="v" className="tnum">{naira(g.revenue)}</span>]),
           <LinkBtn key="o" kind="ghost" size="sm" href={level === "programme" ? studentsHref({ prog: codeOf(g) }) : withFilter({ [keyOf()]: codeOf(g) })}>{level === "programme" ? "Students" : "Open"}</LinkBtn>,

@@ -2,17 +2,21 @@
 /** The Bursar's GST fee (V314): the fee per session, for everyone or for a level, an entry mode, a faculty or a programme — a new
  *  statement supersedes the old and never touches a payment already made — and the rule it enforces: whether it gates GST/EPS
  *  registration, whether it gates the whole registration, and that one payment covers EPS. The GST and EPS offices read it here
- *  through their dashboards; they do not change it. */
+ *  through their dashboards; they do not change it.
+ *  V366: the standing — who owes the fee because a GST or EPS course requires it (the programme's offering at their level, a
+ *  carryover), who does not (never counted unpaid), and the payments no course requires, listed for the Bursary's review. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { dayOf, naira, num, type GstFeePage, type GstFeeRule } from "@/lib/gst";
+import { dayOf, naira, num, pct, reasonWord, type GstFeePage, type GstFeeRule } from "@/lib/gst";
+
+interface ReviewRow { student_id: string; number: string; surname: string; other_names: string; programme: string; level: number; paid: number; reference: string | null; paid_at: string | null; gst_reason: string; eps_reason: string }
 
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct Entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich" };
 const scopeOf = (r: GstFeeRule) => [r.programme ? `Programme: ${r.programme}` : null, r.faculty ? `Faculty: ${r.faculty}` : null, r.level ? `${r.level} Level` : null, r.entry_mode ? MODE[r.entry_mode] ?? r.entry_mode : null].filter(Boolean).join(" · ") || "Every undergraduate";
@@ -27,6 +31,15 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
   const [setting, setSetting] = useState({ gstEps: data?.setting.required_for_gst_eps ?? true, all: data?.setting.required_for_all ?? false, covers: data?.setting.covers_eps ?? true });
   const rules = data?.rules ?? [];
   const general = rules.find((r) => !r.level && !r.entry_mode && !r.faculty_code && !r.programme_code);
+  const st = data?.standing ?? null;
+  const [review, setReview] = useState<ReviewRow[] | null>(null);
+  async function loadReview() {
+    if (review) return;
+    const r = await fetch(`/api/bff/api/v1/gst/fee/review?session=${encodeURIComponent(session)}`, { cache: "no-store" }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    if (!r || !r.ok) { notifyProblem((j as Problem) ?? { status: 503, title: "The list could not be read just now." }); return; }
+    setReview((j?.rows ?? []) as ReviewRow[]);
+  }
 
   async function send(method: string, path: string, body: unknown, reason: string, done: string, key: string) {
     setBusy(key); setProblem(null);
@@ -48,7 +61,30 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
     <Panel title="GST fee · General Studies & Entrepreneurship" right={general ? `${naira(general.amount)} for ${session}${rules.length > 1 ? ` · ${rules.length} rules` : ""}` : `Not yet stated for ${session}`}>
       <PBody>
         {problem ? <ProblemNotice problem={problem} /> : null}
-        <div className="sub2">A separate obligation from school fees, paid once per session against a reference of its own on the same gateway and ledger. One payment covers both GST and EPS; there is no EPS fee. While it is unpaid the student&rsquo;s GST and EPS courses are locked on the registration form. A new statement supersedes the old for the same scope; payments already confirmed keep their amount.{data ? ` Paid so far for ${session}: ${num(data.paid.students)} students, ${naira(data.paid.amount)}.` : ""}</div>
+        <div className="sub2">A separate obligation from school fees, paid once per session against a reference of its own on the same gateway and ledger. It is owed only by a student a GST or EPS course requires it of — a course their programme offers at their level this session, or a carryover — never by level alone. One payment covers both GST and EPS; there is no EPS fee. While it is unpaid the student&rsquo;s GST and EPS courses are locked on the registration form. A new statement supersedes the old for the same scope; payments already confirmed keep their amount.{data ? ` Paid so far for ${session}: ${num(data.paid.students)} students, ${naira(data.paid.amount)}.` : ""}</div>
+        {st ? (
+          <div className="mt-2">
+            <Tiles items={[
+              ["GST/EPS APPLICABLE", num(st.applicable), null, `${num(st.gst_required)} for GST · ${num(st.eps_required)} for EPS · ${num(st.carryover)} through a carryover`],
+              ["PAID", num(st.paid), "var(--green-ink)", `${pct(st.paid, st.applicable)} of the applicable${Number(st.exempt) ? ` · ${num(st.exempt)} with no fee` : ""}`],
+              ["OWING", num(st.owing), st.owing ? "var(--red-ink)" : null, `${naira(st.outstanding)} outstanding${Number(st.not_stated) ? ` · ${num(st.not_stated)} with no fee stated` : ""}`],
+              ["NOT APPLICABLE", num(st.not_applicable), null, `of ${num(st.undergraduates)} undergraduates — owe nothing, never counted unpaid`],
+              ["PAID, NOT REQUIRED", num(st.review), st.review ? "var(--red-ink)" : null, "For the Bursary's review: nothing is deleted or refunded automatically"],
+            ]} />
+            {Number(st.review) ? (
+              <details className="mt-1" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void loadReview(); }}>
+                <summary className="sub2">The {num(st.review)} payment{Number(st.review) === 1 ? "" : "s"} no GST or EPS course requires this session — review through the refund workflow where the University&rsquo;s policy says so</summary>
+                {review === null ? <div className="sub2">Reading…</div> : review.length ? (
+                  <DTable cols={["S/N|num", "Student", "Programme", "Level|num", "Paid|num", "Reference", "Why not required"]} rows={review.map((x, i) => [
+                    <span key="n" className="tnum sub2">{i + 1}</span>, <span key="s"><b>{x.surname}, {x.other_names}</b><div className="sub2 tnum">{x.number}</div></span>,
+                    <span key="p">{x.programme}</span>, <span key="l" className="tnum">{x.level}</span>, <span key="a" className="tnum">{naira(x.paid)}</span>,
+                    <span key="r" className="tnum sub2">{x.reference ?? "—"}{x.paid_at ? ` · ${dayOf(x.paid_at)}` : ""}</span>, <span key="w" className="sub2">{reasonWord(x.gst_reason)}</span>,
+                  ])} />
+                ) : <div className="sub2">None.</div>}
+              </details>
+            ) : null}
+          </div>
+        ) : null}
         {!general && rules.length === 0 ? <Note kind="info" title={`No GST fee for ${session}`}>Until it is stated nothing is owed and nothing is locked; the GST and EPS dashboards show every student as &ldquo;no fee stated&rdquo;.</Note> : null}
         {may ? (
           <>

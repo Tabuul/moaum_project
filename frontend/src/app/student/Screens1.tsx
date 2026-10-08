@@ -161,21 +161,26 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           ]} /></PBody>
         </Panel>
       ) : null}
-      {gst && gst.entitlement.state !== "NOT_REQUIRED" ? (() => {
+      {/* V366: the card is shown only when a GST or EPS course requires the fee of the student (or they hold a payment): never because they are a student, never a ₦0 fee */}
+      {gst && (gst.entitlement.state === "PAID" || (gst.entitlement.required && ["NOT_PAID", "PENDING", "NOT_STATED"].includes(gst.entitlement.state))) ? (() => {
         const e = gst.entitlement;
-        const unpaid = e.stated && !e.entitled && Number(e.fee) > 0;
-        const gstReg = gst.courses.some((c) => c.general_office !== "EPS" && c.registered);
-        const epsReg = gst.courses.some((c) => c.general_office === "EPS" && c.registered);
+        const unpaid = e.required && e.stated && !e.entitled && Number(e.fee) > 0;
+        const owed = gst.courses.filter((c) => c.counts !== false);
+        const gstReg = owed.some((c) => c.general_office !== "EPS" && c.registered);
+        const epsReg = owed.some((c) => c.general_office === "EPS" && c.registered);
+        const pairs: [string, ReactNode][] =[["GST fee", e.stated ? naira(Number(e.fee)) : "Not yet stated"]];
+        if (e.gst_required !== false) pairs.push(["GST registration", gstReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
+        if (e.eps_required) pairs.push(["EPS registration", epsReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
+        pairs.push([unpaid ? "Pay" : "More", <LinkBtn key="g" kind={unpaid ? "primary" : "ghost"} size="sm" href={`/student/gst?session=${encodeURIComponent(gst.session)}`}>{unpaid ? "PAY GST FEE" : "GST & EPS"}</LinkBtn>]);
         return (
-          <Panel title="GST & EPS" right={<Pil kind={e.entitled ? "ok" : unpaid ? "bad" : "grey"}>{e.entitled ? "PAID" : unpaid ? "NOT PAID" : e.state === "PENDING" ? "REFERENCE OPEN" : "NO FEE STATED"}</Pil>}>
+          <Panel title="GST & EPS" right={<Pil kind={e.entitled ? "ok" : unpaid ? "bad" : "grey"}>{e.entitled ? "PAID" : unpaid ? (e.state === "PENDING" ? "REFERENCE OPEN" : "NOT PAID") : "NO FEE STATED"}</Pil>}>
             <PBody>
-              <KvGrid cls="grid--4" pairs={[
-                ["GST fee", e.stated ? naira(Number(e.fee)) : "Not yet stated"],
-                ["GST registration", gstReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"],
-                ["EPS registration", epsReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"],
-                [unpaid ? "Pay" : "More", <LinkBtn key="g" kind={unpaid ? "primary" : "ghost"} size="sm" href={`/student/gst?session=${encodeURIComponent(gst.session)}`}>{unpaid ? "PAY GST FEE" : "GST & EPS"}</LinkBtn>],
-              ]} />
+              <KvGrid cls="grid--4" pairs={pairs} />
+              {owed.length ? (
+                <div className="sub2 mt-1">Required for {owed.map((c) => `${c.code}${c.source === "CARRYOVER" ? " (carryover)" : ""}`).join(", ")} in {gst.session}.</div>
+              ) : null}
               {unpaid ? <div className="sub2 mt-1">GST payment covers both GST and EPS requirements; your GST/EPS courses are locked on the registration form until it is confirmed.</div> : null}
+              {e.review ? <div className="sub2 mt-1">No GST or EPS course requires this payment of you in {gst.session}. It stands as paid; the Bursary reviews it, and nothing is deleted or refunded without them.</div> : null}
             </PBody>
           </Panel>
         );

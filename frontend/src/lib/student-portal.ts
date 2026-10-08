@@ -4,6 +4,8 @@
  * student except the contact details and the choice of courses.
  */
 
+import type { GstEpsEligibility } from "@/lib/gst";
+
 export interface Charge { id: string; item: string; amount: number; ord: number }
 export interface PaymentRef {
   id: string; session: string; reference: string; purpose: string; amount: number; generated_at: string; expires_at: string;
@@ -51,18 +53,25 @@ export interface MenuItem {
 /** GST & EPS (V314): the fee the Bursar stated for the student and whether a confirmed payment covers it */
 export interface GstEntitlement {
   required: boolean; stated: boolean; fee: number; covers_eps: boolean; paid: number; entitled: boolean;
-  state: "PAID" | "NOT_PAID" | "PENDING" | "NOT_STATED" | "NOT_REQUIRED" | string;
+  state: "PAID" | "NOT_PAID" | "PENDING" | "NOT_STATED" | "NOT_REQUIRED" | "EXEMPT" | string;
   reference: string | null; receipt_no: string | null; paid_at: string | null; open_reference: string | null; open_amount: number | null; open_expires_at: string | null;
   /** V323: where the payment that entitles the student came from, and the old portal's own reference when it was reconciled */
   source?: "CURRENT_PORTAL" | "LEGACY_PORTAL" | null; channel?: string | null; legacy_reference?: string | null;
+  /** V366: whether a GST or an EPS course requires the fee, why, and a payment no course requires (the Bursary reviews it) */
+  gst_required?: boolean; eps_required?: boolean; reason?: string | null; gst_reason?: string | null; eps_reason?: string | null; review?: boolean;
 }
 export interface GstCourseView {
   code: string; title: string; units: number; level: number; semester: number; general_office: "GST" | "EPS" | string; offering_id: string | null;
   registered: boolean; registration_status: string | null; result_stage: string | null;
+  /** V366: where the course comes from (the programme's course at the level, a carryover, the registration), whether it is owed this session, and where it stands */
+  source?: "COURSE_OFFERING" | "CARRYOVER" | "REGISTERED" | string; counts?: boolean; status?: string; semesters?: string | null;
+  failed_in?: string | null; last_grade?: string | null; passed_in?: string | null;
 }
 /** what /api/v1/me/gst answers (V314) */
 export interface GstView {
   session: string; entitlement: GstEntitlement; setting: { required_for_gst_eps: boolean; required_for_all: boolean; covers_eps: boolean };
+  /** V366: the student's GST and EPS requirement for the session, with its reasons */
+  eligibility?: GstEpsEligibility | null;
   references: { reference: string; receipt_no: string | null; amount: number; session: string; purpose: string; generated_at: string; expires_at: string; confirmed_at: string | null; channel: string | null }[];
   courses: GstCourseView[]; reference?: string;
 }

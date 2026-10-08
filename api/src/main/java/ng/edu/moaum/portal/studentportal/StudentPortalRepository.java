@@ -599,22 +599,28 @@ class StudentPortalRepository {
                 """).param("s", student).query().listOfRows();
     }
 
-    /** the GST/EPS courses the student's programme offers at their level, and whether each is offered, registered and marked this session */
+    /**
+     * the GST/EPS courses that concern the student this session (V366: finance.gst_eps_rows — the programme's offering at their level,
+     * a carryover, a registration), each with why, whether it is owed, offered, registered and marked; a course already passed is shown
+     * as such and owes nothing
+     */
     List<Map<String, Object>> gstCourses(UUID student, String session) {
         return jdbc.sql("""
-                SELECT c.code, c.title, c.units, c.level, c.semester, c.general_office, o.id AS offering_id,
-                       EXISTS (SELECT 1 FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
-                                WHERE cr.student_id = st.id AND cr.session = :ses AND e.offering_id = o.id) AS registered,
-                       (SELECT cr.status FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :ses AND cr.semester = c.semester) AS registration_status,
-                       sh.stage AS result_stage
-                  FROM people.student st
-                  JOIN catalogue.course_offer co ON co.programme_code = st.programme_code AND co.level = st.current_level
-                  JOIN catalogue.course c ON c.code = co.course_code AND c.kind = 'GST' AND c.state <> 'ENDED'
-                  LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :ses
-                  LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
-                 WHERE st.id = :s
-                 ORDER BY c.semester, c.code
+                SELECT r.course_code AS code, r.title, r.units, r.level, coalesce(r.semesters[1], c.semester) AS semester, array_to_string(r.semesters, ',') AS semesters,
+                       r.office AS general_office, r.offering_id,
+                       r.registered, r.source, r.counts, r.status, r.failed_in, r.last_grade, r.passed_in,
+                       (SELECT cr.status FROM registration.course_registration cr
+                         WHERE cr.student_id = :s AND cr.session = :ses AND cr.semester = coalesce(r.semesters[1], c.semester)) AS registration_status,
+                       (SELECT sh.stage FROM assessment.score_sheet sh WHERE sh.offering_id = r.offering_id ORDER BY sh.published_at DESC NULLS LAST LIMIT 1) AS result_stage
+                  FROM finance.gst_eps_rows(:ses, :s) r
+                  JOIN catalogue.course c ON c.code = r.course_code
+                 ORDER BY r.counts DESC, coalesce(r.semesters[1], c.semester), r.course_code
                 """).param("s", student).param("ses", session).query().listOfRows();
+    }
+
+    /** V366: the student's whole GST/EPS answer for the session (finance.gst_eps_explain) — their requirement, its reasons, the courses */
+    Map<String, Object> gstExplain(UUID student, String session) {
+        return ng.edu.moaum.portal.shared.GstEpsExplain.read(jdbc, student, session);
     }
 
     String newGstReference(UUID student, String session) {

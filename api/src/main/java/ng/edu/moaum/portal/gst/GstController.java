@@ -31,6 +31,7 @@ import jakarta.validation.constraints.Size;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.GstEpsExplain;
 
 /**
  * GST &amp; EPS (V314). The Bursar states the GST fee per session and the rule it enforces; the GST and EPS
@@ -52,7 +53,9 @@ class GstController {
     /** the two offices that manage their own courses */
     private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_super')";
     private static final Set<String> OFFICES = Set.of("GST", "EPS");
-    private static final Set<String> PAY = Set.of("PAID", "NOT_PAID", "PENDING", "NOT_STATED", "NOT_REQUIRED");
+    private static final Set<String> PAY = Set.of("PAID", "NOT_PAID", "PENDING", "NOT_STATED", "NOT_REQUIRED", "EXEMPT");
+    /** V366: who a list holds — the students the office's courses concern (the default), or one kind of them, or those they do not concern */
+    private static final Set<String> ELIGIBILITY = Set.of("ALL", "REQUIRED", "CARRYOVER", "COMPLETED", "NOT_APPLICABLE", "REVIEW");
     private static final Set<String> STATUSES = Set.of("ACTIVE", "PROBATION", "ADMITTED");
     private static final Set<String> MODES = Set.of("UTME", "DIRECT_ENTRY", "TRANSFER", "JUPEB", "SANDWICH");
 
@@ -87,6 +90,39 @@ class GstController {
                 SELECT count(DISTINCT r.student_id) AS students, coalesce(sum(r.amount), 0) AS amount
                   FROM finance.payment_reference r WHERE r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL
                 """).param("s", s).query().singleRow());
+        // V366: the Bursary's standing — who owes the fee because a GST/EPS course requires it, and who does not; "not applicable" is never "unpaid"
+        out.put("standing", jdbc.sql("""
+                SELECT count(*) AS undergraduates,
+                       count(*) FILTER (WHERE p.required) AS applicable,
+                       count(*) FILTER (WHERE NOT p.required) AS not_applicable,
+                       count(*) FILTER (WHERE p.required AND p.pay_state = 'PAID') AS paid,
+                       count(*) FILTER (WHERE p.required AND p.pay_state = 'EXEMPT') AS exempt,
+                       count(*) FILTER (WHERE p.required AND p.pay_state IN ('NOT_PAID', 'PENDING')) AS owing,
+                       count(*) FILTER (WHERE p.required AND p.pay_state = 'NOT_STATED') AS not_stated,
+                       count(*) FILTER (WHERE p.review) AS review,
+                       coalesce(sum(p.fee - p.paid) FILTER (WHERE p.required AND p.pay_state IN ('NOT_PAID', 'PENDING')), 0) AS outstanding,
+                       count(*) FILTER (WHERE p.gst_required) AS gst_required,
+                       count(*) FILTER (WHERE p.eps_required) AS eps_required,
+                       count(*) FILTER (WHERE p.gst_carryover OR p.eps_carryover) AS carryover
+                  FROM finance.gst_population(:s, NULL) p
+                """).param("s", s).query().singleRow());
+        return out;
+    }
+
+    /** V366: the students who paid the GST fee though no GST/EPS course requires it of them this session — for the Bursary's review; nothing here changes a payment */
+    @GetMapping("/fee/review")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> review(@RequestParam(required = false) String session) {
+        String s = session(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("rows", jdbc.sql("""
+                SELECT p.student_id, p.number, p.surname, p.other_names, p.programme_code, p.programme, p.department, p.faculty, p.level, p.paid, p.reference, p.paid_at,
+                       p.pay_source, p.gst_reason, p.eps_reason
+                  FROM finance.gst_population(:s, NULL) p WHERE p.review
+                 ORDER BY p.surname, p.other_names LIMIT 2000
+                """).param("s", s).query().listOfRows());
         return out;
     }
 
@@ -136,54 +172,81 @@ class GstController {
 
     /** the filters every figure is held to; a filter outside the office's own category is simply empty */
     record Filters(String office, String session, Integer semester, String fac, String dept, String prog, Integer level, String sex, String status,
-                   String course, String pay, String reg, String q) {
-        /** the same session and semester with every other filter dropped: what the filter options are drawn from */
+                   String course, String pay, String reg, String elig, String q) {
+        /** the same session and semester with every other filter dropped, over the whole register: what the filter options are drawn from */
         Filters withoutScope() {
-            return new Filters(office, session, semester, null, null, null, null, null, null, null, null, null, null);
+            return new Filters(office, session, semester, null, null, null, null, null, null, null, null, null, "ALL", null);
+        }
+
+        /** the same filters over the whole register in scope: what the dashboard counts, the students not concerned included */
+        Filters everyone() {
+            return new Filters(office, session, semester, fac, dept, prog, level, sex, status, course, pay, reg, "ALL", q);
         }
     }
 
     private Filters filters(String office, String session, Integer semester, String fac, String dept, String prog, Integer level, String sex, String status,
-                            String course, String pay, String reg, String q) {
+                            String course, String pay, String reg, String elig, String q) {
         String sx = sex == null ? null : sex.trim().toUpperCase();
         String st = status == null ? null : status.trim().toUpperCase();
         String py = pay == null ? null : pay.trim().toUpperCase();
         String rg = reg == null ? null : reg.trim().toUpperCase();
+        String el = elig == null ? null : elig.trim().toUpperCase();
         return new Filters(office, session(session), semester == null || semester < 1 || semester > 3 ? null : semester,
                 blank(fac), blank(dept), blank(prog), level, "M".equals(sx) || "F".equals(sx) ? sx : null, STATUSES.contains(st == null ? "" : st) ? st : null,
                 blank(course) == null ? null : course.trim().toUpperCase(), PAY.contains(py == null ? "" : py) ? py : null,
                 "REGISTERED".equals(rg) || "NOT_REGISTERED".equals(rg) ? rg : null,
+                ELIGIBILITY.contains(el == null ? "" : el) ? el : "INVOLVED",
                 q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%");
     }
 
-    /** the rows the office counts: the session's undergraduates who are required to take GST/EPS courses, or who paid or registered anyway */
+    /**
+     * the rows the office counts (V366): every undergraduate of the session with the office's own answer — whether its courses concern
+     * them (office_required, from finance.gst_eps_rows: the programme's offering at their level, a carryover, a registration), why, and
+     * what they owe. A list holds, by default, the students its courses concern or who registered or paid anyway; NOT_APPLICABLE
+     * lists the rest, who are never counted unpaid.
+     */
     private static final String ROWS = """
-            SELECT p.*, CASE WHEN :office = 'EPS' THEN p.eps_registered ELSE p.gst_registered END AS registered,
-                   CASE WHEN :office = 'EPS' THEN p.eps_courses ELSE p.gst_courses END AS courses
-              FROM finance.gst_population(:s, :sem) p
-             WHERE (p.required OR p.paid > 0 OR p.gst_registered OR p.eps_registered)
-               AND (:fac::text IS NULL OR p.faculty_code = :fac)
-               AND (:dept::text IS NULL OR p.dept_code = :dept)
-               AND (:prog::text IS NULL OR p.programme_code = :prog)
-               AND (:level::int IS NULL OR p.level = :level)
-               AND (:sex::text IS NULL OR p.sex = :sex)
-               AND (:status::text IS NULL OR p.status = :status)
-               AND (:pay::text IS NULL OR p.pay_state = :pay)
-               AND (:reg::text IS NULL OR (:reg = 'REGISTERED') = (CASE WHEN :office = 'EPS' THEN p.eps_registered ELSE p.gst_registered END))
+            SELECT x.* FROM (
+                SELECT p.*,
+                       CASE WHEN :office = 'EPS' THEN p.eps_registered ELSE p.gst_registered END AS registered,
+                       CASE WHEN :office = 'EPS' THEN p.eps_courses ELSE p.gst_courses END AS courses,
+                       CASE WHEN :office = 'EPS' THEN p.eps_required ELSE p.gst_required END AS office_required,
+                       CASE WHEN :office = 'EPS' THEN p.eps_reason ELSE p.gst_reason END AS office_reason,
+                       CASE WHEN :office = 'EPS' THEN p.eps_carryover ELSE p.gst_carryover END AS office_carryover,
+                       CASE WHEN :office = 'EPS' THEN p.eps_completed ELSE p.gst_completed END AS office_completed,
+                       CASE WHEN :office = 'EPS' THEN p.eps_owed ELSE p.gst_owed END AS office_owed,
+                       (CASE WHEN :office = 'EPS' THEN p.eps_required OR p.eps_registered ELSE p.gst_required OR p.gst_registered OR p.paid > 0 END) AS involved
+                  FROM finance.gst_population(:s, :sem) p) x
+             WHERE (CASE :elig WHEN 'ALL' THEN true
+                               WHEN 'REQUIRED' THEN x.office_required
+                               WHEN 'CARRYOVER' THEN x.office_carryover
+                               WHEN 'COMPLETED' THEN x.office_completed
+                               WHEN 'NOT_APPLICABLE' THEN NOT x.involved
+                               WHEN 'REVIEW' THEN x.review AND :office = 'GST'
+                               ELSE x.involved END)
+               AND (:fac::text IS NULL OR x.faculty_code = :fac)
+               AND (:dept::text IS NULL OR x.dept_code = :dept)
+               AND (:prog::text IS NULL OR x.programme_code = :prog)
+               AND (:level::int IS NULL OR x.level = :level)
+               AND (:sex::text IS NULL OR x.sex = :sex)
+               AND (:status::text IS NULL OR x.status = :status)
+               AND (:pay::text IS NULL OR x.pay_state = :pay)
+               AND (:reg::text IS NULL OR (:reg = 'REGISTERED') = x.registered)
                AND (:course::text IS NULL OR EXISTS (SELECT 1 FROM registration.course_registration cr
                                                         JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
                                                         JOIN catalogue.offering o ON o.id = e.offering_id
-                                                       WHERE cr.student_id = p.student_id AND cr.session = :s AND o.course_code = :course
+                                                       WHERE cr.student_id = x.student_id AND cr.session = :s AND o.course_code = :course
                                                          AND (:sem::int IS NULL OR cr.semester = :sem)))
-               AND (:q::text IS NULL OR lower(p.surname || ' ' || p.other_names) LIKE :q OR lower(coalesce(p.number, '')) LIKE :q
-                    OR lower(p.programme) LIKE :q OR lower(p.department) LIKE :q OR lower(p.faculty) LIKE :q)
+               AND (:q::text IS NULL OR lower(x.surname || ' ' || x.other_names) LIKE :q OR lower(coalesce(x.number, '')) LIKE :q
+                    OR lower(x.programme) LIKE :q OR lower(x.department) LIKE :q OR lower(x.faculty) LIKE :q)
             """;
 
     private JdbcClient.StatementSpec bind(JdbcClient.StatementSpec spec, Filters f) {
         return spec.param("office", f.office()).param("s", f.session()).param("sem", f.semester(), Types.INTEGER)
                 .param("fac", f.fac(), Types.VARCHAR).param("dept", f.dept(), Types.VARCHAR).param("prog", f.prog(), Types.VARCHAR)
                 .param("level", f.level(), Types.INTEGER).param("sex", f.sex(), Types.VARCHAR).param("status", f.status(), Types.VARCHAR)
-                .param("pay", f.pay(), Types.VARCHAR).param("reg", f.reg(), Types.VARCHAR).param("course", f.course(), Types.VARCHAR).param("q", f.q(), Types.VARCHAR);
+                .param("pay", f.pay(), Types.VARCHAR).param("reg", f.reg(), Types.VARCHAR).param("course", f.course(), Types.VARCHAR)
+                .param("elig", f.elig()).param("q", f.q(), Types.VARCHAR);
     }
 
     /** the office's dashboard: the figures in all and by level, faculty, department, programme and gender; the courses; the results; the options the filters offer */
@@ -195,35 +258,43 @@ class GstController {
                                   @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
                                   @RequestParam(required = false) String course, @RequestParam(required = false) String payment, @RequestParam(required = false) String registration) {
         String o = office(office);
-        Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, null);
+        Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, null, null);
+        // V366: counted over every undergraduate in scope, so the students the office's courses do not concern are counted as such — never as unpaid
         List<Map<String, Object>> groups = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
+                WITH r AS MATERIALIZED (""" + ROWS + """
                 )
                 SELECT grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p, grouping(level) AS g_l, grouping(sex) AS g_s,
                        faculty_code, faculty, dept_code, department, programme_code, programme, level, sex,
-                       count(*) AS total,
-                       count(*) FILTER (WHERE required) AS required,
-                       count(*) FILTER (WHERE entitled) AS paid,
-                       count(*) FILTER (WHERE pay_state IN ('NOT_PAID', 'PENDING')) AS unpaid,
-                       count(*) FILTER (WHERE pay_state = 'PENDING') AS pending,
-                       count(*) FILTER (WHERE pay_state = 'NOT_STATED') AS not_stated,
+                       count(*) AS population,
+                       count(*) FILTER (WHERE involved) AS total,
+                       count(*) FILTER (WHERE office_required) AS required,
+                       count(*) FILTER (WHERE NOT involved) AS not_applicable,
+                       count(*) FILTER (WHERE office_carryover) AS carryover,
+                       count(*) FILTER (WHERE office_completed) AS completed,
+                       count(*) FILTER (WHERE office_required AND NOT office_completed) AS outstanding_students,
+                       count(*) FILTER (WHERE office_required AND pay_state = 'PAID') AS paid,
+                       count(*) FILTER (WHERE office_required AND pay_state = 'EXEMPT') AS exempt,
+                       count(*) FILTER (WHERE office_required AND pay_state IN ('NOT_PAID', 'PENDING')) AS unpaid,
+                       count(*) FILTER (WHERE office_required AND pay_state = 'PENDING') AS pending,
+                       count(*) FILTER (WHERE office_required AND pay_state = 'NOT_STATED') AS not_stated,
+                       count(*) FILTER (WHERE review AND :office = 'GST') AS review,
                        count(*) FILTER (WHERE registered) AS registered,
-                       count(*) FILTER (WHERE NOT registered) AS not_registered,
+                       count(*) FILTER (WHERE office_required AND NOT registered) AS not_registered,
                        count(*) FILTER (WHERE gst_registered) AS gst_registered,
                        count(*) FILTER (WHERE eps_registered) AS eps_registered,
-                       count(*) FILTER (WHERE entitled AND NOT registered) AS paid_not_registered,
-                       count(*) FILTER (WHERE registered AND NOT entitled) AS registered_unpaid,
-                       count(*) FILTER (WHERE entitled AND pay_source = 'LEGACY_PORTAL') AS paid_legacy,
-                       count(*) FILTER (WHERE entitled AND pay_source = 'CURRENT_PORTAL') AS paid_current,
-                       count(*) FILTER (WHERE sex = 'M') AS male, count(*) FILTER (WHERE sex = 'F') AS female,
-                       coalesce(sum(paid), 0) AS revenue,
-                       coalesce(sum(CASE WHEN stated AND NOT entitled THEN fee - paid ELSE 0 END), 0) AS outstanding,
+                       count(*) FILTER (WHERE office_required AND entitled AND NOT registered) AS paid_not_registered,
+                       count(*) FILTER (WHERE registered AND required AND NOT entitled) AS registered_unpaid,
+                       count(*) FILTER (WHERE involved AND pay_state = 'PAID' AND pay_source = 'LEGACY_PORTAL') AS paid_legacy,
+                       count(*) FILTER (WHERE involved AND pay_state = 'PAID' AND pay_source = 'CURRENT_PORTAL') AS paid_current,
+                       count(*) FILTER (WHERE involved AND sex = 'M') AS male, count(*) FILTER (WHERE involved AND sex = 'F') AS female,
+                       coalesce(sum(paid) FILTER (WHERE involved), 0) AS revenue,
+                       coalesce(sum(CASE WHEN required AND stated AND NOT entitled THEN fee - paid ELSE 0 END) FILTER (WHERE office_required), 0) AS outstanding,
                        coalesce(sum(courses), 0) AS course_registrations
                   FROM r
                  GROUP BY GROUPING SETS ((), (faculty_code, faculty), (faculty_code, faculty, dept_code, department),
                                          (faculty_code, faculty, dept_code, department, programme_code, programme), (level), (sex))
                  ORDER BY faculty, department, programme, level, sex
-                """), f).query().listOfRows();
+                """), f.everyone()).query().listOfRows();
         Map<String, Object> totals = null;
         List<Map<String, Object>> byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(), byLevel = new ArrayList<>(), byGender = new ArrayList<>();
         for (Map<String, Object> g : groups) {
@@ -282,9 +353,10 @@ class GstController {
                                  @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
                                  @RequestParam(required = false) String course, @RequestParam(required = false) String payment, @RequestParam(required = false) String registration,
+                                 @RequestParam(required = false) String eligibility,
                                  @RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
         String o = office(office);
-        Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, q);
+        Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, eligibility, q);
         int sz = Math.max(1, Math.min(size, 500)), pg = Math.max(0, page);
         long total = bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT count(*) FROM r"), f).query(Long.class).single();
         List<Map<String, Object>> rows = bind(jdbc.sql("""
@@ -293,6 +365,7 @@ class GstController {
                 SELECT r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
                        r.level, r.status, r.entry_mode, r.required, r.fee, r.stated, r.paid, r.entitled, r.pay_state, r.reference, r.paid_at,
                        r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at, r.pay_source,
+                       r.office_required, r.office_reason, r.office_carryover, r.office_completed, r.office_owed, r.review, r.gst_reason, r.eps_reason,
                        (SELECT string_agg(o.course_code, ', ' ORDER BY o.course_code)
                           FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code AND c.general_office = :office
@@ -310,6 +383,7 @@ class GstController {
         out.put("office", o);
         out.put("session", f.session());
         out.put("semester", f.semester());
+        out.put("eligibility", f.elig());
         out.put("total", total);
         out.put("page", pg);
         out.put("size", sz);
@@ -334,6 +408,8 @@ class GstController {
                  WHERE st.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("student", id)));
         out.put("entitlement", jdbc.sql("SELECT * FROM finance.gst_entitlement(:id, :s)").param("id", id).param("s", s).query().singleRow());
+        // V366: "why is this student paying GST/EPS?" — the eligibility, its reasons and every GST/EPS course that concerns them
+        out.put("explain", GstEpsExplain.read(jdbc, id, s));
         out.put("payments", jdbc.sql("""
                 SELECT r.reference, r.receipt_no, r.amount, r.generated_at, r.confirmed_at, r.channel, r.expires_at, r.purpose
                   FROM finance.payment_reference r WHERE r.student_id = :id AND r.purpose LIKE 'GST fee %' ORDER BY r.generated_at DESC
@@ -377,6 +453,25 @@ class GstController {
                  ORDER BY c.state = 'ENDED', c.level, c.code
                 """).param("s", s).param("o", o).query().listOfRows());
         out.put("offerings", jdbc.sql("SELECT * FROM finance.gst_course_stats(:s, :sem, :o)").param("s", s).param("sem", semester, Types.INTEGER).param("o", o).query().listOfRows());
+        // V366: where each course is offered — the programme, its department and faculty, the level — the mapping the requirement is read from
+        out.put("offers", jdbc.sql("""
+                SELECT co.course_code, co.level, co.basis, co.track, co.programme_code, p.name AS programme, p.dept_code, d.name AS department,
+                       coalesce(d.faculty_code, p.faculty_code) AS faculty_code, f.name AS faculty, co.added_at, co.source,
+                       (c.level >= 300 OR co.level >= 300) AS upper_level
+                  FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code AND c.kind = 'GST' AND c.general_office = :o
+                  JOIN ref.programme p ON p.code = co.programme_code
+                  LEFT JOIN ref.department d ON d.code = p.dept_code
+                  LEFT JOIN ref.faculty f ON f.code = coalesce(d.faculty_code, p.faculty_code)
+                 ORDER BY co.course_code, co.level, f.name, d.name, p.name
+                """).param("o", o).query().listOfRows());
+        out.put("offerHistory", jdbc.sql("""
+                SELECT h.course_code, h.programme_code, p.name AS programme, h.level, h.ended_at, h.reason, h.registrations_carried
+                  FROM catalogue.course_offer_history h
+                  JOIN catalogue.course c ON c.code = h.course_code AND c.kind = 'GST' AND c.general_office = :o
+                  LEFT JOIN ref.programme p ON p.code = h.programme_code
+                 ORDER BY h.ended_at DESC LIMIT 200
+                """).param("o", o).query().listOfRows());
         out.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department ORDER BY name").query().listOfRows());
         out.put("programmes", jdbc.sql("SELECT code, name, dept_code, faculty_code FROM ref.programme WHERE NOT archived AND category = 'UNDER GRADUATE' ORDER BY name").query().listOfRows());
         out.put("lecturers", jdbc.sql("""
@@ -447,10 +542,15 @@ class GstController {
         return Map.of("code", code, "action", action);
     }
 
-    public record OffersIn(@NotNull List<@NotBlank String> programmes, @NotNull Integer level) {
+    public record OffersIn(@NotNull List<@NotBlank String> programmes, @NotNull Integer level, @Size(max = 300) String reason) {
     }
 
-    /** which programmes the course is offered to at a level (catalogue.course_offer, basis GST): set whole */
+    /**
+     * which programmes the course is offered to at a level (catalogue.course_offer, basis GST): set whole. V366: through the
+     * catalogue's own road — catalogue.bind_offer to add, catalogue.unbind_offer to end, which keeps the ended binding on
+     * catalogue.course_offer_history and refuses while a student of that programme is registered on it this session — so the
+     * mapping the GST/EPS requirement is read from is never silently lost.
+     */
     @PutMapping("/{office}/courses/{code}/offers")
     @PreAuthorize(MANAGERS)
     @Transactional
@@ -458,14 +558,23 @@ class GstController {
         String o = manage(office);
         code = unslug(code);
         own(o, code);
-        jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c AND level = :l AND basis = 'GST' AND NOT (programme_code = ANY(:p))")
-                .param("c", code).param("l", body.level()).param("p", body.programmes().toArray(String[]::new)).update();
-        int added = 0;
-        for (String p : body.programmes()) {
-            added += jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, :l, 'GST') ON CONFLICT (course_code, programme_code, level) DO NOTHING")
-                    .param("c", code).param("p", p.trim()).param("l", body.level()).update();
+        List<String> wanted = body.programmes().stream().map(p -> p.trim().toUpperCase()).distinct().toList();
+        List<String> ended = jdbc.sql("SELECT programme_code FROM catalogue.course_offer WHERE course_code = :c AND level = :l AND basis = 'GST' AND NOT (programme_code = ANY(:p))")
+                .param("c", code).param("l", body.level()).param("p", wanted.toArray(String[]::new)).query(String.class).list();
+        String why = blank(body.reason()) == null ? "Withdrawn by the " + o + " office" : body.reason().trim();
+        for (String p : ended) {
+            jdbc.sql("SELECT catalogue.unbind_offer(:c, :p, :l, :r)").param("c", code).param("p", p).param("l", body.level()).param("r", why).query(String.class).single();
         }
-        return Map.of("code", code, "level", body.level(), "programmes", body.programmes().size(), "added", added);
+        int added = 0;
+        for (String p : wanted) {
+            boolean had = jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l)")
+                    .param("c", code).param("p", p).param("l", body.level()).query(Boolean.class).single();
+            if (had) continue;
+            jdbc.sql("SELECT catalogue.bind_offer(:c, :p, :l, 'GST', NULL, :src)").param("c", code).param("p", p).param("l", body.level()).param("src", o + "_OFFICE")
+                    .query().listOfRows();
+            added++;
+        }
+        return Map.of("code", code, "level", body.level(), "programmes", wanted.size(), "added", added, "ended", ended.size());
     }
 
     public record OfferingIn(@NotBlank String courseCode, @NotBlank String session, @NotNull Integer semester) {
@@ -563,10 +672,34 @@ class GstController {
 
     private Map<String, Object> options(Filters f) {
         Map<String, Object> o = new LinkedHashMap<>();
-        o.put("faculties", bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT DISTINCT faculty_code AS code, faculty AS name FROM r ORDER BY 2"), f.withoutScope()).query().listOfRows());
-        o.put("departments", bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT DISTINCT dept_code AS code, department AS name, faculty_code FROM r ORDER BY 2"), f.withoutScope()).query().listOfRows());
-        o.put("programmes", bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT DISTINCT programme_code AS code, programme AS name, dept_code, faculty_code FROM r ORDER BY 2"), f.withoutScope()).query().listOfRows());
-        o.put("levels", bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT DISTINCT level FROM r ORDER BY 1"), f.withoutScope()).query(Integer.class).list());
+        // one pass over the register (V366: the population is counted by the course engine, so it is read once, not four times)
+        List<Map<String, Object>> all = bind(jdbc.sql("""
+                WITH r AS MATERIALIZED (""" + ROWS + """
+                )
+                SELECT DISTINCT 'F'::text AS kind, faculty_code::text AS code, faculty::text AS name, NULL::text AS dept_code, NULL::text AS faculty_code, NULL::int AS level FROM r
+                UNION SELECT DISTINCT 'D'::text, dept_code::text, department::text, NULL::text, faculty_code::text, NULL::int FROM r
+                UNION SELECT DISTINCT 'P'::text, programme_code::text, programme::text, dept_code::text, faculty_code::text, NULL::int FROM r
+                UNION SELECT DISTINCT 'L'::text, NULL::text, NULL::text, NULL::text, NULL::text, level::int FROM r
+                """), f.withoutScope()).query().listOfRows();
+        List<Map<String, Object>> faculties = new ArrayList<>(), departments = new ArrayList<>(), programmes = new ArrayList<>();
+        List<Integer> levels = new ArrayList<>();
+        for (Map<String, Object> x : all) {
+            switch (String.valueOf(x.get("kind"))) {
+                case "F" -> faculties.add(Map.of("code", str(x.get("code")), "name", str(x.get("name"))));
+                case "D" -> departments.add(Map.of("code", str(x.get("code")), "name", str(x.get("name")), "faculty_code", str(x.get("faculty_code"))));
+                case "P" -> programmes.add(Map.of("code", str(x.get("code")), "name", str(x.get("name")), "dept_code", str(x.get("dept_code")), "faculty_code", str(x.get("faculty_code"))));
+                default -> { if (x.get("level") != null) levels.add(((Number) x.get("level")).intValue()); }
+            }
+        }
+        java.util.Comparator<Map<String, Object>> byName = java.util.Comparator.comparing(m -> String.valueOf(m.get("name")));
+        faculties.sort(byName);
+        departments.sort(byName);
+        programmes.sort(byName);
+        levels.sort(null);
+        o.put("faculties", faculties);
+        o.put("departments", departments);
+        o.put("programmes", programmes);
+        o.put("levels", levels);
         o.put("courses", jdbc.sql("SELECT DISTINCT c.code, c.title, c.level, o.semester FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.session = :s AND c.general_office = :o ORDER BY c.code")
                 .param("s", f.session()).param("o", f.office()).query().listOfRows());
         return o;
@@ -574,7 +707,8 @@ class GstController {
 
     private static Map<String, Object> counts(Map<String, Object> g) {
         Map<String, Object> row = new LinkedHashMap<>();
-        for (String k : List.of("total", "required", "paid", "unpaid", "pending", "not_stated", "registered", "not_registered", "gst_registered", "eps_registered",
+        for (String k : List.of("population", "total", "required", "not_applicable", "carryover", "completed", "outstanding_students", "paid", "exempt", "unpaid", "pending",
+                "not_stated", "review", "registered", "not_registered", "gst_registered", "eps_registered",
                 "paid_not_registered", "registered_unpaid", "paid_legacy", "paid_current", "male", "female", "course_registrations")) {
             row.put(k, g.getOrDefault(k, 0L));
         }

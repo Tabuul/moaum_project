@@ -1,7 +1,9 @@
 "use client";
 /** The GST or EPS office's courses (V314): the catalogue it owns, the session's offerings with their lecturers, registrations and
  *  score sheets, and the acts — a new course, an edit, a deactivation, the programmes it is offered to, the offering for a session,
- *  the lecturer. Score entry is on the sheet itself, which the office reaches for its own courses alone. */
+ *  the lecturer. Score entry is on the sheet itself, which the office reaches for its own courses alone.
+ *  V366: where each course is offered — faculty, department, programme, level — is the mapping a student's GST/EPS requirement is
+ *  read from; it is shown whole, and a programme taken off is ended through the catalogue and kept on its history. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -12,12 +14,16 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { STAGE_WORD, num, type GstCourseRow, type GstOffice } from "@/lib/gst";
+import { STAGE_WORD, dayOf, num, type GstCourseRow, type GstOffice } from "@/lib/gst";
 
 export interface CatalogueCourse { code: string; title: string; units: number; level: number; semester: number; dept_code: string; department: string; state: string; ended_on: string | null; general_office: string; ca_max: number | null; programmes: number; offers: string | null; offered_this_session: boolean }
 export interface GstCoursesData {
   office: GstOffice; session: string; semester: number | null; sessions: { name: string; state: string }[]; catalogue: CatalogueCourse[]; offerings: GstCourseRow[];
   departments: { code: string; name: string; faculty_code: string }[]; programmes: { code: string; name: string; dept_code: string; faculty_code: string }[]; lecturers: { id: string; name: string; staff_number: string | null }[];
+  /** V366: every programme each course is offered to, at which level — the mapping the requirement is read from — and the ended ones */
+  offers?: { course_code: string; level: number; basis: string; track: string | null; programme_code: string; programme: string; dept_code: string | null; department: string | null;
+    faculty_code: string | null; faculty: string | null; added_at: string | null; source: string | null; upper_level: boolean }[];
+  offerHistory?: { course_code: string; programme_code: string; programme: string | null; level: number; ended_at: string; reason: string | null; registrations_carried: number }[];
 }
 
 type Act = { kind: "new" } | { kind: "edit"; course: CatalogueCourse } | { kind: "offers"; course: CatalogueCourse } | { kind: "offer"; course: CatalogueCourse } | { kind: "lecturer"; offering: GstCourseRow };
@@ -58,7 +64,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
     switch (act.kind) {
       case "new": return send("POST", "/courses", { code: form.code, title: form.title, units: n("units"), level: n("level"), semester: n("semester"), deptCode: form.deptCode, caMax: form.caMax ? n("caMax") : null }, `${word} course created: ${form.code}`, `${form.code.toUpperCase()} created and live`);
       case "edit": return send("PUT", `/courses/${encodeURIComponent(act.course.code.replace(/ /g, "_"))}`, { title: form.title, units: n("units"), level: n("level"), semester: n("semester"), deptCode: form.deptCode, caMax: form.caMax ? n("caMax") : null }, `${word} course edited: ${act.course.code}`, `${act.course.code} saved`);
-      case "offers": return send("PUT", `/courses/${encodeURIComponent(act.course.code.replace(/ /g, "_"))}/offers`, { programmes: [...picked], level: n("level") }, `${act.course.code} offered to ${picked.size} programmes`, `${act.course.code}: offered to ${picked.size} programme${picked.size === 1 ? "" : "s"} at ${form.level} level`);
+      case "offers": return send("PUT", `/courses/${encodeURIComponent(act.course.code.replace(/ /g, "_"))}/offers`, { programmes: [...picked], level: n("level"), reason: form.reason || null }, `${act.course.code} offered to ${picked.size} programmes`, `${act.course.code}: offered to ${picked.size} programme${picked.size === 1 ? "" : "s"} at ${form.level} level`);
       case "offer": return send("POST", "/offerings", { courseCode: act.course.code, session: form.session, semester: n("semester") }, `${act.course.code} offered in ${form.session}`, `${act.course.code} offered in ${form.session}, semester ${form.semester}`);
       case "lecturer": return send("PUT", `/offerings/${act.offering.offering_id}/lecturer`, { lecturerId: form.lecturerId || null, secondExaminerId: form.secondExaminerId || null }, `${act.offering.course_code}: lecturer assigned`, `${act.offering.course_code}: lecturer ${form.lecturerId ? "assigned" : "cleared"}`);
     }
@@ -101,6 +107,36 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
         ])} /> : <PBody><div className="sub2">No {word} course is offered in {data.session}{data.semester ? `, semester ${data.semester}` : ""}. {may ? "Open an offering from the catalogue below." : ""}</div></PBody>}
       </Panel>
 
+      {data.offers ? (
+        <Panel title={`WHERE EACH ${word} COURSE IS OFFERED`} right={<span className="sub2">{num(data.offers.length)} programme binding{data.offers.length === 1 ? "" : "s"}</span>}>
+          <PBody>
+            <div className="sub2">A student owes a {word} course — and so the GST fee — only where their programme is offered it at their level and it runs in the session, or where they carry it over. {word === "GST" ? "GST is normally taken at 100 and 200 level; a binding at 300 level or above is marked so it can be checked." : "EPS may be offered at 300 level to selected programmes; only those programmes owe it."}</div>
+            {word === "GST" && data.offers.some((x) => x.upper_level) ? (
+              <Note kind="bad" title={`${num(data.offers.filter((x) => x.upper_level).length)} GST binding${data.offers.filter((x) => x.upper_level).length === 1 ? "" : "s"} at 300 level or above`}>
+                The students of these programmes at that level owe the GST course and the fee while it runs. If a binding came from an upload and is not intended, take the programme off the course.
+              </Note>
+            ) : null}
+          </PBody>
+          {data.offers.length ? <DTable pageSize={30} cols={["S/N|num", "Course", "Level|mid", "Faculty", "Department", "Programme", "Basis|mid", "Since|mid"]} rows={data.offers.map((x, i) => [
+            <span key="n" className="tnum sub2">{i + 1}</span>, <b key="c" className="tnum">{x.course_code}</b>,
+            <span key="l" className="tnum">{x.level}{word === "GST" && x.upper_level ? <> <Pil kind="warn">check</Pil></> : null}</span>,
+            <span key="f" className="sub2">{x.faculty ?? "—"}</span>, <span key="d" className="sub2">{x.department ?? "—"}</span>,
+            <span key="p">{x.programme}<span className="sub2"> · {x.programme_code}</span></span>, <span key="b" className="sub2">{x.basis}{x.track ? ` · ${x.track}` : ""}</span>,
+            <span key="a" className="sub2 tnum">{x.added_at ? dayOf(x.added_at) : "—"}</span>,
+          ])} /> : <PBody><div className="sub2">No {word} course is offered to any programme yet.</div></PBody>}
+          {data.offerHistory?.length ? (
+            <PBody>
+              <details><summary className="sub2">Bindings ended ({data.offerHistory.length}) — the registrations and results they carried stand</summary>
+                <DTable cols={["Course", "Programme", "Level|mid", "Ended|mid", "Reason", "Registrations|num"]} rows={data.offerHistory.map((h) => [
+                  <b key="c" className="tnum">{h.course_code}</b>, <span key="p">{h.programme ?? h.programme_code}</span>, <span key="l" className="tnum">{h.level}</span>,
+                  <span key="e" className="tnum sub2">{dayOf(h.ended_at)}</span>, <span key="r" className="sub2">{h.reason ?? "—"}</span>, <span key="g" className="tnum">{num(h.registrations_carried)}</span>,
+                ])} />
+              </details>
+            </PBody>
+          ) : null}
+        </Panel>
+      ) : null}
+
       <Panel title={`${word} CATALOGUE`} right={<span className="sub2">{num(data.catalogue.length)} course{data.catalogue.length === 1 ? "" : "s"}</span>}>
         {data.catalogue.length ? <DTable pageSize={30} cols={["S/N|num", "Course", "Level|mid", "Sem|mid", "Units|num", "Department", "Programmes|num", "Status|mid", "Actions"]} rows={data.catalogue.map((c, i) => [
           <span key="n" className="tnum sub2">{i + 1}</span>, <span key="c"><b>{c.code}</b><div className="sub2">{c.title}</div></span>,
@@ -135,6 +171,8 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
           {act.kind === "offers" ? (
             <>
               <Field id="gc-olevel" label="At level"><select id="gc-olevel" className="ctl" value={form.level} onChange={(e) => { setForm({ ...form, level: e.target.value }); setPicked(new Set((act.course.offers ?? "").split(",").filter(Boolean).filter((x) => x.endsWith(`:${e.target.value}`)).map((x) => x.split(":")[0]))); }}>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l} Level</option>)}</select></Field>
+              <div className="sub2 mb-1">The students of the programmes ticked owe {act.course.code} at {form.level} level when it runs. A programme taken off is ended through the catalogue and kept on its history; it is refused while a student of it is registered on the course this session.</div>
+              <Field id="gc-oreason" label="Reason for any programme taken off"><input id="gc-oreason" className="ctl" value={form.reason ?? ""} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
               <div className="row row--inline row--tight mb-1"><Btn kind="ghost" size="sm" onClick={() => setPicked(new Set(data.programmes.map((p) => p.code)))}>Every programme</Btn><Btn kind="ghost" size="sm" onClick={() => setPicked(new Set())}>None</Btn><span className="sub2">{picked.size} chosen</span></div>
               <div style={{ maxHeight: 320, overflow: "auto" }}>
                 {data.programmes.map((p) => (
