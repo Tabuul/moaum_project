@@ -36,7 +36,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
 
   return (
     <>
-      <PageHead title="All Courses" description={`Every course ${scoped ? "your department owns or carries" : "on the catalogue"}, with the programmes that offer it. One course is one record, however many programmes offer it.`}
+      <PageHead title="All courses" description={`Every course ${scoped ? "your department owns or carries" : "on the catalogue"}, with the programmes that offer it. One course is one record, however many programmes offer it.`}
         actions={<><LinkBtn href="/catalogue">Department courses</LinkBtn><LinkBtn href="/catalogue/structure">Programme structure</LinkBtn></>} />
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ q: String(f.get("q") ?? "") }); }}>
         <div className="row">

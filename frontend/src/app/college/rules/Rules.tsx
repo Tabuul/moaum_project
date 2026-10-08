@@ -90,7 +90,7 @@ export function Rules({ data, sessions, session, level100, carry, mayEdit, mayAc
 
   return (
     <>
-      <PageHead title="College Rules" description="The regulations as the College's tables hold them, and as the portal applies them: attendance bars the sitting, the pass mark and weights judge the subject, the resit window and the programme rule govern the decision, the Board acts on the 100 Level rule and clears the carry-overs. Every change is on the audit spine." />
+      <PageHead title="College rules" description="The regulations as the College's tables hold them, and as the portal applies them: attendance bars the sitting, the pass mark and weights judge the subject, the resit window and the programme rule govern the decision, the Board acts on the 100 Level rule and clears the carry-overs. Every change is on the audit spine." />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!mayEdit ? <Note kind="info" title="Read only">The rules are set by the Provost&rsquo;s desk, the College Secretary and the Academic Office.</Note> : null}
 

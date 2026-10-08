@@ -95,7 +95,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
 
   return (
     <>
-      <PageHead title="Screening Review" description={`${filters.session} · the accepted applicants screened on the record the University already holds — JAMB, the application, the documents — nothing filled by them; decided on the record. A successful screening opens school fees and registration; an unsuccessful one carries its reason, and the eligibility engine lists the programmes the candidate qualifies for; the acceptance fee is never charged again.`}
+      <PageHead title="Screening review" description={`${filters.session} · the accepted applicants screened on the record the University already holds — JAMB, the application, the documents — nothing filled by them; decided on the record. A successful screening opens school fees and registration; an unsuccessful one carries its reason, and the eligibility engine lists the programmes the candidate qualifies for; the acceptance fee is never charged again.`}
         actions={<><LinkBtn kind="ghost" href={`/admissions?session=${encodeURIComponent(filters.session)}`}>Admissions</LinkBtn><LinkBtn kind="ghost" href={`/admissions/eligibility?session=${encodeURIComponent(filters.session)}`}>Programme Eligibility</LinkBtn>
           {may ? <Btn kind="ghost" onClick={() => setPolicyOpen(true)}>Screening policy{list.policy ? (list.policy.enabled ? " · ON" : " · OFF") : ""}</Btn> : null}
           <Btn kind="secondary" disabled={!rows.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" disabled={!rows.length} onClick={() => brandedPrint("Screening Report", `${filters.session} · ${sub}`, HEAD, body(), docSerial("SCR"))}>PDF</Btn></>} />

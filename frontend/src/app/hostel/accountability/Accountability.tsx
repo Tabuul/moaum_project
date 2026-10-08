@@ -36,7 +36,7 @@ export function Accountability({ data, filters, session: s, sessions }: { data: 
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel?session=${encodeURIComponent(s)}`}>Accommodation</Link><span>›</span><strong>Accountability</strong></div>
-      <PageHead title="Who occupies every room" description={`${s}. Every bed held or occupied, whoever holds it and whatever they pay. The report the Dean answers with.`}
+      <PageHead description={`${s}. Every bed held or occupied, whoever holds it and whatever they pay. The report the Dean answers with.`}
         actions={<>
           <Field id="ac-session" label="Session"><select id="ac-session" className="ctl" value={s} onChange={(e) => go({}, e.target.value)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
           <Field id="ac-hall" label="Hostel"><select id="ac-hall" className="ctl" value={filters.hall} onChange={(e) => go({ hall: e.target.value })}><option value="">Every hostel</option>{data.halls.map((h) => <option key={h.code} value={h.code}>{h.name}</option>)}</select></Field>

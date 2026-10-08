@@ -109,7 +109,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
 
   return (
     <>
-      <PageHead title={`${office} CBT Examinations`} description={`The computer-based examinations of the ${office} office for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.`}
+      <PageHead title={`${office} CBT examinations`} description={`The computer-based examinations of the ${office} office for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.`}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="cx-session" className="sub2">Session</label>
           <select id="cx-session" className="ctl" value={data.session} onChange={(e) => go(q({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>

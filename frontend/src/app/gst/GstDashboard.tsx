@@ -98,7 +98,7 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
 
   return (
     <>
-      <PageHead title={`${word} Office Dashboard`} description={eps
+      <PageHead title={`${word} Office dashboard`} description={eps
         ? "Entrepreneurship Studies: who is entitled through the GST payment, who has registered the EPS courses, the courses and the results. The GST payment covers EPS; there is no separate EPS fee, and the Bursar states the GST fee."
         : "General Studies: who is required to take GST courses, who has paid the GST fee, who has registered, the courses and the results. The Bursar states the GST fee; one payment covers GST and EPS."}
         actions={<span className="row row--inline row--tight">

@@ -75,7 +75,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
 
   return (
     <>
-      <PageHead title={`${word} Courses`} description={`The ${word === "GST" ? "General Studies" : "Entrepreneurship Studies"} courses on the catalogue, the programmes they are offered to, the session's offerings with their lecturers, registrations and score sheets. ${may ? "Create, edit, activate and deactivate the office's own courses; assign lecturers; open an offering for a session." : "Read only: the " + word + " office manages these."}`}
+      <PageHead title={`${word} courses`} description={`The ${word === "GST" ? "General Studies" : "Entrepreneurship Studies"} courses on the catalogue, the programmes they are offered to, the session's offerings with their lecturers, registrations and score sheets. ${may ? "Create, edit, activate and deactivate the office's own courses; assign lecturers; open an offering for a session." : "Read only: the " + word + " office manages these."}`}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="gc-session" className="sub2">Session</label>
           <select id="gc-session" className="ctl" value={data.session} onChange={(e) => go(`${base}/courses?session=${encodeURIComponent(e.target.value)}`)}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>

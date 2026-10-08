@@ -90,7 +90,7 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
 
   return (
     <>
-      <PageHead title="Student Payment Report" description={`${role}, College of Health Sciences · ${report.session} · ${period}. Each student's amount payable, paid and outstanding, read from the fee schedule and the confirmed payments; the totals are of the set shown.`}
+      <PageHead title="Student payment report" description={`${role}, College of Health Sciences · ${report.session} · ${period}. Each student's amount payable, paid and outstanding, read from the fee schedule and the confirmed payments; the totals are of the set shown.`}
         actions={<><Btn kind="primary" onClick={() => void toExcel()}>Download Excel</Btn><Btn kind="secondary" onClick={toPdf}>Download PDF</Btn><Btn kind="ghost" onClick={summaryPdf}>Summary PDF</Btn><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></>} />
 
       <div className="scope">

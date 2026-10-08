@@ -18,7 +18,7 @@ export default async function NewTicketPage() {
   ]);
   return (
     <Shell route={route} me={me}>
-      <PageHead title="Submit an ICT Support Ticket" description="Choose what the problem is about, describe it, attach any evidence. You receive a tracking number at once." />
+      <PageHead title="Submit an ICT support ticket" description="Choose what the problem is about, describe it, attach any evidence. You receive a tracking number at once." />
       {!profile.ok ? <ProblemNotice problem={profile.problem} /> : !categories.ok ? <ProblemNotice problem={categories.problem} /> : (
         <NewTicket profile={profile.data} categories={categories.data} sessions={sessions.ok ? sessions.data.map((s) => s.name) : []} />
       )}

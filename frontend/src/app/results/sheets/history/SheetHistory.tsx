@@ -23,7 +23,7 @@ export function SheetHistory({ sheets, current, initial }: { sheets: MySheet[]; 
 
   return (
     <>
-      <PageHead title="Score Sheet History" description="Every score sheet you have carried, across sessions: its standing, its deadline, how many times it was returned, and the marked sheet to take away."
+      <PageHead title="Score sheet history" description="Every score sheet you have carried, across sessions: its standing, its deadline, how many times it was returned, and the marked sheet to take away."
         actions={<><LinkBtn kind="primary" href="/results/sheets">Current Score Sheets</LinkBtn><LinkBtn href="/me/courses">Course History</LinkBtn></>} />
       <Tiles items={[
         ["Sheets on record", String(sheets.length), null, `${sessions.length} session${sessions.length === 1 ? "" : "s"}${past ? ` · ${past} before ${current ?? "this session"}` : ""}`],

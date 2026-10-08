@@ -20,7 +20,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const rows = list.ok ? list.data : [];
   return (
     <Shell route="t/extappointments" me={me.ok ? me.data : null}>
-      <PageHead title="Examiner Appointments" description="Each external examiner's engagement for a session and a unit, as the letter names it; an examiner is appointed from their own record."
+      <PageHead title="Examiner appointments" description="Each external examiner's engagement for a session and a unit, as the letter names it; an examiner is appointed from their own record."
         actions={<><LinkBtn kind="primary" href="/examiners">The Register</LinkBtn><LinkBtn href="/examiners/assignments">Project Assignments</LinkBtn></>} />
       {!list.ok ? <ProblemNotice problem={list.problem} /> : null}
       <div className="row mb-3">

@@ -23,7 +23,7 @@ export function Progress({ s, pg }: { s: Me; pg: PgSummary }) {
 
   return (
     <>
-      <PageHead title="Academic Progress" description={`${s.programme} · ${awardWord(s.entryLevel)} · entered ${s.entrySession}. Your coursework, research and each graduation requirement as the record answers it today.`}
+      <PageHead title="Academic progress" description={`${s.programme} · ${awardWord(s.entryLevel)} · entered ${s.entrySession}. Your coursework, research and each graduation requirement as the record answers it today.`}
         actions={<><LinkBtn kind="primary" href="/student/pg-courses">Registration &amp; Results</LinkBtn><LinkBtn href="/student/research">Research &amp; Thesis</LinkBtn><LinkBtn href="/student/graduation">Graduation</LinkBtn></>} />
 
       <Tiles items={[

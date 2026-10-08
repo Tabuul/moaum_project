@@ -57,7 +57,7 @@ export function Settings({ categories, settings }: { categories: Category[]; set
 
   return (
     <>
-      <PageHead title="ICT Support Settings" description="The categories a requester chooses from and what each asks for; the SLA by priority; whether resolved tickets close themselves."
+      <PageHead title="ICT support settings" description="The categories a requester chooses from and what each asks for; the SLA by priority; whether resolved tickets close themselves."
         actions={<><Btn kind="primary" onClick={() => open(null)}>New Category</Btn><LinkBtn href="/helpdesk">The Queue</LinkBtn></>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 

@@ -46,7 +46,7 @@ export function Assignments({ rows, examiners, sessions, filters }: { rows: Assi
 
   return (
     <>
-      <PageHead title="Project Assignments" description="Every project with an external examiner, where each review stands, and the acts the desk takes on an assignment."
+      <PageHead title="Project assignments" description="Every project with an external examiner, where each review stands, and the acts the desk takes on an assignment."
         actions={<><LinkBtn kind="primary" href="/examiners/projects">Register or Assign a Project</LinkBtn><LinkBtn href="/examiners/reports">Reports</LinkBtn></>} />
       {problem && !dialog ? <ProblemNotice problem={problem} /> : null}
       <Tiles items={[

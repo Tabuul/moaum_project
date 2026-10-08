@@ -25,7 +25,7 @@ export function PaymentSearch({ q, state, ticket, page, list }: { q: string; sta
   const open = (ref: string) => `/helpdesk/payments/${encodeURIComponent(ref)}${ticket ? `?ticket=${encodeURIComponent(ticket)}` : ""}`;
   return (
     <>
-      <PageHead title="Payment Support" eyebrow="ICT Support Desk"
+      <PageHead title="Payment support" eyebrow="ICT Support Desk"
         description="Find a student's payment by any number they hold and read what the gateway, the Bursary's ledger and the portal say about it. ICT Support verifies through the existing payment service and refreshes what a confirmed payment entitles — it never marks a payment paid, changes an amount or refunds."
         actions={<><LinkBtn href="/helpdesk/students">Student Support</LinkBtn><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
       <Panel title="Search">

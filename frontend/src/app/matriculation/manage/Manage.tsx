@@ -157,7 +157,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
 
   return (
     <>
-      <PageHead title="Matriculation Management" description="Faculty by faculty: the eligible students grouped by programme, matriculation numbers proposed from the configured rule and reserved, every one reviewed and validated, corrections with a reason, the batch marked ready, the final review across faculties — and only then the confirmed act that issues the numbers, marks the students matriculated, makes the number their sign-in and tells them. Generating is preparation; issuing is the official act."
+      <PageHead title="Matriculation management" description="Faculty by faculty: the eligible students grouped by programme, matriculation numbers proposed from the configured rule and reserved, every one reviewed and validated, corrections with a reason, the batch marked ready, the final review across faculties — and only then the confirmed act that issues the numbers, marks the students matriculated, makes the number their sign-in and tells them. Generating is preparation; issuing is the official act."
         actions={<><LinkBtn kind="ghost" href={`/matriculation?session=${encodeURIComponent(filters.session)}`}>Matriculation run</LinkBtn><LinkBtn kind="ghost" href="/matriculation/config">Number format</LinkBtn>
           {fv ? <><Btn kind="secondary" onClick={() => void excel(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody(), "faculty-matriculation.xlsx")} disabled={!students.length}>Excel</Btn><Btn kind="ghost" onClick={() => pdf(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody())} disabled={!students.length}>PDF</Btn></> : null}</>} />
       {problem ? <ProblemNotice problem={problem} /> : null}

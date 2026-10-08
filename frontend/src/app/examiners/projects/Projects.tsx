@@ -60,7 +60,7 @@ export function Projects({ rows, session, current, sessions, examiners, rubrics,
 
   return (
     <>
-      <PageHead title="Project Assignments" description="Final-year projects registered for external examination, the examiners each is with, and where every review stands."
+      <PageHead title="Project assignments" description="Final-year projects registered for external examination, the examiners each is with, and where every review stands."
         actions={<><Btn kind="primary" onClick={() => { setProblem(null); setStudent(null); setSupervisor(null); setOpen(true); }}>Register a Project</Btn><LinkBtn href="/examiners/assignments">Every Assignment</LinkBtn><LinkBtn href="/examiners/rubrics">Assessment Criteria</LinkBtn></>} />
       {assignFor ? <Note kind="info" title={`Assigning to ${examiners.find((e) => e.id === assignFor)?.name ?? "the chosen examiner"}`}>Choose a project below and click Assign; the examiner is already picked.</Note> : null}
       {problem && !open && !assign ? <ProblemNotice problem={problem} /> : null}

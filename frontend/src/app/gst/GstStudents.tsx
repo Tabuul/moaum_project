@@ -60,7 +60,7 @@ export function GstStudents({ data, filters, base }: { data: GstStudentPage; fil
 
   return (
     <>
-      <PageHead title={`${word} Students`} description={scope}
+      <PageHead title={`${word} students`} description={scope}
         actions={<span className="row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href={`${base}/dashboard?${gstQuery(f)}`}>Dashboard</LinkBtn><Btn kind="secondary" size="sm" disabled={busy || !data.total} onClick={() => void exportAs("xlsx")}>Excel</Btn><Btn kind="ghost" size="sm" disabled={busy || !data.total} onClick={() => void exportAs("pdf")}>PDF</Btn></span>} />
       <Panel title={`${num(data.total)} STUDENT${data.total === 1 ? "" : "S"} FOUND`} right={<span className="sub2">page {data.page + 1} of {pages}</span>}>
         <PBody>

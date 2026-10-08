@@ -44,7 +44,7 @@ export function StudentSearch({ list, filters, page, generatedBy }: { list: Supp
 
   return (
     <>
-      <PageHead title="Student Support" description={`Find a student within your reach${list.scope ? ` — ${list.scope}` : ""} and open their record in support mode. A student outside your postings' scope is not found here.`}
+      <PageHead title="Student support" description={`Find a student within your reach${list.scope ? ` — ${list.scope}` : ""} and open their record in support mode. A student outside your postings' scope is not found here.`}
         actions={<><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
       {!caps.has("VIEW_STUDENT") ? <Note kind="bad" title="Your posting does not carry student records">Ask the Head of the ICT Support Desk to grant the capability on your posting. Until then, document the issue on the ticket and escalate it.</Note> : null}
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ q: String(f.get("q") ?? "") }); }}>

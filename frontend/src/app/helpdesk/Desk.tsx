@@ -116,7 +116,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
 
   return (
     <>
-      <PageHead title="ICT Support Desk" description={head ? "What needs attention now across the University's support queues, then the operations and the figures." : "What needs your attention now, within the queues you are posted on."}
+      <PageHead title="ICT support desk" description={head ? "What needs attention now across the University's support queues, then the operations and the figures." : "What needs your attention now, within the queues you are posted on."}
         actions={<>
           {head ? <LinkBtn href="/helpdesk/agents">Agents, Queues and Routing</LinkBtn> : null}
           {head ? <LinkBtn href="/helpdesk/reports">Reports and Analytics</LinkBtn> : null}

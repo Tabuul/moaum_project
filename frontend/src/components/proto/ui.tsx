@@ -7,6 +7,7 @@
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import Link from "next/link";
 import { roleLabel } from "@/lib/offices";
+import { PageHeadBody } from "./ShellTitle";
 
 const I: Record<string, string> = {
   home: '<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z"/>',
@@ -83,17 +84,10 @@ export function WarnIcon({ size }: { size: number }) {
 export type NoteKind = "info" | "ok" | "bad";
 
 /** the in-content page head: a title, a line of context, and the page's primary actions on the right */
-export function PageHead({ title, description, actions, eyebrow }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
-  return (
-    <div className="phead">
-      <div style={{ minWidth: 0 }}>
-        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
-        <h2 className="phead__t">{title}</h2>
-        {description ? <div className="phead__d">{description}</div> : null}
-      </div>
-      {actions ? <div className="phead__a">{actions}</div> : null}
-    </div>
-  );
+/** a page's own head: its title — left out when the Shell's top bar already shows the same title, so a heading never
+ *  appears twice — its description, eyebrow and actions */
+export function PageHead({ title, description, actions, eyebrow }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
+  return <PageHeadBody title={title} description={description} actions={actions} eyebrow={eyebrow} />;
 }
 
 /** one tab strip for the whole portal: segmented by default, or a line of underlined tabs; the count is optional */

@@ -108,7 +108,7 @@ export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="Payments from the old portal" eyebrow={<Link href="/jupeb/import">← Old-portal students</Link>}
+      <PageHead eyebrow={<Link href="/jupeb/import">← Old-portal students</Link>}
         description="The old JUPEB portal's payment export, put on each student's record: matched by the old App No only, each successful payment posted once as a confirmed fee with its old reference kept. Upload the students first." />
       {done ? <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} payment${done.applied === 1 ? "" : "s"} put on the record`}>{done.refs.length ? `Upload ${done.refs.join(", ")}. The students' fee reminders now follow what is still owed.` : "Nothing new was posted."}</Note> : null}
       {canWrite ? (

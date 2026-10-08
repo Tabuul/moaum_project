@@ -30,7 +30,7 @@ export function CourseHistory({ rows, current }: { rows: AllocationRow[]; curren
 
   return (
     <>
-      <PageHead title="Course History" description="Every course allocated to you, this session and before, with the class each one had and where its results reached. Read from the register of allocation; nothing here is kept apart."
+      <PageHead title="Course history" description="Every course allocated to you, this session and before, with the class each one had and where its results reached. Read from the register of allocation; nothing here is kept apart."
         actions={<><LinkBtn kind="primary" href="/me/teaching">This Session&rsquo;s Timetable</LinkBtn><LinkBtn href="/results/sheets/history">Score Sheet History</LinkBtn></>} />
       <Tiles items={[
         ["Courses taught", String(rows.length), null, `${distinct} distinct course${distinct === 1 ? "" : "s"} over ${sessions.length} session${sessions.length === 1 ? "" : "s"}`],

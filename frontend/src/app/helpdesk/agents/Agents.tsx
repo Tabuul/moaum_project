@@ -102,7 +102,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
 
   return (
     <>
-      <PageHead title="Support Agents, Queues and Routing" description="Who works which queue within what scope; the queues and the office each answers to; where each category of problem goes."
+      <PageHead title="Support agents, queues and routing" description="Who works which queue within what scope; the queues and the office each answers to; where each category of problem goes."
         actions={<>
           {tab === "agents" ? <Btn kind="primary" onClick={newPost}>Post an Agent</Btn> : tab === "queues" ? <Btn kind="primary" onClick={newQueue}>New Queue</Btn> : <Btn kind="primary" onClick={newRule}>New Routing Rule</Btn>}
           <LinkBtn href="/helpdesk">The Desk</LinkBtn>

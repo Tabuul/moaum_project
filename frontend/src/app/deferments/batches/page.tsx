@@ -14,7 +14,7 @@ export default async function BatchesPage() {
   const rows = r.ok ? r.data : [];
   return (
     <Shell route="t/deferments" me={me.ok ? me.data : null}>
-      <PageHead title="Forwarding Batches" description="Every list of faculty-approved deferment applications the Academic Office forwarded to the Deputy Vice-Chancellor, numbered DEF-DVC-YYYY-NNNNN, with the applications it named and the DVC's progress on them." actions={<LinkBtn href="/deferments">Deferments Desk</LinkBtn>} />
+      <PageHead title="Forwarding batches" description="Every list of faculty-approved deferment applications the Academic Office forwarded to the Deputy Vice-Chancellor, numbered DEF-DVC-YYYY-NNNNN, with the applications it named and the DVC's progress on them." actions={<LinkBtn href="/deferments">Deferments Desk</LinkBtn>} />
       {!r.ok ? <ProblemNotice problem={r.problem} /> : null}
       <Panel title="Batches" right={`${rows.length}`}>
         {rows.length ? (

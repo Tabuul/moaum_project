@@ -36,7 +36,7 @@ export function JupebSearch() {
   }, [asked, page]);
   return (
     <>
-      <PageHead title="JUPEB Student Support" description="Find a JUPEB candidate or student and open their record in support mode: contact details, password, payments and activation — each through the JUPEB services, every act on the support ledger."
+      <PageHead title="JUPEB student support" description="Find a JUPEB candidate or student and open their record in support mode: contact details, password, payments and activation — each through the JUPEB services, every act on the support ledger."
         actions={<LinkBtn href="/helpdesk">Support Desk</LinkBtn>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {problem?.status === 422 ? <Note kind="info" title="JUPEB records are reached through a posting">The Head of the ICT Support Desk posts agents on the JUPEB Support queue (or University-wide) with the acts they may do.</Note> : null}

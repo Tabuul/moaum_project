@@ -58,7 +58,7 @@ export function ExaminersDesk({ dash, session, examiners, faculties }: { dash: D
 
   return (
     <>
-      <PageHead title="External Examiners" description="Scholars from other institutions appointed to assess final-year projects independently: the register, their appointments, the projects sent to them."
+      <PageHead title="External examiners" description="Scholars from other institutions appointed to assess final-year projects independently: the register, their appointments, the projects sent to them."
         actions={<><Btn kind="primary" onClick={() => setOpen(true)}>New Examiner</Btn><LinkBtn href="/examiners/assignments">Project Assignments</LinkBtn><LinkBtn href="/examiners/reports">Reports</LinkBtn></>} />
       {problem && !open ? <ProblemNotice problem={problem} /> : null}
       <div className="scope">

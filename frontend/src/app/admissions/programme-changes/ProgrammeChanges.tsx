@@ -175,7 +175,7 @@ export function ProgrammeChanges({ page, actingOffice, openApp }: { page: Regist
 
   return (
     <>
-      <PageHead title="Programme Changes"
+      <PageHead title="Programme changes"
         description={`${session} · every applicant now on a programme other than the one applied for — the programme applied for, the programme held now, why, at what stage, and who recommended and approved it. An admission found in error after the Board's decision, even after school fees, is corrected here: recommended by the Academic Office with the error described, approved by the Registrar's office.`}
         actions={<>
           <select className="ctl" aria-label="Session" style={{ width: 150 }} value={session} onChange={(e) => go(`/admissions/programme-changes?session=${encodeURIComponent(e.target.value)}`)}>

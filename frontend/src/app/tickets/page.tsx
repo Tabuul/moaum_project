@@ -18,7 +18,7 @@ export default async function MyTicketsPage() {
   const resolved = rows.filter((t) => t.status === "RESOLVED");
   return (
     <Shell route={route} me={me}>
-      <PageHead title="My Support Tickets" description="What you have reported to the Directorate of ICT, where each stands, and what the desk said."
+      <PageHead title="My support tickets" description="What you have reported to the Directorate of ICT, where each stands, and what the desk said."
         actions={<><LinkBtn kind="primary" href="/tickets/new">Submit a New Ticket</LinkBtn><LinkBtn href="/track">Track a Ticket</LinkBtn></>} />
       {!r.ok ? <ProblemNotice problem={r.problem} /> : null}
       <Tiles items={[

@@ -23,7 +23,7 @@ export function Office({ data }: { data: OfficeData }) {
   ];
   return (
     <>
-      <PageHead title="Support Escalations" description={`Tickets the ICT Support Desk has referred to ${offices} for a decision support cannot take. Your answer goes to the agent on the ticket; the ticket waits until it comes.`}
+      <PageHead title="Support escalations" description={`Tickets the ICT Support Desk has referred to ${offices} for a decision support cannot take. Your answer goes to the agent on the ticket; the ticket waits until it comes.`}
         actions={<LinkBtn href="/tickets">My Own Tickets</LinkBtn>} />
       <Tiles items={[
         ["Awaiting your decision", String(data.waiting.length), data.waiting.length ? "var(--amber-ink)" : null, "Referred by the support desk, oldest first"],

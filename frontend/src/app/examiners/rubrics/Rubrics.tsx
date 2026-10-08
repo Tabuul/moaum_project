@@ -33,7 +33,7 @@ export function Rubrics({ rubrics, mayEdit }: { rubrics: Rubric[]; mayEdit: bool
 
   return (
     <>
-      <PageHead title="Assessment Criteria" description="The forms external examiners score on: the lines, their sections and their maximum marks. The total is computed from the lines; the grade comes from the University's grading scheme in force."
+      <PageHead title="Assessment criteria" description="The forms external examiners score on: the lines, their sections and their maximum marks. The total is computed from the lines; the grade comes from the University's grading scheme in force."
         actions={<>{mayEdit ? <Btn kind="primary" onClick={() => setNewForm({ name: "", kind: "UNDERGRADUATE", hasDefence: true, note: "" })}>New Form</Btn> : null}<LinkBtn href="/examiners/projects">Project Assignments</LinkBtn></>} />
       {problem && !draft && !newForm ? <ProblemNotice problem={problem} /> : null}
       {!mayEdit ? <Note kind="info" title="Read-only">The Academic Office, the Deputy Registrar (Academic) and the School of Postgraduate Studies keep these forms.</Note> : null}

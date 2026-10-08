@@ -112,7 +112,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
 
   return (
     <>
-      <PageHead title={title ?? "Student Statistics"} description={`${scopeWords}. Every figure is counted from the register as it stands; click a figure, an arc, a bar or a row to open the students behind it.`}
+      <PageHead title={title ?? "Student statistics"} description={`${scopeWords}. Every figure is counted from the register as it stands; click a figure, an arc, a bar or a row to open the students behind it.`}
         actions={<><LinkBtn kind="primary" href={detailHref(f, "PAID_NOT_REGISTERED")}>Paid Not Registered</LinkBtn><LinkBtn href={detailHref(f, "NOT_PAID")}>Not Paid</LinkBtn><LinkBtn href={detailHref(f, "ALL")}>All Students</LinkBtn></>} />
 
       <div className="scope">

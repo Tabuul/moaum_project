@@ -4,25 +4,25 @@
  * override its subtitle where the prototype's named an invented figure.
  */
 export const TITLES: Record<string, [string, string]> = {
-  "x/dashboard": ["Examiner Workspace", "Your projects and deadlines"],
-  "x/projects": ["My Assigned Projects", "Every project sent to you"],
-  "x/pending": ["Pending Reviews", "Not yet submitted"],
-  "x/submitted": ["Submitted Reviews", "Read-only unless reopened"],
-  "x/profile": ["My Profile", "Your record"],
-  "t/extexaminers": ["External Examiners", "The register"],
-  "t/extappointments": ["Examiner Appointments", "By session and unit"],
-  "t/extassignments": ["Project Assignments", "Projects and their examiners"],
+  "x/dashboard": ["Examiner workspace", "Your projects and deadlines"],
+  "x/projects": ["My assigned projects", "Every project sent to you"],
+  "x/pending": ["Pending reviews", "Not yet submitted"],
+  "x/submitted": ["Submitted reviews", "Read-only unless reopened"],
+  "x/profile": ["My profile", "Your record"],
+  "t/extexaminers": ["External examiners", "The register"],
+  "t/extappointments": ["Examiner appointments", "By session and unit"],
+  "t/extassignments": ["Project assignments", "Projects and their examiners"],
   "t/extassessments": ["Assessments", "Read, locked, reopened"],
-  "t/extreports": ["Examiner Reports", "Real figures"],
-  "t/sheethistory": ["Score Sheet History", "Every sheet you have carried"],
-  "t/coursehistory": ["Course History", "Every course allocated to you"],
+  "t/extreports": ["Examiner reports", "Real figures"],
+  "t/sheethistory": ["Score sheet history", "Every sheet you have carried"],
+  "t/coursehistory": ["Course history", "Every course allocated to you"],
   "r/notices": ["Notifications", "What the portal has sent you"],
-  "t/myprofile": ["My Profile", "Your record"],
-  "s/pgprogress": ["Academic Progress", "Coursework, research and graduation requirements"],
-  "t/collegepayments": ["Student Payment Report", "The College's fees position"],
+  "t/myprofile": ["My profile", "Your record"],
+  "s/pgprogress": ["Academic progress", "Coursework, research and graduation requirements"],
+  "t/collegepayments": ["Student payment report", "The College's fees position"],
   "t/deferments": ["Deferments", "Requests, decisions, returns"],
   "s/deferment": ["Deferment", "Defer a semester or a session"],
-  "t/studentstats": ["Student Statistics", "Paid, registered, paid not registered, not paid"],
+  "t/studentstats": ["Student statistics", "Paid, registered, paid not registered, not paid"],
   "t/staffupload": [
     "Non-Academic Staff",
     "The nominal roll, placed in units"
@@ -394,7 +394,7 @@ export const TITLES: Record<string, [string, string]> = {
     "Who may register CSC 311",
     "The eligible set, assigned when the course was created"
   ],
-  "t/matriculation-manage": ["Matriculation Management", "Faculty by faculty: eligible students, proposed numbers reviewed, then issued"],
+  "t/matriculation-manage": ["Matriculation management", "Faculty by faculty: eligible students, proposed numbers reviewed, then issued"],
   "t/matriculation-config": ["Matriculation number format", "The rule, the series, each faculty's and programme's segments"],
   "t/matriculation": [
     "Matriculation",
@@ -580,10 +580,10 @@ export const TITLES: Record<string, [string, string]> = {
     "ADAMU, Grace Mwuese",
     "MOAUM/CSC/23/1487 · 300 Level"
   ],
-  "t/screeningreview": ["Screening Review", "The online screening forms of accepted applicants, reviewed and decided"],
+  "t/screeningreview": ["Screening review", "The online screening forms of accepted applicants, reviewed and decided"],
   "a/admission": ["Your admission", "Congratulations, the details, the next step and the tracker"],
-  "t/admeligibility": ["Programme Eligibility", "Applicants against the admission settings; the programmes they qualify for"],
-  "t/programmechanges": ["Programme Changes", "Applicants moved from the programme they applied for; admissions corrected after the decision"],
+  "t/admeligibility": ["Programme eligibility", "Applicants against the admission settings; the programmes they qualify for"],
+  "t/programmechanges": ["Programme changes", "Applicants moved from the programme they applied for; admissions corrected after the decision"],
   "t/admissions": [
     "Admissions",
     "2026 UTME cycle"

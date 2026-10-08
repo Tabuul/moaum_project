@@ -59,7 +59,7 @@ export function Transactions({ data, filters, studentId }: { data: FinPage; filt
 
   return (
     <>
-      <PageHead title="Payment Transactions" description={`${words}. ${data.total.toLocaleString()} confirmed payment${data.total === 1 ? "" : "s"}, newest first; each is one transaction, and a student appears once per payment.`}
+      <PageHead title="Payment transactions" description={`${words}. ${data.total.toLocaleString()} confirmed payment${data.total === 1 ? "" : "s"}, newest first; each is one transaction, and a student appears once per payment.`}
         actions={<><Btn kind="primary" disabled={busy || !data.total} onClick={() => void exportAs("xlsx")}>{busy ? "Preparing…" : "Export Excel"}</Btn><Btn kind="secondary" disabled={busy || !data.total} onClick={() => void exportAs("pdf")}>Export PDF</Btn><LinkBtn href={`/finance/analytics?${finQuery(f)}`}>Back to analytics</LinkBtn></>} />
       <div className="scope">
         <div className="scope__f" style={{ flex: 2 }}><Field id="tx-q" label="Search">

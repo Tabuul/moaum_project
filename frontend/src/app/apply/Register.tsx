@@ -140,7 +140,7 @@ export function Register({ session }: { session: string }) {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
-          <PageHead title="Post UTME Registration" description="Your JAMB registration number first. Everything else follows from it." />
+          <PageHead title="Post-UTME registration" description="Your JAMB registration number first. Everything else follows from it." />
           <div className="field">
             <label htmlFor="rj">JAMB registration number</label>
             <input id="rj" className="tnum" value={num} onChange={(e) => setNum(e.target.value)} placeholder="202699176777GF" maxLength={15} autoComplete="off" spellCheck={false} />

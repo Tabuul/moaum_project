@@ -56,7 +56,7 @@ export function Dashboard({ view, sessions, office }: { view: Overview; sessions
 
   return (
     <>
-      <PageHead title="Post-UTME CBT Schedule" description={x ? `${x.name} · ${s}. Where every candidate stands, the places the examination can seat, and the schedule generated, validated and published.` : `No examination is set up for ${s} yet. Name it on the setup screen, with its centres, days and slots.`}
+      <PageHead title="Post-UTME CBT schedule" description={x ? `${x.name} · ${s}. Where every candidate stands, the places the examination can seat, and the schedule generated, validated and published.` : `No examination is set up for ${s} yet. Name it on the setup screen, with its centres, days and slots.`}
         actions={<>
           <Field id="pt-session" label="Session"><select id="pt-session" className="ctl" value={s} onChange={(e) => queryNav(`/admissions/putme?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
           <LinkBtn kind="secondary" href={q("/admissions/putme/setup")}>Setup</LinkBtn>

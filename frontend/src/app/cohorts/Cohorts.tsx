@@ -68,7 +68,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
 
   return (
     <>
-      <PageHead title="Student Cohorts" description={`Who is in study, who has graduated, who is beyond their programme's length, and what the Registry must still decide — computed from the register for ${t.current_session ?? "the current session"}, nobody's history rewritten.`}
+      <PageHead title="Student cohorts" description={`Who is in study, who has graduated, who is beyond their programme's length, and what the Registry must still decide — computed from the register for ${t.current_session ?? "the current session"}, nobody's history rewritten.`}
         actions={<>
           {canSet ? <Btn kind="ghost" disabled={busy} onClick={() => void call("POST", "/refresh", {}, "Every student's position recomputed")}>Recompute</Btn> : null}
           <LinkBtn href="/students">Student Records</LinkBtn>
