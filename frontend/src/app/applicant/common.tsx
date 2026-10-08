@@ -5,7 +5,7 @@
  * stages, the two-column grid, and one way of posting an act to the API and
  * refreshing the screen from what the database now says.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -92,6 +92,16 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
   const [qt, setQt] = useState<QuicktellerCheckout | null>(null);
+  // V367: whether any gateway would take this payment, asked once: with none wired the payer is told how to pay instead of a button that cannot work
+  const [wired, setWired] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetch(`/api/bff/api/v1/payments/gateways?reference=${encodeURIComponent(reference)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: Record<string, boolean> | null) => { if (alive && j) setWired(Object.values(j).some(Boolean)); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [reference]);
   async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
@@ -122,6 +132,13 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       setBusy(false);
       await go();
     }
+  }
+  if (wired === false) {
+    return (
+      <Note kind="info" title="Card and USSD payment is not open yet">
+        Pay &#8358;{amount.toLocaleString()} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference and nothing else. The Bursary confirms it against the bank&rsquo;s record and this page shows it paid.
+      </Note>
+    );
   }
   return (
     <>

@@ -72,7 +72,7 @@ class CbtCourseController {
                    AND (:dept::text IS NULL OR c.dept_code = :dept)
                    AND (:fac::text IS NULL OR d.faculty_code = :fac)
                    AND (:level::int IS NULL OR c.level = :level)
-                   AND (:office::text IS NULL OR (c.kind = 'GST' AND coalesce(c.general_office, 'GST') = :office))
+                   AND (:office::text IS NULL OR c.general_office = :office)
                 """;
         java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec
                 .param("q", q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%", Types.VARCHAR).param("on", on, Types.BOOLEAN)
@@ -112,8 +112,8 @@ class CbtCourseController {
         String acting = acting();
         if ("gst".equals(acting) || "eps".equals(acting)) {
             String own = "gst".equals(acting) ? "GST" : "EPS";
-            String office = c.get("general_office") == null ? "GST" : String.valueOf(c.get("general_office"));
-            if (!"GST".equals(c.get("kind")) || !own.equals(office)) {
+            // V367: a course is the office's only when it is classified the office's (a course marked general by an upload but in no office's family is not)
+            if (!own.equals(c.get("general_office"))) {
                 throw new AccessDeniedException("The " + own + " office allows CBT for its own General Studies courses; " + c.get("code") + " is not one of them.");
             }
         }

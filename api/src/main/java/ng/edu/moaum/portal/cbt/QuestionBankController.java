@@ -136,7 +136,7 @@ class QuestionBankController {
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS questions,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code) AS total
                   FROM catalogue.course c
-                 WHERE (:o::text IS NULL OR (c.kind = 'GST' AND coalesce(c.general_office, 'GST') = :o))
+                 WHERE (:o::text IS NULL OR c.general_office = :o)
                  ORDER BY c.code
                 """).param("o", o, Types.VARCHAR).query().listOfRows();
     }

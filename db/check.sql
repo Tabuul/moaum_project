@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 210
+\set EXPECTED 212
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6988,6 +6988,149 @@ BEGIN
                e6.required, e6.gst_reason, e6a.required, e6a.gst_reason, menu_a1, menu_a6, e7.required, e7.gst_required, e7.eps_required, e7.eps_reason, r_gate7, g7.state, r_gate7paid,
                e7n.required, e7n.eps_required, e7n.reason, e9.eps_required, e9.eps_reason, e11.eps_required, e11.required, g4p.state, g4p.review, g4p.required, pop_b4.review, n_pay4, n_refund4,
                n_pop, n_mismatch, sem2_a1, sem2_a2));
+END $$;
+
+-- ── V367: a GST refund counts, a payment no course requires is decided by the Bursary, the session's offerings are checked ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); S text := '9976/9977'; SC text := '9974/9975'; pa text := 'C00023'; dept text;
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); ref1 text; ref1b text; ref2 text; ref3 text; rf text; d finance.gst_payment_review;
+        n_gap_before int; n_opened int; n_again int; n_gap_after int; r_closed text; e1 record; e1r record; r_gate1 text; r_pending text;
+        e2 record; e2k record; pop2 boolean; e3 record; e3p record; e3x record; e3z record; v_src text; v_rfstate text; r_note text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9976-10-01', date '9977-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), SC, date '9974-10-01', date '9975-08-31', 'CLOSED') ON CONFLICT (name) DO NOTHING;
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = false, covers_eps = true WHERE id = 1;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GST 971', 'Check Communication', 2, 1, 100, dept, 'GST', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 971', pa, 100, 'GST');
+        -- the course is bound but not opened: named as a gap; opened once, in its own semester; a closed session refused
+        SELECT count(*) INTO n_gap_before FROM catalogue.gst_offering_gaps(S, 'GST') WHERE course_code = 'GST 971';
+        n_opened := catalogue.open_gst_offerings(S, 'GST');
+        n_again := catalogue.open_gst_offerings(S, 'GST');
+        SELECT count(*) INTO n_gap_after FROM catalogue.gst_offering_gaps(S, 'GST') WHERE course_code = 'GST 971';
+        BEGIN PERFORM catalogue.open_gst_offerings(SC, 'GST'); r_closed := 'ALLOWED'; EXCEPTION WHEN check_violation THEN r_closed := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s1, 'MOAUM/ADM/76/976001', 'MOAUM/CHK/76/9761', 'ZZV367A', 'Owes', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (s2, 'MOAUM/ADM/76/976002', 'MOAUM/CHK/76/9762', 'ZZV367B', 'Kept', pa, 'UTME', S, 100, 300, 'ACTIVE', now()),
+            (s3, 'MOAUM/ADM/76/976003', 'MOAUM/CHK/76/9763', 'ZZV367C', 'Refunded', pa, 'UTME', S, 100, 300, 'ACTIVE', now());
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(S, 6000, NULL, NULL, NULL, NULL, current_date, 'V367 check', maker, 'bursar');
+        -- s1 owes and pays; refunded in full by maker and checker, the payment no longer entitles and the gate holds again
+        ref1 := finance.new_gst_reference(s1, S);
+        PERFORM finance.confirm_payment(ref1, 'Bank transfer', 'V367 check');
+        SELECT * INTO e1 FROM finance.gst_entitlement(s1, S);
+        rf := finance.propose_refund(s1, 'ZZV367A Owes', 'V367 check: paid twice', 6000, NULL, NULL, NULL, ref1);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf));
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        SELECT * INTO e1r FROM finance.gst_entitlement(s1, S);
+        r_gate1 := split_part(coalesce(registration.gst_gate(s1, S, 'GST 971'), 'OPEN'), ':', 1);
+        -- a payment a course requires is not the Bursary's to decide as "not required"
+        ref1b := finance.new_gst_reference(s1, S);
+        PERFORM finance.confirm_payment(ref1b, 'Bank transfer', 'V367 check');
+        BEGIN PERFORM finance.decide_gst_payment(ref1b, 'KEEP', 'check'); r_pending := 'ALLOWED'; EXCEPTION WHEN check_violation THEN r_pending := split_part(SQLERRM, ':', 1); END;
+        -- s2 paid though nothing requires it: in review, then kept with a note — out of review, the payment untouched
+        ref2 := finance.new_purpose_reference(s2, S, 6000, 'GST fee ' || S);
+        PERFORM finance.confirm_payment(ref2, 'Bank transfer', 'V367 check');
+        SELECT * INTO e2 FROM finance.gst_entitlement(s2, S);
+        BEGIN PERFORM finance.decide_gst_payment(ref2, 'KEEP', '  '); r_note := 'ALLOWED'; EXCEPTION WHEN check_violation THEN r_note := split_part(SQLERRM, ':', 1); END;
+        d := finance.decide_gst_payment(ref2, 'KEEP', 'Programme change to a GST programme pending at the Registry');
+        SELECT * INTO e2k FROM finance.gst_entitlement(s2, S);
+        SELECT review INTO pop2 FROM finance.gst_population(S, NULL) WHERE student_id = s2;
+        -- s3 paid though nothing requires it: REFUND proposes a refund against the payment; rejected, back in review; refunded, gone
+        ref3 := finance.new_purpose_reference(s3, S, 6000, 'GST fee ' || S);
+        PERFORM finance.confirm_payment(ref3, 'Bank transfer', 'V367 check');
+        SELECT * INTO e3 FROM finance.gst_entitlement(s3, S);
+        d := finance.decide_gst_payment(ref3, 'REFUND', 'No GST course at 300 level for the programme');
+        SELECT source_reference, state INTO v_src, v_rfstate FROM finance.refund WHERE id = d.refund_id;
+        SELECT * INTO e3p FROM finance.gst_entitlement(s3, S);
+        PERFORM finance.reject_refund(d.refund_id, 'bank details to be confirmed');
+        SELECT * INTO e3x FROM finance.gst_entitlement(s3, S);
+        d := finance.decide_gst_payment(ref3, 'REFUND', 'Bank details confirmed');
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund(d.refund_id);
+        SELECT * INTO e3z FROM finance.gst_entitlement(s3, S);
+        RAISE EXCEPTION 'the V367 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V367: a GST refund approved against the payment takes the entitlement back; a payment no course requires stays in review until the Bursary keeps it or refunds it through maker and checker; the session''s unopened GST/EPS courses are named and opened once',
+        coalesce(n_gap_before = 1 AND n_opened >= 1 AND n_again = 0 AND n_gap_after = 0 AND r_closed = 'GST_SESSION_CLOSED'
+                 AND e1.state = 'PAID' AND NOT e1r.entitled AND e1r.state = 'NOT_PAID' AND r_gate1 = 'GST_PAYMENT_REQUIRED' AND r_pending = 'GST_REVIEW_NOT_PENDING'
+                 AND e2.review AND r_note = 'GST_REVIEW_NOTE' AND NOT e2k.review AND e2k.state = 'PAID' AND NOT pop2
+                 AND e3.review AND v_src = ref3 AND v_rfstate = 'PROPOSED' AND NOT e3p.review AND e3p.state = 'PAID' AND e3x.review
+                 AND e3z.state = 'NOT_REQUIRED' AND NOT e3z.entitled AND NOT e3z.review, false),
+        format('gaps=%s opened=%s again=%s after=%s closed=%s | e1=%s refunded=%s/%s gate=%s pending=%s | e2=%s note=%s kept=%s/%s pop=%s | e3=%s src=%s rf=%s proposed=%s/%s rejected=%s refunded=%s/%s/%s',
+               n_gap_before, n_opened, n_again, n_gap_after, r_closed, e1.state, e1r.entitled, e1r.state, r_gate1, r_pending, e2.review, r_note, e2k.review, e2k.state, pop2,
+               e3.review, v_src = ref3, v_rfstate, e3p.review, e3p.state, e3x.review, e3z.state, e3z.entitled, e3z.review));
+END $$;
+
+-- ── V367: a GST/EPS course is an office's by its code family, never by default; a departmental course an upload marked general owes no GST fee ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9973/9974'; pa text := 'C00023'; dept text; st uuid := gen_random_uuid(); o_mth uuid := gen_random_uuid(); ex assessment.cbt_exam;
+        g_gst text; g_ent text; g_mth text; g_ges text; g_bus text; g_bus2 text; n_stats int; e record; r_gate text; r_gst_exam text; v_exam_office text; v_exam_after text;
+        g_mth_family text; n_assigned int; k_agr text; b_agr text; g_mth_back text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9973-10-01', date '9974-08-31') ON CONFLICT (name) DO NOTHING;
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = false, covers_eps = true WHERE id = 1;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('GST 951', 'Check Use of English', 2, 1, 100, dept, 'GST', 'LIVE'),
+            ('ENT 952', 'Check Venture Creation', 2, 1, 200, dept, 'GST', 'LIVE'),
+            ('MTH 953', 'Check General Mathematics', 3, 1, 100, dept, 'GST', 'LIVE'),          -- a departmental course an upload marked G
+            ('GES 954', 'Check Entrepreneurship and Innovation', 2, 1, 300, dept, 'GST', 'LIVE'),
+            ('BUS 955', 'Check Business Creation', 2, 1, 300, dept, 'GST', 'LIVE'),
+            ('AGR 956', 'Check Introductory Agriculture', 2, 1, 100, dept, 'GST', 'LIVE');
+        SELECT general_office INTO g_gst FROM catalogue.course WHERE code = 'GST 951';
+        SELECT general_office INTO g_ent FROM catalogue.course WHERE code = 'ENT 952';
+        SELECT general_office INTO g_mth FROM catalogue.course WHERE code = 'MTH 953';
+        SELECT general_office INTO g_ges FROM catalogue.course WHERE code = 'GES 954';
+        SELECT general_office INTO g_bus FROM catalogue.course WHERE code = 'BUS 955';
+        -- the departmental course bound to a programme and offered: not on the GST office's courses, owes no GST fee, no gate
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('MTH 953', pa, 100, 'GST'), ('AGR 956', pa, 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_mth, 'MTH 953', S, 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/73/973001', 'MOAUM/CHK/73/9731', 'ZZV367D', 'Departmental', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+        PERFORM finance.state_gst_fee(S, 5000, NULL, NULL, NULL, NULL, current_date, 'V367 check', who, 'bursar');
+        SELECT count(*) INTO n_stats FROM finance.gst_course_stats(S, NULL, 'GST') WHERE course_code = 'MTH 953';
+        SELECT * INTO e FROM finance.gst_entitlement(st, S);
+        r_gate := coalesce(registration.gst_gate(st, S, 'MTH 953'), 'OPEN');
+        -- its CBT examination is the examinations office's, not the GST office's
+        BEGIN
+            PERFORM assessment.cbt_new_exam('GST', o_mth, 'Check', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'TERMINATE', 'CONTINUE', now(), now() + interval '1 hour');
+            r_gst_exam := 'ALLOWED';
+        EXCEPTION WHEN check_violation THEN r_gst_exam := split_part(SQLERRM, ':', 1); END;
+        ex := assessment.cbt_new_exam('EXAMS', o_mth, 'Check', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'TERMINATE', 'CONTINUE', now(), now() + interval '1 hour');
+        v_exam_office := ex.office;
+        -- the EPS office claims a course its families miss; a family added files the courses it reaches, and their examinations follow
+        PERFORM catalogue.claim_general_course('BUS 955', 'EPS');
+        SELECT general_office INTO g_bus2 FROM catalogue.course WHERE code = 'BUS 955';
+        n_assigned := catalogue.set_general_family('MTH', 'GST');
+        SELECT general_office INTO g_mth_family FROM catalogue.course WHERE code = 'MTH 953';
+        SELECT office INTO v_exam_after FROM assessment.cbt_exam WHERE id = ex.id;
+        PERFORM catalogue.set_general_family('MTH', NULL);
+        -- a course no office runs, given back to its department: Core, its GST bindings Core
+        PERFORM catalogue.return_general_course('AGR 956', 'a departmental course the structure marked G');
+        SELECT kind INTO k_agr FROM catalogue.course WHERE code = 'AGR 956';
+        SELECT basis INTO b_agr FROM catalogue.course_offer WHERE course_code = 'AGR 956' AND programme_code = pa;
+        RAISE EXCEPTION 'the V367 classification check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V367: a course is the GST office''s by a General Studies family, the EPS office''s by an Entrepreneurship family or title, and no office''s otherwise — it owes no GST fee, is not on the GST desk and is examined by the examinations office; an office claims what its families miss',
+        coalesce(g_gst = 'GST' AND g_ent = 'EPS' AND g_mth IS NULL AND g_ges = 'EPS' AND g_bus IS NULL
+                 AND n_stats = 0 AND NOT e.required AND e.state = 'NOT_REQUIRED' AND r_gate = 'OPEN'
+                 AND r_gst_exam = 'CBT_NOT_OFFICE_COURSE' AND v_exam_office = 'EXAMS'
+                 AND g_bus2 = 'EPS' AND n_assigned = 1 AND g_mth_family = 'GST' AND v_exam_after = 'GST'
+                 AND k_agr = 'Core' AND b_agr = 'Core', false),
+        format('gst=%s ent=%s mth=%s ges=%s bus=%s | stats=%s required=%s state=%s gate=%s | gst exam=%s exams office=%s | claimed=%s family=%s/%s exam=%s | returned=%s/%s',
+               g_gst, g_ent, g_mth, g_ges, g_bus, n_stats, e.required, e.state, r_gate, r_gst_exam, v_exam_office, g_bus2, n_assigned, g_mth_family, v_exam_after, k_agr, b_agr));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

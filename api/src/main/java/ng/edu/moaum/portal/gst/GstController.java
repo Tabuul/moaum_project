@@ -106,10 +106,16 @@ class GstController {
                        count(*) FILTER (WHERE p.gst_carryover OR p.eps_carryover) AS carryover
                   FROM finance.gst_population(:s, NULL) p
                 """).param("s", s).query().singleRow());
+        // V367: GST/EPS courses bound to programmes but not opened this session — their students owe nothing until the office opens them
+        out.put("gaps", gaps(s, null));
         return out;
     }
 
-    /** V366: the students who paid the GST fee though no GST/EPS course requires it of them this session — for the Bursary's review; nothing here changes a payment */
+    /**
+     * V366: the students who paid the GST fee though no GST/EPS course requires it of them this session — for the Bursary's review.
+     * V367: each payment awaiting a decision (rows), and the decisions taken (decided): kept with a note, or a refund raised against
+     * the payment through the maker–checker refund workflow, with where that refund stands.
+     */
     @GetMapping("/fee/review")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -119,10 +125,53 @@ class GstController {
         out.put("session", s);
         out.put("rows", jdbc.sql("""
                 SELECT p.student_id, p.number, p.surname, p.other_names, p.programme_code, p.programme, p.department, p.faculty, p.level, p.paid, p.reference, p.paid_at,
-                       p.pay_source, p.gst_reason, p.eps_reason
+                       p.pay_source, p.gst_reason, p.eps_reason,
+                       (SELECT coalesce(json_agg(json_build_object('reference', r.reference, 'amount', r.amount - finance.gst_refunded(r.reference), 'paid_at', r.confirmed_at)
+                                                 ORDER BY r.confirmed_at)::text, '[]')
+                          FROM finance.payment_reference r
+                         WHERE r.student_id = p.student_id AND r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL
+                           AND r.amount > finance.gst_refunded(r.reference)
+                           AND NOT EXISTS (SELECT 1 FROM finance.gst_payment_review d LEFT JOIN finance.refund rf ON rf.id = d.refund_id
+                                            WHERE d.reference = r.reference AND (d.decision = 'KEEP' OR rf.state <> 'REJECTED'))) AS payments
                   FROM finance.gst_population(:s, NULL) p WHERE p.review
                  ORDER BY p.surname, p.other_names LIMIT 2000
                 """).param("s", s).query().listOfRows());
+        out.put("decided", jdbc.sql("""
+                SELECT d.reference, d.decision, d.note, d.decided_at, d.decided_office, st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number,
+                       st.surname, st.other_names, pr.amount AS paid, rf.reference AS refund_reference, rf.state AS refund_state, rf.amount AS refund_amount,
+                       (SELECT ps.surname || ', ' || ps.given_names FROM iam.person ps WHERE ps.id = d.decided_by) AS decided_by
+                  FROM finance.gst_payment_review d
+                  JOIN people.student st ON st.id = d.student_id
+                  JOIN finance.payment_reference pr ON pr.reference = d.reference
+                  LEFT JOIN finance.refund rf ON rf.id = d.refund_id
+                 WHERE d.session = :s
+                 ORDER BY d.decided_at DESC LIMIT 2000
+                """).param("s", s).query().listOfRows());
+        return out;
+    }
+
+    public record DecisionIn(@NotBlank @Size(max = 10) String decision, @NotBlank @Size(max = 500) String note, @Size(max = 200) String payer,
+                             @Size(max = 120) String bank, @Size(max = 200) String accountName, @Size(max = 4) String accountLast4) {
+    }
+
+    /**
+     * V367: the Bursary decides a GST payment no course requires — KEEP with its reason, or REFUND, which raises a refund of it
+     * through the refunds desk's maker–checker workflow (another officer approves; nothing is approved or paid here). The
+     * payment itself is never changed.
+     */
+    @PostMapping("/fee/review/{reference}")
+    @PreAuthorize(BURSAR)
+    @Transactional
+    Map<String, Object> decide(@PathVariable String reference, @Valid @RequestBody DecisionIn body) {
+        Map<String, Object> d = jdbc.sql("SELECT d.* FROM finance.decide_gst_payment(:r, :d, :n, :p, :b, :an, :l) d")
+                .param("r", reference.trim()).param("d", body.decision().trim().toUpperCase()).param("n", body.note().trim())
+                .param("p", blank(body.payer()), Types.VARCHAR).param("b", blank(body.bank()), Types.VARCHAR)
+                .param("an", blank(body.accountName()), Types.VARCHAR).param("l", blank(body.accountLast4()), Types.VARCHAR)
+                .query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(d);
+        if (d.get("refund_id") != null) {
+            out.put("refund", jdbc.sql("SELECT reference, state, amount FROM finance.refund WHERE id = :id").param("id", d.get("refund_id")).query().singleRow());
+        }
         return out;
     }
 
@@ -340,6 +389,8 @@ class GstController {
         out.put("results", Map.of("pending", pending, "submitted", submitted, "published", published, "activeCourses", active, "totalCourses", courses.size(), "registrations", registrations));
         // V323: the old-portal GST payments reconciled for the session — what came in, what stands, what waits
         out.put("legacy", jdbc.sql("SELECT * FROM finance.legacy_gst_summary(NULL, :s)").param("s", f.session()).query().singleRow());
+        // V367: the office's courses bound to programmes but not opened this session — their students owe nothing until they are
+        out.put("gaps", gaps(f.session(), o));
         out.put("options", options(f));
         out.put("now", OffsetDateTime.now());
         return out;
@@ -421,7 +472,7 @@ class GstController {
                   FROM registration.course_registration cr
                   JOIN registration.entry e ON e.registration_id = cr.id
                   JOIN catalogue.offering o ON o.id = e.offering_id
-                  JOIN catalogue.course c ON c.code = o.course_code AND c.kind = 'GST'
+                  JOIN catalogue.course c ON c.code = o.course_code AND c.kind = 'GST' AND c.general_office IS NOT NULL
                   LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
                  WHERE cr.student_id = :id
                  ORDER BY cr.session DESC, cr.semester, c.code
@@ -465,6 +516,10 @@ class GstController {
                   LEFT JOIN ref.faculty f ON f.code = coalesce(d.faculty_code, p.faculty_code)
                  ORDER BY co.course_code, co.level, f.name, d.name, p.name
                 """).param("o", o).query().listOfRows());
+        out.put("gaps", gaps(s, o));
+        // V367: the code families that make a course the office's, and the courses an upload marked general that no office runs
+        out.put("families", families());
+        out.put("unassigned", unassigned(s));
         out.put("offerHistory", jdbc.sql("""
                 SELECT h.course_code, h.programme_code, p.name AS programme, h.level, h.ended_at, h.reason, h.registrations_carried
                   FROM catalogue.course_offer_history h
@@ -597,6 +652,117 @@ class GstController {
         return Map.of("offeringId", id);
     }
 
+    /* ── V367: which office a general course is ── */
+
+    /** who classifies general courses: the two offices (each for its own), the Academic Office and the Super Administrator */
+    private static final String CLASSIFIERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_academic','OFFICE_super')";
+
+    public record FamilyIn(@Size(max = 3) String office) {
+    }
+
+    public record ReturnIn(@NotBlank @Size(max = 300) String reason) {
+    }
+
+    /** the code families and the courses an upload marked general that no office runs */
+    @GetMapping("/classification")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> classification(@RequestParam(required = false) String session) {
+        String s = session(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("families", families());
+        out.put("unassigned", unassigned(s));
+        return out;
+    }
+
+    /** a code family set for an office, or removed (office blank); the courses no office runs that the family reaches are filed under it */
+    @PutMapping("/families/{prefix}")
+    @PreAuthorize(CLASSIFIERS)
+    @Transactional
+    Map<String, Object> family(@PathVariable String prefix, @Valid @RequestBody FamilyIn body) {
+        String p = prefix == null ? "" : prefix.trim().toUpperCase();
+        String o = blank(body.office()) == null ? null : body.office().trim().toUpperCase();
+        String own = ownOffice();
+        if (own != null) {
+            String current = jdbc.sql("SELECT office FROM catalogue.general_family WHERE prefix = :p").param("p", p).query(String.class).optional().orElse(null);
+            if ((o != null && !own.equals(o)) || (current != null && !own.equals(current))) {
+                throw new AccessDeniedException("The " + own + " office sets its own code families; " + p + " is " + (current == null ? "for the " + o + " office" : "the " + current + " office's") + ".");
+            }
+        }
+        int assigned = jdbc.sql("SELECT catalogue.set_general_family(:p, :o)").param("p", p).param("o", o, Types.VARCHAR).query(Integer.class).single();
+        return Map.of("prefix", p, "office", String.valueOf(o), "assigned", assigned, "families", families());
+    }
+
+    /** the office takes a course its families do not reach (marked general, no office's — or the other office's) */
+    @PostMapping("/{office}/courses/{code}/claim")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> claim(@PathVariable String office, @PathVariable String code) {
+        String o = manage(office);
+        String c = unslug(code);
+        jdbc.sql("SELECT code FROM catalogue.claim_general_course(:c, :o)").param("c", c).param("o", o).query(String.class).single();
+        return Map.of("code", c, "office", o);
+    }
+
+    /** a course an upload marked general that the office does not run, given back to its department as Core; its history stays */
+    @PostMapping("/courses/{code}/return")
+    @PreAuthorize(CLASSIFIERS)
+    @Transactional
+    Map<String, Object> giveBack(@PathVariable String code, @Valid @RequestBody ReturnIn body) {
+        String c = unslug(code);
+        String own = ownOffice();
+        if (own != null) {
+            String current = jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", c).query(String.class).optional().orElse(null);
+            if (current != null && !own.equals(current)) {
+                throw new AccessDeniedException(c + " is the " + current + " office's course; the " + own + " office does not give it back.");
+            }
+        }
+        jdbc.sql("SELECT code FROM catalogue.return_general_course(:c, :r)").param("c", c).param("r", body.reason().trim()).query(String.class).single();
+        return Map.of("code", c, "kind", "Core");
+    }
+
+    /** the acting office when it is the GST or the EPS office, else null */
+    private static String ownOffice() {
+        String acting = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        return "gst".equals(acting) ? "GST" : "eps".equals(acting) ? "EPS" : null;
+    }
+
+    private List<Map<String, Object>> families() {
+        return jdbc.sql("SELECT prefix, office, added_at FROM catalogue.general_family ORDER BY office, prefix").query().listOfRows();
+    }
+
+    /** courses of kind GST no office runs: a structure marked them general (status G) but their subject is no office's family */
+    private List<Map<String, Object>> unassigned(String session) {
+        return jdbc.sql("""
+                SELECT c.code, c.title, c.level, c.semester, c.units, c.dept_code, d.name AS department,
+                       (SELECT count(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes,
+                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_this_session
+                  FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE c.kind = 'GST' AND c.general_office IS NULL AND c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %'
+                 ORDER BY c.code LIMIT 500
+                """).param("s", session).query().listOfRows();
+    }
+
+    /**
+     * V367: every live course of the office bound to a programme and not yet opened in the session, opened at once, each in its
+     * own semester (catalogue.open_gst_offerings); a closed session is refused. Until a course is opened its students owe nothing.
+     */
+    @PostMapping("/{office}/offerings/open-all")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> openAll(@PathVariable String office, @RequestParam(required = false) String session) {
+        String o = manage(office);
+        String s = session(session);
+        int opened = jdbc.sql("SELECT catalogue.open_gst_offerings(:s, :o)").param("s", s).param("o", o).query(Integer.class).single();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("office", o);
+        out.put("session", s);
+        out.put("opened", opened);
+        out.put("gaps", gaps(s, o));
+        return out;
+    }
+
     public record LecturerIn(UUID lecturerId, UUID secondExaminerId) {
     }
 
@@ -653,6 +819,11 @@ class GstController {
         if (asked != null && asked.matches("\\d{4}/\\d{4}")) return asked;
         return jdbc.sql("SELECT coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT'), (SELECT max(name) FROM policy.academic_session WHERE state <> 'PLANNED'), (SELECT max(name) FROM policy.academic_session))")
                 .query(String.class).single();
+    }
+
+    /** V367: the office's (or, with none, both offices') bound GST/EPS courses not opened in the session */
+    private List<Map<String, Object>> gaps(String session, String office) {
+        return jdbc.sql("SELECT * FROM catalogue.gst_offering_gaps(:s, :o)").param("s", session).param("o", office, Types.VARCHAR).query().listOfRows();
     }
 
     private Map<String, Object> setting() {

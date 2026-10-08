@@ -224,6 +224,13 @@ class PaymentsController {
         return payments.setKey(gateway, body.secret(), body.hash());
     }
 
+    /** V367: whether each wired gateway would take a payment now, asked without moving money — the Bursary sees it before a payer does */
+    @PostMapping("/gateways/health")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> health() {
+        return payments.health();
+    }
+
     @PostMapping("/gateways/{gateway}/clear-key")
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> clearKey(@PathVariable String gateway) {

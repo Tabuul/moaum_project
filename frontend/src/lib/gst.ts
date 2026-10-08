@@ -33,6 +33,9 @@ export interface GstFeeRule {
   superseded_at: string | null; stated_by: string | null;
 }
 export interface GstSetting { required_for_gst_eps: boolean; required_for_all: boolean; covers_eps: boolean; updated_office?: string | null; updated_at?: string | null }
+/** V367: a GST/EPS course bound to programmes but not opened for the session — its students owe nothing until it is */
+export interface GstGap { course_code: string; title: string; level: number; semester: number; office: string; programmes: number; levels: string }
+
 /** V366: the Bursary's standing for a session — who owes the fee because a GST/EPS course requires it, who does not */
 export interface GstStanding {
   undergraduates: number; applicable: number; not_applicable: number; paid: number; exempt: number; owing: number; not_stated: number; review: number; outstanding: number;
@@ -41,6 +44,7 @@ export interface GstStanding {
 export interface GstFeePage {
   session: string; sessions: { name: string; state: string }[]; setting: GstSetting; rules: GstFeeRule[]; history: GstFeeRule[]; paid: { students: number; amount: number };
   standing?: GstStanding;
+  gaps?: GstGap[];
 }
 export interface GstOptions {
   faculties: { code: string; name: string }[]; departments: { code: string; name: string; faculty_code: string }[];
@@ -53,6 +57,7 @@ export interface GstDashboardData {
   byLevel: GstGroup[]; byFaculty: GstGroup[]; byDepartment: GstGroup[]; byProgramme: GstGroup[]; byGender: GstGroup[];
   courses: GstCourseRow[]; results: { pending: number; submitted: number; published: number; activeCourses: number; totalCourses: number; registrations: number };
   legacy?: LegacySummary | null;
+  gaps?: GstGap[];
   options: GstOptions; now: string;
 }
 export interface GstStudentRow {

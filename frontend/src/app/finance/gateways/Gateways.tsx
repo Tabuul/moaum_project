@@ -1,6 +1,7 @@
 "use client";
 
-/** tGateways — proto/part18.html: the gateways wired, a secret never read back, the webhook log, a test checkout (V037). */
+/** tGateways — proto/part18.html: the gateways wired, a secret never read back, the webhook log, a test checkout (V037).
+ *  V367: "Can the gateways take a payment now?" — each wired gateway asked a question that moves no money, and its answer read. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -12,6 +13,17 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayOnQuickteller } from "./PayOnQuickteller";
+
+/** V367: what a gateway's answer to the health question means */
+const HEALTH: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info", string]> = {
+  OK: ["Ready", "ok", "The gateway accepted the key or knew the merchant; a payment can be taken."],
+  KEY_REFUSED: ["Key refused", "bad", "The gateway refused the secret key: set the right key on this screen (Directorate of ICT)."],
+  MERCHANT_UNKNOWN: ["Merchant unknown", "bad", "Interswitch does not know this merchant or pay item: obtain the University's current merchant code from Interswitch."],
+  UNEXPECTED: ["Unexpected answer", "warn", "The gateway answered something the portal does not recognise; read what it said."],
+  UNREACHABLE: ["No answer", "bad", "The gateway could not be reached from the portal; try again, and check the server's network if it persists."],
+  OFF: ["Not wired", "grey", "Nothing is set for this gateway."],
+};
+interface HealthRow { gateway: string; scope: string; state: string; said: string; http: number | null }
 
 /** the gateways as the Bursary's desk names them */
 const DESK_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller WebPAY (card page)", paydirect: "Pay on Quickteller (biller page)" };
@@ -25,6 +37,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
+  const [health, setHealth] = useState<{ checkedAt: string; online: boolean; rows: HealthRow[] } | null>(null);
   const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on && g.gateway !== "paydirect")?.gateway ?? "paystack" });
   const [ref, setRef] = useState("");
   const [keys, setKeys] = useState<Record<string, { secret: string; hash: string }>>({ paystack: { secret: "", hash: "" }, flutterwave: { secret: "", hash: "" } });
@@ -90,6 +103,25 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
           ]} />
         </PBody>
       </Panel>
+      {may ? (
+        <Panel title="Can the gateways take a payment now?" right={<Btn kind="primary" size="sm" disabled={busy} onClick={async () => { const j = await send("/gateways/health", {}, "Gateways asked whether they can take a payment"); if (j) setHealth(j as unknown as { checkedAt: string; online: boolean; rows: HealthRow[] }); }}>{busy ? "Asking…" : "Test the gateways"}</Btn>}>
+          <PBody>
+            <div className="sub2">Each wired gateway is asked about a reference that cannot exist — nothing is charged and nothing is written against a student — and its answer is read: whether the key is accepted, whether Interswitch knows the merchant, whether it answers at all. Run it after a key is set or changed, and whenever a payer says the gateway does not open.</div>
+            {health ? (
+              <>
+                <Note kind={health.online ? "ok" : "bad"} title={health.online ? "Payments can be taken online" : "No gateway can take a payment online now"}>
+                  Asked {when(health.checkedAt)}. {health.online ? "At least one gateway answered as it should." : "Payers can still pay against their reference at a bank branch or by transfer; the Bursary confirms it against the bank's record."}
+                </Note>
+                <DTable cols={["Gateway", "Merchant / scope", "State|mid", "What it means", "What the gateway said"]} rows={health.rows.map((h, i) => {
+                  const [w, k, m] = HEALTH[h.state] ?? [h.state, "grey", ""];
+                  return [<strong key={"g" + i}>{DESK_LABEL[h.gateway] ?? h.gateway}</strong>, <span key={"s" + i} className="sub2">{h.scope}</span>, <Pil key={"p" + i} kind={k}>{w}</Pil>,
+                    <span key={"m" + i} className="sub2">{m}</span>, <span key={"x" + i} className="sub2 tnum">{h.http ? `HTTP ${h.http} · ` : ""}{h.said || "—"}</span>];
+                })} />
+              </>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
       {quickteller ? <PayOnQuickteller q={quickteller} may={may} busy={busy} send={send} say={setSaid} /> : null}
       {mayConfigure ? (
         <Panel title="Configure the keys" right="Directorate of ICT and Super Administrator only">

@@ -226,6 +226,76 @@ class GstEligibilityIT {
     }
 
     @Test
+    void onlyTheOfficesOwnCoursesAreOnItsDeskAndOweTheFee() {
+        // V367: a departmental course a structure marked general (kind GST) is no office's: off the GST desk, no fee, examined centrally
+        String dept = "ZZD " + (300 + n % 199);
+        UUID off = UUID.randomUUID();
+        it.db(() -> {
+            String d = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROG_B).query(String.class).single();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, 'Departmental, marked G', 3, 1, 300, :d, 'GST', 'LIVE') ON CONFLICT (code) DO NOTHING")
+                    .param("c", dept).param("d", d).update();
+            jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :b, 300, 'GST') ON CONFLICT DO NOTHING").param("c", dept).param("b", PROG_B).update();
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+                    .param("id", off).param("c", dept).param("s", SESSION).update();
+            return null;
+        });
+        assertThat(jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", dept).query(String.class).optional().orElse(null)).isNull();
+        Map<String, Object> courses = it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION).getBody();
+        assertThat(l(courses.get("catalogue"))).noneSatisfy(c -> assertThat(c.get("code")).isEqualTo(dept));
+        assertThat(l(courses.get("unassigned"))).anySatisfy(c -> assertThat(c.get("code")).isEqualTo(dept));
+        assertThat(l(courses.get("families"))).anySatisfy(f -> { assertThat(f.get("prefix")).isEqualTo("GST"); assertThat(f.get("office")).isEqualTo("GST"); });
+        assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("entitlement")).get("required")).isEqualTo(false);
+        // the EPS office does not take a course on the GST office's door; the GST office takes it, and then it is owed
+        String slug = dept.replace(" ", "_");
+        assertThat(it.call(ItSupport.token("eps"), HttpMethod.POST, "/api/v1/gst/GST/courses/" + slug + "/claim", Map.of()).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> claimed = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/courses/" + slug + "/claim", Map.of());
+        assertThat(claimed.getStatusCode().value()).as(String.valueOf(claimed.getBody())).isEqualTo(200);
+        assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("eligibility")).get("gst_reason")).isEqualTo("GST_REQUIRED_COURSE_OFFERING");
+        // given back to its department: Core, its binding Core, owed no more
+        ResponseEntity<Map> back = it.call(gst, HttpMethod.POST, "/api/v1/gst/courses/" + slug + "/return", Map.of("reason", "a departmental course"));
+        assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT kind FROM catalogue.course WHERE code = :c").param("c", dept).query(String.class).single()).isEqualTo("Core");
+        assertThat(jdbc.sql("SELECT basis FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :b").param("c", dept).param("b", PROG_B).query(String.class).single()).isEqualTo("Core");
+        assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("entitlement")).get("required")).isEqualTo(false);
+    }
+
+    @Test
+    void theOfficeOpensItsCoursesForTheSessionAndTheBursaryDecidesAPaymentNoCourseRequires() {
+        // a session with the GST course bound but not opened: named on the dashboard, opened once by the office
+        String next = "2117/2118";
+        it.session(next, 2117);
+        Map<String, Object> dash = it.get(gst, "/api/v1/gst/GST/dashboard?session=" + next).getBody();
+        assertThat(l(dash.get("gaps"))).anySatisfy(g -> assertThat(g.get("course_code")).isEqualTo(gstCode));
+        assertThat(it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/gst/GST/offerings/open-all?session=" + next, Map.of()).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> opened = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/offerings/open-all?session=" + next, Map.of());
+        assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
+        assertThat(((Number) opened.getBody().get("opened")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(l(opened.getBody().get("gaps"))).noneSatisfy(g -> assertThat(g.get("course_code")).isEqualTo(gstCode));
+
+        // a GST payment no course requires: in review; the GST office cannot decide it; the Bursary keeps it with a note
+        String ref = it.db(() -> {
+            String r = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 7000, 'GST fee ' || :ses)").param("s", b300).param("ses", SESSION).query(String.class).single();
+            jdbc.sql("SELECT finance.confirm_payment(:r, 'Bank transfer', 'integration test')").param("r", r).query(String.class).single();
+            return r;
+        });
+        Map<String, Object> review = it.get(bursar, "/api/v1/gst/fee/review?session=" + SESSION).getBody();
+        assertThat(l(review.get("rows"))).anySatisfy(r -> assertThat(String.valueOf(r.get("payments"))).contains(ref));
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/gst/fee/review/" + ref, Map.of("decision", "KEEP", "note", "x")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> kept = it.call(bursar, HttpMethod.POST, "/api/v1/gst/fee/review/" + ref, Map.of("decision", "KEEP", "note", "programme change pending"));
+        assertThat(kept.getStatusCode().value()).as(String.valueOf(kept.getBody())).isEqualTo(200);
+        Map<String, Object> after = it.get(bursar, "/api/v1/gst/fee/review?session=" + SESSION).getBody();
+        assertThat(l(after.get("rows"))).noneSatisfy(r -> assertThat(String.valueOf(r.get("payments"))).contains(ref));
+        assertThat(l(after.get("decided"))).anySatisfy(d -> { assertThat(d.get("reference")).isEqualTo(ref); assertThat(d.get("decision")).isEqualTo("KEEP"); });
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/gst/fee/review/" + ref, Map.of("decision", "KEEP", "note", "again")).getBody().get("code")).isEqualTo("GST_REVIEW_NOT_PENDING");
+
+        // the gateways asked whether they can take a payment: answered for each, without moving money; not a student's door
+        ResponseEntity<Map> health = it.call(bursar, HttpMethod.POST, "/api/v1/payments/gateways/health", Map.of());
+        assertThat(health.getStatusCode().value()).as(String.valueOf(health.getBody())).isEqualTo(200);
+        assertThat(l(health.getBody().get("rows"))).extracting(r -> r.get("gateway")).contains("paystack", "flutterwave", "quickteller", "paydirect");
+        assertThat(it.call(TestTokens.token(b300, List.of("student")), HttpMethod.POST, "/api/v1/payments/gateways/health", Map.of()).getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
     void theOfficeCountsNotApplicableNeverUnpaidAndAStudentReadsOnlyTheirOwn() {
         Map<String, Object> dash = it.get(gst, "/api/v1/gst/GST/dashboard?session=" + SESSION + "&prog=" + PROG_B + "&level=300").getBody();
         Map<String, Object> totals = m(dash.get("totals"));

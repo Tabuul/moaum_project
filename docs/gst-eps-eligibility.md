@@ -194,3 +194,32 @@ SELECT r.reference, r.student_id, r.amount, r.expires_at
 ```
 
 The "paid, not required" list is also on the Bursary's Fee Setup page and at `GET /api/v1/gst/fee/review`.
+
+## 12. V367 — refunds that count, the Bursary's decisions, the offices' own courses, the session's offerings
+
+- **A refund that counts.** `finance.refund.reference` is the refund's own `RF-…` number; the payment it refunds is
+  `source_reference`. Since V314 the GST entitlement, the population and the CBT candidate list matched a refund on the
+  wrong column, so an approved GST refund never took the entitlement back. Payments now count net of the refunds
+  approved or paid against them (`finance.gst_refunded`).
+- **Paid, not required — decided.** The Bursary decides each such payment on Fee Setup: **Keep** (with a reason) or
+  **Refund**, which proposes a refund against the payment through the refunds desk's maker–checker workflow
+  (`finance.decide_gst_payment` → `finance.propose_refund`); a second officer approves it on Refunds & Credits. A
+  decided payment leaves the review list; a rejected refund puts it back. Decisions: `finance.gst_payment_review`.
+- **Only the office's own courses.** The course uploads mark a course of kind GST when a programme's structure gives it
+  status G or a GST/EPS classification, and V314 filed every such course under the GST office by default. Departmental
+  courses and EPS courses therefore sat on the GST office's dashboard, courses and CBT examinations, and from V366 in the
+  GST fee. Now a course is the GST office's when its subject is a General Studies family (GST, GNS, GES), the EPS
+  office's for an Entrepreneurship family (EPS, ENT) or an entrepreneurship title, and **no office's** otherwise: it
+  stays with its department, owes no GST fee, and the examinations office examines it. Existing courses were
+  reclassified by the rule (counts in the migration's notice; every change on the audit record), and their CBT
+  examinations moved with them. The families are data (`catalogue.general_family`); on the courses page an office adds
+  its families, takes a course its families miss, or gives a course back to its department as Core.
+- **The session's offerings checked.** A course is owed only when it runs in the session, so the GST/EPS dashboards and
+  courses pages name the office's courses bound to programmes but not opened for the session, with **Open them** (each in
+  its own semester; refused for a closed session); the Bursary's standing names them too.
+- **Gateways.** Finance → Gateways → *Test the gateways* asks each wired gateway about a reference that cannot exist
+  (nothing charged, nothing written) and reads the answer: Ready, Key refused, Merchant unknown, Unexpected, No answer,
+  Not wired. The pay buttons ask the same once: with no gateway wired they say how to pay at a bank instead.
+- **Tests.** check.sql properties 211 (refund, review, offerings) and 212 (classification); GstEligibilityIT adds the
+  classification, the open-all, the Bursary's decision and the gateway check at the API. FinancialAnalyticsIT moved to its
+  own session (2081/2082) and cleans only its own rows, so it no longer collides with DefermentIT and StudentPortalIT.

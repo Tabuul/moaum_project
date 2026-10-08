@@ -1129,6 +1129,100 @@ public class PaymentsService {
         }
     }
 
+    /* ── V367: whether each gateway would take a payment now — asked without moving money ── */
+
+    private record Raw(int status, String body) {
+    }
+
+    private Raw rawGet(String url, Map<String, String> headers) throws java.io.IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15)).GET();
+        headers.forEach(b::header);
+        HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        return new Raw(res.statusCode(), res.body() == null ? "" : res.body());
+    }
+
+    private Map<String, Object> parsed(String body) {
+        try {
+            return mapper.readValue(body.isBlank() ? "{}" : body, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (RuntimeException notJson) {
+            return Map.of();
+        }
+    }
+
+    private static Map<String, Object> healthRow(String gateway, String scope, String state, String said, Integer http) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("gateway", gateway);
+        row.put("scope", scope);
+        row.put("state", state);
+        row.put("said", said == null ? "" : said.length() > 300 ? said.substring(0, 300) : said);
+        row.put("http", http);
+        return row;
+    }
+
+    /** a card gateway asked about a reference that cannot exist: "no such transaction" means the key is accepted; 401 means it is refused */
+    private Map<String, Object> cardHealth(String gateway, String url, String secret) {
+        try {
+            Raw r = rawGet(url, Map.of("Authorization", "Bearer " + secret, "Accept", "application/json"));
+            Map<String, Object> j = parsed(r.body());
+            String said = String.valueOf(j.getOrDefault("message", r.body()));
+            String state = r.status() == 401 || r.status() == 403 ? "KEY_REFUSED"
+                    : r.status() == 200 || r.status() == 400 || r.status() == 404 ? "OK" : "UNEXPECTED";
+            return healthRow(gateway, "The University", state, said, r.status());
+        } catch (Exception e) {
+            return healthRow(gateway, "The University", "UNREACHABLE", e.getClass().getSimpleName() + ": " + e.getMessage(), null);
+        }
+    }
+
+    /** a WebPAY merchant asked to requery a transaction that cannot exist: an answer about the transaction means the merchant is known */
+    private Map<String, Object> webpayHealth(Quickteller q, WebpayMerchant m, String scope, String probe) {
+        String url = quicktellerRequeryEndpoint(q.sandbox()) + (m.legacy() ? "?productid=" + enc(m.productId()) : "?merchantcode=" + enc(m.merchantCode()))
+                + "&transactionreference=" + enc(probe) + "&amount=100";
+        try {
+            Raw r = rawGet(url, m.legacy() ? Map.of("Hash", sha512Hex(m.productId() + probe + m.macKey()).toUpperCase(), "Accept", "application/json")
+                    : Map.of("Accept", "application/json"));
+            Map<String, Object> j = parsed(r.body());
+            String code = j.get("ResponseCode") == null ? "" : String.valueOf(j.get("ResponseCode"));
+            String desc = j.get("ResponseDescription") == null ? r.body() : String.valueOf(j.get("ResponseDescription"));
+            String upper = (code + " " + desc).toUpperCase();
+            String state = upper.contains("MERCHANT") || upper.contains("PAYMENT_ITEM") || (upper.contains("PRODUCT") && upper.contains("NOT")) ? "MERCHANT_UNKNOWN"
+                    : !code.isEmpty() ? "OK" : r.status() == 401 || r.status() == 403 ? "KEY_REFUSED" : "UNEXPECTED";
+            return healthRow("quickteller", scope + (q.sandbox() ? " · sandbox" : " · live") + " · " + (m.legacy() ? "product " + m.productId() : "merchant " + m.merchantCode()),
+                    state, (code.isEmpty() ? "" : code + " — ") + desc, r.status());
+        } catch (Exception e) {
+            return healthRow("quickteller", scope, "UNREACHABLE", e.getClass().getSimpleName() + ": " + e.getMessage(), null);
+        }
+    }
+
+    /**
+     * Each gateway the portal is wired to, asked a question that moves no money — the status of a reference that cannot exist —
+     * and its answer read: OK (the key or merchant is accepted), KEY_REFUSED, MERCHANT_UNKNOWN (Interswitch does not know the
+     * merchant), UNEXPECTED, UNREACHABLE, or OFF (not wired). Nothing is written against any student or reference.
+     */
+    public Map<String, Object> health() {
+        String probe = "MOAUM-HEALTH-" + System.currentTimeMillis();
+        java.util.List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        rows.add(paystackOn() ? cardHealth("paystack", "https://api.paystack.co/transaction/verify/" + probe, paystackSecret())
+                : healthRow("paystack", "The University", "OFF", "No secret key is set.", null));
+        rows.add(flutterwaveOn() ? cardHealth("flutterwave", "https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=" + probe, flutterwaveSecret())
+                : healthRow("flutterwave", "The University", "OFF", "No secret key is set.", null));
+        Quickteller q = quickteller();
+        if (q == null) {
+            rows.add(healthRow("quickteller", "The University", "OFF", "No WebPAY merchant is set.", null));
+        } else {
+            rows.add(webpayHealth(q, q.main(), SCHOOL_NAME, probe));
+            if (q.chs() != null) rows.add(webpayHealth(q, q.chs(), CHS_NAME, probe + "C"));
+        }
+        rows.add(healthRow("paydirect", "Pay on Quickteller (biller page)", repo.quicktellerRedirectOn() ? "OK" : "OFF",
+                repo.quicktellerRedirectOn() ? "A biller sends payers to its Quickteller page; Interswitch confirms by notification." : "No biller sends payers to Quickteller.", null));
+        boolean online = rows.stream().anyMatch(r -> "OK".equals(r.get("state")));
+        LOG.info("payments: gateway health asked — {}", rows.stream().map(r -> r.get("gateway") + "=" + r.get("state")).toList());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("checkedAt", OffsetDateTime.now());
+        out.put("online", online);
+        out.put("rows", rows);
+        return out;
+    }
+
     /* ── the Bursary's desk ── */
 
     public Map<String, Object> bursary() {

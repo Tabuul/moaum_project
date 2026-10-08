@@ -15,6 +15,7 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { notifyProblem } from "@/components/proto/Toast";
 import { OFFICE_WORD, QUICK, STAGE_WORD, dayOf, gstQuery, naira, num, pct, type GstDashboardData, type GstFilters, type GstGroup } from "@/lib/gst";
 import { EXAM_WORD, whenAt, type CbtSummary } from "@/lib/cbt";
+import { GstGapsNote } from "@/components/gst/GstGapsNote";
 
 const SEM = (n: number | string | null | undefined) => (n == null || n === "" ? "Whole session" : n === 1 || n === "1" ? "First semester" : n === 2 || n === "2" ? "Second semester" : "Third semester");
 
@@ -123,6 +124,7 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
           {data.fee.setting.required_for_gst_eps ? " GST/EPS course registration is held until it is paid." : " Registration is not held on it."}{data.fee.setting.required_for_all ? " The whole registration is held on it." : ""}
         </Note>
       ) : null}
+      <GstGapsNote gaps={data.gaps} session={data.session} office={o} may={actingOffice === o.toLowerCase() || actingOffice === "super"} />
       <Tiles items={tiles} />
       {data.legacy && (Number(data.legacy.legacy_rows) > 0 || t.paid_legacy) ? (
         <Panel title={`OLD-PORTAL GST PAYMENTS · ${data.session}`} right={<LinkBtn kind="ghost" size="sm" href={`/finance/legacy-gst?session=${encodeURIComponent(data.session)}`}>Reconciliation desk</LinkBtn>}>

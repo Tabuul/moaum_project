@@ -14,7 +14,9 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { STAGE_WORD, dayOf, num, type GstCourseRow, type GstOffice } from "@/lib/gst";
+import { STAGE_WORD, dayOf, num, type GstCourseRow, type GstGap, type GstOffice } from "@/lib/gst";
+import { GstGapsNote } from "@/components/gst/GstGapsNote";
+import { GstClassification, type GstFamily, type UnassignedCourse } from "@/components/gst/GstClassification";
 
 export interface CatalogueCourse { code: string; title: string; units: number; level: number; semester: number; dept_code: string; department: string; state: string; ended_on: string | null; general_office: string; ca_max: number | null; programmes: number; offers: string | null; offered_this_session: boolean }
 export interface GstCoursesData {
@@ -24,6 +26,9 @@ export interface GstCoursesData {
   offers?: { course_code: string; level: number; basis: string; track: string | null; programme_code: string; programme: string; dept_code: string | null; department: string | null;
     faculty_code: string | null; faculty: string | null; added_at: string | null; source: string | null; upper_level: boolean }[];
   offerHistory?: { course_code: string; programme_code: string; programme: string | null; level: number; ended_at: string; reason: string | null; registrations_carried: number }[];
+  gaps?: GstGap[];
+  /** V367: the code families that make a course the office's, and the courses marked general that no office runs */
+  families?: GstFamily[]; unassigned?: UnassignedCourse[];
 }
 
 type Act = { kind: "new" } | { kind: "edit"; course: CatalogueCourse } | { kind: "offers"; course: CatalogueCourse } | { kind: "offer"; course: CatalogueCourse } | { kind: "lecturer"; offering: GstCourseRow };
@@ -90,6 +95,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
           {may ? <Btn kind="primary" size="sm" onClick={() => open({ kind: "new" })}>New {word} course</Btn> : null}
         </span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
+      <GstGapsNote gaps={data.gaps} session={data.session} office={o} may={may} />
       <Tiles items={[
         [`${word} COURSES`, num(data.catalogue.length), null, `${num(live.length)} active · ${num(data.catalogue.length - live.length)} deactivated`],
         [`OFFERED IN ${data.session}`, num(data.offerings.length), null, data.semester ? `Semester ${data.semester}` : "Both semesters"],
@@ -136,6 +142,8 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
           ) : null}
         </Panel>
       ) : null}
+
+      {data.families ? <GstClassification office={o} may={may} families={data.families} unassigned={data.unassigned ?? []} /> : null}
 
       <Panel title={`${word} CATALOGUE`} right={<span className="sub2">{num(data.catalogue.length)} course{data.catalogue.length === 1 ? "" : "s"}</span>}>
         {data.catalogue.length ? <DTable pageSize={30} cols={["S/N|num", "Course", "Level|mid", "Sem|mid", "Units|num", "Department", "Programmes|num", "Status|mid", "Actions"]} rows={data.catalogue.map((c, i) => [

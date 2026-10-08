@@ -12,11 +12,14 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field } from "@/components/proto/blocks";
+import { Field, Modal } from "@/components/proto/blocks";
+import { GstGapsNote } from "@/components/gst/GstGapsNote";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { dayOf, naira, num, pct, reasonWord, type GstFeePage, type GstFeeRule } from "@/lib/gst";
 
-interface ReviewRow { student_id: string; number: string; surname: string; other_names: string; programme: string; level: number; paid: number; reference: string | null; paid_at: string | null; gst_reason: string; eps_reason: string }
+interface ReviewRow { student_id: string; number: string; surname: string; other_names: string; programme: string; level: number; paid: number; reference: string | null; paid_at: string | null; gst_reason: string; eps_reason: string; payments?: string }
+interface Decided { reference: string; decision: "KEEP" | "REFUND"; note: string; decided_at: string; decided_by: string | null; number: string; surname: string; other_names: string; paid: number; refund_reference: string | null; refund_state: string | null; refund_amount: number | null }
+const REFUND_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { PROPOSED: ["Proposed — awaiting a second officer", "warn"], APPROVED: ["Approved", "info"], PAID: ["Refunded", "ok"], REJECTED: ["Rejected — back in review", "bad"] };
 
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct Entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich" };
 const scopeOf = (r: GstFeeRule) => [r.programme ? `Programme: ${r.programme}` : null, r.faculty ? `Faculty: ${r.faculty}` : null, r.level ? `${r.level} Level` : null, r.entry_mode ? MODE[r.entry_mode] ?? r.entry_mode : null].filter(Boolean).join(" · ") || "Every undergraduate";
@@ -33,13 +36,37 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
   const general = rules.find((r) => !r.level && !r.entry_mode && !r.faculty_code && !r.programme_code);
   const st = data?.standing ?? null;
   const [review, setReview] = useState<ReviewRow[] | null>(null);
-  async function loadReview() {
-    if (review) return;
+  const [decided, setDecided] = useState<Decided[]>([]);
+  const [decide, setDecide] = useState<{ row: ReviewRow; reference: string; amount: number; decision: "KEEP" | "REFUND"; note: string; payer: string; bank: string; accountName: string; last4: string } | null>(null);
+  async function loadReview(force = false) {
+    if (review && !force) return;
     const r = await fetch(`/api/bff/api/v1/gst/fee/review?session=${encodeURIComponent(session)}`, { cache: "no-store" }).catch(() => null);
     const j = r ? await r.json().catch(() => null) : null;
     if (!r || !r.ok) { notifyProblem((j as Problem) ?? { status: 503, title: "The list could not be read just now." }); return; }
     setReview((j?.rows ?? []) as ReviewRow[]);
+    setDecided((j?.decided ?? []) as Decided[]);
   }
+  /* V367: the Bursary's decision on a payment no course requires — kept with its reason, or a refund raised through the refunds desk */
+  async function submitDecision() {
+    if (!decide) return;
+    if (!decide.note.trim()) { notifyProblem({ status: 422, title: "Give the reason for the decision." }); return; }
+    setBusy("decide");
+    try {
+      const r = await fetch(`/api/bff/api/v1/gst/fee/review/${encodeURIComponent(decide.reference)}`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`GST payment ${decide.reference}: ${decide.decision.toLowerCase()} — ${decide.note}`) },
+        body: JSON.stringify({ decision: decide.decision, note: decide.note, payer: decide.payer || null, bank: decide.bank || null, accountName: decide.accountName || null, accountLast4: decide.last4 || null }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      notify(decide.decision === "KEEP" ? `${decide.reference} kept` : `Refund ${j?.refund?.reference ?? ""} proposed for ${decide.reference}; a second officer approves it on Refunds & Credits`);
+      setDecide(null);
+      await loadReview(true);
+      router.refresh();
+    } finally { setBusy(null); }
+  }
+  const paymentsOf = (x: ReviewRow): { reference: string; amount: number; paid_at: string }[] => {
+    try { return x.payments ? JSON.parse(x.payments) : []; } catch { return []; }
+  };
 
   async function send(method: string, path: string, body: unknown, reason: string, done: string, key: string) {
     setBusy(key); setProblem(null);
@@ -62,6 +89,7 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
       <PBody>
         {problem ? <ProblemNotice problem={problem} /> : null}
         <div className="sub2">A separate obligation from school fees, paid once per session against a reference of its own on the same gateway and ledger. It is owed only by a student a GST or EPS course requires it of — a course their programme offers at their level this session, or a carryover — never by level alone. One payment covers both GST and EPS; there is no EPS fee. While it is unpaid the student&rsquo;s GST and EPS courses are locked on the registration form. A new statement supersedes the old for the same scope; payments already confirmed keep their amount.{data ? ` Paid so far for ${session}: ${num(data.paid.students)} students, ${naira(data.paid.amount)}.` : ""}</div>
+        <div className="mt-2"><GstGapsNote gaps={data?.gaps} session={session} office={null} may={false} /></div>
         {st ? (
           <div className="mt-2">
             <Tiles items={[
@@ -75,13 +103,51 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
               <details className="mt-1" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void loadReview(); }}>
                 <summary className="sub2">The {num(st.review)} payment{Number(st.review) === 1 ? "" : "s"} no GST or EPS course requires this session — review through the refund workflow where the University&rsquo;s policy says so</summary>
                 {review === null ? <div className="sub2">Reading…</div> : review.length ? (
-                  <DTable cols={["S/N|num", "Student", "Programme", "Level|num", "Paid|num", "Reference", "Why not required"]} rows={review.map((x, i) => [
+                  <DTable cols={["S/N|num", "Student", "Programme", "Level|num", "Paid|num", "Why not required", "Payment · decision"]} rows={review.map((x, i) => [
                     <span key="n" className="tnum sub2">{i + 1}</span>, <span key="s"><b>{x.surname}, {x.other_names}</b><div className="sub2 tnum">{x.number}</div></span>,
                     <span key="p">{x.programme}</span>, <span key="l" className="tnum">{x.level}</span>, <span key="a" className="tnum">{naira(x.paid)}</span>,
-                    <span key="r" className="tnum sub2">{x.reference ?? "—"}{x.paid_at ? ` · ${dayOf(x.paid_at)}` : ""}</span>, <span key="w" className="sub2">{reasonWord(x.gst_reason)}</span>,
+                    <span key="w" className="sub2">{reasonWord(x.gst_reason)}</span>,
+                    <span key="d">{paymentsOf(x).map((p) => (
+                      <span key={p.reference} className="blk"><span className="tnum sub2">{p.reference} · {naira(p.amount)}{p.paid_at ? ` · ${dayOf(p.paid_at)}` : ""}</span>
+                        {may ? <span className="row row--inline row--tight">
+                          <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => setDecide({ row: x, reference: p.reference, amount: Number(p.amount), decision: "KEEP", note: "", payer: `${x.surname}, ${x.other_names}`, bank: "", accountName: "", last4: "" })}>Keep</Btn>
+                          <Btn kind="secondary" size="sm" disabled={busy !== null} onClick={() => setDecide({ row: x, reference: p.reference, amount: Number(p.amount), decision: "REFUND", note: "", payer: `${x.surname}, ${x.other_names}`, bank: "", accountName: "", last4: "" })}>Refund</Btn>
+                        </span> : null}
+                      </span>
+                    ))}</span>,
                   ])} />
-                ) : <div className="sub2">None.</div>}
+                ) : <div className="sub2">None awaiting a decision.</div>}
               </details>
+            ) : null}
+            {decided.length ? (
+              <details className="mt-1">
+                <summary className="sub2">Decided for {session} ({decided.length})</summary>
+                <DTable cols={["Student", "Payment", "Decision|mid", "Reason", "Refund|mid", "Decided"]} rows={decided.map((x) => [
+                  <span key="s"><b>{x.surname}, {x.other_names}</b><div className="sub2 tnum">{x.number}</div></span>,
+                  <span key="p" className="tnum sub2">{x.reference} · {naira(x.paid)}</span>,
+                  <Pil key="d" kind={x.decision === "KEEP" ? "grey" : "info"}>{x.decision === "KEEP" ? "Kept" : "Refund"}</Pil>,
+                  <span key="n" className="sub2">{x.note}</span>,
+                  x.refund_state ? <span key="r"><Pil kind={(REFUND_WORD[x.refund_state] ?? [x.refund_state, "grey"])[1]}>{(REFUND_WORD[x.refund_state] ?? [x.refund_state])[0]}</Pil><div className="sub2 tnum">{x.refund_reference} · {naira(x.refund_amount)}</div></span> : <span key="r" className="sub2">—</span>,
+                  <span key="t" className="sub2">{x.decided_by ?? ""} · {dayOf(x.decided_at)}</span>,
+                ])} />
+              </details>
+            ) : null}
+            {decide ? (
+              <Modal title={decide.decision === "KEEP" ? `Keep ${decide.reference}` : `Refund ${decide.reference}`} sub={`${decide.row.surname}, ${decide.row.other_names} · ${naira(decide.amount)}`} onClose={() => setDecide(null)}
+                foot={<><Btn kind="ghost" onClick={() => setDecide(null)}>Back</Btn><Btn kind="primary" disabled={busy !== null} onClick={() => void submitDecision()}>{busy === "decide" ? "Saving…" : decide.decision === "KEEP" ? "Keep the payment" : "Propose the refund"}</Btn></>}>
+                <div className="sub2 mb-1">{decide.decision === "KEEP"
+                  ? "The payment stands as paid and leaves the review list. Say why — a programme change pending, a course the student owes next session."
+                  : "A refund of what is left of this payment is proposed on Refunds & Credits against this payment. A second officer approves it there and it is paid there; until it is approved the payment still stands."}</div>
+                <div className="grid grid--2">
+                  <Field id="gr-note" label="Reason" required><input id="gr-note" className="ctl" value={decide.note} onChange={(e) => setDecide({ ...decide, note: e.target.value })} /></Field>
+                  {decide.decision === "REFUND" ? <>
+                    <Field id="gr-payer" label="Paid to"><input id="gr-payer" className="ctl" value={decide.payer} onChange={(e) => setDecide({ ...decide, payer: e.target.value })} /></Field>
+                    <Field id="gr-bank" label="Bank"><input id="gr-bank" className="ctl" value={decide.bank} onChange={(e) => setDecide({ ...decide, bank: e.target.value })} /></Field>
+                    <Field id="gr-acct" label="Account name"><input id="gr-acct" className="ctl" value={decide.accountName} onChange={(e) => setDecide({ ...decide, accountName: e.target.value })} /></Field>
+                    <Field id="gr-last4" label="Account number, last four digits"><input id="gr-last4" className="ctl tnum" maxLength={4} value={decide.last4} onChange={(e) => setDecide({ ...decide, last4: e.target.value.replace(/\D/g, "") })} /></Field>
+                  </> : null}
+                </div>
+              </Modal>
             ) : null}
           </div>
         ) : null}

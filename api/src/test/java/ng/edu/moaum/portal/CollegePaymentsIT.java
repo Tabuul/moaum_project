@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -46,6 +47,12 @@ class CollegePaymentsIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2092);
+    }
+
+    /** the charge never outlives the test: another test's student must not find this session as "the latest with charges" (StudentPortalService.session()) */
+    @AfterEach
+    void dropTheCharge() {
+        it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update());
     }
 
     @Test

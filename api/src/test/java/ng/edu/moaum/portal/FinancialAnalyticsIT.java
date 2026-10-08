@@ -32,7 +32,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @SuppressWarnings({"rawtypes", "unchecked"})
 class FinancialAnalyticsIT {
 
-    static final String SESSION = "2094/2095";
+    /** a session no other test files anything under (DefermentIT dates its students' entry 2094/2095) */
+    static final String SESSION = "2081/2082";
 
     @Value("${local.server.port}")
     int port;
@@ -47,7 +48,7 @@ class FinancialAnalyticsIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        it.session(SESSION, 2094);
+        it.session(SESSION, 2081);
     }
 
     @Test
@@ -168,9 +169,11 @@ class FinancialAnalyticsIT {
         assertThat(stageRows.getBody().get("stage")).isEqualTo("on_register");
         assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/analytics/admissions/funnel").getStatusCode().value()).isEqualTo(403);
         } finally {
+            // the charge first, on its own, so it never outlives the test; then this test's own payments, never another test's
+            it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update());
             it.db(() -> {
-                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", SESSION).update();
-                jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s AND student_id IN (SELECT id FROM people.student WHERE surname LIKE :t)")
+                        .param("s", SESSION).param("t", tag + "%").update();
                 jdbc.sql("UPDATE finance.payment_category SET active = false WHERE code LIKE 'GST\\_%' AND code <> 'GST'").update();
                 return null;
             });
