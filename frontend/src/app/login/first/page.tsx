@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Btn, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export default function FirstAccountPage() {
   const router = useRouter();
@@ -40,20 +41,7 @@ export default function FirstAccountPage() {
   );
 
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>The first account</h1>
-          <p>Made once, by the Directorate of ICT, with the secret the API already trusts. It holds the Registrar&rsquo;s, the Academic Office&rsquo;s and the platform&rsquo;s offices, so that every other account can be made and granted from the Users &amp; roles screen — on an instrument, with a date.</p>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow="First account" lead={<>The portal&rsquo;s first account, made once by the Directorate of ICT. Refused once any account exists.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void create(); }}>
           <PageHead title="Create the first account" description="Refused once any account exists." />
           {field("secret", "Bootstrap secret", "password", "The value of MOAUM_AUTH_HMAC_SECRET on the API service. It is checked, never stored here.")}
@@ -66,7 +54,6 @@ export default function FirstAccountPage() {
           <Btn kind="primary" size="md" type="submit" disabled={busy || !f.secret || !f.surname || !f.givenNames || !f.username || !f.password}>{busy ? "Creating…" : "Create and sign in"}</Btn>
           <div className="login-help"><a href="/login">Back to sign in</a><span /></div>
         </form>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

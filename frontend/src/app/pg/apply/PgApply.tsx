@@ -14,6 +14,7 @@ import { Btn, LinkBtn, Note } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number }
 interface Applied { application_no: string; reference: string; amount: number }
@@ -297,30 +298,11 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>School of Postgraduate Studies</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Apply for a postgraduate programme</h1>
-          <p>Apply directly for a Postgraduate Diploma, Master&rsquo;s or PhD &mdash; no JAMB number. One account carries you from application to admission, and becomes your student account on the day you are admitted.</p>
-        </div>
-        <div className="login-stats">
-          <div className="login-stat"><span className="n">PGD</span><span className="l">Master&rsquo;s · PhD</span></div>
-          <div className="login-stat"><span className="n tnum">1</span><span className="l">programme at a time</span></div>
-          <div className="login-stat"><span className="n tnum">0</span><span className="l">JAMB number needed</span></div>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow="School of Postgraduate Studies" lead={<>Apply directly for a Postgraduate Diploma, Master&rsquo;s or PhD &mdash; no JAMB number. One account carries you from application to admission, and becomes your student account on the day you are admitted.</>} stats={[["PGD", <>Master&rsquo;s · PhD</>], ["1", "programme at a time"], ["0", "JAMB number needed"]]} wide>
         <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: "var(--s-4)" }}>
           {children}
         </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }
 

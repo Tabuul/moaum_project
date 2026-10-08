@@ -230,6 +230,18 @@ class StudentIT {
         assertThat(get("/api/v1/student/students/" + STUDENT).getStatusCode().value()).isEqualTo(200);
     }
 
+    /** V362: the registrations of a session made without the semester's fees cleared are read by the Bursary and the
+     *  Registry's offices, not by a lecturer */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theRegistrationsWithoutFeesAreListedForTheOfficesThatActOnThem() {
+        ResponseEntity<Map> list = get("/api/v1/finance/registrations-without-fees?session=" + SESSION);
+        assertThat(list.getStatusCode().value()).as(String.valueOf(list.getBody())).isEqualTo(200);
+        assertThat(list.getBody()).containsKeys("session", "total", "notStated", "unpaid", "rows");
+        assertThat((List<Map<String, Object>>) list.getBody().get("rows")).allSatisfy(r -> assertThat(r).containsKeys("number", "stated", "paid"));
+        assertThat(as(TestTokens.token(UUID.randomUUID(), List.of("lecturer")), "/api/v1/finance/registrations-without-fees").getStatusCode().value()).isEqualTo(403);
+    }
+
     @SuppressWarnings("rawtypes")
     ResponseEntity<Map> as(String bearer, String path) {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer).retrieve().toEntity(Map.class);

@@ -579,6 +579,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
@@ -660,6 +661,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/heldscripts", "icon": "alert", "label": "Held Scripts" },
           { "id": "t/collegepayments", "icon": "card", "label": "College Payment Report" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
+          { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
@@ -954,6 +956,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" }
         ]
@@ -1153,6 +1156,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },

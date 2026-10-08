@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import css from "./Login.module.css";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
@@ -84,68 +85,7 @@ export function Login({ next, sso, ssoProblem = null }: {
   const who = whoIs(uid);
 
   return (
-    <main className={css.page}>
-      <aside className={css.aside}>
-        <div className={css.card}>
-          <div className={css.cardBg} aria-hidden="true" />
-          <div className={css.cardDots} aria-hidden="true" />
-          <div className={css.blobCrimson} aria-hidden="true" />
-          <div className={css.blobAmber} aria-hidden="true" />
-          <div className={css.sheen} aria-hidden="true" />
-
-          <div className={css.brand}>
-            <div className={css.crestBox}>
-              <span className={css.ringA} aria-hidden="true" />
-              <span className={css.ring} aria-hidden="true" />
-              <span className={css.ringB} aria-hidden="true" />
-              <span className={css.ripple} aria-hidden="true" />
-              <span className={css.ripple2} aria-hidden="true" />
-              <div className={css.scene}>
-                <div className={css.halo}>
-                  <div className={css.coin}>
-                    <div className={css.face}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/crest.png" alt="Crest of Rev. Fr. Moses Orshio Adasu University, Makurdi" />
-                    </div>
-                    <div className={`${css.face} ${css.faceBack}`} aria-hidden="true">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/crest.png" alt="" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className={css.titleBlock}>
-              <p className={css.uni}>Rev. Fr. Moses Orshio Adasu University, Makurdi</p>
-              <h1 className={css.title}>MOAUM Portal<span className={css.titleDot} aria-hidden="true" /></h1>
-              <span className={css.bar} aria-hidden="true" />
-              <p className={css.lead}>The one sign-in for the University&rsquo;s students, staff and applicants, and every office&rsquo;s desk.</p>
-            </div>
-          </div>
-
-          <p className={css.motto}>
-            <span>Scientia Liberatio Populorum</span>
-            <span>Knowledge for the liberation of the people</span>
-          </p>
-        </div>
-      </aside>
-
-      <section className={css.main}>
-        <div className={css.mainLines} aria-hidden="true">
-          <svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMid slice" fill="none">
-            <defs>
-              <linearGradient id="plog-a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0f172a" stopOpacity="0.055" /><stop offset="1" stopColor="#0f172a" stopOpacity="0.005" /></linearGradient>
-              <linearGradient id="plog-b" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#0284c7" stopOpacity="0.06" /><stop offset="1" stopColor="#0284c7" stopOpacity="0.005" /></linearGradient>
-            </defs>
-            <polygon points="-80,-40 520,-80 300,300" fill="url(#plog-a)" />
-            <polygon points="300,300 520,-80 780,180" fill="url(#plog-b)" stroke="#94a3b8" strokeWidth="1" opacity="0.22" vectorEffect="non-scaling-stroke" />
-            <polygon points="1060,-60 1700,-20 1700,330 1320,420" fill="url(#plog-b)" />
-            <polygon points="1320,420 1700,330 1700,430" fill="url(#plog-a)" stroke="#94a3b8" strokeWidth="1" opacity="0.22" vectorEffect="non-scaling-stroke" />
-            <path d="M0 250 L1600 120" stroke="#0f172a" strokeWidth="1" opacity="0.035" vectorEffect="non-scaling-stroke" />
-          </svg>
-        </div>
-        <div className={css.mainDots} aria-hidden="true" />
-
+    <AuthLayout bare lead={<>The one sign-in for the University&rsquo;s students, staff and applicants, and every office&rsquo;s desk.</>}>
         <div className={css.formWrap}>
           <p className={css.eyebrow}><Icon name="shield" className={css.eyebrowIcon} />Secure sign-in</p>
           <h2 className={css.heading}>Portal Login</h2>
@@ -193,7 +133,6 @@ export function Login({ next, sso, ssoProblem = null }: {
 
           <p className={css.foot}>Already reported a problem signing in? <Link href="/track">Track your ICT support ticket</Link></p>
         </div>
-      </section>
-    </main>
+    </AuthLayout>
   );
 }

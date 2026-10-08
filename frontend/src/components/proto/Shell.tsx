@@ -97,6 +97,7 @@ export const ROUTES: Record<string, string> = {
   "t/reports": "/reports",
   "t/studentstats": "/stats",
   "t/finanalytics": "/finance/analytics",
+  "t/unpaidreg": "/finance/unpaid-registrations",
   "t/fintransactions": "/finance/analytics/transactions",
   "t/regstudents": "/reports/students",
   "t/regstaff": "/reports/staff",
@@ -445,6 +446,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/announcements": ["JUPEB announcements", "Notices to the session's candidates and students, on their dashboards and by email or text"],
   "jupeb/idcards": ["JUPEB identity cards", "Cards for the active students, each verifiable by its QR code"],
   "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
+  "t/unpaidreg": ["Registrations without fees cleared", "The session's course registrations made while the semester's school fees were not stated or not paid"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

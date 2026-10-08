@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Btn, LinkBtn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 /** the show/hide eye that sits inside a password field; crossed out while the text is visible */
 function EyeIcon({ off }: { off: boolean }) {
@@ -120,25 +121,7 @@ export function Register({ session }: { session: string }) {
   );
 
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Admissions {session}</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Create your application account</h1>
-          <p>One account carries you from application through screening and admission, and becomes your student account on the day you matriculate.</p>
-        </div>
-        <div className="login-stats">
-          <div className="login-stat"><span className="n tnum">{session.slice(0, 4)}</span><span className="l">admission year</span></div>
-          <div className="login-stat"><span className="n tnum">1</span><span className="l">account, to graduation</span></div>
-          <div className="login-stat"><span className="n tnum">0</span><span className="l">fees paid anywhere but here</span></div>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow={`Admissions ${session}`} lead={<>Create your application account. One account carries you from application through screening and admission, and becomes your student account on the day you matriculate.</>} stats={[[session.slice(0, 4), "admission year"], ["1", "account, to graduation"], ["0", "fees paid anywhere but here"]]}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
           <PageHead title="Post-UTME registration" description="Your JAMB registration number first. Everything else follows from it." />
           <div className="field">
@@ -224,7 +207,6 @@ export function Register({ session }: { session: string }) {
             <LinkBtn kind="ghost" href="/login">I already have an account</LinkBtn>
           </div>
         </form>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

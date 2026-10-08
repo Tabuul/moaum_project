@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export function Reset({ token }: { token: string }) {
   const [pw, setPw] = useState("");
@@ -34,20 +35,7 @@ export function Reset({ token }: { token: string }) {
   }
 
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Choose a new password</h1>
-          <p>The link you opened is good for an hour and works once. Every session signed in with the old password is ended.</p>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow="Account recovery" lead={<>Choose the password that carries you through the portal. The link you followed is good for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (token && pw.length >= 8 && !mismatch) void reset(); }}>
           <PageHead title="New password" description="Eight characters at the very least. This one account carries you to graduation." />
           {done ? (
@@ -77,7 +65,6 @@ export function Reset({ token }: { token: string }) {
             <Link href="/login/forgot">Ask for a new link</Link>
           </div>
         </form>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

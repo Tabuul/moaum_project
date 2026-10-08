@@ -11,6 +11,7 @@ import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { jcall } from "@/lib/jupeb";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export function JupebReset({ token }: { token: string }) {
   const router = useRouter();
@@ -41,8 +42,7 @@ export function JupebReset({ token }: { token: string }) {
     } finally { setBusy(false); }
   }
   return (
-    <div className="login-wrap">
-      <div className="login-panel" style={{ gridColumn: "1 / -1" }}>
+    <AuthLayout eyebrow="JUPEB programme" lead={<>A reset link is sent to the email you applied with. It is good for an hour and works once.</>}>
         <div className="login-card">
           <PageHead title={token ? "Choose a new password" : "Forgotten your JUPEB password?"} description={token ? "The link is good for an hour and is used once." : "We email a reset link to the address you applied with."} />
           {problem ? <ProblemNotice problem={problem} /> : null}
@@ -62,7 +62,6 @@ export function JupebReset({ token }: { token: string }) {
           )}
           <div className="login-help"><Link href="/login?next=/jupeb/portal">Back to sign in</Link></div>
         </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

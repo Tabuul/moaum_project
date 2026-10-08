@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 205
+\set EXPECTED 206
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6622,6 +6622,33 @@ BEGIN
     PERFORM pg_temp.assert('V361: nothing stated, nothing cleared and registration refused with the reason; ₦0 stated on purpose clears without payment; a fee stated clears only when paid',
         NOT v_stated0 AND NOT v_cleared0 AND r_submit = 'REG_FEES_NOT_STATED' AND v_stated_free AND v_cleared_free AND NOT v_cleared_owed AND v_cleared_paid,
         format('stated0=%s cleared0=%s submit=%s free=%s/%s owed=%s paid=%s', v_stated0, v_cleared0, r_submit, v_stated_free, v_cleared_free, v_cleared_owed, v_cleared_paid));
+END $$;
+
+-- ── 206. V362: from the first session of the portal's fee schedule, nothing is cleared for a student whose fees for the session are not stated — the examination, the results, the identity card — though their position reads "paid in full" on ₦0; a session before the schedule began is taken as stated (its fees were the old portal's); the registrations made without the semester's fees cleared are listed, read only ──
+DO $$
+DECLARE s1 uuid; reg uuid := gen_random_uuid(); officer uuid := gen_random_uuid(); v_from text; v_before boolean; v_after boolean;
+        v_full boolean; v_exam boolean; v_results boolean; v_listed text; v_count int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+        v_from := finance.schedule_from();
+        v_before := finance.fee_stated(s1, '9990/9991');        -- before the schedule began
+        v_after := finance.fee_stated(s1, '9997/9998');         -- after it, with no line for the student
+        v_full := (SELECT paid_in_full FROM finance.position(s1, '9997/9998'));
+        v_exam := finance.clears(s1, '9997/9998', 'EXAMINATION');
+        v_results := finance.clears(s1, '9997/9998', 'RESULTS');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (reg, s1, '9997/9998', 1, 100, 'SUBMITTED', now());
+        SELECT count(*), max(CASE WHEN registration_id = reg THEN (CASE WHEN stated THEN 'STATED' ELSE 'NOT_STATED' END) END)
+          INTO v_count, v_listed FROM finance.registrations_without_fees('9997/9998');
+        RAISE EXCEPTION 'the V362 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V362: unstated fees clear nothing from the schedule''s first session (the examination, the results), though the position reads paid in full on nothing; a session before the schedule is taken as stated; the unpaid registrations are listed',
+        v_from IS NOT NULL AND v_before AND NOT v_after AND v_full AND NOT v_exam AND NOT v_results AND v_count >= 1 AND v_listed = 'NOT_STATED',
+        format('from=%s before=%s after=%s full=%s exam=%s results=%s listed=%s/%s', v_from, v_before, v_after, v_full, v_exam, v_results, v_count, v_listed));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

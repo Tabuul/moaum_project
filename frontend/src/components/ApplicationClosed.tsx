@@ -1,4 +1,6 @@
 import { LinkBtn, Note, PageHead } from "@/components/proto/ui";
+import { AuthLayout } from "@/components/auth/AuthLayout";
+import type { ReactNode } from "react";
 
 /** one application window as the public reads it from /api/v1/public/application-windows (V312) */
 export interface PublicWindow {
@@ -26,24 +28,7 @@ export function ApplicationClosed({ title, eyebrow, window }: { title: string; e
       ? `${title} has not opened yet.${opens ? ` It opens on ${opens}.` : ""} Please come back then.`
       : `${title} is closed. Please check the University's official website and this portal for announcements regarding the next application window.`);
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>{eyebrow}{window ? ` ${window.session}` : ""}</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
-          <p>Thank you for your interest in the University. Applications are received only while the application period is open.</p>
-        </div>
-        <div className="login-stats">
-          {window ? <div className="login-stat"><span className="n tnum">{window.session.slice(0, 4)}</span><span className="l">admission year</span></div> : null}
-          <div className="login-stat"><span className="n">{status === "SCHEDULED" ? "SOON" : status === "UNKNOWN" ? "—" : "CLOSED"}</span><span className="l">{title.toLowerCase()}</span></div>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow={<>{eyebrow}{window ? ` ${window.session}` : ""}</>} lead={<>Thank you for your interest in the University. Applications are received only while the application period is open.</>} stats={[...(window ? [[window.session.slice(0, 4), "admission year"] as [ReactNode, ReactNode]] : []), [status === "SCHEDULED" ? "SOON" : status === "UNKNOWN" ? "—" : "CLOSED", title.toLowerCase()] as [ReactNode, ReactNode]]}>
         <div className="login-card">
           <PageHead title={headline} description={status === "SCHEDULED" ? "The application period has been scheduled by the University." : status === "UNKNOWN" ? "Try again shortly." : "No new application can be started until the University opens the next application period."} />
           <Note kind={status === "SCHEDULED" ? "info" : "bad"} title={status === "SCHEDULED" ? "Not yet open" : status === "UNKNOWN" ? "Please try again" : "Applications are closed"}>
@@ -61,7 +46,6 @@ export function ApplicationClosed({ title, eyebrow, window }: { title: string; e
             <div className="hint" style={{ textAlign: "center" }}>An applicant who registered while the window was open signs in as before to continue their application.</div>
           </div>
         </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

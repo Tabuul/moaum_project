@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export function Forgot() {
   const [identifier, setIdentifier] = useState("");
@@ -31,20 +32,7 @@ export function Forgot() {
   }
 
   return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Forgotten your password?</h1>
-          <p>A reset link is sent to the email (and phone) on your account &mdash; staff, student or applicant. It is good for an hour and works once.</p>
-        </div>
-      </div>
-      <div className="login-panel">
+    <AuthLayout eyebrow="Account recovery" lead={<>A reset link is sent to the email (and phone) on your account &mdash; staff, student or applicant. It is good for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
           <PageHead title="Reset your password" description="Staff, students and applicants." />
           {sent ? (
@@ -66,7 +54,6 @@ export function Forgot() {
             <Link href="/apply">Post UTME Registration</Link>
           </div>
         </form>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }
