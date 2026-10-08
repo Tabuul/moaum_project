@@ -28,7 +28,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @SuppressWarnings({"rawtypes", "unchecked"})
 class OffersIT {
 
-    static final String SESSION = "2086/2087";
+    /** a session no other suite uses: the lapse and the deadline act on a whole session */
+    static final String SESSION = "2077/2078";
 
     @Value("${local.server.port}")
     int port;
@@ -71,8 +72,8 @@ class OffersIT {
         String tag = UUID.randomUUID().toString().substring(0, 6);
         int n = new java.util.Random().nextInt(900_000);
         try {
-            UUID offered = application(it, programme, "2086OF" + tag, String.format("APP/86/%06d", n), "OFFERED");
-            UUID waiting = application(it, programme, "2086WA" + tag, String.format("APP/86/%06d", n + 1), "WAITING");
+            UUID offered = application(it, programme, "2077OF" + tag, String.format("APP/77/%06d", n), "OFFERED");
+            UUID waiting = application(it, programme, "2077WA" + tag, String.format("APP/77/%06d", n + 1), "WAITING");
             String base = "/api/v1/admissions/offers";
             assertThat(status(it.get(bursar, base + "?session=" + SESSION))).isEqualTo(403);
             // no deadline: nothing is past it
