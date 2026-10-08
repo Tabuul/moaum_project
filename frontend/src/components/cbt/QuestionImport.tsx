@@ -17,7 +17,14 @@ import { xlsx } from "@/lib/xlsx-write";
 import { QUESTION_FIELDS, detectQuestionMapping, questionHeaderRowIndex, questionRowsOf, type QuestionRow } from "@/lib/question-import";
 
 interface Finding { row: number; stem: string; topic: string | null; kind: string; options: number; answers: number[]; answer: string | null; difficulty: string; marks: number; status: string; codes: string[]; messages: string[] }
-interface Result { course: string; dryRun: boolean; summary: { total: number; valid: number; errors: number; duplicatesInFile: number; alreadyInBank: number; imported: number }; rows: Finding[] }
+interface Result { course: string; dryRun: boolean; allOrNothing?: boolean; blocked?: boolean; summary: { total: number; valid: number; errors: number; duplicatesInFile: number; alreadyInBank: number; imported: number; updated?: number; byCode?: Record<string, number> }; rows: Finding[] }
+
+/** V364: the brief's tallies, from the codes each row was refused for */
+const TALLY: [string, string[]][] = [
+  ["Invalid course", ["COURSE_MISMATCH"]], ["Missing question", ["STEM_REQUIRED"]], ["Missing options", ["OPTIONS_TOO_FEW"]], ["Too many or repeated options", ["OPTIONS_TOO_MANY", "OPTIONS_REPEAT"]],
+  ["Missing correct answer", ["ANSWER_REQUIRED"]], ["Invalid correct answer", ["ANSWER_INVALID"]], ["Invalid question type", ["KIND_INVALID", "TRUE_FALSE_OPTIONS"]],
+  ["Invalid marks", ["MARKS_INVALID"]], ["Invalid difficulty", ["DIFFICULTY_INVALID"]], ["Invalid status", ["STATUS_INVALID"]],
+];
 
 const STATUS: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
   VALID: ["Will be added", "ok"], IMPORTED: ["Added", "ok"], ERROR: ["Error", "bad"], DUPLICATE_IN_FILE: ["Duplicate in file", "warn"], ALREADY_IN_BANK: ["Already in the bank", "grey"],
@@ -39,14 +46,17 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
   const noOptions = grid && mapping.optionA === undefined && mapping.options === undefined;
 
   function template() {
-    const head = ["Topic", "Question", "Option A", "Option B", "Option C", "Option D", "Option E", "Correct Answer", "Kind", "Difficulty", "Marks", "Explanation"];
+    const head = ["S/N", "Course Code", "Course Title", "Question Type", "Question", "Option A", "Option B", "Option C", "Option D", "Option E", "Correct Answer", "Marks", "Topic", "Difficulty", "Explanation", "Status"];
+    const t = courseTitle ?? "";
     const rows = [
-      ["Government", "Which arm of government makes laws?", "The executive", "The legislature", "The judiciary", "The press", "", "B", "MCQ", "EASY", "1", "The National Assembly makes laws."],
-      ["Government", "The judiciary interprets the law.", "True", "False", "", "", "", "A", "TRUE_FALSE", "EASY", "1", ""],
-      ["Numbers", "Which of these are even numbers?", "3", "4", "7", "10", "", "B, D", "MULTI", "MEDIUM", "2", "Both 4 and 10 are even; a candidate earns the marks only with exactly those."],
+      ["1", course, t, "MCQ", "Which arm of government makes laws?", "The executive", "The legislature", "The judiciary", "The press", "", "B", "1", "Government", "EASY", "The National Assembly makes laws.", "ACTIVE"],
+      ["2", course, t, "TRUE_FALSE", "The judiciary interprets the law.", "True", "False", "", "", "", "A", "1", "Government", "EASY", "", "ACTIVE"],
+      ["3", course, t, "MULTI", "Which of these are even numbers?", "3", "4", "7", "10", "", "B, D", "2", "Numbers", "MEDIUM", "Both 4 and 10 are even; a candidate earns the marks only with exactly those.", "ACTIVE"],
     ];
     const instructions = [
       ["How to fill the Questions sheet"], [""],
+      ["S/N, Course Title", "Optional; for your own reference."],
+      ["Course Code", `Optional. When given, it must be ${course}: the questions go into this course's bank only, and no course is created by an import.`],
       ["Question", "Required. The text the candidate reads."],
       ["Option A … Option H", "At least two; leave the rest blank. (Or one Options column with the options separated by | or ;)"],
       ["Correct Answer", "Required. The letter (B), the number (2), several letters for a multiple-select question (B, D), or the option's own text."],
@@ -54,7 +64,10 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
       ["Difficulty", "Optional: EASY, MEDIUM or HARD. Blank is MEDIUM."],
       ["Marks", "Optional whole number; blank is 1."],
       ["Topic, Explanation", "Optional. The topic groups the blueprint; the explanation is for the marker and the review, never shown during an examination."],
-      [""], ["Every row is judged before anything is written; a question whose text is already in the bank is not added twice. The correct options never leave the server."],
+      ["Status", "Optional: ACTIVE (the default) or INACTIVE — an inactive question is in the bank but drawn by no examination until it is made active."],
+      ["Question Type", "The same as Kind: MCQ, TRUE_FALSE or MULTI."],
+      ["Images", "Not taken from a spreadsheet: a question's text is the question."],
+      [""], ["Every row is judged before anything is written; a question whose text is already in the bank is not added twice. A file with errors writes nothing unless you choose to import only its valid rows. The correct options never leave the server."],
     ];
     const bytes = xlsx([["Questions", [head, ...rows], { headerRows: [0] }], ["Instructions", instructions]]);
     downloadBlob(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${course.replace(/\s+/g, "-")}-question-template.xlsx`);
@@ -79,17 +92,18 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
 
   const rowsIn = (): QuestionRow[] => (grid ? questionRowsOf([grid.header, ...grid.rows], 0, mapping) : []);
 
-  async function send(dryRun: boolean) {
+  async function send(dryRun: boolean, validOnly = false) {
     const rows = rowsIn();
     if (!rows.length) { setProblem({ status: 400, title: "No question rows to check." }); return; }
     setBusy(true); setProblem(null);
     try {
-      const r = await fetch("/api/bff/api/v1/cbt/questions/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${dryRun ? "Check" : "Import"} ${rows.length} questions into ${course} from ${fileName ?? "a file"}`) }, body: JSON.stringify({ course, dryRun, fileName, rows }) });
+      const r = await fetch("/api/bff/api/v1/cbt/questions/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${dryRun ? "Check" : validOnly ? "Import the valid rows of" : "Import"} ${rows.length} questions into ${course} from ${fileName ?? "a file"}`) }, body: JSON.stringify({ course, dryRun, fileName, allOrNothing: !validOnly, rows }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { const p = (j as Problem) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
       setResult(j as Result);
       setShow((j as Result).summary.errors ? "ERROR" : "ALL");
-      if (!dryRun) { notify(`${(j as Result).summary.imported} question${(j as Result).summary.imported === 1 ? "" : "s"} added to the ${course} bank`); router.refresh(); }
+      if (!dryRun && (j as Result).blocked) notifyProblem({ status: 422, title: `Nothing was imported: ${(j as Result).summary.errors} row${(j as Result).summary.errors === 1 ? " has an error" : "s have errors"}` });
+      else if (!dryRun) { notify(`${(j as Result).summary.imported} question${(j as Result).summary.imported === 1 ? "" : "s"} added to the ${course} bank`); router.refresh(); }
     } finally { setBusy(false); }
   }
 
@@ -112,7 +126,7 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
           <div className="mt-2">
             <div className="row row--inline row--tight mb-2"><b>{fileName}</b><span className="sub2">· {grid.rows.length} row{grid.rows.length === 1 ? "" : "s"} · columns mapped</span><span className="grow" />
               <Btn kind="secondary" size="sm" disabled={busy || required.length > 0 || !!noOptions} onClick={() => void send(true)}>Check the file</Btn>
-              <Btn kind="go" size="sm" disabled={busy || required.length > 0 || !!noOptions} onClick={() => void send(false)}>Import the valid rows</Btn></div>
+              <Btn kind="go" size="sm" disabled={busy || required.length > 0 || !!noOptions} onClick={() => void send(false)}>Import</Btn></div>
             {required.length || noOptions ? <Note kind="bad" title="A required column is not mapped">{[...required.map((f) => f.label), ...(noOptions ? ["Options (Option A… or one Options column)"] : [])].join(", ")}: choose the column below.</Note> : null}
             <div className="grid grid--4">
               {QUESTION_FIELDS.map((f) => (
@@ -128,6 +142,12 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
         ) : null}
         {result && s ? (
           <div className="mt-2">
+            {result.blocked ? (
+              <Note kind="bad" title={`Nothing was imported: ${s.errors} row${s.errors === 1 ? " has an error" : "s have errors"}`}
+                action={s.valid ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void send(false, true)}>Import the {s.valid} valid row{s.valid === 1 ? "" : "s"} only</Btn> : undefined}>
+                The whole file is imported in one go once every row is right. Fix the rows below (the error report lists them) and upload again, or import only the valid rows now.
+              </Note>
+            ) : null}
             <Tiles cls="grid--5" items={[
               ["ROWS", String(s.total), null, fileName ?? ""],
               [result.dryRun ? "WILL BE ADDED" : "ADDED", String(result.dryRun ? s.valid : s.imported), "var(--green-ink)", result.dryRun ? "Valid, not yet written" : "On the bank now"],
@@ -135,6 +155,9 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
               ["DUPLICATES IN FILE", String(s.duplicatesInFile), null, "The same question twice"],
               ["ALREADY IN THE BANK", String(s.alreadyInBank), null, "Not added twice"],
             ]} />
+            {s.errors && s.byCode ? (
+              <div className="sub2 mt-1">{TALLY.map(([label, codes]) => [label, codes.reduce((n, c) => n + (s.byCode?.[c] ?? 0), 0)] as const).filter(([, n]) => n > 0).map(([label, n]) => `${label}: ${n}`).join(" · ")}</div>
+            ) : null}
             <div className="row row--inline row--tight mt-2">
               <select className="ctl" value={show} onChange={(e) => setShow(e.target.value)}>
                 <option value="ALL">Every row ({s.total})</option><option value={result.dryRun ? "VALID" : "IMPORTED"}>{result.dryRun ? "Will be added" : "Added"} ({result.dryRun ? s.valid : s.imported})</option>
@@ -142,7 +165,8 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
               </select>
               <span className="grow" />
               {s.errors + s.duplicatesInFile ? <Btn kind="ghost" size="sm" onClick={() => void errorReport()}>Download error report</Btn> : null}
-              {result.dryRun && s.valid ? <Btn kind="go" size="sm" disabled={busy} onClick={() => void send(false)}>Import {s.valid} valid question{s.valid === 1 ? "" : "s"}</Btn> : null}
+              {result.dryRun && s.valid && !s.errors ? <Btn kind="go" size="sm" disabled={busy} onClick={() => void send(false)}>Import {s.valid} question{s.valid === 1 ? "" : "s"}</Btn> : null}
+              {result.dryRun && s.valid && s.errors ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void send(false, true)}>Import the {s.valid} valid row{s.valid === 1 ? "" : "s"} only</Btn> : null}
             </div>
             <DTable pageSize={25} noPrint cols={["Row|mid", "Question", "Kind|mid", "Options|num", "Key|mid", "Marks|num", "Status|mid", "Findings"]} rows={shown.map((r) => [
               <span key="n" className="tnum sub2">{r.row}</span>, <span key="s">{r.stem || <i className="sub2">no text</i>}{r.topic ? <div className="sub2">{r.topic}</div> : null}</span>,

@@ -10,7 +10,10 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import type { Problem } from "@/lib/api";
-import { EXAM_WORD, RESULTS_WORD, num, whenAt, type CbtExamList, type CbtOffice } from "@/lib/cbt";
+import { COUNTABLE, DETECTOR_WORD, EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, whenAt, type CbtExamList, type CbtOffice, type Detector, type ExamType } from "@/lib/cbt";
+
+/** the office's name in a heading: the University's examinations office reads as the University's CBT */
+export const officeWord = (o: CbtOffice) => (o === "EXAMS" ? "University" : o);
 
 const SEM = (n: number | null | undefined) => (n == null ? "Whole session" : n === 1 ? "First semester" : n === 2 ? "Second semester" : "Third semester");
 
@@ -26,18 +29,30 @@ export const isoOf = (local: string) => (local ? new Date(local).toISOString() :
 export interface ExamForm {
   title: string; instructions: string; durationMinutes: string; selection: "FIXED" | "RANDOM"; totalQuestions: string; randomizeQuestions: boolean; randomizeOptions: boolean;
   passMark: string; attemptLimit: string; securityMode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB"; violationLimit: string; violationAction: "WARN" | "SUBMIT" | "TERMINATE";
-  secondSession: "CONTINUE" | "DENY"; startsAt: string; endsAt: string; partialCredit: boolean;
+  secondSession: "CONTINUE" | "DENY" | "MONITOR"; startsAt: string; endsAt: string; partialCredit: boolean;
+  /* V364 */
+  examType: ExamType; negativeMarks: string; allowBack: boolean; allowReview: boolean; fullscreenRequired: boolean; detectors: Detector[]; countedEvents: string[];
+  warnAt: string; finalWarnAt: string; disconnectMinutes: string; proctoring: "NONE" | "CAMERA"; scoreOnSubmit: boolean; sheetComponent: "EXAM" | "CA" | "NONE";
 }
 export const EMPTY_FORM: ExamForm = {
   title: "", instructions: "", durationMinutes: "60", selection: "FIXED", totalQuestions: "0", randomizeQuestions: true, randomizeOptions: false, passMark: "40", attemptLimit: "1",
   securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "", partialCredit: false,
+  examType: "EXAMINATION", negativeMarks: "0", allowBack: true, allowReview: true, fullscreenRequired: true, detectors: ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"],
+  countedEvents: ["TAB_SWITCH", "WINDOW_BLUR", "FULLSCREEN_EXIT"], warnAt: "", finalWarnAt: "", disconnectMinutes: "", proctoring: "NONE", scoreOnSubmit: false, sheetComponent: "EXAM",
 };
 export const formBody = (f: ExamForm) => ({
   title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes) || 60, totalQuestions: Number(f.totalQuestions) || 0,
   selection: f.selection, randomizeQuestions: f.randomizeQuestions, randomizeOptions: f.randomizeOptions, passMark: Number(f.passMark) || 0, attemptLimit: Number(f.attemptLimit) || 1,
   securityMode: f.securityMode, venue: f.venue, violationLimit: Number(f.violationLimit) || 0, violationAction: f.violationAction, secondSession: f.secondSession,
   startsAt: isoOf(f.startsAt), endsAt: isoOf(f.endsAt), partialCredit: f.partialCredit,
+  settings: {
+    examType: f.examType, negativeMarks: Number(f.negativeMarks) || 0, allowBack: f.allowBack, allowReview: f.allowBack && f.allowReview, fullscreenRequired: f.fullscreenRequired,
+    detectors: f.detectors, countedEvents: f.countedEvents, warnAt: f.warnAt ? Number(f.warnAt) : null, finalWarnAt: f.finalWarnAt ? Number(f.finalWarnAt) : null,
+    disconnectMinutes: f.disconnectMinutes ? Number(f.disconnectMinutes) : null, proctoring: f.proctoring, scoreOnSubmit: f.scoreOnSubmit, sheetComponent: f.sheetComponent,
+  },
 });
+
+const toggle = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
 
 /** the configuration fields, shared by the create form and the setup tab */
 export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean }) {
@@ -68,7 +83,30 @@ export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Parti
       <div className="grid grid--3">
         <Field id="x-vl" label="Violations allowed" hint="Tab switches, focus losses, fullscreen exits, a second sign-in"><input id="x-vl" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.violationLimit} onChange={(e) => set({ violationLimit: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
         <Field id="x-va" label="Over the limit"><select id="x-va" className="ctl" disabled={dis} value={f.violationAction} onChange={(e) => set({ violationAction: e.target.value as ExamForm["violationAction"] })}><option value="WARN">Final warning only; the record stands</option><option value="SUBMIT">Submit the attempt automatically</option><option value="TERMINATE">Terminate the attempt</option></select></Field>
-        <Field id="x-ss" label="A second sign-in"><select id="x-ss" className="ctl" disabled={dis} value={f.secondSession} onChange={(e) => set({ secondSession: e.target.value as ExamForm["secondSession"] })}><option value="CONTINUE">Continue the attempt there; the first screen is replaced</option><option value="DENY">Refuse the second screen</option></select></Field>
+        <Field id="x-ss" label="A second sign-in"><select id="x-ss" className="ctl" disabled={dis} value={f.secondSession} onChange={(e) => set({ secondSession: e.target.value as ExamForm["secondSession"] })}><option value="CONTINUE">Continue the attempt there; the first screen is replaced</option><option value="DENY">Refuse the second screen</option><option value="MONITOR">Allow both screens; record it</option></select></Field>
+      </div>
+      <div className="grid grid--4">
+        <Field id="x-type" label="Kind of examination"><select id="x-type" className="ctl" disabled={dis} value={f.examType} onChange={(e) => set({ examType: e.target.value as ExamType })}>{(Object.keys(EXAM_TYPE_WORD) as ExamType[]).map((k) => <option key={k} value={k}>{EXAM_TYPE_WORD[k]}</option>)}</select></Field>
+        <Field id="x-neg" label="Negative marking" hint="Marks deducted for each wrong answer; 0 = none. Never below nought overall"><input id="x-neg" className="ctl tnum" inputMode="decimal" disabled={dis} value={f.negativeMarks} onChange={(e) => set({ negativeMarks: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
+        <Field id="x-back" label="Navigation"><select id="x-back" className="ctl" disabled={dis} value={f.allowBack ? "1" : "0"} onChange={(e) => set({ allowBack: e.target.value === "1", allowReview: e.target.value === "1" && f.allowReview })}><option value="1">Back and forward</option><option value="0">Forward only</option></select></Field>
+        <Field id="x-rev" label="Mark for review" hint={f.allowBack ? "Candidates may flag questions to revisit" : "Not on a forward-only paper"}><select id="x-rev" className="ctl" disabled={dis || !f.allowBack} value={f.allowBack && f.allowReview ? "1" : "0"} onChange={(e) => set({ allowReview: e.target.value === "1" })}><option value="1">Allowed</option><option value="0">Not allowed</option></select></Field>
+      </div>
+      <div className="grid grid--4">
+        <Field id="x-fs" label="Fullscreen"><select id="x-fs" className="ctl" disabled={dis} value={f.fullscreenRequired ? "1" : "0"} onChange={(e) => set({ fullscreenRequired: e.target.value === "1" })}><option value="1">Required</option><option value="0">Not required</option></select></Field>
+        <Field id="x-warn" label="First warning at" hint="Violations before the first warning; blank = 1"><input id="x-warn" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.warnAt} onChange={(e) => set({ warnAt: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+        <Field id="x-fwarn" label="Final warning at" hint="Blank = at the number allowed"><input id="x-fwarn" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.finalWarnAt} onChange={(e) => set({ finalWarnAt: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+        <Field id="x-disc" label="Out of contact" hint="Minutes without contact before the attempt is submitted with what was saved; blank = wait to the end of time"><input id="x-disc" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.disconnectMinutes} onChange={(e) => set({ disconnectMinutes: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+      </div>
+      <Field id="x-det" label="What the examination screen watches" hint="Each is reported to the office as evidence; a standard browser cannot stop a switch to another application or device">
+        <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>{(Object.keys(DETECTOR_WORD) as Detector[]).map((d) => <label key={d} className="row row--inline row--tight" style={{ marginRight: 12 }}><input type="checkbox" disabled={dis} checked={f.detectors.includes(d)} onChange={() => set({ detectors: toggle(f.detectors, d) })} /> {DETECTOR_WORD[d]}</label>)}</div>
+      </Field>
+      <Field id="x-cnt" label="Counted as violations" hint="The rest are recorded without counting towards the thresholds">
+        <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>{COUNTABLE.filter(([k]) => f.proctoring === "CAMERA" || !["FACE_NOT_DETECTED", "MULTIPLE_FACES", "FACE_OUT_OF_FRAME", "PROLONGED_LOOK_AWAY", "CAMERA_STOPPED"].includes(k)).map(([k, w]) => <label key={k} className="row row--inline row--tight" style={{ marginRight: 12 }}><input type="checkbox" disabled={dis} checked={f.countedEvents.includes(k)} onChange={() => set({ countedEvents: toggle(f.countedEvents, k) })} /> {w}</label>)}</div>
+      </Field>
+      <div className="grid grid--3">
+        <Field id="x-proc" label="Camera proctoring" hint={f.proctoring === "CAMERA" ? "By the candidate's consent; face signals only, no video kept, no microphone" : "No camera"}><select id="x-proc" className="ctl" disabled={dis} value={f.proctoring} onChange={(e) => set({ proctoring: e.target.value as ExamForm["proctoring"] })}><option value="NONE">None</option><option value="CAMERA">Camera, by consent</option></select></Field>
+        <Field id="x-sos" label="The candidate's score" hint="By default the result is seen only once published"><select id="x-sos" className="ctl" disabled={dis} value={f.scoreOnSubmit ? "1" : "0"} onChange={(e) => set({ scoreOnSubmit: e.target.value === "1" })}><option value="0">Once the results are published</option><option value="1">On submission</option></select></Field>
+        <Field id="x-sheet" label="On the score sheet"><select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent} onChange={(e) => set({ sheetComponent: e.target.value as ExamForm["sheetComponent"] })}><option value="EXAM">As the examination</option><option value="CA">As continuous assessment</option><option value="NONE">Not at all (a quiz or mock)</option></select></Field>
       </div>
       <Field id="x-instr" label="Instructions to candidates" hint="Shown before the start, under the University's standard instructions"><textarea id="x-instr" className="ctl" rows={3} value={f.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
     </>
@@ -76,6 +114,7 @@ export function ExamFields({ f, set, locked }: { f: ExamForm; set: (patch: Parti
 }
 
 export function CbtExams({ data, base, office, canManage }: { data: CbtExamList; base: string; office: CbtOffice; canManage: boolean }) {
+  const word = officeWord(office);
   const go = useQueryNav();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
@@ -93,6 +132,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
     const semester = "semester" in patch ? patch.semester : data.semester == null ? "" : String(data.semester);
     if (session) p.set("session", session);
     if (semester) p.set("semester", semester);
+    if ((patch.archived ?? (data.archived ? "true" : "")) === "true") p.set("archived", "true");
     return `${base}/cbt?${p.toString()}`;
   };
 
@@ -109,12 +149,13 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
 
   return (
     <>
-      <PageHead title={`${office} CBT examinations`} description={`The computer-based examinations of the ${office} office for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.`}
+      <PageHead title={`${word} CBT examinations`} description={`The computer-based examinations ${office === "EXAMS" ? "of the University's CBT-enabled courses within your scope" : `of the ${office} office`} for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.${data.archived ? " Showing the archived examinations." : ""}`}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="cx-session" className="sub2">Session</label>
           <select id="cx-session" className="ctl" value={data.session} onChange={(e) => go(q({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
           <label htmlFor="cx-sem" className="sub2">Semester</label>
           <select id="cx-sem" className="ctl" value={data.semester == null ? "" : String(data.semester)} onChange={(e) => go(q({ semester: e.target.value }))}><option value="">Whole session</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select>
+          <Btn kind="ghost" onClick={() => go(q({ archived: data.archived ? "" : "true" }))}>{data.archived ? "Current examinations" : "Archived"}</Btn>
           {canManage ? <Btn kind="primary" onClick={() => { setF({ ...EMPTY_FORM }); setOffering(data.offerings[0]?.id ?? ""); setCreating(true); }}>Create examination</Btn> : null}
         </span>} />
       <Tiles items={[
@@ -123,7 +164,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
         ["UPCOMING", num(upcoming), null, "Scheduled or published, not yet open"],
         ["COMPLETED", num(completed), null, `${num(rows.filter((r) => r.results_state === "PUBLISHED").length)} with results published`],
       ]} />
-      <Panel title={`${office} examinations · ${data.session}`} right={<span className="sub2">{rows.length} examination{rows.length === 1 ? "" : "s"}</span>}>
+      <Panel title={`${word} examinations · ${data.session}`} right={<span className="sub2">{rows.length} examination{rows.length === 1 ? "" : "s"}</span>}>
         {rows.length ? (
           <DTable pageSize={25} cols={["Reference", "Examination", "Course", "Window", "State|mid", "Candidates|num", "Started|num", "Writing|num", "Scored|num", "Results|mid", "|num"]} rows={rows.map((r) => [
             <span key="r" className="tnum">{r.reference}</span>,
@@ -138,18 +179,18 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           ])} texts={rows.map((r) => `${r.reference} ${r.title} ${r.course_code} ${r.live_state}`)} />
         ) : <PBody><div className="sub2">No examination for {data.session}{data.semester ? ` ${SEM(data.semester).toLowerCase()}` : ""} yet.{canManage ? " Create one over an offering of the office's courses." : ""}</div></PBody>}
       </Panel>
-      {!data.offerings.length ? <Note kind="info" title={`No ${office} course is offered in ${data.session}`}>An examination is created over an offering; offer the course for the session on {office} Courses first.</Note> : null}
+      {!data.offerings.length ? <Note kind="info" title={office === "EXAMS" ? `No CBT course of yours is offered in ${data.session}` : `No ${office} course is offered in ${data.session}`}>{office === "EXAMS" ? "An examination is created over an offering of a course the University allows to be examined by CBT (CBT courses), within your department or faculty." : `An examination is created over an offering; offer the course for the session on ${office} Courses first.`}</Note> : null}
 
       {creating ? (
-        <Modal title="Create a CBT examination" sub={`${office} · ${data.session}`} wide onClose={() => setCreating(false)}
+        <Modal title="Create a CBT examination" sub={`${word} · ${data.session}`} wide onClose={() => setCreating(false)}
           foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || !offering || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
-          <Field id="x-off" label="Course offering" required hint="One of the office's courses offered this session; the paper is drawn from that course's question bank">
+          <Field id="x-off" label="Course offering" required hint="A CBT course of the office offered this session; the paper is drawn from that course's question bank">
             <select id="x-off" className="ctl" value={offering} onChange={(e) => setOffering(e.target.value)}>
               {data.offerings.map((o) => <option key={o.id} value={o.id}>{o.course_code} — {o.title} · semester {o.semester} · {o.questions} active question{o.questions === 1 ? "" : "s"}</option>)}
             </select>
           </Field>
           <ExamFields f={f} set={(p) => setF({ ...f, ...p })} />
-          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only students registered on the offering whose GST fee is paid (where the Bursar&rsquo;s rule requires it) can sit it; the server judges that at the start, not the button.</div>
+          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only students registered on the offering whose {office === "EXAMS" ? "school fees are cleared for examinations" : "GST fee is paid (where the Bursar’s rule requires it)"} can sit it; the server judges that at the start, not the button.</div>
         </Modal>
       ) : null}
     </>

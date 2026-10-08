@@ -19,6 +19,7 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
@@ -37,7 +38,9 @@ import org.springframework.web.bind.annotation.RestController;
  * The CBT examination engine's office door (V322): an office creates and configures an examination over one of its
  * course offerings, sets its paper, schedules and publishes it, watches it live, reads every score the moment it
  * exists, reviews, approves and publishes the results, amends with a reason, and sends the scores onto the course's
- * score sheet. GST first; EPS on the same engine. Every figure is counted in the database; nothing is loaded whole
+ * score sheet. GST first; EPS on the same engine; from V364 the University's examinations office (EXAMS) for every other CBT-enabled
+ * course — a department's or faculty's Examinations Officer within their scope, Examinations and Records for any. Every figure is counted
+ * in the database; nothing is loaded whole
  * into memory; the office never sees a candidate's answers while the examination runs.
  */
 @RestController
@@ -46,32 +49,45 @@ class CbtExamController {
 
     private static final String READERS =
             "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar',"
-            + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_super')";
+            + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            + "'OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean')";
+    private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_exams','OFFICE_facultyexams','OFFICE_records','OFFICE_super')";
     /** after publication a result is changed, or withdrawn, only with stronger authority */
     private static final String STRONGER = "hasAnyAuthority('OFFICE_super','OFFICE_registrar')";
-    private static final Set<String> OFFICES = Set.of("GST", "EPS");
-    private static final Set<String> EXAM_ACTIONS = Set.of("schedule", "publish", "unpublish", "close", "complete", "cancel");
+    private static final Set<String> OFFICES = Set.of("GST", "EPS", "EXAMS");
+    /** V364: the offices that run the University's own CBT examinations, and those that only read them within their scope */
+    private static final Set<String> EXAMS_MANAGERS = Set.of("exams", "facultyexams", "records", "super");
+    private static final Set<String> EXAMS_ONLY = Set.of("exams", "facultyexams", "hod", "dean");
+    private static final Set<String> EXAM_ACTIONS = Set.of("schedule", "publish", "unpublish", "close", "complete", "cancel", "archive", "unarchive");
     private static final Set<String> RESULT_ACTIONS = Set.of("review", "approve", "publish", "unpublish");
     private static final Set<String> CANDIDATE_STATUS = Set.of("NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "TIME_EXPIRED", "TERMINATED", "DISCONNECTED", "WARNED", "CRITICAL", "INELIGIBLE", "PASSED", "FAILED");
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    CbtExamController(JdbcClient jdbc) {
+    CbtExamController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     public record ExamIn(@NotBlank String office, @NotNull UUID offeringId, @NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions,
                          Integer durationMinutes, Integer totalQuestions, String selection, Boolean randomizeQuestions, Boolean randomizeOptions,
                          BigDecimal passMark, Integer attemptLimit, String securityMode, String venue, Integer violationLimit, String violationAction,
-                         String secondSession, OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit) {
+                         String secondSession, OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit, Map<String, Object> settings) {
     }
 
     public record ExamEdit(@NotBlank @Size(max = 200) String title, @Size(max = 8000) String instructions, Integer durationMinutes, Integer totalQuestions,
                            String selection, Boolean randomizeQuestions, Boolean randomizeOptions, BigDecimal passMark, Integer attemptLimit,
                            String securityMode, String venue, Integer violationLimit, String violationAction, String secondSession,
-                           OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit) {
+                           OffsetDateTime startsAt, OffsetDateTime endsAt, Boolean partialCredit, Map<String, Object> settings) {
+    }
+
+    /** V364: how many questions of each difficulty or topic a random paper draws; no dimension = the whole pool */
+    public record BlueprintRow(@NotBlank @Size(max = 200) String value, @NotNull Integer questions) {
+    }
+
+    public record BlueprintIn(@Size(max = 12) String dimension, List<@Valid BlueprintRow> rows) {
     }
 
     public record PaperQuestion(@NotNull UUID id, Integer marks) {
@@ -92,7 +108,7 @@ class CbtExamController {
         return AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
     }
 
-    /** an office reads its own examinations; the readers read both */
+    /** an office reads its own examinations; the readers read every office's; an examinations officer reads the University's own (V364) */
     private static String office(String o) {
         String office = o == null ? "" : o.trim().toUpperCase();
         if (!OFFICES.contains(office)) throw new NotFound("office", o);
@@ -100,15 +116,25 @@ class CbtExamController {
         if (("gst".equals(acting) && !"GST".equals(office)) || ("eps".equals(acting) && !"EPS".equals(office))) {
             throw new AccessDeniedException("The " + acting.toUpperCase() + " office reads its own examinations; " + office + " examinations are the other office's.");
         }
+        if (EXAMS_ONLY.contains(acting) && !"EXAMS".equals(office)) {
+            throw new AccessDeniedException("An examinations officer reads the University's own CBT examinations; " + office + " examinations are that office's.");
+        }
         return office;
     }
 
-    /** only the office itself (or the Super Administrator) changes its examinations */
+    /** only the office itself (or the Super Administrator) changes its examinations; the University's are its examinations offices' (V364) */
     private static void manage(String office) {
         String acting = acting();
-        if (!("super".equals(acting) || acting.equalsIgnoreCase(office))) {
-            throw new AccessDeniedException("Only the " + office + " office manages " + office + " examinations.");
+        boolean ok = "super".equals(acting) || ("EXAMS".equals(office) ? EXAMS_MANAGERS.contains(acting) : acting.equalsIgnoreCase(office));
+        if (!ok) {
+            throw new AccessDeniedException("EXAMS".equals(office) ? "The University's CBT examinations are managed by an Examinations Officer or by Examinations and Records."
+                    : "Only the " + office + " office manages " + office + " examinations.");
         }
+    }
+
+    /** V364: an examination of the University's own is read and changed only within the acting office's scope — the department's or faculty's courses */
+    private void inScope(Map<String, Object> e) {
+        if ("EXAMS".equals(e.get("office"))) scope.assertCourseInScope((String) e.get("course_code"));
     }
 
     private Map<String, Object> examRow(UUID id) {
@@ -123,13 +149,29 @@ class CbtExamController {
                   FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code
                   LEFT JOIN iam.person p ON p.id = e.created_by
                  WHERE e.id = :id
-                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("examination", id.toString()));
+                """).param("id", id).query().listOfRows().stream().findFirst().map(CbtExamController::plain).orElseThrow(() -> new NotFound("examination", id.toString()));
+    }
+
+    /** a row as the screen reads it: a database array (the detectors, the counted events) becomes a JSON list */
+    static Map<String, Object> plain(Map<String, Object> row) {
+        Map<String, Object> out = new LinkedHashMap<>(row);
+        for (Map.Entry<String, Object> en : out.entrySet()) {
+            if (en.getValue() instanceof java.sql.Array arr) {
+                try {
+                    en.setValue(List.of((Object[]) arr.getArray()));
+                } catch (java.sql.SQLException ex) {
+                    throw new IllegalStateException(ex);
+                }
+            }
+        }
+        return out;
     }
 
     /** the examination, checked against the acting office for reading */
     private Map<String, Object> readable(UUID id) {
         Map<String, Object> e = examRow(id);
         office((String) e.get("office"));
+        inScope(e);
         return e;
     }
 
@@ -138,6 +180,7 @@ class CbtExamController {
         Map<String, Object> e = examRow(id);
         String o = office((String) e.get("office"));
         manage(o);
+        inScope(e);
         return e;
     }
 
@@ -167,10 +210,12 @@ class CbtExamController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> exams(@RequestParam String office, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
-                              @RequestParam(required = false) String state) {
+                              @RequestParam(required = false) String state, @RequestParam(defaultValue = "false") boolean archived) {
         String o = office(office);
         String s = session(session);
         String st = state == null || state.isBlank() ? null : state.trim().toUpperCase();
+        // V364: an examinations officer's list is their department's or faculty's courses
+        OfficeScope.Bound b = "EXAMS".equals(o) ? scope.bound(null, null, null) : new OfficeScope.Bound(null, null, null);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT e.id, e.reference, e.title, e.course_code, c.title AS course_title, e.session, e.semester, e.state, e.results_state, assessment.cbt_live_state(e) AS live_state,
                        e.starts_at, e.ends_at, e.duration_minutes, e.selection, e.total_questions, e.security_mode, e.venue, e.pass_mark, e.published_at, e.completed_at,
@@ -183,21 +228,29 @@ class CbtExamController {
                   FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code
                  WHERE e.office = :o AND e.session = :s AND (:sem::int IS NULL OR e.semester = :sem)
                    AND (:st::text IS NULL OR e.state = :st OR assessment.cbt_live_state(e) = :st)
+                   AND ((e.archived_at IS NOT NULL) = :arch)
+                   AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:fac::text IS NULL OR EXISTS (SELECT 1 FROM ref.department d WHERE d.code = c.dept_code AND d.faculty_code = :fac))
                  ORDER BY e.starts_at DESC NULLS FIRST, e.created_at DESC
-                """).param("o", o).param("s", s).param("sem", semester, Types.INTEGER).param("st", st, Types.VARCHAR).query().listOfRows();
+                """).param("o", o).param("s", s).param("sem", semester, Types.INTEGER).param("st", st, Types.VARCHAR).param("arch", archived)
+                .param("dept", b.dept(), Types.VARCHAR).param("fac", b.fac(), Types.VARCHAR).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("office", o);
         out.put("session", s);
         out.put("semester", semester);
+        out.put("archived", archived);
         out.put("rows", rows);
         out.put("sessions", jdbc.sql("SELECT name, state FROM policy.academic_session ORDER BY name DESC").query().listOfRows());
         out.put("offerings", jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, c.level, o.semester, o.session,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS questions
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.session = :s AND c.kind = 'GST' AND coalesce(c.general_office, 'GST') = :o AND c.state <> 'ENDED'
+                 WHERE o.session = :s AND c.state <> 'ENDED' AND c.cbt_enabled
+                   AND ((:o = 'EXAMS' AND c.kind <> 'GST') OR (:o <> 'EXAMS' AND c.kind = 'GST' AND coalesce(c.general_office, 'GST') = :o))
+                   AND (:dept::text IS NULL OR c.dept_code = :dept)
+                   AND (:fac::text IS NULL OR EXISTS (SELECT 1 FROM ref.department d WHERE d.code = c.dept_code AND d.faculty_code = :fac))
                  ORDER BY o.semester, c.code
-                """).param("s", s).param("o", o).query().listOfRows());
+                """).param("s", s).param("o", o).param("dept", b.dept(), Types.VARCHAR).param("fac", b.fac(), Types.VARCHAR).query().listOfRows());
         out.put("now", OffsetDateTime.now());
         return out;
     }
@@ -217,6 +270,9 @@ class CbtExamController {
     Map<String, Object> create(@Valid @RequestBody ExamIn in) {
         String o = office(in.office());
         manage(o);
+        if ("EXAMS".equals(o)) {
+            jdbc.sql("SELECT course_code FROM catalogue.offering WHERE id = :o").param("o", in.offeringId()).query(String.class).optional().ifPresent(scope::assertCourseInScope);
+        }
         UUID id = jdbc.sql("""
                 SELECT (assessment.cbt_new_exam(:o, :off, :t, :i, :d, :n, :sel, :rq, :ro, :pm, :al, :sec, :v, :vl, :va, :ss, :sa, :ea, :pc)).id
                 """)
@@ -227,7 +283,14 @@ class CbtExamController {
                 .param("vl", in.violationLimit(), Types.INTEGER).param("va", in.violationAction(), Types.VARCHAR).param("ss", in.secondSession(), Types.VARCHAR)
                 .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("pc", in.partialCredit(), Types.BOOLEAN)
                 .query(UUID.class).single();
+        configure(id, in.settings());
         return exam(id);
+    }
+
+    /** V364: the further settings, each applied only when sent */
+    private void configure(UUID id, Map<String, Object> settings) {
+        if (settings == null || settings.isEmpty()) return;
+        jdbc.sql("SELECT (assessment.cbt_configure(:id, :j::jsonb)).id").param("id", id).param("j", mapper.writeValueAsString(settings)).query(UUID.class).single();
     }
 
     @GetMapping("/exams/{id}")
@@ -246,6 +309,12 @@ class CbtExamController {
                 SELECT coalesce(topic, 'Untitled topic') AS topic, count(*) FILTER (WHERE active) AS active, count(*) AS total, coalesce(sum(marks) FILTER (WHERE active), 0) AS marks
                   FROM assessment.question WHERE course_code = :c GROUP BY topic ORDER BY topic NULLS FIRST
                 """).param("c", e.get("course_code")).query().listOfRows());
+        out.put("blueprintRows", jdbc.sql("SELECT value, questions FROM assessment.cbt_blueprint WHERE exam_id = :id ORDER BY CASE value WHEN 'EASY' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'HARD' THEN 3 ELSE 4 END, value")
+                .param("id", id).query().listOfRows());
+        out.put("topics", jdbc.sql("""
+                SELECT btrim(q.topic) AS topic, count(*) AS questions FROM assessment.cbt_pool(:id) p JOIN assessment.question q ON q.id = p.question_id
+                 WHERE q.topic IS NOT NULL AND btrim(q.topic) <> '' GROUP BY btrim(q.topic) ORDER BY 1
+                """).param("id", id).query().listOfRows());
         out.put("counts", jdbc.sql("SELECT * FROM assessment.cbt_monitor_counts(:id)").param("id", id).query().singleRow());
         out.put("stats", jdbc.sql("SELECT * FROM assessment.cbt_exam_stats(:id)").param("id", id).query().singleRow());
         out.put("results", jdbc.sql("""
@@ -286,6 +355,19 @@ class CbtExamController {
                 .param("al", in.attemptLimit(), Types.INTEGER).param("sec", in.securityMode(), Types.VARCHAR).param("v", in.venue(), Types.VARCHAR)
                 .param("vl", in.violationLimit(), Types.INTEGER).param("va", in.violationAction(), Types.VARCHAR).param("ss", in.secondSession(), Types.VARCHAR)
                 .param("sa", in.startsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("ea", in.endsAt(), Types.TIMESTAMP_WITH_TIMEZONE).param("pc", in.partialCredit(), Types.BOOLEAN).param("id", id).update();
+        configure(id, in.settings());
+        return exam(id);
+    }
+
+    /** V364: the blueprint of a random paper, replaced whole; refused when the pool cannot satisfy it, saying what is short */
+    @PutMapping("/exams/{id}/blueprint")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> blueprint(@PathVariable UUID id, @Valid @RequestBody BlueprintIn in) {
+        managed(id);
+        List<Map<String, Object>> rows = in.rows() == null ? List.of() : in.rows().stream().map(r -> Map.<String, Object>of("value", r.value().trim(), "questions", r.questions())).toList();
+        jdbc.sql("SELECT (assessment.cbt_set_blueprint(:id, :d, :j::jsonb)).id").param("id", id).param("d", blank(in.dimension()), Types.VARCHAR)
+                .param("j", mapper.writeValueAsString(rows)).query(UUID.class).single();
         return exam(id);
     }
 
@@ -411,9 +493,11 @@ class CbtExamController {
                 """).param("id", id).param("since", since, Types.TIMESTAMP_WITH_TIMEZONE).query().listOfRows();
         out.put("rows", rows);
         out.put("events", jdbc.sql("""
-                SELECT ev.id, ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names
+                SELECT ev.id, ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, coalesce(ev.severity, assessment.cbt_event_severity(ev.kind)) AS severity,
+                       ev.question_no, ev.duration_ms, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names
                   FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id JOIN people.student s ON s.id = a.student_id
-                 WHERE ev.exam_id = :id AND (ev.violation OR ev.kind IN ('TERMINATED', 'AUTO_SUBMITTED', 'MULTIPLE_LOGIN', 'NETWORK_DISCONNECT'))
+                 WHERE ev.exam_id = :id AND (ev.violation OR ev.kind IN ('TERMINATED', 'AUTO_SUBMITTED', 'MULTIPLE_LOGIN', 'NETWORK_DISCONNECT', 'DISCONNECT_TIMEOUT',
+                                                                         'CAMERA_DECLINED', 'MULTIPLE_FACES', 'TIME_MANIPULATION_ATTEMPT', 'FACE_NOT_DETECTED'))
                    AND (:since::timestamptz IS NULL OR ev.at > :since)
                  ORDER BY ev.at DESC LIMIT 200
                 """).param("id", id).param("since", since, Types.TIMESTAMP_WITH_TIMEZONE).query().listOfRows());
@@ -433,11 +517,13 @@ class CbtExamController {
                 .orElseThrow(() -> new NotFound("candidate", student.toString())));
         out.put("attempts", jdbc.sql("""
                 SELECT a.id, a.number, a.status, a.started_at, a.ends_at, a.submitted_at, a.last_activity_at, a.violations, a.answered, cardinality(a.question_ids) AS questions,
-                       a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, a.ip, a.user_agent, a.finished_reason, a.finished_office
+                       a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, a.ip, a.user_agent, a.finished_reason, a.finished_office,
+                       a.camera_consent_at, a.camera_declined_at
                   FROM assessment.cbt_attempt a WHERE a.exam_id = :id AND a.student_id = :s ORDER BY a.number
                 """).param("id", id).param("s", student).query().listOfRows());
         out.put("events", jdbc.sql("""
-                SELECT ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, ev.ip FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id
+                SELECT ev.attempt_id, ev.kind, ev.violation, ev.at, ev.detail, ev.ip, coalesce(ev.severity, assessment.cbt_event_severity(ev.kind)) AS severity, ev.question_no, ev.duration_ms
+                  FROM assessment.cbt_event ev JOIN assessment.cbt_attempt a ON a.id = ev.attempt_id
                  WHERE a.exam_id = :id AND a.student_id = :s ORDER BY ev.at
                 """).param("id", id).param("s", student).query().listOfRows());
         out.put("versions", jdbc.sql("""

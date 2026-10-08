@@ -8,7 +8,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
-import { ATTEMPT_WORD, EVENT_WORD, EXAM_WORD, clock, liveStatus, num, whenAt, type Candidate, type CandidatePage, type Monitor, type MonitorEvent, type MonitorRow } from "@/lib/cbt";
+import { ATTEMPT_WORD, EVENT_WORD, EXAM_WORD, SEVERITY_WORD, clock, liveStatus, num, whenAt, type Candidate, type CandidatePage, type Monitor, type MonitorEvent, type MonitorRow } from "@/lib/cbt";
 import { CandidateModal } from "./CbtCandidates";
 
 type Filter = "ALL" | "IN_PROGRESS" | "SUBMITTED" | "NOT_STARTED" | "DISCONNECTED" | "WARNED" | "CRITICAL" | "TERMINATED" | "TIME_EXPIRED";
@@ -155,7 +155,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
               {events.map((ev) => (
                 <div key={ev.id} className="row" style={{ padding: "6px 12px", borderBottom: "1px solid var(--line)" }}>
                   <span className="tnum sub2" style={{ minWidth: 64 }}>{new Date(ev.at).toLocaleTimeString("en-GB")}</span>
-                  <span style={{ minWidth: 0 }}>{ev.violation ? <Pil kind="bad">{EVENT_WORD[ev.kind] ?? ev.kind}</Pil> : <Pil kind={ev.kind === "TERMINATED" ? "bad" : "warn"}>{EVENT_WORD[ev.kind] ?? ev.kind}</Pil>}<div className="sub2">{ev.surname}, {ev.other_names} · {ev.number}{ev.detail ? ` · ${ev.detail}` : ""}</div></span>
+                  <span style={{ minWidth: 0 }}>{ev.violation ? <Pil kind="bad">{EVENT_WORD[ev.kind] ?? ev.kind}</Pil> : <Pil kind={ev.kind === "TERMINATED" ? "bad" : "warn"}>{EVENT_WORD[ev.kind] ?? ev.kind}</Pil>}<div className="sub2">{ev.surname}, {ev.other_names} · {ev.number}{ev.question_no ? ` · question ${ev.question_no}` : ""}{ev.severity ? ` · ${SEVERITY_WORD[ev.severity][0].toLowerCase()} weight` : ""}{ev.detail ? ` · ${ev.detail}` : ""}</div></span>
                 </div>
               ))}
             </div>

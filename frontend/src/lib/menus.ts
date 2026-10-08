@@ -516,6 +516,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/exams", "icon": "flask", "label": "CBT Sessions", "badge": "!" },
           { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/unicbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets", "badge": "6" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Monitoring" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
@@ -579,6 +581,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
@@ -793,7 +796,10 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
-          { "id": "t/exams", "icon": "flask", "label": "Examinations" }
+          { "id": "t/exams", "icon": "flask", "label": "Examinations" },
+          { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/unicbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" }
         ]
       },
       {
@@ -879,6 +885,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/legacy", "icon": "swap", "label": "Migrate from Old Portal" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
+          { "id": "t/unicbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
           { "id": "t/publish", "icon": "bell", "label": "Publication" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
@@ -936,6 +944,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -1156,6 +1165,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -1544,7 +1554,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/timetable", "icon": "cal", "label": "Timetable" },
           { "id": "s/attendance", "icon": "check", "label": "Attendance" },
           { "id": "s/exams", "icon": "cap", "label": "Examinations" },
-          { "id": "s/cbt", "icon": "cap", "label": "GST CBT Examinations" }
+          { "id": "s/cbt", "icon": "cap", "label": "CBT Examinations" }
         ]
       },
       {

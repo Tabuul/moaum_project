@@ -102,14 +102,21 @@ class QuestionImportIT {
         assertThat(rows.get(10).get("status")).isEqualTo("DUPLICATE_IN_FILE");
         assertThat(jdbc.sql("SELECT count(*) FROM assessment.question WHERE course_code = :c").param("c", code).query(Long.class).single()).as("a check writes nothing").isEqualTo(0L);
 
-        ResponseEntity<Map> imported = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/import", Map.of("course", code, "dryRun", false, "fileName", "q.xlsx", "rows", file()));
+        // V364: a file with errors is all or nothing by default — nothing is written while a row is wrong
+        ResponseEntity<Map> blocked = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/import", Map.of("course", code, "dryRun", false, "fileName", "q.xlsx", "rows", file()));
+        assertThat(blocked.getStatusCode().value()).as(String.valueOf(blocked.getBody())).isEqualTo(200);
+        assertThat(blocked.getBody().get("blocked")).isEqualTo(true);
+        assertThat(((Number) m(blocked.getBody().get("summary")).get("imported")).intValue()).isEqualTo(0);
+        assertThat(jdbc.sql("SELECT count(*) FROM assessment.question WHERE course_code = :c").param("c", code).query(Long.class).single()).as("a blocked batch writes nothing").isEqualTo(0L);
+        // the valid rows only, when the officer asks for exactly that
+        ResponseEntity<Map> imported = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/import", Map.of("course", code, "dryRun", false, "allOrNothing", false, "fileName", "q.xlsx", "rows", file()));
         assertThat(imported.getStatusCode().value()).as(String.valueOf(imported.getBody())).isEqualTo(200);
         assertThat(((Number) m(imported.getBody().get("summary")).get("imported")).intValue()).isEqualTo(4);
         assertThat(jdbc.sql("SELECT count(*) FROM assessment.question WHERE course_code = :c").param("c", code).query(Long.class).single()).isEqualTo(4L);
         assertThat(jdbc.sql("SELECT answers::text FROM assessment.question WHERE course_code = :c AND kind = 'MULTI'").param("c", code).query(String.class).single()).isEqualTo("{1,3}");
         assertThat(jdbc.sql("SELECT marks FROM assessment.question WHERE course_code = :c AND kind = 'MULTI'").param("c", code).query(Integer.class).single()).isEqualTo(2);
         // the same file again: every valid row is already in the bank, nothing added twice
-        Map<String, Object> again = m(it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/import", Map.of("course", code, "dryRun", false, "rows", file())).getBody().get("summary"));
+        Map<String, Object> again = m(it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/import", Map.of("course", code, "dryRun", false, "allOrNothing", false, "rows", file())).getBody().get("summary"));
         assertThat(((Number) again.get("alreadyInBank")).intValue()).isEqualTo(4);
         assertThat(((Number) again.get("imported")).intValue()).isEqualTo(0);
         assertThat(jdbc.sql("SELECT count(*) FROM assessment.question WHERE course_code = :c").param("c", code).query(Long.class).single()).isEqualTo(4L);

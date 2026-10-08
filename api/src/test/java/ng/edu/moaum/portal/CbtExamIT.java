@@ -346,9 +346,16 @@ class CbtExamIT {
         Map<String, Object> analytics = it.get(registrar, "/api/v1/cbt/exams/" + exam + "/analytics").getBody();
         assertThat(((Number) m(analytics.get("totals")).get("scored")).intValue()).isEqualTo(1);
         assertThat(l(analytics.get("byProgramme"))).anySatisfy(g -> assertThat(g.get("programme_code")).isEqualTo(PROGRAMME));
-        // a question that has been sat keeps its options and key
+        // V364: a question that has been sat may be corrected once its examination is closed — a new version; the attempt keeps the version it drew
+        // (the paper of a published examination is fixed: tomorrow's, drawing on the same bank, is withdrawn first)
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/questions/" + q1, mapOf("stem", "Too early", "options", List.of("a", "b", "c"), "answer", 1, "kind", "MCQ")).getBody().get("code")).isEqualTo("CBT_QUESTION_IN_LIVE_EXAM");
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + later + "/unpublish", Map.of()).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> edit = it.call(gst, HttpMethod.PUT, "/api/v1/cbt/questions/" + q1, mapOf("stem", "One of four, reworded", "options", List.of("a", "b", "c"), "answer", 1, "kind", "MCQ"));
-        assertThat(edit.getBody().get("code")).isEqualTo("CBT_QUESTION_SAT");
+        assertThat(edit.getStatusCode().value()).as(String.valueOf(edit.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT version FROM assessment.question WHERE id = :q").param("q", q1).query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM assessment.question_version WHERE question_id = :q").param("q", q1).query(Long.class).single()).isEqualTo(2L);
+        assertThat(jdbc.sql("SELECT question_versions[array_position(question_ids, :q)] FROM assessment.cbt_attempt WHERE id = :a")
+                .param("q", q1).param("a", UUID.fromString(attempt)).query(Integer.class).single()).isEqualTo(1);
         assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/questions/" + q1, mapOf("stem", "One of four, reworded", "options", List.of("a", "b", "c", "d"), "answer", 2, "kind", "MCQ", "explanation", "c is right")).getStatusCode().value()).isEqualTo(200);
     }
 

@@ -10,7 +10,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
-import { ATTEMPT_WORD, EVENT_WORD, clock, liveStatus, num, pct1, whenAt, type Candidate, type CandidateDetail, type CandidatePage, type CbtExam } from "@/lib/cbt";
+import { ATTEMPT_WORD, EVENT_WORD, SEVERITY_WORD, clock, liveStatus, num, pct1, whenAt, type Candidate, type CandidateDetail, type CandidatePage, type CbtExam } from "@/lib/cbt";
 import { cbtSend } from "./CbtExam";
 
 export interface CandidateFilters { status: string; fac: string; dept: string; prog: string; level: string; q: string; sort: string }
@@ -98,9 +98,12 @@ export function CandidateModal({ examId, student, canManage, onClose, onChanged,
             ])} /> : <PBody><div className="sub2">No attempt yet.</div></PBody>}
           </Panel>
           <Panel title="Activity record" right={<span className="sub2">Evidence for an authorised officer; never a verdict by itself</span>}>
-            {d.events.length ? <DTable pageSize={20} cols={["Time", "Event", "Detail", "IP"]} rows={d.events.map((e, i) => [
+            {d.events.length ? <DTable pageSize={20} cols={["Time", "Event", "Weight|mid", "Question|num", "Lasted|num", "Detail", "IP"]} rows={d.events.map((e, i) => [
               <span key={`t${i}`} className="tnum sub2">{new Date(e.at).toLocaleTimeString("en-GB")}</span>,
-              <span key={`k${i}`}>{e.violation ? <Pil kind="bad">{EVENT_WORD[e.kind] ?? e.kind}</Pil> : <span>{EVENT_WORD[e.kind] ?? e.kind}</span>}</span>,
+              <span key={`k${i}`}>{e.violation ? <Pil kind="bad">{EVENT_WORD[e.kind] ?? e.kind}</Pil> : <span>{EVENT_WORD[e.kind] ?? e.kind}</span>}{e.violation ? <div className="sub2">counted</div> : null}</span>,
+              e.severity ? <Pil key={`w${i}`} kind={SEVERITY_WORD[e.severity][1]}>{SEVERITY_WORD[e.severity][0]}</Pil> : <span key={`w${i}`} />,
+              <span key={`q${i}`} className="tnum sub2">{e.question_no ?? ""}</span>,
+              <span key={`ms${i}`} className="tnum sub2">{e.duration_ms != null ? `${Math.round(e.duration_ms / 1000)}s` : ""}</span>,
               <span key={`d${i}`} className="sub2">{e.detail ?? ""}</span>, <span key={`i${i}`} className="sub2 tnum">{e.ip ?? ""}</span>,
             ])} /> : <PBody><div className="sub2">Nothing recorded.</div></PBody>}
           </Panel>

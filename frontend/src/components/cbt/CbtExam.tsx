@@ -10,7 +10,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
-import { EXAM_WORD, RESULTS_WORD, num, pct1, textOf, whenAt, type CbtExam as Exam } from "@/lib/cbt";
+import { EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, pct1, textOf, whenAt, type CbtExam as Exam } from "@/lib/cbt";
 import { EMPTY_FORM, ExamFields, formBody, localInput, type ExamForm } from "./CbtExams";
 import { CbtCandidates } from "./CbtCandidates";
 import { CbtResults } from "./CbtResults";
@@ -35,7 +35,14 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     randomizeQuestions: exam.randomize_questions, randomizeOptions: exam.randomize_options, passMark: String(exam.pass_mark), attemptLimit: String(exam.attempt_limit),
     securityMode: exam.security_mode, venue: exam.venue, violationLimit: String(exam.violation_limit), violationAction: exam.violation_action, secondSession: exam.second_session,
     startsAt: localInput(exam.starts_at), endsAt: localInput(exam.ends_at), partialCredit: exam.partial_credit,
+    examType: exam.exam_type ?? "EXAMINATION", negativeMarks: String(exam.negative_marks ?? 0), allowBack: exam.allow_back !== false, allowReview: exam.allow_review !== false,
+    fullscreenRequired: exam.fullscreen_required !== false, detectors: exam.detectors ?? EMPTY_FORM.detectors, countedEvents: exam.counted_events ?? EMPTY_FORM.countedEvents,
+    warnAt: exam.warn_at == null ? "" : String(exam.warn_at), finalWarnAt: exam.final_warn_at == null ? "" : String(exam.final_warn_at),
+    disconnectMinutes: exam.disconnect_minutes == null ? "" : String(exam.disconnect_minutes), proctoring: exam.proctoring ?? "NONE", scoreOnSubmit: !!exam.score_on_submit,
+    sheetComponent: exam.sheet_component ?? "EXAM",
   }));
+  const [bpDim, setBpDim] = useState<"" | "DIFFICULTY" | "TOPIC">(exam.blueprint ?? "");
+  const [bpRows, setBpRows] = useState<Record<string, string>>(() => Object.fromEntries((exam.blueprintRows ?? []).map((r) => [r.value, String(r.questions)])));
   const [ask, setAsk] = useState<{ action: string; title: string; text: string; reason: boolean } | null>(null);
   const [reason, setReason] = useState("");
   const [bank, setBank] = useState<BankQuestion[] | null>(null);
@@ -64,6 +71,10 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
   const save = () => run(() => cbtSend(`/exams/${exam.id}`, "PUT", formBody(f), `Edit ${exam.reference}`));
   const savePaper = () => run(() => cbtSend(`/exams/${exam.id}/paper`, "PUT", { questions: picked.map((id) => ({ id, marks: marks[id] ? Number(marks[id]) : null })) }, `Set the paper of ${exam.reference}: ${picked.length} question${picked.length === 1 ? "" : "s"}`));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const bpValues = bpDim === "DIFFICULTY" ? ["EASY", "MEDIUM", "HARD"] : bpDim === "TOPIC" ? (exam.topics ?? []).map((t) => t.topic) : [];
+  const bpTotal = bpValues.reduce((n, v) => n + (Number(bpRows[v]) || 0), 0);
+  const saveBlueprint = () => run(() => cbtSend(`/exams/${exam.id}/blueprint`, "PUT", { dimension: bpDim || null, rows: bpValues.filter((v) => Number(bpRows[v]) > 0).map((v) => ({ value: v, questions: Number(bpRows[v]) })) },
+    bpDim ? `Set the blueprint of ${exam.reference}: ${bpTotal} questions by ${bpDim.toLowerCase()}` : `Draw ${exam.reference} from the whole pool`));
   const move = (id: string, by: number) => setPicked((p) => { const i = p.indexOf(id); const j = i + by; if (i < 0 || j < 0 || j >= p.length) return p; const n = [...p]; n.splice(i, 1); n.splice(j, 0, id); return n; });
 
   const actions: { action: string; label: string; kind: "primary" | "secondary" | "ghost" | "go" | "urgent"; when: boolean; confirm: string; reason?: boolean }[] = [
@@ -73,12 +84,14 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     { action: "close", label: "Close now", kind: "urgent", when: exam.state === "PUBLISHED" && (live === "OPEN" || live === "ENDED"), confirm: "Close the window now: no further start, and every attempt still running is submitted as it stands and scored." },
     { action: "complete", label: "Complete", kind: "primary", when: exam.state === "CLOSED" || (exam.state === "PUBLISHED" && live === "ENDED"), confirm: "Complete the examination: any attempt still open is finalised at time expired, and the results move to auto-scored for review." },
     { action: "cancel", label: "Cancel examination", kind: "urgent", when: exam.state !== "COMPLETED" && exam.state !== "CANCELLED", confirm: "Cancel the examination. Attempts in progress are terminated and candidates who were told of it are told of the cancellation. Give the reason.", reason: true },
+    { action: "archive", label: "Archive", kind: "ghost", when: (exam.state === "COMPLETED" || exam.state === "CANCELLED") && !exam.archived_at, confirm: "Move the examination out of the working lists. Nothing is deleted: the papers drawn, the answers, the record of every attempt and the results are kept whole and can be read from the archive." },
+    { action: "unarchive", label: "Restore from the archive", kind: "ghost", when: !!exam.archived_at, confirm: "Return the examination to the working lists." },
   ];
 
   return (
     <>
       <PageHead eyebrow={<span className="tnum">{exam.reference} · {exam.session} · semester {exam.semester}</span>} title={exam.title}
-        description={<span><b className="tnum">{exam.course_code}</b> {exam.course_title} · {exam.duration_minutes} minutes · {exam.selection === "RANDOM" ? `${exam.total_questions} questions drawn from ${num(exam.pool_size)}` : `${num(exam.pool_size)} questions`} · {num(exam.pool_marks)} marks · pass mark {pct1(exam.pass_mark)} · {exam.partial_credit ? "partial credit on multiple-select" : "all-or-nothing marking"} · {exam.security_mode === "SECURE" ? "secure/kiosk CBT" : "standard web CBT"} · {exam.venue === "LAB" ? "CBT laboratory" : "remote"}</span>}
+        description={<span><b className="tnum">{exam.course_code}</b> {exam.course_title} · {EXAM_TYPE_WORD[exam.exam_type ?? "EXAMINATION"]} · {exam.duration_minutes} minutes · {exam.selection === "RANDOM" ? `${exam.total_questions} questions drawn from ${num(exam.pool_size)}` : `${num(exam.pool_size)} questions`} · {num(exam.pool_marks)} marks · pass mark {pct1(exam.pass_mark)} · {exam.partial_credit ? "partial credit on multiple-select" : "all-or-nothing marking"} · {exam.security_mode === "SECURE" ? "secure/kiosk CBT" : "standard web CBT"} · {exam.venue === "LAB" ? "CBT laboratory" : "remote"}</span>}
         actions={<span className="row row--inline row--tight">
           <Pil kind={(EXAM_WORD[live] ?? ["", "grey"])[1]}>{(EXAM_WORD[live] ?? [live])[0]}</Pil>
           <Pil kind={(RESULTS_WORD[exam.results_state] ?? ["", "grey"])[1]}>Results: {(RESULTS_WORD[exam.results_state] ?? [exam.results_state])[0].toLowerCase()}</Pil>
@@ -87,6 +100,8 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
         </span>} />
       {exam.paper_problem && exam.state !== "COMPLETED" && exam.state !== "CANCELLED" ? <Note kind="bad" title="The paper is not ready">{textOf(exam.paper_problem)}. Set the paper before publishing.</Note> : null}
       {exam.state === "CANCELLED" ? <Note kind="bad" title={`Cancelled ${whenAt(exam.cancelled_at)}`}>{exam.cancel_reason}</Note> : null}
+      {exam.archived_at ? <Note kind="info" title={`Archived ${whenAt(exam.archived_at)}`}>Out of the working lists; everything about it is kept.</Note> : null}
+      {exam.proctoring === "CAMERA" ? <Note kind="info" title="Camera proctoring, by consent">Each candidate is asked for consent before the camera is used. The screen reports face signals (no face, more than one face, a face at the edge of view) where the candidate&rsquo;s browser can see faces; no video or picture is kept, no microphone is used, and nobody is identified by their face. A signal is evidence for review, never a finding on its own.</Note> : null}
       {exam.security_mode === "SECURE" ? <Note kind="info" title="Secure / kiosk mode">Candidates sit this examination in the approved secure examination environment (a secure exam browser, a kiosk, a managed CBT laboratory). A standard browser cannot guarantee that a candidate does not switch to another application or device; the secure environment does.</Note> : null}
       <Tiles items={[
         ["CANDIDATES", num(counts.candidates), null, `${num(counts.eligible)} eligible now`],
@@ -130,6 +145,23 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
           right={editable ? <span className="row row--inline row--tight"><Btn kind="ghost" disabled={busy || !bank} onClick={() => setPicked(bank ? bank.filter((q) => q.active).map((q) => q.id) : picked)}>Pick every active question</Btn><Btn kind="ghost" disabled={busy || !picked.length} onClick={() => setPicked([])}>Clear</Btn><Btn kind="primary" disabled={busy} onClick={() => void savePaper()}>{busy ? "Saving…" : "Save the paper"}</Btn></span> : <span className="sub2">Fixed{exam.state === "PUBLISHED" ? " since publication" : ""}</span>}>
           <PBody>
             {bankProblem ? <ProblemNotice problem={bankProblem} /> : null}
+            {exam.selection === "RANDOM" ? (
+              <div className="mb-2" style={{ borderBottom: "1px solid var(--line-2)", paddingBottom: 12 }}>
+                <div className="row row--inline row--tight" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <Field id="bp-dim" label="Blueprint" hint="Optional: so many questions of each difficulty or topic, each candidate's draw following it">
+                    <select id="bp-dim" className="ctl" disabled={!editable} value={bpDim} onChange={(e) => setBpDim(e.target.value as typeof bpDim)}><option value="">None — draw from the whole pool</option><option value="DIFFICULTY">By difficulty</option><option value="TOPIC">By topic</option></select>
+                  </Field>
+                  {bpValues.map((v) => (
+                    <Field key={v} id={`bp-${v}`} label={bpDim === "DIFFICULTY" ? v.charAt(0) + v.slice(1).toLowerCase() : v} style={{ maxWidth: 160 }}>
+                      <input id={`bp-${v}`} className="ctl tnum" inputMode="numeric" disabled={!editable} value={bpRows[v] ?? ""} onChange={(e) => setBpRows({ ...bpRows, [v]: e.target.value.replace(/[^0-9]/g, "") })} />
+                    </Field>
+                  ))}
+                  {editable ? <Btn kind="secondary" disabled={busy || (!!bpDim && bpTotal !== exam.total_questions)} onClick={() => void saveBlueprint()}>Save the blueprint</Btn> : null}
+                </div>
+                {bpDim ? <div className={`sub2 mt-1${bpTotal !== exam.total_questions ? " ink-red" : ""}`}>{bpTotal} of the {exam.total_questions} questions the paper draws{bpTotal !== exam.total_questions ? " — the blueprint must add up to the paper" : ""}. The server refuses a blueprint the pool cannot satisfy and says what is short.</div> : null}
+                {bpDim === "TOPIC" && !bpValues.length ? <div className="sub2 mt-1">No question in the pool names a topic yet.</div> : null}
+              </div>
+            ) : null}
             <div className="sub2 mb-2">
               {exam.selection === "RANDOM"
                 ? `Each candidate draws ${exam.total_questions} questions from the pool by their own seed. Leave the pool empty to draw from the course's whole active bank, or pick the questions it draws from. `

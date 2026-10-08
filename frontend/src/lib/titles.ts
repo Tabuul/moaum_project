@@ -908,6 +908,14 @@ export const TITLES: Record<string, [string, string]> = {
     "GST Courses",
     "The General Studies courses on the catalogue, the session's offerings, their lecturers, registrations and score sheets"
   ],
+  "t/unicbt": [
+    "CBT Examinations",
+    "The University's own computer-based examinations of its CBT courses, on the one engine GST, EPS and JUPEB share"
+  ],
+  "t/cbtcourses": [
+    "CBT Courses",
+    "Which courses the University examines by computer-based test; no course is one until it is allowed here"
+  ],
   "t/gstbank": [
     "GST Question Bank",
     "The GST courses' question banks — multiple choice, true/false and multiple select, tagged by topic and difficulty; the keys never leave the server"
@@ -925,7 +933,7 @@ export const TITLES: Record<string, [string, string]> = {
     "Computer-based examinations on the same engine as GST, created, monitored and scored here"
   ],
   "s/cbt": [
-    "GST CBT Examinations",
+    "CBT Examinations",
     "Your computer-based examinations: when they open, whether you may sit, the instructions to acknowledge, the examination itself, and your published results"
   ],
   "t/epsstudents": [

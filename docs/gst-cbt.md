@@ -198,3 +198,32 @@ the clock runs under the job lock), and a real sitting spreads its starts over m
 The queries to watch under `pg_stat_statements` on RDS are `cbt_start` (eligibility: the registration, the
 GST references, the paper), `cbt_save_answers` (one upsert per answer), `cbt_monitor_counts` and the monitor's
 delta; all read through the indexes listed in section F.
+
+## I. V364 — one engine for every CBT-enabled course
+
+- **Courses.** `catalogue.course.cbt_enabled`: no course is a CBT course until the Academic Office, the Registry or Examinations and
+  Records allows it (`/exams/cbt-courses`, `catalogue.set_cbt_enabled`); General Studies courses start allowed. Creation, publication
+  and eligibility all refuse a course that is not allowed (`CBT_COURSE_NOT_ENABLED`); a course with an examination still to be completed
+  cannot be withdrawn (`CBT_COURSE_IN_USE`).
+- **Offices.** `EXAMS` beside GST and EPS: a department's Examinations Officer for the department's courses, a Faculty Examinations
+  Officer for the faculty's, Examinations and Records for any (`/exams/cbt`; scope through `OfficeScope.assertCourseInScope`). Its
+  candidates are judged by `finance.clears(student, session, 'EXAMINATION')` (`CBT_FEES_NOT_CLEARED`); GST and EPS keep the GST gate.
+- **Frozen papers.** `assessment.question_version` (written by trigger on every change of wording, options, key, kind, marks or
+  explanation); `cbt_attempt.question_versions` and `question_marks` fixed at the start; the paper (`cbt_candidate_paper`) and the
+  scoring (`cbt_attempt_questions`) read the snapshot, never the live bank. A sat question can be corrected (a new version), but not while
+  an examination drawing it is published (`CBT_QUESTION_IN_LIVE_EXAM`).
+- **Blueprint.** `assessment.cbt_blueprint` by DIFFICULTY or TOPIC for a random paper; refused on setting and on publication when the
+  pool cannot satisfy it, naming what is short (`CBT_BLUEPRINT_SHORT: Hard needs 10, the pool holds 6`). The seed comes from
+  `gen_random_uuid()`, never the browser.
+- **Settings** (`cbt_configure`): kind, negative marking (total floored at nought), back navigation, mark for review, fullscreen,
+  detectors, counted events, warning / final-warning thresholds, minutes out of contact before submission (`cbt_sweep`), camera
+  proctoring by consent (`cbt_camera`; signals only, no video, no microphone, no identity matching), score on submission (default off),
+  and where the result goes on the score sheet (EXAM, CA or NONE).
+- **Answers** carry the screen's sequence number (a late retry never overwrites a newer answer) and a review flag; a cleared answer is
+  kept as an empty set. **Events** carry a severity (a reading aid, never a verdict), the question number and the duration.
+- **Archive**: completed or cancelled examinations, and questions, are archived, never deleted.
+- **Import**: Course Code and Status columns, the brief's tallies, all-or-nothing by default (the officer may choose the valid rows only).
+- **Room**: mobile-first (`ExamRoom.module.css`): sticky clock, large targets, two-row controls on a phone, a navigator drawer, a final
+  review screen, and the University's words on submission. Face signals use the browser's own `FaceDetector` where it exists; head-pose
+  signals need a proctoring library and are not claimed.
+- Tests: `CbtEngineIT`, `CbtExamIT` (a sat question corrected as a new version), `QuestionImportIT` (blocked batch), check.sql 208.

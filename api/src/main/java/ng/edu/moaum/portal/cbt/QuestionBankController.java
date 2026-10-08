@@ -33,7 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
  * The CBT question bank (V077, extended by V322): authoring and blueprints per course, in three kinds — one correct
  * option, true/false, several correct options — with an explanation for the marker and the author on record. The
  * GST and EPS offices author in their own courses; a lecturer, Head of Department or Examinations Officer in any.
- * A question is retired, not deleted, so a paper that used it can still be explained.
+ * A question is retired or archived, never deleted, so a paper that used it can still be explained. From V364 every
+ * change of a question's wording, options, key or marks is a new version, kept whole, and each attempt reads the
+ * version it drew — so a question may be corrected after it is sat, but never while an examination drawing it is open.
  */
 @RestController
 class QuestionBankController {
@@ -63,6 +65,9 @@ class QuestionBankController {
     public record Active(boolean active) {
     }
 
+    public record Archived(boolean archived) {
+    }
+
     /** the GST and EPS offices see and author only their own courses; everyone else, every course */
     private static String actingOffice() {
         String acting = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
@@ -83,7 +88,7 @@ class QuestionBankController {
     List<Map<String, Object>> courses(@RequestParam(required = false) String office) {
         String o = actingOffice() != null ? actingOffice() : office == null || office.isBlank() ? null : office.trim().toUpperCase();
         return jdbc.sql("""
-                SELECT c.code, c.title, c.kind, c.general_office, c.level, c.semester, c.units, c.state,
+                SELECT c.code, c.title, c.kind, c.general_office, c.level, c.semester, c.units, c.state, c.cbt_enabled,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS questions,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code) AS total
                   FROM catalogue.course c
@@ -95,16 +100,35 @@ class QuestionBankController {
     @GetMapping("/api/v1/cbt/questions")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    Map<String, Object> questions(@RequestParam String course) {
+    Map<String, Object> questions(@RequestParam String course, @RequestParam(required = false) String q, @RequestParam(required = false) String topic,
+                                  @RequestParam(required = false) String difficulty, @RequestParam(required = false) String kind,
+                                  @RequestParam(required = false) String status, @RequestParam(defaultValue = "1") int page,
+                                  @RequestParam(defaultValue = "1000") int size) {
         scoped(course);
-        List<Map<String, Object>> rows = jdbc.sql("""
+        // V364: searched and paged on the server — the text, the topic, the difficulty, the kind, the status (ACTIVE, INACTIVE, ARCHIVED; default every one not archived)
+        String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
+        int sz = Math.max(1, Math.min(size, 1000)), pg = Math.max(1, page);
+        String where = """
+                 WHERE q.course_code = :c
+                   AND (:q::text IS NULL OR lower(q.stem) LIKE :q OR lower(coalesce(q.topic, '')) LIKE :q OR lower(coalesce(q.explanation, '')) LIKE :q)
+                   AND (:topic::text IS NULL OR lower(btrim(coalesce(q.topic, ''))) = lower(btrim(:topic)))
+                   AND (:diff::text IS NULL OR q.difficulty = upper(:diff)) AND (:kind::text IS NULL OR q.kind = upper(:kind))
+                   AND CASE coalesce(:st, 'CURRENT') WHEN 'ACTIVE' THEN q.active WHEN 'INACTIVE' THEN NOT q.active AND q.archived_at IS NULL
+                        WHEN 'ARCHIVED' THEN q.archived_at IS NOT NULL WHEN 'ALL' THEN true ELSE q.archived_at IS NULL END
+                """;
+        java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec.param("c", course)
+                .param("q", q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%", Types.VARCHAR).param("topic", blank(topic), Types.VARCHAR)
+                .param("diff", blank(difficulty), Types.VARCHAR).param("kind", blank(kind), Types.VARCHAR).param("st", st, Types.VARCHAR);
+        long total = bind.apply(jdbc.sql("SELECT count(*) FROM assessment.question q" + where)).query(Long.class).single();
+        List<Map<String, Object>> rows = bind.apply(jdbc.sql("""
                 SELECT q.id, q.course_code, q.topic, q.stem, q.options::text AS options, q.answer, to_jsonb(q.answers)::text AS answers, q.kind, q.difficulty, q.marks, q.active,
-                       q.explanation, q.authored_at, q.updated_at,
+                       q.explanation, q.authored_at, q.updated_at, q.version, q.archived_at,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS authored_by,
-                       (SELECT count(*) FROM assessment.cbt_exam_question eq WHERE eq.question_id = q.id) AS on_papers
+                       (SELECT count(*) FROM assessment.cbt_exam_question eq WHERE eq.question_id = q.id) AS on_papers,
+                       (SELECT count(*) FROM assessment.cbt_attempt a WHERE q.id = ANY (a.question_ids)) AS sat
                   FROM assessment.question q LEFT JOIN iam.person p ON p.id = q.authored_by
-                 WHERE q.course_code = :c ORDER BY q.topic NULLS FIRST, q.authored_at DESC
-                """).param("c", course).query().listOfRows();
+                """ + where + " ORDER BY q.topic NULLS FIRST, q.authored_at DESC LIMIT :lim OFFSET :off"))
+                .param("lim", sz).param("off", (long) (pg - 1) * sz).query().listOfRows();
         for (Map<String, Object> r : rows) {
             // JSON arrays for the screen, not database objects
             r.put("options", mapper.readValue(String.valueOf(r.get("options")), new tools.jackson.core.type.TypeReference<List<String>>() { }));
@@ -121,8 +145,33 @@ class QuestionBankController {
                 """).param("c", course).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows);
+        out.put("total", total);
+        out.put("page", pg);
+        out.put("size", sz);
         out.put("blueprint", blueprint);
         return out;
+    }
+
+    /** V364: every version of a question, as candidates were examined on it, and the attempts that drew each */
+    @GetMapping("/api/v1/cbt/questions/{id}/versions")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> versions(@PathVariable UUID id) {
+        String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
+                .orElseThrow(() -> new NotFound("question", id.toString()));
+        scoped(course);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT v.version, v.kind, v.stem, v.options::text AS options, to_jsonb(v.answers)::text AS answers, v.explanation, v.marks, v.topic, v.difficulty, v.created_at,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS created_by,
+                       (SELECT count(*) FROM assessment.cbt_attempt a, LATERAL unnest(a.question_ids, a.question_versions) u(qid, ver) WHERE u.qid = v.question_id AND u.ver = v.version) AS attempts
+                  FROM assessment.question_version v LEFT JOIN iam.person p ON p.id = v.created_by
+                 WHERE v.question_id = :id ORDER BY v.version DESC
+                """).param("id", id).query().listOfRows();
+        for (Map<String, Object> r : rows) {
+            r.put("options", mapper.readValue(String.valueOf(r.get("options")), new tools.jackson.core.type.TypeReference<List<String>>() { }));
+            r.put("answers", mapper.readValue(String.valueOf(r.get("answers")), new tools.jackson.core.type.TypeReference<List<Integer>>() { }));
+        }
+        return rows;
     }
 
     private record Checked(String kind, List<String> options, int answer, List<Integer> answers) {
@@ -178,23 +227,22 @@ class QuestionBankController {
         return Map.of("id", id, "kind", c.kind());
     }
 
-    /** an edit: the question on a paper already sat keeps its options' meaning — the stem, topic, difficulty, marks and explanation may change, the key and options may not */
+    /** an edit: a new version of the question (V364) — the attempts already sat keep the version they drew; refused while an examination drawing it is open */
     @PutMapping("/api/v1/cbt/questions/{id}")
     @PreAuthorize(AUTHORS)
     @Transactional
     Map<String, Object> edit(@PathVariable UUID id, @Valid @RequestBody QuestionEdit body) {
         Map<String, Object> q = jdbc.sql("""
-                SELECT q.course_code, (SELECT count(*) FROM assessment.cbt_attempt a WHERE q.id = ANY (a.question_ids)) AS sat FROM assessment.question q WHERE q.id = :id
+                SELECT q.course_code, q.archived_at, assessment.question_in_live_exam(q.id) AS live FROM assessment.question q WHERE q.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("question", id.toString()));
         scoped((String) q.get("course_code"));
         Checked c = check(body.kind(), body.options(), body.answer(), body.answers());
-        if (((Number) q.get("sat")).longValue() > 0) {
-            Map<String, Object> current = jdbc.sql("SELECT (options = :o::jsonb) AS same_options, kind FROM assessment.question WHERE id = :id")
-                    .param("o", mapper.writeValueAsString(c.options())).param("id", id).query().singleRow();
-            if (!Boolean.TRUE.equals(current.get("same_options")) || !c.kind().equals(current.get("kind"))) {
-                throw new DomainRuleViolation("CBT_QUESTION_SAT", "This question has been sat; its options and key are kept so the papers can be explained.",
-                        new DomainRuleViolation.Remedy("Retire it and author a corrected question, or amend the affected results with a reason.", "You"));
-            }
+        if (q.get("live") != null) {
+            throw new DomainRuleViolation("CBT_QUESTION_IN_LIVE_EXAM", "This question is on the paper of " + q.get("live") + ", which is published to candidates; its paper is fixed until it closes.",
+                    new DomainRuleViolation.Remedy("Correct it once the examination closes (or withdraw the examination if nobody has started it); the attempts already sat keep the version they drew, and a result is amended with a reason.", "You"));
+        }
+        if (q.get("archived_at") != null) {
+            throw new DomainRuleViolation("CBT_QUESTION_ARCHIVED", "An archived question is kept as it was.", new DomainRuleViolation.Remedy("Restore it from the archive first.", "You"));
         }
         jdbc.sql("""
                 UPDATE assessment.question SET topic = :t, stem = :s, options = :o::jsonb, answer = :a, answers = :as, kind = :k,
@@ -211,10 +259,12 @@ class QuestionBankController {
     /* ── the bank from a spreadsheet: every row judged, the valid ones written, nothing silently corrected ── */
 
     public record ImportRow(Integer row, @Size(max = 120) String topic, @Size(max = 4000) String stem, List<@Size(max = 500) String> options, @Size(max = 200) String answer,
-                            @Size(max = 40) String kind, @Size(max = 20) String difficulty, @Size(max = 20) String marks, @Size(max = 2000) String explanation) {
+                            @Size(max = 40) String kind, @Size(max = 20) String difficulty, @Size(max = 20) String marks, @Size(max = 2000) String explanation,
+                            @Size(max = 20) String courseCode, @Size(max = 20) String status) {
     }
 
-    public record ImportIn(@NotBlank @Size(max = 10) String course, Boolean dryRun, @Size(max = 200) String fileName, @NotNull @Size(max = 5000) List<@Valid ImportRow> rows) {
+    /** V364: allOrNothing (the default) imports nothing while any row has an error; false imports the valid rows and reports the rest */
+    public record ImportIn(@NotBlank @Size(max = 10) String course, Boolean dryRun, @Size(max = 200) String fileName, Boolean allOrNothing, @NotNull @Size(max = 5000) List<@Valid ImportRow> rows) {
     }
 
     private static final java.util.regex.Pattern WS = java.util.regex.Pattern.compile("\\s+");
@@ -262,12 +312,25 @@ class QuestionBankController {
     Map<String, Object> importQuestions(@Valid @RequestBody ImportIn in) {
         String course = in.course().trim();
         scoped(course);
-        if (!jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.course WHERE code = :c)").param("c", course).query(Boolean.class).single()) throw new NotFound("course", course);
+        Map<String, Object> courseRow = jdbc.sql("SELECT code, cbt_enabled, state FROM catalogue.course WHERE code = :c").param("c", course).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("course", course));
+        // V364: the CBT bank is filled for a course the University examines by CBT
+        if (!Boolean.TRUE.equals(courseRow.get("cbt_enabled"))) {
+            throw new DomainRuleViolation("CBT_COURSE_NOT_ENABLED", course + " is not a CBT course, so its CBT bank is not imported.",
+                    new DomainRuleViolation.Remedy("The Academic Office, the Registry or Examinations and Records allows a course to be examined by CBT.", "Academic Office"));
+        }
+        if ("ENDED".equals(courseRow.get("state"))) {
+            throw new DomainRuleViolation("CBT_COURSE_ENDED", course + " has ended.", new DomainRuleViolation.Remedy("Import into a running course.", "You"));
+        }
         boolean dry = Boolean.TRUE.equals(in.dryRun());
+        boolean allOrNothing = !Boolean.FALSE.equals(in.allOrNothing());
         Set<String> inBank = new java.util.HashSet<>(jdbc.sql("SELECT lower(regexp_replace(btrim(stem), '\\s+', ' ', 'g')) FROM assessment.question WHERE course_code = :c").param("c", course).query(String.class).list());
         Set<String> seen = new java.util.HashSet<>();
         List<Map<String, Object>> findings = new java.util.ArrayList<>();
         int valid = 0, errors = 0, dupFile = 0, dupBank = 0, imported = 0;
+        java.util.Map<String, Integer> tally = new java.util.TreeMap<>();
+        // V364: judged whole first; written only when the batch may be written
+        List<Object[]> toWrite = new java.util.ArrayList<>();
         for (ImportRow r : in.rows()) {
             List<String> codes = new java.util.ArrayList<>();
             List<String> messages = new java.util.ArrayList<>();
@@ -292,6 +355,18 @@ class QuestionBankController {
                 try { marks = Integer.parseInt(r.marks().trim().replaceAll("[^0-9]", "")); } catch (NumberFormatException e) { marks = 0; }
                 if (marks < 1 || marks > 100) { codes.add("MARKS_INVALID"); messages.add("marks are a whole number from 1 to 100"); }
             }
+            // V364: the row's own course, when the sheet names one, is this course; never another, and never one created on the way
+            if (r.courseCode() != null && !r.courseCode().isBlank() && !norm(r.courseCode()).replace(" ", "").equals(norm(course).replace(" ", ""))) {
+                codes.add("COURSE_MISMATCH"); messages.add("the row names " + r.courseCode().trim() + "; this import is for " + course);
+            }
+            boolean active = true;
+            if (r.status() != null && !r.status().isBlank()) {
+                String sv = r.status().trim().toUpperCase();
+                if (Set.of("ACTIVE", "YES", "Y", "1", "LIVE").contains(sv)) active = true;
+                else if (Set.of("INACTIVE", "NO", "N", "0", "RETIRED", "DRAFT").contains(sv)) active = false;
+                else { codes.add("STATUS_INVALID"); messages.add("status is ACTIVE or INACTIVE"); }
+            }
+            for (String code : codes) tally.merge(code, 1, Integer::sum);
             String status;
             String key = norm(stem);
             if (!codes.isEmpty()) { status = "ERROR"; errors++; }
@@ -299,25 +374,45 @@ class QuestionBankController {
             else if (!key.isEmpty() && inBank.contains(key)) { status = "ALREADY_IN_BANK"; dupBank++; messages.add("a question with this text is in the bank already; it is not added twice"); }
             else { status = "VALID"; valid++; }
             if (!key.isEmpty()) seen.add(key);
-            if ("VALID".equals(status) && !dry) {
-                jdbc.sql("""
-                        INSERT INTO assessment.question (course_code, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by)
-                        VALUES (:c, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid)
-                        """)
-                        .param("c", course).param("t", blank(r.topic()), Types.VARCHAR).param("s", stem).param("o", mapper.writeValueAsString(options))
-                        .param("a", answers.get(0)).param("as", answers.toArray(new Integer[0])).param("k", kind).param("d", difficulty).param("m", marks).param("x", blank(r.explanation()), Types.VARCHAR).update();
-                status = "IMPORTED"; imported++;
-            }
             Map<String, Object> f = new LinkedHashMap<>();
+            if ("VALID".equals(status)) toWrite.add(new Object[] {f, r, stem, options, answers, kind, difficulty, marks, active});
             f.put("row", r.row()); f.put("stem", stem); f.put("topic", blank(r.topic())); f.put("kind", kind.startsWith("?") ? kind.substring(1) : kind); f.put("options", options.size());
             f.put("answers", answers.contains(-1) ? List.of() : answers); f.put("answer", r.answer()); f.put("difficulty", difficulty); f.put("marks", marks);
-            f.put("status", status); f.put("codes", codes); f.put("messages", messages);
+            f.put("active", active); f.put("status", status); f.put("codes", codes); f.put("messages", messages);
             findings.add(f);
+        }
+        boolean blocked = allOrNothing && errors > 0;
+        if (!dry && !blocked) {
+            for (Object[] w : toWrite) {
+                @SuppressWarnings("unchecked") Map<String, Object> f = (Map<String, Object>) w[0];
+                ImportRow r = (ImportRow) w[1];
+                @SuppressWarnings("unchecked") List<Integer> answers = (List<Integer>) w[4];
+                jdbc.sql("""
+                        INSERT INTO assessment.question (course_code, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by, active)
+                        VALUES (:c, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid, :act)
+                        """)
+                        .param("c", course).param("t", blank(r.topic()), Types.VARCHAR).param("s", (String) w[2]).param("o", mapper.writeValueAsString(w[3]))
+                        .param("a", answers.get(0)).param("as", answers.toArray(new Integer[0])).param("k", (String) w[5]).param("d", (String) w[6]).param("m", (int) w[7])
+                        .param("x", blank(r.explanation()), Types.VARCHAR).param("act", (boolean) w[8]).update();
+                f.put("status", "IMPORTED");
+                imported++;
+            }
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("course", course);
         out.put("dryRun", dry);
-        out.put("summary", Map.of("total", in.rows().size(), "valid", valid, "errors", errors, "duplicatesInFile", dupFile, "alreadyInBank", dupBank, "imported", imported));
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("total", in.rows().size());
+        summary.put("valid", valid);
+        summary.put("errors", errors);
+        summary.put("duplicatesInFile", dupFile);
+        summary.put("alreadyInBank", dupBank);
+        summary.put("imported", imported);
+        summary.put("updated", 0);   // an import adds; a question already in the bank is edited on the bank, never overwritten by a sheet
+        summary.put("byCode", tally);
+        out.put("summary", summary);
+        out.put("allOrNothing", allOrNothing);
+        out.put("blocked", !dry && blocked);
         out.put("rows", findings);
         return out;
     }
@@ -329,8 +424,31 @@ class QuestionBankController {
         String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
                 .orElseThrow(() -> new NotFound("question", id.toString()));
         scoped(course);
+        if (body.active() && jdbc.sql("SELECT archived_at IS NOT NULL FROM assessment.question WHERE id = :id").param("id", id).query(Boolean.class).single()) {
+            throw new DomainRuleViolation("CBT_QUESTION_ARCHIVED", "An archived question is not made active.", new DomainRuleViolation.Remedy("Restore it from the archive first.", "You"));
+        }
         jdbc.sql("UPDATE assessment.question SET active = :a WHERE id = :id").param("a", body.active()).param("id", id).update();
         return Map.of("id", id, "active", body.active());
+    }
+
+    /** V364: archived — retired and out of the bank's lists, never deleted; restored to the bank inactive */
+    @PostMapping("/api/v1/cbt/questions/{id}/archive")
+    @PreAuthorize(AUTHORS)
+    @Transactional
+    Map<String, Object> archive(@PathVariable UUID id, @RequestBody Archived body) {
+        String course = jdbc.sql("SELECT course_code FROM assessment.question WHERE id = :id").param("id", id).query(String.class).optional()
+                .orElseThrow(() -> new NotFound("question", id.toString()));
+        scoped(course);
+        if (body.archived()) {
+            String live = jdbc.sql("SELECT assessment.question_in_live_exam(:id)").param("id", id).query(String.class).optional().orElse(null);
+            if (live != null) {
+                throw new DomainRuleViolation("CBT_QUESTION_IN_LIVE_EXAM", "This question is on the paper of " + live + ", which is published to candidates; its paper is fixed until it closes.",
+                        new DomainRuleViolation.Remedy("Archive it once the examination closes.", "You"));
+            }
+        }
+        jdbc.sql("UPDATE assessment.question SET active = CASE WHEN :a THEN false ELSE active END, archived_at = CASE WHEN :a THEN coalesce(archived_at, now()) ELSE NULL END WHERE id = :id")
+                .param("a", body.archived()).param("id", id).update();
+        return Map.of("id", id, "archived", body.archived());
     }
 
     private static String blank(String s) {

@@ -1,5 +1,5 @@
 "use client";
-/** s/cbt — the student's CBT examinations (V322): the examinations on their registered GST and EPS courses with the clock's word, whether
+/** s/cbt — the student's CBT examinations (V322; every CBT course from V364): the examinations on their registered CBT courses with the clock's word, whether
  *  they may sit now and why not otherwise, the instructions acknowledged before the start, the attempt continued where it was, and the
  *  result once the office publishes it. The server judges eligibility at the start; the button only asks. */
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notifyProblem } from "@/components/proto/Toast";
-import { ATTEMPT_WORD, ELIGIBILITY_WORD, EXAM_WORD, codeOf, num, pct1, textOf, whenAt, type MyExam, type MyExams as Data } from "@/lib/cbt";
+import { ATTEMPT_WORD, ELIGIBILITY_WORD, EXAM_TYPE_WORD, EXAM_WORD, codeOf, num, pct1, textOf, whenAt, type MyExam, type MyExams as Data } from "@/lib/cbt";
 
 export const tokenKey = (attemptId: string) => `cbt-token:${attemptId}`;
 
@@ -40,7 +40,7 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
     if (x.attempt_status === "IN_PROGRESS") return <Pil kind="info">Attempt in progress</Pil>;
     if (!x.eligibility) return <Pil kind="ok">Eligible — you may start</Pil>;
     const code = codeOf(x.eligibility) ?? "";
-    const kind = code === "GST_PAYMENT_REQUIRED" || code === "CBT_COURSE_NOT_REGISTERED" || code === "CBT_STUDENT_INACTIVE" ? "bad" : code === "CBT_EXAM_NOT_STARTED" ? "info" : "grey";
+    const kind = code === "GST_PAYMENT_REQUIRED" || code === "CBT_FEES_NOT_CLEARED" || code === "CBT_COURSE_NOT_REGISTERED" || code === "CBT_STUDENT_INACTIVE" ? "bad" : code === "CBT_EXAM_NOT_STARTED" ? "info" : "grey";
     return <Pil kind={kind}>{ELIGIBILITY_WORD[code] ?? textOf(x.eligibility)}</Pil>;
   };
 
@@ -48,7 +48,7 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Tiles items={[
-        ["CBT EXAMINATIONS", num(rows.length), null, `${data.session} · your GST and EPS courses`],
+        ["CBT EXAMINATIONS", num(rows.length), null, `${data.session} · your CBT courses`],
         ["OPEN NOW", num(openNow), openNow ? "var(--green-ink)" : null, "Within the window"],
         ["UPCOMING", num(upcoming), null, "Published, not yet open"],
         ["RESULTS PUBLISHED", num(published), published ? "var(--green-ink)" : null, "Visible once the office publishes"],
@@ -56,7 +56,10 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
       {rows.some((r) => codeOf(r.eligibility) === "GST_PAYMENT_REQUIRED") ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href="/student/gst">GST &amp; EPS</LinkBtn>}>You cannot start a GST CBT examination until your GST fee for the session is paid and confirmed. One payment covers both GST and EPS.</Note>
       ) : null}
-      {!rows.length ? <Note kind="info" title="No CBT examination on your courses yet">A GST or EPS examination appears here once the office publishes it for a course on your submitted registration.</Note> : null}
+      {rows.some((r) => codeOf(r.eligibility) === "CBT_FEES_NOT_CLEARED") ? (
+        <Note kind="bad" title="SCHOOL FEES NOT CLEARED" action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>A CBT examination of a University course is sat once the session&rsquo;s school fees are cleared for examinations.</Note>
+      ) : null}
+      {!rows.length ? <Note kind="info" title="No CBT examination on your courses yet">An examination appears here once the examining office publishes it for a course on your submitted registration.</Note> : null}
       {rows.map((x) => {
         const live = x.live_state;
         const word = EXAM_WORD[live] ?? [live, "grey"];
@@ -67,7 +70,7 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
             <PBody>
               <KvGrid cls="grid--4" pairs={[
                 ["Date", whenAt(x.starts_at)], ["Closes", whenAt(x.ends_at)], ["Duration", `${x.duration_minutes} minutes`], ["Questions", `${x.questions}`],
-                ["Course", x.course_title], ["Mode", x.security_mode === "SECURE" ? "Secure CBT / kiosk" : "Standard web CBT"], ["Venue", x.venue === "LAB" ? "CBT laboratory" : "Remote"], ["Standing", eligibilityPill(x)],
+                ["Course", x.course_title], ["Mode", x.security_mode === "SECURE" ? "Secure CBT / kiosk" : x.proctoring === "CAMERA" ? "Web CBT, camera by consent" : "Standard web CBT"], ["Venue", x.venue === "LAB" ? "CBT laboratory" : "Remote"], ["Standing", eligibilityPill(x)],
               ]} />
               {x.security_mode === "SECURE" ? <div className="sub2 mt-1">This examination is sat in the University&rsquo;s secure examination environment{x.venue === "LAB" ? " at the CBT laboratory" : ""}; it does not open in an ordinary browser.</div> : null}
               {x.eligibility && x.attempt_status !== "IN_PROGRESS" && codeOf(x.eligibility) !== "CBT_EXAM_NOT_OPEN" ? <div className="sub2 mt-1">{textOf(x.eligibility)}</div> : null}
@@ -75,7 +78,9 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
                 <Note kind={x.outcome === "VOID" ? "bad" : x.passed ? "ok" : "info"} title={x.outcome === "VOID" ? "Result void" : `Result: ${pct1(x.percentage)} · grade ${x.grade ?? "—"} · ${x.passed ? "PASS" : "FAIL"}`}>
                   {x.score} of {x.max_marks} marks · pass mark {pct1(x.pass_mark)} · submitted {whenAt(x.submitted_at)}.
                 </Note>
-              ) : x.attempt_id && x.attempt_status !== "IN_PROGRESS" ? <div className="sub2 mt-1">Submitted {whenAt(x.submitted_at)}. Your result is published by the {x.office} office; you will be told.</div> : null}
+              ) : x.attempt_id && x.attempt_status !== "IN_PROGRESS" && x.score != null ? (
+                <Note kind={x.outcome === "VOID" ? "bad" : "info"} title={`Score: ${x.score} of ${x.max_marks} · ${pct1(x.percentage)}`}>Released on submission by this examination&rsquo;s rules. The result is final once the office publishes it.</Note>
+              ) : x.attempt_id && x.attempt_status !== "IN_PROGRESS" ? <div className="sub2 mt-1">Submitted {whenAt(x.submitted_at)}. Your result has been recorded and will be released according to University examination policy.</div> : null}
               <div className="row row--inline row--tight mt-2">
                 {canStart || canContinue ? <Btn kind="primary" disabled={busy} onClick={() => { setAgreed(false); setOpen(x); }}>{canContinue ? "CONTINUE EXAMINATION" : "VIEW INSTRUCTIONS & START"}</Btn> : <Btn kind="ghost" onClick={() => { setAgreed(false); setOpen(x); }}>View instructions</Btn>}
                 {codeOf(x.eligibility) === "GST_PAYMENT_REQUIRED" ? <LinkBtn kind="go" href="/student/gst">PAY GST FEE</LinkBtn> : null}
@@ -94,21 +99,25 @@ export function MyExams({ data, s }: { data: Data; s: Me }) {
               <Btn kind="go" disabled={busy || !agreed} onClick={() => { const x = open; setOpen(null); void start(x); }}>{busy ? "Opening…" : open.attempt_status === "IN_PROGRESS" ? "CONTINUE EXAM" : "START EXAM"}</Btn>
             ) : null}
           </span>}>
-          <p>You are about to begin your <b>{open.course_code}</b> computer-based examination, <b>{open.title}</b>.</p>
+          <p>You are about to begin your <b>{open.course_code}</b> computer-based {EXAM_TYPE_WORD[open.exam_type ?? "EXAMINATION"].toLowerCase()}, <b>{open.title}</b>.</p>
           <KvGrid cls="grid--3" pairs={[["Duration", `${open.duration_minutes} minutes`], ["Questions", String(open.questions)], ["Attempts allowed", String(open.attempt_limit)]]} />
           <p className="mt-2"><b>Once the examination starts:</b></p>
           <ul>
             <li>Do not leave the examination screen.</li>
             <li>Do not switch browser tabs.</li>
-            <li>Do not exit fullscreen mode.</li>
+            {open.fullscreen_required !== false ? <li>Do not exit fullscreen mode.</li> : null}
             <li>Do not attempt to open another window.</li>
             <li>Your activity is monitored.</li>
             <li>Violations are recorded. {open.violation_limit} {open.violation_limit === 1 ? "is" : "are"} allowed; beyond that {open.violation_action === "TERMINATE" ? "your examination is terminated" : open.violation_action === "SUBMIT" ? "your examination is submitted automatically" : "a final warning is issued and the record stands"} according to University policy.</li>
             <li>{open.partial_credit ? "On a multiple-select question each correct option you choose earns a share of the marks and each wrong one costs a share; a question never scores below zero." : "A multiple-select question earns its marks only when exactly the correct options are chosen."}</li>
+            {Number(open.negative_marks ?? 0) > 0 ? <li>Negative marking: a wrong answer costs {open.negative_marks} mark{Number(open.negative_marks) === 1 ? "" : "s"}; a question left unanswered costs nothing. Your total never falls below nought.</li> : null}
+            {open.allow_back === false ? <li>This paper moves forward only: once you move to the next question you cannot return to an earlier one.</li> : open.allow_review !== false ? <li>You may mark questions for review and return to them before you submit.</li> : null}
+            {open.proctoring === "CAMERA" ? <li>This examination uses your camera, with your consent asked first, to report face signals to the office. No video or picture is kept; the microphone is not used.</li> : null}
+            <li>{open.score_on_submit ? "Your score is shown when you submit; the result is final once the office publishes it." : "Your score is not shown when you submit; your result is released according to University examination policy."}</li>
             <li>Your answers are saved as you go. If your connection drops, remain on the screen while it reconnects; the clock keeps running on the server.</li>
             <li>The examination ends at the end of your time, or at the close of the window, whichever is earlier; whatever you have answered is submitted and scored.</li>
           </ul>
-          {open.instructions ? <Note kind="info" title={`From the ${open.office} office`}>{open.instructions}</Note> : null}
+          {open.instructions ? <Note kind="info" title={open.office === "EXAMS" ? "From the examining office" : `From the ${open.office} office`}>{open.instructions}</Note> : null}
           <label className="row row--inline row--tight mt-2"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the instructions and I am {s.surname} {s.otherNames} ({s.matricNo ?? s.admissionNo}).</label>
         </Modal>
       ) : null}

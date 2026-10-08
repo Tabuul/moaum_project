@@ -4,7 +4,7 @@
  * Option A … Option H columns, or from one Options column split on |, ; or a new line. The server resolves the answer
  * (letters, numbers or the option's text) and judges every row; this only reads the file.
  */
-export interface QuestionRow { row: number; topic: string; stem: string; options: string[]; answer: string; kind: string; difficulty: string; marks: string; explanation: string }
+export interface QuestionRow { row: number; topic: string; stem: string; options: string[]; answer: string; kind: string; difficulty: string; marks: string; explanation: string; courseCode: string; status: string }
 
 export const OPTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
 
@@ -18,6 +18,9 @@ export const QUESTION_FIELDS: { key: string; label: string; required?: boolean; 
   { key: "difficulty", label: "Difficulty", aliases: ["difficulty", "level", "hardness"] },
   { key: "marks", label: "Marks", aliases: ["marks", "mark", "score", "points", "weight"] },
   { key: "explanation", label: "Explanation", aliases: ["explanation", "rationale", "feedback", "solution", "note", "notes"] },
+  /* V364: the course the row is for (it must be the course being imported into) and whether the question goes in active */
+  { key: "courseCode", label: "Course code", aliases: ["course code", "coursecode", "course no", "course number"] },
+  { key: "status", label: "Status", aliases: ["status", "active"] },
 ];
 
 /** which column (0-based) feeds each field; a field absent from the file is absent from the map */
@@ -49,6 +52,6 @@ export function questionRowsOf(cells: string[][], headerIndex: number, mapping: 
   return cells.slice(headerIndex + 1).map((r, i) => {
     let options = OPTION_LETTERS.map((l) => g(r, `option${l}`)).filter(Boolean);
     if (!options.length && g(r, "options")) options = g(r, "options").split(/\s*[|;\n]\s*/).map((o) => o.trim()).filter(Boolean);
-    return { row: headerIndex + i + 2, topic: g(r, "topic"), stem: g(r, "stem"), options, answer: g(r, "answer"), kind: g(r, "kind"), difficulty: g(r, "difficulty"), marks: g(r, "marks"), explanation: g(r, "explanation") };
+    return { row: headerIndex + i + 2, topic: g(r, "topic"), stem: g(r, "stem"), options, answer: g(r, "answer"), kind: g(r, "kind"), difficulty: g(r, "difficulty"), marks: g(r, "marks"), explanation: g(r, "explanation"), courseCode: g(r, "courseCode"), status: g(r, "status") };
   }).filter((r) => r.stem || r.options.length || r.answer);
 }

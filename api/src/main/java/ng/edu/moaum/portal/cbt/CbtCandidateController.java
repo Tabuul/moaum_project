@@ -49,13 +49,18 @@ class CbtCandidateController {
         this.jdbc = jdbc;
     }
 
-    public record AnswerIn(@NotNull UUID q, List<Integer> a) {
+    /** an answer as the screen sends it: the options chosen (absent = unchanged), the screen's own count of its saves of the question, and the review mark (V364) */
+    public record AnswerIn(@NotNull UUID q, List<Integer> a, Long seq, Boolean flag) {
     }
 
     public record AnswersIn(@NotNull @Size(max = 500) List<@Valid AnswerIn> answers) {
     }
 
-    public record EventIn(@NotBlank @Size(max = 40) String kind, @Size(max = 500) String detail) {
+    /** what the screen saw, the question it was on and how long it lasted (V364) */
+    public record EventIn(@NotBlank @Size(max = 40) String kind, @Size(max = 500) String detail, Integer n, Long ms) {
+    }
+
+    public record CameraIn(@NotNull Boolean consent) {
     }
 
     public record EventsIn(@NotNull @Size(max = 100) List<@Valid EventIn> events) {
@@ -76,7 +81,7 @@ class CbtCandidateController {
             // fall through
         }
         throw new DomainRuleViolation("CBT_TOKEN_REQUIRED", "This examination screen does not hold the attempt.",
-                new DomainRuleViolation.Remedy("Open the examination again from GST CBT Examinations.", "You"));
+                new DomainRuleViolation.Remedy("Open the examination again from CBT Examinations.", "You"));
     }
 
     /** the attempt's examination, if the attempt is the signed-in student's */
@@ -145,37 +150,38 @@ class CbtCandidateController {
         UUID s = me(auth);
         UUID exam = own(id, s);
         Map<String, Object> a = jdbc.sql("SELECT * FROM assessment.cbt_touch(:a, :t)").param("a", id).param("t", token(token)).query().singleRow();
-        Map<String, Object> e = jdbc.sql("""
+        Map<String, Object> e = CbtExamController.plain(jdbc.sql("""
                 SELECT e.id, e.reference, e.title, e.course_code, c.title AS course_title, e.session, e.semester, e.duration_minutes, e.randomize_options, e.security_mode, e.venue,
-                       e.violation_limit, e.violation_action, e.instructions, e.partial_credit, assessment.cbt_live_state(e) AS live_state
+                       e.violation_limit, e.violation_action, e.instructions, e.partial_credit, assessment.cbt_live_state(e) AS live_state,
+                       e.exam_type, e.negative_marks, e.allow_back, e.allow_review, e.fullscreen_required, e.detectors, e.proctoring, e.office,
+                       coalesce(e.warn_at, 1) AS warn_at, coalesce(e.final_warn_at, e.violation_limit) AS final_warn_at, e.disconnect_minutes
                   FROM assessment.cbt_exam e JOIN catalogue.course c ON c.code = e.course_code WHERE e.id = :e
-                """).param("e", exam).query().singleRow();
-        Object[] idsObj = (Object[]) jdbcArray(a.get("question_ids"));
-        UUID[] ids = new UUID[idsObj.length];
-        for (int i = 0; i < idsObj.length; i++) ids[i] = idsObj[i] instanceof UUID u ? u : UUID.fromString(String.valueOf(idsObj[i]));
-        List<Map<String, Object>> questions = jdbc.sql("""
-                SELECT u.n, q.id, q.kind, q.stem, p.marks,
-                       (SELECT jsonb_agg(jsonb_build_object('i', o.i - 1, 'text', o.t)
-                                         ORDER BY CASE WHEN :rand THEN md5(:seed::text || q.id::text || o.i::text) ELSE lpad(o.i::text, 4, '0') END)
-                          FROM jsonb_array_elements_text(q.options) WITH ORDINALITY o(t, i))::text AS options
-                  FROM unnest(:ids::uuid[]) WITH ORDINALITY u(id, n)
-                  JOIN assessment.question q ON q.id = u.id
-                  JOIN assessment.cbt_pool(:e) p ON p.question_id = q.id
-                 ORDER BY u.n
-                """).param("rand", Boolean.TRUE.equals(e.get("randomize_options"))).param("seed", a.get("seed")).param("ids", ids).param("e", exam).query().listOfRows();
+                """).param("e", exam).query().singleRow());
+        // V364: the paper as it was drawn and frozen — the questions' own versions; the function selects neither key nor explanation
+        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options FROM assessment.cbt_candidate_paper(:a)")
+                .param("a", id).query().listOfRows();
         for (Map<String, Object> q : questions) {
-            // the options as a JSON array, never a database object; the key is not in the query at all
             q.put("options", mapper.readValue(String.valueOf(q.get("options")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
         }
         Map<String, Object> answers = new LinkedHashMap<>();
-        for (Map<String, Object> r : jdbc.sql("SELECT question_id, chosen FROM assessment.cbt_answer WHERE attempt_id = :a").param("a", id).query().listOfRows()) {
-            answers.put(String.valueOf(r.get("question_id")), jdbcArray(r.get("chosen")));
+        List<String> flagged = new java.util.ArrayList<>();
+        Map<String, Object> seqs = new LinkedHashMap<>();
+        for (Map<String, Object> r : jdbc.sql("SELECT question_id, chosen, flagged, seq FROM assessment.cbt_answer WHERE attempt_id = :a").param("a", id).query().listOfRows()) {
+            String q = String.valueOf(r.get("question_id"));
+            Object chosen = jdbcArray(r.get("chosen"));
+            if (chosen instanceof Object[] arr && arr.length > 0) answers.put(q, chosen);
+            if (Boolean.TRUE.equals(r.get("flagged"))) flagged.add(q);
+            if (r.get("seq") != null) seqs.put(q, r.get("seq"));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("attempt", attemptView(a));
         out.put("exam", e);
         out.put("questions", questions);
         out.put("answers", answers);
+        out.put("flagged", flagged);
+        out.put("seqs", seqs);
+        // V364: the candidate the screen names in its header
+        out.put("candidate", jdbc.sql("SELECT surname, other_names, coalesce(matric_no, admission_no) AS number FROM people.student WHERE id = :s").param("s", s).query().singleRow());
         out.put("now", OffsetDateTime.now());
         return out;
     }
@@ -200,6 +206,8 @@ class CbtCandidateController {
         v.put("answered", a.get("answered"));
         v.put("violations", a.get("violations"));
         v.put("max_marks", a.get("max_marks"));
+        v.put("camera_consent_at", a.get("camera_consent_at"));
+        v.put("camera_declined_at", a.get("camera_declined_at"));
         Object ids = jdbcArray(a.get("question_ids"));
         v.put("questions", ids instanceof Object[] arr ? arr.length : null);
         return v;
@@ -209,7 +217,15 @@ class CbtCandidateController {
     @Transactional
     Map<String, Object> answers(Authentication auth, @PathVariable UUID id, @RequestHeader(value = "X-Attempt-Token", required = false) String token, @Valid @RequestBody AnswersIn in) {
         own(id, me(auth));
-        List<Map<String, Object>> rows = in.answers().stream().map(x -> Map.<String, Object>of("q", x.q().toString(), "a", x.a() == null ? List.of() : x.a())).toList();
+        List<Map<String, Object>> rows = in.answers().stream().map(x -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("q", x.q().toString());
+            if (x.a() != null) m.put("a", x.a());
+            if (x.seq() != null) m.put("seq", x.seq());
+            if (x.flag() != null) m.put("flag", x.flag());
+            if (x.a() == null && x.flag() == null) m.put("a", List.of());
+            return m;
+        }).toList();
         Map<String, Object> a = jdbc.sql("SELECT * FROM assessment.cbt_save_answers(:a, :t, :j::jsonb)").param("a", id).param("t", token(token)).param("j", mapper.writeValueAsString(rows)).query().singleRow();
         return tick(a);
     }
@@ -241,11 +257,26 @@ class CbtCandidateController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("kind", x.kind().trim().toUpperCase());
             m.put("detail", x.detail());
+            if (x.n() != null) m.put("n", x.n());
+            if (x.ms() != null) m.put("ms", x.ms());
             return m;
         }).toList();
         String json = jdbc.sql("SELECT assessment.cbt_record_events(:a, :t, :j::jsonb, :ip)::text").param("a", id).param("t", token(token))
                 .param("j", mapper.writeValueAsString(rows)).param("ip", ip(), Types.VARCHAR).query(String.class).single();
         return mapper.readValue(json, new tools.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() { });
+    }
+
+    /** V364: a proctored examination's consent to the camera, or its refusal — recorded; without consent no answer is saved */
+    @PostMapping("/attempts/{id}/camera")
+    @Transactional
+    Map<String, Object> camera(Authentication auth, @PathVariable UUID id, @RequestHeader(value = "X-Attempt-Token", required = false) String token, @Valid @RequestBody CameraIn in) {
+        own(id, me(auth));
+        Map<String, Object> a = jdbc.sql("SELECT * FROM assessment.cbt_camera(:a, :t, :c, :ip)").param("a", id).param("t", token(token)).param("c", in.consent())
+                .param("ip", ip(), Types.VARCHAR).query().singleRow();
+        Map<String, Object> out = tick(a);
+        out.put("cameraConsentAt", a.get("camera_consent_at"));
+        out.put("cameraDeclinedAt", a.get("camera_declined_at"));
+        return out;
     }
 
     @PostMapping("/attempts/{id}/submit")
@@ -262,12 +293,14 @@ class CbtCandidateController {
         UUID exam = own(id, me(auth));
         Map<String, Object> r = jdbc.sql("""
                 SELECT e.results_state, e.results_published_at, e.title, e.course_code, e.pass_mark, a.status, a.submitted_at, a.answered, cardinality(a.question_ids) AS questions,
-                       a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome
+                       a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, e.score_on_submit
                   FROM assessment.cbt_attempt a JOIN assessment.cbt_exam e ON e.id = a.exam_id WHERE a.id = :a AND e.id = :e
                 """).param("a", id).param("e", exam).query().singleRow();
-        if (!"PUBLISHED".equals(r.get("results_state"))) {
+        // V364: the score is the candidate's once the office publishes it — or on submission, where the examination's release policy says so
+        boolean released = "PUBLISHED".equals(r.get("results_state")) || (Boolean.TRUE.equals(r.get("score_on_submit")) && !"IN_PROGRESS".equals(r.get("status")));
+        if (!released) {
             throw new DomainRuleViolation("CBT_RESULT_NOT_PUBLISHED", "The result of this examination is not yet published.",
-                    new DomainRuleViolation.Remedy("The office reviews, approves and publishes the results; you are told when they are out.", "GST Office"));
+                    new DomainRuleViolation.Remedy("The office reviews, approves and publishes the results; you are told when they are out.", "The examining office"));
         }
         return r;
     }

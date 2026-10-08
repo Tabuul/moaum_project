@@ -1,10 +1,13 @@
 "use client";
 
-/** tCbtBank — the CBT question bank (V077, extended by V322): pick a course, see its questions and the blueprint (how many there are by
- *  topic and difficulty), author in three kinds — one correct option, true/false, several correct options — with an explanation for the
- *  marker, edit, retire and restore. A question is retired, not deleted, so a paper that used it can still be explained; one that has
- *  been sat keeps its options and key. */
+/** tCbtBank — the CBT question bank (V077, extended by V322 and V364): pick a course, see its questions and the blueprint (how many there
+ *  are by topic and difficulty), author in three kinds — one correct option, true/false, several correct options — with an explanation for
+ *  the marker, search on the server, edit, retire, archive, read a question's history, export. A question is never deleted; from V364 every
+ *  change is a new version, and each attempt keeps the version it was examined on — so a question is corrected after it is sat, but not
+ *  while an examination drawing it is open. */
 import { useState } from "react";
+import { useQueryNav } from "@/lib/query-nav";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -16,7 +19,8 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { QuestionImport } from "@/components/cbt/QuestionImport";
 
 export interface Course { code: string; title: string; questions: number; total?: number; general_office?: string | null; kind?: string }
-export interface Question { id: string; course_code: string; topic: string | null; stem: string; options: string[]; answer: number; answers: number[] | null; kind: string; difficulty: string; marks: number; active: boolean; explanation?: string | null; authored_by?: string | null; authored_at?: string; updated_at?: string | null; on_papers?: number }
+export interface Question { id: string; course_code: string; topic: string | null; stem: string; options: string[]; answer: number; answers: number[] | null; kind: string; difficulty: string; marks: number; active: boolean; explanation?: string | null; authored_by?: string | null; authored_at?: string; updated_at?: string | null; on_papers?: number; version?: number; archived_at?: string | null; sat?: number }
+interface Version { version: number; kind: string; stem: string; options: string[]; answers: number[]; explanation: string | null; marks: number; topic: string | null; difficulty: string; created_at: string; created_by: string | null; attempts: number }
 export interface BlueprintRow { topic: string; easy: number; medium: number; hard: number; total: number; marks?: number }
 
 const DIFF: Record<string, ["ok" | "info" | "bad" | "grey", string]> = { EASY: ["ok", "Easy"], MEDIUM: ["info", "Medium"], HARD: ["bad", "Hard"] };
@@ -24,8 +28,29 @@ const KIND_WORD: Record<string, string> = { MCQ: "Multiple choice", TRUE_FALSE: 
 interface Draft { topic: string; stem: string; kind: string; options: string[]; answers: number[]; difficulty: string; marks: string; explanation: string }
 const EMPTY: Draft = { topic: "", stem: "", kind: "MCQ", options: ["", "", "", ""], answers: [0], difficulty: "MEDIUM", marks: "1", explanation: "" };
 
-export function QuestionBank({ courses, course, questions, blueprint, actingOffice, base = "/exams/question-bank" }: { courses: Course[]; course: string | null; questions: Question[]; blueprint: BlueprintRow[]; actingOffice: string | null; base?: string }) {
+export function QuestionBank({ courses, course, questions, blueprint, actingOffice, base = "/exams/question-bank", search = "", status = "" }: { courses: Course[]; course: string | null; questions: Question[]; blueprint: BlueprintRow[]; actingOffice: string | null; base?: string; search?: string; status?: string }) {
   const router = useRouter();
+  const go = useQueryNav();
+  const [text, setText] = useState(search);
+  const [history, setHistory] = useState<{ q: Question; versions: Version[] | null; problem: Problem | null } | null>(null);
+  const where = (patch: Record<string, string>) => {
+    const p = new URLSearchParams();
+    const all = { course: course ?? "", q: search, status, ...patch };
+    for (const [k, v] of Object.entries(all)) if (v) p.set(k, v);
+    return `${base}?${p.toString()}`;
+  };
+  async function openHistory(x: Question) {
+    setHistory({ q: x, versions: null, problem: null });
+    const r = await fetch(`/api/bff/api/v1/cbt/questions/${x.id}/versions`);
+    const j = await r.json().catch(() => null);
+    setHistory({ q: x, versions: r.ok ? (j as Version[]) : null, problem: r.ok ? null : ((j as Problem) ?? { status: r.status, title: r.statusText }) });
+  }
+  async function exportBank() {
+    const head = ["Course Code", "Question Type", "Question", "Option A", "Option B", "Option C", "Option D", "Option E", "Correct Answer", "Marks", "Topic", "Difficulty", "Explanation", "Status", "Version"];
+    const body = questions.map((x) => [x.course_code, x.kind, x.stem, ...[0, 1, 2, 3, 4].map((i) => x.options[i] ?? ""), (x.answers ?? [x.answer]).map((i) => String.fromCharCode(65 + i)).join(", "),
+      x.marks, x.topic ?? "", x.difficulty, x.explanation ?? "", x.archived_at ? "ARCHIVED" : x.active ? "ACTIVE" : "INACTIVE", x.version ?? 1]);
+    downloadBlob(await brandedXlsx(`${course} question bank`, head, body, { sheetName: "Questions", serial: docSerial("QBK"), sub: `${questions.length} questions · keys included: keep this file within the office`, noSerialColumn: true }), `${(course ?? "bank").replace(/\s+/g, "-")}-question-bank.xlsx`);
+  }
   const may = ["lecturer", "hod", "exams", "dean", "gst", "eps", "super"].includes(actingOffice ?? "");
   const [q, setQ] = useState<Draft>({ ...EMPTY, options: [...EMPTY.options] });
   const [editing, setEditing] = useState<Question | null>(null);
@@ -61,7 +86,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
   const form = (d: Draft, set: (x: Draft) => void, prefix: string, locked?: boolean) => (
     <>
       <div className="grid grid--3">
-        <Field id={`${prefix}-kind`} label="Kind" hint={locked ? "Fixed: this question has been sat" : undefined}><select id={`${prefix}-kind`} className="ctl" disabled={locked} value={d.kind} onChange={(ev) => setKind(d, set, ev.target.value)}>{Object.entries(KIND_WORD).map(([k, w]) => <option key={k} value={k}>{w}</option>)}</select></Field>
+        <Field id={`${prefix}-kind`} label="Kind" hint={locked ? "Fixed" : undefined}><select id={`${prefix}-kind`} className="ctl" disabled={locked} value={d.kind} onChange={(ev) => setKind(d, set, ev.target.value)}>{Object.entries(KIND_WORD).map(([k, w]) => <option key={k} value={k}>{w}</option>)}</select></Field>
         <Field id={`${prefix}-topic`} label="Topic" hint="Optional"><input id={`${prefix}-topic`} className="ctl" value={d.topic} onChange={(ev) => set({ ...d, topic: ev.target.value })} /></Field>
         <Field id={`${prefix}-diff`} label="Difficulty"><select id={`${prefix}-diff`} className="ctl" value={d.difficulty} onChange={(ev) => set({ ...d, difficulty: ev.target.value })}>{["EASY", "MEDIUM", "HARD"].map((x) => <option key={x} value={x}>{x.charAt(0) + x.slice(1).toLowerCase()}</option>)}</select></Field>
       </div>
@@ -132,17 +157,26 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         ) : <PBody><div className="sub2">No questions yet — author the first below.</div></PBody>}
       </Panel>
 
-      <Panel title="Questions">
+      <Panel title="Questions" right={<span className="row row--inline row--tight">
+          <form className="row row--inline row--tight" onSubmit={(ev) => { ev.preventDefault(); go(where({ q: text.trim() })); }}>
+            <input className="ctl" aria-label="Search the bank" placeholder="Search the text or topic" value={text} onChange={(ev) => setText(ev.target.value)} />
+            <select className="ctl" aria-label="Status" value={status} onChange={(ev) => go(where({ status: ev.target.value }))}><option value="">Active and retired</option><option value="ACTIVE">Active</option><option value="INACTIVE">Retired</option><option value="ARCHIVED">Archived</option><option value="ALL">Everything</option></select>
+            <Btn kind="secondary" size="sm" type="submit">Search</Btn>
+          </form>
+          {questions.length ? <Btn kind="ghost" size="sm" onClick={() => void exportBank()}>Export</Btn> : null}
+        </span>}>
         {questions.length ? (
           <DTable pageSize={25} cols={["Question", "Kind|mid", "Topic|mid", "Difficulty|mid", "Marks|num", "Action|num"]} rows={questions.map((x) => [
-            <span key="s">{x.stem}<div className="sub2">Key: {keyOf(x)}{x.on_papers ? ` · on ${x.on_papers} paper${x.on_papers === 1 ? "" : "s"}` : ""}{x.authored_by ? ` · ${x.authored_by}` : ""}</div></span>,
+            <span key="s">{x.stem}<div className="sub2">Key: {keyOf(x)}{x.on_papers ? ` · on ${x.on_papers} paper${x.on_papers === 1 ? "" : "s"}` : ""}{x.sat ? ` · sat ${x.sat} time${x.sat === 1 ? "" : "s"}` : ""}{(x.version ?? 1) > 1 ? ` · version ${x.version}` : ""}{x.authored_by ? ` · ${x.authored_by}` : ""}</div></span>,
             <span className="sub2" key="k">{KIND_WORD[x.kind] ?? x.kind}</span>,
             <span className="sub2" key="t">{x.topic ?? "—"}</span>,
             <Pil kind={DIFF[x.difficulty]?.[0] ?? "grey"} key="d">{DIFF[x.difficulty]?.[1] ?? x.difficulty}</Pil>,
             <span className="tnum" key="m">{x.marks}</span>,
-            <span key="ac" className="row row--inline row--tight">{x.active ? <Pil kind="ok" key="p">Active</Pil> : <Pil kind="grey" key="p">Retired</Pil>}
-              {may ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setEditing(x); setE({ topic: x.topic ?? "", stem: x.stem, kind: x.kind ?? "MCQ", options: [...x.options], answers: x.answers ?? [x.answer], difficulty: x.difficulty, marks: String(x.marks), explanation: x.explanation ?? "" }); }}>Edit</Btn> : null}
-              {may ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void send(`/questions/${x.id}/active`, "POST", { active: !x.active }, `${x.active ? "Retire" : "Restore"} a question in ${course}`)}>{x.active ? "Retire" : "Restore"}</Btn> : null}</span>,
+            <span key="ac" className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>{x.archived_at ? <Pil kind="grey" key="p">Archived</Pil> : x.active ? <Pil kind="ok" key="p">Active</Pil> : <Pil kind="grey" key="p">Retired</Pil>}
+              {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setEditing(x); setE({ topic: x.topic ?? "", stem: x.stem, kind: x.kind ?? "MCQ", options: [...x.options], answers: x.answers ?? [x.answer], difficulty: x.difficulty, marks: String(x.marks), explanation: x.explanation ?? "" }); }}>Edit</Btn> : null}
+              {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void send(`/questions/${x.id}/active`, "POST", { active: !x.active }, `${x.active ? "Retire" : "Restore"} a question in ${course}`)}>{x.active ? "Retire" : "Restore"}</Btn> : null}
+              {may ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void send(`/questions/${x.id}/archive`, "POST", { archived: !x.archived_at }, `${x.archived_at ? "Restore from the archive" : "Archive"} a question in ${course}`)}>{x.archived_at ? "Unarchive" : "Archive"}</Btn> : null}
+              <Btn kind="ghost" size="sm" onClick={() => void openHistory(x)}>History</Btn></span>,
           ])} texts={questions.map((x) => `${x.stem} ${x.topic ?? ""} ${x.difficulty} ${x.kind}`)} />
         ) : <PBody><div className="sub2">No question in this course&rsquo;s bank yet.</div></PBody>}
       </Panel>
@@ -158,10 +192,25 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
       ) : null}
 
       {editing ? (
-        <Modal title="Edit the question" sub={editing.on_papers ? `On ${editing.on_papers} paper${editing.on_papers === 1 ? "" : "s"}` : course} wide onClose={() => setEditing(null)}
+        <Modal title="Edit the question" sub={editing.sat ? `Sat ${editing.sat} time${editing.sat === 1 ? "" : "s"} · version ${editing.version ?? 1}` : course} wide onClose={() => setEditing(null)}
           foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setEditing(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !valid(e)} onClick={async () => { const j = await send(`/questions/${editing.id}`, "PUT", body(e), `Edit a question in ${course}`); if (j) setEditing(null); }}>Save</Btn></span>}>
-          {form(e, setE, "e", !!editing.on_papers)}
-          {editing.on_papers ? <div className="sub2">A question on a paper keeps its options and key, so every candidate who sat it is marked the same way; the wording, topic, difficulty, marks and explanation may change. To correct the key, retire this question and author a corrected one, or amend the affected results with a reason.</div> : null}
+          {form(e, setE, "e")}
+          {editing.sat ? <div className="sub2">This question has been sat. Saving makes version {(editing.version ?? 1) + 1}; every candidate who sat version {editing.version ?? 1} keeps it — their paper, their answers and their marks do not change. A change that should alter results already given is made by amending those results with a reason. The edit is refused while an examination drawing the question is open.</div> : null}
+        </Modal>
+      ) : null}
+      {history ? (
+        <Modal title="The question's history" sub={`${course} · now version ${history.q.version ?? 1}`} wide onClose={() => setHistory(null)} foot={<Btn kind="ghost" onClick={() => setHistory(null)}>Close</Btn>}>
+          {history.problem ? <ProblemNotice problem={history.problem} /> : !history.versions ? <div className="sub2">Loading…</div> : (
+            <DTable cols={["Version|mid", "Question", "Key", "Marks|num", "Examined|num", "Made"]} rows={history.versions.map((v) => [
+              <b key="v" className="tnum">{v.version}</b>,
+              <span key="s">{v.stem}<div className="sub2">{v.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join(" · ")}</div></span>,
+              <span key="k" className="tnum">{v.answers.map((i) => String.fromCharCode(65 + i)).join(", ")}</span>,
+              <span key="m" className="tnum">{v.marks}</span>,
+              <span key="a" className="tnum">{v.attempts}</span>,
+              <span key="c" className="sub2">{new Date(v.created_at).toLocaleString("en-GB")}{v.created_by ? ` · ${v.created_by}` : ""}</span>,
+            ])} />
+          )}
+          <div className="sub2 mt-2">Each attempt is marked on the version it was drawn; &ldquo;Examined&rdquo; counts the attempts that drew each version.</div>
         </Modal>
       ) : null}
     </>

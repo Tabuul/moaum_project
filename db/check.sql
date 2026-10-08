@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 207
+\set EXPECTED 208
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6687,6 +6687,90 @@ BEGIN
     PERFORM pg_temp.assert('V363: sign-in help from a person not signed in is a Login Issues ticket naming no account, routed; a name is letters, an option one offered; three open per email',
         v_kind = 'PUBLIC' AND v_self AND v_dept IS NULL AND v_cat = 'LOGIN' AND v_number = 'MOAUM/ZZ/99/0001' AND v_routed AND bad_name AND bad_option AND fourth AND v_open = 3,
         format('kind=%s self=%s dept=%s cat=%s number=%s routed=%s bad_name=%s bad_option=%s fourth=%s open=%s', v_kind, v_self, v_dept, v_cat, v_number, v_routed, bad_name, bad_option, fourth, v_open));
+END $$;
+
+-- ── 208. V364: the CBT engine for every CBT-enabled course — a course not allowed CBT is refused, a General Studies course starts allowed; a blueprint
+--            the pool cannot satisfy is refused with what is short, and the draw follows it; a pool too small says so; the paper is frozen, so an edit of
+--            the bank changes no attempt; a late save never overwrites a newer one; a cleared answer is kept; negative marking never below nought; the
+--            warning waits for its threshold; an attempt out of contact past the limit is submitted with what was saved ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); off uuid := gen_random_uuid(); off2 uuid := gen_random_uuid();
+        ex assessment.cbt_exam; ex2 assessment.cbt_exam; a assessment.cbt_attempt; reg uuid; qs uuid[] := ARRAY[]::uuid[]; i int;
+        v_gst_default boolean; r_not_enabled text; r_short text; r_pool text; v_easy int; v_hard int; v_ver int; v_frozen int; v_kept int[];
+        v_cleared int; ev jsonb; v_level text; v_status text; v_score numeric; v_max int; v_reason text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9993/9994', date '9993-10-01', date '9994-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 993', 'Check General Studies V364', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'ZZC 993', 'Check departmental course V364', 2, 1, 100, p.dept_code, 'Core', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
+        SELECT cbt_enabled INTO v_gst_default FROM catalogue.course WHERE code = 'GST 993';
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 993', 'C00023', 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 993', '9993/9994', 1), (off2, 'ZZC 993', '9993/9994', 1);
+        BEGIN
+            ex2 := assessment.cbt_new_exam('EXAMS', off2, 'Not a CBT course', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_not_enabled := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/93/000993', 'MOAUM/CHK/93/993', 'ZZCHECKV364', 'Invented', 'C00023', 'UTME', '9993/9994', 100, 100, 'ACTIVE', now());
+        FOR i IN 1..6 LOOP
+            qs := qs || gen_random_uuid();
+            INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks, difficulty)
+            VALUES (qs[i], 'GST 993', 'V364 question ' || i, '["a","b","c","d"]', 0, 'MCQ', 1, CASE WHEN i <= 3 THEN 'EASY' ELSE 'HARD' END);
+        END LOOP;
+        ex := assessment.cbt_new_exam('GST', off, 'V364 check', NULL, 30, 4, 'RANDOM', true, true, 50, 1, 'STANDARD', 'REMOTE', 3, 'WARN', 'CONTINUE', now() - interval '1 minute', now() + interval '2 hours');
+        BEGIN
+            PERFORM assessment.cbt_set_blueprint(ex.id, 'DIFFICULTY', '[{"value": "HARD", "questions": 4}]');
+        EXCEPTION WHEN check_violation THEN r_short := SQLERRM; END;
+        PERFORM assessment.cbt_set_blueprint(ex.id, 'DIFFICULTY', '[{"value": "EASY", "questions": 1}, {"value": "HARD", "questions": 3}]');
+        PERFORM assessment.cbt_configure(ex.id, '{"negativeMarks": 0.5, "warnAt": 2, "finalWarnAt": 3, "disconnectMinutes": 2}');
+        ex2 := assessment.cbt_new_exam('GST', off, 'V364 pool', NULL, 30, 10, 'RANDOM', true, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        r_pool := assessment.cbt_paper_ready(ex2.id);
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        reg := registration.student_draft(st, '9993/9994', 1);
+        PERFORM registration.student_choose(reg, ARRAY[off]);
+        UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        a := assessment.cbt_start(ex.id, st, '10.0.0.9', 'check');
+        SELECT count(*) FILTER (WHERE q.difficulty = 'EASY'), count(*) FILTER (WHERE q.difficulty = 'HARD') INTO v_easy, v_hard
+          FROM unnest(a.question_ids) u(id) JOIN assessment.question q ON q.id = u.id;
+        -- the bank changes under the attempt: the first question's key is changed (a new version); the attempt keeps the version it drew
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        UPDATE assessment.question SET answer = 1, answers = ARRAY[1] WHERE id = a.question_ids[1];
+        SELECT version INTO v_ver FROM assessment.question WHERE id = a.question_ids[1];
+        SELECT a2.question_versions[1] INTO v_frozen FROM assessment.cbt_attempt a2 WHERE a2.id = a.id;
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        -- answers: the first right on the version drawn, the second wrong; a late save of the first (a lower sequence) changes nothing; the third chosen then cleared
+        PERFORM assessment.cbt_save_answers(a.id, a.token, jsonb_build_array(jsonb_build_object('q', a.question_ids[1], 'a', jsonb_build_array(0), 'seq', 5),
+                                                                             jsonb_build_object('q', a.question_ids[2], 'a', jsonb_build_array(1), 'seq', 1),
+                                                                             jsonb_build_object('q', a.question_ids[3], 'a', jsonb_build_array(2), 'seq', 1)));
+        PERFORM assessment.cbt_save_answers(a.id, a.token, jsonb_build_array(jsonb_build_object('q', a.question_ids[1], 'a', jsonb_build_array(3), 'seq', 3),
+                                                                             jsonb_build_object('q', a.question_ids[3], 'a', '[]'::jsonb, 'seq', 2)));
+        SELECT chosen INTO v_kept FROM assessment.cbt_answer WHERE attempt_id = a.id AND question_id = a.question_ids[1];
+        SELECT count(*) INTO v_cleared FROM assessment.cbt_answer WHERE attempt_id = a.id AND question_id = a.question_ids[3] AND cardinality(chosen) = 0;
+        -- one counted violation: recorded, below the warning threshold of two
+        ev := assessment.cbt_record_events(a.id, a.token, '[{"kind": "TAB_SWITCH", "n": 2, "ms": 4000}]'::jsonb, '10.0.0.9');
+        v_level := ev ->> 'level';
+        -- three minutes out of contact, past the two allowed: the clock submits it with what was saved
+        UPDATE assessment.cbt_attempt SET last_activity_at = now() - interval '3 minutes' WHERE id = a.id;
+        PERFORM assessment.cbt_sweep();
+        SELECT status, score, max_marks, finished_reason INTO v_status, v_score, v_max, v_reason FROM assessment.cbt_attempt WHERE id = a.id;
+        RAISE EXCEPTION 'the V364 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V364: CBT only on a CBT-enabled course (GST starts allowed); a blueprint the pool cannot satisfy is refused and the draw follows it; the paper is frozen; a late save never wins; negative marking floored; thresholds; out of contact submitted',
+        v_gst_default AND r_not_enabled = 'CBT_COURSE_NOT_ENABLED' AND r_short LIKE 'CBT_BLUEPRINT_SHORT: %Hard needs 4, the pool holds 3%'
+        AND r_pool LIKE 'CBT_POOL_TOO_SMALL: Insufficient eligible questions. This examination requires 10 questions but only 6 valid questions are available.'
+        AND v_easy = 1 AND v_hard = 3 AND v_ver = 2 AND v_frozen = 1 AND v_kept = ARRAY[0] AND v_cleared = 1 AND v_level IS NULL
+        AND v_status = 'SUBMITTED' AND v_score = 0.5 AND v_max = 4 AND v_reason LIKE 'no contact for 2 minutes%',
+        format('gst=%s enabled=%s short=%s pool=%s easy=%s hard=%s ver=%s frozen=%s kept=%s cleared=%s level=%s status=%s score=%s/%s reason=%s',
+               v_gst_default, r_not_enabled, r_short, r_pool, v_easy, v_hard, v_ver, v_frozen, v_kept, v_cleared, v_level, v_status, v_score, v_max, v_reason));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
