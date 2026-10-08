@@ -238,5 +238,5 @@ export const RECORD_VIEWS: [string, string, string][] = [
   ["exams", "Examinations", "Who sits what, where and when"],
   ["allocation", "Course assignment", "Who teaches what"],
   ["clearance", "Clearance", "Who is held, and by which unit"],
-  ["attendance", "Attendance", "Who is eligible to sit"],
+  ["attendance", "Attendance", "Who attended, as the lecturers marked it"],
 ];

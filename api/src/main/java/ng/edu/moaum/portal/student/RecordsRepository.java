@@ -75,11 +75,11 @@ class RecordsRepository {
         return rows("""
                 SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
                        s.surname || ', ' || s.other_names AS "name", s.current_level AS "level",
-                       d.due AS "due", coalesce(pd.paid, 0) AS "paid", greatest(d.due - coalesce(pd.paid, 0), 0) AS "balance",
-                       CASE WHEN d.due = 0 THEN 'NO_CHARGE' WHEN coalesce(pd.paid, 0) >= d.due THEN 'PAID'
+                       ch.due AS "due", coalesce(pd.paid, 0) AS "paid", greatest(ch.due - coalesce(pd.paid, 0), 0) AS "balance",
+                       CASE WHEN ch.due = 0 THEN 'NO_CHARGE' WHEN coalesce(pd.paid, 0) >= ch.due THEN 'PAID'
                             WHEN coalesce(pd.paid, 0) > 0 THEN 'PART_PAID' ELSE 'UNPAID' END AS "state"
                 """ + STUDENT_FROM + """
-                  CROSS JOIN LATERAL (SELECT coalesce(sum(c.amount), 0) AS due FROM finance.charges(s.id, CAST(:session AS text)) c) d
+                  CROSS JOIN LATERAL (SELECT coalesce(sum(c.amount), 0) AS due FROM finance.charges(s.id, CAST(:session AS text)) c) ch
                   LEFT JOIN LATERAL (SELECT sum(r.amount) AS paid FROM finance.payment_reference r
                                       WHERE r.student_id = s.id AND r.session = CAST(:session AS text) AND r.confirmed_at IS NOT NULL
                                         AND r.purpose LIKE 'School fees%') pd ON true

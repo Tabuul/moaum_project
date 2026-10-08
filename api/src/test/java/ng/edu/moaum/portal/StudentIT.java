@@ -185,7 +185,7 @@ class StudentIT {
     }
 
     @Test
-    void theRecordsViewsAnswerInScopeAndTwoOfThemSayWhyTheyAreEmpty() {
+    void theRecordsViewsAnswerInScopeAndTheFeesOnlyToTheOfficesThatReadThem() {
         ResponseEntity<Map> students = get("/api/v1/student/records/students?fac=" + faculty + "&dept=" + department
                 + "&session=" + SESSION);
         assertThat(students.getStatusCode().value()).as(String.valueOf(students.getBody())).isEqualTo(200);
@@ -194,10 +194,19 @@ class StudentIT {
         assertThat((Integer) students.getBody().get("total")).isGreaterThanOrEqualTo(1);
         assertThat(students.getBody().get("notServed")).isNull();
 
+        // V360: the fees are served — the session's charge and the confirmed payments, each student's — to the offices that
+        // read them; a lecturer reading the record is refused them
         ResponseEntity<Map> fees = get("/api/v1/student/records/fees?fac=" + faculty + "&session=" + SESSION);
-        assertThat(fees.getStatusCode().value()).isEqualTo(200);
-        assertThat((List<?>) fees.getBody().get("rows")).isEmpty();
-        assertThat(String.valueOf(fees.getBody().get("notServed"))).contains("Bursary");
+        assertThat(fees.getStatusCode().value()).as(String.valueOf(fees.getBody())).isEqualTo(200);
+        assertThat(fees.getBody().get("notServed")).isNull();
+        assertThat(String.valueOf(fees.getBody().get("note"))).contains("Bursary");
+        assertThat((List<Map<String, Object>>) fees.getBody().get("rows")).allSatisfy(r -> assertThat(r).containsKeys("due", "paid", "balance", "state"));
+        ResponseEntity<Map> lecturerFees = client.get().uri("/api/v1/student/records/fees?fac=" + faculty + "&session=" + SESSION)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestTokens.token(UUID.randomUUID(), List.of("lecturer"))).retrieve().toEntity(Map.class);
+        assertThat(lecturerFees.getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> attendance = get("/api/v1/student/records/attendance?fac=" + faculty + "&session=" + SESSION);
+        assertThat(attendance.getStatusCode().value()).as(String.valueOf(attendance.getBody())).isEqualTo(200);
+        assertThat(attendance.getBody().get("notServed")).isNull();
 
         for (String view : List.of("registration", "results", "exams", "allocation", "clearance", "attendance")) {
             ResponseEntity<Map> r = get("/api/v1/student/records/" + view + "?fac=" + faculty + "&session=" + SESSION);
