@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 214
+\set EXPECTED 215
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7280,6 +7280,80 @@ BEGIN
         format('preview=%s/%s/%s | loaded gst=%s ent=%s/%s mth=%s/%s | upload move=%s/%s | told gst=%s eps=%s | claim=%s again=%s not-yours=%s asked=%s no-reason=%s | accepted=%s now=%s move=%s/%s | lapse=%s | own=%s',
                c_gst, c_ent, c_mth, a_gst, a_ent_kind, a_ent, a_mth_kind, a_mth, up_cause, up_conf IS NOT NULL, n_gst_notice, n_eps_notice,
                r_claim, r_again, r_notyours, n_ask, r_noreason, t.state, a_after, tr_cause, tr_conf IS NOT NULL, t2_state, own_conf IS NOT NULL));
+END $$;
+
+-- ── V370: the structure upload reads EPS whole; a holder with no email is told by text; a request nobody answers is chased ──
+DO $$
+DECLARE ict uuid := gen_random_uuid(); g_holder uuid := gen_random_uuid(); e_holder uuid := gen_random_uuid(); a_holder uuid := gen_random_uuid();
+        pa text := 'C00023'; rows jsonb; pv jsonb; c_bus text; o_bus text; c_gst text;
+        k_bus text; g_bus text; k_ele text; k_gst text; g_gst text; t catalogue.general_transfer; n_sms int;
+        ch1 record; ch2 record; ch3 record; rem timestamptz; esc timestamptz; n_acad int; r_set text; r_order text; v_set catalogue.general_transfer_setting;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', ict::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        -- the GST office's holder has an email; the EPS office's only a phone; the Academic Office's an email
+        INSERT INTO iam.person (id, surname, given_names, staff_number, email, phone) VALUES
+            (g_holder, 'CHECKREACH', 'General Studies', 'P-V370-G', 'zz.check215.gst@example.com', NULL),
+            (e_holder, 'CHECKREACH', 'Entrepreneurship', 'P-V370-E', NULL, '08030370215'),
+            (a_holder, 'CHECKREACH', 'Academic', 'P-V370-A', 'zz.check215.academic@example.com', NULL),
+            (ict, 'CHECKREACH', 'ICT', 'P-V370-I', NULL, NULL);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), g_holder, 'gst', 'institution', NULL, 'CHECK V370', ict, current_date - 10),
+               (gen_random_uuid(), e_holder, 'eps', 'institution', NULL, 'CHECK V370', ict, current_date - 10),
+               (gen_random_uuid(), a_holder, 'academic', 'institution', NULL, 'CHECK V370', ict, current_date - 10);
+        -- the GST office's own course
+        PERFORM set_config('moaum.actor_id', g_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 984', 'Check Communication Skills', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        -- the structure: status EPS on a new course, E on another, EPS on the GST office's course
+        rows := jsonb_build_array(
+            jsonb_build_object('code', 'BUS 981', 'title', 'Check Business Ideas', 'units', '2', 'status', 'EPS', 'level', '200', 'semester', '1'),
+            jsonb_build_object('code', 'BUS 982', 'title', 'Check Marketing', 'units', '2', 'status', 'E', 'level', '200', 'semester', '1'),
+            jsonb_build_object('code', 'GST 984', 'title', 'Check Communication Skills', 'units', '2', 'status', 'EPS', 'level', '100', 'semester', '1'));
+        pv := catalogue.structure_placements(jsonb_build_array(jsonb_build_object('programme', pa, 'rows', rows)));
+        SELECT x->>'change', x->>'afterOffice' INTO c_bus, o_bus FROM jsonb_array_elements(pv->'placements') x WHERE x->>'code' = 'BUS 981';
+        SELECT x->>'change' INTO c_gst FROM jsonb_array_elements(pv->'placements') x WHERE x->>'code' = 'GST 984';
+        PERFORM set_config('moaum.actor_id', ict::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM catalogue.import_courses(pa, rows, 'CCMAS');
+        SELECT kind, general_office INTO k_bus, g_bus FROM catalogue.course WHERE code = 'BUS 981';
+        SELECT kind INTO k_ele FROM catalogue.course WHERE code = 'BUS 982';
+        SELECT kind, general_office INTO k_gst, g_gst FROM catalogue.course WHERE code = 'GST 984';
+        -- the GST office asks for BUS 981: the EPS office's holder, with no email, is told by text
+        PERFORM set_config('moaum.actor_id', g_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        t := catalogue.request_general_transfer('BUS 981', 'GST', 'the GST office teaches it');
+        SELECT count(*) INTO n_sms FROM platform.notice WHERE channel = 'SMS' AND recipient = '08030370215' AND body LIKE 'MOAUM: The GST office asks for BUS 981%';
+        -- not answered: reminded once after the reminder days, then put to the Academic Office after the escalation days
+        UPDATE catalogue.general_transfer SET requested_at = now() - interval '4 days' WHERE id = t.id;
+        SELECT * INTO ch1 FROM catalogue.chase_general_transfers();
+        SELECT * INTO ch2 FROM catalogue.chase_general_transfers();
+        UPDATE catalogue.general_transfer SET requested_at = now() - interval '8 days' WHERE id = t.id;
+        SELECT * INTO ch3 FROM catalogue.chase_general_transfers();
+        SELECT reminded_at, escalated_at INTO rem, esc FROM catalogue.general_transfer WHERE id = t.id;
+        SELECT count(*) INTO n_acad FROM platform.notice WHERE recipient = 'zz.check215.academic@example.com' AND subject LIKE '%waits for your decision: BUS 981';
+        -- the days are the Academic Office's to set, and the escalation comes after the reminder
+        BEGIN PERFORM catalogue.set_general_transfer_setting(2, 5); r_set := 'SET';
+        EXCEPTION WHEN check_violation THEN r_set := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', a_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM catalogue.set_general_transfer_setting(5, 5); r_order := 'SET';
+        EXCEPTION WHEN check_violation THEN r_order := split_part(SQLERRM, ':', 1); END;
+        v_set := catalogue.set_general_transfer_setting(2, 5);
+        RAISE EXCEPTION 'the V370 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V370: a structure row of status EPS files a new course with the EPS office (previewed so) and E stays Elective; the GST office''s course marked EPS stays the GST office''s (previewed so); a holder with no email is told by text; an unanswered request is reminded once, then put to the Academic Office; the Academic Office sets the days',
+        coalesce(c_bus = 'NEW_TO_OFFICE' AND o_bus = 'EPS' AND c_gst = 'OTHER_OFFICE_HOLDS'
+                 AND k_bus = 'GST' AND g_bus = 'EPS' AND k_ele = 'Elective' AND k_gst = 'GST' AND g_gst = 'GST'
+                 AND n_sms = 1 AND ch1.reminded = 1 AND ch2.reminded = 0 AND ch3.escalated = 1 AND rem IS NOT NULL AND esc IS NOT NULL AND n_acad = 1
+                 AND r_set = 'GEN_TRANSFER_SETTING' AND r_order = 'GEN_TRANSFER_SETTING' AND v_set.remind_after_days = 2 AND v_set.escalate_after_days = 5, false),
+        format('preview bus=%s/%s gst=%s | loaded bus=%s/%s ele=%s gst=%s/%s | sms=%s | chase %s/%s then %s/%s then %s/%s, reminded=%s escalated=%s academic=%s | setting by gst=%s order=%s set=%s/%s',
+               c_bus, o_bus, c_gst, k_bus, g_bus, k_ele, k_gst, g_gst, n_sms, ch1.reminded, ch1.escalated, ch2.reminded, ch2.escalated, ch3.reminded, ch3.escalated,
+               rem IS NOT NULL, esc IS NOT NULL, n_acad, r_set, r_order, v_set.remind_after_days, v_set.escalate_after_days));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

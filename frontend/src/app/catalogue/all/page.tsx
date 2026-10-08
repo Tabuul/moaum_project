@@ -3,7 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { CourseList, Directory } from "@/lib/catalogue";
 import { AllCourses, type Filters } from "./AllCourses";
-import { GstTransfers, type GeneralTransfer } from "@/components/gst/GstTransfers";
+import { GstTransfers, type ChaseSettings, type GeneralTransfer } from "@/components/gst/GstTransfers";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +24,16 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
   ]);
   // V369: the Academic Office (and the Super Administrator) decides the requests the GST and EPS offices have not settled
   const acting = me.ok ? me.data.activeOffice ?? null : null;
-  const transfers = acting === "academic" || acting === "super"
-    ? await api<GeneralTransfer[]>("/api/v1/gst/transfers?state=PENDING").then((r) => (r.ok ? r.data : [])).catch(() => [] as GeneralTransfer[])
-    : [];
+  const central = acting === "academic" || acting === "super";
+  const [transfers, chase] = central
+    ? await Promise.all([
+        api<GeneralTransfer[]>("/api/v1/gst/transfers?state=PENDING").then((r) => (r.ok ? r.data : [])).catch(() => [] as GeneralTransfer[]),
+        api<ChaseSettings>("/api/v1/gst/transfers/settings").then((r) => (r.ok ? r.data : null)).catch(() => null),
+      ])
+    : [[] as GeneralTransfer[], null];
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
-      {transfers.length ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} /> : null}
+      {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
         <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null} />
       )}

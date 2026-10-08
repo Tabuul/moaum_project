@@ -393,6 +393,8 @@ class GstController {
         out.put("gaps", gaps(f.session(), o));
         // V369: course moves to confirm and requests between the offices, waiting on the courses page
         out.put("waiting", waiting(o));
+        // V370: whom the office's notices reach
+        out.put("reach", reach(o));
         out.put("options", options(f));
         out.put("now", OffsetDateTime.now());
         return out;
@@ -809,13 +811,40 @@ class GstController {
         return jdbc.sql("""
                 SELECT t.id, t.course_code, c.title, c.general_office AS office_now, d.name AS department, t.from_office, t.to_office, t.reason, t.state,
                        t.requested_at, t.requested_office, helpdesk.person_name(t.requested_by) AS requested_by,
-                       t.decided_at, t.decided_office, helpdesk.person_name(t.decided_by) AS decided_by, t.decision_note
+                       t.decided_at, t.decided_office, helpdesk.person_name(t.decided_by) AS decided_by, t.decision_note, t.reminded_at, t.escalated_at
                   FROM catalogue.general_transfer t
                   JOIN catalogue.course c ON c.code = t.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code
                  WHERE (CAST(:o AS text) IS NULL OR t.from_office = :o OR t.to_office = :o) AND (CAST(:s AS text) IS NULL OR t.state = :s)
                  ORDER BY (t.state = 'PENDING') DESC, coalesce(t.decided_at, t.requested_at) DESC LIMIT 200
                 """).param("o", office, Types.VARCHAR).param("s", state, Types.VARCHAR).query().listOfRows();
+    }
+
+    public record ChaseIn(@NotNull Integer remindAfterDays, @NotNull Integer escalateAfterDays) {
+    }
+
+    /** V370: after how many days an unanswered request is reminded, and after how many it goes to the Academic Office */
+    @GetMapping("/transfers/settings")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> chaseSettings() {
+        return jdbc.sql("SELECT remind_after_days, escalate_after_days, updated_at, helpdesk.person_name(updated_by) AS updated_by FROM catalogue.general_transfer_setting WHERE id = 1")
+                .query().singleRow();
+    }
+
+    @PutMapping("/transfers/settings")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_super')")
+    @Transactional
+    Map<String, Object> setChaseSettings(@Valid @RequestBody ChaseIn body) {
+        jdbc.sql("SELECT id FROM catalogue.set_general_transfer_setting(:r, :e)").param("r", body.remindAfterDays()).param("e", body.escalateAfterDays())
+                .query(Integer.class).single();
+        return chaseSettings();
+    }
+
+    /** V370: who holds the office today and whether a notice reaches them — by email, by text, or not at all; never the address itself */
+    private List<Map<String, Object>> reach(String office) {
+        return jdbc.sql("SELECT name, email IS NOT NULL AS email, phone IS NOT NULL AS phone FROM catalogue.general_office_reach(:o) ORDER BY name")
+                .param("o", office).query().listOfRows();
     }
 
     /** what waits for the office: moves to confirm, requests it must answer, requests it made */

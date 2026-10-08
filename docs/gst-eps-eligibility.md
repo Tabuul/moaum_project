@@ -267,3 +267,28 @@ The "paid, not required" list is also on the Bursary's Fee Setup page and at `GE
 - **Tests.** check.sql property 214 (the preview matches the load, the upload keeps the office's course, one notice to
   the office, the request flow, a lapse, an own move confirmed); GstEligibilityIT covers the request flow at the API and
   the preview endpoint.
+
+## 15. V370 — EPS in the structure upload, notices that reach, requests chased
+
+- **EPS read whole.** The structure upload took a row's status by its first letter, so a status of EPS loaded the course
+  as E, Elective. The status is now read whole: EPS (or a Classification column of EPS) makes the course general and
+  files it with the EPS office when no office holds it yet; G, GST, or a Classification of GST is General Studies as
+  before. An office's course stays the office's; the preview names a course the file says is EPS but the GST office
+  holds.
+- **Reached.** A notice to the GST, EPS or Academic Office goes by email to each holder with an email, and by a short
+  text message (no course detail beyond the code) to each holder with only a phone. The GST/EPS dashboards name any
+  holder with neither, or say that nobody holds the office (contact details are added on Users & Roles). Read-only check
+  on any database:
+
+  ```sql
+  SELECT o AS office, r.name, r.email IS NOT NULL AS has_email, r.phone IS NOT NULL AS has_phone
+    FROM unnest(ARRAY['GST', 'EPS', 'academic']) o CROSS JOIN LATERAL catalogue.general_office_reach(o) r
+   ORDER BY 1, 2;
+  ```
+
+- **Chased.** Each morning at 07:40 (Lagos) a request between the offices that is still waiting is reminded once to the
+  office that holds the course after the reminder days, and put to the Academic Office (both offices told) after the
+  escalation days. A request is marked only when somebody was reached. The days (3 and 7 to begin with) are set by the
+  Academic Office on All Courses (`GET/PUT /api/v1/gst/transfers/settings`); the requests list shows when each was
+  reminded or sent on.
+- **Tests.** check.sql property 215; GstEligibilityIT covers the setting, the chase and EPS in the preview.

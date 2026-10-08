@@ -60,8 +60,12 @@ export interface GstDashboardData {
   gaps?: GstGap[];
   /** V369: what waits on the courses page — moves to confirm, requests to answer, requests made */
   waiting?: GstWaiting;
+  /** V370: who holds the office today, and whether its notices reach them by email or by text */
+  reach?: GstReach[];
   options: GstOptions; now: string;
 }
+
+export interface GstReach { name: string; email: boolean; phone: boolean }
 
 /** V369: course moves someone else made, waiting for the office to confirm; requests between the GST and EPS offices */
 export interface GstWaiting { moves_to_confirm: number; requests_to_answer: number; requests_made: number }

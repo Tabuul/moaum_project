@@ -17,21 +17,24 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { semesterText } from "@/lib/student-portal";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
-interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string }
+interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string; classification?: string }
 interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
 /** V369: what loading the structure would do to one GST/EPS course (catalogue.structure_placements) */
-type Change = "NEW_TO_OFFICE" | "NEW_NO_OFFICE" | "TO_OFFICE" | "MARKED_GENERAL_NO_OFFICE" | "BACK_TO_DEPARTMENT" | "KEPT_WITH_OFFICE" | "KEPT_WITH_DEPARTMENT";
+type Change = "NEW_TO_OFFICE" | "NEW_NO_OFFICE" | "TO_OFFICE" | "MARKED_GENERAL_NO_OFFICE" | "BACK_TO_DEPARTMENT" | "KEPT_WITH_OFFICE" | "KEPT_WITH_DEPARTMENT" | "OTHER_OFFICE_HOLDS";
 interface Placement { code: string; title: string; programme: string; status: string; department: string | null; beforeOffice: string | null; beforeKind: string | null; afterOffice: string | null; afterKind: string; change: Change }
-interface Placements { placements: Placement[]; counts: { toGst: number; toEps: number; noOffice: number; backToDepartment: number; keptWithOffice: number; keptWithDepartment: number } }
-const STATUS_WORD: Record<string, string> = { C: "Core", R: "Required", E: "Elective", G: "General (G)" };
+interface Placements { placements: Placement[]; counts: { toGst: number; toEps: number; noOffice: number; backToDepartment: number; keptWithOffice: number; keptWithDepartment: number; otherOffice?: number } }
+/* the status (or Classification) as the file says it — V370: EPS is read whole, never as E */
+const statusWord = (s: string) => ({ C: "Core", R: "Required", E: "Elective", G: "General (G)", GST: "General (GST)", EPS: "Entrepreneurship (EPS)" } as Record<string, string>)[s.toUpperCase()]
+  ?? ({ C: "Core", R: "Required", E: "Elective", G: "General (G)" } as Record<string, string>)[s.charAt(0).toUpperCase()] ?? s;
 const changeWord = (p: Placement) => ({
   NEW_TO_OFFICE: `New — filed with the ${p.afterOffice} office`,
   NEW_NO_OFFICE: "New — marked general, but no office's code family reaches it; it stays with its department until an office takes it",
   TO_OFFICE: `Goes to the ${p.afterOffice} office`,
   MARKED_GENERAL_NO_OFFICE: "Marked general, but no office's code family reaches it; no office's",
   BACK_TO_DEPARTMENT: "Back to its department — it was marked general with no office",
-  KEPT_WITH_OFFICE: `Stays the ${p.beforeOffice} office's — the file marks it ${STATUS_WORD[p.status] ?? p.status}, but only the office gives a course back`,
+  KEPT_WITH_OFFICE: `Stays the ${p.beforeOffice} office's — the file marks it ${statusWord(p.status)}, but only the office gives a course back`,
   KEPT_WITH_DEPARTMENT: "Stays with its department — an office gave it back, so the file's G is not applied",
+  OTHER_OFFICE_HOLDS: `Stays the ${p.beforeOffice} office's — the file says EPS; the EPS office can ask the ${p.beforeOffice} office for it`,
 }[p.change]);
 const MAY = ["ict"];
 
@@ -129,7 +132,9 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     let titleIx = at(["title"]);
     if (titleIx < 0) titleIx = header.findIndex((h, i) => i !== codeIx && h.includes("course"));
     const ci = { code: codeIx, title: titleIx, units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]),
-      prog: at(["programme_code", "programme code", "programmecode"]), cat: at(["course_category", "course category", "curriculum", "category"]) };
+      prog: at(["programme_code", "programme code", "programmecode"]), cat: at(["course_category", "course category", "curriculum", "category"]),
+      // V370: a GST/EPS classification column, read alongside the status
+      cls: at(["classification", "gst/eps", "gst_eps"]) };
     if (ci.code < 0) return [];
     return grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim()).map((r) => {
       const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
@@ -138,7 +143,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const semRaw = g(ci.sem);
       let sm = Number(semRaw.replace(/[^0-9]/g, ""));
       if (!sm) sm = /first|1st/i.test(semRaw) ? 1 : /second|2nd/i.test(semRaw) ? 2 : /third|3rd/i.test(semRaw) ? 3 : 0;
-      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined };
+      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined, classification: g(ci.cls) || undefined };
     }).filter((x) => !/^course\s*code$/i.test(x.code));
   }
 
@@ -305,7 +310,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
-          <div className="sub2 mt-2">The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2 mt-2">The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, G or GST for a General Studies course, EPS for an Entrepreneurship Studies course (a Classification column of GST or EPS works too). Fill it, or upload the CCMAS .docx as before.</div>
           <div className="row mt-3" style={{ paddingTop: "var(--s-3)", borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
@@ -392,6 +397,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                     placements.counts.backToDepartment ? `${placements.counts.backToDepartment} back to their department` : null,
                     placements.counts.keptWithOffice ? `${placements.counts.keptWithOffice} the file marks departmental but an office holds — left with the office` : null,
                     placements.counts.keptWithDepartment ? `${placements.counts.keptWithDepartment} the file marks G but an office gave back — left with the department` : null,
+                    placements.counts.otherOffice ? `${placements.counts.otherOffice} the file says EPS but the GST office holds — left with the GST office` : null,
                   ].filter(Boolean).join(" · ")}. The offices are told of every course that comes to them or leaves them, and confirm it on their courses page.
                 </Note>
                 <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
@@ -399,7 +405,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                     <thead><tr><th>Code</th><th>Title</th><th>Programme</th><th>The file says</th><th>What loading does</th></tr></thead>
                     <tbody>
                       {placements.placements.map((p) => (
-                        <tr key={p.code}><td className="tnum">{p.code}</td><td>{p.title}{p.department ? <div className="sub2">{p.department}</div> : null}</td><td className="tnum">{p.programme}</td><td>{STATUS_WORD[p.status] ?? p.status}</td><td className="sub2">{changeWord(p)}</td></tr>
+                        <tr key={p.code}><td className="tnum">{p.code}</td><td>{p.title}{p.department ? <div className="sub2">{p.department}</div> : null}</td><td className="tnum">{p.programme}</td><td>{statusWord(p.status)}</td><td className="sub2">{changeWord(p)}</td></tr>
                       ))}
                     </tbody>
                   </table>

@@ -296,6 +296,11 @@ class GstEligibilityIT {
         assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
         assertThat(asked.getBody().get("state")).isEqualTo("PENDING");
         String id = String.valueOf(asked.getBody().get("id"));
+        // V370: unanswered past the reminder days, the morning's chase reminds the EPS office once
+        it.db(() -> jdbc.sql("UPDATE catalogue.general_transfer SET requested_at = now() - interval '4 days' WHERE id = :id").param("id", UUID.fromString(id)).update());
+        it.db(() -> jdbc.sql("SELECT reminded FROM catalogue.chase_general_transfers()").query(Integer.class).single());
+        assertThat(jdbc.sql("SELECT reminded_at IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalogue.general_office_reach('EPS') r WHERE r.email IS NOT NULL OR r.phone IS NOT NULL) FROM catalogue.general_transfer WHERE id = :id")
+                .param("id", UUID.fromString(id)).query(Boolean.class).single()).isTrue();
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", true)).getStatusCode().value()).isEqualTo(403);
         assertThat(it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", true)).getStatusCode().value()).isEqualTo(403);
         ResponseEntity<Map> bare = it.call(eps, HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", false));
@@ -319,21 +324,36 @@ class GstEligibilityIT {
         assertThat(declined.getStatusCode().value()).as(String.valueOf(declined.getBody())).isEqualTo(200);
         assertThat(declined.getBody().get("state")).isEqualTo("DECLINED");
         assertThat(jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", ent).query(String.class).single()).isEqualTo("GST");
+        // V370: the days are the Academic Office's to set; the dashboards name whom the office's notices reach (never the address)
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/gst/transfers/settings", Map.of("remindAfterDays", 2, "escalateAfterDays", 5)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> set = it.call(academic, HttpMethod.PUT, "/api/v1/gst/transfers/settings", Map.of("remindAfterDays", 2, "escalateAfterDays", 5));
+        assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+        assertThat(set.getBody().get("escalate_after_days")).isEqualTo(5);
+        assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/gst/transfers/settings", Map.of("remindAfterDays", 5, "escalateAfterDays", 5)).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/gst/transfers/settings", Map.of("remindAfterDays", 3, "escalateAfterDays", 7)).getStatusCode().value()).isEqualTo(200);
+        List<Map<String, Object>> reach = l(it.get(gst, "/api/v1/gst/GST/dashboard?session=" + SESSION).getBody().get("reach"));
+        assertThat(reach).allSatisfy(r -> assertThat(r.keySet()).containsExactlyInAnyOrder("name", "email", "phone"));
+        assertThat(reach).allSatisfy(r -> assertThat(r.get("email")).isInstanceOf(Boolean.class));
     }
 
     @Test
     void theStructureUploadSaysWhatItWouldDoToTheOfficesCourses() {
         // V369: read before loading — a new GST-coded course goes to the GST office; the EPS office's course marked C stays the office's
         String code = "GST " + (800 + n % 199);
+        String bus = "ZZB " + (800 + n % 199);
         Map<String, Object> group = Map.of("programme", PROG_A, "rows", List.of(
                 Map.of("code", code, "title", "Logic " + n, "units", "2", "status", "G", "level", "100", "semester", "1"),
-                Map.of("code", epsCode, "title", "Venture Creation " + n, "units", "2", "status", "C", "level", "300", "semester", "1")));
+                Map.of("code", epsCode, "title", "Venture Creation " + n, "units", "2", "status", "C", "level", "300", "semester", "1"),
+                // V370: a status of EPS is read whole — the EPS office's, not E (Elective)
+                Map.of("code", bus, "title", "Business Ideas " + n, "units", "2", "status", "EPS", "level", "200", "semester", "1")));
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/catalogue/import/placements", Map.of("groups", List.of(group))).getStatusCode().value()).isEqualTo(403);
         ResponseEntity<Map> r = it.call(ItSupport.token("ict"), HttpMethod.POST, "/api/v1/catalogue/import/placements", Map.of("groups", List.of(group)));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
         List<Map<String, Object>> placements = l(r.getBody().get("placements"));
         boolean fresh = jdbc.sql("SELECT NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = :c)").param("c", code).query(Boolean.class).single();
         if (fresh) assertThat(placements).anySatisfy(p -> { assertThat(p.get("code")).isEqualTo(code); assertThat(p.get("change")).isEqualTo("NEW_TO_OFFICE"); assertThat(p.get("afterOffice")).isEqualTo("GST"); });
+        boolean busFresh = jdbc.sql("SELECT NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = :c)").param("c", bus).query(Boolean.class).single();
+        if (busFresh) assertThat(placements).anySatisfy(p -> { assertThat(p.get("code")).isEqualTo(bus); assertThat(p.get("afterOffice")).isEqualTo("EPS"); assertThat(p.get("status")).isEqualTo("EPS"); });
         String epsDept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", epsCode).query(String.class).single();
         String progDept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROG_A).query(String.class).single();
         if (epsDept.equals(progDept)) assertThat(placements).anySatisfy(p -> { assertThat(p.get("code")).isEqualTo(epsCode); assertThat(p.get("change")).isEqualTo("KEPT_WITH_OFFICE"); });
