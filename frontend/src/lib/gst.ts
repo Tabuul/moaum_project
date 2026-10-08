@@ -58,8 +58,13 @@ export interface GstDashboardData {
   courses: GstCourseRow[]; results: { pending: number; submitted: number; published: number; activeCourses: number; totalCourses: number; registrations: number };
   legacy?: LegacySummary | null;
   gaps?: GstGap[];
+  /** V369: what waits on the courses page — moves to confirm, requests to answer, requests made */
+  waiting?: GstWaiting;
   options: GstOptions; now: string;
 }
+
+/** V369: course moves someone else made, waiting for the office to confirm; requests between the GST and EPS offices */
+export interface GstWaiting { moves_to_confirm: number; requests_to_answer: number; requests_made: number }
 export interface GstStudentRow {
   student_id: string; number: string; surname: string; other_names: string; sex: string | null; faculty_code: string; faculty: string; dept_code: string; department: string;
   programme_code: string; programme: string; level: number; status: string; entry_mode: string; required: boolean; fee: number; stated: boolean; paid: number;

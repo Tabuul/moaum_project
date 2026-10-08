@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 213
+\set EXPECTED 214
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7193,6 +7193,93 @@ BEGIN
                  AND n_return = 1 AND n_claim = 1 AND v_conf IS NOT NULL AND v_status = 'MATCHED', false),
         format('bus=%s mth=%s | after upload=%s/%s | claimed=%s/%s/%s | moves return=%s claim=%s confirmed=%s | legacy=%s',
                g_bus, g_mth, k_agr, b_agr, k_agr2, g_agr2, rel_agr2, n_return, n_claim, v_conf IS NOT NULL, v_status));
+END $$;
+
+-- ── V369: a course passes between the GST and EPS offices by request; a structure upload is previewed and keeps an office's course; the office is told ──
+DO $$
+DECLARE ict uuid := gen_random_uuid(); g_holder uuid := gen_random_uuid(); e_holder uuid := gen_random_uuid(); pa text := 'C00023'; rows jsonb; pv jsonb;
+        c_gst text; c_ent text; c_mth text; a_gst text; a_ent_kind text; a_ent text; a_mth_kind text; a_mth text;
+        n_gst_notice int; n_eps_notice int; up_cause text; up_conf timestamptz; r_claim text; t catalogue.general_transfer; r_again text; r_notyours text; r_noreason text;
+        n_ask int; a_after text; tr_cause text; tr_conf timestamptz; t2 catalogue.general_transfer; t2_state text; own_conf timestamptz;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', ict::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number, email) VALUES
+            (g_holder, 'CHECKMOVE', 'General Studies', 'P-V369-G', 'zz.check214.gst@example.com'),
+            (e_holder, 'CHECKMOVE', 'Entrepreneurship', 'P-V369-E', 'zz.check214.eps@example.com'),
+            (ict, 'CHECKMOVE', 'ICT', 'P-V369-I', NULL);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), g_holder, 'gst', 'institution', NULL, 'CHECK V369', ict, current_date - 10),
+               (gen_random_uuid(), e_holder, 'eps', 'institution', NULL, 'CHECK V369', ict, current_date - 10);
+        -- the EPS office's own course, made by the EPS office: no move to tell
+        PERFORM set_config('moaum.actor_id', e_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'eps', true);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'ENT 962', 'Check Venture Creation', 2, 1, 300, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        -- the structure: a new GST course, the EPS course marked C, a new course marked G that no family reaches
+        rows := jsonb_build_array(
+            jsonb_build_object('code', 'GST 961', 'title', 'Check Use of English', 'units', '2', 'status', 'G', 'level', '100', 'semester', '1'),
+            jsonb_build_object('code', 'ENT 962', 'title', 'Check Venture Creation', 'units', '2', 'status', 'C', 'level', '300', 'semester', '1'),
+            jsonb_build_object('code', 'MTH 963', 'title', 'Check General Mathematics', 'units', '3', 'status', 'G', 'level', '100', 'semester', '1'));
+        pv := catalogue.structure_placements(jsonb_build_array(jsonb_build_object('programme', pa, 'rows', rows)));
+        SELECT x->>'change' INTO c_gst FROM jsonb_array_elements(pv->'placements') x WHERE x->>'code' = 'GST 961';
+        SELECT x->>'change' INTO c_ent FROM jsonb_array_elements(pv->'placements') x WHERE x->>'code' = 'ENT 962';
+        SELECT x->>'change' INTO c_mth FROM jsonb_array_elements(pv->'placements') x WHERE x->>'code' = 'MTH 963';
+        -- loaded by the Directorate of ICT: what the preview said is what happens
+        PERFORM set_config('moaum.actor_id', ict::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM catalogue.import_courses(pa, rows, 'CCMAS');
+        SELECT general_office INTO a_gst FROM catalogue.course WHERE code = 'GST 961';
+        SELECT kind, general_office INTO a_ent_kind, a_ent FROM catalogue.course WHERE code = 'ENT 962';
+        SELECT kind, general_office INTO a_mth_kind, a_mth FROM catalogue.course WHERE code = 'MTH 963';
+        SELECT cause, confirmed_at INTO up_cause, up_conf FROM catalogue.general_reclassification WHERE course_code = 'GST 961';
+        -- at commit the GST office's holders are told once; the EPS office lost nothing and hears nothing
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SELECT count(*) INTO n_gst_notice FROM platform.notice WHERE recipient = 'zz.check214.gst@example.com' AND subject LIKE '%moved to or from the GST office' AND body LIKE '%GST 961%';
+        SELECT count(*) INTO n_eps_notice FROM platform.notice WHERE recipient = 'zz.check214.eps@example.com';
+        -- the GST office cannot take the EPS office's course; it asks, once
+        PERFORM set_config('moaum.actor_id', g_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        BEGIN PERFORM catalogue.claim_general_course('ENT 962', 'GST'); r_claim := 'TAKEN';
+        EXCEPTION WHEN check_violation THEN r_claim := split_part(SQLERRM, ':', 1); END;
+        t := catalogue.request_general_transfer('ENT 962', 'GST', 'the GST office teaches it');
+        BEGIN PERFORM catalogue.request_general_transfer('ENT 962', 'GST', 'again'); r_again := 'ASKED';
+        EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.decide_general_transfer(t.id, true, NULL); r_notyours := 'DECIDED';
+        EXCEPTION WHEN check_violation THEN r_notyours := split_part(SQLERRM, ':', 1); END;
+        SELECT count(*) INTO n_ask FROM platform.notice WHERE recipient = 'zz.check214.eps@example.com' AND subject = 'The GST office asks for ENT 962';
+        -- the EPS office must say why it declines; it accepts, and the move is confirmed by the answer
+        PERFORM set_config('moaum.actor_id', e_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'eps', true);
+        BEGIN PERFORM catalogue.decide_general_transfer(t.id, false, NULL); r_noreason := 'DECLINED';
+        EXCEPTION WHEN check_violation THEN r_noreason := split_part(SQLERRM, ':', 1); END;
+        t := catalogue.decide_general_transfer(t.id, true, NULL);
+        SELECT general_office INTO a_after FROM catalogue.course WHERE code = 'ENT 962';
+        SELECT cause, confirmed_at INTO tr_cause, tr_conf FROM catalogue.general_reclassification WHERE course_code = 'ENT 962' ORDER BY changed_at DESC LIMIT 1;
+        -- the EPS office asks for it back; the GST office gives it to its department instead, and the request lapses
+        t2 := catalogue.request_general_transfer('ENT 962', 'EPS', 'it is an entrepreneurship course');
+        PERFORM set_config('moaum.actor_id', g_holder::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        PERFORM catalogue.return_general_course('ENT 962', 'a departmental course after all');
+        SELECT state INTO t2_state FROM catalogue.general_transfer WHERE id = t2.id;
+        -- a course no office holds, taken by the GST office: its own move, confirmed by its making
+        PERFORM catalogue.claim_general_course('MTH 963', 'GST');
+        SELECT confirmed_at INTO own_conf FROM catalogue.general_reclassification WHERE course_code = 'MTH 963' AND cause = 'CLAIM';
+        RAISE EXCEPTION 'the V369 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V369: a structure upload is previewed as it loads — a new GST course to the GST office, an office''s course kept with the office though marked C, a course no family reaches marked general with no office — and the GST office alone is told, once; a course passes between the offices only by a request the holding office answers (a decline says why); a request lapses when the course moves first; an office''s own move is confirmed by its making',
+        coalesce(c_gst = 'NEW_TO_OFFICE' AND c_ent = 'KEPT_WITH_OFFICE' AND c_mth = 'NEW_NO_OFFICE'
+                 AND a_gst = 'GST' AND a_ent_kind = 'GST' AND a_ent = 'EPS' AND a_mth_kind = 'GST' AND a_mth IS NULL
+                 AND up_cause = 'UPLOAD' AND up_conf IS NULL AND n_gst_notice = 1 AND n_eps_notice = 0
+                 AND r_claim = 'GEN_OTHER_OFFICE' AND t.state = 'ACCEPTED' AND r_again = 'GEN_TRANSFER_PENDING' AND r_notyours = 'GEN_TRANSFER_NOT_YOURS'
+                 AND n_ask = 1 AND r_noreason = 'GEN_REASON' AND a_after = 'GST' AND tr_cause = 'TRANSFER' AND tr_conf IS NOT NULL
+                 AND t2_state = 'LAPSED' AND own_conf IS NOT NULL, false),
+        format('preview=%s/%s/%s | loaded gst=%s ent=%s/%s mth=%s/%s | upload move=%s/%s | told gst=%s eps=%s | claim=%s again=%s not-yours=%s asked=%s no-reason=%s | accepted=%s now=%s move=%s/%s | lapse=%s | own=%s',
+               c_gst, c_ent, c_mth, a_gst, a_ent_kind, a_ent, a_mth_kind, a_mth, up_cause, up_conf IS NOT NULL, n_gst_notice, n_eps_notice,
+               r_claim, r_again, r_notyours, n_ask, r_noreason, t.state, a_after, tr_cause, tr_conf IS NOT NULL, t2_state, own_conf IS NOT NULL));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

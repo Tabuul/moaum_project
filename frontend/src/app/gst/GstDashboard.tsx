@@ -125,6 +125,14 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
         </Note>
       ) : null}
       <GstGapsNote gaps={data.gaps} session={data.session} office={o} may={actingOffice === o.toLowerCase() || actingOffice === "super"} />
+      {data.waiting && (Number(data.waiting.moves_to_confirm) > 0 || Number(data.waiting.requests_to_answer) > 0) ? (
+        <Note kind="info" title="Waiting on the courses page" action={<LinkBtn kind="secondary" href={`${base}/courses`}>Open {o} Courses</LinkBtn>}>
+          {[
+            Number(data.waiting.moves_to_confirm) > 0 ? `${num(Number(data.waiting.moves_to_confirm))} course move${Number(data.waiting.moves_to_confirm) === 1 ? "" : "s"} someone else made to or from this office, to confirm` : null,
+            Number(data.waiting.requests_to_answer) > 0 ? `${num(Number(data.waiting.requests_to_answer))} request${Number(data.waiting.requests_to_answer) === 1 ? "" : "s"} from the ${o === "GST" ? "EPS" : "GST"} office for a course this office holds, to answer` : null,
+          ].filter(Boolean).join("; ")}.
+        </Note>
+      ) : null}
       <Tiles items={tiles} />
       {data.legacy && (Number(data.legacy.legacy_rows) > 0 || t.paid_legacy) ? (
         <Panel title={`OLD-PORTAL GST PAYMENTS · ${data.session}`} right={<LinkBtn kind="ghost" size="sm" href={`/finance/legacy-gst?session=${encodeURIComponent(data.session)}`}>Reconciliation desk</LinkBtn>}>

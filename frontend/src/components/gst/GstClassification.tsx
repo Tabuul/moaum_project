@@ -18,15 +18,17 @@ export interface UnassignedCourse { code: string; title: string; level: number; 
 export interface CourseMove {
   id: string; course_code: string; title: string; kind: string; office_now: string | null; given_back: boolean; department: string | null; programmes: number;
   before_office: string | null; after_office: string | null; before_kind: string | null; after_kind: string;
-  cause: "RULE" | "CLAIM" | "RETURN" | "FAMILY" | "UPLOAD" | "EDIT"; reason: string | null; changed_at: string; changed_office: string | null;
+  cause: "RULE" | "CLAIM" | "RETURN" | "FAMILY" | "UPLOAD" | "EDIT" | "TRANSFER"; reason: string | null; changed_at: string; changed_office: string | null;
   confirmed_at: string | null; confirmed_office: string | null;
+  /** V369: the office whose request for the course is waiting, if any */
+  requested_by_office?: string | null;
 }
 
 const CAUSE_WORD: Record<CourseMove["cause"], string> = {
   RULE: "Classified on deploy (V367)", CLAIM: "Taken by an office", RETURN: "Given back to its department",
-  FAMILY: "A code family", UPLOAD: "A course upload", EDIT: "A course edit",
+  FAMILY: "A code family", UPLOAD: "A course upload", EDIT: "A course edit", TRANSFER: "Passed by request",
 };
-const where = (office: string | null, kind: string | null) => office ? `${office} office` : kind === "GST" ? "General, no office" : "Its department";
+const where = (office: string | null | undefined, kind: string | null | undefined) => office ? `${office} office` : kind === "GST" ? "General, no office" : kind ? "Its department" : "New course";
 
 export function GstClassification({ office, may, families, unassigned }: { office: "GST" | "EPS"; may: boolean; families: GstFamily[]; unassigned: UnassignedCourse[] }) {
   const router = useRouter();
@@ -124,7 +126,10 @@ export function GstMoves({ office, may, moves }: { office: "GST" | "EPS"; may: b
           m.confirmed_at ? <span key="k" className="sub2">{dayOf(m.confirmed_at)}{m.confirmed_office ? ` · ${m.confirmed_office.toUpperCase()}` : ""}</span> : <Pil key="k" kind="warn">To confirm</Pil>,
           may ? <span key="a" className="row row--inline row--tight">
             {!m.confirmed_at ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void call(`/${office}/reclassified/${m.id}/confirm`, {}, `${m.course_code} move confirmed by the ${office} office`, `${m.course_code}: move confirmed`)}>Confirm</Btn> : null}
-            {!ours ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Take ${m.course_code} as a ${office} course? Its students then owe the GST fee for it, and this office examines it.`)) void call(`/${office}/courses/${slug(m.course_code)}/claim`, {}, `${m.course_code} taken by the ${office} office`, `${m.course_code} is now a ${office} course`); }}>This office&rsquo;s</Btn> : null}
+            {!ours && !m.office_now ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Take ${m.course_code} as a ${office} course? Its students then owe the GST fee for it, and this office examines it.`)) void call(`/${office}/courses/${slug(m.course_code)}/claim`, {}, `${m.course_code} taken by the ${office} office`, `${m.course_code} is now a ${office} course`); }}>This office&rsquo;s</Btn> : null}
+            {/* V369: the other office's course comes only by its answer to a request */}
+            {!ours && m.office_now && m.requested_by_office === office ? <Pil kind="info">Asked</Pil> : null}
+            {!ours && m.office_now && !m.requested_by_office ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const why = window.prompt(`Ask the ${m.office_now} office for ${m.course_code}? Say why it should be this office's:`); if (why && why.trim()) void call(`/${office}/courses/${slug(m.course_code)}/request`, { reason: why.trim() }, `${m.course_code} asked of the ${m.office_now} office: ${why.trim()}`, `Request for ${m.course_code} sent to the ${m.office_now} office`); }}>Ask the {m.office_now} office for it</Btn> : null}
             {ours ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const why = window.prompt(`Give ${m.course_code} back to its department as a Core course? Say why:`, "A departmental course, not run by this office"); if (why && why.trim()) void call(`/courses/${slug(m.course_code)}/return`, { reason: why.trim() }, `${m.course_code} given back to its department: ${why.trim()}`, `${m.course_code} is its department's again`); }}>Give back to its department</Btn> : null}
           </span> : <span key="a" />,
         ];

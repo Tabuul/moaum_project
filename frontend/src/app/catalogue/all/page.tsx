@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { CourseList, Directory } from "@/lib/catalogue";
 import { AllCourses, type Filters } from "./AllCourses";
+import { GstTransfers, type GeneralTransfer } from "@/components/gst/GstTransfers";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,14 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
     api<Directory>("/api/v1/catalogue/directory"),
     api<{ name: string; state: string }[]>("/api/v1/cohorts/settings").then((r) => (r.ok ? (r.data as unknown as { sessions: { name: string; state: string }[] }).sessions : [])).catch(() => [] as { name: string; state: string }[]),
   ]);
+  // V369: the Academic Office (and the Super Administrator) decides the requests the GST and EPS offices have not settled
+  const acting = me.ok ? me.data.activeOffice ?? null : null;
+  const transfers = acting === "academic" || acting === "super"
+    ? await api<GeneralTransfer[]>("/api/v1/gst/transfers?state=PENDING").then((r) => (r.ok ? r.data : [])).catch(() => [] as GeneralTransfer[])
+    : [];
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
+      {transfers.length ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
         <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null} />
       )}

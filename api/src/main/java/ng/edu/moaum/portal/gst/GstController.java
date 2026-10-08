@@ -391,6 +391,8 @@ class GstController {
         out.put("legacy", jdbc.sql("SELECT * FROM finance.legacy_gst_summary(NULL, :s)").param("s", f.session()).query().singleRow());
         // V367: the office's courses bound to programmes but not opened this session — their students owe nothing until they are
         out.put("gaps", gaps(f.session(), o));
+        // V369: course moves to confirm and requests between the offices, waiting on the courses page
+        out.put("waiting", waiting(o));
         out.put("options", options(f));
         out.put("now", OffsetDateTime.now());
         return out;
@@ -522,6 +524,9 @@ class GstController {
         out.put("unassigned", unassigned(s));
         // V368: every move that touched the office's courses — the reclassification of V367, a claim, a course given back, an upload — to confirm
         out.put("reclassified", reclassified(o));
+        // V369: the requests between the two offices for a course, and what waits for this office
+        out.put("transfers", transfersOf(o, null));
+        out.put("waiting", waiting(o));
         out.put("offerHistory", jdbc.sql("""
                 SELECT h.course_code, h.programme_code, p.name AS programme, h.level, h.ended_at, h.reason, h.registrations_carried
                   FROM catalogue.course_offer_history h
@@ -696,7 +701,7 @@ class GstController {
         return Map.of("prefix", p, "office", String.valueOf(o), "assigned", assigned, "families", families());
     }
 
-    /** the office takes a course its families do not reach (marked general, no office's — or the other office's) */
+    /** the office takes a course its families do not reach and no office holds (V369: the other office's course comes only by request) */
     @PostMapping("/{office}/courses/{code}/claim")
     @PreAuthorize(MANAGERS)
     @Transactional
@@ -737,13 +742,99 @@ class GstController {
         return Map.of("id", id, "confirmed", true);
     }
 
+    /* ── V369: a course passes between the GST and EPS offices by request ── */
+
+    public record TransferIn(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    public record AnswerIn(@NotNull Boolean accept, @Size(max = 500) String note) {
+    }
+
+    /** the office asks the other office for a course it holds; the holding office answers, or the Academic Office decides */
+    @PostMapping("/{office}/courses/{code}/request")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> requestCourse(@PathVariable String office, @PathVariable String code, @Valid @RequestBody TransferIn body) {
+        String o = manage(office);
+        String c = unslug(code);
+        return jdbc.sql("SELECT id, course_code, from_office, to_office, state FROM catalogue.request_general_transfer(:c, :o, :r)")
+                .param("c", c).param("o", o).param("r", body.reason().trim()).query().singleRow();
+    }
+
+    /** the holding office accepts or declines a request (a decline says why); the Academic Office and the Super Administrator decide any */
+    @PostMapping("/transfers/{id}/decide")
+    @PreAuthorize(CLASSIFIERS)
+    @Transactional
+    Map<String, Object> decideTransfer(@PathVariable UUID id, @Valid @RequestBody AnswerIn body) {
+        Map<String, Object> t = transfer(id);
+        String acting = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        String from = (String) t.get("from_office");
+        if (!(acting.equalsIgnoreCase(from) || "academic".equals(acting) || "super".equals(acting))) {
+            throw new AccessDeniedException("The " + from + " office answers a request for its own course; the Academic Office may decide it.");
+        }
+        return jdbc.sql("SELECT id, course_code, from_office, to_office, state FROM catalogue.decide_general_transfer(:id, :a, :n)")
+                .param("id", id).param("a", body.accept()).param("n", blank(body.note()), Types.VARCHAR).query().singleRow();
+    }
+
+    /** the office that asked withdraws its request while it waits */
+    @PostMapping("/transfers/{id}/withdraw")
+    @PreAuthorize(CLASSIFIERS)
+    @Transactional
+    Map<String, Object> withdrawTransfer(@PathVariable UUID id) {
+        Map<String, Object> t = transfer(id);
+        String acting = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        String to = (String) t.get("to_office");
+        if (!(acting.equalsIgnoreCase(to) || "academic".equals(acting) || "super".equals(acting))) {
+            throw new AccessDeniedException("Only the " + to + " office withdraws its own request.");
+        }
+        return jdbc.sql("SELECT id, course_code, from_office, to_office, state FROM catalogue.withdraw_general_transfer(:id)")
+                .param("id", id).query().singleRow();
+    }
+
+    /** the requests between the two offices — all of them for the Academic Office's page, the waiting ones first */
+    @GetMapping("/transfers")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> transfers(@RequestParam(required = false) String state) {
+        String s = state == null || state.isBlank() ? null : state.trim().toUpperCase();
+        return transfersOf(null, s);
+    }
+
+    private Map<String, Object> transfer(UUID id) {
+        return jdbc.sql("SELECT from_office, to_office FROM catalogue.general_transfer WHERE id = :id").param("id", id).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("request", id));
+    }
+
+    private List<Map<String, Object>> transfersOf(String office, String state) {
+        return jdbc.sql("""
+                SELECT t.id, t.course_code, c.title, c.general_office AS office_now, d.name AS department, t.from_office, t.to_office, t.reason, t.state,
+                       t.requested_at, t.requested_office, helpdesk.person_name(t.requested_by) AS requested_by,
+                       t.decided_at, t.decided_office, helpdesk.person_name(t.decided_by) AS decided_by, t.decision_note
+                  FROM catalogue.general_transfer t
+                  JOIN catalogue.course c ON c.code = t.course_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE (CAST(:o AS text) IS NULL OR t.from_office = :o OR t.to_office = :o) AND (CAST(:s AS text) IS NULL OR t.state = :s)
+                 ORDER BY (t.state = 'PENDING') DESC, coalesce(t.decided_at, t.requested_at) DESC LIMIT 200
+                """).param("o", office, Types.VARCHAR).param("s", state, Types.VARCHAR).query().listOfRows();
+    }
+
+    /** what waits for the office: moves to confirm, requests it must answer, requests it made */
+    private Map<String, Object> waiting(String office) {
+        return jdbc.sql("""
+                SELECT (SELECT count(*) FROM catalogue.general_reclassification WHERE confirmed_at IS NULL AND (before_office = :o OR after_office = :o)) AS moves_to_confirm,
+                       (SELECT count(*) FROM catalogue.general_transfer WHERE state = 'PENDING' AND from_office = :o) AS requests_to_answer,
+                       (SELECT count(*) FROM catalogue.general_transfer WHERE state = 'PENDING' AND to_office = :o) AS requests_made
+                """).param("o", office).query().singleRow();
+    }
+
     /** the moves that touched the office's courses, the unconfirmed first, with where each course stands now */
     private List<Map<String, Object>> reclassified(String office) {
         return jdbc.sql("""
                 SELECT m.id, m.course_code, c.title, c.kind, c.general_office AS office_now, c.general_released_at IS NOT NULL AS given_back,
                        m.before_office, m.after_office, m.before_kind, m.after_kind, m.cause, m.reason, m.changed_at, m.changed_office,
                        m.confirmed_at, m.confirmed_office, d.name AS department,
-                       (SELECT count(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes
+                       (SELECT count(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes,
+                       (SELECT t.to_office FROM catalogue.general_transfer t WHERE t.course_code = c.code AND t.state = 'PENDING') AS requested_by_office
                   FROM catalogue.general_reclassification m
                   JOIN catalogue.course c ON c.code = m.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code

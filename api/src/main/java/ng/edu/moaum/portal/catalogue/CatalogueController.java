@@ -248,6 +248,18 @@ class CatalogueController {
                 .query().singleRow();
     }
 
+    public record PlacementsIn(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max = 2000) List<Map<String, Object>> groups) {
+    }
+
+    /** V369: what loading these structures would do to the GST and EPS offices' courses, course by course — read, nothing written */
+    @PostMapping("/import/placements")
+    @PreAuthorize(UPLOADERS)
+    @Transactional(readOnly = true)
+    Object importPlacements(@Valid @RequestBody PlacementsIn body) {
+        String out = jdbc.sql("SELECT catalogue.structure_placements(:g::jsonb)::text").param("g", json.writeValueAsString(body.groups())).query(String.class).single();
+        return json.readValue(out, Object.class);
+    }
+
     /** open course registration for a session: create an offering for every offered course of that
      *  semester, so students see the real programme/level courses (not leftover demo offerings) */
     @PostMapping("/open-registration")

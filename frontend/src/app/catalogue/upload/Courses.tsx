@@ -19,6 +19,20 @@ import { semesterText } from "@/lib/student-portal";
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
 interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string }
 interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
+/** V369: what loading the structure would do to one GST/EPS course (catalogue.structure_placements) */
+type Change = "NEW_TO_OFFICE" | "NEW_NO_OFFICE" | "TO_OFFICE" | "MARKED_GENERAL_NO_OFFICE" | "BACK_TO_DEPARTMENT" | "KEPT_WITH_OFFICE" | "KEPT_WITH_DEPARTMENT";
+interface Placement { code: string; title: string; programme: string; status: string; department: string | null; beforeOffice: string | null; beforeKind: string | null; afterOffice: string | null; afterKind: string; change: Change }
+interface Placements { placements: Placement[]; counts: { toGst: number; toEps: number; noOffice: number; backToDepartment: number; keptWithOffice: number; keptWithDepartment: number } }
+const STATUS_WORD: Record<string, string> = { C: "Core", R: "Required", E: "Elective", G: "General (G)" };
+const changeWord = (p: Placement) => ({
+  NEW_TO_OFFICE: `New — filed with the ${p.afterOffice} office`,
+  NEW_NO_OFFICE: "New — marked general, but no office's code family reaches it; it stays with its department until an office takes it",
+  TO_OFFICE: `Goes to the ${p.afterOffice} office`,
+  MARKED_GENERAL_NO_OFFICE: "Marked general, but no office's code family reaches it; no office's",
+  BACK_TO_DEPARTMENT: "Back to its department — it was marked general with no office",
+  KEPT_WITH_OFFICE: `Stays the ${p.beforeOffice} office's — the file marks it ${STATUS_WORD[p.status] ?? p.status}, but only the office gives a course back`,
+  KEPT_WITH_DEPARTMENT: "Stays with its department — an office gave it back, so the file's G is not applied",
+}[p.change]);
 const MAY = ["ict"];
 
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
@@ -29,6 +43,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
+  const [placements, setPlacements] = useState<Placements | null>(null);
   const [loaded, setLoaded] = useState<Loaded[] | null>(null);
   const [listing, setListing] = useState(false);
   const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
@@ -137,11 +152,39 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const rows = file.name.toLowerCase().endsWith(".xlsx") ? await rowsFromXlsx(buf) : await rowsFromDocx(buf);
       if (!rows.length) { setProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); notifyProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); return; }
       setPreview(rows);
+      void readPlacements(rows, programme);
     } catch {
       setProblem({ status: 400, title: "That file could not be read.", detail: "Upload the department's CCMAS .docx or an .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read.", detail: "Upload the department's CCMAS .docx or an .xlsx." });
     } finally {
       setBusy(false);
     }
+  }
+
+  /* group the rows by the programme (and curriculum) each row names, so a single file of many
+     departments loads at once; a file without a programme_code column uses the one chosen above */
+  function groupsOf(rows: Row[], prog: string) {
+    const groups = new Map<string, { programme: string; curriculum: string; rows: Row[] }>();
+    for (const row of rows) {
+      const pc = row.programmeCode || prog;
+      if (!pc) continue;
+      const cur = (row.category || curriculum || "").toUpperCase();
+      const key = `${pc}|${cur}`;
+      let g = groups.get(key);
+      if (!g) { g = { programme: pc, curriculum: ["CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU"].includes(cur.replace(/[- ]/g, "_")) ? cur.replace(/[- ]/g, "_") : curriculum, rows: [] }; groups.set(key, g); }
+      g.rows.push(row);
+    }
+    return groups;
+  }
+
+  /* V369: before loading, what the structure would do to the GST and EPS offices' courses — read by the server, nothing written */
+  async function readPlacements(rows: Row[], prog: string) {
+    setPlacements(null);
+    if (!may) return;
+    const groups = [...groupsOf(rows, prog).values()].map((g) => ({ programme: g.programme, rows: g.rows }));
+    if (!groups.length) return;
+    const r = await fetch("/api/bff/api/v1/catalogue/import/placements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ groups }) });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j) setPlacements(j as Placements);
   }
 
   async function upload() {
@@ -153,18 +196,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setMsg(null);
     setUnregistered([]);
     try {
-      /* group the rows by the programme (and curriculum) each row names, so a single file of many
-         departments loads at once; a file without a programme_code column uses the one chosen above */
-      const groups = new Map<string, { programme: string; curriculum: string; rows: Row[] }>();
-      for (const row of preview) {
-        const pc = row.programmeCode || programme;
-        if (!pc) continue;
-        const cur = (row.category || curriculum || "").toUpperCase();
-        const key = `${pc}|${cur}`;
-        let g = groups.get(key);
-        if (!g) { g = { programme: pc, curriculum: ["CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU"].includes(cur.replace(/[- ]/g, "_")) ? cur.replace(/[- ]/g, "_") : curriculum, rows: [] }; groups.set(key, g); }
-        g.rows.push(row);
-      }
+      const groups = groupsOf(preview, programme);
       const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0, existing: 0 };
       let firstErr: string | null = null;
       let done = 0;
@@ -196,6 +228,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} named another department's course and bound it to the programme as it is, without a second record` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
       notify(`Course structure loaded · ${totals.courses} courses`);
       setPreview(null);
+      setPlacements(null);
       if (programme) void viewLoaded();
     } finally {
       setBusy(false);
@@ -253,7 +286,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           <Field id="cu-prog" label="Programme" hint="The programme these courses belong to">
             <SearchSelect id="cu-prog" value={programme} placeholder="Search a programme…"
               options={programmes.map((p) => ({ value: p.code, label: `${p.name}${p.facultyName ? ` · ${p.facultyName}` : ""}` }))}
-              onChange={(v) => { setProgramme(v); setLoaded(null); }} />
+              onChange={(v) => { setProgramme(v); setLoaded(null); if (preview) void readPlacements(preview, v); }} />
           </Field>
           <Field id="cu-curr" label="Curriculum" hint="The track this structure is for — a student sees only the rows of their own track; a row for any cohort is shared">
             <select id="cu-curr" className="ctl" value={curriculum} onChange={(e) => setCurriculum(e.target.value)}>
@@ -349,9 +382,33 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                 </tbody>
               </table>
             </div>
+            {placements && placements.placements.length ? (
+              <div className="mt-3">
+                <Note kind="info" title="GST and EPS: what loading this does">
+                  {[
+                    placements.counts.toGst ? `${placements.counts.toGst} course${placements.counts.toGst === 1 ? "" : "s"} to the GST office` : null,
+                    placements.counts.toEps ? `${placements.counts.toEps} to the EPS office` : null,
+                    placements.counts.noOffice ? `${placements.counts.noOffice} marked general that no office holds` : null,
+                    placements.counts.backToDepartment ? `${placements.counts.backToDepartment} back to their department` : null,
+                    placements.counts.keptWithOffice ? `${placements.counts.keptWithOffice} the file marks departmental but an office holds — left with the office` : null,
+                    placements.counts.keptWithDepartment ? `${placements.counts.keptWithDepartment} the file marks G but an office gave back — left with the department` : null,
+                  ].filter(Boolean).join(" · ")}. The offices are told of every course that comes to them or leaves them, and confirm it on their courses page.
+                </Note>
+                <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+                  <table className="tbl--data">
+                    <thead><tr><th>Code</th><th>Title</th><th>Programme</th><th>The file says</th><th>What loading does</th></tr></thead>
+                    <tbody>
+                      {placements.placements.map((p) => (
+                        <tr key={p.code}><td className="tnum">{p.code}</td><td>{p.title}{p.department ? <div className="sub2">{p.department}</div> : null}</td><td className="tnum">{p.programme}</td><td>{STATUS_WORD[p.status] ?? p.status}</td><td className="sub2">{changeWord(p)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
             <div className="row mt-3">
               <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</Btn>
-              <Btn kind="ghost" size="md" disabled={busy} onClick={() => setPreview(null)}>Cancel</Btn>
+              <Btn kind="ghost" size="md" disabled={busy} onClick={() => { setPreview(null); setPlacements(null); }}>Cancel</Btn>
             </div>
           </PBody>
         </Panel>

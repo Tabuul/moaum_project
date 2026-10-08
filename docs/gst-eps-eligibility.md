@@ -243,3 +243,27 @@ The "paid, not required" list is also on the Bursary's Fee Setup page and at `GE
   MATCHED.
 - **Tests.** check.sql property 213; GstEligibilityIT lists and confirms the moves (another office: 403 on the GST door,
   404 on its own).
+
+## 14. V369 — courses passed by request, moves told, structure uploads previewed
+
+- **By request.** A course the other office holds can no longer be taken with "This office's" (the claim refuses it:
+  `GEN_OTHER_OFFICE`). The office that wants it asks, with a reason (`POST /api/v1/gst/{office}/courses/{code}/request`);
+  the holding office accepts or declines on its courses page, and a decline says why
+  (`POST /api/v1/gst/transfers/{id}/decide`). The Academic Office and the Super Administrator see the open requests on
+  All Courses and may decide any. The office that asked may withdraw (`.../withdraw`). A request lapses when the course
+  moves some other way first. An accepted request moves the course's CBT examinations with it. Requests are kept in
+  `catalogue.general_transfer`.
+- **Told.** A move an office makes to its own courses (its claim, its give-back, its family, an accepted request) is
+  confirmed as it is made. A move someone else makes (an upload, the Academic Office giving a course back, an edit, a new
+  course put on the office's desk) waits for the office. At commit, the office's holders get one email per transaction
+  listing every course, which also shows on their notifications page. The GST/EPS dashboards show "Waiting on the
+  courses page" with the moves to confirm and the requests to answer.
+- **Previewed, and kept.** The programme structure upload (Upload or Create Courses) used to write each row's status
+  over a course its department owns, so a structure marking an office's course C took it off the office's desk. It now
+  leaves an office's course with the office (only the office gives a course back), and records its moves as an upload.
+  Before loading, the page shows "GST and EPS: what loading this does", course by course: new to an office, to an office,
+  marked general with no office, back to its department, kept with the office, kept with its department
+  (`POST /api/v1/catalogue/import/placements`, `catalogue.structure_placements`, nothing written).
+- **Tests.** check.sql property 214 (the preview matches the load, the upload keeps the office's course, one notice to
+  the office, the request flow, a lapse, an own move confirmed); GstEligibilityIT covers the request flow at the API and
+  the preview endpoint.

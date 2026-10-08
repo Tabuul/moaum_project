@@ -251,23 +251,93 @@ class GstEligibilityIT {
         ResponseEntity<Map> claimed = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/courses/" + slug + "/claim", Map.of());
         assertThat(claimed.getStatusCode().value()).as(String.valueOf(claimed.getBody())).isEqualTo(200);
         assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("eligibility")).get("gst_reason")).isEqualTo("GST_REQUIRED_COURSE_OFFERING");
-        // given back to its department: Core, its binding Core, owed no more
-        ResponseEntity<Map> back = it.call(gst, HttpMethod.POST, "/api/v1/gst/courses/" + slug + "/return", Map.of("reason", "a departmental course"));
+        // given back to its department by the Academic Office: Core, its binding Core, owed no more
+        ResponseEntity<Map> back = it.call(ItSupport.token("academic"), HttpMethod.POST, "/api/v1/gst/courses/" + slug + "/return", Map.of("reason", "a departmental course"));
         assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
         assertThat(jdbc.sql("SELECT kind FROM catalogue.course WHERE code = :c").param("c", dept).query(String.class).single()).isEqualTo("Core");
         assertThat(jdbc.sql("SELECT basis FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :b").param("c", dept).param("b", PROG_B).query(String.class).single()).isEqualTo("Core");
         assertThat(m(myGst(TestTokens.token(b300, List.of("student"))).get("entitlement")).get("required")).isEqualTo(false);
-        // V368: both moves are listed for the office to confirm; the EPS office neither confirms on the GST door nor reaches a GST move
-        List<Map<String, Object>> moves = l(it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION).getBody().get("reclassified")).stream()
-                .filter(x -> dept.equals(x.get("course_code"))).toList();
+        // V368: both moves are listed; V369: the GST office's own claim is confirmed by its making, the Academic Office's give-back waits for the
+        // GST office, and is counted for it; the EPS office neither confirms on the GST door nor reaches a GST move
+        Map<String, Object> page = it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION).getBody();
+        List<Map<String, Object>> moves = l(page.get("reclassified")).stream().filter(x -> dept.equals(x.get("course_code"))).toList();
         assertThat(moves).extracting(x -> x.get("cause")).containsExactlyInAnyOrder("CLAIM", "RETURN");
-        assertThat(moves).allSatisfy(x -> { assertThat(x.get("confirmed_at")).isNull(); assertThat(x.get("given_back")).isEqualTo(true); });
+        assertThat(moves).allSatisfy(x -> assertThat(x.get("given_back")).isEqualTo(true));
+        assertThat(moves).filteredOn(x -> "CLAIM".equals(x.get("cause"))).allSatisfy(x -> assertThat(x.get("confirmed_at")).isNotNull());
+        assertThat(moves).filteredOn(x -> "RETURN".equals(x.get("cause"))).allSatisfy(x -> assertThat(x.get("confirmed_at")).isNull());
+        assertThat(((Number) m(page.get("waiting")).get("moves_to_confirm")).intValue()).isPositive();
         String move = String.valueOf(moves.stream().filter(x -> "RETURN".equals(x.get("cause"))).findFirst().orElseThrow().get("id"));
         assertThat(it.call(ItSupport.token("eps"), HttpMethod.POST, "/api/v1/gst/GST/reclassified/" + move + "/confirm", Map.of()).getStatusCode().value()).isEqualTo(403);
         assertThat(it.call(ItSupport.token("eps"), HttpMethod.POST, "/api/v1/gst/EPS/reclassified/" + move + "/confirm", Map.of()).getStatusCode().value()).isEqualTo(404);
         ResponseEntity<Map> confirmed = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/reclassified/" + move + "/confirm", Map.of());
         assertThat(confirmed.getStatusCode().value()).as(String.valueOf(confirmed.getBody())).isEqualTo(200);
         assertThat(jdbc.sql("SELECT confirmed_office FROM catalogue.general_reclassification WHERE id = :id").param("id", UUID.fromString(move)).query(String.class).single()).isEqualToIgnoringCase("GST");
+    }
+
+    @Test
+    void aCourseGoesToTheOtherOfficeOnlyByARequestItAnswers() {
+        // V369: the EPS office's course; the GST office cannot take it, it asks; the EPS office answers (a decline says why); the Academic Office decides any
+        String ent = "ENT " + (700 + n % 199);
+        String slug = ent.replace(" ", "_");
+        String eps = ItSupport.token("eps");
+        it.db(() -> {
+            String d = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROG_A).query(String.class).single();
+            jdbc.sql("UPDATE catalogue.general_transfer SET state = 'WITHDRAWN', decided_at = now() WHERE course_code = :c AND state = 'PENDING'").param("c", ent).update();
+            jdbc.sql("""
+                    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, 'Venture Creation (request)', 2, 1, 300, :d, 'GST', 'LIVE')
+                    ON CONFLICT (code) DO UPDATE SET kind = 'GST', general_office = 'EPS', general_released_at = NULL
+                    """).param("c", ent).param("d", d).update();
+            return null;
+        });
+        ResponseEntity<Map> took = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/courses/" + slug + "/claim", Map.of());
+        assertThat(took.getStatusCode().value()).isEqualTo(422);
+        assertThat(took.getBody().get("code")).isEqualTo("GEN_OTHER_OFFICE");
+        ResponseEntity<Map> asked = it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/courses/" + slug + "/request", Map.of("reason", "the GST office teaches it"));
+        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
+        assertThat(asked.getBody().get("state")).isEqualTo("PENDING");
+        String id = String.valueOf(asked.getBody().get("id"));
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", true)).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", true)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> bare = it.call(eps, HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", false));
+        assertThat(bare.getStatusCode().value()).isEqualTo(422);
+        assertThat(bare.getBody().get("code")).isEqualTo("GEN_REASON");
+        Map<String, Object> epsCourses = it.get(eps, "/api/v1/gst/EPS/courses?session=" + SESSION).getBody();
+        assertThat(m(epsCourses.get("waiting")).get("requests_to_answer")).isNotEqualTo(0);
+        assertThat(l(epsCourses.get("transfers"))).anySatisfy(t -> { assertThat(t.get("course_code")).isEqualTo(ent); assertThat(t.get("state")).isEqualTo("PENDING"); });
+        ResponseEntity<Map> accepted = it.call(eps, HttpMethod.POST, "/api/v1/gst/transfers/" + id + "/decide", Map.of("accept", true));
+        assertThat(accepted.getStatusCode().value()).as(String.valueOf(accepted.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", ent).query(String.class).single()).isEqualTo("GST");
+        assertThat(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM catalogue.general_reclassification WHERE course_code = :c AND cause = 'TRANSFER' ORDER BY changed_at DESC LIMIT 1")
+                .param("c", ent).query(Boolean.class).single()).isTrue();
+        // the EPS office asks for it back; the Academic Office declines it, with its reason, and reads every request
+        ResponseEntity<Map> back = it.call(eps, HttpMethod.POST, "/api/v1/gst/EPS/courses/" + slug + "/request", Map.of("reason", "an entrepreneurship course"));
+        assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
+        String id2 = String.valueOf(back.getBody().get("id"));
+        String academic = ItSupport.token("academic");
+        assertThat(l(it.getList(academic, "/api/v1/gst/transfers?state=PENDING").getBody())).anySatisfy(t -> assertThat(t.get("id")).isEqualTo(id2));
+        ResponseEntity<Map> declined = it.call(academic, HttpMethod.POST, "/api/v1/gst/transfers/" + id2 + "/decide", Map.of("accept", false, "note", "the GST office runs it this session"));
+        assertThat(declined.getStatusCode().value()).as(String.valueOf(declined.getBody())).isEqualTo(200);
+        assertThat(declined.getBody().get("state")).isEqualTo("DECLINED");
+        assertThat(jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", ent).query(String.class).single()).isEqualTo("GST");
+    }
+
+    @Test
+    void theStructureUploadSaysWhatItWouldDoToTheOfficesCourses() {
+        // V369: read before loading — a new GST-coded course goes to the GST office; the EPS office's course marked C stays the office's
+        String code = "GST " + (800 + n % 199);
+        Map<String, Object> group = Map.of("programme", PROG_A, "rows", List.of(
+                Map.of("code", code, "title", "Logic " + n, "units", "2", "status", "G", "level", "100", "semester", "1"),
+                Map.of("code", epsCode, "title", "Venture Creation " + n, "units", "2", "status", "C", "level", "300", "semester", "1")));
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/catalogue/import/placements", Map.of("groups", List.of(group))).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> r = it.call(ItSupport.token("ict"), HttpMethod.POST, "/api/v1/catalogue/import/placements", Map.of("groups", List.of(group)));
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        List<Map<String, Object>> placements = l(r.getBody().get("placements"));
+        boolean fresh = jdbc.sql("SELECT NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = :c)").param("c", code).query(Boolean.class).single();
+        if (fresh) assertThat(placements).anySatisfy(p -> { assertThat(p.get("code")).isEqualTo(code); assertThat(p.get("change")).isEqualTo("NEW_TO_OFFICE"); assertThat(p.get("afterOffice")).isEqualTo("GST"); });
+        String epsDept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", epsCode).query(String.class).single();
+        String progDept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROG_A).query(String.class).single();
+        if (epsDept.equals(progDept)) assertThat(placements).anySatisfy(p -> { assertThat(p.get("code")).isEqualTo(epsCode); assertThat(p.get("change")).isEqualTo("KEPT_WITH_OFFICE"); });
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", code).query(Integer.class).single()).isEqualTo(fresh ? 0 : 1);
     }
 
     @Test
