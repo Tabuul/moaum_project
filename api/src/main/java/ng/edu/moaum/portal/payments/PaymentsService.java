@@ -283,7 +283,7 @@ public class PaymentsService {
         if ("paydirect".equals(g)) {
             return payOnQuickteller(r, account);
         }
-        String back = portalUrl + backPath(r.kind()) + "?paid=" + r.reference();
+        String back = backOf(r);
         /* the card gateways open a checkout on an email address; a record without one (a migrated student
            who never gave a contact) cannot be sent to them — say so, rather than fail inside the request */
         if (("paystack".equals(g) || "flutterwave".equals(g)) && (r.email() == null || r.email().isBlank())) {
@@ -351,7 +351,7 @@ public class PaymentsService {
     private String flutterwaveInitialize(PaymentsRepository.Reference r, String back) {
         String body = mapper.writeValueAsString(Map.of("tx_ref", r.reference(), "amount", r.amount().toPlainString(), "currency", "NGN",
                 "redirect_url", back, "customer", Map.of("email", r.email()),
-                "customizations", Map.of("title", "MOAUM " + feeName(r.kind()))));
+                "customizations", Map.of("title", "MOAUM " + nameOf(r))));
         Map<String, Object> answer = post("https://api.flutterwave.com/v3/payments", body, "Bearer " + flutterwaveSecret());
         Object data = answer.get("data");
         if (!(data instanceof Map<?, ?> d) || d.get("link") == null) {
@@ -420,6 +420,21 @@ public class PaymentsService {
         return portalUrl + backPath(kind) + "?paid=" + reference;
     }
 
+    /** a student's GST fee reference: paid like any student reference, but named the GST fee at the gateway and returned to the GST page */
+    private boolean gst(PaymentsRepository.Reference r) {
+        return "FEES".equals(r.kind()) && repo.gstReference(r.reference());
+    }
+
+    /** the fee as the gateway names it to the payer */
+    private String nameOf(PaymentsRepository.Reference r) {
+        return gst(r) ? "GST fee" : feeName(r.kind());
+    }
+
+    /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival */
+    private String backOf(PaymentsRepository.Reference r) {
+        return gst(r) ? portalUrl + "/student/gst?paid=" + r.reference() : backUrl(r.kind(), r.reference());
+    }
+
     /** a reference wherever it lives: an applicant's fee, a student's fee, a postgraduate applicant's fee, a JUPEB candidate's fee */
     private PaymentsRepository.Reference anyReference(String reference) {
         return repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).orElse(null);
@@ -483,7 +498,7 @@ public class PaymentsService {
             field(f, "merchant_code", m.merchantCode());
         }
         field(f, "pay_item_id", m.payItemId());
-        field(f, "pay_item_name", SCHOOL_ABBR + " " + feeName(r.kind()));
+        field(f, "pay_item_name", SCHOOL_ABBR + " " + nameOf(r));
         field(f, "amount", Long.toString(kobo));
         field(f, "currency", NAIRA);
         field(f, "site_redirect_url", back);
@@ -534,9 +549,9 @@ public class PaymentsService {
         }
         String said = String.valueOf(outcome.getOrDefault("outcome", ""));
         boolean paid = r.confirmedAt() != null || "SETTLED".equals(said) || "already confirmed".equals(said) || "ALREADY_SETTLED".equals(said);
-        String back = backUrl(r.kind(), r.reference()) + (paid ? "" : "&outcome=" + enc(resp.isEmpty() ? "pending" : resp + " " + desc));
+        String back = backOf(r) + (paid ? "" : "&outcome=" + enc(resp.isEmpty() ? "pending" : resp + " " + desc));
         String title = paid ? "Payment received" : "Payment not confirmed";
-        String body = paid ? "Your " + feeName(r.kind()) + " against " + r.reference() + " is confirmed. Returning you to the portal…"
+        String body = paid ? "Your " + nameOf(r) + " against " + r.reference() + " is confirmed. Returning you to the portal…"
                 : "Interswitch answered " + (resp.isEmpty() ? "nothing yet" : resp + (desc.isEmpty() ? "" : " — " + desc)) + " for " + r.reference()
                 + ". If you were debited, the portal re-checks the reference every ten minutes and confirms it when Interswitch does. Returning you to the portal…";
         return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"

@@ -3,7 +3,8 @@
  *  pay it against, the receipts, and the GST and EPS courses with their registration and result status. One payment covers both;
  *  until it is confirmed the GST/EPS courses are locked on the registration form.
  *  V366: the fee is owed only when a GST or EPS course requires it of the student this session — a course their programme offers at
- *  their level, or a carryover — and the page says which, and why not when it is not. */
+ *  their level, or a carryover — and the page says which, and why not when it is not.
+ *  The reference is paid by card or USSD from this page (the same gateways as school fees), and the gateway returns the payer here. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -13,14 +14,14 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { naira, onDay, when } from "../common";
+import { PayByCard, naira, onDay, when } from "../common";
 
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
   PAID: ["PAID", "ok"], NOT_PAID: ["NOT PAID", "bad"], PENDING: ["REFERENCE OPEN", "warn"], NOT_STATED: ["NO FEE STATED", "grey"], NOT_REQUIRED: ["NOT REQUIRED", "grey"],
   EXEMPT: ["NO FEE FOR YOU", "info"],
 };
 
-export function GstScreen({ s, gst }: { s: Me; gst: GstView }) {
+export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -70,11 +71,18 @@ export function GstScreen({ s, gst }: { s: Me; gst: GstView }) {
   });
   const cols = ["S/N|num", "Course", "Why it concerns you", "This session|mid", "Registration|mid", "Result|mid"];
 
+  const back = paid ? gst.references.find((r) => r.reference === paid) ?? null : null;
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {back && back.confirmed_at ? <Note kind="ok" title="GST fee payment confirmed">Reference {back.reference} is confirmed. It covers both GST and EPS: register your GST/EPS courses on Course registration.</Note> : null}
+      {back && !back.confirmed_at ? (
+        <Note kind="info" title="Confirming your GST payment" action={<Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>}>
+          The gateway tells the University directly when the money lands, and the portal re-checks the reference every ten minutes. Reference {back.reference}. If you were not debited, pay again below.
+        </Note>
+      ) : null}
       {unpaid ? (
-        <Note kind="bad" title="GST PAYMENT REQUIRED" action={<Btn kind="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Generating…" : e.open_reference ? "Show my reference" : "PAY GST FEE"}</Btn>}>
+        <Note kind="bad" title="GST PAYMENT REQUIRED" action={e.open_reference ? null : <Btn kind="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Generating…" : "PAY GST FEE"}</Btn>}>
           You are required to pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} before you can register GST/EPS courses: {reasonWord(e.reason)}
           {owes(gst.courses).length ? ` (${owes(gst.courses).map((c) => c.code).join(", ")})` : ""}. GST payment covers both GST and EPS requirements. Please complete your GST payment to continue with course registration.
         </Note>
@@ -107,8 +115,9 @@ export function GstScreen({ s, gst }: { s: Me; gst: GstView }) {
         <Panel title="Pay the GST fee" right={<Pil kind="warn">REFERENCE OPEN</Pil>}>
           <PBody>
             <KvGrid cls="grid--3" pairs={[["Reference", <b key="r" className="tnum">{e.open_reference}</b>], ["Amount", <b key="a" className="tnum">{naira(Number(e.open_amount))}</b>], ["Expires", when(e.open_expires_at)]]} />
-            <div className="sub2 mt-1">Quote this reference and nothing else — at a bank branch, by transfer, or by card on Fees &amp; payments. The gateway or the Bursary confirms it; your GST and EPS courses unlock the moment it is confirmed, and you are told by email and SMS.</div>
-            <div className="row row--inline row--tight mt-2"><LinkBtn kind="primary" href={`/student/fees?session=${encodeURIComponent(gst.session)}`}>Pay online on Fees &amp; payments</LinkBtn><LinkBtn kind="ghost" href="/student/register">Course registration</LinkBtn></div>
+            <div className="row mt-2"><PayByCard reference={e.open_reference} amount={Number(e.open_amount)} /></div>
+            <div className="sub2 mt-1">Pay by card or USSD above, or quote this reference and nothing else at a bank branch or by transfer. The gateway or the Bursary confirms it; your GST and EPS courses unlock the moment it is confirmed, and you are told by email and SMS.</div>
+            <div className="row row--inline row--tight mt-2"><LinkBtn kind="ghost" href="/student/register">Course registration</LinkBtn></div>
           </PBody>
         </Panel>
       ) : null}

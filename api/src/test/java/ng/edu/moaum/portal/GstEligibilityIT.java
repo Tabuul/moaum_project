@@ -180,6 +180,28 @@ class GstEligibilityIT {
         assertThat(l(form.get("menu"))).anySatisfy(x -> { assertThat(x.get("course_code")).isEqualTo(gstCode); assertThat(x.get("carryover")).isEqualTo(true); });
         ResponseEntity<Map> ref = it.call(student, HttpMethod.POST, "/api/v1/me/gst/reference", Map.of("session", SESSION));
         assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
+        String reference = String.valueOf(ref.getBody().get("reference"));
+
+        // the GST reference goes to the gateway like any student reference: named the GST fee there, and the payer returned to the GST page
+        String ict = ItSupport.token("ict");
+        org.springframework.web.client.RestClient open = org.springframework.web.client.RestClient.builder().baseUrl("http://localhost:" + port)
+                .defaultStatusHandler(s -> true, (q, r) -> { }).build();
+        assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/quickteller/key", Map.of("secret", "{\"merchantCode\":\"MX000366\",\"payItemId\":\"101\",\"sandbox\":true}"))
+                .getStatusCode().value()).isEqualTo(200);
+        try {
+            ResponseEntity<Map> checkout = it.call(student, HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", reference, "gateway", "quickteller"));
+            assertThat(checkout.getStatusCode().value()).as(String.valueOf(checkout.getBody())).isEqualTo(200);
+            assertThat(String.valueOf(checkout.getBody().get("url"))).contains("/api/v1/payments/quickteller/start?reference=" + reference);
+            String page = open.get().uri("/api/v1/payments/quickteller/start?reference=" + reference).retrieve().body(String.class);
+            assertThat(page).contains("name=\"merchant_code\" value=\"MX000366\"").contains("name=\"pay_item_name\" value=\"MOAUM GST fee\"")
+                    .contains("name=\"amount\" value=\"700000\"").contains("/api/v1/payments/quickteller/return?reference=" + reference);
+            String returned = open.post().uri("/api/v1/payments/quickteller/return?reference=" + reference)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED).body("txnref=" + reference + "&resp=Z6&desc=Cancelled")
+                    .retrieve().body(String.class);
+            assertThat(returned).contains("/student/gst?paid=" + reference);
+        } finally {
+            it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/quickteller/clear-key", Map.of());
+        }
 
         // the GST office reads why; the support desk reads the same answer
         Map<String, Object> drill = it.get(gst, "/api/v1/gst/GST/students/" + b300carry + "?session=" + SESSION).getBody();

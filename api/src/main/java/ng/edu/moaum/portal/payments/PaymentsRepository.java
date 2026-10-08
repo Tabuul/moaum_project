@@ -59,6 +59,12 @@ class PaymentsRepository {
                 """).param("r", reference).query(Reference.class).optional();
     }
 
+    /** whether a student's reference is the GST fee (V314: purpose 'GST fee <session>') — paid like any student reference, named and returned to as the GST fee */
+    boolean gstReference(String reference) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = upper(btrim(:r)) AND purpose LIKE 'GST fee %')")
+                .param("r", reference).query(Boolean.class).single();
+    }
+
     String confirmStudent(String reference, String channel, String note) {
         return jdbc.sql("SELECT finance.confirm_payment(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();

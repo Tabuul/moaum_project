@@ -20,7 +20,10 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   const { act, busy, problem } = useAct();
   const [now] = useState(() => new Date().getTime());
   const [sel, setSel] = useState<number>(fees.balance);
-  const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session) ?? null;
+  // the school-fee reference awaiting payment; the GST fee (V314) has a reference of its own, paid from GST & EPS and offered below
+  const isGst = (purpose: string | null | undefined) => (purpose ?? "").startsWith("GST fee");
+  const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session && !isGst(r.purpose)) ?? null;
+  const openGst = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session && isGst(r.purpose)) ?? null;
   const justPaid = paid ? fees.references.find((r) => r.reference === paid) ?? null : null;
   // V361: "no charge" is a charge not yet stated; a ₦0 charge the Bursary stated on purpose is a charge
   const noCharge = fees.stated === false || (fees.stated === undefined && fees.due === 0);
@@ -50,6 +53,17 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : (
         <Note kind="bad" title="Course registration waits on this semester’s school fees">{fees.hasArrears ? "Arrears from an earlier session stand against you, and block everything while they do." : "Course registration for a semester opens once that semester’s school fees are paid in full; the examination waits on the session paid in full."}</Note>
       )}
+      {justPaid && justPaid.confirmed_at && isGst(justPaid.purpose) ? (
+        <Note kind="ok" title="GST fee payment confirmed">Reference {justPaid.reference} is confirmed. It covers both GST and EPS: register your GST/EPS courses on Course registration.</Note>
+      ) : null}
+      {openGst ? (
+        <Panel title="GST fee awaiting payment" right={<LinkBtn kind="ghost" size="sm" href={`/student/gst?session=${encodeURIComponent(fees.session)}`}>GST &amp; EPS</LinkBtn>}>
+          <PBody>
+            <div className="sub2">Reference <b className="tnum">{openGst.reference}</b> · {naira(openGst.amount)} · expires {when(openGst.expires_at)}. A separate payment from school fees; one payment covers GST and EPS.</div>
+            <div className="row mt-2"><PayByCard reference={openGst.reference} amount={Number(openGst.amount)} /></div>
+          </PBody>
+        </Panel>
+      ) : null}
       <Panel title="The charge" right={fees.session}>
         <DTable cols={["Item", "Amount|num"]} rows={[
           ...fees.charges.map((c) => [<span key="i">{c.item}</span>, <span className="tnum" key="a">{naira(c.amount)}</span>]),
