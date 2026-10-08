@@ -17,7 +17,7 @@ import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
-interface Referee { name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; submitted_at: string | null; verdict: string | null }
+interface Referee { name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; submitted_at: string | null }
 interface PriorDegree { kind: string; institution: string | null; award: string | null; field?: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface Me {

@@ -8,9 +8,10 @@ import { notifyProblem } from "@/components/proto/Toast";
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
-import { Btn, Note } from "@/components/proto/ui";
+import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 interface Ctx { found: boolean; refereeName: string; position: string | null; institution: string | null; applicant: string; applicationNo: string; session: string; programme: string; award: string | null; submitted: boolean }
 
@@ -75,7 +76,7 @@ export function RefereeForm({ token }: { token: string }) {
           </Note>
           {problem ? <ProblemNotice problem={problem} /> : null}
 
-          <div className="card"><div className="card__body">
+          <div className="stack">
             <Field id="relationship" label="Relationship to the applicant" required>
               <input id="relationship" className="ctl" placeholder="e.g. Project supervisor, Head of Department" value={f.relationship ?? ""} onChange={set("relationship")} />
             </Field>
@@ -97,7 +98,7 @@ export function RefereeForm({ token }: { token: string }) {
               <Btn kind="primary" size="md" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit reference"}</Btn>
               <span className="sub2">Once submitted, a reference cannot be changed.</span>
             </div>
-          </div></div>
+          </div>
         </>
       ) : null}
     </Frame>
@@ -106,18 +107,11 @@ export function RefereeForm({ token }: { token: string }) {
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <header className="row" style={{ background: "var(--chrome-deep)", color: "var(--surface)", padding: "var(--s-4) var(--s-6)", gap: "var(--s-4)" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-        <div className="grow">
-          <div className="eyebrow" style={{ color: "var(--chrome-ink)" }}>School of Postgraduate Studies</div>
-          <h1 className="phead__t" style={{ fontFamily: "var(--serif)", marginTop: 2 }}>Referee reference</h1>
-        </div>
-      </header>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "var(--s-5) var(--s-4) calc(var(--s-8) + var(--s-4))", display: "grid", gap: "var(--s-4)" }}>
+    <AuthLayout eyebrow="School of Postgraduate Studies" wide lead={<>A confidential reference for an applicant who named you as a referee. It goes to the School of Postgraduate Studies and is never shown to the applicant.</>}>
+      <div className="login-card">
+        <PageHead title="Referee reference" />
         {children}
       </div>
-    </div>
+    </AuthLayout>
   );
 }

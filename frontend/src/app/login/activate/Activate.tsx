@@ -4,8 +4,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Btn, Note } from "@/components/proto/ui";
+import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 interface Invitation { name: string; institution: string; email: string; status: string; expires_at: string; appointment: string | null; university: string }
 
@@ -46,21 +47,13 @@ export function Activate({ token }: { token: string }) {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-8) var(--s-4)" }}>
-      <div className="card" style={{ width: "100%", maxWidth: 520, overflow: "hidden" }}>
-        <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div className="grow">
-            <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-            <h1 className="phead__t ink-chrome m-0">External Examiner Appointment</h1>
-          </div>
-        </div>
-        <div className="card__body">
+    <AuthLayout eyebrow="External examiners" lead={<>The University&rsquo;s invitation to examine. Choose a password here &mdash; it is never sent by email &mdash; and sign in with your email address to reach the projects assigned to you.</>}>
+      <div className="login-card">
+          <PageHead title="External examiner appointment" />
           {done ? (
             <>
               <Note kind="ok" title="Your examiner account is active">Sign in with your email address, <b>{done}</b>, and the password you chose. The projects assigned to you, their documents and the assessment form are in your workspace.</Note>
-              <div><Link className="btn btn--primary" href="/login">Sign In</Link></div>
+              <div><Link className="btn btn--primary" href="/login">Sign in</Link></div>
             </>
           ) : !token ? (
             <>
@@ -86,13 +79,12 @@ export function Activate({ token }: { token: string }) {
                 <input id="ac-pw2" className="ctl" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" />
               </Field>
               <div className="row row--base">
-                <Btn kind="primary" size="md" type="submit" disabled={busy || !ready}>{busy ? "Activating…" : "Activate My Account"}</Btn>
+                <Btn kind="primary" size="md" type="submit" disabled={busy || !ready}>{busy ? "Activating…" : "Activate my account"}</Btn>
                 <span className="sub2">The University never sends passwords by email.</span>
               </div>
             </form>
           )}
-        </div>
       </div>
-    </div>
+    </AuthLayout>
   );
 }

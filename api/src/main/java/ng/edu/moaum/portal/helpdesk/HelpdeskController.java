@@ -19,6 +19,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.auth.PasswordResetService;
+import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -1223,9 +1224,7 @@ class HelpdeskController {
     @Transactional(readOnly = true)
     Map<String, Object> track(@Valid @RequestBody Track body, jakarta.servlet.http.HttpServletRequest request) {
         String number = body.number().trim().toUpperCase();
-        String ip = request.getHeader("X-Forwarded-For");
-        ip = ip == null || ip.isBlank() ? request.getRemoteAddr() : ip.split(",")[0].trim();
-        throttle("ip:" + ip);
+        throttle("ip:" + ClientAddress.of(request));   // the edge's own entry, not one a caller wrote (V359)
         throttle("email:" + body.email().trim().toLowerCase());
         Map<String, Object> t = jdbc.sql("""
                 SELECT t.id, t.number, t.subject, c.name AS category, t.status, t.priority, t.created_at, t.updated_at, t.resolved_at, t.closed_at,

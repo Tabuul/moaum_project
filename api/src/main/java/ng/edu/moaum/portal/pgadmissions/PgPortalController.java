@@ -250,8 +250,9 @@ class PgPortalController {
         if (a == null) {
             throw new NotFound("postgraduate application", me);
         }
+        // whether a reference is in, never what it says: the referee's verdict is confidential to the School
         List<Map<String, Object>> referees = jdbc.sql("""
-                SELECT name, email, phone, institution, position, submitted_at, verdict FROM admissions.pg_referee
+                SELECT name, email, phone, institution, position, submitted_at FROM admissions.pg_referee
                  WHERE application_id = :app ORDER BY id
                 """).param("app", a.get("application_id")).query().listOfRows();
         List<Map<String, Object>> priorDegrees = jdbc.sql("""

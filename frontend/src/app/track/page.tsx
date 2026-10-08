@@ -4,8 +4,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Pil } from "@/components/proto/ui";
+import { Btn, Note, PageHead, Pil } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { PriorityPil, StatusPil, Timeline, when, type Event } from "@/lib/helpdesk";
 
 interface Tracked { number: string; subject: string; category: string; status: string; priority: string; created_at: string; updated_at: string; resolved_at: string | null; closed_at: string | null; resolution_summary: string | null; reopen_count: number; timeline: Event[] }
@@ -24,36 +25,26 @@ export default function TrackPage() {
     try {
       const r = await fetch("/api/bff/api/v1/helpdesk/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ number: number.trim().toUpperCase(), email: email.trim() }) });
       const j = (await r.json().catch(() => null)) as Tracked | Problem | null;
-      if (!r.ok || !j || !("number" in j)) { setProblem(r.status === 404 ? "No ticket with that number was raised with that email address. Check both and try again." : r.status === 422 ? "Too many lookups in a short time. Wait a quarter of an hour, or sign in to the portal to see your tickets." : "The ticket could not be looked up just now. Try again in a moment."); return; }
+      if (!r.ok || !j || !("number" in j)) { setProblem(r.status === 404 ? "No ticket with that number was raised with that email address. Check both and try again." : (r.status === 429 || r.status === 422) ? "Too many lookups in a short time. Wait a quarter of an hour, or sign in to the portal to see your tickets." : "The ticket could not be looked up just now. Try again in a moment."); return; }
       setT(j);
     } catch { setProblem("The ticket could not be looked up just now. Try again in a moment."); }
     finally { setBusy(false); }
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-8) var(--s-4)" }}>
-      <div className="stack" style={{ width: "100%", maxWidth: 640 }}>
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-            <div className="grow">
-              <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-              <h1 className="phead__t ink-chrome m-0">Track an ICT Support Ticket</h1>
-            </div>
-          </div>
-          <form onSubmit={go} className="card__body">
-            <p className="m-0 ink-muted">Enter the ticket number you were given and the email address the ticket was raised with. Only the two together open it.</p>
-            <Field id="tr-number" label="Ticket number"><input id="tr-number" className="ctl tnum" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="TICK-2026-00000" autoComplete="off" autoCapitalize="characters" /></Field>
-            <Field id="tr-email" label="Email address"><input id="tr-email" className="ctl" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
-            {problem ? <Note kind="bad" title="Not found">{problem}</Note> : null}
-            <div className="row row--base"><Btn kind="primary" size="md" type="submit" disabled={busy || !number.trim() || !email.trim()}>{busy ? "Looking up…" : "Track Ticket"}</Btn><Link className="lnk" href="/login">Sign in to the portal instead</Link></div>
-          </form>
-        </div>
+    <AuthLayout eyebrow="ICT support" wide lead={<>Follow a support ticket you raised with the Directorate of ICT: its standing, and what has been done on it. The ticket number and the email it was raised with open it &mdash; nothing else does.</>}>
+      <div className="login-card">
+        <PageHead title="Track an ICT support ticket" description="Enter the ticket number you were given and the email address the ticket was raised with. Only the two together open it." />
+        <form onSubmit={go} className="stack">
+          <Field id="tr-number" label="Ticket number"><input id="tr-number" className="ctl tnum" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="TICK-2026-00000" autoComplete="off" autoCapitalize="characters" /></Field>
+          <Field id="tr-email" label="Email address"><input id="tr-email" className="ctl" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
+          {problem ? <Note kind="bad" title="Not found">{problem}</Note> : null}
+          <Btn kind="primary" size="md" type="submit" disabled={busy || !number.trim() || !email.trim()}>{busy ? "Looking up…" : "Track ticket"}</Btn>
+        </form>
         {t ? (
           <div className="card" style={{ overflow: "hidden" }}>
             <div className="card__head">
-              <div className="grow"><div className="eyebrow">{t.category}</div><div className="phead__t">{t.number}</div><div className="sub2">{t.subject}</div></div>
+              <div className="grow"><div className="eyebrow">{t.category}</div><b className="tnum">{t.number}</b><div className="sub2">{t.subject}</div></div>
               <div className="row row--tight"><StatusPil status={t.status} /><PriorityPil priority={t.priority} /></div>
             </div>
             <div className="card__body">
@@ -71,7 +62,8 @@ export default function TrackPage() {
             </div>
           </div>
         ) : null}
+        <div className="login-help"><Link href="/login">Sign in to the portal instead</Link></div>
       </div>
-    </div>
+    </AuthLayout>
   );
 }
