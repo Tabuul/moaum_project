@@ -260,14 +260,21 @@ class HostelIT {
         assertThat(subjects(ada)).contains("Your hostel clearance is complete");
         assertThat(jdbc.sql("SELECT state FROM hostel.allocation WHERE id = :a").param("a", UUID.fromString(allocAda2)).query(String.class).single()).isEqualTo("CHECKED_OUT");
         assertThat(jdbc.sql("SELECT count(*) FROM clearance.item WHERE student_id = :s AND unit = 'HOSTEL' AND state = 'CLEARED'").param("s", ada).query(Integer.class).single()).isGreaterThanOrEqualTo(1);
-        // the bed in A-2 is free again; the letter verifies by its reference, a made-up one does not
+        // the bed in A-2 is free again; the letter verifies by its reference and the check code its QR carries (V359) — the
+        // reference alone, or with another code, names no one and does not say whether it exists; a made-up one does not verify
         List<Map<String, Object>> freeAfter = it.getList(housing, HS + "/free-beds?hall=" + hall).getBody();
         assertThat(freeAfter).extracting(b -> String.valueOf(b.get("bed_id"))).contains(maintBed);
         String alcRef = String.valueOf(after.get("allocation_ref"));
-        Map<String, Object> v = it.anon(HttpMethod.GET, "/api/v1/verify/hostel/" + alcRef, null).getBody();
+        String code = String.valueOf(it.get(tAda, "/api/v1/me/hostel/full?session=" + SESSION).getBody().get("verifyCode"));
+        assertThat(code).matches("[0-9a-f]{18}");
+        Map<String, Object> v = it.anon(HttpMethod.GET, "/api/v1/verify/hostel/" + alcRef + "?c=" + code, null).getBody();
         assertThat(v.get("genuine")).isEqualTo(true);
         assertThat(v.get("room_no")).isEqualTo("A-2");
-        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/hostel/ALC-0000-00000", null).getBody().get("genuine")).isEqualTo(false);
+        Map<String, Object> bare = it.anon(HttpMethod.GET, "/api/v1/verify/hostel/" + alcRef, null).getBody();
+        assertThat(bare).containsEntry("genuine", false).containsEntry("codeMissing", true).doesNotContainKeys("student_name", "photo", "room_no");
+        Map<String, Object> wrong = it.anon(HttpMethod.GET, "/api/v1/verify/hostel/" + alcRef + "?c=000000000000000000", null).getBody();
+        assertThat(wrong).containsEntry("genuine", false).doesNotContainKeys("student_name", "photo", "room_no", "codeMissing");
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/hostel/ALC-0000-00000?c=" + code, null).getBody().get("genuine")).isEqualTo(false);
         // the history keeps both stays
         List<Map<String, Object>> history = (List<Map<String, Object>>) it.get(tAda, "/api/v1/me/hostel/full?session=" + SESSION).getBody().get("history");
         assertThat(history.stream().filter(h -> SESSION.equals(h.get("session"))).map(h -> h.get("allocation_state")).toList()).contains("TRANSFERRED", "CHECKED_OUT");

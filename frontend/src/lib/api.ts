@@ -1,5 +1,5 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers as incoming } from "next/headers";
 import { OFFICE_COOKIE } from "./offices";
 import { sessionToken } from "./session";
 import { reasonHeader } from "./reason";
@@ -58,6 +58,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   if (options.reason) headers["X-Reason"] = reasonHeader(options.reason);
   if (options.correlationId) headers["X-Correlation-Id"] = options.correlationId;
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  /* V359: the X-Forwarded-For the edge wrote for the person, passed on — the API counts a public door's limit (a
+     verification page, a look-up) against the person; without it every visitor would be the portal itself */
+  try {
+    const fwd = (await incoming()).get("x-forwarded-for");
+    if (fwd) headers["X-Forwarded-For"] = fwd;
+  } catch {
+    /* outside a request: nothing to pass on */
+  }
 
   let response: Response;
   try {

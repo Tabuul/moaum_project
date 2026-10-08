@@ -9,6 +9,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.ClientAddress;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.Throttle;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -43,9 +47,11 @@ class AuthController {
     private final SsoService sso;
     private final PasswordResetService resets;
     private final String bootstrapSecret;
+    private final Throttle throttle;
 
-    AuthController(AuthService auth, SsoService sso, PasswordResetService resets, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret) {
+    AuthController(AuthService auth, SsoService sso, PasswordResetService resets, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret, Throttle throttle) {
         this.auth = auth;
+        this.throttle = throttle;
         this.sso = sso;
         this.resets = resets;
         this.bootstrapSecret = bootstrapSecret;
@@ -60,13 +66,22 @@ class AuthController {
     /** a staff member or student asks to reset a forgotten password; the answer is the same whether or not it names an account */
     @PostMapping("/forgot")
     org.springframework.http.ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body, HttpServletRequest request) {
-        resets.forgot(body.identifier(), request.getRemoteAddr());
+        String source = ClientAddress.of(request);
+        throttle.take(Throttle.Door.RESET_LINK, source);   // V359: every request counted — each may send an email and a text
+        resets.forgot(body.identifier(), source);
         return org.springframework.http.ResponseEntity.accepted().body(Map.of("sent", true));
     }
 
     @PostMapping("/reset")
     Map<String, Object> reset(@Valid @RequestBody Reset body, HttpServletRequest request) {
-        resets.reset(body.token(), body.password(), request.getRemoteAddr());
+        String source = ClientAddress.of(request);
+        throttle.refuse(Throttle.Door.RESET, source);
+        try {
+            resets.reset(body.token(), body.password(), source);
+        } catch (DomainRuleViolation refused) {
+            if ("AUTH_RESET_TOKEN".equals(refused.code())) throttle.count(Throttle.Door.RESET, source);   // V359: a guessed link counted
+            throw refused;
+        }
         return Map.of("reset", true);
     }
 
@@ -84,12 +99,12 @@ class AuthController {
 
     @PostMapping("/sso/callback")
     AuthService.SignedIn ssoCallback(@Valid @RequestBody SsoCallback body, HttpServletRequest request) {
-        return sso.callback(body.code(), body.state(), body.redirectUri(), request.getRemoteAddr());
+        return sso.callback(body.code(), body.state(), body.redirectUri(), ClientAddress.of(request));
     }
 
     @PostMapping("/sign-in")
     AuthService.SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
-        return auth.signIn(body.username(), body.password(), request.getRemoteAddr(), body.office());
+        return auth.signIn(body.username(), body.password(), ClientAddress.of(request), body.office());
     }
 
     @PostMapping("/sign-out")
@@ -120,7 +135,7 @@ class AuthController {
     AuthService.SignedIn bootstrap(@Valid @RequestBody Bootstrap body, @RequestHeader(value = "X-Bootstrap-Secret", required = false) String secret,
                                    HttpServletRequest request) {
         return auth.bootstrap(secret, bootstrapSecret, body.staffNumber(), body.surname(), body.givenNames(), body.username(),
-                body.password(), request.getRemoteAddr());
+                body.password(), ClientAddress.of(request));
     }
 
     /** the office register, for the sign-in page's "Your office" */

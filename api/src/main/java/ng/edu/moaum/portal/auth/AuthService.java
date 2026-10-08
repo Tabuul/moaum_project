@@ -14,6 +14,7 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.Throttle;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -48,11 +49,13 @@ public class AuthService {
     private final AuthRepository repo;
     private final TokenIssuer issuer;
     private final TransactionTemplate tx;
+    private final Throttle throttle;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
-    AuthService(AuthRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions) {
+    AuthService(AuthRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, Throttle throttle) {
         this.repo = repo;
+        this.throttle = throttle;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
     }
@@ -70,6 +73,8 @@ public class AuthService {
      */
     public SignedIn signIn(String usernameIn, String password, String ip, String preferredOffice) {
         String username = usernameIn == null ? "" : usernameIn.trim().toLowerCase();
+        // V359: one connection trying many staff accounts is refused before any is tried
+        throttle.refuse(Throttle.Door.STAFF_SIGN_IN, ip);
         AuthRepository.Credential c = repo.byUsername(username).orElse(null);
         Object outcome = atTheDoor(c == null ? null : c.personId(), "sign-in", () -> {
             if (c == null || c.endedOn() != null) {
@@ -78,6 +83,7 @@ public class AuthService {
             }
             if (c.lockedUntil() != null && c.lockedUntil().isAfter(OffsetDateTime.now())) {
                 repo.event(username, c.personId(), "LOCKED", ip, null);
+                throttle.count(Throttle.Door.STAFF_SIGN_IN, ip);
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + c.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes, or ask the Registry to reset the password.", "Registrar"));
@@ -86,6 +92,7 @@ public class AuthService {
                 int attempts = c.failedAttempts() + 1;
                 repo.failed(c.personId(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(username, c.personId(), "BAD_PASSWORD", ip, null);
+                throttle.count(Throttle.Door.STAFF_SIGN_IN, ip);
                 return badCredentials();
             }
             List<AuthRepository.Office> offices = repo.liveOffices(c.personId());

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import type { ExamSession, Monitor } from "@/lib/results";
+import { chaseWords, type ExamSession, type Monitor } from "@/lib/results";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
@@ -65,6 +65,8 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
         return null;
       }
       notify(reason);
+      /* V359: a reminder or an escalation says what was sent, and to whom */
+      if (j && typeof j.said === "string") setSaid(j.said);
       router.refresh();
       return j;
     } finally {
@@ -198,13 +200,13 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
       {holding && outstanding.length ? (
         <Panel title={`The ${outstanding.length} sheet${outstanding.length === 1 ? "" : "s"} holding the Faculty of ${holding.facultyName}`} right="Named, with the person and the days">
           <DTable
-            cols={["Course", "Department", "Lecturer", "Candidates|mid", "Days late|mid", "Escalated to", "Action|num"]}
+            cols={["Course", "Department", "Lecturer", "Candidates|mid", "Days late|mid", "Chased", "Action|num"]}
             rows={outstanding.map((o) => [
               <b className="tnum" key="c">{o.courseCode}</b>, <span className="sub2" key="d">{o.deptName}</span>, <span key="l">{o.lecturer ?? "—"}</span>,
               <span className="tnum" key="n">{o.candidates}</span>,
               <span className="tnum ink-red b700" key="x">{o.daysLate ?? "—"}</span>,
-              <span className="sub2" key="e">{o.escalatedTo}</span>,
-              <span key="a"><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/remind`, {}, `Reminder for ${o.courseCode}`, o.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/remind`, {}, `Escalation for ${o.courseCode}`, o.id)}>Escalate</Btn></span>,
+              <span className="sub2" key="e">{chaseWords(o.chase) ?? "Not yet"}{o.daysLate ? <div>Next escalation: {o.escalatedTo}</div> : null}</span>,
+              <span key="a"><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/remind`, {}, `Reminder for ${o.courseCode}`, o.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null || !o.daysLate} title={o.daysLate ? undefined : "A sheet is escalated once it is past its due date"} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/escalate`, {}, `Escalation for ${o.courseCode}`, o.id)}>Escalate</Btn></span>,
             ])}
           />
         </Panel>

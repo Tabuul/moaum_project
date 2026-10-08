@@ -60,10 +60,13 @@ public class ApplicantService {
     private final SecureRandom random = new SecureRandom();
 
     private final String portalUrl;
+    private final ng.edu.moaum.portal.shared.Throttle throttle;
 
     ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, ApplicationWindows windows,
-                     @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+                     @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
+                     ng.edu.moaum.portal.shared.Throttle throttle) {
         this.repo = repo;
+        this.throttle = throttle;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
         this.windows = windows;
@@ -87,6 +90,11 @@ public class ApplicantService {
         atTheDoor(a == null ? null : a.id(), "applicant password reset requested", () -> {
             if (a == null) {
                 repo.event(identifier, null, "RESET_UNKNOWN", ip);
+                return null;
+            }
+            // V359: at most three links an hour to one account, however often they are asked for — the same silent answer
+            if (repo.recentResets(a.id()) >= 3) {
+                repo.event(identifier, a.id(), "RESET_HELD", ip);
                 return null;
             }
             byte[] raw = new byte[24];
@@ -217,6 +225,8 @@ public class ApplicantService {
     }
 
     public SignedIn signIn(String identifier, String password, String ip) {
+        // V359: one connection trying many applicant accounts is refused before any is tried
+        throttle.refuse(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
         ApplicantRepository.Account a = repo.byIdentifier(identifier).orElse(null);
         Object outcome = atTheDoor(a == null ? null : a.id(), "applicant sign-in", () -> {
             if (a == null) {
@@ -225,6 +235,7 @@ public class ApplicantService {
             }
             if (a.lockedUntil() != null && a.lockedUntil().isAfter(OffsetDateTime.now())) {
                 repo.event(identifier, a.id(), "LOCKED", ip);
+                throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + a.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
@@ -239,6 +250,7 @@ public class ApplicantService {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(a.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(identifier, a.id(), "BAD_PASSWORD", ip);
+                throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return badCredentials();
             }
             byte[] sid = new byte[32];

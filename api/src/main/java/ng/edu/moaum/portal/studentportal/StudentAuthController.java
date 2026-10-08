@@ -40,14 +40,14 @@ class StudentAuthController {
 
     @PostMapping("/sign-in")
     StudentAuthService.SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
-        return auth.signIn(body.matricNo(), body.password(), request.getRemoteAddr());
+        return auth.signIn(body.matricNo(), body.password(), ng.edu.moaum.portal.shared.ClientAddress.of(request));
     }
 
     /** the applicant, signed in, continues into the student portal as the student they have become (no second password) */
     @PostMapping("/continue")
     @PreAuthorize("hasAuthority('OFFICE_applicant')")
     StudentAuthService.SignedIn continueFromApplicant(Authentication authentication, HttpServletRequest request) {
-        return auth.continueFromApplicant(UUID.fromString(authentication.getName()), request.getRemoteAddr());
+        return auth.continueFromApplicant(UUID.fromString(authentication.getName()), ng.edu.moaum.portal.shared.ClientAddress.of(request));
     }
 
     @PostMapping("/sign-out")

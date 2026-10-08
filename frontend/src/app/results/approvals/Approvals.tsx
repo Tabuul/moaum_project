@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import { STAGE_LABEL, type SheetListing } from "@/lib/results";
+import { STAGE_LABEL, chaseWords, type SheetListing } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, LinkBtn, Note, Panel, Tiles } from "@/components/proto/ui";
 import { Modal, Field } from "@/components/proto/blocks";
@@ -46,6 +46,10 @@ export function Approvals({
       } else if (!r.ok) {
         { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
+      } else {
+        /* V359: a reminder or an escalation says what was sent, and to whom */
+        const j = await r.json().catch(() => null);
+        if (j && typeof j.said === "string") setSaid(j.said);
       }
       notify(reason);
       router.refresh();
@@ -89,14 +93,14 @@ export function Approvals({
                     <td className="mid">{s.failRate === null ? <span className="ink-faint">—</span> : high ? <span className="pill pill--bad tnum">{s.failRate}%</span> : <span className="tnum">{s.failRate}%</span>}</td>
                     <td>
                       {s.stage === "ENTRY" ? (
-                        <><strong className="ink-red">Not submitted</strong><div className="sub2">{s.lecturer ?? "No lecturer allocated"}{s.daysLate ? ` · ${s.daysLate} days overdue` : ""}</div></>
+                        <><strong className="ink-red">Not submitted</strong><div className="sub2">{s.lecturer ?? "No lecturer allocated"}{s.daysLate ? ` · ${s.daysLate} days overdue` : ""}</div>{chaseWords(s.chase) ? <div className="sub2">{chaseWords(s.chase)}</div> : null}</>
                       ) : (
                         <>{stageText}{s.blockedForYou ? <div className="sub2">You approved the previous stage — another holder of the next desk must approve this one</div> : who ? <div className="sub2">With {who}</div> : null}{high ? <div className="sub2 ink-red">Fail rate above half the candidates — review before approving</div> : null}</>
                       )}
                     </td>
                     <td className="num">
                       {s.stage === "ENTRY" ? (
-                        <><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Reminder for ${s.courseCode}`, s.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Escalation for ${s.courseCode}`, s.id)}>Escalate</Btn></>
+                        <><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Reminder for ${s.courseCode}`, s.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null || !s.daysLate} title={s.daysLate ? undefined : "A sheet is escalated once it is past its due date"} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/escalate`, {}, `Escalation for ${s.courseCode}`, s.id)}>Escalate</Btn></>
                       ) : s.stage === "PUBLISHED" ? (
                         <LinkBtn href={`/results/chain?sheet=${s.id}`} kind="ghost">Chain</LinkBtn>
                       ) : s.stage === "SENATE" ? (

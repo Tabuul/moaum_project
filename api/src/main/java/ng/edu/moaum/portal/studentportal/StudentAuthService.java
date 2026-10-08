@@ -15,6 +15,7 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.Throttle;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -45,11 +46,13 @@ public class StudentAuthService {
     private final StudentPortalRepository repo;
     private final TokenIssuer issuer;
     private final TransactionTemplate tx;
+    private final Throttle throttle;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
-    StudentAuthService(StudentPortalRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions) {
+    StudentAuthService(StudentPortalRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, Throttle throttle) {
         this.repo = repo;
+        this.throttle = throttle;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
     }
@@ -78,6 +81,8 @@ public class StudentAuthService {
     }
 
     public SignedIn signIn(String matricNo, String password, String ip) {
+        // V359: one connection trying many student accounts is refused before any is tried
+        throttle.refuse(Throttle.Door.STUDENT_SIGN_IN, ip);
         StudentPortalRepository.Student s = repo.byMatric(matricNo).orElse(null);
         Object outcome = atTheDoor(s == null ? null : s.id(), "student sign-in", () -> {
             /* the student door opens on the matriculation number and, before it is issued, on the
@@ -98,6 +103,7 @@ public class StudentAuthService {
                 }
                 if (!encoder.matches(password == null ? "" : password, applicantHash)) {
                     repo.event(matricNo, s.id(), "BAD_PASSWORD", ip);
+                    throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                     return badCredentials();
                 }
                 Carried c = carried(applicantHash);
@@ -107,6 +113,7 @@ public class StudentAuthService {
             }
             if (a.lockedUntil() != null && a.lockedUntil().isAfter(OffsetDateTime.now())) {
                 repo.event(matricNo, s.id(), "LOCKED", ip);
+                throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
@@ -129,6 +136,7 @@ public class StudentAuthService {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(s.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(matricNo, s.id(), "BAD_PASSWORD", ip);
+                throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                 return badCredentials();
             }
             byte[] sid = new byte[32];

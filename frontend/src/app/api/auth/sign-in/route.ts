@@ -86,8 +86,9 @@ export async function POST(request: NextRequest) {
     }
   } else {
     r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
-    /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other doors */
-    if (r && r.status === 422 && identifier.includes("@")) {
+    /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other doors —
+       and when the staff door has refused this connection for a while (429, V359), the other doors keep their own count */
+    if (r && (r.status === 422 || r.status === 429) && identifier.includes("@")) {
       const again = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
       if (again && again.ok) {
         r = again;

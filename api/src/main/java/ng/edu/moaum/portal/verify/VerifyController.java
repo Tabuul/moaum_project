@@ -1,6 +1,10 @@
 package ng.edu.moaum.portal.verify;
 
+import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.FileObjects;
+import ng.edu.moaum.portal.shared.Throttle;
+
+import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
@@ -31,10 +35,22 @@ class VerifyController {
 
     private final FileObjects files;
     private final JdbcClient jdbc;
+    private final Throttle throttle;
 
-    VerifyController(FileObjects files, JdbcClient jdbc) {
+    VerifyController(FileObjects files, JdbcClient jdbc, Throttle throttle) {
         this.jdbc = jdbc;
         this.files = files;
+        this.throttle = throttle;
+    }
+
+    /** V359: every check answered here counts against the connection when it does not match — a page that checks the
+     *  document in hand answers a handful, not a run of guessed references or codes; past the limit it is refused */
+    private Map<String, Object> checked(HttpServletRequest request, java.util.function.Supplier<Map<String, Object>> answer) {
+        String source = ClientAddress.of(request);
+        throttle.refuse(Throttle.Door.VERIFY, source);
+        Map<String, Object> out = answer.get();
+        if (!Boolean.TRUE.equals(out.get("genuine"))) throttle.count(Throttle.Door.VERIFY, source);
+        return out;
     }
 
     /** the same digest the receipt carries: sha256(reference|receiptNo), hex, upper-cased, first 12 */
@@ -52,7 +68,11 @@ class VerifyController {
 
     @GetMapping("/receipt/{reference}")
     @Transactional(readOnly = true)
-    Map<String, Object> receipt(@PathVariable String reference, @RequestParam(required = false) String c) {
+    Map<String, Object> receipt(@PathVariable String reference, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> receiptAnswer(reference, c));
+    }
+
+    private Map<String, Object> receiptAnswer(String reference, String c) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT pr.reference, pr.receipt_no, pr.amount, pr.purpose, pr.session, pr.channel, pr.confirmed_at,
                        finance.payment_term(pr.id) AS term,
@@ -148,7 +168,11 @@ class VerifyController {
     @GetMapping("/exam")
     @Transactional(readOnly = true)
     Map<String, Object> exam(@RequestParam String matric, @RequestParam String session,
-                             @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+                             @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> examAnswer(matric, session, semester, c));
+    }
+
+    private Map<String, Object> examAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, s.current_level, pg.name AS programme,
@@ -218,7 +242,11 @@ class VerifyController {
     @GetMapping("/registration")
     @Transactional(readOnly = true)
     Map<String, Object> registration(@RequestParam String matric, @RequestParam String session,
-                                     @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+                                     @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> registrationAnswer(matric, session, semester, c));
+    }
+
+    private Map<String, Object> registrationAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
@@ -267,7 +295,11 @@ class VerifyController {
     @GetMapping("/results")
     @Transactional(readOnly = true)
     Map<String, Object> results(@RequestParam String matric, @RequestParam String session,
-                                @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+                                @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> resultsAnswer(matric, session, semester, c));
+    }
+
+    private Map<String, Object> resultsAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> stu = jdbc.sql("""
                 SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
@@ -320,7 +352,11 @@ class VerifyController {
      */
     @GetMapping("/report/{code}")
     @Transactional(readOnly = true)
-    Map<String, Object> report(@PathVariable String code) {
+    Map<String, Object> report(@PathVariable String code, HttpServletRequest request) {
+        return checked(request, () -> reportAnswer(code));
+    }
+
+    private Map<String, Object> reportAnswer(String code) {
         String c = code == null ? "" : code.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
         return jdbc.sql("""
                 SELECT s.title, s.subtitle, s.period, s.report, s.row_count, s.taken_at, s.taken_office,
@@ -338,7 +374,11 @@ class VerifyController {
      */
     @GetMapping("/putme/{token}")
     @Transactional(readOnly = true)
-    Map<String, Object> putme(@PathVariable String token) {
+    Map<String, Object> putme(@PathVariable String token, HttpServletRequest request) {
+        return checked(request, () -> putmeAnswer(token));
+    }
+
+    private Map<String, Object> putmeAnswer(String token) {
         String t = token == null ? "" : token.trim().toLowerCase().replaceAll("[^a-f0-9]", "");
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
@@ -381,20 +421,39 @@ class VerifyController {
      * A hostel allocation letter or clearance certificate, by the allocation reference its QR carries (V261): the student's
      * name and PHOTO, the hall, block, room and bed, the state of the stay and its clearance — so a forged or altered letter
      * is exposed at the porter's lodge. Nothing is shown for a hold that lapsed or an allocation that never was.
+     *
+     * <p>V359: and only with the allocation's own check code, which the letter's QR carries — the references run in
+     * sequence, and without the code the page answered anyone's name, photograph and room for any of them. Without the
+     * code, or with another, nothing is said about the reference, not even whether it exists; a letter printed before
+     * the code was added is printed again by the student from the portal.
      */
     @GetMapping("/hostel/{ref}")
     @Transactional(readOnly = true)
-    Map<String, Object> hostel(@PathVariable String ref) {
+    Map<String, Object> hostel(@PathVariable String ref, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> hostelAnswer(ref, c));
+    }
+
+    private Map<String, Object> hostelAnswer(String ref, String c) {
         String r = ref == null ? "" : ref.trim().toUpperCase().replaceAll("[^A-Z0-9-]", "");
+        String code = c == null ? "" : c.trim().toLowerCase().replaceAll("[^0-9a-f]", "");
         Map<String, Object> out = new LinkedHashMap<>();
+        if (code.isEmpty()) {
+            out.put("genuine", false);
+            out.put("codeMissing", true);
+            return out;
+        }
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT al.id, al.reference_no, al.state, al.session, st.id AS student_id, st.surname || ', ' || st.other_names AS student_name, coalesce(st.matric_no, st.admission_no) AS student_number, p.name AS programme,
+                SELECT al.id, al.reference_no, al.verify_code, al.state, al.session, st.id AS student_id, st.surname || ', ' || st.other_names AS student_name, coalesce(st.matric_no, st.admission_no) AS student_number, p.name AS programme,
                        h.name AS hall_name, rm.block, rm.floor, rm.room_no, b.label AS bed_label, al.start_on, al.end_on, al.checked_in_at, al.checked_out_at, cl.reference AS clearance_ref, cl.state AS clearance_state
                   FROM hostel.allocation al JOIN people.student st ON st.id = al.student_id LEFT JOIN ref.programme p ON p.code = st.programme_code
                   JOIN hostel.room rm ON rm.id = al.room_id JOIN hostel.hall h ON h.code = rm.hall_code LEFT JOIN hostel.bed b ON b.id = al.bed_id LEFT JOIN hostel.clearance cl ON cl.allocation_id = al.id
                  WHERE al.reference_no = :r AND al.state NOT IN ('HELD','LAPSED','DECLINED','CANCELLED')
                 """).param("r", r).query().listOfRows();
-        if (r.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        if (r.isEmpty() || rows.isEmpty() || !MessageDigest.isEqual(String.valueOf(rows.get(0).get("verify_code")).getBytes(StandardCharsets.UTF_8),
+                code.getBytes(StandardCharsets.UTF_8))) {
+            out.put("genuine", false);
+            return out;
+        }
         Map<String, Object> row = rows.get(0);
         out.put("genuine", true);
         for (String k : List.of("reference_no", "state", "session", "student_name", "student_number", "programme", "hall_name", "block", "floor", "room_no", "bed_label", "start_on", "end_on", "checked_in_at", "checked_out_at", "clearance_ref", "clearance_state")) out.put(k, row.get(k));
@@ -414,7 +473,11 @@ class VerifyController {
     /** the deferment approval letter: the University's record of the deferment, by its reference */
     @GetMapping("/deferment/{reference}")
     @Transactional(readOnly = true)
-    Map<String, Object> deferment(@PathVariable String reference) {
+    Map<String, Object> deferment(@PathVariable String reference, HttpServletRequest request) {
+        return checked(request, () -> defermentAnswer(reference));
+    }
+
+    private Map<String, Object> defermentAnswer(String reference) {
         String r = reference == null ? "" : reference.trim().toUpperCase();
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
@@ -432,7 +495,11 @@ class VerifyController {
     /** the postgraduate offer letter: the application, the programme and the offer, by the number on the letter and the token its QR carries */
     @GetMapping("/pg-offer/{applicationNo}")
     @Transactional(readOnly = true)
-    Map<String, Object> pgOffer(@PathVariable String applicationNo, @RequestParam(required = false) String t) {
+    Map<String, Object> pgOffer(@PathVariable String applicationNo, @RequestParam(required = false) String t, HttpServletRequest request) {
+        return checked(request, () -> pgOfferAnswer(applicationNo, t));
+    }
+
+    private Map<String, Object> pgOfferAnswer(String applicationNo, String t) {
         String no = applicationNo == null ? "" : applicationNo.trim().toUpperCase();
         Map<String, Object> out = new LinkedHashMap<>();
         if (t == null || !t.equalsIgnoreCase(token(no, "MOAUM-PG-OFFER"))) { out.put("genuine", false); return out; }

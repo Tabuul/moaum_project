@@ -61,7 +61,18 @@ public final class Sheets {
     public record Listed(UUID id, String courseCode, String courseTitle, int units, String deptName, String facultyName,
                          String session, int semester, String stage, int spineStage, String sitting, LocalDate dueOn, Integer daysLate,
                          int returnedTimes, String lecturer, long candidates, long received, Integer failRate, boolean mayAct,
-                         boolean blockedForYou, int caMax, long heldScripts) {
+                         boolean blockedForYou, int caMax, long heldScripts, Chase chase) {
+    }
+
+    /** V359: how a sheet at entry has been chased — reminders to its lecturer, escalations and to whom; null when never */
+    public record Chase(int reminders, OffsetDateTime remindedAt, int escalations, OffsetDateTime escalatedAt, String escalatedTo) {
+    }
+
+    /** the office a late sheet is escalated to, as the monitor names it — assessment.chase_office's rule (V359) */
+    static String escalationOffice(Integer daysLate, String generalOffice) {
+        if (daysLate == null || daysLate <= 0) return "—";
+        if (generalOffice != null && !generalOffice.isBlank()) return "The " + generalOffice.trim().toUpperCase() + " office";
+        return daysLate < 6 ? "Head of Department" : "Dean";
     }
 
     /* ── V318: the pipeline monitor — the nine stages with their real counts, coverage, what is missing, what needs a desk ── */
@@ -143,7 +154,7 @@ public final class Sheets {
     }
 
     public record Outstanding(UUID id, String courseCode, String deptName, String facultyCode, String lecturer,
-                              long candidates, Integer daysLate, String escalatedTo) {
+                              long candidates, Integer daysLate, String escalatedTo, Chase chase) {
     }
 
     public record Monitor(ExamSession examSession, List<FacultyProgress> faculties, List<Outstanding> outstanding) {
@@ -153,7 +164,8 @@ public final class Sheets {
 
     public record MySheet(UUID id, String courseCode, String courseTitle, int units, String session, int semester, String stage,
                           int spineStage, LocalDate dueOn, Integer daysLate, Integer daysToDue, int returnedTimes, long candidates, long entered,
-                          long graded, String secondExaminer, boolean mine, long openQueries, long bankQuestions, long caEntered, long heldScripts) {
+                          long graded, String secondExaminer, boolean mine, long openQueries, long bankQuestions, long caEntered, long heldScripts,
+                          Chase chase) {
     }
 
     /** every approved registration on the sheet, with the latest mark where one exists */

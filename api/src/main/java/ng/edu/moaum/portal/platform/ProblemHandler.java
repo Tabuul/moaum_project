@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.Throttle;
 
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
@@ -53,6 +54,15 @@ class ProblemHandler {
             problem.setProperty("remedy", remedy);
         }
         return problem;
+    }
+
+    /** V359: a public door's limit spent — 429, and when to knock again */
+    @ExceptionHandler(Throttle.Throttled.class)
+    org.springframework.http.ResponseEntity<ProblemDetail> throttled(Throttle.Throttled e, HttpServletRequest request) {
+        ProblemDetail problem = domainRule(e, request);
+        problem.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.retryAfterSeconds())).body(problem);
     }
 
     @ExceptionHandler(NotFound.class)
@@ -152,6 +162,8 @@ class ProblemHandler {
             Map.entry("AUTH_BAD_CREDENTIALS", "Wrong username or password"),
             Map.entry("AUTH_LOCKED", "Account locked for now"),
             Map.entry("AUTH_THROTTLED", "Too many attempts"),
+            Map.entry("APP_THROTTLED", "Too many attempts"),
+            Map.entry("VERIFY_THROTTLED", "Too many checks"),
             Map.entry("AUTH_RESET_TOKEN", "That reset link is not valid"),
             Map.entry("AUTH_PASSWORD_SHORT", "Password too short"),
             Map.entry("APP_PASSWORD_SHORT", "Password too short"),

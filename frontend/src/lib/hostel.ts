@@ -58,6 +58,8 @@ export interface StudentHostelFull {
   roommates: Roommate[]; transfers: TransferReq[]; charges: Charge[]; clearanceItems: ClearanceItem[]; inspections: Inspection[]; maintenance: Maintenance[]; events: HostelEvent[];
   /** V290: the eligibility checklist and the rooms the student may choose */
   rooms?: StudentRooms | null;
+  /** V359: the check code the allocation letter and the clearance certificate carry in their QR */
+  verifyCode?: string | null;
 }
 
 export interface Window {
@@ -136,8 +138,9 @@ export const longDay = (iso: string | null | undefined) => (iso ? new Date(iso).
 export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 export const naira = (n: number | string | null | undefined) => (n === null || n === undefined ? "—" : `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export const pct = (a: number, b: number) => (b ? Math.round((1000 * a) / b) / 10 : 0);
-export function hostelVerifyPath(ref: string): string {
-  return `/verify/hostel/${encodeURIComponent(ref)}`;
+/** V359: the letter's QR carries the allocation's own check code; without it the public page names no one */
+export function hostelVerifyPath(ref: string, code: string | null | undefined): string {
+  return `/verify/hostel/${encodeURIComponent(ref)}${code ? `?c=${encodeURIComponent(code)}` : ""}`;
 }
 
 /** one call to the hostel doors from the browser: the problem returned, never thrown */

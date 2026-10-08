@@ -1287,7 +1287,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Approval workflow | None. |
 | Statuses | `iam.sign_in_event.outcome`: SIGNED_IN, BAD_PASSWORD, UNKNOWN, LOCKED, SIGNED_OUT written (MUST_CHANGE, ENDED never written); credential events SET, RESET, CHANGED. |
 | Validation rules | Username 3–200 lower-case, unique; bcrypt cost 12 (`$2…$12$`); `X-Active-Office` must be one of the token's offices; session id 32 bytes. |
-| Security | Token in an httpOnly cookie (`moaum_session`); office in a readable cookie; CSRF disabled (stateless API); no rate limit on `/auth/forgot`, `/auth/reset` or sign-in; a Registrar cannot end another person's session; `/api/v1/platform/status` is public. |
+| Security | Token in an httpOnly cookie (`moaum_session`); office in a readable cookie; CSRF disabled (stateless API); per-connection limits on `/auth/forgot`, `/auth/reset` and sign-in (V359); a Registrar cannot end another person's session; `/api/v1/platform/status` is public. |
 | Audit trail | `iam.credential_event` attached; sign-in events are the log itself (exempt); failed attempts are written before the refusal so the lockout survives the rollback. |
 | Related modules | Identity & accounts (§3.5); Applicant portal (§3.18); PG applicant portal (§3.19); External examiners (§3.22 — activation). |
 | Common errors | "That username and password do not match an account."; "This account is locked after repeated failures; try again after HH:MM."; "No portal account has been opened for this number yet."; "The portal was updated. Sign in again."; "The office 'x' is not one this token carries"; "This reset link has expired or was already used." |
@@ -1768,7 +1768,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Approval workflow | Stage 0–9 computed by `admissions.application_stage`. |
 | Statuses | Candidate `offer_state` PROPOSED / ADMITTED / ACCEPTED / DECLINED / WITHDRAWN / LAPSED; clearance item NOT_PRESENTED / VERIFIED / QUERY; document PENDING / ACCEPTED / REJECTED. |
 | Validation rules | JAMB number `^\d{12}[A-Z]{2,3}$`; email; phone 11 digits from 0; password ≥ 8; "the form opens when the application fee is confirmed"; "the next of kin is not given"; declaration ticked; acceptance needs both the undertaking and the fee; clearance opens after acceptance; 6/6 VERIFIED clears. |
-| Security | Public endpoints without rate limit; 12-hour JWT; lockout 5/15 min; reset token hashed, one hour; documents served inline; the applicant never sees an unreleased score or decision nor the O'Level score. |
+| Security | Public endpoints limited per connection (V359: look-up 60, registration 30, sign-in 30 wrong passwords, forgot 20, reset 20 per fifteen minutes); 12-hour JWT; lockout 5/15 min; reset token hashed, one hour; documents served inline; the applicant never sees an unreleased score or decision nor the O'Level score. |
 | Audit trail | `application`, `fee_reference`, `application_document`, `clearance_document` attached; `applicant_account`, `applicant_event`, `password_reset` not. |
 | Related modules | Admissions (§3.17); Payments (§3.37); Sign-in (§3.2); Student records (§3.23). |
 | Common errors | "Nobody can be verified yet…"; "That number is not on the list JAMB sent the University"; "An application account already exists for this number"; slip "not published yet"; letter 409 "Accept your offer first". |
@@ -2114,7 +2114,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Filters | Session, Semester, Standing (history); scope bar with course (approvals); programme/level/session/semester (broadsheet); faculty (senate). |
 | Reports | Submission monitor; broadsheet ("Examination reporting sheet"); Senate schedule by faculty. |
 | Export | Score-sheet template (xlsx/csv), marked sheet (xlsx/pdf, landscape, no QR), validation report CSV, broadsheet Excel (serial BRD) and print PDF. |
-| Notifications | None on publication; Remind/escalate returns 202 "The notification module is not on the portal yet; nothing was sent."; `trg_score_flags_documents` flags issued documents when a score changes. |
+| Notifications | None on publication; Remind/Escalate send by email and text and are kept (V359); `trg_score_flags_documents` flags issued documents when a score changes. |
 | Approval workflow | ENTRY → VERIFICATION (exams) → DEPT_BOARD (hod) → FACULTY_SCRUTINY (facultyexams) → FACULTY_COMPILATION (facultyofficer) → FACULTY_BOARD (dean) → RECORDS (records) → SENATE (registrar/dregistrar, minute) → PUBLISHED; RETURN to ENTRY with a comment from any stage but ENTRY/PUBLISHED. |
 | Statuses | Sheet stage as above; exam session DRAFT / OPEN (CLOSED unused); score outcome GRADED / ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED. |
 | Validation rules | Every candidate needs a mark or an outcome before submit; BR-006 "you approved the previous stage of this sheet; another desk must approve this one"; a minute to publish; marks within the course split (`ca_max`, default 40); `RES_MARK_ON_RECORD`; `RES_AMENDMENT_SAYS_WHY`; exam dates in order; one session per (session, semester, kind); grace 39 → 40. |
@@ -2610,7 +2610,7 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Approval workflow | Application APPLIED → ALLOCATED → CONFIRMED; LAPSED / UNSUCCESSFUL / WITHDRAWN / REJECTED; allocation HELD → CONFIRMED → ACCEPTED → CHECKED_IN → CHECKED_OUT; DECLINED / LAPSED / CANCELLED / TRANSFERRED; clearance PENDING → CLEARED / NOT_CLEARED. |
 | Statuses | Window DRAFT / OPEN / CLOSED / ALLOCATED; transfer request SUBMITTED / UNDER_REVIEW / APPROVED / REJECTED / COMPLETED; maintenance RAISED / ASSIGNED / FIXED / CLOSED; occupancy OCCUPIED / RESERVED / MAINTENANCE / OUT_OF_SERVICE / AVAILABLE. |
 | Validation rules | Eligibility messages ("A student whose status is {x} is not eligible", "Course registration for {s} has not been submitted", "An unsettled hostel damage charge of NGN {x} stands"…); one application per session; the draw runs once from a seed ≥ 6 characters; a hold expires at `allocated + hold_hours`; fee before acceptance; rules acknowledged before acceptance; check-in only on a confirmed, accepted allocation; a transfer/cancel/closure carries a reason; "% requirement(s) still pending" before completion; hall code `^[A-Z0-9]{2,8}$`; room beds 1–12. |
-| Security | `/api/v1/verify/hostel/{ref}` is public with **no check token and no rate limit** over a sequential `ALC-YYYY-NNNNN` reference (names, photographs and room numbers can be enumerated). |
+| Security | `/api/v1/verify/hostel/{ref}?c=` (V359) answers the record only with the allocation's own check code the QR carries, and is throttled with the other verification endpoints |
 | Audit trail | All `hostel.*` attached; `hostel.event` write-once. |
 | Related modules | Payments (§3.37 — `hostel.confirm_by_reference`); Clearance (§3.28 — HOSTEL item); Public verification (§3.53). |
 | Common errors | "Accommodation for {session} is not open yet"; "Generate Allocation" disabled; "the draw for … was run on …"; "nobody checks in on a hold"; "Complete clearance" disabled. |
@@ -2781,7 +2781,7 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Approval workflow | None. |
 | Statuses | Document VALID / REVOKED / REPLACED / NOT FOUND / INVALID; others genuine / not verified. |
 | Validation rules | Receipt, exam, registration and results need a SHA-256 check token; report by its code; PUTME by an opaque token; document by a 128-bit code or number; secure link by a 192-bit token with expiry and use limit; hostel by reference alone. |
-| Security | Document verification throttled 40 / 15 min per IP; ticket tracking 12 / 15 min per IP and email; **no throttle** on the token-gated endpoints (the token stops enumeration) and **neither token nor throttle** on `/verify/hostel/{ref}`. |
+| Security | Document verification throttled 40 / 15 min per IP; ticket tracking 12 / 15 min per IP and email; V359: the token-gated endpoints throttled too (40 checks that do not match per connection in fifteen minutes) (the token stops enumeration) and **neither token nor throttle** on `/verify/hostel/{ref}`. |
 | Audit trail | Document verifications and downloads logged (exempt tables); others unlogged. |
 | Related modules | Receipts (§3.39), Results (§3.33), Registration (§3.13), Reports (§3.54), Admissions CBT (§3.17), Hostel (§3.47), Documents (§3.51), Help desk (§3.48). |
 | Common errors | "Not verified" when the code or session does not match or nothing is published; "That QR is not a MOAUM verification code." |
@@ -4357,7 +4357,7 @@ Portal Management → Examination Sessions (the Director of ICT's) / CBT Session
 |---|---|---|
 | Open the session / Save as a draft | Create (+ open → sheets generated) | `POST /results/exam-sessions` (+ `…/{id}/open`) |
 | Save the dates | Edit | `PUT /results/exam-sessions/{id}` |
-| Remind / escalate | 202 "nothing was sent" | `POST /results/sheets/{id}/remind` |
+| Remind / Escalate | V359: sent by email and text, kept; the screen says who was reached | `POST /results/sheets/{id}/remind`, `/escalate`; `GET /chases` |
 
 **Messages** "N score sheets generated; M courses have no lecturer and generated none."; "Only the dates can change"; `EXAM_CLOSED`.
 
@@ -5517,7 +5517,7 @@ Overview → Student Statistics → /stats → (any figure) → /stats/students?
 ```text
 (QR on the allocation letter / clearance certificate) → /verify/hostel/{ref}
 ```
-**URL** `/verify/hostel/{ref}` · **Purpose** "Hostel allocation verification" for the porter. · **Who** Public. · **Layout** Green "Genuine — this is the University's record" with photograph and cells Hostel, Block · floor, Room, Bed, State, Stay, Checked in, Clearance; or red "Not verified — No hostel allocation matches this reference. Treat the letter as not genuine." · **Security** No check token and no throttle over a sequential reference.
+**URL** `/verify/hostel/{ref}?c={code}` (V359: the check code from the QR; without it "This letter carries no check code" and nothing about the student) · **Purpose** "Hostel allocation verification" for the porter. · **Who** Public. · **Layout** Green "Genuine — this is the University's record" with photograph and cells Hostel, Block · floor, Room, Bed, State, Stay, Checked in, Clearance; or red "Not verified — No hostel allocation matches this reference. Treat the letter as not genuine." · **Security** No check token and no throttle over a sequential reference.
 
 > **Screenshot Required:** Hostel verification — `/verify/hostel/{ref}` — the genuine card.
 

@@ -7,9 +7,10 @@ import { SESSION_COOKIE } from "@/lib/session";
  * The BFF (ARC §8, ADR-007): the browser talks to this origin only, and this
  * handler forwards to the API with a token the browser never holds. Only the
  * versioned API is reachable through it, and only the headers the API
- * understands are forwarded.
+ * understands are forwarded — with the X-Forwarded-For the edge wrote (V359),
+ * so the API counts a public door's limit against the person, not the portal.
  */
-const FORWARDED_HEADERS = ["content-type", "accept", "x-correlation-id", "x-active-office", "x-reason", "idempotency-key", "x-attempt-token"];
+const FORWARDED_HEADERS = ["content-type", "accept", "x-correlation-id", "x-active-office", "x-reason", "idempotency-key", "x-attempt-token", "x-forwarded-for"];
 
 async function forward(request: NextRequest, path: string[]): Promise<NextResponse> {
   if (path[0] !== "api" || path[1] !== "v1") {

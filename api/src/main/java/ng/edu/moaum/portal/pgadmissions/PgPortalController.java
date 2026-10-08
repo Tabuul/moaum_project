@@ -56,32 +56,10 @@ class PgPortalController {
     static final Duration SESSION_LENGTH = Duration.ofHours(12);
     static final int LOCK_AFTER = 5;
     static final Duration LOCK_FOR = Duration.ofMinutes(15);
-    /** failures one connection may make in a window before it is refused, whatever accounts it names — so a
-     *  stranger cannot keep an applicant locked out by feeding five wrong passwords every quarter hour */
-    static final int SOURCE_FAILURES = 20;
-    private final java.util.concurrent.ConcurrentHashMap<String, java.util.ArrayDeque<Instant>> sourceFailures = new java.util.concurrent.ConcurrentHashMap<>();
-
-    private static String sourceOf(HttpServletRequest request) {
-        String xf = request.getHeader("X-Forwarded-For");
-        return xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : String.valueOf(request.getRemoteAddr());
-    }
-
-    /** true when this source has failed too often in the last window; a failure is recorded by noteFailure */
-    private boolean sourceThrottled(String source) {
-        java.util.ArrayDeque<Instant> q = sourceFailures.get(source);
-        if (q == null) return false;
-        Instant floor = Instant.now().minus(LOCK_FOR);
-        synchronized (q) {
-            while (!q.isEmpty() && q.peekFirst().isBefore(floor)) q.pollFirst();
-            return q.size() >= SOURCE_FAILURES;
-        }
-    }
-
-    private void noteFailure(String source) {
-        java.util.ArrayDeque<Instant> q = sourceFailures.computeIfAbsent(source, k -> new java.util.ArrayDeque<>());
-        synchronized (q) { q.addLast(Instant.now()); }
-        if (sourceFailures.size() > 10_000) sourceFailures.clear();   // a bound, not a policy: the window is fifteen minutes
-    }
+    /** V359: the failures one connection may make before it is refused, whatever accounts it names, are counted by the
+     *  platform's door limit (Throttle.Door.PG_SIGN_IN) — so a stranger cannot keep an applicant locked out by feeding five
+     *  wrong passwords every quarter hour, nor try many accounts */
+    private final ng.edu.moaum.portal.shared.Throttle throttle;
     static final UUID NOBODY = new UUID(0, 0);
 
     private final FileObjects files;
@@ -93,8 +71,10 @@ class PgPortalController {
     private final String portalUrl;
 
     PgPortalController(FileObjects files, JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer,
-                       @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+                       @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
+                       ng.edu.moaum.portal.shared.Throttle throttle) {
         this.jdbc = jdbc;
+        this.throttle = throttle;
         this.files = files;
         this.tx = new TransactionTemplate(transactions);
         this.issuer = issuer;
@@ -120,13 +100,13 @@ class PgPortalController {
     @PostMapping("/sign-in")
     SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
         String id = body.identifier().trim();
-        String source = sourceOf(request);
-        if (sourceThrottled(source)) {
-            throw new DomainRuleViolation("AUTH_THROTTLED", "Too many failed sign-ins from this connection; try again in fifteen minutes.",
-                    new DomainRuleViolation.Remedy("Wait fifteen minutes, or reset your password with the email you applied with.", "You"));
-        }
+        String source = ng.edu.moaum.portal.shared.ClientAddress.of(request);
+        throttle.refuse(ng.edu.moaum.portal.shared.Throttle.Door.PG_SIGN_IN, source);
+        /* V359: whether the account is locked is decided in the database — the driver gives a java.sql.Timestamp, which a cast
+           to OffsetDateTime refused (a locked applicant's sign-in failed with a server error instead of saying so) */
         Map<String, Object> a = firstOrNull(jdbc.sql("""
-                SELECT p.id, p.surname, p.other_names, p.password_hash, p.failed_attempts, p.locked_until,
+                SELECT p.id, p.surname, p.other_names, p.password_hash, p.failed_attempts,
+                       coalesce(p.locked_until > now(), false) AS locked, to_char(p.locked_until AT TIME ZONE 'Africa/Lagos', 'HH24:MI') AS locked_until_text,
                        (SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = p.id) AS application_no
                   FROM admissions.pg_applicant p
                  WHERE lower(p.email) = lower(:id)
@@ -134,14 +114,13 @@ class PgPortalController {
                  LIMIT 1
                 """).param("id", id).query().listOfRows());
         if (a == null) {
-            noteFailure(source);
-            throw badCredentials();
+            throw badCredentials();   // an unknown name is not counted: the portal's sign-in page tries this door for every email
         }
         UUID applicantId = (UUID) a.get("id");
-        OffsetDateTime lockedUntil = (OffsetDateTime) a.get("locked_until");
-        if (lockedUntil != null && lockedUntil.isAfter(OffsetDateTime.now())) {
+        if (Boolean.TRUE.equals(a.get("locked"))) {
+            throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.PG_SIGN_IN, source);
             throw new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
-                    + lockedUntil.toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
+                    + a.get("locked_until_text") + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
         }
         int attempts = ((Number) a.get("failed_attempts")).intValue();
         if (!encoder.matches(body.password(), String.valueOf(a.get("password_hash")))) {
@@ -149,7 +128,7 @@ class PgPortalController {
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE admissions.pg_applicant SET failed_attempts = :n, locked_until = :l WHERE id = :id")
                     .param("n", next).param("l", lock).param("id", applicantId).update());
-            noteFailure(source);
+            throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.PG_SIGN_IN, source);
             throw badCredentials();
         }
         byte[] sid = new byte[32];

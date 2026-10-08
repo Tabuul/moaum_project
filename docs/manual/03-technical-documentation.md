@@ -888,7 +888,7 @@ Ownership is checked in most student-facing and desk endpoints: every `/me/*` ha
 | `results/HeldScriptsController` — `hold`, `holdBulk`, `withdraw` | no `own`/`teaches` check: any lecturer can hold a script on any sheet id, and a release can add a score to a sheet already past ENTRY | dossier E §C |
 | `GET /api/v1/student/students/{id}` and `/{id}/portal` | readable by every READER office for any student id; no `OfficeScope` bound | dossier D |
 | `GET /api/v1/student/records/{view}` | scope built from request parameters only (`Scope.of(fac, dept, …)`), unlike `/students` which forces `OfficeScope.bound`; a HOD can read another department's rows by editing the URL | dossier D |
-| `GET /api/v1/verify/hostel/{ref}` | public, no check token, no throttle; `ALC-YYYY-NNNNN` is sequential, so names, photographs and room numbers can be enumerated | dossier G |
+| `GET /api/v1/verify/hostel/{ref}` | CLOSED (V359): the record only with the allocation's own check code (`?c=`); throttled with the other verification endpoints | dossier G |
 | `results/*/advance` | any `DESKS` office may advance any stage (the stage→office map is UI-only); a `DESKS` office may publish a single sheet by passing a minute at SENATE | dossier E |
 | `pgadmissions/PgCourseworkController` | no HOD department scope; a HOD may endorse/score any PG registration | dossier C |
 | `GET /api/v1/college/exams/{code}/assessments` | only `assertLevel`; any EXAMINERS office may read the CA of any College student | dossier E |
@@ -898,15 +898,23 @@ Ownership is checked in most student-facing and desk endpoints: every `/me/*` ha
 
 ### 5.8 Rate limiting
 
-In-memory, per API instance, keyed by source IP (`X-Forwarded-For` first hop, else the remote address):
+In-memory, per API instance. V359: every public door counts against the address the edge wrote (`shared/ClientAddress`): the first `X-Forwarded-For` entry when the API runs on Railway (`RAILWAY_ENVIRONMENT_ID` set — Railway's edge drops whatever the client sent), the last entry otherwise (a load balancer such as AWS's appends what it saw); `MOAUM_CLIENT_ADDRESS=first|last` overrides. The portal passes `X-Forwarded-For` on from its sign-in routes, its BFF and its server-side calls. A request from the machine itself (development, the test suite) is not counted. The shared limits are `shared/Throttle` (each settable as `moaum.throttle.<door>`); past one, 429 with `Retry-After`:
 
 | Door | Limit | Code |
 |---|---|---|
 | `GET /api/v1/verify/document*`, `/verify/download/{token}` | 40 lookups per 15 minutes per source (`DocumentsController.VERIFY_LIMIT`, `VERIFY_WINDOW_MS`) | `VERIFY_THROTTLED` |
 | `POST /api/v1/helpdesk/track` | 12 lookups per 15 minutes per IP and per email (`HelpdeskController.TRACK_LIMIT`) | `HELPDESK_TRACK_SLOW_DOWN` |
-| `POST /api/v1/pg/sign-in` | 20 failures per source in 15 minutes | `AUTH_THROTTLED` |
+| `POST /api/v1/auth/sign-in` (staff) | 30 wrong passwords (or locked) on existing accounts per connection in 15 minutes — an unknown name is not counted, since the portal's own page tries the staff door for every email | `AUTH_THROTTLED` |
+| `POST /api/v1/student-auth/sign-in` | 60, counted the same way | `AUTH_THROTTLED` |
+| `POST /api/v1/applicant/sign-in` | 30, counted the same way | `AUTH_THROTTLED` |
+| `POST /api/v1/pg/sign-in`, `/api/v1/jupeb/sign-in` | 20 each, counted the same way (unknown names no longer counted) | `AUTH_THROTTLED` |
+| `POST /auth/forgot`, `/applicant/forgot`, `/jupeb/forgot` | 20 requests per connection; and at most three links an hour to one account (silently, the same 202) | `AUTH_THROTTLED` |
+| `POST /auth/reset`, `/applicant/reset`, `/jupeb/reset` | 20 links that do not work per connection | `AUTH_THROTTLED` |
+| `POST /api/v1/applicant/lookup` | 60 look-ups per connection | `APP_THROTTLED` |
+| `POST /api/v1/applicant/register` | 30 per connection | `APP_THROTTLED` |
+| `GET /api/v1/verify/{receipt, exam, registration, results, report, putme, hostel, deferment, pg-offer}` | 40 checks that do not match per connection | `VERIFY_THROTTLED` |
 
-Nothing else is throttled: not the staff, student or applicant sign-in doors, not `/auth/forgot` and `/auth/reset` (the `AUTH_THROTTLED` title exists in `ProblemHandler` but nothing in those doors raises it), not `/applicant/lookup` (which the registration page fires on every keystroke once the number is shaped), not the receipt/exam/registration/results/report/Post-UTME verification endpoints (protected by their check tokens, or in the hostel and Post-UTME cases by nothing), not the payment webhooks. The counters are lost on restart and are not shared across replicas (`numReplicas` is 1).
+The payment webhooks are not throttled, on purpose: the gateways retry, and a refusal would lose a real payment notice; they are authenticated by their own signatures. The counters are lost on restart and are not shared across replicas (`numReplicas` is 1); each account's own lockout (five failures, fifteen minutes) stands beside them.
 
 ### 5.9 Audit logging
 
@@ -950,8 +958,8 @@ Nothing else is throttled: not the staff, student or applicant sign-in doors, no
 
 | # | Gap | Where | Severity (assessed) | Suggested remedy |
 |---|---|---|---|---|
-| 1 | Public hostel verification enumerable: sequential `ALC-` reference, no token, no throttle; returns name, photo, room | `verify/VerifyController.java:369-394` | High | add a check token to the QR (as receipts do) and throttle |
-| 2 | No rate limit on staff/student/applicant sign-in, forgot, reset, `applicant/lookup`, Post-UTME slip verification, webhooks | `auth`, `studentportal`, `applicant`, `verify` | High | a per-source limiter like `DocumentsController`'s; ideally at the edge |
+| 1 | ~~Public hostel verification enumerable~~ — CLOSED (V359: the QR's own check code; throttled) | `verify/VerifyController.java` | — | — |
+| 2 | ~~No rate limit on the public doors~~ — CLOSED (V359 `shared/Throttle`; the webhooks left unthrottled on purpose) | `shared/Throttle.java` | — | — |
 | 3 | Held scripts: no ownership check; release can bypass the approval chain | `results/HeldScriptsController` | High | call `own(sheet)`; refuse release past ENTRY |
 | 4 | `/students/{id}`, `/students/{id}/portal`, `/student/records/{view}` not office-bound | `student/StudentController` | Medium | apply `OfficeScope.bound` as `/students` does |
 | 5 | Approval-chain stage→office rule enforced only in the UI | `results` | Medium | enforce `Sheets.DESK` in the controller or `assessment.advance` |
@@ -1295,7 +1303,7 @@ Collected from the seven audit dossiers and the repository. Each row is somethin
 | Student 360 Finance card "NOT YET SERVED"; CGPA "—" | `Student360.tsx` | PLACEHOLDER although `/students/{id}/portal` returns fees and `student_gpa` exists |
 | `/me` Appraisal / Appointment / Next increment tiles | `Self.tsx` | PLACEHOLDER ("Staff module, not yet on the portal") |
 | Results chain "Raise an amendment" / "View as a student" | `Chain.tsx:91` | buttons with no handler |
-| Remind / escalate a late lecturer | `ResultsController.java:181-188` | 202 "nothing was sent" |
+| Remind / escalate a late lecturer | `ResultsController` | CLOSED (V359): sent by email and text, and kept |
 | "Notify held candidates" (clearance) | `ClearanceController.notifyHeld` | 202 stub |
 | Faculty matriculation list "Fees" column | `FacultyListScreen.tsx` | renders "—" |
 | Tenders fourth tile with an empty label | `Tenders.tsx:69` | leftover |

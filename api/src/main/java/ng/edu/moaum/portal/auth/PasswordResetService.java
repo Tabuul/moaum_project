@@ -114,6 +114,12 @@ public class PasswordResetService {
         if (s == null) {
             return;   // the same neutral answer whether or not it names an account
         }
+        // V359: at most three links an hour to one account, however often they are asked for — the same neutral answer
+        long recent = jdbc.sql("SELECT count(*) FROM iam.password_reset WHERE subject_kind = :k AND subject_id = :s AND created_at > now() - interval '1 hour'")
+                .param("k", s.kind()).param("s", s.id()).query(Long.class).single();
+        if (recent >= 3) {
+            return;
+        }
         String token = HexFormat.of().formatHex(randomBytes());
         String hash = sha256(token);
         String link = portalUrl + "/login/reset?token=" + token;

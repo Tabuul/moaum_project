@@ -53,7 +53,7 @@ export async function GET(request: Request) {
   }
   y -= 10;
   y = p.paragraph(L, y, "This certifies that the student named has returned the bed space above, that the room, bed and assets were inspected, keys and access card returned, and that no hostel obligation is outstanding for the session. The hostel unit of the graduation clearance is signed on this record.", A4.w - 2 * L - 110, 9.5);
-  const { size, dark } = qrMatrix(`${originOf(request)}${hostelVerifyPath(v.allocation_ref ?? "")}`);
+  const { size, dark } = qrMatrix(`${originOf(request)}${hostelVerifyPath(v.allocation_ref ?? "", h.data.verifyCode)}`);
   const side = 92, cell = side / size, qx = A4.w - L - side, qy = 84;
   for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(qx + c * cell, qy + (size - 1 - r) * cell, cell, cell, 0);
   p.text(qx - 4, qy - 10, "Scan to verify", 7, false, [0.4, 0.4, 0.4]);

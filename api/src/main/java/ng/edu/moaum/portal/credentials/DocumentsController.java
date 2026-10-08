@@ -65,10 +65,9 @@ class DocumentsController {
         return v == null || v.isBlank() ? null : v.trim();
     }
 
+    /** V359: the person's address as the platform reads it (the edge's entry of X-Forwarded-For, never one the client wrote) */
     private static String ip(HttpServletRequest req) {
-        String f = req.getHeader("X-Forwarded-For");
-        String ip = f == null || f.isBlank() ? req.getRemoteAddr() : f.split(",")[0].trim();
-        return ip == null ? null : ip.substring(0, Math.min(ip.length(), 60));
+        return ng.edu.moaum.portal.shared.ClientAddress.of(req);
     }
 
     private static String agent(HttpServletRequest req) {

@@ -992,7 +992,7 @@ On an empty register, `/login/first` ("Create the first account") posts `POST /a
 | Sign-out | Nav-foot button → `POST /api/v1/auth/sign-out`; both cookies cleared | `Shell` |
 | Own sessions | `GET /auth/sessions`, `POST /auth/sessions/{id}/end` — **no screen** (PARTIALLY IMPLEMENTED) | `AuthController` |
 | Ending another person's session | **NOT IMPLEMENTED** (the Registrar cannot; the ADR text says otherwise) | `SessionGuard` comment |
-| Rate limiting of sign-in / forgot | **NOT IMPLEMENTED** (`AUTH_THROTTLED` exists as a title only) | `ProblemHandler` |
+| Rate limiting of sign-in / forgot | **IMPLEMENTED** (V359: per connection, every public door) | `shared/Throttle` |
 | Single sign-on (Keycloak, MFA required by default) | IMPLEMENTED in code, **not deployed**; button hidden until `MOAUM_SSO_*` are set; matches the person by staff-number claim, else username/email | `SsoService`, `docs/keycloak.md` |
 
 Every sign-in outcome is written (`iam.sign_in_event`, `iam.student_event`, `admissions.applicant_event`) and shows on the audit trail as `auth:<outcome>`. Sign-in, lockout and password change send no notice; only the reset request does.

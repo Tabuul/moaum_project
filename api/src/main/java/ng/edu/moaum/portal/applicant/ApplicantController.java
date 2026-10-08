@@ -8,6 +8,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.ClientAddress;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.Throttle;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -59,24 +63,30 @@ class ApplicantController {
     }
 
     private final ApplicantService service;
+    private final Throttle throttle;
 
-    ApplicantController(ApplicantService service) {
+    ApplicantController(ApplicantService service, Throttle throttle) {
         this.service = service;
+        this.throttle = throttle;
     }
 
+    /** V359: every look-up counted against the connection — a found number names the candidate */
     @PostMapping("/lookup")
-    Map<String, Object> lookup(@Valid @RequestBody Lookup body) {
+    Map<String, Object> lookup(@Valid @RequestBody Lookup body, HttpServletRequest request) {
+        throttle.take(Throttle.Door.APPLICANT_LOOKUP, ClientAddress.of(request));
         return service.lookup(body.session(), body.jambKey());
     }
 
     @PostMapping("/register")
     ApplicantService.SignedIn register(@Valid @RequestBody Register body, HttpServletRequest request) {
-        return service.register(body.session(), body.jambKey(), body.email(), body.phone(), body.password(), request.getRemoteAddr());
+        String source = ClientAddress.of(request);
+        throttle.take(Throttle.Door.APPLICANT_REGISTER, source);
+        return service.register(body.session(), body.jambKey(), body.email(), body.phone(), body.password(), source);
     }
 
     @PostMapping("/sign-in")
     ApplicantService.SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
-        return service.signIn(body.identifier(), body.password(), request.getRemoteAddr());
+        return service.signIn(body.identifier(), body.password(), ClientAddress.of(request));
     }
 
     @PostMapping("/sign-out")
@@ -123,7 +133,7 @@ class ApplicantController {
     @PostMapping("/me/submit")
     @PreAuthorize(APPLICANT)
     Map<String, Object> submit(Authentication authentication, @Valid @RequestBody Submit body, HttpServletRequest request) {
-        return service.submit(account(authentication), body.declaration(), request.getRemoteAddr());
+        return service.submit(account(authentication), body.declaration(), ClientAddress.of(request));
     }
 
     @PostMapping("/me/accept")
@@ -147,13 +157,22 @@ class ApplicantController {
     /** always 202: whether or not the identifier names an account, the answer is the same */
     @PostMapping("/forgot")
     ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body, HttpServletRequest request) {
-        service.forgot(body.identifier(), request.getRemoteAddr());
+        String source = ClientAddress.of(request);
+        throttle.take(Throttle.Door.RESET_LINK, source);
+        service.forgot(body.identifier(), source);
         return ResponseEntity.accepted().body(Map.of("accepted", true));
     }
 
     @PostMapping("/reset")
     ApplicantService.SignedIn reset(@Valid @RequestBody Reset body, HttpServletRequest request) {
-        return service.reset(body.token(), body.password(), request.getRemoteAddr());
+        String source = ClientAddress.of(request);
+        throttle.refuse(Throttle.Door.RESET, source);
+        try {
+            return service.reset(body.token(), body.password(), source);
+        } catch (DomainRuleViolation refused) {
+            if ("AUTH_RESET_TOKEN".equals(refused.code())) throttle.count(Throttle.Door.RESET, source);
+            throw refused;
+        }
     }
 
     private static UUID account(Authentication authentication) {

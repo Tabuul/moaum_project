@@ -4,18 +4,22 @@ import { Note } from "@/components/proto/ui";
 export const dynamic = "force-dynamic";
 
 interface HostelVerify {
-  genuine: boolean; reference_no?: string; state?: string; session?: string; student_name?: string; student_number?: string; programme?: string; hall_name?: string; block?: string; floor?: number; room_no?: string; bed_label?: string;
+  genuine: boolean; codeMissing?: boolean; reference_no?: string; state?: string; session?: string; student_name?: string; student_number?: string; programme?: string; hall_name?: string; block?: string; floor?: number; room_no?: string; bed_label?: string;
   start_on?: string | null; end_on?: string | null; checked_in_at?: string | null; checked_out_at?: string | null; clearance_ref?: string | null; clearance_state?: string | null; photo?: string | null;
 }
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 
-/** /verify/hostel/{ref} — the public verification of a hostel allocation letter or clearance certificate (V261): the porter scans
- *  the QR and sees the University's record — the student, the photograph, the placing and the state of the stay. */
-export default async function Page({ params }: { params: Promise<{ ref: string }> }) {
+/** /verify/hostel/{ref}?c=… — the public verification of a hostel allocation letter or clearance certificate (V261): the porter scans
+ *  the QR and sees the University's record — the student, the photograph, the placing and the state of the stay. V359: only with the
+ *  check code the letter's QR carries; without it the page names no one. */
+export default async function Page({ params, searchParams }: { params: Promise<{ ref: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { ref } = await params;
-  const r = await api<HostelVerify>(`/api/v1/verify/hostel/${encodeURIComponent(ref)}`);
-  const v = r.ok ? r.data : { genuine: false };
+  const sp = await searchParams;
+  const code = typeof sp.c === "string" ? sp.c : "";
+  const r = await api<HostelVerify>(`/api/v1/verify/hostel/${encodeURIComponent(ref)}${code ? `?c=${encodeURIComponent(code)}` : ""}`);
+  const v: HostelVerify = r.ok ? r.data : { genuine: false };
   const ok = v.genuine;
+  const throttled = !r.ok && r.problem.status === 429;
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
       <div className="card" style={{ width: "100%", maxWidth: 600, overflow: "hidden" }}>
@@ -25,8 +29,11 @@ export default async function Page({ params }: { params: Promise<{ ref: string }
           <div className="grow"><div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Hostel allocation verification</div></div>
         </div>
         <div className="card__body">
-          <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine — this is the University's record" : "Not verified"}>
-            {ok ? "Check that the face below matches the student, and the hostel, room and bed match the letter in hand." : "No hostel allocation matches this reference. Treat the letter as not genuine."}
+          <Note kind={ok ? "ok" : throttled || v.codeMissing ? "info" : "bad"} title={ok ? "Genuine — this is the University's record" : throttled ? "Too many checks from this connection" : v.codeMissing ? "This letter carries no check code" : "Not verified"}>
+            {ok ? "Check that the face below matches the student, and the hostel, room and bed match the letter in hand."
+              : throttled ? (r.ok ? "" : r.problem.detail ?? "Try again in a few minutes.")
+              : v.codeMissing ? "Letters now carry a check code in their QR. Ask the student to print the allocation letter (or clearance certificate) again from the student portal, then scan the new one."
+              : "No hostel allocation matches this letter's reference and check code. Treat the letter as not genuine."}
           </Note>
           {ok ? (
             <>

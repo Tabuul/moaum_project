@@ -6,13 +6,11 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.util.ArrayDeque;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -56,7 +54,6 @@ class JupebPublicController {
     static final Duration SESSION_LENGTH = Duration.ofHours(12);
     static final int LOCK_AFTER = 5;
     static final Duration LOCK_FOR = Duration.ofMinutes(15);
-    static final int SOURCE_FAILURES = 20;
     static final int MIN_PASSWORD = 8;
     private static final UUID NOBODY = new UUID(0, 0);
 
@@ -69,12 +66,15 @@ class JupebPublicController {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
     private final String portalUrl;
-    private final ConcurrentHashMap<String, ArrayDeque<Instant>> sourceFailures = new ConcurrentHashMap<>();
+    /** V359: the failures one connection may make, whatever accounts it names, counted by the platform's door limit */
+    private final ng.edu.moaum.portal.shared.Throttle throttle;
 
     JupebPublicController(JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer, ApplicationWindows windows, JupebView view,
                           tools.jackson.databind.ObjectMapper json,
-                          @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+                          @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
+                          ng.edu.moaum.portal.shared.Throttle throttle) {
         this.jdbc = jdbc;
+        this.throttle = throttle;
         this.tx = new TransactionTemplate(transactions);
         this.issuer = issuer;
         this.windows = windows;
@@ -151,27 +151,6 @@ class JupebPublicController {
     public record SignedIn(String token, Instant expiresAt, UUID applicationId, String applicationNo, String surname, String otherNames) {
     }
 
-    private static String sourceOf(HttpServletRequest request) {
-        String xf = request.getHeader("X-Forwarded-For");
-        return xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : String.valueOf(request.getRemoteAddr());
-    }
-
-    private boolean sourceThrottled(String source) {
-        ArrayDeque<Instant> q = sourceFailures.get(source);
-        if (q == null) return false;
-        Instant floor = Instant.now().minus(LOCK_FOR);
-        synchronized (q) {
-            while (!q.isEmpty() && q.peekFirst().isBefore(floor)) q.pollFirst();
-            return q.size() >= SOURCE_FAILURES;
-        }
-    }
-
-    private void noteFailure(String source) {
-        ArrayDeque<Instant> q = sourceFailures.computeIfAbsent(source, k -> new ArrayDeque<>());
-        synchronized (q) { q.addLast(Instant.now()); }
-        if (sourceFailures.size() > 10_000) sourceFailures.clear();
-    }
-
     private static DomainRuleViolation badCredentials() {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That email or application number and password do not match a JUPEB application.",
                 new DomainRuleViolation.Remedy("Use the email you applied with (or your JUPEB application number) and the password you chose; five failures lock the account for fifteen minutes.", "JUPEB Office"));
@@ -196,19 +175,16 @@ class JupebPublicController {
 
     @PostMapping("/sign-in")
     SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
-        String source = sourceOf(request);
-        if (sourceThrottled(source)) {
-            throw new DomainRuleViolation("AUTH_THROTTLED", "Too many failed sign-ins from this connection; try again in fifteen minutes.",
-                    new DomainRuleViolation.Remedy("Wait fifteen minutes, or reset your password with the email you applied with.", "You"));
-        }
+        String source = ng.edu.moaum.portal.shared.ClientAddress.of(request);
+        throttle.refuse(ng.edu.moaum.portal.shared.Throttle.Door.JUPEB_SIGN_IN, source);
         Map<String, Object> a = accountOf(body.identifier());
         if (a == null) {
-            noteFailure(source);
-            throw badCredentials();
+            throw badCredentials();   // V359: an unknown name is not counted — the portal's sign-in page tries this door for every email
         }
         UUID account = (UUID) a.get("id");
         /* V356: the time is compared in the database — the driver gives a java.sql.Timestamp, which a cast to OffsetDateTime refused */
         if (Boolean.TRUE.equals(a.get("locked"))) {
+            throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.JUPEB_SIGN_IN, source);
             throw new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                     + a.get("locked_until_text") + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
         }
@@ -217,7 +193,7 @@ class JupebPublicController {
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE jupeb.account SET failed_attempts = :n, locked_until = :l WHERE id = :id")
                     .param("n", next).param("l", lock).param("id", account).update());
-            noteFailure(source);
+            throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.JUPEB_SIGN_IN, source);
             throw badCredentials();
         }
         if (Boolean.TRUE.equals(a.get("temporary_spent"))) {
@@ -267,7 +243,8 @@ class JupebPublicController {
     }
 
     @PostMapping("/forgot")
-    ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body) {
+    ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body, HttpServletRequest request) {
+        throttle.take(ng.edu.moaum.portal.shared.Throttle.Door.RESET_LINK, ng.edu.moaum.portal.shared.ClientAddress.of(request));   // V359: every request counted against the connection
         Map<String, Object> a = accountOf(body.identifier());
         /* V356: one link every two minutes, five an hour, for an account — so an inbox is not flooded; the answer is the same either way */
         boolean flooded = a != null && Boolean.TRUE.equals(jdbc.sql("""
@@ -299,7 +276,18 @@ class JupebPublicController {
     }
 
     @PostMapping("/reset")
-    SignedIn reset(@Valid @RequestBody Reset body) {
+    SignedIn reset(@Valid @RequestBody Reset body, HttpServletRequest request) {
+        String source = ng.edu.moaum.portal.shared.ClientAddress.of(request);
+        throttle.refuse(ng.edu.moaum.portal.shared.Throttle.Door.RESET, source);
+        try {
+            return resetWith(body);
+        } catch (DomainRuleViolation refused) {
+            if ("AUTH_RESET_TOKEN".equals(refused.code())) throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.RESET, source);
+            throw refused;
+        }
+    }
+
+    private SignedIn resetWith(Reset body) {
         /* V356: whether the link is spent or lapsed is decided in the database (a cast of its timestamp failed every reset before) */
         Map<String, Object> r = jdbc.sql("SELECT id, account_id, used_at IS NOT NULL OR expires_at <= now() AS spent FROM jupeb.password_reset WHERE token_hash = :h")
                 .param("h", sha256(body.token().trim())).query().listOfRows().stream().findFirst().orElse(null);

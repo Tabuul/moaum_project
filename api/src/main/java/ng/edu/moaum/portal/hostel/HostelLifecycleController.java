@@ -97,6 +97,9 @@ class HostelLifecycleController {
         Object alloc = view.get("allocation_id");
         if (alloc != null) {
             UUID a = (UUID) alloc;
+            // V359: the check code the student's own letter and certificate carry in their QR
+            out.put("verifyCode", jdbc.sql("SELECT verify_code FROM hostel.allocation WHERE id = :a AND student_id = :s").param("a", a).param("s", me)
+                    .query(String.class).optional().orElse(null));
             out.put("roommates", jdbc.sql("SELECT * FROM hostel.roommates(:a)").param("a", a).query().listOfRows());
             out.put("transfers", jdbc.sql("SELECT id, requested_hall, requested_type, reason, state, submitted_at, decided_at, decision_note FROM hostel.transfer_request WHERE allocation_id = :a ORDER BY submitted_at DESC").param("a", a).query().listOfRows());
             out.put("charges", jdbc.sql("SELECT id, description, charge, reference, raised_at, settled_at, waived_at, waived_reason FROM hostel.damage_charge WHERE allocation_id = :a ORDER BY raised_at").param("a", a).query().listOfRows());

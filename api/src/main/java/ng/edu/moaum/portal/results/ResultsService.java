@@ -289,6 +289,45 @@ public class ResultsService {
         return own(id);
     }
 
+    /**
+     * V359: a sheet still waiting for its marks, chased by a desk within its reach — reminded to its lecturer, or once late
+     * escalated to the Head of Department (the first five days), the Dean (after) or its own office (GST, EPS). Sent by email
+     * and text to what each has on record, and kept; the database refuses a sheet past entry, an escalation before the
+     * due date, a second of either kind within a day, and an escalation with no one posted to receive it.
+     */
+    @Transactional
+    public Map<String, Object> chase(UUID id, String kind, String note) {
+        Sheets.Row r = own(id);
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if ("lecturer".equals(office)) {
+            throw new AccessDeniedException(r.courseCode() + ": a lecturer is reminded by the desks, and does not chase a score sheet.");
+        }
+        Map<String, Object> out = new LinkedHashMap<>(repo.chase(id, kind, note == null || note.isBlank() ? null : note.trim()));
+        out.put("said", chaseSaid(out));
+        return out;
+    }
+
+    /** what the desk is told was done — whether anyone was reached, and how */
+    static String chaseSaid(Map<String, Object> c) {
+        String course = String.valueOf(c.get("courseCode"));
+        String lecturer = c.get("lecturer") == null ? "the lecturer" : String.valueOf(c.get("lecturer"));
+        int told = c.get("told") instanceof Number n ? n.intValue() : 0;
+        boolean lecturerReached = Boolean.TRUE.equals(c.get("lecturerReachable"));
+        if ("REMIND".equals(c.get("kind"))) {
+            return told > 0 ? course + ": the reminder went to " + lecturer + "."
+                    : course + ": " + lecturer + " has no email or phone on record, so nothing could be sent — the reminder is kept, and shows on their own score sheets when they sign in.";
+        }
+        String to = c.get("toOfficeLabel") == null ? String.valueOf(c.get("toOffice")) : String.valueOf(c.get("toOfficeLabel"));
+        return course + ": escalated to the " + to + (told > 0 ? " — " + c.get("toldNames") + " told" : " — no one posted there has an email or phone on record; it shows on their desk's list")
+                + (lecturerReached ? "; " + lecturer + " was told it was escalated." : "; " + lecturer + " has no email or phone on record.");
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> chaseHistory(UUID id) {
+        own(id);
+        return repo.chaseHistory(id);
+    }
+
     /** V357: a stage is taken, and a sheet returned, only by the desk whose stage it is — on the server, as the screen shows it */
     private static void requireDesk(Sheets.Row r, String act) {
         requireStageDesk(r.stage(), r.courseCode(), act);
@@ -343,7 +382,7 @@ public class ResultsService {
         return me == null || !repo.teaches(sheetId, me);
     }
 
-    private Sheets.Listed listed(Sheets.Row r, AuditContext ctx) {
+    private Sheets.Listed listed(Sheets.Row r, AuditContext ctx, Sheets.Chase chase) {
         Integer daysLate = null;
         if ("ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())) {
             daysLate = (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now());
@@ -353,7 +392,7 @@ public class ResultsService {
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
                 r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
-                r.lecturer(), r.candidates(), r.received(), failRate, mayAct, blocked, r.caMax(), r.heldScripts());
+                r.lecturer(), r.candidates(), r.received(), failRate, mayAct, blocked, r.caMax(), r.heldScripts(), chase);
     }
 
     private static String desk(String office) {
@@ -390,8 +429,9 @@ public class ResultsService {
         List<Sheets.Listed> out = new ArrayList<>();
         long approved = 0;
         long entry = 0;
+        Map<UUID, Sheets.Chase> chases = repo.chases(rows.stream().filter(x -> "ENTRY".equals(x.stage())).map(Sheets.Row::id).toList());
         for (Sheets.Row r : rows) {
-            out.add(listed(r, ctx));
+            out.add(listed(r, ctx, chases.get(r.id())));
             if ("PUBLISHED".equals(r.stage())) {
                 approved++;
             } else if ("ENTRY".equals(r.stage())) {
@@ -408,7 +448,7 @@ public class ResultsService {
         Sheets.Row r = own(id);
         ResultsRepository.Examiner x = repo.examiner(id);
         UUID me = scope.actorId();
-        return new Sheets.Detail(listed(r, AuditContextHolder.current().orElse(null)), x.secondExaminer(), x.senateMinute(),
+        return new Sheets.Detail(listed(r, AuditContextHolder.current().orElse(null), repo.chases(List.of(id)).get(id)), x.secondExaminer(), x.senateMinute(),
                 x.publishedAt(), x.engineVersion(), repo.chain(id), repo.marks(id), repo.uploads(id), me != null && repo.teaches(id, me));
     }
 
@@ -711,11 +751,13 @@ public class ResultsService {
     public Sheets.Monitor monitor(UUID id) {
         Sheets.ExamSession e = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
         List<Sheets.Outstanding> outstanding = new ArrayList<>();
-        for (Sheets.Row r : repo.sheets(null, null, null, null, e.session(), e.semester(), "ENTRY", null)) {
+        List<Sheets.Row> atEntry = repo.sheets(null, null, null, null, e.session(), e.semester(), "ENTRY", null);
+        Map<UUID, Sheets.Chase> chases = repo.chases(atEntry.stream().map(Sheets.Row::id).toList());
+        for (Sheets.Row r : atEntry) {
             Integer late = r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())
                     ? (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now()) : null;
             outstanding.add(new Sheets.Outstanding(r.id(), r.courseCode(), r.deptName(), r.facultyCode(), r.lecturer(),
-                    r.candidates(), late, late == null ? "—" : late < 6 ? "Head of Department" : "Dean"));
+                    r.candidates(), late, Sheets.escalationOffice(late, r.generalOffice()), chases.get(r.id())));
         }
         return new Sheets.Monitor(e, repo.progress(id), outstanding);
     }
@@ -727,7 +769,9 @@ public class ResultsService {
         AuditContext ctx = AuditContextHolder.current().orElse(null);
         UUID me = ctx == null ? null : ctx.actorId();
         List<Sheets.MySheet> out = new ArrayList<>();
-        for (ResultsRepository.MineRow r : repo.mine(me, session, sem, all)) {
+        List<ResultsRepository.MineRow> rows = repo.mine(me, session, sem, all);
+        Map<UUID, Sheets.Chase> chases = repo.chases(rows.stream().filter(x -> "ENTRY".equals(x.stage())).map(ResultsRepository.MineRow::id).toList());
+        for (ResultsRepository.MineRow r : rows) {
             Integer daysLate = null;
             if ("ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())) {
                 daysLate = (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now());
@@ -735,7 +779,8 @@ public class ResultsService {
             Integer daysToDue = r.dueOn() == null ? null : (int) ChronoUnit.DAYS.between(LocalDate.now(), r.dueOn());
             out.add(new Sheets.MySheet(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.session(), r.semester(), r.stage(),
                     Sheets.spine(r.stage()), r.dueOn(), daysLate, daysToDue, r.returnedTimes(), r.candidates(), r.entered(), r.graded(),
-                    r.secondExaminer(), me != null && me.equals(r.lecturerId()), r.openQueries(), r.bankQuestions(), r.caEntered(), r.heldScripts()));
+                    r.secondExaminer(), me != null && me.equals(r.lecturerId()), r.openQueries(), r.bankQuestions(), r.caEntered(), r.heldScripts(),
+                    chases.get(r.id())));
         }
         return out;
     }

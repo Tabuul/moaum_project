@@ -832,7 +832,7 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 3. **Edit** — once sheets exist only the dates change.
 4. The **Submission monitor** (by faculty: expected, submitted, verified, past the Board, outstanding) and "The N sheets holding the Faculty of X" (Course, Lecturer, Days late, Escalated to HOD under six days late else Dean) with **Remind**.
 
-> **Warning:** **Remind / escalate** returns 202 "The notification module is not on the portal yet; nothing was sent." — **PLACEHOLDER**. Chase late sheets by other means.
+> **Note:** **Remind** and **Escalate** (V359) send for real: the reminder to the lecturer of record by email and text, the escalation — once the sheet is past its due date — to the Head of Department (first five days late), then the Dean (a GST or EPS course to its own office), the lecturer told. Each kind at most once a day on a sheet. The screen says who was reached; a person with no email or phone on record is told on their own lists when they sign in. Staff phone numbers and emails come from the person record, else the staff profile — keep them filled.
 
 > **Screenshot Required:** Examination sessions — `/examinations/sessions` — the create panel, the sessions table with Open/Draft pills and the Submission monitor.
 
@@ -998,7 +998,7 @@ Thesis Clearance — `/admissions/postgraduate/clearance` (Secretary): **Clear f
 
 Every turn emails and texts the student, and the desk (every holder of `housing` or `services`) is emailed on applications to review, fee confirmations, declines, transfer and checkout requests and maintenance.
 
-> **Warning:** The porter's verification page `/verify/hostel/{ref}` is public, un-throttled and has no check token; the `ALC-YYYY-NNNNN` reference is sequential, so names, photographs and room numbers can be enumerated. Raise this with ICT before printing letters at scale.
+> **Note:** The porter's verification page `/verify/hostel/{ref}?c=…` (V359) shows the record only with the check code the letter's QR carries; the reference alone names no one. A letter printed before V359 has no code: the student prints it again from the portal (Hostel → Allocation letter).
 
 ### 3.10 Documents office
 

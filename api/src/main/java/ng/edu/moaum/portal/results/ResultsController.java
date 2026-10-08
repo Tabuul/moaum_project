@@ -193,13 +193,25 @@ class ResultsController {
         return service.giveBack(id, body == null ? null : body.get("comment"));
     }
 
-    /** No notification module yet: the reminder is counted, not sent, and says so. */
+    /** V359: the lecturer reminded — by email and text to what they have on record — and the reminder kept */
     @PostMapping("/sheets/{id}/remind")
     @PreAuthorize(DESKS)
-    ResponseEntity<Map<String, Object>> remind(@PathVariable UUID id) {
-        Sheets.Detail d = service.sheet(id);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("id", id, "wouldNotify", d.sheet().lecturer() == null ? 0 : 1,
-                "note", "The notification module is not on the portal yet; nothing was sent."));
+    Map<String, Object> remind(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+        return service.chase(id, "REMIND", body == null ? null : body.get("note"));
+    }
+
+    /** V359: a late sheet escalated to the Head of Department, the Dean or its own office, the lecturer told — and kept */
+    @PostMapping("/sheets/{id}/escalate")
+    @PreAuthorize(DESKS)
+    Map<String, Object> escalate(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+        return service.chase(id, "ESCALATE", body == null ? null : body.get("note"));
+    }
+
+    /** V359: every reminder and escalation of a sheet, newest first */
+    @GetMapping("/sheets/{id}/chases")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> chases(@PathVariable UUID id) {
+        return service.chaseHistory(id);
     }
 
     @GetMapping("/exam-sessions")

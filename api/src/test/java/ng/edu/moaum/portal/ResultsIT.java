@@ -133,6 +133,34 @@ class ResultsIT {
         assertThat(it.get(lect, "/api/v1/registration/class-list?course=ZZR 301&session=2094/2095&sem=1").getStatusCode().value()).isEqualTo(200);
         assertThat(it.get(lect, "/api/v1/me/teaching?session=" + SESSION).getStatusCode().value()).isEqualTo(200);
 
+        // V359: the sheet waiting for its marks is chased for real — by a desk within reach, not by a lecturer nor a desk outside it;
+        // the reminder is kept (this lecturer has no email or phone on record, and the desk is told so); a second the same day is
+        // refused; an escalation waits for the due date, then goes to the Head of Department of MTC
+        String chase = "/api/v1/results/sheets/" + sheet;
+        assertThat(it.call(lect, HttpMethod.POST, chase + "/remind", Map.of()).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(it.officer("hod", "department", jdbc.sql("SELECT code FROM ref.department WHERE code <> 'MTC' AND faculty_code IS NOT NULL ORDER BY code LIMIT 1").query(String.class).single()), HttpMethod.POST, chase + "/remind", Map.of()).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> reminded = it.call(exams, HttpMethod.POST, chase + "/remind", Map.of("note", "The Board sits on Friday"));
+        assertThat(reminded.getStatusCode().value()).as(String.valueOf(reminded.getBody())).isEqualTo(200);
+        assertThat(reminded.getBody().get("kind")).isEqualTo("REMIND");
+        assertThat(reminded.getBody().get("told")).isEqualTo(0);
+        assertThat(String.valueOf(reminded.getBody().get("said"))).contains("no email or phone on record");
+        ResponseEntity<Map> again = it.call(exams, HttpMethod.POST, chase + "/remind", Map.of());
+        assertThat(again.getStatusCode().value()).isEqualTo(422);
+        assertThat(again.getBody().get("code")).isEqualTo("RESULT_CHASE_TOO_SOON");
+        ResponseEntity<Map> early = it.call(exams, HttpMethod.POST, chase + "/escalate", Map.of());
+        assertThat(early.getStatusCode().value()).isEqualTo(422);
+        assertThat(early.getBody().get("code")).isEqualTo("RESULT_CHASE_NOT_LATE");
+        java.time.LocalDate due = jdbc.sql("SELECT due_on FROM assessment.score_sheet WHERE id = :s").param("s", UUID.fromString(sheet)).query(java.time.LocalDate.class).single();
+        it.db(() -> jdbc.sql("UPDATE assessment.score_sheet SET due_on = current_date - 2 WHERE id = :s").param("s", UUID.fromString(sheet)).update());
+        ResponseEntity<Map> escalated = it.call(exams, HttpMethod.POST, chase + "/escalate", Map.of());
+        assertThat(escalated.getStatusCode().value()).as(String.valueOf(escalated.getBody())).isEqualTo(200);
+        assertThat(escalated.getBody().get("toOffice")).isEqualTo("hod");
+        it.db(() -> jdbc.sql("UPDATE assessment.score_sheet SET due_on = :d WHERE id = :s").param("d", due).param("s", UUID.fromString(sheet)).update());
+        List<Map<String, Object>> chased = it.getList(exams, chase + "/chases").getBody();
+        assertThat(chased).extracting(c -> c.get("kind")).containsExactly("ESCALATE", "REMIND");
+        Map<String, Object> listed = ((List<Map<String, Object>>) it.get(academic, "/api/v1/results/sheets?course=ZZR 301&session=2094/2095&sem=1").getBody().get("sheets")).get(0);
+        assertThat((Map<String, Object>) listed.get("chase")).containsEntry("reminders", 1).containsEntry("escalations", 1).containsEntry("escalatedTo", "Head of Department");
+
         // one mark is not enough to leave the lecturer
         assertThat(it.call(lect, HttpMethod.PUT, "/api/v1/results/sheets/" + sheet + "/scores",
                 Map.of("scores", List.of(Map.of("studentId", s1.toString(), "ca", 30, "exam", 45)))).getStatusCode().value()).isEqualTo(200);

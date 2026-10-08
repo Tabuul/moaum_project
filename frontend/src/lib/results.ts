@@ -37,6 +37,21 @@ export interface SheetListed {
   caMax: number;
   /** scripts held from candidates not on the roll, waiting on registration (V240) */
   heldScripts: number;
+  /** V359: how the sheet has been chased while at entry */
+  chase?: Chase | null;
+}
+
+/** V359: a sheet at entry reminded to its lecturer and escalated — how often, when last, to whom */
+export interface Chase { reminders: number; remindedAt: string | null; escalations: number; escalatedAt: string | null; escalatedTo: string | null }
+const chaseDay = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "");
+/** "Reminded twice, last 8 Oct · escalated to the Head of Department 9 Oct", or null when never chased */
+export function chaseWords(c: Chase | null | undefined): string | null {
+  if (!c || (!c.reminders && !c.escalations)) return null;
+  const parts: string[] = [];
+  if (c.reminders) parts.push(`reminded ${c.reminders === 1 ? "once" : c.reminders === 2 ? "twice" : `${c.reminders} times`}, last ${chaseDay(c.remindedAt)}`);
+  if (c.escalations) parts.push(`escalated to the ${c.escalatedTo ?? "next desk"} ${chaseDay(c.escalatedAt)}`);
+  const s = parts.join(" · ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /* ── V318: the pipeline monitor — the nine stages with their real counts, coverage, what is missing, what needs a desk ── */
@@ -172,7 +187,7 @@ export interface ExamSession {
 export interface Monitor {
   examSession: ExamSession;
   faculties: { facultyCode: string; facultyName: string; expected: number; submitted: number; verified: number; pastTheBoard: number; outstanding: number; progress: number }[];
-  outstanding: { id: string; courseCode: string; deptName: string; facultyCode: string; lecturer: string | null; candidates: number; daysLate: number | null; escalatedTo: string }[];
+  outstanding: { id: string; courseCode: string; deptName: string; facultyCode: string; lecturer: string | null; candidates: number; daysLate: number | null; escalatedTo: string; chase?: Chase | null }[];
 }
 
 export interface ClassList {
@@ -260,6 +275,8 @@ export interface MySheet {
   spineStage: number; dueOn: string | null; daysLate: number | null; daysToDue: number | null; returnedTimes: number; candidates: number; entered: number;
   graded: number; secondExaminer: string | null; mine: boolean;
   openQueries: number; bankQuestions: number; caEntered: number; heldScripts?: number;
+  /** V359: how the desks have chased the sheet while it waits for its marks */
+  chase?: Chase | null;
 }
 export interface RollRow {
   studentId: string; number: string; surname: string; otherNames: string; programmeCode: string; programmeName: string; level: number;

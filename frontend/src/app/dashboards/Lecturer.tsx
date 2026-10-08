@@ -4,7 +4,7 @@
  *  beside it, and a course that is not allocated to this lecturer is not on this page. */
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import type { MySheet } from "@/lib/results";
+import { chaseWords, type MySheet } from "@/lib/results";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterName } from "@/lib/student-portal";
@@ -90,7 +90,7 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
                 <span key="r" className="tnum">{s.candidates}</span>,
                 <span key="e" className={`tnum${s.stage === "ENTRY" && s.entered < s.candidates ? " ink-red b700" : ""}`}>{s.entered}<span className="sub2"> / {s.candidates}</span></span>,
                 <StandingPil key="st" sheet={s} />,
-                <span key="d" className={`tnum sub2${late ? " ink-red b600" : ""}`}>{s.stage === "ENTRY" ? <>{dayOf(s.dueOn)}<div>{dueWords(s)}</div></> : "—"}</span>,
+                <span key="d" className={`tnum sub2${late ? " ink-red b600" : ""}`}>{s.stage === "ENTRY" ? <>{dayOf(s.dueOn)}<div>{dueWords(s)}</div>{chaseWords(s.chase) ? <div>{chaseWords(s.chase)}</div> : null}</> : "—"}</span>,
                 <span key="a" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}>
                   <LinkBtn href={classListHref(s.courseCode, s.session, s.semester)} title="The registered students of this course">Students</LinkBtn>
                   <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/template`} title="The score sheet as an Excel workbook, every registered candidate on it">Score Sheet</a>

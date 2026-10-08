@@ -3,6 +3,9 @@ package ng.edu.moaum.portal.results;
 import ng.edu.moaum.portal.shared.FileObjects;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -489,6 +492,42 @@ class ResultsRepository {
                 HAVING count(s.id) > 0
                  ORDER BY f.name
                 """).param("id", examSessionId).query(Sheets.FacultyProgress.class).list();
+    }
+
+    /* ── V359: a late sheet chased — reminded to its lecturer, escalated to the Head of Department, the Dean or its office ── */
+
+    /** each sheet's chasing in one row, for the lists (assessment.chase_summary) */
+    Map<UUID, Sheets.Chase> chases(List<UUID> sheets) {
+        Map<UUID, Sheets.Chase> out = new HashMap<>();
+        if (sheets == null || sheets.isEmpty()) return out;
+        jdbc.sql("SELECT * FROM assessment.chase_summary(string_to_array(:ids, ',')::uuid[])")
+                .param("ids", String.join(",", sheets.stream().map(UUID::toString).toList()))
+                .query((rs, n) -> out.put(rs.getObject("sheet_id", UUID.class), new Sheets.Chase(rs.getInt("reminders"),
+                        rs.getObject("reminded_at", OffsetDateTime.class), rs.getInt("escalations"), rs.getObject("escalated_at", OffsetDateTime.class),
+                        rs.getString("escalated_to")))).list();
+        return out;
+    }
+
+    /** the reminder or escalation, sent and kept by the database (assessment.chase_sheet); its refusals arrive as 23514 */
+    Map<String, Object> chase(UUID sheet, String kind, String note) {
+        return jdbc.sql("""
+                SELECT * FROM jsonb_to_record(assessment.chase_sheet(:s, :k, :n))
+                    AS x(id uuid, kind text, "courseCode" text, "daysLate" int, expected int, missing int, "toOffice" text, "toOfficeLabel" text,
+                         told int, "toldNames" text, lecturer text, "lecturerReachable" boolean)
+                """).param("s", sheet).param("k", kind).param("n", note, Types.VARCHAR).query().singleRow();
+    }
+
+    /** every reminder and escalation of a sheet, newest first */
+    List<Map<String, Object>> chaseHistory(UUID sheet) {
+        return jdbc.sql("""
+                SELECT c.id, c.kind, c.sent_at, c.due_on, c.days_late, c.expected, c.missing, c.to_office, coalesce(o.label, c.to_office) AS to_office_label,
+                       c.told, c.told_names, c.note, c.sent_office, coalesce(so.label, c.sent_office) AS sent_office_label,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS sent_by_name
+                  FROM assessment.sheet_chase c
+                  LEFT JOIN ref.office o ON o.code = c.to_office LEFT JOIN ref.office so ON so.code = c.sent_office
+                  LEFT JOIN iam.person p ON p.id = c.sent_by
+                 WHERE c.sheet_id = :s ORDER BY c.sent_at DESC
+                """).param("s", sheet).query().listOfRows();
     }
 
     /* ── the lecturer's own sheets (proto/part5 staffScores) ── */

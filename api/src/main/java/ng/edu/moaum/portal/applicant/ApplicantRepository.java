@@ -256,6 +256,12 @@ class ApplicantRepository {
 
     /* ── the password reset (V025) ── */
 
+    /** V359: the reset links asked for on one account in the last hour */
+    long recentResets(UUID account) {
+        return jdbc.sql("SELECT count(*) FROM admissions.password_reset WHERE account_id = :a AND created_at > now() - interval '1 hour'")
+                .param("a", account).query(Long.class).single();
+    }
+
     void newReset(UUID account, String tokenHash, Instant expires) {
         jdbc.sql("INSERT INTO admissions.password_reset (account_id, token_hash, expires_at) VALUES (:a, :h, :e)")
                 .param("a", account).param("h", tokenHash).param("e", expires.atOffset(java.time.ZoneOffset.UTC)).update();

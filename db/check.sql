@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 202
+\set EXPECTED 203
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6452,6 +6452,85 @@ BEGIN
         format('same=%s split=%s desk=%s link=%s twice=%s minute=%s total=%s version=%s/%s told=%s refused=%s withdraw=%s past=%s lapsed=%s cand=%s under=%s fee=%s vac=%s wait=%s first=%s many=%s notwait=%s prom=%s for=%s basis=%s vac2=%s days=%s',
                r_same, r_split, r_desk, v_link, r_twice, r_minute, v_total, v_version, v_was, n_told, v_refused, r_withdraw, n_past, n_lapsed, v_cand, r_under, r_fee,
                n_vac, n_wait, v_first = apps[3], r_many, r_notwait, n_prom, v_for = apps[2], v_basis, n_vac2, r_days));
+END $$;
+
+-- ── 203. V359: a score sheet at entry is chased for real — reminded to its lecturer by text or email to what they have on record, escalated once late to the Head of Department of its department in the first five days and to the Dean of its faculty after (the lecturer told), each kind at most once a day; not by a lecturer, not past entry, not before the due date, not to an office no one holds; every reminder kept. A hostel allocation carries a random check code of its own ──
+DO $$
+DECLARE sh uuid; o2 uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid(); lect uuid := gen_random_uuid(); hod uuid := gen_random_uuid(); dean uuid := gen_random_uuid();
+        officer uuid := gen_random_uuid(); grant_dean uuid := gen_random_uuid(); msg text; j jsonb;
+        r_lect text; r_entry text; r_notlate text; r_soon text; r_nobody text;
+        v_rem_told int; n_sms int; n_mail int; v_hod_to text; v_hod_told int; n_hod_mail int; n_lect_esc int; v_dean_to text; v_dean_told int;
+        m_office text; n_kept int; v_reminders int; v_escalations int; v_last_to text; v_code boolean; v_default boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        -- a lecturer with a phone only, a Head of Department of MTC with an email, a Dean of SC with a phone
+        INSERT INTO iam.person (id, surname, given_names, staff_number, phone) VALUES (lect, 'CHECKCHASE', 'Lecturer', 'P-V359-L', '08030359001');
+        INSERT INTO iam.person (id, surname, given_names, staff_number, email) VALUES (hod, 'CHECKCHASE', 'Head', 'P-V359-H', 'zz.check203.hod@example.com');
+        INSERT INTO iam.person (id, surname, given_names, staff_number, phone) VALUES (dean, 'CHECKCHASE', 'Dean', 'P-V359-D', '08030359003'),
+                                                                                     (officer, 'CHECKCHASE', 'Officer', 'P-V359-E', NULL);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), hod, 'hod', 'department', 'MTC', 'CHECK V359', officer, current_date - 10),
+               (grant_dean, dean, 'dean', 'faculty', 'SC', 'CHECK V359', officer, current_date - 10);
+        -- a second sitting of the course with its lecturer, a sheet at entry due in two days
+        INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id) VALUES (o2, 'ZZC 101', '9999/0000', 2, lect);
+        INSERT INTO assessment.score_sheet (id, offering_id, due_on) VALUES (sh2, o2, current_date + 2);
+        -- a lecturer does not chase; a published sheet is past entry; a sheet not yet due is not escalated
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM assessment.chase_sheet(sh2, 'REMIND', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_lect := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        SELECT s.id INTO sh FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id WHERE o.course_code = 'ZZC 101' AND s.stage = 'PUBLISHED';
+        BEGIN PERFORM assessment.chase_sheet(sh, 'REMIND', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_entry := split_part(msg, ':', 1); END;
+        BEGIN PERFORM assessment.chase_sheet(sh2, 'ESCALATE', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notlate := split_part(msg, ':', 1); END;
+        -- reminded: one text to the lecturer's phone, no email (none on record); a second the same day refused
+        j := assessment.chase_sheet(sh2, 'REMIND', 'The Board sits on Friday');
+        v_rem_told := (j->>'told')::int;
+        n_sms := (SELECT count(*) FROM platform.notice WHERE about_kind = 'score_sheet' AND about_id = sh2 AND channel = 'SMS' AND recipient = '08030359001' AND subject = 'Score sheet reminder');
+        n_mail := (SELECT count(*) FROM platform.notice WHERE about_kind = 'score_sheet' AND about_id = sh2 AND channel = 'EMAIL');
+        BEGIN PERFORM assessment.chase_sheet(sh2, 'REMIND', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_soon := split_part(msg, ':', 1); END;
+        -- three days late: escalated to the Head of Department of MTC (email), the lecturer told by text
+        UPDATE assessment.score_sheet SET due_on = current_date - 3 WHERE id = sh2;
+        j := assessment.chase_sheet(sh2, 'ESCALATE', NULL);
+        v_hod_to := j->>'toOffice'; v_hod_told := (j->>'told')::int;
+        n_hod_mail := (SELECT count(*) FROM platform.notice WHERE about_id = sh2 AND channel = 'EMAIL' AND recipient = 'zz.check203.hod@example.com');
+        n_lect_esc := (SELECT count(*) FROM platform.notice WHERE about_id = sh2 AND channel = 'SMS' AND recipient = '08030359001' AND subject = 'Score sheet escalated');
+        -- eight days late, the last escalation a day ago: the Dean of SC
+        UPDATE assessment.sheet_chase SET sent_at = sent_at - interval '25 hours' WHERE sheet_id = sh2;
+        UPDATE assessment.score_sheet SET due_on = current_date - 8 WHERE id = sh2;
+        j := assessment.chase_sheet(sh2, 'ESCALATE', NULL);
+        v_dean_to := j->>'toOffice'; v_dean_told := (j->>'told')::int;
+        -- the Dean's post ended: no one to escalate to, refused
+        UPDATE assessment.sheet_chase SET sent_at = sent_at - interval '25 hours' WHERE sheet_id = sh2;
+        UPDATE iam.office_assignment SET valid_to = current_date - 1 WHERE id = grant_dean;
+        BEGIN PERFORM assessment.chase_sheet(sh2, 'ESCALATE', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_nobody := split_part(msg, ':', 1); END;
+        -- the rule the monitor shows, and what the lists read
+        m_office := concat_ws('/', assessment.chase_office(NULL, NULL), assessment.chase_office(1, NULL), assessment.chase_office(5, NULL),
+                              assessment.chase_office(6, NULL), assessment.chase_office(3, 'GST'));
+        n_kept := (SELECT count(*) FROM assessment.sheet_chase WHERE sheet_id = sh2);
+        SELECT reminders, escalations, escalated_to INTO v_reminders, v_escalations, v_last_to FROM assessment.chase_summary(ARRAY[sh2]);
+        -- a hostel allocation's check code: random, eighteen hex digits, never assumed
+        v_default := (SELECT pg_get_expr(d.adbin, d.adrelid) LIKE '%gen_random_bytes%' FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                       WHERE d.adrelid = 'hostel.allocation'::regclass AND a.attname = 'verify_code');
+        v_code := (SELECT bool_and(verify_code ~ '^[0-9a-f]{18}$') IS NOT FALSE AND count(*) = count(DISTINCT verify_code) FROM hostel.allocation);
+        RAISE EXCEPTION 'the V359 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V359: a sheet at entry chased for real — not by a lecturer, not past entry, not escalated before it is due; reminded by text to the lecturer''s phone (no email on record), once a day; escalated to the Head of Department three days late (the lecturer told), to the Dean eight days late, refused with no one posted; the monitor''s rule; every reminder kept and summed for the lists. A hostel allocation carries a random check code of its own',
+        r_lect = 'RESULT_CHASE_DESK' AND r_entry = 'RESULT_CHASE_NOT_AT_ENTRY' AND r_notlate = 'RESULT_CHASE_NOT_LATE'
+        AND v_rem_told = 1 AND n_sms = 1 AND n_mail = 0 AND r_soon = 'RESULT_CHASE_TOO_SOON'
+        AND v_hod_to = 'hod' AND v_hod_told = 1 AND n_hod_mail = 1 AND n_lect_esc = 1 AND v_dean_to = 'dean' AND v_dean_told = 1
+        AND r_nobody = 'RESULT_CHASE_NO_HOLDER' AND m_office = 'hod/hod/dean/gst'
+        AND n_kept = 3 AND v_reminders = 1 AND v_escalations = 2 AND v_last_to = 'Dean' AND v_default AND v_code,
+        format('lect=%s entry=%s notlate=%s told=%s sms=%s mail=%s soon=%s hod=%s/%s/%s lectesc=%s dean=%s/%s nobody=%s rule=%s kept=%s summary=%s/%s/%s default=%s code=%s',
+               r_lect, r_entry, r_notlate, v_rem_told, n_sms, n_mail, r_soon, v_hod_to, v_hod_told, n_hod_mail, n_lect_esc, v_dean_to, v_dean_told, r_nobody, m_office,
+               n_kept, v_reminders, v_escalations, v_last_to, v_default, v_code));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

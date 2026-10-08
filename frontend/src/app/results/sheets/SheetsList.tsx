@@ -2,7 +2,7 @@
 
 /** staffScores — proto/part5.html: the sheets assigned to you, counted from the rolls, never typed beside them. */
 import { useQueryNav } from "@/lib/query-nav";
-import { stageOf, type MySheet } from "@/lib/results";
+import { chaseWords, stageOf, type MySheet } from "@/lib/results";
 import { LinkBtn, Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
@@ -50,7 +50,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
                 <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semesterText(s.semester)}</div></span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
                 <span key="e"><span className={`tnum${short ? " ink-red b600" : ""}`}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2 ink-chrome">{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
-                <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2 ink-red">{s.daysLate} days overdue</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,
+                <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2 ink-red">{s.daysLate} days overdue</div> : null}{s.stage === "ENTRY" && chaseWords(s.chase) ? <div className="sub2 ink-red">{chaseWords(s.chase)}</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,
                 <span className="sub2" key="x">{s.secondExaminer ?? "Not yet set"}</span>,
                 <LinkBtn key="a" href={`/results/sheets/${s.id}`} kind={st.kind}>{s.mine || all ? st.act : "View"}</LinkBtn>,
               ];

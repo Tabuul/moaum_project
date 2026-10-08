@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     p.text(L, y, `Hostel rules and regulations (version ${v.rules_version})`, 10, true);
     y = p.paragraph(L, y - 16, clean(v.rules).slice(0, 2600), A4.w - 2 * L - 110, 8.5);
   }
-  const { size, dark } = qrMatrix(`${originOf(request)}${hostelVerifyPath(v.allocation_ref)}`);
+  const { size, dark } = qrMatrix(`${originOf(request)}${hostelVerifyPath(v.allocation_ref, h.data.verifyCode)}`);
   const side = 92, cell = side / size, qx = A4.w - L - side, qy = 84;
   for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(qx + c * cell, qy + (size - 1 - r) * cell, cell, cell, 0);
   p.text(qx - 4, qy - 10, "Scan to verify this letter", 7, false, [0.4, 0.4, 0.4]);
