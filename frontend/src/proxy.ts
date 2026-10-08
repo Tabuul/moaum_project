@@ -36,6 +36,10 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/jupeb/options",
   "/api/bff/api/v1/jupeb/apply",
   "/api/bff/api/v1/jupeb/forgot",
+  /* the public ticket tracking (V251): the sign-in page sends someone who cannot sign in here, so it cannot ask them to; the
+     ticket number and the email it was raised with open the ticket, and the API limits the lookups */
+  "/track",
+  "/api/bff/api/v1/helpdesk/track",
   /* Interswitch PayDirect's doors (V299; the one address for both messages, Oct 2026) when the API has no public address of its
      own and the portal forwards to it: Interswitch has no session. The API answers them as it answers them directly — a
      notification believed only with its credentials. Exactly these three, not the Bursary's /paydirect desk. */

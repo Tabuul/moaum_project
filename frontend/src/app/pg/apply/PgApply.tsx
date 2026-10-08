@@ -187,7 +187,7 @@ export function PgApply() {
               </Field>
               {f.nationality === "Other" ? (
                 <Field id="nationalityOther" label="Your nationality"><input id="nationalityOther" className="ctl" value={f.nationalityOther ?? ""} onChange={set("nationalityOther")} maxLength={80} placeholder="e.g. Ugandan" /></Field>
-              ) : <div />}
+              ) : null}
               <Field id="state" label="State of origin" hint={nigerian ? undefined : "For Nigerian applicants"}>
                 <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })} disabled={!nigerian}>
                   <option value="">— Select a state —</option>
