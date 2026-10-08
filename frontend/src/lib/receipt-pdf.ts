@@ -1,7 +1,7 @@
 import { type Receipt, receiptPurpose } from "@/lib/student-portal";
 import { A4, Page, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
+import { qrMatrix, verifyPath } from "@/lib/qr";
 import { finishPdf } from "@/lib/document/pdf";
 
 /** the public origin, honouring the proxy so the QR opens a real address */
@@ -70,8 +70,9 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   y -= 16;
 
   // ── verify: a QR to the public verification page, drawn as module squares ──
-  const url = originOf(req) + verifyPath(x.reference, x.receipt_no);
-  const token = receiptToken(x.reference, x.receipt_no);
+  // V360: the check code the API signed for this receipt
+  const token = x.checkCode ?? "";
+  const url = originOf(req) + verifyPath(x.reference, token);
   const { size, dark } = qrMatrix(url);
   const cell = 2.7;
   const qDim = size * cell;

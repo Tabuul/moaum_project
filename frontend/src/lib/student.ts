@@ -197,6 +197,8 @@ export interface RecordsResult {
   rows: Record<string, unknown>[];
   total: number;
   notServed: string | null;
+  /** V360: how a served view's figures are read */
+  note?: string | null;
 }
 
 /** "ADAMU, Grace Mwuese" — the register's own order. */

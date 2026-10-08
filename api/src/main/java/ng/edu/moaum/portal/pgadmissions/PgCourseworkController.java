@@ -450,6 +450,7 @@ class PgCourseworkController {
         }
         jdbc.sql("UPDATE admissions.pg_registration SET state = 'ENDORSED', endorsed_by = :by, endorsed_at = now(), updated_at = now() WHERE id = :id")
                 .param("by", by).param("id", id).update();
+        jdbc.sql("SELECT admissions.tell_pg_endorsed(:id)").param("id", id).query().listOfRows();   // V360: the student told
         return registration(id);
     }
 
@@ -471,6 +472,8 @@ class PgCourseworkController {
         jdbc.sql("SELECT admissions.pg_record_score(:e, :ca, :ex, :by)")
                 .param("e", body.entryId()).param("ca", body.ca()).param("ex", body.exam()).param("by", by)
                 .query().listOfRows();
-        return Map.of("ok", true);
+        // V360: the student told a score is recorded in the course (once a day for it; the score is on the portal, not in the message)
+        boolean told = Boolean.TRUE.equals(jdbc.sql("SELECT admissions.tell_pg_scored(:e)").param("e", body.entryId()).query(Boolean.class).single());
+        return Map.of("ok", true, "told", told);
     }
 }

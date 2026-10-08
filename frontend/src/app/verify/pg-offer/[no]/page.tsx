@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
+import { LegacyNote } from "../../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const t = typeof q.t === "string" ? q.t : "";
   const r = await api<V>(`/api/v1/verify/pg-offer/${encodeURIComponent(p.no)}?t=${encodeURIComponent(t)}`);
   const v: V = r.ok ? r.data : { genuine: false };
-  const ok = v.genuine;
+  const ok = v.genuine && !v.limited;
   const rows: [string, string][] = ok ? [["Application number", String(v.application_no ?? "")], ["Applicant", String(v.applicant_name ?? "")], ["Programme", String(v.programme ?? "")], ["Award", String(v.award ?? "")], ["Faculty", String(v.faculty ?? "")], ["Department", String(v.department ?? "")], ["Session", String(v.session ?? "")], ["Entry level", String(v.entry_level ?? "")], ["Offered on", day(v.offered_on)], ["Accepted on", day(v.accepted_on)], ["State", word(v.state)]] : [];
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
@@ -25,9 +26,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="grow"><div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Postgraduate offer verification</div></div>
         </div>
         <div className="card__body">
+          {v.limited ? <LegacyNote document="offer of admission" number={typeof v.number === "string" ? v.number : null} session={typeof v.session === "string" ? v.session : null} /> : (
           <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine — this is the University's record" : "Not verified"}>
-            {ok ? "The offer named on the letter was made by the Postgraduate School and accepted as shown." : "No accepted postgraduate offer matches this number and code. Treat the letter as not genuine."}
-          </Note>
+              {ok ? "The offer named on the letter was made by the Postgraduate School and accepted as shown." : "No accepted postgraduate offer matches this number and code. Treat the letter as not genuine."}
+            </Note>
+          )}
           {ok ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--s-2)" }}>
               {rows.map(([k, val], i) => (

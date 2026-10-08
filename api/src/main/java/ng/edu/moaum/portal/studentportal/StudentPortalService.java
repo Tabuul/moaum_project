@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.stereotype.Service;
@@ -24,8 +25,35 @@ public class StudentPortalService {
 
     private final StudentPortalRepository repo;
 
-    StudentPortalService(StudentPortalRepository repo) {
+    private final CheckCodes codes;
+
+    StudentPortalService(StudentPortalRepository repo, CheckCodes codes) {
         this.repo = repo;
+        this.codes = codes;
+    }
+
+    /** V360: the signed check code the student's own examination card, course form or results statement carries in its QR —
+     *  over the number the document prints (the matriculation number, or the admission number before it is issued) */
+    @Transactional(readOnly = true)
+    public Map<String, Object> checkCode(UUID id, String kind, String session, int semester) {
+        CheckCodes.Kind k = switch (kind == null ? "" : kind.trim().toUpperCase()) {
+            case "EXAM" -> CheckCodes.Kind.EXAM;
+            case "REG" -> CheckCodes.Kind.REG;
+            case "RESULT" -> CheckCodes.Kind.RESULT;
+            default -> throw new DomainRuleViolation("CHECK_CODE_KIND", "A check code is made for an examination card (EXAM), a course form (REG) or a results statement (RESULT).");
+        };
+        if (session == null || !session.matches("^[0-9]{4}/[0-9]{4}$") || semester < 1 || semester > 3) {
+            throw new DomainRuleViolation("CHECK_CODE_SESSION", "A check code is made for one session (such as 2026/2027) and one semester.");
+        }
+        StudentPortalRepository.Student s = student(id);
+        String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("kind", k.name());
+        out.put("number", number);
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("code", codes.sign(k, number, session, String.valueOf(semester)));
+        return out;
     }
 
     private StudentPortalRepository.Student student(UUID id) {
@@ -297,6 +325,10 @@ public class StudentPortalService {
         out.put("programme", s.programme());
         // the level the student was at when they paid this session's fee, not today's level
         out.put("level", repo.levelForSession(id, String.valueOf(r.get("session"))));
+        // V360: the signed check code the receipt's QR carries, over the reference and the receipt number
+        if (r.get("receipt_no") != null) {
+            out.put("checkCode", codes.sign(CheckCodes.Kind.RECEIPT, String.valueOf(r.get("reference")), String.valueOf(r.get("receipt_no"))));
+        }
         return out;
     }
 

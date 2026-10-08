@@ -4,7 +4,7 @@ import type { Results } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix, resultToken, resultVerifyPath } from "@/lib/qr";
+import { qrMatrix, resultVerifyPath, studentCheckCode } from "@/lib/qr";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
@@ -136,9 +136,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
 
   // ── verification QR and its details: the QR opens the University's OWN record on the portal, so an
   //    altered statement is exposed. The grades and GPA shown on scan come from the register, not this sheet.
-  const matric = x.matricNo ?? "";
-  const verifyUrl = originOf(request) + resultVerifyPath(matric, session, semester);
-  const code = resultToken(matric, session, semester);
+  const check = await studentCheckCode("RESULT", session, semester);
+  if (!check) return NextResponse.json({ status: 503, title: "The statement's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
+  const verifyUrl = originOf(request) + resultVerifyPath(check.number, session, semester, check.code);
+  const code = check.code;
   const { size, dark } = qrMatrix(verifyUrl);
   const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);

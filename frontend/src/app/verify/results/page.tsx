@@ -1,12 +1,13 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
 import { Note } from "@/components/proto/ui";
+import { LegacyNote } from "../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
 interface Row { course_code: string; title: string; units: number; total: number | null; grade: string | null; points: number | null; outcome: string | null }
 interface ResultVerify {
-  genuine: boolean; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
+  genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; gpa?: number | null; cgpa?: number | null; standing?: string | null;
   approvedOn?: string | null; senateMinute?: string | null; rows?: Row[];
 }
@@ -20,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const m = g("m"), s = g("s"), sem = g("sem") || "1", c = g("c");
   const r = await api<ResultVerify>(`/api/v1/verify/results?matric=${encodeURIComponent(m)}&session=${encodeURIComponent(s)}&semester=${encodeURIComponent(sem)}&c=${encodeURIComponent(c)}`);
   const v = r.ok ? r.data : { genuine: false };
-  const ok = v.genuine;
+  const ok = v.genuine && !v.limited;
   const approved = v.approvedOn ? new Date(v.approvedOn).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—";
   const scoreOf = (row: Row) => row.outcome === "GRADED" ? (row.total == null ? "—" : String(row.total)) : (row.outcome ? row.outcome.charAt(0) + row.outcome.slice(1).toLowerCase() : "—");
 
@@ -37,11 +38,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         </div>
 
         <div className="card__body">
+          {v.limited ? <LegacyNote document="results statement" number={v.number} session={v.session} semester={v.semester} /> : (
           <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine statement — this is the University's record" : "Not verified"}>
-            {ok
-              ? "Check that the grades, GPA and approval date below match the statement in hand."
-              : "No published statement matches this code. Treat the statement as not genuine."}
-          </Note>
+              {ok
+                ? "Check that the grades, GPA and approval date below match the statement in hand."
+                : "No published statement matches this code. Treat the statement as not genuine."}
+            </Note>
+          )}
 
           {ok ? (
             <>

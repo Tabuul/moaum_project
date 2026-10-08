@@ -1900,7 +1900,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Users / roles | `READERS` academic, registrar, dregistrar, dvc, vc, records, dean, hod, exams, facultyexams, facultyofficer, ict, admin, super, bursar, library, security, housing, hrm, audit, lecturer; `WRITERS` academic, registrar, dregistrar; migrated clearance and withdrawals + ict, super; portal account registrar, dregistrar, academic, records, ict, super. |
 | Navigation | Students → Students / Student Records → `/students` (academic, admin, dean, dregistrar, facultyofficer, hod, ict, registrar); Records & Queries → `/records` (eighteen offices); Student 360 `/students/{id}` from any list. |
 | Dashboard | Migrated tiles On the register / Cleared everywhere / Not yet cleared; Voluntary withdrawals Due now / Closed so far. |
-| Main features | Scope bar and "Find a student"; Student 360 with Change status (instrument required), Correct level, Portal account (first password), Finance card (placeholder), Academic standing, eight clearance units, Registration, Record history, Biodata sections with per-field "From JAMB"/"Needs approval" badges; "Clear the N not yet cleared"; "Close all N due" voluntary withdrawals; Records tabs students / registration / fees / results / exams / allocation / clearance / attendance. |
+| Main features | Scope bar and "Find a student"; Student 360 with Change status (instrument required), Correct level, Portal account (first password), Finance card (V360: the session's fees, to the offices that read them), Academic standing (V360: CGPA and standing), eight clearance units, Registration, Record history, Biodata sections with per-field "From JAMB"/"Needs approval" badges; "Clear the N not yet cleared"; "Close all N due" voluntary withdrawals; Records tabs students / registration / fees / results / exams / allocation / clearance / attendance. |
 | Create | Intake `POST /student/intake/{s}/{y}` (button on `/admissions`). |
 | View | Register table (Matriculation no., Name, Programme, Level, Status); Student 360; records views. |
 | Edit | `PUT …/biodata/{field}` (open fields; locked refused); status; level. |
@@ -1919,7 +1919,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Common errors | "a change of status is made on an instrument … and none was cited"; ADMITTED→ACTIVE by hand fails `ck_student_active_has_matric`; "No portal account has been opened for this number yet." |
 | Troubleshooting | Matriculate instead of setting ACTIVE; open the portal account from Student 360 (needs a matric number). |
 
-**Status:** IMPLEMENTED — register, 360, status, level, biodata write, voluntary withdrawals, migrated clearance, portal account; PLACEHOLDER — the 360 Finance card ("NOT YET SERVED") and CGPA "—", the records "fees" and "attendance" tabs (stale not-served text); NOT IMPLEMENTED — a search-log reader.
+**Status:** IMPLEMENTED — register, 360 (V360: Finance and CGPA cards), status, level, biodata write, voluntary withdrawals, migrated clearance, portal account, every records tab (V360: fees, attendance, the CGPA column; held to the office's bound); NOT IMPLEMENTED — a search-log reader.
 
 ### 3.24 Matriculation and the matriculation number format
 

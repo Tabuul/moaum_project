@@ -6,7 +6,7 @@ import { loadStudent } from "../../load";
 
 export const dynamic = "force-dynamic";
 import type { Receipt } from "@/lib/student-portal";
-import { qrDataUrl, receiptToken, verifyPath } from "@/lib/qr";
+import { qrDataUrl, verifyPath } from "@/lib/qr";
 import { ReceiptScreen } from "../../Screens2";
 
 /** s/receipt — the receipt issued on confirmation, with a QR to the public verification page */
@@ -16,13 +16,13 @@ export default async function Page({ params }: { params: Promise<{ reference: st
   if (!loaded.student) return <Shell route="s/receipt" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const r = await api<Receipt>(`/api/v1/me/fees/receipts/${encodeURIComponent(reference)}`);
   let qr: string | null = null, verifyUrl: string | null = null, token: string | null = null;
-  if (r.ok && r.data.confirmed_at) {
+  if (r.ok && r.data.confirmed_at && r.data.checkCode) {
     const h = await headers();
     const host = h.get("x-forwarded-host") ?? h.get("host");
     const proto = h.get("x-forwarded-proto") ?? "https";
     const origin = host ? `${proto}://${host}` : "";
-    verifyUrl = origin + verifyPath(r.data.reference, r.data.receipt_no);
-    token = receiptToken(r.data.reference, r.data.receipt_no);
+    verifyUrl = origin + verifyPath(r.data.reference, r.data.checkCode);
+    token = r.data.checkCode;
     qr = await qrDataUrl(verifyUrl);
   }
   return (

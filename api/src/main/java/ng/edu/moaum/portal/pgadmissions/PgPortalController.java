@@ -60,6 +60,7 @@ class PgPortalController {
      *  platform's door limit (Throttle.Door.PG_SIGN_IN) — so a stranger cannot keep an applicant locked out by feeding five
      *  wrong passwords every quarter hour, nor try many accounts */
     private final ng.edu.moaum.portal.shared.Throttle throttle;
+    private final ng.edu.moaum.portal.shared.CheckCodes codes;
     static final UUID NOBODY = new UUID(0, 0);
 
     private final FileObjects files;
@@ -72,9 +73,10 @@ class PgPortalController {
 
     PgPortalController(FileObjects files, JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer,
                        @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
-                       ng.edu.moaum.portal.shared.Throttle throttle) {
+                       ng.edu.moaum.portal.shared.Throttle throttle, ng.edu.moaum.portal.shared.CheckCodes codes) {
         this.jdbc = jdbc;
         this.throttle = throttle;
+        this.codes = codes;
         this.files = files;
         this.tx = new TransactionTemplate(transactions);
         this.issuer = issuer;
@@ -361,6 +363,10 @@ class PgPortalController {
                 """).param("visible", visible).param("app", a.get("application_id")).query().listOfRows());
         // the physical screening (V337): what the applicant is told, and where they stand
         out.put("screening", screeningOf((UUID) a.get("application_id"), String.valueOf(a.get("session"))));
+        // V360: the signed check code the offer letter's QR carries, once the acceptance fee is confirmed
+        if (a.get("acceptance_confirmed_at") != null) {
+            out.put("offerCode", codes.sign(ng.edu.moaum.portal.shared.CheckCodes.Kind.PG_OFFER, String.valueOf(a.get("application_no")).toUpperCase()));
+        }
         // once admitted, the student record the applicant has become: the number that opens the student portal
         if (a.get("student_id") != null) {
             out.put("student", firstOrNull(jdbc.sql("""

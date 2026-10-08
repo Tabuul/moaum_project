@@ -14,6 +14,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
 import { semesterText } from "@/lib/student-portal";
+import { money } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 
@@ -65,6 +66,90 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
     );
   }
 
+  /* V360: the session's school fees — the Bursary's figures, for the offices that read them */
+  if (view === "fees") {
+    const due = rows.reduce((t, r) => t + (num(r, "due") ?? 0), 0);
+    const paid = rows.reduce((t, r) => t + (num(r, "paid") ?? 0), 0);
+    const owing = rows.filter((r) => (num(r, "balance") ?? 0) > 0).length;
+    const FEE_STATE: Record<string, ["ok" | "bad" | "warn" | "grey", string]> = { PAID: ["ok", "Paid"], PART_PAID: ["warn", "Part paid"], UNPAID: ["bad", "Unpaid"], NO_CHARGE: ["grey", "No charge"] };
+    return (
+      <>
+        <Tiles
+          items={[
+            ["Charged", money(due), null, `${scope.session} · ${shown.toLocaleString()} students`],
+            ["Paid", money(paid), paid > 0 ? "var(--green-ink)" : null, "Confirmed school-fee payments"],
+            ["Outstanding", money(Math.max(0, due - paid)), due > paid ? "var(--red-ink)" : null, `${owing.toLocaleString()} owing`],
+            ["Settled", shown - owing, null, "Nothing outstanding"],
+          ]}
+        />
+        <Panel title="School fees" right={`${shown} shown · ${scope.session}`}>
+          {shown === 0 ? (
+            <Empty title="Nobody is on the register in this scope">There is no one to charge a fee in this scope.</Empty>
+          ) : (
+            <DTable
+              cols={["Matriculation number", "Name", "Level|mid", "Charged|num", "Paid|num", "Outstanding|num", "State|num"]}
+              rows={rows.map((r) => {
+                const [kind, label] = FEE_STATE[str(r, "state")] ?? ["grey", str(r, "state")];
+                return [
+                  <Tnum key="m">{str(r, "matricNo") || <span className="sub2">{str(r, "admissionNo") || "—"}</span>}</Tnum>,
+                  <strong key="n">{str(r, "name")}</strong>,
+                  <Tnum key="l">{str(r, "level")}</Tnum>,
+                  <Tnum key="d">{money(num(r, "due") ?? 0)}</Tnum>,
+                  <Tnum key="p">{money(num(r, "paid") ?? 0)}</Tnum>,
+                  <span key="b" className={`tnum${(num(r, "balance") ?? 0) > 0 ? " ink-red b600" : ""}`}>{money(num(r, "balance") ?? 0)}</span>,
+                  <Pil kind={kind} key="s">{label}</Pil>,
+                ];
+              })}
+              texts={rows.map((r) => `${str(r, "matricNo")} ${str(r, "name")} ${str(r, "state")}`)}
+              title="School fees"
+            />
+          )}
+          {result.note ? <PBody><span className="sub2">{result.note}</span></PBody> : null}
+        </Panel>
+      </>
+    );
+  }
+
+  /* V360: attendance as the lecturers have marked it — rates as kept, judged against no minimum nobody configured */
+  if (view === "attendance") {
+    const withRegister = rows.filter((r) => (num(r, "withRegister") ?? 0) > 0).length;
+    return (
+      <>
+        <Tiles
+          items={[
+            ["On approved registrations", shown, null, `${scope.session}${scope.sem ? ` · ${semesterText(Number(scope.sem))}` : ""}`],
+            ["With a register", withRegister, null, "At least one course marked"],
+            ["No register yet", shown - withRegister, shown - withRegister ? "var(--chrome)" : null, "No class marked for them"],
+          ]}
+        />
+        <Panel title="Attendance" right={`${shown} shown`}>
+          {shown === 0 ? (
+            <Empty title="No approved registration in this scope">
+              Attendance is marked against an approved registration; with none in this scope there is nothing to show.
+            </Empty>
+          ) : (
+            <DTable
+              cols={["Matriculation number", "Name", "Level|mid", "Courses|mid", "Marked|mid", "Attended|mid", "Rate|mid", "Lowest course|num"]}
+              rows={rows.map((r) => [
+                <Tnum key="m">{str(r, "matricNo") || <span className="sub2">{str(r, "admissionNo") || "—"}</span>}</Tnum>,
+                <strong key="n">{str(r, "name")}</strong>,
+                <Tnum key="l">{str(r, "level")}</Tnum>,
+                <Tnum key="c">{str(r, "courses")}</Tnum>,
+                <Tnum key="w">{str(r, "withRegister")}</Tnum>,
+                (num(r, "held") ?? 0) > 0 ? <Tnum key="a">{`${str(r, "attended")} of ${str(r, "held")}`}</Tnum> : <Dash key="a" />,
+                num(r, "rate") === null ? <Dash key="r" /> : <Tnum key="r">{`${num(r, "rate")}%`}</Tnum>,
+                num(r, "lowest") === null ? <Dash key="o" /> : <Tnum key="o">{`${num(r, "lowest")}%`}</Tnum>,
+              ])}
+              texts={rows.map((r) => `${str(r, "matricNo")} ${str(r, "name")}`)}
+              title="Attendance"
+            />
+          )}
+          {result.note ? <PBody><span className="sub2">{result.note}</span></PBody> : null}
+        </Panel>
+      </>
+    );
+  }
+
   if (view === "students") {
     return (
       <Panel title="Students" right={`${shown} of ${result.total.toLocaleString()} shown`}>
@@ -83,7 +168,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
               <Pil kind={statusPill(str(r, "status"))} key="s">
                 {statusLabel(str(r, "status"))}
               </Pil>,
-              <Dash key="c" />,
+              num(r, "cgpa") === null ? <Dash key="c" /> : <Tnum key="c">{(num(r, "cgpa") as number).toFixed(2)}</Tnum>,
               <LinkBtn kind="ghost" href={`/students/${str(r, "id")}`} key="a">
                 Open
               </LinkBtn>,
@@ -92,6 +177,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
             title="Students"
           />
         )}
+        {result.note ? <PBody><span className="sub2">{result.note}</span></PBody> : null}
       </Panel>
     );
   }

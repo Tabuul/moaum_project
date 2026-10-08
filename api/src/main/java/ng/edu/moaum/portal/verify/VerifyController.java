@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.verify;
 
+import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.Throttle;
@@ -26,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * truth; the printed receipt is only a view of it, so an altered or cloned
  * receipt is exposed when the payer, amount or date shown here does not match
  * the paper. Unauthenticated (see SecurityConfig): it returns only a confirmed
- * receipt, and only when the stateless check token on the QR matches — so the
+ * receipt, and only when the check code on the QR matches (V360: signed by the API) — so the
  * references cannot simply be enumerated to harvest names and amounts.
  */
 @RestController
@@ -36,11 +37,30 @@ class VerifyController {
     private final FileObjects files;
     private final JdbcClient jdbc;
     private final Throttle throttle;
+    private final CheckCodes codes;
 
-    VerifyController(FileObjects files, JdbcClient jdbc, Throttle throttle) {
+    VerifyController(FileObjects files, JdbcClient jdbc, Throttle throttle, CheckCodes codes) {
         this.jdbc = jdbc;
         this.files = files;
         this.throttle = throttle;
+        this.codes = codes;
+    }
+
+    /** V360: when the signed codes began — a document's old code is honoured only for a record that existed before it */
+    private static final String CUT = "(SELECT cut_over_at FROM platform.check_code_cutover)";
+
+    /** V360: a document printed before the signed codes, answered without the person's details: it is genuine, and the
+     *  student prints it again for the full record — the old code could be made by anyone, so it names no one */
+    private static Map<String, Object> limited(String document, Object number, String session, Integer semester) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("genuine", true);
+        out.put("legacy", true);
+        out.put("limited", true);
+        out.put("document", document);
+        out.put("number", number);
+        if (session != null) out.put("session", session);
+        if (semester != null) out.put("semester", semester);
+        return out;
     }
 
     /** V359: every check answered here counts against the connection when it does not match — a page that checks the
@@ -53,19 +73,6 @@ class VerifyController {
         return out;
     }
 
-    /** the same digest the receipt carries: sha256(reference|receiptNo), hex, upper-cased, first 12 */
-    private static String token(String reference, String receiptNo) {
-        try {
-            byte[] d = MessageDigest.getInstance("SHA-256")
-                    .digest((reference + "|" + (receiptNo == null ? "" : receiptNo)).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(d.length * 2);
-            for (byte b : d) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            return sb.substring(0, 12).toUpperCase();
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
     @GetMapping("/receipt/{reference}")
     @Transactional(readOnly = true)
     Map<String, Object> receipt(@PathVariable String reference, @RequestParam(required = false) String c, HttpServletRequest request) {
@@ -75,7 +82,7 @@ class VerifyController {
     private Map<String, Object> receiptAnswer(String reference, String c) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT pr.reference, pr.receipt_no, pr.amount, pr.purpose, pr.session, pr.channel, pr.confirmed_at,
-                       finance.payment_term(pr.id) AS term,
+                       finance.payment_term(pr.id) AS term, pr.confirmed_at < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover,
                        trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
                        coalesce(
                          (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
@@ -115,10 +122,16 @@ class VerifyController {
         Map<String, Object> out = new LinkedHashMap<>();
         if (rows.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> row = rows.get(0);
-        String expected = token(String.valueOf(row.get("reference")), row.get("receipt_no") == null ? null : String.valueOf(row.get("receipt_no")));
-        if (c == null || !expected.equalsIgnoreCase(c.trim())) { out.put("genuine", false); return out; }
+        /* V360: the signed code; or the old one, on a payment confirmed before the change — the old receipt code needs the
+           receipt number, printed only on the receipt itself, so its full answer stands */
+        String ref = String.valueOf(row.get("reference"));
+        String receiptNo = row.get("receipt_no") == null ? null : String.valueOf(row.get("receipt_no"));
+        boolean keyed = codes.signed(c, CheckCodes.Kind.RECEIPT, ref, receiptNo);
+        boolean legacy = !keyed && Boolean.TRUE.equals(row.get("before_cutover")) && CheckCodes.legacy(c, CheckCodes.Kind.RECEIPT, ref, receiptNo);
+        if (!keyed && !legacy) { out.put("genuine", false); return out; }
 
         out.put("genuine", true);
+        if (legacy) out.put("legacy", true);
         out.put("name", row.get("name"));
         out.put("matricNo", row.get("matric_no"));
         out.put("programme", row.get("programme"));
@@ -133,30 +146,6 @@ class VerifyController {
         out.put("passport", files.dataUrl((String) row.get("passport"),
                 (UUID) (row.get("passport_object") != null ? row.get("passport_object") : row.get("jamb_object"))));
         return out;
-    }
-
-    /** sha256(payload), hex, upper-cased, first 12 — the stateless check token every QR carries */
-    private static String digest12(String payload) {
-        try {
-            byte[] d = MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(d.length * 2);
-            for (byte b : d) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            return sb.substring(0, 12).toUpperCase();
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private static String examToken(String matric, String session, int semester) {
-        return digest12("EXAM|" + matric + "|" + session + "|" + semester);
-    }
-
-    private static String regToken(String matric, String session, int semester) {
-        return digest12("REG|" + matric + "|" + session + "|" + semester);
-    }
-
-    private static String resultToken(String matric, String session, int semester) {
-        return digest12("RESULT|" + matric + "|" + session + "|" + semester);
     }
 
     /**
@@ -175,18 +164,29 @@ class VerifyController {
     private Map<String, Object> examAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, s.current_level, pg.name AS programme,
-                       finance.clears(s.id, :session, 'EXAMINATION') AS cleared,
+                SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
+                       s.current_level, pg.name AS programme,
+                       finance.clears_or_null(s.id, :session, 'EXAMINATION') AS cleared,
                        (SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
                          WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
                          ORDER BY d.id LIMIT 1) AS passport_id
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
-                 WHERE upper(s.matric_no) = upper(:m) LIMIT 1
+                 WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND upper(s.admission_no) = upper(:m)) LIMIT 1
                 """).param("m", matric).param("session", session).query().listOfRows();
         if (rows.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> row = rows.get(0);
-        if (c == null || !examToken(String.valueOf(row.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
-            out.put("genuine", false); return out;
+        String number = String.valueOf(row.get("number"));
+        /* V360: the signed code; or the old one, only for a semester whose cards were released before the change — in full
+           while that examination session is still open (the invigilator needs the face), and without the details after */
+        if (!codes.signed(c, CheckCodes.Kind.EXAM, number, session, String.valueOf(semester))) {
+            if (!CheckCodes.legacy(c, CheckCodes.Kind.EXAM, number, session, String.valueOf(semester))) { out.put("genuine", false); return out; }
+            Map<String, Object> was = jdbc.sql("SELECT coalesce(bool_or(cards_released_at < " + CUT + "), false) AS released, "
+                    + "coalesce(bool_or(cards_released_at < " + CUT + " AND state <> 'CLOSED'), false) AS still_open "
+                    + "FROM assessment.exam_session WHERE session = :s AND semester = :sem")
+                    .param("s", session).param("sem", semester).query().singleRow();
+            if (!Boolean.TRUE.equals(was.get("released"))) { out.put("genuine", false); return out; }
+            if (!Boolean.TRUE.equals(was.get("still_open"))) return limited("EXAM_CARD", number, session, semester);
+            out.put("legacy", true);
         }
         java.util.UUID sid = (java.util.UUID) row.get("id");
         List<Map<String, Object>> courses = jdbc.sql("""
@@ -236,7 +236,7 @@ class VerifyController {
      * Verify a course registration form. The form's QR opens the public page, which asks this for the
      * University's own record: the student, the approved courses, the units and the approval date. The
      * record is the truth; the printed form is a view of it, so a form whose courses, units or approval
-     * date do not match here is exposed. The stateless check token (sha256 of matric|session|semester)
+     * date do not match here is exposed. The check code the API signs (V360)
      * gates enumeration, and only an approved registration is returned.
      */
     @GetMapping("/registration")
@@ -249,19 +249,26 @@ class VerifyController {
     private Map<String, Object> registrationAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT r.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
-                       r.level, r.status, r.approved_at, r.submitted_at, registration.units_of(r.id) AS units
+                SELECT r.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
+                       pg.name AS programme, r.level, r.status, r.approved_at, r.submitted_at, registration.units_of(r.id) AS units,
+                       coalesce(r.approved_at, r.submitted_at) < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover
                   FROM registration.course_registration r
                   JOIN people.student s ON s.id = r.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
-                 WHERE upper(s.matric_no) = upper(:m) AND r.session = :session AND r.semester = :sem
-                   AND r.status IN ('APPROVED','LOCKED')
+                 WHERE (upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND upper(s.admission_no) = upper(:m)))
+                   AND r.session = :session AND r.semester = :sem AND r.status IN ('APPROVED','LOCKED')
                  ORDER BY r.approved_at DESC NULLS LAST LIMIT 1
                 """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();
         if (rows.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> row = rows.get(0);
-        if (c == null || !regToken(String.valueOf(row.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
-            out.put("genuine", false); return out;
+        String number = String.valueOf(row.get("number"));
+        // V360: the signed code; the old one only for a registration made before the change, and then without the details
+        if (!codes.signed(c, CheckCodes.Kind.REG, number, session, String.valueOf(semester))) {
+            if (Boolean.TRUE.equals(row.get("before_cutover")) && CheckCodes.legacy(c, CheckCodes.Kind.REG, number, session, String.valueOf(semester))) {
+                return limited("REGISTRATION_FORM", number, session, semester);
+            }
+            out.put("genuine", false);
+            return out;
         }
         java.util.UUID rid = (java.util.UUID) row.get("id");
         List<Map<String, Object>> courses = jdbc.sql("""
@@ -289,7 +296,7 @@ class VerifyController {
      * Verify a semester results statement. The statement's QR opens the public page, which asks this for
      * the University's own record: the published grades, the semester and cumulative GPA, the class of
      * standing and the Senate approval date. Only published results are returned, and only when the
-     * stateless check token (sha256 of matric|session|semester) matches — so a statement whose grades or
+     * check code the API signs (V360) matches — so a statement whose grades or
      * GPA do not match here is exposed, and the records cannot be enumerated.
      */
     @GetMapping("/results")
@@ -302,14 +309,16 @@ class VerifyController {
     private Map<String, Object> resultsAnswer(String matric, String session, int semester, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> stu = jdbc.sql("""
-                SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
-                       people.level_in(s.id, :session, :sem) AS level
+                SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
+                       pg.name AS programme, people.level_in(s.id, :session, :sem) AS level
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
-                 WHERE upper(s.matric_no) = upper(:m) LIMIT 1
+                 WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND upper(s.admission_no) = upper(:m)) LIMIT 1
                 """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();
         if (stu.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> s = stu.get(0);
-        if (c == null || !resultToken(String.valueOf(s.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
+        String number = String.valueOf(s.get("number"));
+        boolean keyed = codes.signed(c, CheckCodes.Kind.RESULT, number, session, String.valueOf(semester));
+        if (!keyed && !CheckCodes.legacy(c, CheckCodes.Kind.RESULT, number, session, String.valueOf(semester))) {
             out.put("genuine", false); return out;
         }
         java.util.UUID sid = (java.util.UUID) s.get("id");
@@ -320,6 +329,15 @@ class VerifyController {
                  ORDER BY course_code
                 """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
         if (rows.isEmpty()) { out.put("genuine", false); return out; }
+        /* V360: the old code only for results published before the change, and then without the grades — the old code
+           could be made by anyone from a matric number */
+        if (!keyed) {
+            boolean before = Boolean.TRUE.equals(jdbc.sql("SELECT min(published_at) < " + CUT
+                            + " FROM assessment.student_results(:s) WHERE session = :session AND semester = :sem AND published")
+                    .param("s", sid).param("session", session).param("sem", semester).query(Boolean.class).optional().orElse(false));
+            if (!before) { out.put("genuine", false); return out; }
+            return limited("RESULTS_STATEMENT", number, session, semester);
+        }
         List<Map<String, Object>> g = jdbc.sql("""
                 SELECT gpa, cgpa FROM assessment.student_gpa(:s) WHERE session = :session AND semester = :sem LIMIT 1
                 """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
@@ -502,17 +520,25 @@ class VerifyController {
     private Map<String, Object> pgOfferAnswer(String applicationNo, String t) {
         String no = applicationNo == null ? "" : applicationNo.trim().toUpperCase();
         Map<String, Object> out = new LinkedHashMap<>();
-        if (t == null || !t.equalsIgnoreCase(token(no, "MOAUM-PG-OFFER"))) { out.put("genuine", false); return out; }
+        boolean keyed = codes.signed(t, CheckCodes.Kind.PG_OFFER, no);
+        if (!keyed && !CheckCodes.legacy(t, CheckCodes.Kind.PG_OFFER, no)) { out.put("genuine", false); return out; }
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT ap.application_no, ap.session, ap.state, ap.entry_level, ap.spgs_decided_at AS offered_on, ap.acceptance_confirmed_at AS accepted_on,
+                       ap.acceptance_confirmed_at < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover,
                        a.surname || ', ' || a.other_names AS applicant_name, p.name AS programme, p.pg_award AS award, f.name AS faculty, d.name AS department
                   FROM admissions.pg_application ap JOIN admissions.pg_applicant a ON a.id = ap.applicant_id
                   LEFT JOIN ref.programme p ON p.code = ap.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE upper(ap.application_no) = :n AND ap.acceptance_confirmed_at IS NOT NULL
                 """).param("n", no).query().listOfRows();
         if (no.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        // V360: the old code only for an offer accepted before the change, and then without the applicant's details
+        if (!keyed) {
+            if (!Boolean.TRUE.equals(rows.get(0).get("before_cutover"))) { out.put("genuine", false); return out; }
+            return limited("PG_OFFER", rows.get(0).get("application_no"), String.valueOf(rows.get(0).get("session")), null);
+        }
         out.put("genuine", true);
         out.putAll(rows.get(0));
+        out.remove("before_cutover");
         return out;
     }
 }

@@ -158,7 +158,9 @@ public class LmsService {
         }
         UUID id = repo.addMaterial(offering, week, title.trim(), k, description, content == null ? null : filename, content == null ? null : contentType, content,
                 link == null || link.isBlank() ? null : link.trim(), publish, me());
-        return Map.of("materialId", id, "published", publish, "bytes", content == null ? 0 : content.length);
+        // V360: published at once, the course's students are told (by email, and at most one text a day)
+        int told = publish ? repo.tellMaterial(id) : 0;
+        return Map.of("materialId", id, "published", publish, "bytes", content == null ? 0 : content.length, "told", told);
     }
 
     @Transactional
@@ -167,7 +169,7 @@ public class LmsService {
         if (repo.publish(material, offering, me()) == 0) {
             throw new NotFound("unpublished material", material);
         }
-        return Map.of("materialId", material, "published", true);
+        return Map.of("materialId", material, "published", true, "told", repo.tellMaterial(material));   // V360: the students told
     }
 
     @Transactional
@@ -194,7 +196,8 @@ public class LmsService {
                     new DomainRuleViolation.Remedy("The weight is its share of the 40 marks of continuous assessment.", "You"));
         }
         String k = kind == null || kind.isBlank() ? "INDIVIDUAL" : kind.trim().toUpperCase();
-        return Map.of("assignmentId", repo.addAssignment(offering, title.trim(), brief, k, opens, closes, lateHours, latePenalty, weight, outOf, me()));
+        UUID id = repo.addAssignment(offering, title.trim(), brief, k, opens, closes, lateHours, latePenalty, weight, outOf, me());
+        return Map.of("assignmentId", id, "told", repo.tellAssignment(id));   // V360: the course's students told it is set
     }
 
     @Transactional(readOnly = true)
@@ -216,7 +219,8 @@ public class LmsService {
         if (repo.mark(submission, assignment, mark, feedback, me()) == 0) {
             throw new NotFound("submission", submission);
         }
-        return Map.of("submissionId", submission, "mark", mark);
+        // V360: the student told it is marked — the mark is on the portal, not in the message
+        return Map.of("submissionId", submission, "mark", mark, "told", repo.tellMarked(submission));
     }
 
     @Transactional(readOnly = true)

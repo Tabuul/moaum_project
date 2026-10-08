@@ -215,6 +215,20 @@ class LmsRepository {
         return jdbc.sql("SELECT * FROM lms.gradebook(:o)").param("o", offering).query().listOfRows();
     }
 
+    /* ── V360: the students told — the database sends, by email and at most one text a day of each kind ── */
+
+    int tellMaterial(UUID material) {
+        return jdbc.sql("SELECT lms.tell_material(:m)").param("m", material).query(Integer.class).single();
+    }
+
+    int tellAssignment(UUID assignment) {
+        return jdbc.sql("SELECT lms.tell_assignment(:a)").param("a", assignment).query(Integer.class).single();
+    }
+
+    boolean tellMarked(UUID submission) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT lms.tell_marked(:s)").param("s", submission).query(Boolean.class).single());
+    }
+
     int promote(UUID offering) {
         return jdbc.sql("SELECT lms.promote_ca(:o)").param("o", offering).query(Integer.class).single();
     }

@@ -4,7 +4,7 @@ import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
-import { qrMatrix, examToken, examVerifyPath } from "@/lib/qr";
+import { qrMatrix, examVerifyPath, studentCheckCode } from "@/lib/qr";
 import { semesterName } from "@/lib/student-portal";
 
 import { loadInstitution } from "@/lib/document/institution-server";
@@ -157,8 +157,10 @@ export async function GET(request: NextRequest) {
   y = Math.min(endL, endR) - 14;
 
   // ── a small verify QR, bottom-left, with the check code (no explanatory paragraph) ──
-  const url = originOf(request) + examVerifyPath(matric, session, semester);
-  const code = examToken(matric, session, semester);
+  const check = await studentCheckCode("EXAM", session, semester);
+  if (!check) return NextResponse.json({ status: 503, title: "The card's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
+  const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
+  const code = check.code;
   const { size, dark } = qrMatrix(url);
   const cell = 1.7, qDim = size * cell, qy = Math.max(y, 96);
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(L + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);

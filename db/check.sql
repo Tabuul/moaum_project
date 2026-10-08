@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 203
+\set EXPECTED 204
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -6531,6 +6531,63 @@ BEGIN
         format('lect=%s entry=%s notlate=%s told=%s sms=%s mail=%s soon=%s hod=%s/%s/%s lectesc=%s dean=%s/%s nobody=%s rule=%s kept=%s summary=%s/%s/%s default=%s code=%s',
                r_lect, r_entry, r_notlate, v_rem_told, n_sms, n_mail, r_soon, v_hod_to, v_hod_told, n_hod_mail, n_lect_esc, v_dean_to, v_dean_told, r_nobody, m_office,
                n_kept, v_reminders, v_escalations, v_last_to, v_default, v_code));
+END $$;
+
+-- ── 204. V360: when the signed check codes began is kept, once. A student is told by email and by at most one text a day under the same heading; course material published, an assignment set and a submission marked tell the course's students — the mark is not in the message; a PG registration endorsed and a PG score recorded tell the student, the score once a day for the course and never in the message ──
+DO $$
+DECLARE o uuid; s1 uuid; lect uuid := gen_random_uuid(); mat uuid := gen_random_uuid(); asg uuid := gen_random_uuid(); sub uuid := gen_random_uuid();
+        reg uuid := gen_random_uuid(); crs uuid := gen_random_uuid(); ent uuid := gen_random_uuid(); prog text;
+        v_cut int; n_class int; n_mat int; n_asg int; v_marked boolean; n_mail int; n_sms int; v_mark_hidden boolean;
+        v_end boolean; v_scored boolean; v_scored2 boolean; n_score_mail int; v_score_hidden boolean; v_twice boolean;
+BEGIN
+    v_cut := (SELECT count(*) FROM platform.check_code_cutover);
+    BEGIN
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        INSERT INTO iam.person (id, surname, given_names, staff_number) VALUES (lect, 'CHECKTELL', 'Lecturer', 'P-V360-L');
+        SELECT x.id INTO o FROM catalogue.offering x WHERE x.course_code = 'ZZC 101' AND x.session = '9999/0000' AND x.semester = 1;
+        SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+        INSERT INTO people.student_contact (student_id, email, phone) VALUES (s1, 'zz.check204@example.com', '08012340204')
+        ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone;
+        n_class := (SELECT count(DISTINCT g.student_id) FROM lms.gradebook(o) g);
+        -- material published, an assignment set: two emails to s1, one text (the second the same day is held)
+        INSERT INTO lms.material (id, offering_id, week, title, kind, link, published_at, published_by) VALUES (mat, o, 3, 'Week three notes', 'NOTES', 'https://example.com/n', now(), lect);
+        n_mat := lms.tell_material(mat);
+        INSERT INTO lms.assignment (id, offering_id, title, kind, opens_at, closes_at, weight, out_of, created_by)
+        VALUES (asg, o, 'Problem set one', 'INDIVIDUAL', now(), now() + interval '7 days', 10, 20, lect);
+        n_asg := lms.tell_assignment(asg);
+        n_mail := (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = s1 AND channel = 'EMAIL'
+                    AND subject IN ('New material in ZZC 101: Week three notes', 'New assignment in ZZC 101: Problem set one'));
+        n_sms := (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = s1 AND channel = 'SMS' AND subject = 'Course update');
+        -- a submission marked 17.25: the student told, the mark not in the message
+        INSERT INTO lms.submission (id, assignment_id, student_id, text, mark, marked_at, marked_by) VALUES (sub, asg, s1, 'my answers', 17.25, now(), lect);
+        v_marked := lms.tell_marked(sub);
+        v_mark_hidden := NOT EXISTS (SELECT 1 FROM platform.notice WHERE about_id = s1 AND subject = 'Your ZZC 101 submission is marked' AND body LIKE '%17.25%')
+                         AND EXISTS (SELECT 1 FROM platform.notice WHERE about_id = s1 AND subject = 'Your ZZC 101 submission is marked');
+        -- a PG registration endorsed and a score recorded twice the same day: told once, the score not in the message
+        SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO admissions.pg_registration (id, student_id, session, semester, mode, state, endorsed_by, endorsed_at)
+        VALUES (reg, s1, '9999/0000', 1, 'FULL_TIME', 'ENDORSED', lect, now());
+        v_end := admissions.tell_pg_endorsed(reg);
+        INSERT INTO admissions.pg_course (id, programme_code, code, title, units, kind, semester) VALUES (crs, prog, 'ZZP 801', 'A course for the check', 3, 'CORE', 1);
+        INSERT INTO admissions.pg_registration_entry (id, registration_id, course_id) VALUES (ent, reg, crs);
+        PERFORM admissions.pg_record_score(ent, 31, 42, lect);
+        v_scored := admissions.tell_pg_scored(ent);
+        PERFORM admissions.pg_record_score(ent, 32, 42, lect);
+        v_scored2 := admissions.tell_pg_scored(ent);
+        n_score_mail := (SELECT count(*) FROM platform.notice WHERE about_id = s1 AND channel = 'EMAIL' AND subject = 'A score is recorded in ZZP 801');
+        v_score_hidden := NOT EXISTS (SELECT 1 FROM platform.notice WHERE about_id = s1 AND subject IN ('A score is recorded in ZZP 801', 'Coursework score')
+                                        AND (body LIKE '%73%' OR body LIKE '%74%'));
+        v_twice := (SELECT count(*) FROM platform.notice WHERE about_id = s1 AND channel = 'SMS' AND subject = 'Registration endorsed') = 1;
+        RAISE EXCEPTION 'the V360 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V360: the cutover kept once; a student told by email and at most one text a day under a heading — course material and an assignment tell the course''s students, a marked submission its student without the mark; a PG endorsement and a PG score tell the student, the score once a day and never in the message',
+        v_cut = 1 AND n_class >= 1 AND n_mat >= 1 AND n_asg = n_mat AND n_mail = 2 AND n_sms = 1 AND v_marked AND v_mark_hidden
+        AND v_end AND v_twice AND v_scored AND NOT v_scored2 AND n_score_mail = 1 AND v_score_hidden,
+        format('cut=%s class=%s mat=%s asg=%s mail=%s sms=%s marked=%s hidden=%s endorsed=%s/%s scored=%s/%s scoremail=%s scorehidden=%s',
+               v_cut, n_class, n_mat, n_asg, n_mail, n_sms, v_marked, v_mark_hidden, v_end, v_twice, v_scored, v_scored2, n_score_mail, v_score_hidden));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

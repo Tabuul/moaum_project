@@ -35,6 +35,14 @@ class StudentController {
             // the College's offices, whose menu offers the search (V285)
             + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator')";
     private static final String WRITERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
+    /** V360: the offices that read a student's school fees here — the Bursary, the Registry, the academic heads and their
+     *  scopes, audit and the platform; the other readers of the record (a lecturer, the library, security, housing) do not */
+    static final java.util.Set<String> FEE_READERS = java.util.Set.of("bursar", "financecontroller", "registrar", "dregistrar", "academic",
+            "records", "vc", "dvc", "dean", "hod", "facultyofficer", "provost", "audit", "ict", "admin", "super");
+
+    private static boolean readsFees() {
+        return ng.edu.moaum.portal.shared.AuditContextHolder.current().map(c -> FEE_READERS.contains(c.actorOffice())).orElse(false);
+    }
 
     private final StudentService students;
     private final ChangeService changes;
@@ -135,7 +143,13 @@ class StudentController {
     @GetMapping("/students/{id}/portal")
     @PreAuthorize(READERS)
     java.util.Map<String, Object> portal(@PathVariable UUID id) {
-        return portal.me(id);
+        java.util.Map<String, Object> out = portal.me(id);
+        // V360: the school fees go only to the offices that read them
+        if (!readsFees()) {
+            out = new java.util.LinkedHashMap<>(out);
+            out.remove("fees");
+        }
+        return out;
     }
 
     /** The student's passport photograph, from whichever store holds it (document, JAMB, attachment). */
@@ -213,7 +227,13 @@ class StudentController {
                           @RequestParam(required = false) String course,
                           @RequestParam(required = false) String session,
                           @RequestParam(required = false) Integer sem) {
-        return records.view(view, Scope.of(fac, dept, prog, level, course, session, sem));
+        // V360: held to the office's own bound, whatever the parameters say — as the register is (a Head of Department reads
+        // their own department, a Dean their faculty); and the school fees only by the offices that read them
+        if ("fees".equals(view) && !readsFees()) {
+            throw new org.springframework.security.access.AccessDeniedException("School fees in Records & queries are read by the Bursary, the Registry and the academic heads, not by this office.");
+        }
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        return records.view(view, Scope.of(b.fac(), b.dept(), b.prog(), level, course, session, sem));
     }
 
     /** The intake run: the session's admitted candidates, brought onto the register. */

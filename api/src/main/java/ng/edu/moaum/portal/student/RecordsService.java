@@ -11,10 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The query workbench. Eight views, one scope.
  *
- * <p>Two of the eight are not served: fees are the Bursary's ledger and
- * attendance is taken in the lecture theatre, and neither is on the portal
- * yet. They return no rows and the sentence that says why, because a figure
- * invented for a screen is worse than no figure at all.
+ * <p>V360: all eight are served. Fees are the Bursary's figures for the session — what the fee schedule charges and
+ * what has been paid against it; attendance is what the lecturers have marked, with no minimum applied because none is
+ * configured for the University's courses. A figure invented for a screen is still worse than no figure at all.
  */
 @Service
 class RecordsService {
@@ -22,13 +21,16 @@ class RecordsService {
     static final Set<String> VIEWS = Set.of("students", "registration", "fees", "results",
             "exams", "allocation", "clearance", "attendance");
 
-    private static final String FEES_NOT_SERVED =
-            "School fees are the Bursary's ledger, and the Bursary is not on the portal yet. "
-                    + "No billed, collected or outstanding figure is shown here until it comes from that ledger.";
+    /** the largest scope whose CGPAs are read with the register — each is computed from the published results */
+    static final int CGPA_SCOPE = 1500;
 
-    private static final String ATTENDANCE_NOT_SERVED =
-            "Attendance is taken in the lecture theatre and is not yet recorded in the portal. "
-                    + "Senate requires 75% to sit; until the register is kept here, this view cannot say who meets it.";
+    private static final String FEES_NOTE =
+            "The session's school fees as the Bursary's fee schedule charges each student and the confirmed school-fee payments "
+                    + "against them. Arrears of earlier sessions are on each student's own record.";
+
+    private static final String ATTENDANCE_NOTE =
+            "Attendance as the lecturers have marked it on the approved registrations. No minimum attendance is configured for "
+                    + "the University's courses, so no student is marked as short; a course with no register shows nothing.";
 
     private final RecordsRepository records;
     private final StudentRepository students;
@@ -45,14 +47,15 @@ class RecordsService {
         }
         int total = students.inScope(scope);
         return switch (view) {
-            case "students" -> new RecordsResult(view, records.students(scope), total, null);
+            case "students" -> new RecordsResult(view, records.students(scope, total <= CGPA_SCOPE), total, null,
+                    total <= CGPA_SCOPE ? null : "The CGPA is read for a scope of up to " + CGPA_SCOPE + " students; narrow it to a department or programme to see it.");
             case "registration" -> new RecordsResult(view, records.registration(scope), total, null);
             case "results" -> new RecordsResult(view, records.results(scope), total, null);
             case "exams" -> new RecordsResult(view, records.exams(scope), total, null);
             case "allocation" -> new RecordsResult(view, records.allocation(scope), total, null);
             case "clearance" -> new RecordsResult(view, records.clearance(scope), total, null);
-            case "fees" -> new RecordsResult(view, List.of(), total, FEES_NOT_SERVED);
-            default -> new RecordsResult(view, List.of(), total, ATTENDANCE_NOT_SERVED);
+            case "fees" -> new RecordsResult(view, records.fees(scope), total, null, FEES_NOTE);
+            default -> new RecordsResult(view, records.attendance(scope), total, null, ATTENDANCE_NOTE);
         };
     }
 }

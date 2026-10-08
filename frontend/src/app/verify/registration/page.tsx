@@ -1,12 +1,13 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
 import { Note } from "@/components/proto/ui";
+import { LegacyNote } from "../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
 interface Course { course_code: string; title: string; units: number; entry_type: string; kind?: string }
 interface RegVerify {
-  genuine: boolean; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
+  genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; status?: string; approvedOn?: string | null; units?: number; courses?: Course[];
 }
 
@@ -30,7 +31,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const m = g("m"), s = g("s"), sem = g("sem") || "1", c = g("c");
   const r = await api<RegVerify>(`/api/v1/verify/registration?matric=${encodeURIComponent(m)}&session=${encodeURIComponent(s)}&semester=${encodeURIComponent(sem)}&c=${encodeURIComponent(c)}`);
   const v = r.ok ? r.data : { genuine: false };
-  const ok = v.genuine;
+  const ok = v.genuine && !v.limited;
   const approved = v.approvedOn ? new Date(v.approvedOn).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—";
 
   return (
@@ -46,11 +47,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         </div>
 
         <div className="card__body">
+          {v.limited ? <LegacyNote document="course registration form" number={v.number} session={v.session} semester={v.semester} /> : (
           <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine form — this is the University's record" : "Not verified"}>
-            {ok
-              ? "Check that the courses, units and approval date below match the form in hand."
-              : "No approved registration matches this code. Treat the form as not genuine."}
-          </Note>
+              {ok
+                ? "Check that the courses, units and approval date below match the form in hand."
+                : "No approved registration matches this code. Treat the form as not genuine."}
+            </Note>
+          )}
 
           {ok ? (
             <>

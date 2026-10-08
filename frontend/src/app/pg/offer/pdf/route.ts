@@ -3,7 +3,6 @@ import { api } from "@/lib/api";
 import {A4, Page} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
-import { createHash } from "node:crypto";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
@@ -13,7 +12,7 @@ export const dynamic = "force-dynamic";
 interface PgMe {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
   entryLevel: number; programme: string; award: string | null; faculty: string; department: string;
-  state: string; acceptanceConfirmedAt: string | null;
+  state: string; acceptanceConfirmedAt: string | null; /** V360: the check code the API signed for the offer */ offerCode?: string | null;
 }
 
 const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
@@ -77,9 +76,9 @@ export async function GET(req: Request) {
   p.text(L, y, "Ajuma Isaac Ugbabe", 10.5, true); y -= 13;
   p.text(L, y, "Secretary, Postgraduate School", 9.5, false, [0.35, 0.35, 0.35]);
 
-  // the verification QR (V286): the public verifier of this offer, by the application number and its code — the same digest the API checks
+  // the verification QR (V286): the public verifier of this offer, by the application number and its code — V360: signed by the API
   const origin = (() => { const h = req.headers; const host = h.get("x-forwarded-host") ?? h.get("host"); const proto = h.get("x-forwarded-proto") ?? "https"; try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; } })();
-  const code = createHash("sha256").update(`${s.applicationNo.toUpperCase()}|MOAUM-PG-OFFER`).digest("hex").slice(0, 12).toUpperCase();
+  const code = s.offerCode ?? "";
   const verifyUrl = `${origin}/verify/pg-offer/${encodeURIComponent(s.applicationNo)}?t=${code}`;
   const { size, dark } = qrMatrix(verifyUrl);
   const cell = 1.7, qDim = size * cell, qx = A4.w - L - qDim, qy = y + 6;

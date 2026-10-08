@@ -5,7 +5,7 @@ import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix, regToken, regVerifyPath } from "@/lib/qr";
+import { qrMatrix, regVerifyPath, studentCheckCode } from "@/lib/qr";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
@@ -110,9 +110,10 @@ export async function GET(request: NextRequest) {
   // ── verification QR (bottom-left): opens the University's OWN record, so a forged or altered
   //    form is exposed. The QR carries only a link to the portal plus a check code — the courses,
   //    units and approval date shown on scan come from the database, not from this sheet. ──
-  const matric = s.matricNo ?? s.admissionNo ?? "";
-  const verifyUrl = originOf(request) + regVerifyPath(matric, session, semester);
-  const code = regToken(matric, session, semester);
+  const check = await studentCheckCode("REG", session, semester);
+  if (!check) return NextResponse.json({ status: 503, title: "The form's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
+  const verifyUrl = originOf(request) + regVerifyPath(check.number, session, semester, check.code);
+  const code = check.code;
   const { size, dark } = qrMatrix(verifyUrl);
   const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);

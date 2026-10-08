@@ -53,12 +53,61 @@ class RecordsRepository {
         this.jdbc = jdbc;
     }
 
-    List<Map<String, Object>> students(Scope scope) {
-        return rows("""
+    /** V360: the register, with each student's CGPA from the published results when the scope is narrow enough to read
+     *  them all (the GPA is computed per student, not stored) — otherwise the column is left empty and the screen says why */
+    List<Map<String, Object>> students(Scope scope, boolean withCgpa) {
+        return jdbc.sql("""
                 SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
                        s.surname || ', ' || s.other_names AS "name",
-                       s.current_level AS "level", s.status AS "status", NULL::numeric AS "cgpa"
-                """ + STUDENT_FROM + STUDENT_WHERE + " ORDER BY s.surname, s.other_names", scope);
+                       s.current_level AS "level", s.status AS "status",
+                       CASE WHEN CAST(:withCgpa AS boolean) THEN (SELECT g.cgpa FROM assessment.student_gpa(s.id) g
+                                                                   ORDER BY g.session DESC, g.semester DESC LIMIT 1) END AS "cgpa"
+                """ + STUDENT_FROM + STUDENT_WHERE + " ORDER BY s.surname, s.other_names")
+                .param("fac", scope.fac(), Types.VARCHAR).param("dept", scope.dept(), Types.VARCHAR).param("prog", scope.prog(), Types.VARCHAR)
+                .param("level", scope.level(), Types.INTEGER).param("withCgpa", withCgpa)
+                .query().listOfRows();
+    }
+
+    /** V360: the session's school fees for each student in scope — what the fee schedule charges them and what they have
+     *  paid against it, the Bursary's own figures (finance.charges and confirmed school-fee payments, as finance.position
+     *  reads them); arrears of earlier sessions are on each student's own record */
+    List<Map<String, Object>> fees(Scope scope) {
+        return rows("""
+                SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
+                       s.surname || ', ' || s.other_names AS "name", s.current_level AS "level",
+                       d.due AS "due", coalesce(pd.paid, 0) AS "paid", greatest(d.due - coalesce(pd.paid, 0), 0) AS "balance",
+                       CASE WHEN d.due = 0 THEN 'NO_CHARGE' WHEN coalesce(pd.paid, 0) >= d.due THEN 'PAID'
+                            WHEN coalesce(pd.paid, 0) > 0 THEN 'PART_PAID' ELSE 'UNPAID' END AS "state"
+                """ + STUDENT_FROM + """
+                  CROSS JOIN LATERAL (SELECT coalesce(sum(c.amount), 0) AS due FROM finance.charges(s.id, CAST(:session AS text)) c) d
+                  LEFT JOIN LATERAL (SELECT sum(r.amount) AS paid FROM finance.payment_reference r
+                                      WHERE r.student_id = s.id AND r.session = CAST(:session AS text) AND r.confirmed_at IS NOT NULL
+                                        AND r.purpose LIKE 'School fees%') pd ON true
+                """ + STUDENT_WHERE + " ORDER BY s.surname, s.other_names", scope);
+    }
+
+    /** V360: attendance as the lecturers have marked it, for each student on an approved registration in scope — the
+     *  courses with a register, classes attended of those held, and the lowest course rate. No minimum is applied: none is
+     *  configured for the University's courses, and a rate is not judged against a number nobody set */
+    List<Map<String, Object>> attendance(Scope scope) {
+        return rows("""
+                SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
+                       s.surname || ', ' || s.other_names AS "name", s.current_level AS "level",
+                       count(DISTINCT e.offering_id)::int AS "courses",
+                       (count(DISTINCT e.offering_id) FILTER (WHERE at.held > 0))::int AS "withRegister",
+                       coalesce(sum(at.attended), 0)::int AS "attended", coalesce(sum(at.held), 0)::int AS "held",
+                       CASE WHEN sum(at.held) > 0 THEN round(100.0 * sum(at.attended) / sum(at.held))::int END AS "rate",
+                       min(CASE WHEN at.held > 0 THEN round(100.0 * at.attended / at.held)::int END) AS "lowest"
+                """ + STUDENT_FROM + """
+                  JOIN registration.course_registration r ON r.student_id = s.id AND r.session = CAST(:session AS text)
+                       AND (CAST(:sem AS int) IS NULL OR r.semester = CAST(:sem AS int)) AND r.status IN ('APPROVED', 'LOCKED')
+                  JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED', 'APPROVED')
+                  LEFT JOIN LATERAL (SELECT count(*) FILTER (WHERE a.present) AS attended, count(*) AS held
+                                       FROM registration.attendance a WHERE a.offering_id = e.offering_id AND a.student_id = s.id) at ON true
+                """ + STUDENT_WHERE + """
+                 GROUP BY s.id, s.matric_no, s.admission_no, s.surname, s.other_names, s.current_level
+                 ORDER BY s.surname, s.other_names
+                """, scope);
     }
 
     List<Map<String, Object>> registration(Scope scope) {

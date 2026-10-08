@@ -16,6 +16,11 @@ import java.util.Map;
  * @param rows      the view's rows, keyed by column name
  * @param total     the students the scope selects
  * @param notServed why a view is empty, when the reason is that nothing serves it yet
+ * @param note      what the screen says beneath a served view about how its figures are read (V360)
  */
-record RecordsResult(String view, List<Map<String, Object>> rows, int total, String notServed) {
+record RecordsResult(String view, List<Map<String, Object>> rows, int total, String notServed, String note) {
+
+    RecordsResult(String view, List<Map<String, Object>> rows, int total, String notServed) {
+        this(view, rows, total, notServed, null);
+    }
 }

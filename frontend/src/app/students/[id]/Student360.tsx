@@ -5,10 +5,11 @@
  * the three cards, the record history, and beneath them the Registry's read
  * of the biodata (proto/part23).
  *
- * Where the prototype shows figures the portal cannot yet stand behind —
- * the Bursary's ledger, a CGPA no published result supports — the card keeps
- * its shape and says so. No number here is computed from anything but the
- * record.
+ * V360: the Finance card shows the session's school fees as the student sees
+ * them (the fee schedule's charge and the confirmed payments), to the offices
+ * that read fees; the Academic standing card shows the CGPA from the published
+ * results. Where there is no figure the card says so. No number here is
+ * computed from anything but the record.
  */
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
@@ -16,7 +17,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
-import { semesterText } from "@/lib/student-portal";
+import { semesterText, type Me as Portal } from "@/lib/student-portal";
+import { money } from "@/lib/format";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
@@ -61,15 +63,22 @@ function clearanceLine(c: ClearanceRow): string {
   return `${c.label} — ${c.state === "CLEARED" ? "cleared" : c.item ? c.item.toLowerCase() : "not yet cleared"}`;
 }
 
+const words = (v: string | null | undefined) => (v ?? "").split("_").map((w) => (w ? w.charAt(0) + w.slice(1).toLowerCase() : w)).join(" ");
+
 export function Student360({
   record,
+  portal,
   session,
   actingOffice,
 }: {
   record: StudentRecord;
+  /** V360: the student's own figures (fees for the offices that read them, CGPA, standing); null when not read */
+  portal: Portal | null;
   session: string;
   actingOffice: string | null;
 }) {
+  const fees = portal?.fees ?? null;
+  const cgpa = portal?.cgpa ?? null;
   const router = useRouter();
   const s = record.student;
   const may = actingOffice !== null && WRITERS.includes(actingOffice);
@@ -183,30 +192,36 @@ export function Student360({
       <MatriculationPanel studentId={s.id} />
 
       <div className="grid grid--3">
-        <Panel title="Finance" right={<Pil kind="grey">NOT YET SERVED</Pil>}>
+        <Panel title="Finance" right={fees ? <Pil kind={fees.balance > 0 ? "bad" : fees.due > 0 ? "ok" : "grey"}>{fees.balance > 0 ? "OUTSTANDING" : fees.due > 0 ? "SETTLED" : "NO CHARGE"}</Pil> : <Pil kind="grey">NOT SHOWN</Pil>}>
           <PBody>
-            <Row k="Session charge" v="—" />
-            <Row k="Paid" v="—" />
-            <div className="hr" />
-            <div className="row row--between">
-              <strong>Outstanding</strong>
-              <strong className="tnum ink-faint">
-                —
-              </strong>
-            </div>
-            <div className="sub2">
-              The Bursary&rsquo;s ledger is not on the portal yet. Nothing is shown here until the figures come from it.
-            </div>
+            {fees ? (
+              <>
+                <Row k={`Session charge · ${fees.session}`} v={money(fees.due)} />
+                <Row k="Paid" v={money(fees.paid)} />
+                <div className="hr" />
+                <div className="row row--between">
+                  <strong>Outstanding</strong>
+                  <strong className={`tnum ${fees.balance > 0 ? "ink-red" : "ink-green"}`}>{money(fees.balance)}</strong>
+                </div>
+                <div className="sub2">
+                  {fees.hasArrears ? "Arrears are carried from an earlier session. " : ""}The Bursary&rsquo;s figures for the session: the fee schedule&rsquo;s charge and the confirmed school-fee payments.
+                </div>
+              </>
+            ) : (
+              <div className="sub2">
+                {portal ? "School fees are read by the Bursary, the Registry and the academic heads; this office does not see them." : "The student's figures could not be read just now."}
+              </div>
+            )}
           </PBody>
         </Panel>
 
-        <Panel title="Academic standing" right={<Pil kind="grey">NO RESULT PUBLISHED</Pil>}>
+        <Panel title="Academic standing" right={cgpa != null ? <Pil kind={portal?.standing === "PROBATION" ? "bad" : "ok"}>{words(portal?.standing).toUpperCase() || "PUBLISHED"}</Pil> : <Pil kind="grey">NO RESULT PUBLISHED</Pil>}>
           <PBody>
             <div className="row row--top" style={{ gap: "var(--s-6)" }}>
               <div className="kv">
                 <span className="k">CGPA</span>
-                <span className="tnum b700 ink-faint" style={{ fontSize: "var(--t-xl)" }}>
-                  &mdash;
+                <span className={`tnum b700${cgpa != null ? "" : " ink-faint"}`} style={{ fontSize: "var(--t-xl)" }}>
+                  {cgpa != null ? Number(cgpa).toFixed(2) : <>&mdash;</>}
                 </span>
               </div>
               <div className="kv">

@@ -123,6 +123,12 @@ class MeController {
         return portal.results(id(auth));
     }
 
+    /** V360: the signed check code for the student's own examination card (EXAM), course form (REG) or results statement (RESULT) */
+    @GetMapping("/check-code")
+    Map<String, Object> checkCode(Authentication auth, @RequestParam String kind, @RequestParam String session, @RequestParam(defaultValue = "1") int semester) {
+        return portal.checkCode(id(auth), kind, session, semester);
+    }
+
     /* ── the services (V027) ── */
 
     public record Query(@NotBlank String sheetId, @NotBlank String part, @NotBlank @Size(max = 2000) String said) {

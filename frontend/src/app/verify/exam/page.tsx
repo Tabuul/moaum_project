@@ -1,12 +1,13 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
 import { Note } from "@/components/proto/ui";
+import { LegacyNote } from "../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
 interface Course { course_code: string; title: string; units: number; entry_type: string }
 interface ExamVerify {
-  genuine: boolean; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
+  genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; cleared?: boolean | null; photo?: string | null; courses?: Course[];
 }
 
@@ -19,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const m = g("m"), s = g("s"), sem = g("sem") || "1", c = g("c");
   const r = await api<ExamVerify>(`/api/v1/verify/exam?matric=${encodeURIComponent(m)}&session=${encodeURIComponent(s)}&semester=${encodeURIComponent(sem)}&c=${encodeURIComponent(c)}`);
   const v = r.ok ? r.data : { genuine: false };
-  const ok = v.genuine;
+  const ok = v.genuine && !v.limited;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
@@ -34,11 +35,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         </div>
 
         <div className="card__body">
+          {v.limited ? <LegacyNote document="examination card" number={v.number} session={v.session} semester={v.semester} /> : (
           <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine card — this is the University's record" : "Not verified"}>
-            {ok
-              ? "Check that the face below matches the candidate, and the courses match the card in hand."
-              : "No examination card matches this code. Treat the card as not genuine, and refuse admission."}
-          </Note>
+              {ok
+                ? "Check that the face below matches the candidate, and the courses match the card in hand."
+                : "No examination card matches this code. Treat the card as not genuine, and refuse admission."}
+            </Note>
+          )}
 
           {ok ? (
             <>
