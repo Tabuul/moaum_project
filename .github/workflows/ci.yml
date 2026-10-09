@@ -83,7 +83,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: mirror.gcr.io/library/postgres:17   # Docker Hub's postgres through Google's mirror: no anonymous pull limit
         env:
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: moaumpp
@@ -166,7 +166,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: mirror.gcr.io/library/postgres:17   # Docker Hub's postgres through Google's mirror: no anonymous pull limit
         env:
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: moaumpp
@@ -259,7 +259,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: mirror.gcr.io/library/postgres:17   # Docker Hub's postgres through Google's mirror: no anonymous pull limit
         env:
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: moaumpp
@@ -272,6 +272,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Docker Hub refuses anonymous pulls past its rate limit, and GitHub's runners share addresses: on
+      # 9 Oct 2026 this job went red four times without reaching the code. The official base images are
+      # read from Google's mirror of Docker Hub's library instead. Only this checkout is rewritten; the
+      # Dockerfiles Railway builds from are untouched.
+      - name: Base images from Google's mirror of Docker Hub
+        run: |
+          sed -i -E 's#^FROM ([a-z0-9][a-z0-9._-]*:[^ /]+)#FROM mirror.gcr.io/library/\1#I' Dockerfile api/Dockerfile frontend/Dockerfile
+          grep -n '^FROM' Dockerfile api/Dockerfile frontend/Dockerfile
+          ! grep -E '^FROM [a-z0-9._-]+:' Dockerfile api/Dockerfile frontend/Dockerfile
 
       - name: Build the image
         run: docker build -t moaumpp:ci .
