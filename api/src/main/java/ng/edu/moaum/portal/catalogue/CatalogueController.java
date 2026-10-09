@@ -495,23 +495,37 @@ class CatalogueController {
 
     /* the same course uploaded under two codes (a clean 'CMP 311' and a messy 'BSU-COS 311' or a
        combined 'CSC 309/CMP 441') shows twice on registration. Group a department's live courses by
-       level, semester and title; the cleanest code is the keeper, the rest are duplicates. */
+       level, semester and title; the cleanest code is the keeper, the rest are duplicates.
+       A BSU- code and a MOAU- code of the same course are NOT duplicates: the University keeps both —
+       students in 300 level and above carry the BSU- code, those in 100 and 200 level the MOAU- code, the
+       same course taught by the same lecturer. In a group that holds either, each of the
+       two families keeps its cleanest code; anything else in the group (an unprefixed or combined code, a
+       second code of the same family) is the duplicate. */
     private static final String DUPLICATES_CTE = """
             WITH offered AS (
                 SELECT c.code, c.title, c.level, c.semester, coalesce(c.curriculum, '') AS curr,
                        lower(regexp_replace(btrim(c.title), '\\s+', ' ', 'g')) AS norm_title,
                        (c.code LIKE '%/%' OR c.code LIKE '%-%')::int AS messy,
-                       (c.code ~ '^[A-Z]{2,4} [0-9]{3}$')::int AS clean
+                       (c.code ~ '^[A-Z]{2,4} [0-9]{3}$')::int AS clean,
+                       CASE WHEN c.code ~ '^BSU-' THEN 'BSU' WHEN c.code ~ '^MOAU-' THEN 'MOAU' END AS family
                   FROM catalogue.course c
                  WHERE c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %' AND c.dept_code = :dept),
-            grp AS (
+            ranked AS (
                 -- partition by curriculum too: a BMAS course and its CCMAS counterpart are two
                 -- curricula, not a duplicate to end (V116/V160), so they never group together
                 SELECT o.*,
-                       count(*) OVER (PARTITION BY level, semester, norm_title, curr) AS n,
-                       row_number() OVER (PARTITION BY level, semester, norm_title, curr
-                                          ORDER BY messy ASC, clean DESC, length(code) ASC, code ASC) AS rnk
-                  FROM offered o)
+                       count(*) OVER g AS n,
+                       count(o.family) OVER g AS in_family,
+                       row_number() OVER (PARTITION BY level, semester, norm_title, curr ORDER BY messy ASC, clean DESC, length(code) ASC, code ASC) AS rnk,
+                       row_number() OVER (PARTITION BY level, semester, norm_title, curr, family ORDER BY messy ASC, clean DESC, length(code) ASC, code ASC) AS family_rnk
+                  FROM offered o
+                WINDOW g AS (PARTITION BY level, semester, norm_title, curr)),
+            kept AS (
+                SELECT r.*, CASE WHEN r.in_family > 0 THEN r.family IS NOT NULL AND r.family_rnk = 1 ELSE r.rnk = 1 END AS keeper
+                  FROM ranked r),
+            grp AS (
+                SELECT k.*, count(*) FILTER (WHERE NOT k.keeper) OVER (PARTITION BY level, semester, norm_title, curr) AS extra
+                  FROM kept k)
             """;
 
     /** the duplicate courses in a department: each group's keeper and the codes that would be ended */
@@ -520,9 +534,9 @@ class CatalogueController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> duplicates(@RequestParam String dept) {
         return jdbc.sql(DUPLICATES_CTE + """
-                SELECT level, semester, title, code, (rnk = 1) AS keeper
-                  FROM grp WHERE n > 1
-                 ORDER BY level, semester, norm_title, rnk
+                SELECT level, semester, title, code, keeper
+                  FROM grp WHERE n > 1 AND extra > 0
+                 ORDER BY level, semester, norm_title, NOT keeper, rnk
                 """).param("dept", scope.scopedDept(dept)).query().listOfRows();
     }
 
@@ -534,7 +548,7 @@ class CatalogueController {
         int ended = jdbc.sql(DUPLICATES_CTE + """
                 UPDATE catalogue.course c SET state = 'ENDED', ended_on = current_date
                   FROM grp
-                 WHERE c.code = grp.code AND grp.n > 1 AND grp.rnk > 1 AND c.state <> 'ENDED'
+                 WHERE c.code = grp.code AND grp.n > 1 AND NOT grp.keeper AND c.state <> 'ENDED'
                 """).param("dept", scope.scopedDept(dept)).update();
         return Map.of("ended", ended, "dept", scope.scopedDept(dept));
     }
@@ -546,7 +560,7 @@ class CatalogueController {
     @Transactional
     Map<String, Object> removeDuplicates(@RequestParam String dept) {
         String d = scope.scopedDept(dept);
-        List<String> codes = jdbc.sql(DUPLICATES_CTE + "SELECT code FROM grp WHERE n > 1 AND rnk > 1 ORDER BY level, semester, norm_title, rnk")
+        List<String> codes = jdbc.sql(DUPLICATES_CTE + "SELECT code FROM grp WHERE n > 1 AND NOT keeper ORDER BY level, semester, norm_title, rnk")
                 .param("dept", d).query(String.class).list();
         List<Map<String, Object>> outcomes = codes.isEmpty() ? List.of()
                 : jdbc.sql("SELECT * FROM catalogue.remove_or_end(string_to_array(:codes, E'\\n'))").param("codes", String.join("\n", codes)).query().listOfRows();

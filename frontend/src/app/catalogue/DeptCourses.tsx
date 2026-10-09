@@ -251,7 +251,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       {toEnd.length ? (
         <Panel title="Duplicate courses" right={`${toEnd.length} to end or remove · the same course under more than one code`}>
           <PBody>
-            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept. A duplicate code that nothing carries — no registration, result or timetable — can be <b>removed completely</b>; one that a record already carries is <b>ended</b> instead and stays on the transcripts that carry it.</div>
+            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept. A <b>BSU-</b> code and its <b>MOAU-</b> twin are never duplicates: both are kept — students in 300 level and above carry the BSU- code, those in 100 and 200 level the MOAU- code — so they do not appear here. A duplicate code that nothing carries — no registration, result or timetable — can be <b>removed completely</b>; one that a record already carries is <b>ended</b> instead and stays on the transcripts that carry it.</div>
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
