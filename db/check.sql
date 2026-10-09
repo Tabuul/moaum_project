@@ -5876,11 +5876,12 @@ BEGIN
         NULL;
     END;
     PERFORM pg_temp.assert('JUPEB V351: the JUPEB Office names the programme''s current session (2026/2027) and the JUPEB windows follow it, the University''s untouched, cleared the University''s again; the 2026/2027 first-semester timetable has every course three hours and every practical two, each lecture coded; a room or a class never twice in an hour, other rooms side by side; a course code as the Board prints it',
-        named = '2026/2027' AND v_cur = '2031/2032' AND v_app = '2031/2032' AND v_uni = uni AND v_back = uni AND r_bad = 'REFUSED'
+        -- cleared, JUPEB falls back to the University's current session (since V378 Post-UTME is filed under the intake session instead)
+        named = '2026/2027' AND v_cur = '2031/2032' AND v_app = '2031/2032' AND v_uni = uni AND v_back = policy.university_current_session() AND r_bad = 'REFUSED'
         AND n_seed = 56 AND n_short = 0 AND n_prac = 3 AND n_short_prac = 0 AND n_nocode = 0 AND n_noroom = 1
         AND v_code = 'GRY 001' AND r_room = 'JUPEB_SLOT_CLASH' AND r_class = 'JUPEB_SLOT_CLASH' AND n_side = 3 AND r_code = 'REFUSED',
-        format('named=%s current=%s app=%s uni=%s/%s back=%s bad=%s seed=%s short=%s prac=%s short_prac=%s nocode=%s noroom=%s code=%s room=%s class=%s side=%s badcode=%s',
-               named, v_cur, v_app, v_uni, uni, v_back, r_bad, n_seed, n_short, n_prac, n_short_prac, n_nocode, n_noroom, v_code, r_room, r_class, n_side, r_code));
+        format('named=%s current=%s app=%s uni=%s/%s back=%s/%s bad=%s seed=%s short=%s prac=%s short_prac=%s nocode=%s noroom=%s code=%s room=%s class=%s side=%s badcode=%s',
+               named, v_cur, v_app, v_uni, uni, v_back, policy.university_current_session(), r_bad, n_seed, n_short, n_prac, n_short_prac, n_nocode, n_noroom, v_code, r_room, r_class, n_side, r_code));
 END $$;
 
 -- ── 197. V353: the JUPEB syllabus 2027–2031 — nineteen of the Board's subjects under the portal's, 77 course units with their semesters, credit units and topics (BIO 002 Botany in the first semester, as the Biology section has it); a combination's courses: MAT 004A for a Science combination, 004B for a Management Sciences one, and both options of an either/or subject until the student chooses, then that one only; the option is one of the subject's own, chosen by the student only until the examination number and changed by the office only with a reason; a timetable course is one of the subject's units, taught in that semester; the live timetable says ECN and GRY, each lecture linked to its unit ──

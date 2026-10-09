@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +21,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The application windows (V312): Post-UTME registration and the postgraduate application are open until the Director of ICT
@@ -226,5 +231,40 @@ class ApplicationWindowsIT {
         assertThat(it.call(registrar, HttpMethod.POST, WINDOWS + "/applications/" + PUTME + "/message", Map.of("message", "not mine")).getStatusCode().value()).isEqualTo(403);
         assertThat(it.anon(HttpMethod.GET, WINDOWS + "/applications", null).getStatusCode().value()).isEqualTo(401);
         assertThat(((Map) publicWindows(SESSION).get("postUtme")).get("status")).isEqualTo("OPEN");
+    }
+
+    /** V378: Post-UTME is filed under the intake session — the first planned session after the current one — while JUPEB, naming
+     *  no session of its own, keeps the University's current one. Set up in a transaction that is rolled back, so the calendar
+     *  every other test reads is left as it was. */
+    @Test
+    void postUtmeIsFiledUnderTheIntakeSessionNotTheCurrentOne() {
+        // the public page, the login page and the website read what the database says, with no session named
+        String intake = jdbc.sql("SELECT policy.intake_session()").query(String.class).single();
+        assertThat(((Map) publicWindows(null).get("postUtme")).get("session")).isEqualTo(intake);
+
+        TransactionTemplate tx = new TransactionTemplate(transactions);
+        AuditContextHolder.with(new AuditContext(UUID.randomUUID(), "ict", "integration test: the intake session", null, null), () -> tx.execute(status -> {
+            status.setRollbackOnly();
+            jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT'").update();
+            jdbc.sql("""
+                    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, senate_minute) VALUES
+                      (gen_random_uuid(), '2139/2140', '2139-10-01', '2140-08-31', 'PLANNED', NULL),
+                      (gen_random_uuid(), '2141/2142', '2141-10-01', '2142-09-30', 'CURRENT', 'SEN/TEST/2141/01'),
+                      (gen_random_uuid(), '2142/2143', '2142-09-01', '2143-08-31', 'PLANNED', NULL),
+                      (gen_random_uuid(), '2143/2144', '2143-10-01', '2144-08-31', 'PLANNED', NULL)
+                    ON CONFLICT (name) DO NOTHING
+                    """).update();
+            // admitted into the next session, while the current one still runs (V377: 2142/2143 begins before 2141/2142 ends)
+            assertThat(jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single()).isEqualTo("2142/2143");
+            assertThat(jdbc.sql("SELECT policy.university_current_session()").query(String.class).single()).isEqualTo("2141/2142");
+            // JUPEB with no session named by its office falls back to the University's current session, as before
+            jdbc.sql("UPDATE jupeb.setting SET current_session = NULL WHERE session = '*'").update();
+            assertThat(jdbc.sql("SELECT policy.application_session('JUPEB_APPLICATION')").query(String.class).single()).isEqualTo("2141/2142");
+            // nothing planned after the current session: the current one is the intake
+            jdbc.sql("UPDATE policy.academic_session SET state = 'DRAFT' WHERE name IN ('2142/2143', '2143/2144')").update();
+            assertThat(jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single()).isEqualTo("2141/2142");
+            return null;
+        }));
+        assertThat(jdbc.sql("SELECT policy.intake_session()").query(String.class).single()).isEqualTo(intake);
     }
 }

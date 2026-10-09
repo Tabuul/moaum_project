@@ -1633,7 +1633,7 @@ class JupebOfficeController {
         /* V351: the programme's own current session, and the University's beside it */
         out.put("currentSession", jdbc.sql("SELECT jupeb.current_session()").query(String.class).single());
         out.put("namedSession", jdbc.sql("SELECT current_session FROM jupeb.setting WHERE session = '*'").query(String.class).optional().orElse(null));
-        out.put("universitySession", jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single());
+        out.put("universitySession", jdbc.sql("SELECT policy.university_current_session()").query(String.class).single());   // V378: what JUPEB falls back to
         out.put("setting", jdbc.sql("""
                 SELECT application_prefix, screening_required, screening_venue, screening_starts_on::text AS screening_starts_on, screening_ends_on::text AS screening_ends_on,
                        screening_instructions, results_published_at, exam_month

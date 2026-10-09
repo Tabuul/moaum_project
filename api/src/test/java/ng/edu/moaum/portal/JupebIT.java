@@ -842,7 +842,8 @@ class JupebIT {
     @SuppressWarnings("unchecked")
     void ownCurrentSessionAndTheBoardsTimetable() {
         String named = jdbc.sql("SELECT current_session FROM jupeb.setting WHERE session = '*'").query(String.class).optional().orElse(null);
-        String university = jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single();
+        String university = jdbc.sql("SELECT policy.university_current_session()").query(String.class).single();   // V378: what JUPEB falls back to
+        String putme = jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single();
         String path = "/api/v1/jupeb/office/settings/current-session";
         try {
             Map<String, Object> s = ok(it.get(office, "/api/v1/jupeb/office/settings"));
@@ -855,7 +856,7 @@ class JupebIT {
             assertThat(s.get("currentSession")).isEqualTo("2031/2032");
             assertThat(s.get("namedSession")).isEqualTo("2031/2032");
             assertThat(jdbc.sql("SELECT policy.application_session('JUPEB_APPLICATION')").query(String.class).single()).isEqualTo("2031/2032");
-            assertThat(jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single()).isEqualTo(university);
+            assertThat(jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single()).isEqualTo(putme);
             Map<String, Object> none = new LinkedHashMap<>();
             none.put("session", null);
             s = ok(it.call(office, HttpMethod.PUT, path, none));
