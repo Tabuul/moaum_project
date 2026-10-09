@@ -810,6 +810,7 @@ public class PaymentsService {
         m.put("billers", repo.paydirectBillers());
         m.put("collections", repo.paydirectCollections(200));
         m.put("validations", repo.validations(50));
+        m.put("testReferences", repo.gatewayTestReferences(null));
         m.put("credentials", paydirectCredentials() != null);
         m.put("apiBase", apiBase());
         m.put("validatePath", "/api/v1/payments/paydirect/validate");
@@ -822,6 +823,30 @@ public class PaymentsService {
         return AuditContextHolder.with(AuditContextHolder.required(),
                 () -> tx.execute(st -> repo.setPaydirectBiller(scope, code, name, link, active == null || active, redirect != null && redirect,
                         withAmount == null || withAmount)));
+    }
+
+    /**
+     * V383: a test reference for Interswitch's testers — a small amount against a named student, purpose "Gateway test by the
+     * Bursary" (it counts for nothing against the fees), payable for the days the Bursar chooses (1 to 14, 7 unless said), so a
+     * certification test that runs over several days does not fail on the 24-hour expiry of a fee reference. Quickteller is
+     * answered for it as for every reference: Status 0 while it is unpaid and unexpired, Status 1 once it is paid or expired.
+     */
+    public Map<String, Object> gatewayTestReference(String number, BigDecimal amount, Integer days) {
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("PAY_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("Give a matriculation or admission number on the register.", "Bursary")));
+        BigDecimal amt = amount == null ? new BigDecimal("100") : amount;
+        int d = days == null ? 7 : days;
+        String reference = AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.gatewayTestReference(student, repo.currentSession(), amt, d)));
+        Map<String, Object> out = new LinkedHashMap<>(repo.gatewayTestReferences(reference).get(0));
+        repo.quicktellerLink(reference).ifPresent(l -> out.put("link", l.url()));
+        LOG.info("payments: test reference {} issued, payable for {} day{}", reference, d, d == 1 ? "" : "s");
+        return out;
+    }
+
+    /** V383: an open test reference closed early — it expires now, and Quickteller is answered Status 1 for it */
+    public Map<String, Object> withdrawGatewayTestReference(String reference) {
+        AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> { repo.withdrawGatewayTestReference(reference); return null; }));
+        return repo.gatewayTestReferences(reference).get(0);
     }
 
     /** the Quickteller collections report, matched by reference and confirmed; a short payment is kept open */

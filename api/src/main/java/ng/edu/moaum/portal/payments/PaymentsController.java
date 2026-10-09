@@ -259,6 +259,23 @@ class PaymentsController {
         return payments.setPaydirectBiller(scope, body.code(), body.name(), body.link(), body.active(), body.redirect(), body.withAmount());
     }
 
+    public record TestReference(@NotBlank String number, java.math.BigDecimal amount, Integer days) {
+    }
+
+    /** V383: a test reference for Interswitch's testers, payable for the days the Bursar chooses (1 to 14, 7 unless said) */
+    @PostMapping("/paydirect/test-references")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> testReference(@Valid @RequestBody TestReference body) {
+        return payments.gatewayTestReference(body.number(), body.amount(), body.days());
+    }
+
+    /** V383: an open test reference withdrawn — it expires now */
+    @PostMapping("/paydirect/test-references/{reference}/withdraw")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> withdrawTestReference(@PathVariable String reference) {
+        return payments.withdrawGatewayTestReference(reference);
+    }
+
     /** the Quickteller collections report: each reference matched and confirmed, a short payment kept open */
     @PostMapping("/paydirect/import")
     @PreAuthorize(BURSARY)

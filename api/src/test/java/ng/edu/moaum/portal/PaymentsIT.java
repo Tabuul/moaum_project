@@ -408,4 +408,86 @@ class PaymentsIT {
             it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
         }
     }
+
+    /**
+     * V383: an Interswitch test reference — a small reference against a named student, issued by the Bursary and payable for
+     * the days the Bursar chooses, so Interswitch's testers can check one reference over several days. Quickteller is answered
+     * Status 0 with the student's name and the amount while it is unpaid and unexpired, and Status 1 once its days have run out,
+     * once it is withdrawn, and once it is paid. Only the Bursary's desk issues one.
+     */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void anInterswitchTestReferenceIsAnsweredZeroUntilItIsPaidOrExpires() {
+        String bursar = ItSupport.token("bursar");
+        String ict = ItSupport.token("ict");
+        it.student("ZZINTERSWITCH", "C00023", "MOAUM/ADM/99/990383", "MOAUM/ITR/99/0383", 100);
+        String validate = "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword><MerchantReference>6405</MerchantReference>"
+                + "<CustReference>%s</CustReference><PaymentItemCode>01</PaymentItemCode><ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>";
+
+        // only the Bursary's desk issues one; the days are 1 to 14
+        ResponseEntity<Map> refused = it.call(academic, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/0383", "amount", 150));
+        assertThat(refused.getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> tooLong = it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/0383", "amount", 150, "days", 15));
+        assertThat(tooLong.getStatusCode().value()).isEqualTo(422);
+        assertThat(tooLong.getBody().get("code")).isEqualTo("GATEWAY_TEST_DAYS");
+
+        // issued for five days, by the matriculation number in any case
+        ResponseEntity<Map> issued = it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "moaum/itr/99/0383", "amount", 150, "days", 5));
+        assertThat(issued.getStatusCode().value()).as(String.valueOf(issued.getBody())).isEqualTo(200);
+        String reference = String.valueOf(issued.getBody().get("reference"));
+        assertThat(issued.getBody().get("state")).isEqualTo("OPEN");
+        assertThat(((Number) issued.getBody().get("days")).intValue()).isEqualTo(5);
+        assertThat(jdbc.sql("SELECT extract(epoch FROM expires_at - generated_at)::int FROM finance.payment_reference WHERE reference = :r").param("r", reference)
+                .query(Integer.class).single()).as("payable for the five days chosen, not 24 hours").isEqualTo(5 * 24 * 3600);
+        assertThat(jdbc.sql("SELECT purpose FROM finance.payment_reference WHERE reference = :r").param("r", reference).query(String.class).single())
+                .isEqualTo("Gateway test by the Bursary");
+
+        // open: Status 0 with the student's name and the amount
+        assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(reference.toLowerCase())))
+                .contains("<Status>0</Status>").contains("<CustReference>" + reference + "</CustReference>")
+                .containsIgnoringCase("<LastName>ZZINTERSWITCH</LastName>").containsIgnoringCase("<FirstName>Invented</FirstName>").contains("<Amount>150.00</Amount>");
+        Map<String, Object> listed = ((List<Map<String, Object>>) it.get(bursar, "/api/v1/payments/paydirect").getBody().get("testReferences")).stream()
+                .filter(r -> reference.equals(r.get("reference"))).findFirst().orElseThrow();
+        assertThat(listed.get("state")).isEqualTo("OPEN");
+        assertThat(((Number) listed.get("checks")).intValue()).as("Quickteller's check is counted against it").isEqualTo(1);
+
+        // its days run out: Status 1
+        it.db(() -> jdbc.sql("UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = :r").param("r", reference).update());
+        assertThat(postXml("/api/v1/payments/paydirect/validate", validate.formatted(reference))).contains("<Status>1</Status>");
+        assertThat(jdbc.sql("SELECT payload->>'why' FROM finance.gateway_event WHERE gateway = 'paydirect' AND source = 'VALIDATE' AND reference = :r ORDER BY received_at DESC LIMIT 1")
+                .param("r", reference).query(String.class).single()).startsWith("Expired");
+
+        // withdrawn by the Bursary: it expires now, Status 1 from then on
+        String withdrawn = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ADM/99/990383", "amount", 100, "days", 1))
+                .getBody().get("reference"));
+        assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(withdrawn))).contains("<Status>0</Status>");
+        ResponseEntity<Map> wd = it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references/" + withdrawn + "/withdraw", Map.of());
+        assertThat(wd.getStatusCode().value()).as(String.valueOf(wd.getBody())).isEqualTo(200);
+        assertThat(wd.getBody().get("state")).isEqualTo("WITHDRAWN");
+        assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(withdrawn))).contains("<Status>1</Status>");
+
+        // paid through Quickteller's notification: settled once, then Status 1, and a paid one is not withdrawn
+        String paid = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/0383", "amount", 100))
+                .getBody().get("reference"));
+        assertThat(jdbc.sql("SELECT extract(epoch FROM expires_at - generated_at)::int FROM finance.payment_reference WHERE reference = :r").param("r", paid)
+                .query(Integer.class).single()).as("seven days unless said").isEqualTo(7 * 24 * 3600);
+        assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(paid))).contains("<Status>0</Status>").contains("<Amount>100.00</Amount>");
+        try {
+            ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
+                    Map.of("secret", "{\"serviceUsername\":\"moaum-it-notify\",\"servicePassword\":\"an-invented-password\"}"));
+            assertThat(creds.getStatusCode().value()).as(String.valueOf(creds.getBody())).isEqualTo(200);
+            String logId = String.valueOf(1_000_000 + new Random().nextInt(8_000_000));
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", notification("moaum-it-notify", "an-invented-password", paid, logId, "100.00", false, false)))
+                    .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
+            assertThat(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = :r").param("r", paid).query(Boolean.class).single()).isTrue();
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(paid))).contains("<Status>1</Status>");
+            assertThat(jdbc.sql("SELECT payload->>'why' FROM finance.gateway_event WHERE gateway = 'paydirect' AND source = 'VALIDATE' AND reference = :r ORDER BY received_at DESC LIMIT 1")
+                    .param("r", paid).query(String.class).single()).isEqualTo("Already paid");
+            ResponseEntity<Map> notWithdrawn = it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references/" + paid + "/withdraw", Map.of());
+            assertThat(notWithdrawn.getStatusCode().value()).isEqualTo(422);
+            assertThat(notWithdrawn.getBody().get("code")).isEqualTo("GATEWAY_TEST_PAID");
+        } finally {
+            it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
+        }
+    }
 }

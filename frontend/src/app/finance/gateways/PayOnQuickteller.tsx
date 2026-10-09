@@ -6,7 +6,8 @@
  * or each message to its own), the billers (their Quickteller page, whether the
  * portal sends payers there, whether the amount rides in the link), Quickteller's
  * recent reference checks, and the collections report import — the way back for
- * any payment whose notification did not arrive.
+ * any payment whose notification did not arrive. V383: the test references the
+ * Bursary issues for Interswitch's testers.
  */
 import { useState } from "react";
 import { DTable } from "@/components/proto/DTable";
@@ -14,6 +15,7 @@ import { Field, day, money } from "@/components/proto/blocks";
 import { Btn, KvGrid, Note, PBody, Panel, Pil } from "@/components/proto/ui";
 import { OUTCOME, when, type PaydirectBiller, type PaydirectDesk } from "@/lib/bursary";
 import { collectionRows, interswitchLink, quicktellerLink } from "@/lib/quickteller";
+import { InterswitchTestReferences } from "./InterswitchTestReferences";
 
 type Send = (path: string, body: unknown, reason: string, method?: string) => Promise<Record<string, unknown> | null>;
 type Edit = { code: string; name: string; link: string; active: boolean; redirect: boolean; withAmount: boolean };
@@ -102,6 +104,10 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
             })}
           </div>
         ) : null}
+      </PBody>
+
+      <PBody>
+        <InterswitchTestReferences refs={q.testReferences ?? []} may={may} busy={busy} send={send} say={say} />
       </PBody>
 
       <PBody>

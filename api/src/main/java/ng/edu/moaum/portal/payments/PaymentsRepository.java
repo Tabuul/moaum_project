@@ -285,6 +285,40 @@ class PaymentsRepository {
                 .query(String.class).single();
     }
 
+    /* ── V383: a test reference for Interswitch's testers, payable for the days the Bursar chooses ── */
+
+    String gatewayTestReference(UUID student, String session, BigDecimal amount, int days) {
+        return jdbc.sql("SELECT finance.new_gateway_test_reference(:s, :n, :a, :d)").param("s", student).param("n", session).param("a", amount).param("d", days)
+                .query(String.class).single();
+    }
+
+    void withdrawGatewayTestReference(String reference) {
+        jdbc.sql("SELECT finance.withdraw_gateway_test_reference(:r)").param("r", reference).query().singleRow();
+    }
+
+    /** the test references of the last thirty days (or the one named), open ones first: the payer, the expiry, and what Quickteller was last told about each */
+    List<Map<String, Object>> gatewayTestReferences(String reference) {
+        return jdbc.sql("""
+                SELECT t.reference, pr.amount, pr.session, pr.generated_at, pr.expires_at, t.days, pr.confirmed_at, pr.receipt_no, pr.channel, t.withdrawn_at,
+                       CASE WHEN pr.confirmed_at IS NOT NULL THEN 'PAID' WHEN t.withdrawn_at IS NOT NULL THEN 'WITHDRAWN'
+                            WHEN pr.expires_at < now() THEN 'EXPIRED' ELSE 'OPEN' END AS state,
+                       s.surname || ', ' || s.other_names AS payer, coalesce(s.matric_no, s.admission_no) AS number,
+                       p.surname || ', ' || p.given_names AS issued_by_name, t.issued_office,
+                       v.checks, v.last_check_at, v.last_outcome
+                  FROM finance.gateway_test_reference t
+                  JOIN finance.payment_reference pr ON pr.reference = t.reference
+                  JOIN people.student s ON s.id = pr.student_id
+                  LEFT JOIN iam.person p ON p.id = t.issued_by
+                  LEFT JOIN LATERAL (SELECT count(*) AS checks, max(e.received_at) AS last_check_at,
+                                            (array_agg(e.outcome ORDER BY e.received_at DESC))[1] AS last_outcome
+                                       FROM finance.gateway_event e
+                                      WHERE e.gateway = 'paydirect' AND e.source = 'VALIDATE' AND e.reference = t.reference) v ON true
+                 WHERE CASE WHEN :r::text IS NULL THEN t.issued_at > now() - interval '30 days' ELSE t.reference = upper(btrim(:r)) END
+                 ORDER BY (pr.confirmed_at IS NULL AND t.withdrawn_at IS NULL AND pr.expires_at >= now()) DESC, t.issued_at DESC
+                 LIMIT 100
+                """).param("r", reference, Types.VARCHAR).query().listOfRows();
+    }
+
     String currentSession() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
     }

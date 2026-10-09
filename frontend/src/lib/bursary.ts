@@ -6,9 +6,16 @@ export interface GatewayRow { gateway: string; on: boolean; mode: string; webhoo
 export interface PaydirectBiller { scope: string; biller_code: string; name: string; pay_link?: string | null; active: boolean; redirect: boolean; with_amount: boolean; updated_at?: string }
 export interface PaydirectCollection { biller_code?: string | null; prn: string; amount?: number | null; paid_at?: string | null; channel?: string | null; rrn?: string | null; payer?: string | null; state: string; reference?: string | null; why?: string | null; imported_at: string }
 export interface PaydirectValidation { id: string; reference?: string | null; merchant_reference?: string | null; amount?: number | null; outcome: string; received_at: string; why?: string | null }
+/** V383: a test reference the Bursary issued for Interswitch's testers, payable for the days chosen */
+export interface PaydirectTestReference {
+  reference: string; amount: number; session: string; generated_at: string; expires_at: string; days: number; state: "OPEN" | "PAID" | "EXPIRED" | "WITHDRAWN";
+  payer: string; number: string; confirmed_at?: string | null; receipt_no?: string | null; channel?: string | null; withdrawn_at?: string | null;
+  issued_by_name?: string | null; issued_office: string; checks: number; last_check_at?: string | null; last_outcome?: string | null; link?: string;
+}
 export interface PaydirectDesk {
   billers: PaydirectBiller[]; collections: PaydirectCollection[]; validations: PaydirectValidation[]; credentials: boolean;
   apiBase: string; validatePath: string; notifyPath: string; /** Oct 2026: the one address for both messages */ singlePath?: string;
+  testReferences: PaydirectTestReference[];
 }
 export interface GatewayEvent {
   id: string; gateway: string; source: string; event: string | null; reference: string | null; gateway_ref: string | null; amount: number | null; status: string | null;

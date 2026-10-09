@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 221
+\set EXPECTED 222
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7973,6 +7973,77 @@ BEGIN
         format('v=%s mod=%s mismatch=%s paper=%s opts=%s shows=%s other=%s | given to %s (%s min) moved %s reason=%s twice=%s | clash=%s seat_all=%s/%s/%s listed=%s',
                v_ver, v_mod, r_mismatch, paper_img = img1, opt_img, shows, shows_other, inc.time_given_to, inc.time_given_minutes, ends_after - ends_before,
                extra_reason, r_twice, r_clash, seat2.seated, seat2.unseated, seat2.clashed, clashes));
+END $$;
+
+-- ── V383: an Interswitch test reference — payable for the days the Bursar chooses, answered 0 until it is paid or expires ──
+-- Issued from the Bursary's desk only, for a small amount, for 1 to 14 days (7 unless said), purpose 'Gateway test by the
+-- Bursary' (counts for nothing against the fees). Quickteller is answered from the reference as for every other: Status 0
+-- with the name and the amount while it is unpaid and unexpired, Status 1 once it is paid, expired or withdrawn. Every other
+-- reference keeps its own expiry. Time cannot pass inside the block, so an expiry is reached by moving it into the past.
+-- The block undoes its own writes.
+DO $$
+DECLARE s uuid := gen_random_uuid(); burs uuid := gen_random_uuid();
+        r_test text; r_short text; r_wd text; r_other text; pr finance.payment_reference; t finance.gateway_test_reference; wd finance.payment_reference;
+        span_test interval; span_short interval; span_other interval; cat text; cu record; cu_old record; cu_paid record; paid numeric;
+        r_days text; r_amount text; r_office text; r_again text; r_paid text; r_not_one text; wd_by uuid;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (s, 'MOAUM/ADM/99/990383', 'MOAUM/CHK/99/0383', 'CHECKITR', 'Tester Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        -- seven days unless said; three when the Bursar says three
+        r_test := finance.new_gateway_test_reference(s, '9999/0000', 100, NULL);
+        r_short := finance.new_gateway_test_reference(s, '9999/0000', 50, 3);
+        r_wd := finance.new_gateway_test_reference(s, '9999/0000', 100, 14);
+        SELECT expires_at - generated_at INTO span_test FROM finance.payment_reference WHERE reference = r_test;
+        SELECT expires_at - generated_at INTO span_short FROM finance.payment_reference WHERE reference = r_short;
+        SELECT * INTO pr FROM finance.payment_reference WHERE reference = r_test;
+        cat := finance.categorise(NULL, pr.purpose);
+        SELECT * INTO t FROM finance.gateway_test_reference WHERE reference = r_test;
+        -- any other reference keeps its own 24 hours
+        r_other := finance.new_purpose_reference(s, '9999/0000', 500, 'Library fine 9999/0000');
+        SELECT expires_at - generated_at INTO span_other FROM finance.payment_reference WHERE reference = r_other;
+        -- refused: fifteen days, more than a small amount, another office
+        BEGIN PERFORM finance.new_gateway_test_reference(s, '9999/0000', 100, 15); EXCEPTION WHEN check_violation THEN r_days := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.new_gateway_test_reference(s, '9999/0000', 50000, 7); EXCEPTION WHEN check_violation THEN r_amount := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM finance.new_gateway_test_reference(s, '9999/0000', 100, 7); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+
+        -- Quickteller, while it is open: Status 0 with the name and the amount
+        SELECT * INTO cu FROM finance.paydirect_customer(lower(r_test));
+        -- three days on: expired, Status 1
+        UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = r_short;
+        SELECT * INTO cu_old FROM finance.paydirect_customer(r_short);
+        -- withdrawn: it expires now, once; a payer's own reference is not withdrawn here
+        wd := finance.withdraw_gateway_test_reference(lower(r_wd));
+        SELECT withdrawn_by INTO wd_by FROM finance.gateway_test_reference WHERE reference = r_wd;
+        BEGIN PERFORM finance.withdraw_gateway_test_reference(r_wd); EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.withdraw_gateway_test_reference(r_other); EXCEPTION WHEN check_violation THEN r_not_one := split_part(SQLERRM, ':', 1); END;
+        -- paid: Status 1, nothing counted against the fees, and not withdrawn
+        PERFORM finance.confirm_payment(r_test, 'Quickteller PayDirect', 'check');
+        SELECT * INTO cu_paid FROM finance.paydirect_customer(r_test);
+        SELECT x.paid INTO paid FROM finance.position(s, '9999/0000') x;
+        BEGIN PERFORM finance.withdraw_gateway_test_reference(r_test); EXCEPTION WHEN check_violation THEN r_paid := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V383 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V383: an Interswitch test reference is issued from the Bursary''s desk only, for a small amount, payable for 1 to 14 days (7 unless said), as a gateway test that counts for nothing against the fees; Quickteller is answered 0 with the name and the amount while it is open, and 1 once it is paid, expired or withdrawn; a paid one is not withdrawn, nor a payer''s own reference; every other reference keeps its 24 hours',
+        coalesce(span_test = interval '7 days' AND span_short = interval '3 days' AND span_other = interval '24 hours'
+                 AND pr.purpose = 'Gateway test by the Bursary' AND pr.amount = 100 AND cat = 'GATEWAY_TEST'
+                 AND t.days = 7 AND t.issued_by = burs AND t.issued_office = 'bursar'
+                 AND r_days = 'GATEWAY_TEST_DAYS' AND r_amount = 'GATEWAY_TEST_AMOUNT' AND r_office = 'GATEWAY_TEST_OFFICE'
+                 AND cu.valid AND cu.reference = r_test AND cu.surname = 'CHECKITR' AND cu.other_names = 'Tester Invented' AND cu.amount = 100
+                 AND cu.number = 'MOAUM/CHK/99/0383'
+                 AND NOT cu_old.valid AND cu_old.why LIKE 'Expired%'
+                 AND wd.expires_at = now() AND wd_by = burs AND r_again = 'GATEWAY_TEST_CLOSED' AND r_not_one = 'GATEWAY_TEST_NOT_ONE'
+                 AND NOT cu_paid.valid AND cu_paid.why = 'Already paid' AND paid = 0 AND r_paid = 'GATEWAY_TEST_PAID', false),
+        format('spans %s/%s/%s | purpose=%s amount=%s category=%s | days=%s by=%s office=%s | refusals %s/%s/%s | open %s/%s/%s/%s/%s | expired %s/%s | withdrawn %s/%s again=%s not_one=%s | paid %s/%s counted=%s withdraw=%s',
+               span_test, span_short, span_other, pr.purpose, pr.amount, cat, t.days, t.issued_by = burs, t.issued_office, r_days, r_amount, r_office,
+               cu.valid, cu.surname, cu.other_names, cu.amount, cu.number, cu_old.valid, cu_old.why, wd.expires_at = now(), wd_by = burs, r_again, r_not_one,
+               cu_paid.valid, cu_paid.why, paid, r_paid));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

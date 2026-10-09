@@ -15,7 +15,7 @@ export default async function GatewaysPage({ searchParams }: { searchParams: Pro
     api<GatewayConfig[]>("/api/v1/payments/gateway-config"),
     api<PaydirectDesk>("/api/v1/payments/paydirect"),
   ]);
-  const quickteller = qt.ok ? { ...qt.data, billers: qt.data.billers ?? [], collections: qt.data.collections ?? [], validations: qt.data.validations ?? [], credentials: qt.data.credentials === true } : null;
+  const quickteller = qt.ok ? { ...qt.data, billers: qt.data.billers ?? [], collections: qt.data.collections ?? [], validations: qt.data.validations ?? [], testReferences: qt.data.testReferences ?? [], credentials: qt.data.credentials === true } : null;
   return (
     <Shell route="t/gateways" me={me.ok ? me.data : null}>
       {d.ok ? <Gateways d={d.data} config={cfg.ok ? cfg.data : []} quickteller={quickteller} paid={typeof params.paid === "string" ? params.paid : null} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={d.problem} />}
