@@ -1363,7 +1363,7 @@ BEGIN
         n = 0, n || ' tables hold state and are neither attached nor exempted');
 END $$;
 
--- ── 66-68. the calendar: no overlap, one current, on a minute ───────────
+-- ── 66-68. the calendar: the next session may begin while one runs (V377), but not on the day another begins; one current, on a minute ──
 DO $$
 DECLARE ok boolean := false; msg text;
 BEGIN
@@ -1372,13 +1372,25 @@ BEGIN
     INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
     VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31') ON CONFLICT (name) DO NOTHING;   -- §17a may have made it
 
+    -- a session beginning before 9999/0000 and running into it is recorded (it was refused before V377) ...
     BEGIN
         INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
         VALUES (gen_random_uuid(), '9998/9999', date '9998-09-01', date '9999-03-31');
-    EXCEPTION WHEN exclusion_violation THEN ok := true; msg := SQLERRM;
+        ok := true;
+    EXCEPTION WHEN OTHERS THEN msg := SQLERRM;
     END;
-    PERFORM pg_temp.assert('Two academic sessions cannot overlap', ok,
-        'an exclusion constraint, not a check on a form');
+    -- ... and one beginning on the day another begins is not
+    IF ok THEN
+        ok := false;
+        BEGIN
+            INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+            VALUES (gen_random_uuid(), '9997/9999', date '9998-09-01', date '9999-06-30');
+        EXCEPTION WHEN check_violation THEN ok := SQLERRM LIKE 'SESSION_SAME_START:%'; msg := SQLERRM;
+        END;
+    END IF;
+    DELETE FROM policy.academic_session WHERE name IN ('9998/9999', '9997/9999');
+    PERFORM pg_temp.assert('A session may begin while another runs, but not on the day another begins', ok,
+        coalesce(msg, 'the overlapping session was refused, or the same-day one recorded'));
 
     ok := false;
     BEGIN

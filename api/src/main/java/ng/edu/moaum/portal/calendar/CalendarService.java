@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
  * which of them it was.
  *
  * <p>The three rules that matter are the database's, and are left there: two
- * sessions may not overlap, only one may be CURRENT, and a CURRENT session
+ * sessions may not begin on the same day (they may overlap since V377: the next
+ * may begin while the current one runs), only one may be CURRENT, and a CURRENT session
  * must carry the Senate minute that opened it. This service adds one refusal
  * of its own — {@code CAL_MINUTE_REQUIRED} — so that "make this one current"
  * says what is missing before the database has to.

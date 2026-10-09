@@ -52,8 +52,8 @@ function Timeline({ sessions, now }: { sessions: SessionRow[]; now: number }) {
           <div className="timeline__row" key={r.name}>
             <div className="timeline__label"><b className="tnum">{r.name}</b><span className="sub2">{sessionLabel(r.state)}</span></div>
             <div className="timeline__track">
-              <div className={`timeline__bar ${tone}`} style={{ left: `${left}%`, width: `${width}%` }} title={`${d(r.startsOn)} – ${d(r.endsOn)}`} />
-              {todayPct !== null ? <div className="timeline__today" style={{ left: `${todayPct}%` }} title="Today" /> : null}
+              <div className={`timeline__bar ${tone}`} style={{ left: `${left.toFixed(2)}%`, width: `${width.toFixed(2)}%` }} title={`${d(r.startsOn)} – ${d(r.endsOn)}`} />
+              {todayPct !== null ? <div className="timeline__today" style={{ left: `${todayPct.toFixed(2)}%` }} title="Today" /> : null}
             </div>
           </div>
         );

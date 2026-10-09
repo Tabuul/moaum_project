@@ -5,8 +5,9 @@
  * the University actually keeps behind it: the sessions are
  * policy.academic_session with the number of people enrolled in each, the
  * semesters are policy.semester, and the unit limits policy.level_limit.
- * The two rules that matter are the database's — one session current, none
- * overlapping — so this screen lets them refuse and shows the refusal.
+ * The rules that matter are the database's — one session current; the next may
+ * begin while it runs (V377), but not on the day another begins — so this
+ * screen lets them refuse and shows the refusal.
  * It is the Director of ICT's, under Portal Management: every other office
  * reads it, and the Registry may still make a planned session current.
  */
@@ -236,8 +237,9 @@ export function SessionSetup({
 
       <Note kind="info" title="The session is the spine everything else hangs on">
         Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo
-        are all bounded by a session and a semester. Exactly one session is current at a time, and the portal will not let
-        two overlap &mdash; that is an exclusion constraint in the database, not a check on this form.
+        are all bounded by a session and a semester. Exactly one session is current at a time. The next session may begin
+        while the current one is still running &mdash; its entrants stand in it from the day it is planned &mdash; but no two
+        sessions begin on the same day; both are rules in the database, not checks on this form.
         {canEdit ? null : (
           <>
             {" "}
@@ -293,7 +295,7 @@ export function SessionSetup({
             texts={sessions.map((s) => `${s.name} ${s.state} ${s.senateMinute ?? ""}`)}
             rows={sessions.map((s) => [
               <b className="tnum" key="n">{s.name}</b>,
-              <span className="tnum" key="o">{d(s.startsOn)}</span>,
+              <span key="o"><span className="tnum">{d(s.startsOn)}</span>{currentRow && s.name !== currentRow.name && (s.state === "PLANNED" || s.state === "DRAFT") && s.startsOn > currentRow.startsOn && s.startsOn <= currentRow.endsOn ? <div className="sub2">While {currentRow.name} runs</div> : null}</span>,
               <span className="tnum" key="c">{d(s.endsOn)}</span>,
               s.senateMinute ? <span className="sub2 tnum" key="m">{s.senateMinute}</span> : <span className="sub2" key="m">&mdash;</span>,
               s.students ? <span className="tnum" key="s">{withThousands(s.students)}</span> : <span className="sub2" key="s">&mdash;</span>,

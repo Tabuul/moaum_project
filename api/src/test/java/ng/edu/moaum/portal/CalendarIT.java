@@ -38,6 +38,8 @@ class CalendarIT {
     static final String FIRST = "2096/2097";
     static final String SECOND = "2097/2098";
     static final String OVERLAPS = "2098/2099";
+    /** V377: begins the day OVERLAPS begins, so it is never recorded */
+    static final String SAME_DAY = "2098/2100";
 
     @Value("${local.server.port}")
     int port;
@@ -102,13 +104,18 @@ class CalendarIT {
         assertThat(row(second, SECOND).get("state")).isEqualTo("PLANNED");
         assertThat(row(second, SECOND).get("students")).isEqualTo(0);
 
-        // 2 · a third that runs into the second is refused — by the exclusion
-        //     constraint in the database, not by a check on the form
+        // 2 · V377: a third that begins while the second still runs is planned all the same — the next session may
+        //     begin before the last one ends — but one beginning on the day another begins is refused by the database
         ResponseEntity<Map> overlapping = call(HttpMethod.PUT, "/api/v1/calendar/sessions/" + OVERLAPS,
                 session("2098-06-01", "2099-05-31"));
-        assertThat(overlapping.getStatusCode().value()).as(String.valueOf(overlapping.getBody())).isEqualTo(422);
+        assertThat(overlapping.getStatusCode().value()).as(String.valueOf(overlapping.getBody())).isEqualTo(200);
+        assertThat(row(overlapping, OVERLAPS).get("state")).isEqualTo("PLANNED");
+        ResponseEntity<Map> sameDay = call(HttpMethod.PUT, "/api/v1/calendar/sessions/" + SAME_DAY,
+                session("2098-06-01", "2099-07-31"));
+        assertThat(sameDay.getStatusCode().value()).as(String.valueOf(sameDay.getBody())).isEqualTo(422);
+        assertThat(sameDay.getBody().get("code")).isEqualTo("SESSION_SAME_START");
         List<Map<String, Object>> after = (List<Map<String, Object>>) get("/api/v1/calendar").getBody().get("sessions");
-        assertThat(after).noneSatisfy(s -> assertThat(s.get("name")).isEqualTo(OVERLAPS));
+        assertThat(after).noneSatisfy(s -> assertThat(s.get("name")).isEqualTo(SAME_DAY));
 
         // 3 · a session does not open without the minute that opened it
         // 3a · and not by the Academic Office at all: the transition is the Registrar's (V289) or the Director of ICT's
@@ -136,11 +143,27 @@ class CalendarIT {
         assertThat(row(moved, SECOND).get("senateMinute")).isEqualTo("SEN/TEST/2097/001");
         assertThat(row(moved, FIRST).get("state")).isEqualTo("CLOSED");
 
+        // 5b · V377: the session that began while the second runs is the next planned one, and is made current before
+        //      the second's end date; the second is completed by the same transition
+        assertThat(moved.getBody().get("next")).isEqualTo(OVERLAPS);
+        List<Map<String, Object>> checks = (List<Map<String, Object>>) call(registrar, HttpMethod.GET,
+                "/api/v1/calendar/sessions/" + OVERLAPS + "/readiness", null).getBody().get("checks");
+        assertThat(checks).anySatisfy(c -> {
+            assertThat(c.get("code")).isEqualTo("NO_CONFLICT");
+            assertThat(c.get("ok")).isEqualTo(true);
+            assertThat(String.valueOf(c.get("detail"))).contains("while " + SECOND + " runs to");
+        });
+        ResponseEntity<Map> early = call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + OVERLAPS + "/make-current",
+                Map.of("senateMinute", "SEN/TEST/2098/001"));
+        assertThat(early.getStatusCode().value()).as(String.valueOf(early.getBody())).isEqualTo(200);
+        assertThat(early.getBody().get("current")).isEqualTo(OVERLAPS);
+        assertThat(row(early, SECOND).get("state")).isEqualTo("CLOSED");
+
         // 6 · and closing this one leaves nothing current
-        ResponseEntity<Map> closed = call(HttpMethod.POST, "/api/v1/calendar/sessions/" + SECOND + "/close", null);
+        ResponseEntity<Map> closed = call(HttpMethod.POST, "/api/v1/calendar/sessions/" + OVERLAPS + "/close", null);
         assertThat(closed.getStatusCode().value()).as(String.valueOf(closed.getBody())).isEqualTo(200);
-        assertThat(row(closed, SECOND).get("state")).isEqualTo("CLOSED");
-        assertThat(closed.getBody().get("current")).isNotEqualTo(SECOND);
+        assertThat(row(closed, OVERLAPS).get("state")).isEqualTo("CLOSED");
+        assertThat(closed.getBody().get("current")).isNotEqualTo(OVERLAPS);
     }
 
     @Test
