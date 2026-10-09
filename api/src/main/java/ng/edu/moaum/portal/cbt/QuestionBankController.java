@@ -344,11 +344,19 @@ class QuestionBankController {
         Bank b = bank(course);
         UUID me = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("waitingForMe", jdbc.sql("""
-                SELECT count(*) FROM assessment.question q
-                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END
-                   AND q.moderation = 'PENDING' AND q.archived_at IS NULL AND assessment.question_setter(q.id, q.version) IS DISTINCT FROM :me
-                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("me", me, Types.OTHER).query(Long.class).single());
+        // what waits in the bank, and how much of it the signed-in moderator may decide (never what they set themselves)
+        Map<String, Object> w = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) IS DISTINCT FROM :me) AS for_me,
+                       count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) IS NOT DISTINCT FROM :me) AS mine,
+                       count(*) FILTER (WHERE q.moderation = 'RETURNED') AS returned,
+                       count(*) FILTER (WHERE q.moderation = 'APPROVED') AS approved
+                  FROM assessment.question q
+                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END AND q.archived_at IS NULL
+                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("me", me, Types.OTHER).query().singleRow();
+        out.put("waitingForMe", w.get("for_me"));
+        out.put("waitingMine", w.get("mine"));
+        out.put("returned", w.get("returned"));
+        out.put("approved", w.get("approved"));
         UUID open = jdbc.sql("""
                 SELECT id FROM assessment.question_moderation_sample
                  WHERE state = 'OPEN' AND drawn_by = :me AND coalesce(course_code, jupeb_subject_id::text) = coalesce(:c, :sub::uuid::text)

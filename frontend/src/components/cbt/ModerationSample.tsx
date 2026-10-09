@@ -13,7 +13,7 @@ interface SampleQuestion { id: string; topic: string | null; stem: string; optio
   moderation: "PENDING" | "APPROVED" | "RETURNED"; moderated_version: number | null; moderation_note: string | null; set_by: string | null }
 interface Sample { id: string; bank: string; state: "OPEN" | "APPROVED" | "FAILED" | "WITHDRAWN"; drawn_at: string; decided_at: string | null; approved: number | null; left_as_they_were: number | null; population: number; size: number; questions: SampleQuestion[] }
 interface Recent { id: string; state: string; drawn_at: string; size: number; population: number; approved: number | null; left_as_they_were: number | null }
-interface Data { waitingForMe: number; open: Sample | null; recent: Recent[] }
+interface Data { waitingForMe: number; waitingMine?: number; returned?: number; approved?: number; open: Sample | null; recent: Recent[] }
 
 const STATE_WORD: Record<string, string> = { APPROVED: "approved the rest", FAILED: "failed — a sampled question was returned", WITHDRAWN: "withdrawn" };
 
@@ -62,13 +62,21 @@ export function ModerationSample({ course }: { course: string }) {
             {last.state === "APPROVED" ? <>{last.approved} more approved with it{last.left_as_they_were ? `; ${last.left_as_they_were} left as they were (changed or decided since the draw, or yours)` : ""}.</> : <>The other {last.left_as_they_were} questions wait to be moderated one by one.</>}
           </Note>
         ) : null}
-        {!s ? (
+        {!s && !Number(d.waitingForMe) ? (
+          <Note kind="info" title="Nothing here waits for you to moderate">
+            {Number(d.waitingMine) ? <>{d.waitingMine} question{Number(d.waitingMine) === 1 ? " waiting was" : "s waiting were"} set (written or imported) by you, and a question is approved by someone other than the person who set it — another member of the office, the Head of Department, an Examinations Officer, the Dean or the Super Administrator signs in and approves {Number(d.waitingMine) === 1 ? "it" : "them"}. </> : null}
+            {Number(d.approved) ? <>{d.approved} question{Number(d.approved) === 1 ? " is" : "s are"} approved already (those in the bank before moderation began count as approved). </> : null}
+            {Number(d.returned) ? <>{d.returned} {Number(d.returned) === 1 ? "was" : "were"} returned and wait{Number(d.returned) === 1 ? "s" : ""} for the setter to correct. </> : null}
+            A sample is drawn from the questions waiting that you did not set.
+          </Note>
+        ) : !s ? (
           <>
             <div className="sub2 mb-2">Read a random sample of the questions waiting that you did not set. When every question in the sample is approved, the rest are approved with it, each decision naming the sample; if you return one, the sample fails and the rest wait to be moderated one by one. You choose how many to read.</div>
             <div className="row row--inline row--tight" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
               <Field id="smp-size" label="Questions to read" hint={`1 to ${d.waitingForMe}`}><input id="smp-size" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 120 }} value={size} onChange={(e) => setSize(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
               <Btn kind="primary" disabled={busy || !d.waitingForMe || !Number(size) || Number(size) > d.waitingForMe} onClick={() => void draw()}>Draw the sample</Btn>
             </div>
+            {Number(size) > Number(d.waitingForMe) ? <div className="sub2 mt-1">Only {d.waitingForMe} question{Number(d.waitingForMe) === 1 ? " waits" : "s wait"} for you here; a sample is at most that many.</div> : null}
           </>
         ) : (
           <>

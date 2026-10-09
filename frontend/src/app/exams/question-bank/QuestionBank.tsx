@@ -173,7 +173,8 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         <Note kind="info" title={`${waiting.length} question${waiting.length === 1 ? " waits" : "s wait"} for moderation`}>
           A question goes on a paper once someone other than the person who set it — a Head of Department, an Examinations Officer, a Dean, or the course&rsquo;s own office — approves it.
           A returned question carries the moderator&rsquo;s note; correcting it sends it back for moderation. Every change of wording, options, key or marks waits again.
-          {mayModerate ? (decidable.length ? <> You may decide {decidable.length} of them.</> : <> None of them is yours to decide: you set them, or they were returned.</>) : null}
+          {mayModerate ? (decidable.length ? <> You may decide {decidable.length} of them.</> : <> None of them is yours to decide: you set them (another moderator approves those), or they were returned to their setter.</>)
+            : <> Your office ({actingOffice ?? "none"}) does not approve questions; switch to a moderating office in the bar if you hold one.</>}
         </Note>
       ) : null}
 
@@ -209,7 +210,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
             <span className="tnum" key="m">{x.marks}</span>,
             <span key="mod" style={{ display: "grid", gap: 4, justifyItems: "center" }}>
               {x.moderation ? <Pil kind={MOD_WORD[x.moderation][1]}>{MOD_WORD[x.moderation][0]}</Pil> : null}
-              <span className="sub2">{x.moderation === "APPROVED" ? (x.moderated_by ? x.moderated_by : "in the bank before moderation") : x.moderation === "RETURNED" ? `“${x.moderation_note ?? ""}”` : x.mine ? "set by you" : x.set_by ?? ""}</span>
+              <span className="sub2">{x.moderation === "APPROVED" ? (x.moderated_by ? x.moderated_by : "in the bank before moderation") : x.moderation === "RETURNED" ? `“${x.moderation_note ?? ""}”` : x.mine ? "set by you — another moderator approves it" : x.set_by ?? ""}</span>
               {mayModerate && !x.archived_at && !x.mine && x.moderation !== "APPROVED" ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void moderate(x, "APPROVE")}>Approve</Btn> : null}
               {mayModerate && !x.archived_at && !x.mine && x.moderation !== "RETURNED" ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setReturning(x); setReturnNote(""); }}>Return</Btn> : null}
             </span>,
