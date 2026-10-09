@@ -36,6 +36,9 @@ import org.springframework.web.bind.annotation.RestController;
  * A question is retired or archived, never deleted, so a paper that used it can still be explained. From V364 every
  * change of a question's wording, options, key or marks is a new version, kept whole, and each attempt reads the
  * version it drew — so a question may be corrected after it is sat, but never while an examination drawing it is open.
+ * From V374 a question written or changed waits for moderation: someone other than the person who set that version — a Head of
+ * Department, an Examinations Officer, a Dean, the GST, EPS or JUPEB office in its own banks — approves it, or returns it with a note,
+ * and only approved questions go on a paper. The rule is the database's (assessment.question_moderate); the screen only asks.
  */
 @RestController
 class QuestionBankController {
@@ -46,6 +49,9 @@ class QuestionBankController {
     /** V365: a JUPEB subject's bank is named "JUPEB:<subject code>" wherever a course's is named by its code */
     static final String JUPEB_PREFIX = "JUPEB:";
     private static final Set<String> KINDS = Set.of("MCQ", "TRUE_FALSE", "MULTI");
+    /** V374: who moderates — never the person who set the version (the database refuses that, CBT_MODERATE_OWN) */
+    private static final String MODERATORS = "hasAnyAuthority('OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb')";
+    private static final Set<String> MODERATION = Set.of("PENDING", "APPROVED", "RETURNED");
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
@@ -126,7 +132,8 @@ class QuestionBankController {
                     SELECT 'JUPEB:' || s.code AS code, s.title, 'JUPEB' AS kind, 'JUPEB' AS general_office, NULL::int AS level, NULL::int AS semester, NULL::int AS units,
                            CASE WHEN s.active THEN 'LIVE' ELSE 'ENDED' END AS state, s.cbt_enabled,
                            (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id AND q.active) AS questions,
-                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id) AS total
+                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id) AS total,
+                           (SELECT count(*) FROM assessment.question q WHERE q.jupeb_subject_id = s.id AND q.moderation <> 'APPROVED' AND q.archived_at IS NULL) AS awaiting
                       FROM jupeb.subject s WHERE s.active ORDER BY s.code
                     """).query().listOfRows();
         }
@@ -134,7 +141,8 @@ class QuestionBankController {
         return jdbc.sql("""
                 SELECT c.code, c.title, c.kind, c.general_office, c.level, c.semester, c.units, c.state, c.cbt_enabled,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS questions,
-                       (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code) AS total
+                       (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code) AS total,
+                       (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.moderation <> 'APPROVED' AND q.archived_at IS NULL) AS awaiting
                   FROM catalogue.course c
                  WHERE (:o::text IS NULL OR c.general_office = :o)
                  ORDER BY c.code
@@ -146,11 +154,14 @@ class QuestionBankController {
     @Transactional(readOnly = true)
     Map<String, Object> questions(@RequestParam String course, @RequestParam(required = false) String q, @RequestParam(required = false) String topic,
                                   @RequestParam(required = false) String difficulty, @RequestParam(required = false) String kind,
-                                  @RequestParam(required = false) String status, @RequestParam(defaultValue = "1") int page,
+                                  @RequestParam(required = false) String status, @RequestParam(required = false) String moderation, @RequestParam(defaultValue = "1") int page,
                                   @RequestParam(defaultValue = "1000") int size) {
         Bank b = bank(course);
         // V364: searched and paged on the server — the text, the topic, the difficulty, the kind, the status (ACTIVE, INACTIVE, ARCHIVED; default every one not archived)
         String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
+        // V374: PENDING, APPROVED or RETURNED; AWAITING = not approved
+        String m = moderation == null || moderation.isBlank() ? null : moderation.trim().toUpperCase();
+        String mod = m != null && (MODERATION.contains(m) || "AWAITING".equals(m)) ? m : null;
         int sz = Math.max(1, Math.min(size, 1000)), pg = Math.max(1, page);
         String where = """
                  WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END
@@ -159,18 +170,24 @@ class QuestionBankController {
                    AND (:diff::text IS NULL OR q.difficulty = upper(:diff)) AND (:kind::text IS NULL OR q.kind = upper(:kind))
                    AND CASE coalesce(:st, 'CURRENT') WHEN 'ACTIVE' THEN q.active WHEN 'INACTIVE' THEN NOT q.active AND q.archived_at IS NULL
                         WHEN 'ARCHIVED' THEN q.archived_at IS NOT NULL WHEN 'ALL' THEN true ELSE q.archived_at IS NULL END
+                   AND (:mod::text IS NULL OR CASE WHEN :mod = 'AWAITING' THEN q.moderation <> 'APPROVED' ELSE q.moderation = :mod END)
                 """;
         java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec.param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER)
                 .param("q", q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%", Types.VARCHAR).param("topic", blank(topic), Types.VARCHAR)
-                .param("diff", blank(difficulty), Types.VARCHAR).param("kind", blank(kind), Types.VARCHAR).param("st", st, Types.VARCHAR);
+                .param("diff", blank(difficulty), Types.VARCHAR).param("kind", blank(kind), Types.VARCHAR).param("st", st, Types.VARCHAR).param("mod", mod, Types.VARCHAR);
         long total = bind.apply(jdbc.sql("SELECT count(*) FROM assessment.question q" + where)).query(Long.class).single();
         List<Map<String, Object>> rows = bind.apply(jdbc.sql("""
                 SELECT q.id, q.course_code, q.topic, q.stem, q.options::text AS options, q.answer, to_jsonb(q.answers)::text AS answers, q.kind, q.difficulty, q.marks, q.active,
                        q.explanation, q.authored_at, q.updated_at, q.version, q.archived_at,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS authored_by,
                        (SELECT count(*) FROM assessment.cbt_exam_question eq WHERE eq.question_id = q.id) AS on_papers,
-                       (SELECT count(*) FROM assessment.cbt_attempt a WHERE q.id = ANY (a.question_ids)) AS sat
-                  FROM assessment.question q LEFT JOIN iam.person p ON p.id = q.authored_by
+                       (SELECT count(*) FROM assessment.cbt_attempt a WHERE q.id = ANY (a.question_ids)) AS sat,
+                       q.moderation, q.moderated_version, q.moderated_at, q.moderation_note,
+                       CASE WHEN mp.id IS NULL THEN NULL ELSE mp.surname || ', ' || mp.given_names END AS moderated_by,
+                       CASE WHEN sp.id IS NULL THEN NULL ELSE sp.surname || ', ' || sp.given_names END AS set_by,
+                       assessment.question_setter(q.id, q.version) IS NOT DISTINCT FROM nullif(current_setting('moaum.actor_id', true), '')::uuid AS mine
+                  FROM assessment.question q LEFT JOIN iam.person p ON p.id = q.authored_by LEFT JOIN iam.person mp ON mp.id = q.moderated_by
+                  LEFT JOIN iam.person sp ON sp.id = assessment.question_setter(q.id, q.version)
                 """ + where + " ORDER BY q.topic NULLS FIRST, q.authored_at DESC LIMIT :lim OFFSET :off"))
                 .param("lim", sz).param("off", (long) (pg - 1) * sz).query().listOfRows();
         for (Map<String, Object> r : rows) {
@@ -193,7 +210,72 @@ class QuestionBankController {
         out.put("page", pg);
         out.put("size", sz);
         out.put("blueprint", blueprint);
+        out.put("awaiting", jdbc.sql("SELECT count(*) FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END AND moderation <> 'APPROVED' AND archived_at IS NULL")
+                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query(Long.class).single());
         return out;
+    }
+
+    /* ── V374: moderation ── */
+
+    public record ModerationIn(@NotBlank @Size(max = 10) String decision, @Size(max = 1000) String note) {
+    }
+
+    public record ModerationAllIn(@NotNull @Size(min = 1, max = 500) List<@NotNull UUID> ids, @NotBlank @Size(max = 10) String decision, @Size(max = 1000) String note) {
+    }
+
+    /** a question approved, or returned with a note, by someone other than the person who set its version */
+    @PostMapping("/api/v1/cbt/questions/{id}/moderation")
+    @PreAuthorize(MODERATORS)
+    @Transactional
+    Map<String, Object> moderate(@PathVariable UUID id, @Valid @RequestBody ModerationIn in) {
+        bankOf(id);
+        return jdbc.sql("SELECT id, version, moderation, moderated_at, moderation_note FROM assessment.question_moderate(:q, :d, :n)")
+                .param("q", id).param("d", in.decision()).param("n", blank(in.note()), Types.VARCHAR).query().singleRow();
+    }
+
+    /** several questions decided at once — each judged on its own; one the actor set, or one already decided, is left as it is and said so */
+    @PostMapping("/api/v1/cbt/questions/moderation")
+    @PreAuthorize(MODERATORS)
+    @Transactional
+    Map<String, Object> moderateAll(@Valid @RequestBody ModerationAllIn in) {
+        int done = 0;
+        String want = "APPROVE".equalsIgnoreCase(in.decision().trim()) ? "APPROVED" : "RETURNED";
+        List<Map<String, Object>> left = new java.util.ArrayList<>();
+        for (UUID id : new java.util.LinkedHashSet<>(in.ids())) {
+            bankOf(id);
+            String state = jdbc.sql("SELECT moderation FROM assessment.question WHERE id = :q").param("q", id).query(String.class).single();
+            if (want.equals(state)) {
+                left.add(Map.of("id", id, "code", "CBT_ALREADY_" + want, "detail", "already " + want.toLowerCase()));
+                continue;
+            }
+            String problem = jdbc.sql("SELECT assessment.question_moderation_problem(:q, :d, :n)").param("q", id).param("d", in.decision()).param("n", blank(in.note()), Types.VARCHAR)
+                    .query(String.class).optional().orElse(null);
+            if (problem != null) {
+                int c = problem.indexOf(':');
+                left.add(Map.of("id", id, "code", c > 0 ? problem.substring(0, c) : "CBT_MODERATION", "detail", c > 0 ? problem.substring(c + 1).trim() : problem));
+                continue;
+            }
+            jdbc.sql("SELECT (assessment.question_moderate(:q, :d, :n)).id").param("q", id).param("d", in.decision()).param("n", blank(in.note()), Types.VARCHAR).query(UUID.class).single();
+            done++;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("decided", done);
+        out.put("left", left);
+        return out;
+    }
+
+    /** every moderation decision on a question, newest first */
+    @GetMapping("/api/v1/cbt/questions/{id}/moderation")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> moderationHistory(@PathVariable UUID id) {
+        bankOf(id);
+        return jdbc.sql("""
+                SELECT m.version, m.decision, m.note, m.decided_at, m.decided_office,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS decided_by
+                  FROM assessment.question_moderation m LEFT JOIN iam.person p ON p.id = m.decided_by
+                 WHERE m.question_id = :id ORDER BY m.decided_at DESC
+                """).param("id", id).query().listOfRows();
     }
 
     /** V364: every version of a question, as candidates were examined on it, and the attempts that drew each */
@@ -265,7 +347,7 @@ class QuestionBankController {
                 .param("d", body.difficulty() == null || body.difficulty().isBlank() ? null : body.difficulty().toUpperCase(), Types.VARCHAR)
                 .param("m", body.marks(), Types.INTEGER).param("x", blank(body.explanation()), Types.VARCHAR)
                 .query(UUID.class).single();
-        return Map.of("id", id, "kind", c.kind());
+        return Map.of("id", id, "kind", c.kind(), "moderation", "PENDING");
     }
 
     /** an edit: a new version of the question (V364) — the attempts already sat keep the version they drew; refused while an examination drawing it is open */

@@ -83,7 +83,9 @@ class JupebCbtIT {
         ResponseEntity<Map> r = it.call(office, HttpMethod.POST, "/api/v1/cbt/questions", Map.of("course", "JUPEB:ZJ" + tag, "kind", "MCQ", "stem", stem,
                 "options", List.of("a", "b", "c", "d"), "answer", answer, "marks", 1, "difficulty", "MEDIUM", "explanation", "the key is " + answer));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
-        return UUID.fromString(String.valueOf(r.getBody().get("id")));
+        UUID id = UUID.fromString(String.valueOf(r.getBody().get("id")));
+        it.approve(id);   // V374: moderated by someone other than its setter before it goes on a paper
+        return id;
     }
 
     @Test

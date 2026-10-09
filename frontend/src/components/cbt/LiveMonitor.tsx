@@ -29,6 +29,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
   /* the clock read once per tick, so a render is pure */
   const [now, setNow] = useState(() => Date.now());
   const cursor = useRef<string | null>(null);
+  const polls = useRef(0);
   const loadedCandidates = useRef(false);
 
   const merge = useCallback((list: MonitorRow[]) => {
@@ -47,12 +48,15 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
   }, []);
 
   const poll = useCallback(async () => {
-    const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/monitor${cursor.current ? `?since=${encodeURIComponent(cursor.current)}` : ""}`);
+    // V374: the eligibility count (each candidate's fees judged) is read on opening and once a minute, not on every poll
+    polls.current += 1;
+    const full = polls.current % 30 === 0 ? "&full=true" : "";
+    const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/monitor${cursor.current ? `?since=${encodeURIComponent(cursor.current)}${full}` : ""}`);
     const j = await r.json().catch(() => null);
     if (!r.ok) { setProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
     const mon = j as Monitor;
     setProblem(null);
-    setM(mon);
+    setM((prev) => (prev && mon.counts.eligible == null ? { ...mon, counts: { ...mon.counts, eligible: prev.counts.eligible } } : mon));
     setOffset(new Date(mon.now).getTime() - Date.now());
     merge(mon.rows);
     if (mon.events.length) setEvents((prev) => { const ids = new Set(prev.map((e) => e.id)); return [...mon.events.filter((e) => !ids.has(e.id)), ...prev].slice(0, 300); });

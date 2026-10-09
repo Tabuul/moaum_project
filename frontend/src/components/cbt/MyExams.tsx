@@ -83,8 +83,12 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
               {x.sitting ? (
                 <Note kind="info" title={`Your sitting: ${x.sitting}${x.seat_no ? ` · seat ${x.seat_no}` : ""}`}>
                   {x.sitting_venue} · {whenAt(x.sitting_starts_at)}{x.sitting_ends_at ? ` to ${new Date(x.sitting_ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}. The examination opens to you only in your sitting; come to the venue in good time.
+                  {/* V374: the office's late-entry limit, when it set one */}
+                  {x.late_entry_until && x.attendance !== "LATE" ? <> You may start on your own until <b>{new Date(x.late_entry_until).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>; after that, only once the invigilator admits you.</> : null}
                 </Note>
               ) : null}
+              {x.attendance === "ABSENT" ? <Note kind="bad" title="Marked absent">The invigilator marked you absent from your sitting, so the examination does not open to you. If you are in the hall, ask the invigilator to admit you.</Note> : null}
+              {x.attendance === "LATE" ? <div className="sub2 mt-1">The invigilator admitted you late{x.late_minutes_given ? <>, with <b>{x.late_minutes_given} minutes</b> given back</> : null}.</div> : null}
               {x.extra_minutes ? <div className="sub2 mt-1">You have <b>{x.extra_minutes} minutes&rsquo; extra time</b> on this paper; your clock includes it.</div> : null}
               {x.security_mode === "SECURE" ? <div className="sub2 mt-1">This examination is sat in the University&rsquo;s secure examination environment{x.venue === "LAB" ? " at the CBT laboratory" : ""}; it does not open in an ordinary browser.</div> : null}
               {x.eligibility && x.attempt_status !== "IN_PROGRESS" && codeOf(x.eligibility) !== "CBT_EXAM_NOT_OPEN" ? <div className="sub2 mt-1">{textOf(x.eligibility)}</div> : null}

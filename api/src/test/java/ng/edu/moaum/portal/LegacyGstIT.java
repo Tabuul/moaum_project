@@ -215,6 +215,8 @@ class LegacyGstIT {
                 """).param("o", offering).query(UUID.class).single());
         it.db(() -> {
             UUID q = jdbc.sql("INSERT INTO assessment.question (course_code, stem, options, answer, kind, marks) VALUES (:c, 'legacy q', '[\"a\",\"b\"]', 0, 'MCQ', 1) RETURNING id").param("c", code).query(UUID.class).single();
+            // V374: approved by a moderator (someone other than its setter) before it goes on a paper
+            jdbc.sql("UPDATE assessment.question SET moderation = 'APPROVED', moderated_version = version, moderated_by = gen_random_uuid(), moderated_at = now() WHERE id = :q").param("q", q).update();
             jdbc.sql("INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (:e, :q, 1)").param("e", exam).param("q", q).update();
             jdbc.sql("UPDATE assessment.cbt_exam SET state = 'PUBLISHED', published_at = now() WHERE id = :e").param("e", exam).update();
             return null;

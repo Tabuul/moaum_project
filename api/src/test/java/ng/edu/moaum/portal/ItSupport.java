@@ -37,6 +37,13 @@ final class ItSupport {
         return TestTokens.token(UUID.randomUUID(), List.of(office));
     }
 
+    /** V374: a question approved by a moderator who did not set it — the Super Administrator under a fresh token, so another person */
+    @SuppressWarnings("rawtypes")
+    void approve(UUID question) {
+        ResponseEntity<Map> r = call(token("super"), HttpMethod.POST, "/api/v1/cbt/questions/" + question + "/moderation", Map.of("decision", "APPROVE"));
+        if (r.getStatusCode().value() != 200) throw new IllegalStateException("approving " + question + ": " + r.getBody());
+    }
+
     /** a call with no token at all: the public doors (apply, sign-in, status) */
     @SuppressWarnings("rawtypes")
     ResponseEntity<Map> anon(HttpMethod method, String path, Object body) {

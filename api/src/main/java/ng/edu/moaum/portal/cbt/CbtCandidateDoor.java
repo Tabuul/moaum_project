@@ -118,13 +118,18 @@ class CbtCandidateDoor {
         return out;
     }
 
-    /** V373: where and when the candidate sits the examination (their sitting and seat), and any extra time they were given */
+    /** V373: where and when the candidate sits the examination (their sitting and seat), and any extra time they were given;
+     *  V374: until when they may still start on their own, and the invigilator's mark (absent, or admitted late with minutes given back) */
     private Map<String, Object> placed(Map<String, Object> row, UUID me) {
         Object exam = row.get("exam_id");
         if (exam == null) return row;
         jdbc.sql("""
-                SELECT s.label AS sitting, s.venue AS sitting_venue, s.starts_at AS sitting_starts_at, s.ends_at AS sitting_ends_at, x.seat_no
-                  FROM assessment.cbt_seat x JOIN assessment.cbt_sitting s ON s.id = x.sitting_id WHERE x.exam_id = :e AND x.candidate_id = :c
+                SELECT s.label AS sitting, s.venue AS sitting_venue, s.starts_at AS sitting_starts_at, s.ends_at AS sitting_ends_at, x.seat_no,
+                       CASE WHEN e.late_entry_minutes IS NULL THEN NULL ELSE s.starts_at + make_interval(mins => e.late_entry_minutes) END AS late_entry_until,
+                       m.status AS attendance, m.minutes_given AS late_minutes_given
+                  FROM assessment.cbt_seat x JOIN assessment.cbt_sitting s ON s.id = x.sitting_id JOIN assessment.cbt_exam e ON e.id = x.exam_id
+                  LEFT JOIN assessment.cbt_attendance m ON m.sitting_id = s.id AND m.candidate_id = x.candidate_id
+                 WHERE x.exam_id = :e AND x.candidate_id = :c
                 """).param("e", exam).param("c", me).query().listOfRows().stream().findFirst().ifPresent(row::putAll);
         jdbc.sql("SELECT minutes FROM assessment.cbt_extra_time WHERE exam_id = :e AND candidate_id = :c").param("e", exam).param("c", me)
                 .query(Integer.class).optional().ifPresent(m -> row.put("extra_minutes", m));

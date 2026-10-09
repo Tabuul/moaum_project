@@ -101,7 +101,9 @@ class CbtEngineIT {
         ResponseEntity<Map> r = it.call(token, HttpMethod.POST, "/api/v1/cbt/questions", mapOf("course", code, "kind", "MCQ", "stem", stem, "options", List.of("a", "b", "c", "d"),
                 "answer", answer, "marks", 1, "difficulty", difficulty, "explanation", "the key is " + answer));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
-        return UUID.fromString(String.valueOf(r.getBody().get("id")));
+        UUID id = UUID.fromString(String.valueOf(r.getBody().get("id")));
+        it.approve(id);   // V374: moderated by someone other than its setter before it goes on a paper
+        return id;
     }
 
     private Map<String, Object> examBody(String office, UUID offering, String selection, int total, Map<String, Object> settings) {

@@ -103,7 +103,9 @@ class CbtExamIT {
     private UUID question(String kind, String stem, List<String> options, Integer answer, List<Integer> answers, int marks) {
         ResponseEntity<Map> r = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions", mapOf("course", code, "kind", kind, "stem", stem, "options", options, "answer", answer, "answers", answers, "marks", marks, "difficulty", "MEDIUM"));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
-        return UUID.fromString(String.valueOf(r.getBody().get("id")));
+        UUID id = UUID.fromString(String.valueOf(r.getBody().get("id")));
+        it.approve(id);   // V374: moderated by someone other than its setter before it goes on a paper
+        return id;
     }
 
     private static Map<String, Object> mapOf(Object... kv) {
@@ -538,5 +540,90 @@ class CbtExamIT {
         ResponseEntity<Map> cancelled = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/cancel", Map.of("reason", "Power failure at the centre"));
         assertThat(cancelled.getBody().get("state")).isEqualTo("CANCELLED");
         assertThat(((Number) m(cancelled.getBody().get("counts")).get("in_progress")).intValue()).isEqualTo(0);
+    }
+
+    @Test
+    void aQuestionIsModeratedBeforeItsPaperAndAnInvigilatorRunsTheSitting() {
+        // V374: a question written waits for moderation; its setter cannot approve it; a lecturer does not moderate; another officer does
+        ResponseEntity<Map> written = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions", mapOf("course", code, "kind", "MCQ", "stem", "Moderated one", "options", List.of("a", "b", "c"), "answer", 1, "marks", 1));
+        assertThat(written.getBody().get("moderation")).isEqualTo("PENDING");
+        UUID q = UUID.fromString(String.valueOf(written.getBody().get("id")));
+        Map<String, Object> mineRow = bankRows(code).stream().filter(r -> q.toString().equals(String.valueOf(r.get("id")))).findFirst().orElseThrow();
+        assertThat(mineRow.get("moderation")).isEqualTo("PENDING");
+        assertThat(mineRow.get("mine")).isEqualTo(true);
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/moderation", Map.of("decision", "APPROVE")).getBody().get("code")).isEqualTo("CBT_MODERATE_OWN");
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/moderation", Map.of("decision", "APPROVE")).getStatusCode().value()).isEqualTo(403);
+        List<UUID> paper = new java.util.ArrayList<>(paper());
+        ResponseEntity<Map> created = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams", examBody("Moderated CBT", OffsetDateTime.now().minusMinutes(1), OffsetDateTime.now().plusHours(2), 3, "WARN", "CONTINUE"));
+        assertThat(created.getStatusCode().value()).as(String.valueOf(created.getBody())).isEqualTo(200);
+        String exam = String.valueOf(created.getBody().get("id"));
+        paper.add(q);
+        Map<String, Object> withIt = Map.of("questions", paper.stream().map(id -> Map.of("id", id)).toList());
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/paper", withIt).getBody().get("code")).isEqualTo("CBT_NOT_MODERATED");
+        String moderator = ItSupport.token("gst");
+        assertThat(it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/moderation", Map.of("decision", "RETURN", "note", " ")).getBody().get("code")).isEqualTo("CBT_REASON_REQUIRED");
+        ResponseEntity<Map> returned = it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/moderation", Map.of("decision", "RETURN", "note", "Say which of a, b and c is meant."));
+        assertThat(returned.getBody().get("moderation")).isEqualTo("RETURNED");
+        ResponseEntity<Map> all = it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/moderation", Map.of("ids", List.of(q, paper.get(0)), "decision", "APPROVE"));
+        assertThat(all.getStatusCode().value()).as(String.valueOf(all.getBody())).isEqualTo(200);
+        assertThat(((Number) all.getBody().get("decided")).intValue()).isEqualTo(1);
+        assertThat(l(all.getBody().get("left"))).singleElement().satisfies(r -> assertThat(r.get("code")).isEqualTo("CBT_ALREADY_APPROVED"));
+        assertThat(it.getList(gst, "/api/v1/cbt/questions/" + q + "/moderation").getBody()).hasSize(2);
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/paper", withIt).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.getList(gst, "/api/v1/cbt/exams/" + exam + "/checks").getBody()).noneSatisfy(c -> assertThat(((Map) c).get("code")).isEqualTo("NOT_MODERATED"));
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/publish", Map.of()).getBody().get("state")).isEqualTo("PUBLISHED");
+
+        // an invigilator named for a sitting begun a moment ago, with no late entry allowed on one's own
+        register(s, student);
+        register(s2, student2);
+        OffsetDateTime now = OffsetDateTime.now();
+        ResponseEntity<Map> added = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings", mapOf("label", "Hall 1", "venue", "CBT Centre", "startsAt", now.minusSeconds(40), "endsAt", now.plusMinutes(60), "capacity", 10));
+        assertThat(added.getStatusCode().value()).as(String.valueOf(added.getBody())).isEqualTo(200);
+        String sitting = String.valueOf(l(added.getBody().get("sittings")).get(0).get("id"));
+        it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/seat-all", Map.of("order", "NUMBER"));
+        assertThat(it.call(eps, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/late-entry", mapOf("minutes", 0)).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/late-entry", mapOf("minutes", 0)).getBody().get("late_entry_minutes")).isEqualTo(0);
+        UUID inv = UUID.randomUUID();
+        String surname = "ZZINV" + code.replace(" ", "");
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single();
+            jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (:id, :n, :s, 'Invented', 'zzinvigilator@example.com')")
+                    .param("id", inv).param("n", "INV/" + inv.toString().substring(0, 8)).param("s", surname).update();
+            jdbc.sql("INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES (gen_random_uuid(), :p, 'hod', 'department', :d, 'test', gen_random_uuid(), current_date)")
+                    .param("p", inv).param("d", dept).update();
+            return null;
+        });
+        assertThat(it.getList(gst, "/api/v1/cbt/staff?q=" + surname.toLowerCase()).getBody()).singleElement().satisfies(r -> assertThat(((Map) r).get("id")).isEqualTo(inv.toString()));
+        ResponseEntity<Map> named = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/invigilators", Map.of("personId", inv, "chief", true));
+        assertThat(named.getStatusCode().value()).as(String.valueOf(named.getBody())).isEqualTo(200);
+        assertThat(l(l(it.get(gst, "/api/v1/cbt/exams/" + exam + "/sittings").getBody().get("sittings")).get(0).get("invigilators"))).singleElement()
+                .satisfies(r -> assertThat(r.get("chief")).isEqualTo(true));
+        String invigilator = TestTokens.token(inv, List.of("hod"));
+        assertThat(it.getList(invigilator, "/api/v1/cbt/invigilation").getBody()).singleElement().satisfies(r -> assertThat(((Map) r).get("sitting_id")).isEqualTo(sitting));
+        Map<String, Object> board = it.get(invigilator, "/api/v1/cbt/sittings/" + sitting + "/board").getBody();
+        assertThat(board.get("role")).isEqualTo("INVIGILATOR");
+        assertThat(l(board.get("rows"))).hasSize(2).allSatisfy(r -> assertThat(r.get("state")).isEqualTo("NOT_COME"));
+        // a lecturer who does not invigilate it, and a candidate, are refused the board; an office that reads examinations reads it, and marks nothing
+        assertThat(it.get(lecturer, "/api/v1/cbt/sittings/" + sitting + "/board").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(student, "/api/v1/cbt/sittings/" + sitting + "/board").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(bursar, "/api/v1/cbt/sittings/" + sitting + "/board").getBody().get("canMark")).isEqualTo(false);
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s2 + "/absent", Map.of()).getStatusCode().value()).isEqualTo(403);
+
+        // past the late-entry limit: started only once admitted, with at most the minutes lost given back
+        assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of()).getBody().get("code")).isEqualTo("CBT_LATE_ENTRY");
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s + "/late", mapOf("minutes", 20, "note", "late bus")).getBody().get("code")).isEqualTo("CBT_LATE_MINUTES");
+        Map<String, Object> admitted = it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s + "/late", mapOf("minutes", 1, "note", "late bus")).getBody();
+        assertThat(l(admitted.get("rows"))).anySatisfy(r -> { assertThat(r.get("candidate_id")).isEqualTo(s.toString()); assertThat(r.get("state")).isEqualTo("ADMITTED"); });
+        ResponseEntity<Map> started = it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of());
+        assertThat(started.getStatusCode().value()).as(String.valueOf(started.getBody())).isEqualTo(200);
+        // one marked absent does not start; the mark of one who started is kept
+        it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s2 + "/absent", Map.of("note", "not in the hall"));
+        assertThat(it.call(student2, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of()).getBody().get("code")).isEqualTo("CBT_MARKED_ABSENT");
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s + "/clear", Map.of()).getBody().get("code")).isEqualTo("CBT_MARK_KEPT");
+        Map<String, Object> after = it.get(invigilator, "/api/v1/cbt/sittings/" + sitting + "/board").getBody();
+        assertThat(l(after.get("rows"))).anySatisfy(r -> { assertThat(r.get("candidate_id")).isEqualTo(s.toString()); assertThat(r.get("state")).isEqualTo("WRITING"); assertThat(r.get("mark")).isEqualTo("LATE"); })
+                .anySatisfy(r -> { assertThat(r.get("candidate_id")).isEqualTo(s2.toString()); assertThat(r.get("state")).isEqualTo("ABSENT"); });
+        assertThat(m(it.get(student2, "/api/v1/me/cbt/exams/" + exam).getBody()).get("attendance")).isEqualTo("ABSENT");
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/remove", Map.of()).getBody().get("code")).isIn("CBT_SITTING_SAT", "CBT_SITTING_MARKED");
     }
 }

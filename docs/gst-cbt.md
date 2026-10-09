@@ -313,3 +313,63 @@ delta; all read through the indexes listed in section F.
   time for a named candidate, with a reason, on the record (`assessment.cbt_extra_time`; 0 withdraws it). Applied at the start, and to an
   attempt already running (its clock follows within the half-minute heartbeat; an `EXTRA_TIME` event is logged). Shown to the candidate.
 - Tests: check.sql 218; `CbtExamIT` (sittings, extra time and a key correction through the API).
+
+## N. Questions moderated, an invigilator's screen, late entry, and a full hall measured (V374)
+
+- **Moderation** (question bank → *Moderation* column; `POST /api/v1/cbt/questions/{id}/moderation`, `POST /api/v1/cbt/questions/moderation`
+  for several, `GET /api/v1/cbt/questions/{id}/moderation`): a question written, imported or changed (a new version: wording, options,
+  key, kind, marks or explanation) waits for moderation. Someone other than the person who set that version — a Head of Department, an
+  Examinations Officer, a Dean, or the GST, EPS or JUPEB office in its own banks — approves it or returns it with a note; the database
+  refuses the setter (`CBT_MODERATE_OWN`), a return without a note (`CBT_REASON_REQUIRED`), and a return of a question an open
+  examination is drawing. Every decision is kept (`assessment.question_moderation`: version, decision, note, who, when); the version now
+  records who made it. Only approved questions go on a paper: the paper is refused with one that is not (`CBT_NOT_MODERATED`), an
+  examination holding one is neither published nor opened, the paper checks name it (HIGH) and count what the bank still has waiting,
+  and a whole-bank draw takes approved questions only. The questions already in the banks before V374 are taken as approved
+  ("in the bank before moderation"). The bank's courses list and tiles show how many wait; *Approve n awaiting* decides the ones the
+  signed-in moderator did not set.
+- **Invigilators** (Sittings tab → *Invigilators*; staff found by name or staff number among those holding an office today,
+  `GET /api/v1/cbt/staff?q=`, `POST /api/v1/cbt/exams/{id}/sittings/{sitting}/invigilators`, `…/invigilators/{person}/remove`): the office
+  names each sitting's invigilators, one of them chief if it wishes; each is told by email (or a text when the record has no email). Nobody
+  invigilates two overlapping sittings (`CBT_INVIGILATOR_BUSY`); only staff (`CBT_INVIGILATOR_NOT_STAFF`).
+- **The invigilator's screen** (menu *Invigilation* → `/cbt/invigilate`, `/cbt/invigilate/{sitting}`; `GET /api/v1/cbt/invigilation`,
+  `GET /api/v1/cbt/sittings/{sitting}/board`): seat by seat — not come, absent, admitted late, writing (answered of total, minutes
+  left), not heard from (silent a minute), time up, submitted, time expired, terminated — with counts, a filter and a search, read again
+  every fifteen seconds; it prints as an attendance sheet. No answers or scores appear. Read by the sitting's invigilators, the office
+  running the examination, and (read only) the offices that read examinations. Photographs: the portal holds no student photograph to
+  show, so the seat shows the name, number and level.
+- **Attendance** (`POST /api/v1/cbt/sittings/{sitting}/candidates/{candidate}/absent | late | clear`, `…/rest-absent`): an invigilator of
+  the sitting, or the office, marks a candidate absent once the sitting has begun and never after they started (`CBT_ABSENT_BEGUN`), or
+  admits one who came late with up to the minutes they lost given back (`CBT_LATE_MINUTES` beyond that; more is the office's extra
+  time). A candidate marked absent does not start (`CBT_MARKED_ABSENT`); a mark is undone while the candidate has not started; a
+  sitting with marks in it is kept (`CBT_SITTING_MARKED`). Kept in `assessment.cbt_attendance`, audited.
+- **Late entry** (Sittings tab → *Late entry*; `PUT /api/v1/cbt/exams/{id}/late-entry`): when the office sets it, a candidate may start on
+  their own until that many minutes after their sitting begins; later, only once admitted (`CBT_LATE_ENTRY`). Not set, there is no limit
+  — none is assumed. The student's CBT page shows the time entry closes, and an absent mark or a late admission.
+- **A full hall measured** (`cbt-load.mjs --mode hall`): every candidate seated in one sitting with an invigilator; all start within five
+  seconds; each saves an answer every ~5 s (several times a real candidate's pace) with the room's 30-second heartbeat for two or three
+  minutes; then time is up and every screen submits within 1.5 s; the live monitor is read every 2 s and the board every 15 s. Development
+  machine (12 cores; API, PostgreSQL 18 and the load generator on the same machine; pool of 10; `synchronous_commit` off). Client-side
+  milliseconds, p95 (p99), after the two fixes below; no errors in any run:
+
+  | Hall | start | save | heartbeat | submit at time up | monitor p50 | board p50 | calls/s |
+  |---|---|---|---|---|---|---|---|
+  | 300 | 41 (178) | 28 (34) | 20 (31) | 89 (106) | 37 | 70 | 74 |
+  | 500 | 56 (183) | 25 (29) | 17 (94) | 148 (191) | 39 | 50 | 121 |
+  | 1,000 | 277 (403) | 25 (31) | 16 (21) | 504 (681) | 56 | 83 | 244 |
+  | 2,000 | 407 (619) | 28 (238) | 16 (22) | 2,605 (2,724) | 86 | 154 | 476 |
+
+  The stress mode (500 candidates answering the whole paper as fast as the network allows) peaked at ~950 calls a second with no
+  errors (saves p95 0.5 s at saturation). Doubling the pool to 20 made no difference: the limit on one machine is CPU, not connections.
+  **Capacity**: up to 1,000 candidates in one sitting with every step under about half a second; 2,000 works without error but the
+  time-up rush takes 2–3 s. Railway's processors, `synchronous_commit` on and the network between the API and the database will move
+  these figures; run the same script against a staging copy before relying on more than 500 per sitting there.
+- **Fixed from the load test**: (1) every answer saved and every heartbeat wrote the whole attempt (its question lists included) to the
+  audit trail, before and after — 44,188 audit entries for a 3-minute, 500-candidate hall; an update that moves only an attempt's
+  `last_activity_at`, `answered` and `updated_at` is no longer audited (3,607 entries for the same hall), every other change is, and the
+  answers are kept as before in `assessment.cbt_answer`. (2) The live monitor judged every candidate's eligibility (fees and all) on each
+  two-second read; that read (`assessment.cbt_monitor_live_counts`) now leaves it out, and the screen reads it on opening and once a minute.
+  Together, for a 2,000-candidate hall, they took start p95 from 1.3 s to 0.4 s, the time-up rush from 4.1 s to 2.6 s, saves p99 from 1.1 s
+  to 0.24 s and the monitor p50 from 287 ms to 86 ms.
+- Tests: check.sql 219; `CbtExamIT` (moderation through the API — the setter refused, a lecturer refused, return with a note, the paper
+  refused then accepted, several decided at once — and a sitting run by an invigilator: late entry, admission, absence, the board for
+  the invigilator, the office and a reader, a lecturer and a candidate refused).

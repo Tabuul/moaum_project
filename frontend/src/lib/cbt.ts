@@ -41,7 +41,7 @@ export const COUNTABLE: [string, string][] = [
 ];
 
 export interface CbtCounts {
-  candidates: number; eligible: number; not_started: number; in_progress: number; submitted: number; time_expired: number; terminated: number;
+  candidates: number; eligible: number | null; not_started: number; in_progress: number; submitted: number; time_expired: number; terminated: number;
   disconnected: number; warned: number; critical: number; scored: number; live_state: LiveState; now: string;
 }
 export interface CbtStats {
@@ -112,7 +112,9 @@ export interface CbtSummary {
 
 /* the candidate's side */
 /** V373: where and when a candidate sits an examination, and any extra time they were given */
-export interface Placement { sitting?: string | null; sitting_venue?: string | null; sitting_starts_at?: string | null; sitting_ends_at?: string | null; seat_no?: number | null; extra_minutes?: number | null }
+export interface Placement { sitting?: string | null; sitting_venue?: string | null; sitting_starts_at?: string | null; sitting_ends_at?: string | null; seat_no?: number | null; extra_minutes?: number | null;
+  /** V374: until when the candidate may still start on their own (the office's late-entry limit), and the invigilator's mark */
+  late_entry_until?: string | null; attendance?: "ABSENT" | "LATE" | null; late_minutes_given?: number | null }
 export type MyExam = {
   exam_id: string; reference: string; office: CbtOffice; course_code: string; course_title: string; title: string; session: string; semester: number; instructions: string | null;
   live_state: LiveState; starts_at: string; ends_at: string; duration_minutes: number; questions: number; security_mode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB";

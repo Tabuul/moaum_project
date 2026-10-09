@@ -80,6 +80,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
@@ -169,6 +170,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -245,6 +247,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -541,6 +544,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -811,6 +815,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
@@ -916,6 +921,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
@@ -1822,6 +1828,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/timetable", "icon": "calendar", "label": "Timetable" },
           { "id": "jupeb/practice", "icon": "clock", "label": "Practice Tests" },
           { "id": "jupeb/cbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "jupeb/bank", "icon": "flask", "label": "Question Bank" },
           { "id": "jupeb/attendance", "icon": "check", "label": "Attendance" },
           { "id": "jupeb/ca", "icon": "doc", "label": "Continuous Assessment" },
@@ -2159,6 +2166,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
           { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
@@ -2193,6 +2201,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
+          { "id": "t/invigilate", "icon": "cap", "label": "Invigilation" },
           { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }

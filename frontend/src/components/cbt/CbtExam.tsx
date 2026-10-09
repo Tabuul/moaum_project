@@ -21,7 +21,9 @@ import { CbtSittings } from "./CbtSittings";
 type Tab = "setup" | "paper" | "candidates" | "sittings" | "results" | "items";
 /** V372: the question analysis opens once nobody is still writing */
 const ENDED = ["ENDED", "CLOSED", "COMPLETED", "CANCELLED"];
-interface BankQuestion { id: string; topic: string | null; stem: string; kind: string; difficulty: string; marks: number; active: boolean; on_papers: number; options: string[] }
+interface BankQuestion { id: string; topic: string | null; stem: string; kind: string; difficulty: string; marks: number; active: boolean; on_papers: number; options: string[]; moderation?: "PENDING" | "APPROVED" | "RETURNED"; moderation_note?: string | null }
+/** V374: only a question a moderator approved goes on a paper */
+const approved = (q: BankQuestion) => !q.moderation || q.moderation === "APPROVED";
 
 export async function cbtSend(path: string, method: "POST" | "PUT", body: unknown, reason: string): Promise<Record<string, unknown> | null> {
   const r = await fetch(`/api/bff/api/v1/cbt${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
@@ -155,7 +157,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       {tab === "paper" && canManage ? <CbtPaperChecks examId={exam.id} reload={`${exam.state}:${exam.paper.map((p) => `${p.id}/${p.paper_marks ?? ""}`).join(",")}`} /> : null}
       {tab === "paper" ? (
         <Panel title={exam.selection === "RANDOM" ? `The pool · ${picked.length ? `${picked.length} chosen` : `the course's whole active bank (${num(exam.pool_size)})`}` : `The paper · ${picked.length} question${picked.length === 1 ? "" : "s"}`}
-          right={editable ? <span className="row row--inline row--tight"><Btn kind="ghost" disabled={busy || !bank} onClick={() => setPicked(bank ? bank.filter((q) => q.active).map((q) => q.id) : picked)}>Pick every active question</Btn><Btn kind="ghost" disabled={busy || !picked.length} onClick={() => setPicked([])}>Clear</Btn><Btn kind="primary" disabled={busy} onClick={() => void savePaper()}>{busy ? "Saving…" : "Save the paper"}</Btn></span> : <span className="sub2">Fixed{exam.state === "PUBLISHED" ? " since publication" : ""}</span>}>
+          right={editable ? <span className="row row--inline row--tight"><Btn kind="ghost" disabled={busy || !bank} onClick={() => setPicked(bank ? bank.filter((q) => q.active && approved(q)).map((q) => q.id) : picked)}>Pick every approved active question</Btn><Btn kind="ghost" disabled={busy || !picked.length} onClick={() => setPicked([])}>Clear</Btn><Btn kind="primary" disabled={busy} onClick={() => void savePaper()}>{busy ? "Saving…" : "Save the paper"}</Btn></span> : <span className="sub2">Fixed{exam.state === "PUBLISHED" ? " since publication" : ""}</span>}>
           <PBody>
             {bankProblem ? <ProblemNotice problem={bankProblem} /> : null}
             {exam.selection === "RANDOM" ? (
@@ -179,15 +181,15 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
               {exam.selection === "RANDOM"
                 ? `Each candidate draws ${exam.total_questions} questions from the pool by their own seed. Leave the pool empty to draw from the course's whole active bank, or pick the questions it draws from. `
                 : "The questions in the order listed; shuffled per candidate when the question order says so. "}
-              Marks come from the bank unless overridden on the paper. The correct options never leave the server. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(bankName)}`}>Open the {exam.course_code} bank</LinkBtn>
+              Marks come from the bank unless overridden on the paper. Only a question a moderator has approved goes on a paper; a whole-bank draw takes approved questions only. The correct options never leave the server. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(bankName)}`}>Open the {exam.course_code} bank</LinkBtn>
             </div>
             {!bank ? <div className="sub2">Loading the bank…</div> : (
               <DTable pageSize={50} cols={["On paper|mid", "#|mid", "Question", "Topic|mid", "Kind|mid", "Difficulty|mid", "Marks|num", "Order|mid"]} rows={[...bank].sort((a, b) => (picked.indexOf(a.id) === -1 ? 1e9 : picked.indexOf(a.id)) - (picked.indexOf(b.id) === -1 ? 1e9 : picked.indexOf(b.id))).map((q) => {
                 const on = picked.includes(q.id);
                 return [
-                  <input key="c" type="checkbox" checked={on} disabled={!editable || (!q.active && !on)} onChange={() => toggle(q.id)} aria-label={`Include ${q.stem}`} />,
+                  <input key="c" type="checkbox" checked={on} disabled={!editable || ((!q.active || !approved(q)) && !on)} onChange={() => toggle(q.id)} aria-label={`Include ${q.stem}`} />,
                   <span key="n" className="tnum sub2">{on ? picked.indexOf(q.id) + 1 : "—"}</span>,
-                  <span key="s">{q.stem}{!q.active ? <Pil kind="grey" className="ml-1">retired</Pil> : null}<div className="sub2">{q.options.length} options{q.on_papers ? ` · on ${q.on_papers} paper${q.on_papers === 1 ? "" : "s"}` : ""}</div></span>,
+                  <span key="s">{q.stem}{!q.active ? <Pil kind="grey" className="ml-1">retired</Pil> : null}{!approved(q) ? <Pil kind={q.moderation === "RETURNED" ? "bad" : "warn"} className="ml-1">{q.moderation === "RETURNED" ? "returned by the moderator" : "awaiting moderation"}</Pil> : null}<div className="sub2">{q.options.length} options{q.on_papers ? ` · on ${q.on_papers} paper${q.on_papers === 1 ? "" : "s"}` : ""}</div></span>,
                   <span key="t" className="sub2">{q.topic ?? "—"}</span>,
                   <span key="k" className="sub2">{q.kind === "MULTI" ? "Multiple select" : q.kind === "TRUE_FALSE" ? "True / false" : "Multiple choice"}</span>,
                   <span key="d" className="sub2">{q.difficulty.charAt(0) + q.difficulty.slice(1).toLowerCase()}</span>,

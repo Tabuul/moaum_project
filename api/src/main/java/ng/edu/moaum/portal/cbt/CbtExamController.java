@@ -111,7 +111,7 @@ class CbtExamController {
     }
 
     /** an office reads its own examinations; the readers read every office's; an examinations officer reads the University's own (V364) */
-    private static String office(String o) {
+    static String office(String o) {
         String office = o == null ? "" : o.trim().toUpperCase();
         if (!OFFICES.contains(office)) throw new NotFound("office", o);
         String acting = acting();
@@ -129,7 +129,7 @@ class CbtExamController {
     }
 
     /** only the office itself (or the Super Administrator) changes its examinations; the University's are its examinations offices' (V364) */
-    private static void manage(String office) {
+    static void manage(String office) {
         String acting = acting();
         boolean ok = "super".equals(acting) || ("EXAMS".equals(office) ? EXAMS_MANAGERS.contains(acting) : acting.equalsIgnoreCase(office));
         if (!ok) {
@@ -443,6 +443,12 @@ class CbtExamController {
             boolean ok = jdbc.sql("SELECT EXISTS (SELECT 1 FROM assessment.question WHERE id = :q AND CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END)")
                     .param("q", q.id()).param("c", course).param("sub", subject, Types.OTHER).query(Boolean.class).single();
             if (!ok) throw new DomainRuleViolation("CBT_QUESTION_NOT_OF_COURSE", "A question on the paper is not in " + course + "'s bank.", new DomainRuleViolation.Remedy("Pick questions from the course's own bank.", "You"));
+            // V374: a question goes on a paper once a moderator — someone other than the person who set it — has approved it
+            String moderation = jdbc.sql("SELECT moderation FROM assessment.question WHERE id = :q").param("q", q.id()).query(String.class).single();
+            if (!"APPROVED".equals(moderation)) {
+                throw new DomainRuleViolation("CBT_NOT_MODERATED", "Question " + (ordinal + 1) + " on the paper " + ("RETURNED".equals(moderation) ? "was returned by the moderator" : "has not been approved by a moderator") + ".",
+                        new DomainRuleViolation.Remedy("Take it off the paper, or have it approved in the bank by someone other than the person who set it.", "A moderator"));
+            }
             jdbc.sql("INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal, marks) VALUES (:e, :q, :o, :m) ON CONFLICT (exam_id, question_id) DO UPDATE SET ordinal = EXCLUDED.ordinal, marks = EXCLUDED.marks")
                     .param("e", id).param("q", q.id()).param("o", ++ordinal).param("m", q.marks(), Types.INTEGER).update();
         }
@@ -645,7 +651,7 @@ class CbtExamController {
     @GetMapping("/exams/{id}/monitor")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    Map<String, Object> monitor(@PathVariable UUID id, @RequestParam(required = false) OffsetDateTime since) {
+    Map<String, Object> monitor(@PathVariable UUID id, @RequestParam(required = false) OffsetDateTime since, @RequestParam(defaultValue = "false") boolean full) {
         Map<String, Object> e = readable(id);
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> head = new LinkedHashMap<>();
@@ -653,7 +659,9 @@ class CbtExamController {
             head.put(k, e.get(k));
         }
         out.put("exam", head);
-        out.put("counts", jdbc.sql("SELECT * FROM assessment.cbt_monitor_counts(:id)").param("id", id).query().singleRow());
+        // V374: the two-second read leaves each candidate's eligibility out (eligible = null); the screen reads it on opening and once a minute
+        String counts = since == null || full ? "assessment.cbt_monitor_counts" : "assessment.cbt_monitor_live_counts";
+        out.put("counts", jdbc.sql("SELECT * FROM " + counts + "(:id)").param("id", id).query().singleRow());
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id AS attempt_id, a.candidate_id AS student_id, coalesce(s.matric_no, s.admission_no, ja.exam_no, ja.application_no) AS number,
                        coalesce(s.surname, upper(ja.surname)) AS surname, coalesce(s.other_names, ja.first_name || coalesce(' ' || ja.middle_name, '')) AS other_names, a.number AS attempt_no,
@@ -898,9 +906,18 @@ class CbtExamController {
         out.put("sittings", jdbc.sql("""
                 SELECT s.id, s.label, s.venue, s.starts_at, s.ends_at, s.capacity,
                        (SELECT count(*) FROM assessment.cbt_seat x WHERE x.sitting_id = s.id) AS seated,
-                       (SELECT count(*) FROM assessment.cbt_seat x JOIN assessment.cbt_attempt a ON a.exam_id = x.exam_id AND a.candidate_id = x.candidate_id WHERE x.sitting_id = s.id) AS begun
+                       (SELECT count(*) FROM assessment.cbt_seat x JOIN assessment.cbt_attempt a ON a.exam_id = x.exam_id AND a.candidate_id = x.candidate_id WHERE x.sitting_id = s.id) AS begun,
+                       (SELECT count(*) FROM assessment.cbt_attendance m WHERE m.sitting_id = s.id) AS marked,
+                       (SELECT coalesce(json_agg(json_build_object('person_id', p.id, 'name', p.surname || ', ' || p.given_names, 'staff_number', p.staff_number, 'chief', i.chief)
+                                                 ORDER BY i.chief DESC, p.surname), '[]'::json)::text
+                          FROM assessment.cbt_invigilator i JOIN iam.person p ON p.id = i.person_id WHERE i.sitting_id = s.id) AS invigilators
                   FROM assessment.cbt_sitting s WHERE s.exam_id = :e ORDER BY s.starts_at, s.label
-                """).param("e", id).query().listOfRows());
+                """).param("e", id).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> row = new LinkedHashMap<>(r);
+                    row.put("invigilators", mapper.readValue(String.valueOf(r.get("invigilators")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+                    return row;
+                }).toList());
+        out.put("late_entry_minutes", jdbc.sql("SELECT late_entry_minutes FROM assessment.cbt_exam WHERE id = :e").param("e", id).query(Integer.class).optional().orElse(null));
         out.put("candidates", jdbc.sql("SELECT count(*) FROM assessment.cbt_candidates(:e)").param("e", id).query(Integer.class).single());
         out.put("unseated", jdbc.sql("""
                 SELECT count(*) FROM assessment.cbt_candidates(:e) c WHERE NOT EXISTS (SELECT 1 FROM assessment.cbt_seat x WHERE x.exam_id = :e AND x.candidate_id = c.student_id)
