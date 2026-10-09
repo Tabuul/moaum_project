@@ -89,7 +89,6 @@ export function Login({ next, sso, ssoProblem = null }: {
         <div className={css.formWrap}>
           <p className={css.eyebrow}><Icon name="shield" className={css.eyebrowIcon} />Secure sign-in</p>
           <h2 className={css.heading}>Portal Login</h2>
-          <p className={css.sub}>For the University&rsquo;s students, staff and applicants. Sign in to open your portal.</p>
 
           <form className={css.form} noValidate onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
             <div className={css.fieldBlock}>
@@ -99,9 +98,10 @@ export function Login({ next, sso, ssoProblem = null }: {
               <div className={css.inputBox}>
                 <Icon name="user" className={css.inputIcon} />
                 <input id="uid" className={css.input} value={uid} placeholder="Matric, staff or JAMB number, or email" autoComplete="username" required
-                  aria-describedby="uid-hint" onChange={(e) => setUid(e.target.value)} />
+                  aria-describedby={who ? "uid-hint" : undefined} onChange={(e) => setUid(e.target.value)} />
               </div>
-              <div id="uid-hint" className={css.hint}>{who || "Students: the matriculation number. Staff: the staff number or email. Applicants: the JAMB or application number, or the email you registered with."}</div>
+              {/* what the username was read as, once one is typed */}
+              {who ? <div id="uid-hint" className={css.hint}>{who}</div> : null}
             </div>
 
             <div className={css.fieldBlock}>
