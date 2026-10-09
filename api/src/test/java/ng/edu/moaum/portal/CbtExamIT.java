@@ -211,6 +211,9 @@ class CbtExamIT {
         assertThat(jdbc.sql("SELECT count(*) FROM assessment.cbt_attempt WHERE exam_id = :e").param("e", exam).query(Long.class).single()).isZero();
         assertThat(it.get(eps, "/api/v1/cbt/exams/" + exam + "/preview").getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(registrar, "/api/v1/cbt/exams/" + exam + "/preview").getStatusCode().value()).isEqualTo(403);
+        // V372: the paper's checks are the office's to read
+        assertThat(it.getList(gst, "/api/v1/cbt/exams/" + exam + "/checks").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(eps, "/api/v1/cbt/exams/" + exam + "/checks").getStatusCode().value()).isEqualTo(403);
 
         // registered candidates are told on publication
         register(s, student);
@@ -264,6 +267,11 @@ class CbtExamIT {
         assertThat(it.callWith(student2, HttpMethod.GET, "/api/v1/me/cbt/attempts/" + attempt, null, tok(token)).getStatusCode().value()).isEqualTo(404);
         ResponseEntity<Map> room = it.callWith(student, HttpMethod.GET, "/api/v1/me/cbt/attempts/" + attempt, null, tok(token));
         assertThat(room.getStatusCode().value()).as(String.valueOf(room.getBody())).isEqualTo(200);
+        // the screen names the candidate: name, the number with what it is, and the level
+        Map<String, Object> who = m(room.getBody().get("candidate"));
+        assertThat(who).containsKeys("surname", "other_names", "number", "number_label", "level");
+        assertThat(who.get("number_label")).isIn("Matric No.", "Admission No.");
+        assertThat(who.get("level")).isNotNull();
         List<Map<String, Object>> questions = l(room.getBody().get("questions"));
         assertThat(questions).hasSize(4);
         String json = String.valueOf(questions);
@@ -317,7 +325,19 @@ class CbtExamIT {
 
         // the results: reviewed, approved, amended with a reason, published; then only stronger authority changes them
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/results/approve", Map.of()).getBody().get("code")).isEqualTo("CBT_NOT_COMPLETED");
+        // V372: the question analysis shows the keys, so it waits for the examination to end
+        assertThat(it.get(gst, "/api/v1/cbt/exams/" + exam + "/items").getBody().get("code")).isEqualTo("CBT_ANALYSIS_LIVE");
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/close", Map.of()).getBody().get("state")).isEqualTo("CLOSED");
+        ResponseEntity<Map> items = it.get(gst, "/api/v1/cbt/exams/" + exam + "/items");
+        assertThat(items.getStatusCode().value()).as(String.valueOf(items.getBody())).isEqualTo(200);
+        assertThat(((Number) items.getBody().get("candidates")).intValue()).isEqualTo(1);
+        assertThat(l(items.getBody().get("questions"))).isNotEmpty().allSatisfy(q -> {
+            assertThat(q).containsKeys("n", "stem", "key", "seen", "correct", "facility", "choices", "flags");
+            assertThat(((Number) q.get("seen")).intValue()).isEqualTo(1);
+            assertThat(q.get("discrimination")).isNull(); // one candidate: no groups to compare
+        });
+        assertThat(it.get(eps, "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(registrar, "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(403);
         ResponseEntity<Map> completed = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/complete", Map.of());
         assertThat(completed.getBody().get("state")).isEqualTo("COMPLETED");
         assertThat(completed.getBody().get("results_state")).isEqualTo("AUTO_SCORED");

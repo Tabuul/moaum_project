@@ -14,8 +14,12 @@ import { EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, pct1, textOf, whenAt, typ
 import { EMPTY_FORM, ExamFields, formBody, localInput, type ExamForm } from "./CbtExams";
 import { CbtCandidates } from "./CbtCandidates";
 import { CbtResults } from "./CbtResults";
+import { CbtPaperChecks } from "./CbtPaperChecks";
+import { CbtItems, useItemAnalysis } from "./CbtItems";
 
-type Tab = "setup" | "paper" | "candidates" | "results";
+type Tab = "setup" | "paper" | "candidates" | "results" | "items";
+/** V372: the question analysis opens once nobody is still writing */
+const ENDED = ["ENDED", "CLOSED", "COMPLETED", "CANCELLED"];
 interface BankQuestion { id: string; topic: string | null; stem: string; kind: string; difficulty: string; marks: number; active: boolean; on_papers: number; options: string[] }
 
 export async function cbtSend(path: string, method: "POST" | "PUT", body: unknown, reason: string): Promise<Record<string, unknown> | null> {
@@ -54,6 +58,9 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
   const live = exam.live_state;
   const counts = exam.counts;
   const stats = exam.stats;
+  const ended = ENDED.includes(String(live));
+  // V372: the results are approved knowing whether a question looks like a wrong key
+  const analysis = useItemAnalysis(exam.id, canManage && ended && tab === "results");
 
   useEffect(() => {
     if (tab !== "paper" || bank) return;
@@ -119,6 +126,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       <Tabs label="Examination" value={tab} onChange={setTab} items={[
         { id: "setup", label: "Setup & lifecycle" }, { id: "paper", label: "Paper", count: exam.paper.length || undefined },
         { id: "candidates", label: "Candidates", count: num(counts.candidates) }, { id: "results", label: "Results & analytics", count: num(counts.scored) },
+        ...(canManage ? [{ id: "items" as Tab, label: "Question analysis" }] : []),
       ]} />
 
       {tab === "setup" ? (
@@ -143,6 +151,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
         </>
       ) : null}
 
+      {tab === "paper" && canManage ? <CbtPaperChecks examId={exam.id} reload={`${exam.state}:${exam.paper.map((p) => `${p.id}/${p.paper_marks ?? ""}`).join(",")}`} /> : null}
       {tab === "paper" ? (
         <Panel title={exam.selection === "RANDOM" ? `The pool · ${picked.length ? `${picked.length} chosen` : `the course's whole active bank (${num(exam.pool_size)})`}` : `The paper · ${picked.length} question${picked.length === 1 ? "" : "s"}`}
           right={editable ? <span className="row row--inline row--tight"><Btn kind="ghost" disabled={busy || !bank} onClick={() => setPicked(bank ? bank.filter((q) => q.active).map((q) => q.id) : picked)}>Pick every active question</Btn><Btn kind="ghost" disabled={busy || !picked.length} onClick={() => setPicked([])}>Clear</Btn><Btn kind="primary" disabled={busy} onClick={() => void savePaper()}>{busy ? "Saving…" : "Save the paper"}</Btn></span> : <span className="sub2">Fixed{exam.state === "PUBLISHED" ? " since publication" : ""}</span>}>
@@ -191,7 +200,14 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       ) : null}
 
       {tab === "candidates" ? <CbtCandidates exam={exam} base={base} canManage={canManage} /> : null}
+      {tab === "results" && analysis.data && analysis.data.flagged > 0 ? (
+        <Note kind="bad" title={`${analysis.data.flagged} question${analysis.data.flagged === 1 ? "" : "s"} may carry a wrong key`}
+          action={<Btn kind="secondary" onClick={() => setTab("items")}>Open the question analysis</Btn>}>
+          More of the strongest candidates chose another option than the one marked correct. Look at the key before approving the results.
+        </Note>
+      ) : null}
       {tab === "results" ? <CbtResults exam={exam} base={base} canManage={canManage} stronger={stronger} /> : null}
+      {tab === "items" ? <CbtItems examId={exam.id} ended={ended} /> : null}
 
       {ask ? (
         <Modal title={ask.title} sub={exam.reference} onClose={() => setAsk(null)}

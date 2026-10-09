@@ -173,10 +173,18 @@ class CbtCandidateDoor {
         out.put("flagged", flagged);
         out.put("seqs", seqs);
         // V364: the candidate the screen names in its header
+        // the candidate's name, number and (a student's) level, each named, so the candidate and the invigilator see whose paper it is
         out.put("candidate", kind == Kind.JUPEB
-                ? jdbc.sql("SELECT upper(surname) AS surname, first_name || coalesce(' ' || middle_name, '') AS other_names, coalesce(exam_no, application_no) AS number FROM jupeb.application WHERE id = :s")
-                        .param("s", me).query().singleRow()
-                : jdbc.sql("SELECT surname, other_names, coalesce(matric_no, admission_no) AS number FROM people.student WHERE id = :s").param("s", me).query().singleRow());
+                ? jdbc.sql("""
+                        SELECT upper(surname) AS surname, first_name || coalesce(' ' || middle_name, '') AS other_names, coalesce(exam_no, application_no) AS number,
+                               CASE WHEN exam_no IS NOT NULL THEN 'JUPEB No.' ELSE 'Application No.' END AS number_label
+                          FROM jupeb.application WHERE id = :s
+                        """).param("s", me).query().singleRow()
+                : jdbc.sql("""
+                        SELECT surname, other_names, coalesce(matric_no, admission_no) AS number,
+                               CASE WHEN matric_no IS NOT NULL THEN 'Matric No.' ELSE 'Admission No.' END AS number_label, current_level AS level
+                          FROM people.student WHERE id = :s
+                        """).param("s", me).query().singleRow());
         out.put("now", OffsetDateTime.now());
         return out;
     }

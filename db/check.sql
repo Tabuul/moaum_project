@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 216
+\set EXPECTED 217
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7389,6 +7389,63 @@ BEGIN
         coalesce(n_rows = 2 AND m_first = 3 AND stem_first = 'V371 first, corrected' AND opts = '0=a,1=b,2=c,3=d'
                  AND v_result !~* 'answer|explanation|key' AND n_attempts = 0, false),
         format('rows=%s marks=%s stem=%s options=%s result=%s attempts=%s', n_rows, m_first, stem_first, opts, v_result, n_attempts));
+END $$;
+
+-- ── V372: a paper checked before publishing; each question analysed once the examination has ended ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); off uuid := gen_random_uuid(); ex assessment.cbt_exam; ex2 assessment.cbt_exam;
+        qa uuid := gen_random_uuid(); qb uuid := gen_random_uuid(); qc uuid := gen_random_uuid(); qd uuid := gen_random_uuid();
+        qe uuid := gen_random_uuid(); qf uuid := gen_random_uuid(); k1 uuid := gen_random_uuid(); k2 uuid := gen_random_uuid(); k3 uuid := gen_random_uuid();
+        checks text; st uuid; att uuid; r int; v_q1 text; v_q2 text; v_q3 text; d1 numeric; d3 numeric; f2 numeric; c1 jsonb; u1 jsonb; pa text := 'C00023';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9965/9966', date '9965-10-01', date '9966-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 965', 'Check paper and analysis', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 965', '9965/9966', 1);
+        -- a paper with its options shuffled for each candidate, and every fault the checks look for
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, answers, kind, marks) VALUES
+            (qa, 'GST 965', 'V372 positional', '["Lagos","Abuja","Kano","All of the above"]', 3, NULL, 'MCQ', 1),
+            (qb, 'GST 965', 'V372 repeated', '["Lagos","Abuja","lagos ","Kano"]', 0, NULL, 'MCQ', 1),
+            (qc, 'GST 965', 'V372 twice', '["one","two"]', 0, NULL, 'MCQ', 1),
+            (qd, 'GST 965', 'V372   twice', '["two","one"]', 0, NULL, 'MCQ', 1),
+            (qe, 'GST 965', 'V372 multi with one key', '["a","b","c"]', 1, ARRAY[1], 'MULTI', 1),
+            (qf, 'GST 965', 'V372 blank option', '["a",""]', 0, NULL, 'MCQ', 1);
+        ex := assessment.cbt_new_exam('GST', off, 'V372 checks', NULL, 30, 0, 'FIXED', false, true, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, qa, 1), (ex.id, qb, 2), (ex.id, qc, 3), (ex.id, qd, 4), (ex.id, qe, 5), (ex.id, qf, 6);
+        SELECT string_agg(coalesce(c.n::text, '-') || ':' || c.code || ':' || c.severity, ',' ORDER BY c.n, c.code) INTO checks FROM assessment.cbt_paper_checks(ex.id) c;
+        -- an ended examination of three questions sat by twenty candidates: the top five all chose C on the first question, keyed A
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES
+            (k1, 'GST 965', 'V372 wrong key?', '["a","b","c","d"]', 0, 'MCQ', 1),
+            (k2, 'GST 965', 'V372 everyone right', '["a","b"]', 1, 'MCQ', 1),
+            (k3, 'GST 965', 'V372 separates', '["a","b","c","d"]', 0, 'MCQ', 1);
+        ex2 := assessment.cbt_new_exam('GST', off, 'V372 analysis', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex2.id, k1, 1), (ex2.id, k2, 2), (ex2.id, k3, 3);
+        FOR r IN 1..20 LOOP
+            st := gen_random_uuid(); att := gen_random_uuid();
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (st, 'MOAUM/ADM/65/' || lpad(r::text, 6, '0'), 'MOAUM/CHK/65/' || r, 'ZZV372', 'Candidate ' || r, pa, 'UTME', '9965/9966', 100, 100, 'ACTIVE', now());
+            INSERT INTO assessment.cbt_attempt (id, exam_id, student_id, ends_at, submitted_at, status, question_ids, seed, max_marks, score, outcome, question_versions, question_marks)
+            VALUES (att, ex2.id, st, now(), now(), 'SUBMITTED', ARRAY[k1, k2, k3], r, 3, 21 - r, 'SCORED', ARRAY[1, 1, 1], ARRAY[1, 1, 1]);
+            INSERT INTO assessment.cbt_answer (attempt_id, question_id, chosen) VALUES
+                (att, k1, CASE WHEN r <= 5 THEN ARRAY[2] ELSE ARRAY[0] END),
+                (att, k2, ARRAY[1]),
+                (att, k3, CASE WHEN r <= 10 THEN ARRAY[0] ELSE ARRAY[3] END);
+        END LOOP;
+        SELECT array_to_string(flags, '/'), discrimination, choices, upper_choices INTO v_q1, d1, c1, u1 FROM assessment.cbt_item_analysis(ex2.id) WHERE n = 1;
+        SELECT array_to_string(flags, '/'), facility INTO v_q2, f2 FROM assessment.cbt_item_analysis(ex2.id) WHERE n = 2;
+        SELECT array_to_string(flags, '/'), discrimination INTO v_q3, d3 FROM assessment.cbt_item_analysis(ex2.id) WHERE n = 3;
+        RAISE EXCEPTION 'the V372 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V372: the paper checks name the positional option under shuffling, two options that read the same (HIGH when one is the key), the duplicate question, the blank option and the one-key multiple-select; the analysis flags the question the strongest candidates answered against its key, a very easy one, and leaves a well-separating one alone',
+        coalesce(checks = '1:POSITIONAL_OPTION:HIGH,2:REPEATED_OPTION:HIGH,4:DUPLICATE_QUESTION:MEDIUM,5:MULTI_ONE_KEY:LOW,6:BLANK_OPTION:HIGH'
+                 AND v_q1 = 'POSSIBLE_WRONG_KEY/NEGATIVE_DISCRIMINATION' AND d1 = -1.00 AND c1 = '{"0": 15, "2": 5}'::jsonb AND u1 = '{"2": 5}'::jsonb
+                 AND v_q2 = 'WEAK_DISCRIMINATION/VERY_EASY' AND f2 = 1.00 AND v_q3 = '' AND d3 = 1.00, false),
+        format('checks=%s | q1=%s d=%s choices=%s top=%s | q2=%s f=%s | q3=[%s] d=%s', checks, v_q1, d1, c1, u1, v_q2, f2, v_q3, d3));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

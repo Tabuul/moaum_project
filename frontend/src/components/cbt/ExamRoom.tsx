@@ -33,6 +33,9 @@ type NavFilter = "ALL" | "UNANSWERED" | "MARKED";
 const TEXT_SIZES = [0.9, 1, 1.15, 1.3, 1.5];
 const TEXT_SIZE_KEY = "cbt-text-size";
 const OFFICE_HOME: Record<string, string> = { GST: "/gst/cbt", EPS: "/eps/cbt", EXAMS: "/exams/cbt", JUPEB: "/jupeb/cbt" };
+/** V372: where the answers not yet saved are kept on this device, and for how long they are worth sending again */
+const keptKey = (attemptId: string) => `cbt-unsaved:${attemptId}`;
+const KEPT_FOR_MS = 2 * 24 * 3600 * 1000;
 
 /** previewExamId (V371): the office opens its own paper in the room — no attempt, nothing saved, nothing reported, nothing submitted */
 export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHref = "/student/cbt", listLabel = "CBT examinations", previewExamId }: {
@@ -41,6 +44,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const preview = !!previewExamId;
   const [phase, setPhase] = useState<Phase>("loading");
   const [previewNotes, setPreviewNotes] = useState<PreviewNotes | null>(null);
+  const [restoredCount, setRestoredCount] = useState(0);
   const [navFilter, setNavFilter] = useState<NavFilter>("ALL");
   const [textSize, setTextSize] = useState<number>(() => {
     try { const v = Number(window.localStorage.getItem(TEXT_SIZE_KEY)); return TEXT_SIZES.includes(v) ? v : 1; } catch { return 1; }
@@ -119,9 +123,20 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const end = useCallback((status: string) => {
     setEndStatus(status);
     setPhase("ended");
+    try { window.localStorage.removeItem(keptKey(attemptId)); } catch { /* nothing kept */ }
     stopCamera();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
-  }, [stopCamera]);
+  }, [stopCamera, attemptId]);
+
+  /* the answers not yet saved, kept on this device for this attempt: a crash, a dead battery or a reload while offline loses none
+     of them — they are sent again when the room reopens, and the save numbers keep an older one from replacing a newer */
+  const keepUnsaved = useCallback(() => {
+    if (preview) return;
+    try {
+      if (!pending.current.size) window.localStorage.removeItem(keptKey(attemptId));
+      else window.localStorage.setItem(keptKey(attemptId), JSON.stringify({ at: Date.now(), items: Object.fromEntries(pending.current) }));
+    } catch { /* storage refused: the answers wait in memory as before */ }
+  }, [attemptId, preview]);
 
   const handleProblem = useCallback((p: Problem): boolean => {
     const code = (p as { code?: string }).code;
@@ -145,9 +160,32 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     const rm = j as Room;
     if (previewExamId) setPreviewNotes((j as { preview?: PreviewNotes }).preview ?? null);
     setRoom(rm);
-    setAnswers(rm.answers ?? {});
-    setFlagged(rm.flagged ?? []);
     seqs.current = new Map(Object.entries(rm.seqs ?? {}).map(([k, v]) => [k, Number(v)]));
+    // answers kept on this device and newer than the server's (by their save number) are restored and sent again
+    const merged: Record<string, number[]> = { ...(rm.answers ?? {}) };
+    const marks = new Set(rm.flagged ?? []);
+    let restored = 0;
+    if (!previewExamId) {
+      try {
+        const raw = window.localStorage.getItem(keptKey(attemptId));
+        const kept = raw ? (JSON.parse(raw) as { at?: number; items?: Record<string, Pending> }) : null;
+        if (kept && (!kept.at || Date.now() - kept.at > KEPT_FOR_MS)) window.localStorage.removeItem(keptKey(attemptId));
+        else if (kept?.items) {
+          for (const [qid, p] of Object.entries(kept.items)) {
+            if (!p || typeof p.seq !== "number" || !rm.questions.some((x) => x.id === qid) || p.seq <= (seqs.current.get(qid) ?? 0)) continue;
+            pending.current.set(qid, p);
+            seqs.current.set(qid, p.seq);
+            if (p.a) { if (p.a.length) merged[qid] = p.a; else delete merged[qid]; }
+            if (p.flag !== undefined) { if (p.flag) marks.add(qid); else marks.delete(qid); }
+            restored++;
+          }
+          if (!restored) window.localStorage.removeItem(keptKey(attemptId));
+        }
+      } catch { /* nothing kept, or storage refused */ }
+    }
+    setAnswers(merged);
+    setFlagged([...marks]);
+    if (restored) { setUnsaved(pending.current.size); setRestoredCount(restored); }
     setOffset(new Date(rm.now).getTime() - Date.now());
     setEndsAt(new Date(rm.attempt.ends_at).getTime());
     // a forward-only paper resumes at the first question not yet answered
@@ -215,11 +253,13 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
           // the server will not take these (a forward-only paper, an option out of range): kept off the retry, the candidate told
           for (const b of batch) if (pending.current.get(b.q)?.seq === b.seq) pending.current.delete(b.q);
           setRefused(p.title ?? "An answer was not saved.");
+          keepUnsaved();
         }
         setUnsaved(pending.current.size);
         return false;
       }
       for (const b of batch) if (pending.current.get(b.q)?.seq === b.seq) pending.current.delete(b.q);
+      keepUnsaved();
       setUnsaved(pending.current.size);
       if (j && j.status && j.status !== "IN_PROGRESS") end(j.status);
       return true;
@@ -227,13 +267,14 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       setUnsaved(pending.current.size);
       return false;
     }
-  }, [attemptId, apiBase, headers, handleProblem, end]);
+  }, [attemptId, apiBase, headers, handleProblem, end, keepUnsaved]);
 
   const queueSave = (q: string, patch: Omit<Pending, "seq">) => {
     if (preview) return; // V371: a preview saves nothing
     const seq = (seqs.current.get(q) ?? 0) + 1;
     seqs.current.set(q, seq);
     pending.current.set(q, { ...pending.current.get(q), ...patch, seq });
+    keepUnsaved();
     setUnsaved(pending.current.size);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void flushAnswers(), SAVE_DEBOUNCE_MS);
@@ -301,6 +342,11 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     /* leaving the page: told to the server even as the page goes, the attempt kept for the candidate's return */
     const onLeave = () => {
       try { void fetch(`${apiBase}/attempts/${attemptId}/events`, { method: "POST", keepalive: true, headers: headers(), body: JSON.stringify({ events: [{ kind: "EXAM_PAGE_EXIT", detail: "the examination page was left or reloaded", n: currentRef.current + 1 }] }) }); } catch { /* the page is going */ }
+      // V372: the answers not yet saved go too, as the page goes; they are also kept on the device in case this does not arrive
+      if (pending.current.size) {
+        const batch = [...pending.current.entries()].map(([q, p]) => ({ q, ...(p.a ? { a: p.a } : {}), ...(p.flag === undefined ? {} : { flag: p.flag }), seq: p.seq }));
+        try { void fetch(`${apiBase}/attempts/${attemptId}/answers`, { method: "PUT", keepalive: true, headers: headers(), body: JSON.stringify({ answers: batch }) }); } catch { /* kept on the device */ }
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
@@ -414,6 +460,8 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     finally { setBusy(false); }
   }, [attemptId, apiBase, headers, handleProblem, end, flushAnswers, preview]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
+  // answers restored from this device are sent as soon as the candidate is back on the paper
+  useEffect(() => { if (phase === "writing" && pending.current.size) void flushAnswers(); }, [phase, flushAnswers]);
 
   /* fullscreen asked for, but never waited on for long: a browser that refuses or never answers still lets the candidate write */
   const goFullscreen = () => Promise.race([
@@ -513,6 +561,12 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     return (
       <Screen title={`${preview ? "PREVIEW · " : ""}${exam.course_code} · ${exam.title}`}>
         {preview ? <PreviewNote notes={previewNotes} /> : null}
+        {room.candidate && !preview ? (
+          <div className={css.idCard}>
+            <CandidateId c={room.candidate} labelled className={css.idGrid} />
+            <div className="sub2">Check that these are yours before you enter. If they are not, tell the invigilator and do not start.</div>
+          </div>
+        ) : null}
         <p>{room.attempt.questions} questions · {room.attempt.max_marks} marks · {preview ? <>{exam.duration_minutes} minutes for a candidate</> : <>your time ends at <b className="tnum">{new Date(room.attempt.ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b> ({clock(left)} left)</>}.</p>
         <ul className="sub2" style={{ margin: 0, paddingLeft: 18 }}>
           {fullscreenRequired ? <li>The examination opens in fullscreen.</li> : null}
@@ -546,7 +600,6 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     );
   }
 
-  const name = room.candidate ? `${room.candidate.surname.toUpperCase()}, ${room.candidate.other_names}` : "";
   const percent = questions.length ? Math.round((answered / questions.length) * 100) : 0;
   const onFlag = q ? flagged.includes(q.id) : false;
   const last = current >= questions.length - 1;
@@ -559,23 +612,27 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         <div className={css.who}>
           <div className={css.uni}>{DEFAULT_INSTITUTION.name}</div>
           <div className={css.exam}><b>{exam.course_code}</b> · {exam.title}</div>
-          <div className={css.cand}>{name}{room.candidate ? <> · <span className="tnum">{room.candidate.number}</span></> : null}</div>
+          <div className={css.cand}><CandidateId c={room.candidate} className={css.idInline} /></div>
         </div>
         {preview ? <span className={css.previewMark}>PREVIEW</span> : null}
         <button type="button" className={`btn btn--go ${css.finishTop}`} disabled={busy} onClick={() => setPhase("summary")}>FINISH</button>
         <div className={`${css.timer}${low && !preview ? ` ${css.low}` : ""}`} aria-live="polite"><span className={css.timerLabel}>TIME LEFT</span>{clock(left)}</div>
       </header>
       <div className={css.progress} aria-hidden="true"><div style={{ width: `${percent}%` }} /></div>
+      {/* on a phone the header has no room for the whole of it: name, number and level in full, beneath it */}
+      {room.candidate && !preview ? <div className={css.idStrip}><CandidateId c={room.candidate} labelled /></div> : null}
       {preview ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><PreviewNote notes={previewNotes} /><a className="btn btn--ghost btn--sm" href={backHref}>Close the preview</a></div> : null}
       {offline ? <div role="status" className={`${css.banner} ${css.bannerWarn}`}>Connection interrupted. Your exam session is being preserved. Please reconnect. Your answers are kept on this screen and saved when the connection returns; the clock continues.</div> : null}
       {fullscreenLost ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>You have exited fullscreen mode. This has been recorded.</span><button type="button" className="btn btn--primary btn--sm" onClick={() => void returnToFullscreen()}>Return to fullscreen</button></div> : null}
       {refused ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>{refused}</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setRefused(null)}>Dismiss</button></div> : null}
       {cameraNote ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><span>{cameraNote}</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setCameraNote(null)}>Dismiss</button></div> : null}
+      {restoredCount ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><span>{restoredCount} answer{restoredCount === 1 ? "" : "s"} you gave before the screen closed {restoredCount === 1 ? "was" : "were"} kept on this device and {unsaved ? (restoredCount === 1 ? "is being saved" : "are being saved") : (restoredCount === 1 ? "has been saved" : "have been saved")}.</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setRestoredCount(0)}>Dismiss</button></div> : null}
 
       {phase === "summary" ? (
         <div className={css.body}>
           <main className={css.paper}>
             <div className={css.qnum}>REVIEW AND SUBMIT</div>
+            {room.candidate && !preview ? <div className="sub2 mt-1"><CandidateId c={room.candidate} className={css.idInline} /></div> : null}
             <div className={css.summaryGrid}>
               <div className={css.summaryTile}><b>{questions.length}</b>Questions</div>
               <div className={css.summaryTile}><b>{answered}</b>Answered</div>
@@ -691,6 +748,26 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** whose paper this is — the candidate's name, their number named for what it is, and a student's level — for the candidate to
+ *  check and for an invigilator to read at a glance */
+function CandidateId({ c, className, labelled }: { c: Room["candidate"]; className?: string; labelled?: boolean }) {
+  if (!c) return null;
+  const name = `${c.surname.toUpperCase()}, ${c.other_names}`;
+  const parts: [string, string][] = [["Name", name], [c.number_label ?? "Number", c.number], ...(c.level ? [["Level", `${c.level} Level`] as [string, string]] : [])];
+  // labelled: each part under its label (the entry screen, the phone's strip); otherwise one line: NAME · Matric No. X · 200 Level
+  return (
+    <span className={className}>
+      {parts.map(([label, value], i) => (
+        <span key={label} className={css.idPart}>
+          {labelled ? <span className={css.idLabel}>{label}</span> : null}
+          {!labelled && i === 1 ? <>{label} </> : null}
+          <b className={i === 0 ? undefined : "tnum"}>{value}</b>
+        </span>
+      ))}
+    </span>
   );
 }
 

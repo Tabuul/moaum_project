@@ -266,3 +266,27 @@ delta; all read through the indexes listed in section F.
   reported or submitted; there is no camera or fullscreen; the screen says how a candidate's paper differs (drawn from the pool,
   questions or options shuffled).
 - Tests: check.sql 216; `CbtExamIT` (the preview carries no key; the other office and reading offices are refused).
+
+## L. Answers kept on the device, paper checks, question analysis (V372)
+
+- **Answers kept on the device**: an answer not yet saved is kept in the browser's storage for that attempt (`cbt-unsaved:{attempt}`,
+  with its save number) as well as in memory, and sent with the page as it closes. When the room reopens — after a crash, a dead battery
+  or a reload while offline — the kept answers newer than the server's (by save number) are restored, shown and sent at once; the
+  candidate is told. The copy is cleared when saved or when the attempt ends, and ignored after two days. A preview keeps nothing.
+- **Paper checks** (Paper tab, the managing office; `GET /api/v1/cbt/exams/{id}/checks`, `assessment.cbt_paper_checks`): the same
+  question twice (stem and options), two options that read the same (to fix when only one is the key), a blank option, an option such as
+  "all of the above" while options are shuffled, a multiple-select question with one key, and — without shuffling — half or more of the
+  single-answer keys on one letter. Warnings only; the bank already refuses an impossible key. The preview names how many there are.
+- **Question analysis** (new tab, the managing office, once the examination has ended — it shows the keys;
+  `GET /api/v1/cbt/exams/{id}/items`, `assessment.cbt_item_analysis`): for each question as drawn (its frozen version and key), the
+  share who got it right (facility), the top 27% against the bottom 27% by score (discrimination, from ten scored candidates up), every
+  option chosen overall and by the top group, and flags: a possible wrong key (more of the top group chose one wrong option than the
+  key), weaker candidates doing better, weak separation, very hard or very easy, nobody answering. The guides shown are the usual
+  classical ones (facility 0.20 to 0.90, discrimination 0.20 or more). The Results tab warns before approval when a key looks wrong.
+  Nothing is re-marked.
+- Tests: check.sql 217; `CbtExamIT` (the analysis waits for the end, refuses the other office and reading offices; the checks are
+  the office's).
+- **Whose paper it is**: the examination screen names the candidate — name, the number named for what it is (Matric No., or
+  Admission No. before matriculation, JUPEB No. or Application No.) and a student's level — in the header on a computer, in a strip
+  beneath it on a phone, on the entry screen (with "check that these are yours before you enter") and on the review screen. The room's
+  `candidate` carries `number_label` and `level`.

@@ -495,7 +495,7 @@ class CbtExamController {
         out.put("answers", Map.of());
         out.put("flagged", List.of());
         out.put("seqs", Map.of());
-        out.put("candidate", Map.of("surname", "PREVIEW", "other_names", "the paper as a candidate sees it", "number", String.valueOf(e.get("reference"))));
+        out.put("candidate", Map.of("surname", "PREVIEW", "other_names", "the paper as a candidate sees it", "number", String.valueOf(e.get("reference")), "number_label", "Examination"));
         out.put("now", now);
         // how a candidate's paper differs from this one: drawn from the pool, shuffled
         Map<String, Object> notes = new LinkedHashMap<>();
@@ -505,7 +505,55 @@ class CbtExamController {
         notes.put("randomize_questions", e.get("randomize_questions"));
         notes.put("randomize_options", e.get("randomize_options"));
         notes.put("paper_problem", e.get("paper_problem"));
+        // V372: what the paper checks would have the office look at
+        notes.put("checks", jdbc.sql("SELECT count(*) FROM assessment.cbt_paper_checks(:e) WHERE severity IN ('HIGH', 'MEDIUM')").param("e", id).query(Integer.class).single());
         out.put("preview", notes);
+        return out;
+    }
+
+    /** V372: what to look at on the paper before publishing it — warnings for the office, nothing refused */
+    @GetMapping("/exams/{id}/checks")
+    @PreAuthorize(MANAGERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> checks(@PathVariable UUID id) {
+        managed(id);
+        return jdbc.sql("SELECT n, question_id, severity, code, detail FROM assessment.cbt_paper_checks(:e)").param("e", id).query().listOfRows();
+    }
+
+    /**
+     * V372: each question as the scored candidates met it — facility, discrimination, the options chosen, the flags. It shows the
+     * keys, so it opens only to the office that manages the examination and only once the examination has ended.
+     */
+    @GetMapping("/exams/{id}/items")
+    @PreAuthorize(MANAGERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> items(@PathVariable UUID id) {
+        Map<String, Object> e = managed(id);
+        String live = String.valueOf(e.get("live_state"));
+        if (!Set.of("ENDED", "CLOSED", "COMPLETED", "CANCELLED").contains(live)) {
+            throw new DomainRuleViolation("CBT_ANALYSIS_LIVE", "The question analysis opens once the examination has ended.",
+                    new DomainRuleViolation.Remedy("Come back after the examination's window closes, or close it early from Setup & lifecycle.", "You"));
+        }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT question_id, n, stem, kind, options::text AS options, array_to_string(key, ',') AS key, seen, answered, correct, facility, discrimination,
+                       upper_n, lower_n, choices::text AS choices, upper_choices::text AS upper_choices, array_to_string(flags, ',') AS flags
+                  FROM assessment.cbt_item_analysis(:e)
+                """).param("e", id).query().listOfRows();
+        for (Map<String, Object> r : rows) {
+            r.put("options", mapper.readValue(String.valueOf(r.get("options")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+            r.put("choices", mapper.readValue(String.valueOf(r.get("choices")), new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+            r.put("upper_choices", mapper.readValue(String.valueOf(r.get("upper_choices")), new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+            String key = (String) r.get("key");
+            r.put("key", key == null || key.isEmpty() ? List.of() : java.util.Arrays.stream(key.split(",")).map(Integer::valueOf).toList());
+            String flags = (String) r.get("flags");
+            r.put("flags", flags == null || flags.isEmpty() ? List.of() : List.of(flags.split(",")));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("questions", rows);
+        out.put("candidates", jdbc.sql("""
+                SELECT count(*) FROM assessment.cbt_attempt WHERE exam_id = :e AND status IN ('SUBMITTED', 'TIME_EXPIRED', 'TERMINATED') AND outcome = 'SCORED' AND score IS NOT NULL
+                """).param("e", id).query(Integer.class).single());
+        out.put("flagged", rows.stream().filter(r -> ((List<?>) r.get("flags")).contains("POSSIBLE_WRONG_KEY")).count());
         return out;
     }
 

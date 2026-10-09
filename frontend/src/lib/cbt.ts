@@ -126,7 +126,9 @@ export interface Room {
           office?: string; warn_at?: number; final_warn_at?: number; disconnect_minutes?: number | null };
   questions: RoomQuestion[]; answers: Record<string, number[]>; now: string;
   /** V364: the questions marked for review, the screen's save counts, and the candidate named in the header */
-  flagged?: string[]; seqs?: Record<string, number>; candidate?: { surname: string; other_names: string; number: string };
+  flagged?: string[]; seqs?: Record<string, number>;
+  /** the candidate the screen names: name, the number and what it is (Matric No., Admission No., JUPEB No.), a student's level */
+  candidate?: { surname: string; other_names: string; number: string; number_label?: string; level?: number | null };
 }
 
 export const EXAM_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
