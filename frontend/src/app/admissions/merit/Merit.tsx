@@ -17,7 +17,7 @@ export interface ProgrammeOption { code: string; name: string; facultyName: stri
 export interface MeritRow {
   rank: number; app_id: string; jamb_reg_no: string; surname: string; other_names: string;
   entry_mode: string; utme: number | null; putme: number | null; aggregate: number | null;
-  state_of_origin: string | null; lga: string | null; meets_cutoff: boolean; meets_compulsory: boolean;
+  state_of_origin: string | null; lga: string | null; meets_cutoff: boolean; meets_compulsory: boolean; meets_utme: boolean;
   eligible: boolean; basis: string; proposed_offer: boolean;
 }
 export interface MeritView { session: string; programme: string; counts: { pool: number; eligible: number; proposed: number }; rows: MeritRow[] }
@@ -135,7 +135,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
                   <span className="tnum" key="p">{r.putme ?? "—"}</span>,
                   <strong className="tnum" key="a">{r.aggregate ?? "—"}</strong>,
                   <span className="sub2" key="b">{BASIS[r.basis] ?? r.basis}</span>,
-                  r.eligible ? <Pil kind="ok" key="el">Eligible</Pil> : <Pil kind="grey" key="el">{!r.meets_compulsory ? "No Eng/Maths credit" : !r.meets_cutoff ? "Below cut-off" : "Not scored"}</Pil>,
+                  r.eligible ? <Pil kind="ok" key="el">Eligible</Pil> : <Pil kind="grey" key="el">{!r.meets_compulsory ? "No Eng/Maths credit" : !r.meets_cutoff ? "Below cut-off" : !r.meets_utme ? "UTME combination" : "Not scored"}</Pil>,
                   r.proposed_offer ? <Pil kind="ok" key="o">Offer</Pil> : <Pil kind="grey" key="o">—</Pil>,
                 ])}
                 texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.jamb_reg_no} ${r.basis}`)}

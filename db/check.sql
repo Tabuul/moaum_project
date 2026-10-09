@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 223
+\set EXPECTED 224
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1289,6 +1289,110 @@ BEGIN
         AND sm_max < nm_min,                  -- no State Merit candidate outranks a National Merit one
         format('u1=%s u2=%s u3=%s u4=%s(off=%s) n_nm=%s sm_max=%s nm_min=%s',
                b_u1, b_u2, b_u3, b_u4, off_u4, n_nm, sm_max, nm_min));
+END $$;
+
+-- ── 61d2. JAMB's subject names are read as the rules' subjects: "Lit. in English" is Literature in English (V384) ──
+DO $$
+DECLARE
+    S text := '9971/9972'; prog text := 'C00066'; pname text;
+    v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); grp uuid := gen_random_uuid();
+    r record; keys_ok boolean;
+    m_lit boolean; m_nolit boolean; m_short boolean; m_eq boolean; m_none boolean;
+    x_lit text[]; x_nolit text[]; x_short text[]; x_eq text[]; x_none text[]; x_norule text[];
+    ml_lit boolean; el_lit boolean; ml_nolit boolean; el_nolit boolean;
+    same_utme boolean; same_eq boolean; same_eq_ol boolean;
+BEGIN
+    -- one name per subject, however JAMB, WAEC or the rule spelt it; never one subject for another
+    keys_ok := admissions.subject_key('Lit. in English') = admissions.subject_key('Literature in English')
+           AND admissions.subject_key('Christian Rel. Know') = admissions.subject_key('Christian Religious Studies')
+           AND admissions.subject_key('CRK') = admissions.subject_key('C.R.S.')
+           AND admissions.subject_key('Islamic Rel. Know') = admissions.subject_key('IRS')
+           AND admissions.subject_key('Agriculture') = admissions.subject_key('Agricultural Science')
+           AND admissions.subject_key('Art (Fine Art)') = admissions.subject_key('Fine Arts')
+           AND admissions.subject_key('Use of English') = admissions.subject_key('English Language')
+           AND admissions.subject_key('Maths') = admissions.subject_key('Mathematics.')
+           AND admissions.subject_key('Computer Studies') = admissions.subject_key('Computer Science')
+           AND admissions.subject_key('Principles of Accounts') = admissions.subject_key('Accounting')
+           AND admissions.subject_key('Govt.') = admissions.subject_key('Government')
+           AND admissions.subject_key('Technical Drawing.') = admissions.subject_key('technical drawing')
+           AND admissions.subject_key('Further Mathematics') <> admissions.subject_key('Mathematics')
+           AND admissions.subject_key('English Literature') <> admissions.subject_key('English Language')
+           AND admissions.subject_key('Agricultural Science') <> admissions.subject_key('Biology');
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'CHECK UTME subject names (V384)', true);
+        SELECT name INTO pname FROM ref.programme WHERE code = prog;
+        INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+        VALUES (v_pol, S, 50, 70, 30, 80, 20, 'CHECK CAC/9971/1', tstzrange(now(), NULL), 'IN_FORCE');
+        INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
+        VALUES (v_pol, prog, 50, 'check', 'check', 'check');
+        -- this property tests the UTME subjects, not O'Level: the compulsory credits are waived as in 61d
+        INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES
+            (v_pol, prog, 'English Language'), (v_pol, prog, 'Mathematics');
+        -- Theatre Arts as the Office states it: Literature, and two of CRS, Government, History (a full stop after the last)
+        INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (grp, v_pol, prog, 'UTME', 2);
+        INSERT INTO admissions.rule_subject (group_id, subject) VALUES
+            (grp, 'Literature in English'), (grp, '2 of Christian Religious Studies/Government/History.');
+        -- and the Committee accepts Islamic Studies in place of History in UTME
+        INSERT INTO admissions.subject_equivalence (policy_id, subject, equivalent, scope) VALUES (v_pol, 'History', 'Islamic Studies', 'UTME');
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (v_batch, S, 'CAPS_DOWNLOAD', 'UTME', '\xB384'::bytea, 5, current_date, gen_random_uuid(), 'academic');
+        -- the CAPS rows as JAMB names the subjects
+        FOR r IN SELECT * FROM (VALUES
+            ('LIT',   '20719720001', '{"Subject1": "Use of English", "Subject2": "Lit. in English", "Subject3": "Christian Rel. Know", "Subject4": "Government"}', '000001'),
+            ('NOLIT', '20719720002', '{"Subject1": "Use of English", "Subject2": "Christian Rel. Know", "Subject3": "Government", "Subject4": "Economics"}', '000002'),
+            ('SHORT', '20719720003', '{"Subject1": "Use of English", "Subject2": "Lit. in English", "Subject3": "Government", "Subject4": "Economics"}', '000003'),
+            ('EQ',    '20719720004', '{"Subject1": "Use of English", "Subject2": "Lit. in English", "Subject3": "Government", "Subject4": "Islamic Rel. Know"}', '000004'),
+            ('NONE',  '20719720005', '{}', '000005')
+        ) AS t(tag, jamb, raw, seq)
+        LOOP
+            DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid();
+            BEGIN
+                INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+                VALUES (cr, v_batch, S, r.jamb, r.raw::jsonb, 'CHECKUTME', r.tag, prog, 250, 'UTME', 'F', 'Kano', 'Nassarawa');
+                INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+                VALUES (cand, S, r.jamb, 'CHECKUTME', r.tag, pname, 'UTME', 100, 'ADMITTED', cr);
+                INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+                VALUES (acct, S, cand, r.jamb, lower(r.jamb) || '@example.com', '08030000001', crypt('x', gen_salt('bf', 12)));
+                INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, screening_score, score_entered_at, score_released_at)
+                VALUES (gen_random_uuid(), acct, cand, S, 'APP/71/' || r.seq, now(), 60, now(), now());
+            END;
+        END LOOP;
+
+        m_lit   := admissions.utme_meets_combination(S, '20719720001', prog);
+        m_nolit := admissions.utme_meets_combination(S, '20719720002', prog);
+        m_short := admissions.utme_meets_combination(S, '20719720003', prog);
+        m_eq    := admissions.utme_meets_combination(S, '20719720004', prog);
+        m_none  := admissions.utme_meets_combination(S, '20719720005', prog);
+        x_lit    := admissions.utme_combination_missing(S, '20719720001', prog);
+        x_nolit  := admissions.utme_combination_missing(S, '20719720002', prog);
+        x_short  := admissions.utme_combination_missing(S, '20719720003', prog);
+        x_eq     := admissions.utme_combination_missing(S, '20719720004', prog);
+        x_none   := admissions.utme_combination_missing(S, '20719720005', prog);
+        x_norule := admissions.utme_combination_missing(S, '20719720002', 'C00019');
+        SELECT meets_utme, eligible INTO ml_lit, el_lit FROM admissions.merit_list(S, prog) WHERE other_names = 'LIT';
+        SELECT meets_utme, eligible INTO ml_nolit, el_nolit FROM admissions.merit_list(S, prog) WHERE other_names = 'NOLIT';
+        -- the eligibility engine's matcher reads the same names, and a stated equivalence in its own scope only
+        same_utme  := admissions.subject_same('Lit. in English', 'literature in english', v_pol, 'UTME');
+        same_eq    := admissions.subject_same('Islamic Rel. Know', 'history.', v_pol, 'UTME');
+        same_eq_ol := admissions.subject_same('Islamic Rel. Know', 'history.', v_pol, 'OLEVEL');
+        RAISE EXCEPTION 'the V384 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V384: JAMB''s subject names are read as the rules'' subjects — "Lit. in English" meets "Literature in English" and "Christian Rel. Know" with "Government" meet "2 of Christian Religious Studies/Government/History."; a true miss is refused with the missing subject named; a stated equivalence counts; no subjects on record is passed unchecked; the gate, the merit list (meets_utme) and the template''s reading agree',
+        coalesce(keys_ok
+                 AND m_lit AND x_lit = ARRAY[]::text[] AND ml_lit AND el_lit
+                 AND NOT m_nolit AND x_nolit = ARRAY['Literature in English'] AND ml_nolit = false AND el_nolit = false
+                 AND NOT m_short AND x_short = ARRAY['1 more of Christian Religious Studies/History']
+                 AND m_eq AND x_eq = ARRAY[]::text[]
+                 AND m_none AND x_none IS NULL
+                 AND x_norule = ARRAY[]::text[]
+                 AND same_utme AND same_eq AND NOT same_eq_ol, false),
+        format('keys=%s | lit %s %s merit %s/%s | nolit %s %s merit %s/%s | short %s %s | eq %s %s | none %s %s | no rule %s | same %s/%s/%s',
+               keys_ok, m_lit, x_lit, ml_lit, el_lit, m_nolit, x_nolit, ml_nolit, el_nolit, m_short, x_short, m_eq, x_eq, m_none, x_none, x_norule,
+               same_utme, same_eq, same_eq_ol));
 END $$;
 
 -- ── 61e. a non-qualified candidate with five O'Level credits is suggested an open programme they qualify for (V106) ──

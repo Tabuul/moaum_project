@@ -905,6 +905,8 @@ class ApplicantsController {
                        EXISTS (SELECT 1 FROM admissions.olevel_sitting st WHERE st.session = a.session AND st.jamb_key = c.jamb_key) AS olevel_uploaded,
                        array_to_string(admissions.olevel_compulsory_missing(a.session, c.jamb_key,
                            (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)), ', ') AS olevel_missing,
+                       array_to_string(admissions.utme_combination_missing(a.session, c.jamb_key,
+                           (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)), ', ') AS utme_missing,
                        rule.bonus_one_sitting, rule.bonus_two_sittings, rule.subjects_counted
                   FROM admissions.application a
                   JOIN admissions.candidate c ON c.id = a.candidate_id
@@ -924,25 +926,13 @@ class ApplicantsController {
         for (String code : codes) {
             try {
                 for (Map<String, Object> m : jdbc.sql(
-                        "SELECT app_id, basis, eligible, proposed_offer, meets_cutoff, meets_compulsory FROM admissions.merit_list(:s, :c)")
+                        "SELECT app_id, basis, eligible, proposed_offer, meets_cutoff, meets_compulsory, meets_utme FROM admissions.merit_list(:s, :c)")
                         .param("s", s).param("c", code).query().listOfRows()) {
                     meritByApp.put((java.util.UUID) m.get("app_id"), m);
                 }
             } catch (RuntimeException ex) {
                 // no policy in force for the session, or the programme is not settable — fall back to the recorded decision
             }
-        }
-        // the programme's UTME subject groups (choose N of a set), to report the subject combination
-        Map<String, List<Map<String, Object>>> utmeRulesByCode = new java.util.HashMap<>();
-        for (String code : codes) {
-            utmeRulesByCode.put(code, jdbc.sql("""
-                    SELECT g.choose, string_agg(rs.subject, '|') AS subjects
-                      FROM admissions.rule_subject_group g
-                      JOIN admissions.rule_subject rs ON rs.group_id = g.id
-                      JOIN admissions.session_policy p ON p.id = g.policy_id
-                     WHERE p.session = :s AND g.programme_code = :c AND g.scope = 'UTME'
-                     GROUP BY g.id, g.choose
-                    """).param("s", s).param("c", code).query().listOfRows());
         }
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         int[] budget = { 400 };   // evaluations this export may run for applications the engine has not seen; the desk's button does the rest
@@ -1011,7 +1001,7 @@ class ApplicantsController {
                 row.put("decisionBasis", r.get("decision_basis"));
             }
             row.put("released", r.get("decision_released_at") != null);
-            row.put("utmeRemark", utmeCombination(utmeSubjects(raw), utmeRulesByCode.getOrDefault((String) r.get("programme_code"), List.of())));
+            row.put("utmeRemark", utmeCombination((String) r.get("utme_missing")));
             boolean olUploaded = Boolean.TRUE.equals(r.get("olevel_uploaded"));
             String olMissing = (String) r.get("olevel_missing");
             String olRemark = !olUploaded ? "O'Level result not uploaded"
@@ -1382,13 +1372,16 @@ class ApplicantsController {
         return new BigDecimal(String.valueOf(value)).multiply(new BigDecimal(String.valueOf(weight))).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
     }
 
-    /** why an eligible-pool candidate did not qualify: below the cut-off and/or the O'Level requirement, spelt out —
-     *  whether the O'Level was not uploaded, or which compulsory subject has no credit */
+    /** why an eligible-pool candidate did not qualify: below the cut-off, the O'Level requirement and/or the UTME
+     *  subject combination, spelt out — whether the O'Level was not uploaded, which compulsory subject has no credit,
+     *  which required UTME subject was not sat */
     private static String ineligibleReason(Map<String, Object> merit, Map<String, Object> row) {
         boolean meetsCutoff = Boolean.TRUE.equals(merit.get("meets_cutoff"));
         boolean meetsComp = Boolean.TRUE.equals(merit.get("meets_compulsory"));
+        boolean meetsUtme = Boolean.TRUE.equals(merit.get("meets_utme"));
         boolean uploaded = Boolean.TRUE.equals(row.get("olevel_uploaded"));
         String missing = (String) row.get("olevel_missing");
+        String utmeMissing = (String) row.get("utme_missing");
         List<String> parts = new java.util.ArrayList<>();
         if (!meetsCutoff) {
             parts.add("Below the programme cut-off");
@@ -1397,38 +1390,20 @@ class ApplicantsController {
             parts.add(!uploaded ? "O'Level result not uploaded"
                     : "No O'Level credit in " + (missing == null || missing.isBlank() ? "a required subject" : missing));
         }
+        if (!meetsUtme) {
+            parts.add("Incorrect UTME subject combination" + (utmeMissing == null || utmeMissing.isBlank() ? "" : ": [" + utmeMissing + "]"));
+        }
         return parts.isEmpty() ? "Not qualified on the merit list" : String.join("; ", parts);
     }
 
-    /** the UTME subject combination against the programme's UTME groups (choose N of a set): "Correct Combination",
-     *  or "Incorrect Combination: [the required subjects the candidate did not sit]" */
-    private static String utmeCombination(List<Map<String, Object>> sat, List<Map<String, Object>> groups) {
-        if (groups.isEmpty()) {
-            return "Correct Combination";   // the programme states no UTME subject requirement
+    /** the UTME subject combination as the merit list's gate reads it (admissions.utme_combination_missing, V384 —
+     *  JAMB's "Lit. in English" is the rule's "Literature in English"): "Correct Combination", or "Incorrect
+     *  Combination: [the required subjects the candidate did not sit]"; null when the CAPS row carries no subjects */
+    private static String utmeCombination(String missing) {
+        if (missing == null) {
+            return "No UTME subjects on the CAPS row — combination not checked";
         }
-        java.util.Set<String> has = sat.stream()
-                .map(m -> String.valueOf(m.get("subject")).trim().toLowerCase())
-                .filter(x -> !x.isBlank()).collect(java.util.stream.Collectors.toSet());
-        java.util.LinkedHashSet<String> missing = new java.util.LinkedHashSet<>();
-        for (Map<String, Object> g : groups) {
-            int choose = ((Number) g.get("choose")).intValue();
-            String[] subs = String.valueOf(g.get("subjects")).split("\\|");
-            int matched = 0;
-            List<String> unmatched = new java.util.ArrayList<>();
-            for (String sub : subs) {
-                String want = sub.trim().toLowerCase();
-                boolean sitIt = has.stream().anyMatch(h -> h.equals(want) || h.contains(want) || want.contains(h));
-                if (sitIt) {
-                    matched++;
-                } else {
-                    unmatched.add(sub.trim());
-                }
-            }
-            if (matched < choose) {
-                missing.addAll(unmatched);   // the required subjects from this group the candidate did not sit
-            }
-        }
-        return missing.isEmpty() ? "Correct Combination" : "Incorrect Combination: [" + String.join(", ", missing) + "]";
+        return missing.isBlank() ? "Correct Combination" : "Incorrect Combination: [" + missing + "]";
     }
 
     /** the UTME subjects and scores as CAPS sent them, whichever of the two layouts the row came in */

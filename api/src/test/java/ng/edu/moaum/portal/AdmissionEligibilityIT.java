@@ -49,7 +49,7 @@ class AdmissionEligibilityIT {
 
     static final String SESSION = "2086/2087";
     static final String PATH = "/api/v1/admissions/sessions/2086/2087";
-    static final String CS = "C00023", ACC = "C00019", ECO = "C00024", MBBS = "C00061";
+    static final String CS = "C00023", ACC = "C00019", ECO = "C00024", MBBS = "C00061", THE = "C00066";
     static final UUID POLICY = UUID.fromString("e1191b1e-0000-4000-8000-000000002086");
 
     @Value("${local.server.port}")
@@ -91,6 +91,8 @@ class AdmissionEligibilityIT {
             // the subject rules, stated fresh each run
             jdbc.sql("DELETE FROM admissions.rule_subject WHERE group_id IN (SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id)").param("id", POLICY).update();
             jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id").param("id", POLICY).update();
+            // Theatre Arts is stated only by the test that reads JAMB's subject names (V384), so it is never anyone else's alternative
+            jdbc.sql("DELETE FROM admissions.programme_rule WHERE policy_id = :id AND programme_code = :c").param("id", POLICY).param("c", THE).update();
             group(CS, "OLEVEL_REQUIRED", "C6", "Physics", "Chemistry");
             group(CS, "UTME", null, "Physics", "Chemistry/Biology");
             group(ACC, "OLEVEL_REQUIRED", "C6", "Economics/Accounting");
@@ -440,6 +442,56 @@ class AdmissionEligibilityIT {
         assertThat(re.getStatusCode().value()).isEqualTo(200);
         assertThat(run((Map<String, Object>) re.getBody()).get("trigger_kind")).isEqualTo("OFFICER");
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.eligibility_run WHERE application_id = :a AND superseded_at IS NULL").param("a", a.app()).query(Long.class).single()).isEqualTo(1);
+    }
+
+    /* ── 11 · JAMB's subject names are the rules' subjects (V384): "Lit. in English" is Literature in English ── */
+    @Test
+    @Order(8)
+    @SuppressWarnings("unchecked")
+    void jambSubjectNamesMeetTheRulesSubjects() {
+        // Theatre Arts as the Office states it: Literature, and two of CRS, Government, History (a full stop after the last)
+        it.db(() -> {
+            jdbc.sql("""
+                    INSERT INTO admissions.programme_rule (policy_id, programme_code, cutoff, quota, olevel_text, utme_text, de_text, olevel_credits, olevel_sittings)
+                    VALUES (:id, :c, 160, 50, 'Five credits (test)', 'As configured (test)', 'A-Level (test)', 5, 2) ON CONFLICT (policy_id, programme_code) DO NOTHING
+                    """).param("id", POLICY).param("c", THE).update();
+            group(THE, "UTME", null, "Literature in English", "2 of Christian Religious Studies/Government/History.");
+            return null;
+        });
+        List<Map<String, String>> arts = List.of(g("English Language", "B3"), g("Mathematics", "C6"), g("Literature in English", "B2"),
+                g("Christian Religious Studies", "C4"), g("Government", "B3"), g("History", "C5"));
+        // the CAPS rows as JAMB names the subjects
+        Applicant sat = applicant(THE, 230, List.of("Use of English", "Lit. in English", "Christian Rel. Know", "Government"), arts);
+        Applicant missed = applicant(THE, 240, List.of("Use of English", "Christian Rel. Know", "Government", "Economics"), arts);
+
+        // the merit list: the one who sat Literature is eligible; the one who did not is out on the UTME combination, and says so
+        ResponseEntity<Map> merit = it.get(academic, u -> u.path("/api/v1/admissions/merit").queryParam("session", SESSION).queryParam("programme", THE).build());
+        assertThat(merit.getStatusCode().value()).as(String.valueOf(merit.getBody())).isEqualTo(200);
+        List<Map<String, Object>> pool = (List<Map<String, Object>>) merit.getBody().get("rows");
+        Map<String, Object> satRow = pool.stream().filter(x -> sat.app().toString().equals(String.valueOf(x.get("app_id")))).findFirst().orElseThrow();
+        Map<String, Object> missedRow = pool.stream().filter(x -> missed.app().toString().equals(String.valueOf(x.get("app_id")))).findFirst().orElseThrow();
+        assertThat(satRow.get("meets_utme")).isEqualTo(true);
+        assertThat(satRow.get("eligible")).as(String.valueOf(satRow)).isEqualTo(true);
+        assertThat(missedRow.get("meets_utme")).isEqualTo(false);
+        assertThat(missedRow.get("meets_cutoff")).isEqualTo(true);
+        assertThat(missedRow.get("eligible")).isEqualTo(false);
+
+        // the template agrees with the gate, and names the subject not sat
+        List<Map<String, Object>> template = (List<Map<String, Object>>) it.get(academic, PATH + "/jamb-template").getBody().get("rows");
+        Map<String, Object> satT = template.stream().filter(x -> sat.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
+        Map<String, Object> missedT = template.stream().filter(x -> missed.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
+        assertThat(satT.get("utmeRemark")).isEqualTo("Correct Combination");
+        assertThat(satT.get("decision")).isIn("OFFERED", "WAITING");
+        assertThat(missedT.get("utmeRemark")).isEqualTo("Incorrect Combination: [Literature in English]");
+        assertThat(missedT.get("decision")).isEqualTo("NOT_OFFERED");
+        assertThat(String.valueOf(missedT.get("decisionNote"))).isEqualTo("Incorrect UTME subject combination: [Literature in English]");
+
+        // the eligibility engine reads the same names: the applied programme is met on its UTME combination
+        Map<String, Object> d = detail(academic, sat.app());
+        assertThat(run(d).get("applied_result")).as(String.valueOf(d.get("applied"))).isEqualTo("ELIGIBLE");
+        Map<String, Object> dm = detail(academic, missed.app());
+        assertThat(run(dm).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
+        assertThat(reasons((Map<String, Object>) dm.get("applied"))).anyMatch(x -> x.contains("Required UTME subject not offered: Literature in English"));
     }
 
     /* ── 10 · the doors ── */

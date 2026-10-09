@@ -271,11 +271,17 @@ public class CapsIntakeService {
             if (!Boolean.TRUE.equals(r.get("eligible"))) {
                 boolean cut = Boolean.TRUE.equals(r.get("meets_cutoff"));
                 boolean comp = Boolean.TRUE.equals(r.get("meets_compulsory"));
-                String why = !cut && !comp ? "Below the cut-off and the O'Level requirement not met"
-                        : !cut ? "Below the programme cut-off"
-                        : !comp ? "O'Level requirement not met"
-                        : "Not qualified on the merit list";
-                caps.decide(app, "NOT_OFFERED", why, null);
+                boolean utme = Boolean.TRUE.equals(r.get("meets_utme"));
+                List<String> why = new ArrayList<>();
+                if (!cut || !comp) {
+                    why.add(!cut && !comp ? "Below the cut-off and the O'Level requirement not met"
+                            : !cut ? "Below the programme cut-off"
+                            : "O'Level requirement not met");
+                }
+                if (!utme) {
+                    why.add("Incorrect UTME subject combination");
+                }
+                caps.decide(app, "NOT_OFFERED", why.isEmpty() ? "Not qualified on the merit list" : String.join("; ", why), null);
                 notOffered++;
                 continue;
             }
