@@ -714,6 +714,13 @@ class CbtExamController {
                   FROM assessment.cbt_result r JOIN assessment.cbt_attempt a ON a.id = r.attempt_id LEFT JOIN iam.person p ON p.id = r.changed_by
                  WHERE a.exam_id = :id AND a.candidate_id = :s ORDER BY r.attempt_id, r.version
                 """).param("id", id).param("s", student).query().listOfRows());
+        // V375: what the invigilators recorded about the candidate in their sitting
+        out.put("incidents", jdbc.sql("""
+                SELECT i.id, i.kind, i.occurred_at, i.minutes_lost, i.detail, i.after_filing, i.attempt_id, i.recorded_at, s.label AS sitting,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS recorded_by
+                  FROM assessment.cbt_sitting_incident i JOIN assessment.cbt_sitting s ON s.id = i.sitting_id LEFT JOIN iam.person p ON p.id = i.recorded_by
+                 WHERE i.exam_id = :id AND i.candidate_id = :s ORDER BY i.occurred_at
+                """).param("id", id).param("s", student).query().listOfRows());
         return out;
     }
 
@@ -908,6 +915,10 @@ class CbtExamController {
                        (SELECT count(*) FROM assessment.cbt_seat x WHERE x.sitting_id = s.id) AS seated,
                        (SELECT count(*) FROM assessment.cbt_seat x JOIN assessment.cbt_attempt a ON a.exam_id = x.exam_id AND a.candidate_id = x.candidate_id WHERE x.sitting_id = s.id) AS begun,
                        (SELECT count(*) FROM assessment.cbt_attendance m WHERE m.sitting_id = s.id) AS marked,
+                       (SELECT count(*) FROM assessment.cbt_attendance m WHERE m.sitting_id = s.id AND m.checked_in_at IS NOT NULL) AS checked_in,
+                       (SELECT r.filed_at FROM assessment.cbt_sitting_report r WHERE r.sitting_id = s.id) AS report_filed_at,
+                       s.ends_at <= now() AS ended,
+                       (SELECT count(*) FROM assessment.cbt_sitting_incident i WHERE i.sitting_id = s.id) AS incidents,
                        (SELECT coalesce(json_agg(json_build_object('person_id', p.id, 'name', p.surname || ', ' || p.given_names, 'staff_number', p.staff_number, 'chief', i.chief)
                                                  ORDER BY i.chief DESC, p.surname), '[]'::json)::text
                           FROM assessment.cbt_invigilator i JOIN iam.person p ON p.id = i.person_id WHERE i.sitting_id = s.id) AS invigilators
@@ -918,6 +929,7 @@ class CbtExamController {
                     return row;
                 }).toList());
         out.put("late_entry_minutes", jdbc.sql("SELECT late_entry_minutes FROM assessment.cbt_exam WHERE id = :e").param("e", id).query(Integer.class).optional().orElse(null));
+        out.put("require_check_in", jdbc.sql("SELECT require_check_in FROM assessment.cbt_exam WHERE id = :e").param("e", id).query(Boolean.class).single());
         out.put("candidates", jdbc.sql("SELECT count(*) FROM assessment.cbt_candidates(:e)").param("e", id).query(Integer.class).single());
         out.put("unseated", jdbc.sql("""
                 SELECT count(*) FROM assessment.cbt_candidates(:e) c WHERE NOT EXISTS (SELECT 1 FROM assessment.cbt_seat x WHERE x.exam_id = :e AND x.candidate_id = c.student_id)

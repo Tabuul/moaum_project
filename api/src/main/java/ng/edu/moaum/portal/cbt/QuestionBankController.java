@@ -16,6 +16,7 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
@@ -39,6 +40,8 @@ import org.springframework.web.bind.annotation.RestController;
  * From V374 a question written or changed waits for moderation: someone other than the person who set that version — a Head of
  * Department, an Examinations Officer, a Dean, the GST, EPS or JUPEB office in its own banks — approves it, or returns it with a note,
  * and only approved questions go on a paper. The rule is the database's (assessment.question_moderate); the screen only asks.
+ * V375: the moderator's queue (the banks with questions waiting, within the acting office's scope, and the setter's returned
+ * questions), and moderation by sample — a random sample of a bank's waiting questions, every one approved, approves the rest.
  */
 @RestController
 class QuestionBankController {
@@ -54,10 +57,12 @@ class QuestionBankController {
     private static final Set<String> MODERATION = Set.of("PENDING", "APPROVED", "RETURNED");
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    QuestionBankController(JdbcClient jdbc) {
+    QuestionBankController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     public record Question(@NotBlank @Size(max = 30) String course, @Size(max = 120) String topic, @NotBlank @Size(max = 4000) String stem,
@@ -262,6 +267,137 @@ class QuestionBankController {
         out.put("decided", done);
         out.put("left", left);
         return out;
+    }
+
+    /* ── V375: the moderator's queue, and moderation by sample ── */
+
+    /**
+     * The banks with questions waiting, within the acting office's scope: the GST and EPS offices their own courses, the JUPEB Office its
+     * subjects, a department or faculty office its department's or faculty's, every other reader every course — with how many wait, how
+     * many of those the signed-in person may decide (they did not set them), how many were returned, and which are theirs.
+     */
+    @GetMapping("/api/v1/cbt/moderation/queue")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> queue() {
+        UUID me = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
+        String counts = """
+                count(*) FILTER (WHERE q.moderation = 'PENDING') AS pending,
+                count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) IS DISTINCT FROM :me) AS for_me,
+                count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) = :me) AS mine_waiting,
+                count(*) FILTER (WHERE q.moderation = 'RETURNED') AS returned,
+                count(*) FILTER (WHERE q.moderation = 'RETURNED' AND assessment.question_setter(q.id, q.version) = :me) AS returned_to_me,
+                min(coalesce(q.updated_at, q.authored_at)) FILTER (WHERE q.moderation = 'PENDING') AS waiting_since
+                """;
+        if ("jupeb".equals(acting())) {
+            return jdbc.sql("SELECT 'JUPEB:' || js.code AS bank, js.title, 'JUPEB' AS office, " + counts + """
+                      FROM assessment.question q JOIN jupeb.subject js ON js.id = q.jupeb_subject_id
+                     WHERE q.moderation <> 'APPROVED' AND q.archived_at IS NULL
+                     GROUP BY js.code, js.title ORDER BY waiting_since NULLS LAST, js.code
+                    """).param("me", me, Types.OTHER).query().listOfRows();
+        }
+        String o = actingOffice();
+        OfficeScope.Bound b = o != null ? new OfficeScope.Bound(null, null, null) : scope.bound(null, null, null);
+        return jdbc.sql("SELECT c.code AS bank, c.title, c.general_office AS office, " + counts + """
+                  FROM assessment.question q JOIN catalogue.course c ON c.code = q.course_code LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE q.moderation <> 'APPROVED' AND q.archived_at IS NULL
+                   AND (:go::text IS NULL OR c.general_office = :go) AND (:dept::text IS NULL OR c.dept_code = :dept) AND (:fac::text IS NULL OR d.faculty_code = :fac)
+                 GROUP BY c.code, c.title, c.general_office ORDER BY waiting_since NULLS LAST, c.code
+                """).param("me", me, Types.OTHER).param("go", o, Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("fac", b.fac(), Types.VARCHAR)
+                .query().listOfRows();
+    }
+
+    public record SampleIn(@NotBlank @Size(max = 30) String course, @NotNull Integer size) {
+    }
+
+    /** a sample, with each sampled question as it now stands (its key included: a moderator reads the key) */
+    private Map<String, Object> sampleView(UUID id) {
+        Map<String, Object> x = jdbc.sql("""
+                SELECT s.id, coalesce(s.course_code, 'JUPEB:' || js.code) AS bank, s.state, s.drawn_at, s.decided_at, s.approved, s.left_as_they_were,
+                       cardinality(s.population) AS population, cardinality(s.sample) AS size, s.drawn_by
+                  FROM assessment.question_moderation_sample s LEFT JOIN jupeb.subject js ON js.id = s.jupeb_subject_id WHERE s.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().map(LinkedHashMap::new).orElseThrow(() -> new NotFound("sample", id.toString()));
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT q.id, q.topic, q.stem, q.options::text AS options, to_jsonb(q.answers)::text AS answers, q.kind, q.difficulty, q.marks, q.explanation,
+                       q.version, pv.v AS drawn_version, q.moderation, q.moderated_version, q.moderation_note,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS set_by
+                  FROM assessment.question_moderation_sample s
+                  CROSS JOIN LATERAL unnest(s.population, s.population_versions) pv(id, v)
+                  JOIN assessment.question q ON q.id = pv.id
+                  LEFT JOIN iam.person p ON p.id = assessment.question_setter(q.id, q.version)
+                 WHERE s.id = :id AND pv.id = ANY (s.sample)
+                 ORDER BY array_position(s.sample, pv.id)
+                """).param("id", id).query().listOfRows();
+        for (Map<String, Object> r : rows) {
+            r.put("options", mapper.readValue(String.valueOf(r.get("options")), new tools.jackson.core.type.TypeReference<List<String>>() { }));
+            r.put("answers", r.get("answers") == null ? List.of() : mapper.readValue(String.valueOf(r.get("answers")), new tools.jackson.core.type.TypeReference<List<Integer>>() { }));
+        }
+        x.put("questions", rows);
+        return x;
+    }
+
+    /** the signed-in moderator's open sample of a bank (or none), and how many of its questions wait for them to moderate */
+    @GetMapping("/api/v1/cbt/questions/samples")
+    @PreAuthorize(MODERATORS)
+    @Transactional(readOnly = true)
+    Map<String, Object> sample(@RequestParam String course) {
+        Bank b = bank(course);
+        UUID me = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("waitingForMe", jdbc.sql("""
+                SELECT count(*) FROM assessment.question q
+                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END
+                   AND q.moderation = 'PENDING' AND q.archived_at IS NULL AND assessment.question_setter(q.id, q.version) IS DISTINCT FROM :me
+                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("me", me, Types.OTHER).query(Long.class).single());
+        UUID open = jdbc.sql("""
+                SELECT id FROM assessment.question_moderation_sample
+                 WHERE state = 'OPEN' AND drawn_by = :me AND coalesce(course_code, jupeb_subject_id::text) = coalesce(:c, :sub::uuid::text)
+                """).param("me", me, Types.OTHER).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query(UUID.class).optional().orElse(null);
+        out.put("open", open == null ? null : sampleView(open));
+        out.put("recent", jdbc.sql("""
+                SELECT id, state, drawn_at, decided_at, cardinality(sample) AS size, cardinality(population) AS population, approved, left_as_they_were
+                  FROM assessment.question_moderation_sample
+                 WHERE drawn_by = :me AND state <> 'OPEN' AND coalesce(course_code, jupeb_subject_id::text) = coalesce(:c, :sub::uuid::text)
+                 ORDER BY drawn_at DESC LIMIT 5
+                """).param("me", me, Types.OTHER).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query().listOfRows());
+        return out;
+    }
+
+    @PostMapping("/api/v1/cbt/questions/samples")
+    @PreAuthorize(MODERATORS)
+    @Transactional
+    Map<String, Object> drawSample(@Valid @RequestBody SampleIn in) {
+        Bank b = bank(in.course());
+        UUID id = jdbc.sql("SELECT id FROM assessment.question_sample_draw(:c, :sub, :n)").param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER)
+                .param("n", in.size()).query(UUID.class).single();
+        return sampleView(id);
+    }
+
+    /** the sample's bank, held to the acting office as a bank's name is */
+    private void sampleBank(UUID id) {
+        Map<String, Object> r = jdbc.sql("""
+                SELECT s.course_code, js.code AS subject FROM assessment.question_moderation_sample s LEFT JOIN jupeb.subject js ON js.id = s.jupeb_subject_id WHERE s.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("sample", id.toString()));
+        bank(r.get("course_code") != null ? (String) r.get("course_code") : JUPEB_PREFIX + r.get("subject"));
+    }
+
+    /** every sampled question approved: the rest approve together; one returned: the sample fails and the rest wait */
+    @PostMapping("/api/v1/cbt/questions/samples/{id}/close")
+    @PreAuthorize(MODERATORS)
+    @Transactional
+    Map<String, Object> closeSample(@PathVariable UUID id) {
+        sampleBank(id);
+        jdbc.sql("SELECT state FROM assessment.question_sample_close(:id)").param("id", id).query(String.class).single();
+        return sampleView(id);
+    }
+
+    @PostMapping("/api/v1/cbt/questions/samples/{id}/withdraw")
+    @PreAuthorize(MODERATORS)
+    @Transactional
+    Map<String, Object> withdrawSample(@PathVariable UUID id) {
+        sampleBank(id);
+        jdbc.sql("SELECT state FROM assessment.question_sample_withdraw(:id)").param("id", id).query(String.class).single();
+        return sampleView(id);
     }
 
     /** every moderation decision on a question, newest first */

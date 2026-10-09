@@ -14,6 +14,7 @@ import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
@@ -62,10 +63,49 @@ class CbtCandidateDoor {
     }
 
     private final JdbcClient jdbc;
+    private final CheckCodes codes;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    CbtCandidateDoor(JdbcClient jdbc) {
+    CbtCandidateDoor(JdbcClient jdbc, CheckCodes codes) {
         this.jdbc = jdbc;
+        this.codes = codes;
+    }
+
+    /** V375: what a CBT slip's QR carries — the examination, the candidate, and the check code the API signs for the pair */
+    static String slipToken(CheckCodes codes, UUID exam, UUID candidate) {
+        return exam + "." + candidate + "." + codes.sign(CheckCodes.Kind.CBT_SLIP, exam.toString(), candidate.toString());
+    }
+
+    /** the candidate's name, number and (a student's) level, each named, so the candidate and the invigilator see whose paper it is */
+    private Map<String, Object> candidate(Kind kind, UUID me) {
+        return kind == Kind.JUPEB
+                ? jdbc.sql("""
+                        SELECT upper(surname) AS surname, first_name || coalesce(' ' || middle_name, '') AS other_names, coalesce(exam_no, application_no) AS number,
+                               CASE WHEN exam_no IS NOT NULL THEN 'JUPEB No.' ELSE 'Application No.' END AS number_label
+                          FROM jupeb.application WHERE id = :s
+                        """).param("s", me).query().singleRow()
+                : jdbc.sql("""
+                        SELECT s.surname, s.other_names, coalesce(s.matric_no, s.admission_no) AS number,
+                               CASE WHEN s.matric_no IS NOT NULL THEN 'Matric No.' ELSE 'Admission No.' END AS number_label, s.current_level AS level, p.name AS programme
+                          FROM people.student s LEFT JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :s
+                        """).param("s", me).query().singleRow();
+    }
+
+    /** V375: the candidate's CBT slip — the examination, their sitting and seat, who they are, and the signed code its QR carries — once they have a seat */
+    Map<String, Object> slip(Kind kind, UUID me, UUID exam) {
+        Map<String, Object> row = one(kind, me, exam);
+        if (row.get("sitting") == null) {
+            throw new DomainRuleViolation("CBT_NO_SITTING", "You have no seat in this examination's sittings yet, so there is no slip to print.",
+                    new DomainRuleViolation.Remedy("The examination office seats every candidate; your slip is here once you have a seat.", "The examining office"));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (String k : List.of("exam_id", "reference", "course_code", "course_title", "title", "session", "semester", "duration_minutes", "starts_at", "ends_at",
+                "sitting", "sitting_venue", "sitting_starts_at", "sitting_ends_at", "seat_no", "late_entry_until", "extra_minutes")) {
+            out.put(k, row.get(k));
+        }
+        out.put("candidate", candidate(kind, me));
+        out.put("token", slipToken(codes, exam, me));
+        return out;
     }
 
     private static String ip() {
@@ -194,18 +234,7 @@ class CbtCandidateDoor {
         out.put("flagged", flagged);
         out.put("seqs", seqs);
         // V364: the candidate the screen names in its header
-        // the candidate's name, number and (a student's) level, each named, so the candidate and the invigilator see whose paper it is
-        out.put("candidate", kind == Kind.JUPEB
-                ? jdbc.sql("""
-                        SELECT upper(surname) AS surname, first_name || coalesce(' ' || middle_name, '') AS other_names, coalesce(exam_no, application_no) AS number,
-                               CASE WHEN exam_no IS NOT NULL THEN 'JUPEB No.' ELSE 'Application No.' END AS number_label
-                          FROM jupeb.application WHERE id = :s
-                        """).param("s", me).query().singleRow()
-                : jdbc.sql("""
-                        SELECT surname, other_names, coalesce(matric_no, admission_no) AS number,
-                               CASE WHEN matric_no IS NOT NULL THEN 'Matric No.' ELSE 'Admission No.' END AS number_label, current_level AS level
-                          FROM people.student WHERE id = :s
-                        """).param("s", me).query().singleRow());
+        out.put("candidate", candidate(kind, me));
         out.put("now", OffsetDateTime.now());
         return out;
     }

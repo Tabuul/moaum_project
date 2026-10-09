@@ -3,31 +3,40 @@
  *  them), who has submitted. The invigilator marks a candidate absent once the sitting has begun, or admits one who came late with up to
  *  the minutes they lost given back; a mark is undone while the candidate has not started. Every rule is the server's: who may mark
  *  (an invigilator of this sitting, or the office running the examination), when, and how many minutes. The screen reads the board
- *  again every fifteen seconds while it is in view. No candidate's answers or score are shown here. */
+ *  again every fifteen seconds while it is in view. No candidate's answers or score are shown here.
+ *  V375: candidates checked in at the door — by scanning their slip (here, where the browser reads QR codes, or with the phone's own
+ *  camera) or by hand against their photograph on the record; incidents recorded as they happen; the sitting's report. */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { useRouter } from "next/navigation";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { brandedPrint, docSerial } from "@/lib/exportbrand";
 import { num, whenAt } from "@/lib/cbt";
 import { cbtSend } from "./CbtExam";
+import { IncidentForm, INCIDENT_WORD } from "./IncidentForm";
+import { SlipScanner, scannerAvailable } from "./SlipScanner";
 
-export type SeatState = "NOT_COME" | "ABSENT" | "ADMITTED" | "WRITING" | "DISCONNECTED" | "TIME_UP" | "SUBMITTED" | "TIME_EXPIRED" | "TERMINATED";
+export type SeatState = "NOT_COME" | "CHECKED_IN" | "ABSENT" | "ADMITTED" | "WRITING" | "DISCONNECTED" | "TIME_UP" | "SUBMITTED" | "TIME_EXPIRED" | "TERMINATED";
 export interface BoardRow {
   seat_no: number; candidate_id: string; number: string; surname: string; other_names: string; level: number | null; programme: string | null; state: SeatState;
   attempt_id: string | null; started_at: string | null; ends_at: string | null; submitted_at: string | null; last_activity_at: string | null;
   answered: number | null; questions: number | null; violations: number | null; extra_minutes: number | null;
-  mark: "ABSENT" | "LATE" | null; minutes_late: number | null; minutes_given: number | null; mark_note: string | null; marked_at: string | null; marked_by: string | null;
+  mark: "ABSENT" | "LATE" | "PRESENT" | null; minutes_late: number | null; minutes_given: number | null; mark_note: string | null; marked_at: string | null; marked_by: string | null;
+  checked_in_at?: string | null; check_method?: "SCAN" | "MANUAL" | "ADMITTED" | null;
 }
+export interface Incident { id: string; kind: string; occurred_at: string; minutes_lost: number | null; detail: string; after_filing: boolean; candidate_id: string | null; seat_no: number | null; number: string | null; surname: string | null; other_names: string | null; recorded_by: string | null }
 export interface Board {
   sitting: { id: string; exam_id: string; label: string; venue: string; starts_at: string; ends_at: string; capacity: number };
-  exam: { id: string; reference: string; title: string; course_code: string; office: string; state: string; live_state: string; duration_minutes: number; late_entry_minutes: number | null };
+  exam: { id: string; reference: string; title: string; course_code: string; office: string; state: string; live_state: string; duration_minutes: number; late_entry_minutes: number | null; require_check_in?: boolean };
   now: string; role: "INVIGILATOR" | "OFFICE" | "READER"; canMark: boolean;
   invigilators: { person_id: string; name: string; staff_number: string | null; chief: boolean }[];
-  rows: BoardRow[]; marked?: number;
+  rows: BoardRow[]; marked?: number; incidents?: Incident[]; reportFiledAt?: string | null;
 }
 
 const STATE: Record<SeatState, [string, "grey" | "info" | "ok" | "bad" | "warn", string]> = {
   NOT_COME: ["Not come", "grey", "var(--line, #d0d5dd)"],
+  CHECKED_IN: ["Checked in", "ok", "var(--green-line)"],
   ABSENT: ["Absent", "bad", "var(--red-line)"],
   ADMITTED: ["Admitted late", "info", "var(--amber-line)"],
   WRITING: ["Writing", "info", "var(--green-line)"],
@@ -38,7 +47,7 @@ const STATE: Record<SeatState, [string, "grey" | "info" | "ok" | "bad" | "warn",
   TERMINATED: ["Terminated", "bad", "var(--red-line)"],
 };
 const FILTERS: [string, string, SeatState[]][] = [
-  ["all", "Every seat", []], ["notcome", "Not come", ["NOT_COME", "ADMITTED"]], ["writing", "Writing", ["WRITING"]], ["silent", "Not heard from", ["DISCONNECTED", "TIME_UP"]],
+  ["all", "Every seat", []], ["notcome", "Not come", ["NOT_COME"]], ["waiting", "In, not started", ["CHECKED_IN", "ADMITTED"]], ["writing", "Writing", ["WRITING"]], ["silent", "Not heard from", ["DISCONNECTED", "TIME_UP"]],
   ["done", "Finished", ["SUBMITTED", "TIME_EXPIRED", "TERMINATED"]], ["absent", "Absent", ["ABSENT"]],
 ];
 const hhmm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—");
@@ -56,6 +65,11 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
   const [minutes, setMinutes] = useState("");
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  const [incidentFor, setIncidentFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
+  const [scanning, setScanning] = useState(false);
+  const [canScan] = useState(() => scannerAvailable());
+  const [noPhoto, setNoPhoto] = useState<string | null>(null);
+  const router = useRouter();
   const id = initial.sitting.id;
 
   const load = useCallback(async () => {
@@ -107,12 +121,13 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
         {board.exam.title} ({board.exam.reference}) · {whenAt(s.starts_at)} to {hhmm(s.ends_at)} · {board.exam.duration_minutes} minutes once a candidate starts · <b>{leftText}</b>.
         {board.exam.late_entry_minutes != null ? <> A candidate may start on their own until <b>{hhmm(new Date(new Date(s.starts_at).getTime() + board.exam.late_entry_minutes * 60000).toISOString())}</b>; after that, admit them here.</> : <> There is no late-entry limit: a candidate may start at any time in the sitting.</>}
         {board.invigilators.length ? <> Invigilating: {board.invigilators.map((p) => `${p.name}${p.chief ? " (chief)" : ""}`).join("; ")}.</> : null}
+        {board.exam.require_check_in ? <> <b>Check-in is required</b>: a candidate starts only once checked in here or admitted late.</> : null}
       </Note>
       {stale ? <Note kind="bad" title="The board could not be read again">It shows the seats as they were last read; it tries again every fifteen seconds.</Note> : null}
       {board.role === "READER" ? <Note kind="info" title="Read only">Your office reads the board; the invigilators and the office running the examination mark it.</Note> : null}
       <Tiles cls="grid--5" items={[
         ["SEATED", num(board.rows.length), null, `of ${num(s.capacity)} seats`],
-        ["NOT COME", num(count(["NOT_COME", "ADMITTED"])), null, `${num(count(["ADMITTED"]))} admitted late, not yet started`],
+        ["NOT COME", num(count(["NOT_COME"])), null, `${num(board.rows.filter((r) => r.checked_in_at).length)} checked in · ${num(count(["CHECKED_IN", "ADMITTED"]))} in, not started`],
         ["WRITING", num(count(["WRITING"])), count(["WRITING"]) ? "var(--green-ink)" : null, `${num(count(["DISCONNECTED", "TIME_UP"]))} not heard from`],
         ["FINISHED", num(count(["SUBMITTED", "TIME_EXPIRED", "TERMINATED"])), null, `${num(count(["TIME_EXPIRED"]))} time expired · ${num(count(["TERMINATED"]))} terminated`],
         ["ABSENT", num(count(["ABSENT"])), count(["ABSENT"]) ? "var(--red-ink)" : null, "Marked by an invigilator"],
@@ -120,6 +135,9 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
 
       <Panel title="Seats" right={<span className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
         <input className="ctl" aria-label="Find a candidate" placeholder="Name, matric number or seat" value={q} onChange={(e) => setQ(e.target.value)} />
+        {board.canMark ? <Btn kind="primary" size="sm" onClick={() => setScanning(true)} title={canScan ? "Scan slips with this device's camera" : "Use the phone's camera app: the slip's QR opens the check-in page"}>Scan a slip</Btn> : null}
+        {board.canMark ? <Btn kind="secondary" size="sm" onClick={() => setIncidentFor(null)}>Record an incident</Btn> : null}
+        <LinkBtn kind="secondary" size="sm" href={`/cbt/invigilate/${id}/report`}>{board.reportFiledAt ? "Sitting report (filed)" : "Sitting report"}</LinkBtn>
         <Btn kind="ghost" size="sm" onClick={() => void load()}>Read again</Btn>
         <Btn kind="ghost" size="sm" disabled={!board.rows.length} onClick={() => brandedPrint(`${board.exam.course_code} CBT attendance`, `${board.exam.title} · ${s.label} · ${s.venue} · ${whenAt(s.starts_at)} to ${hhmm(s.ends_at)}`,
           ["Seat", "Matric No.", "Name", "Level", "Programme", "Attendance", "Started", "Finished", "Signature"], printRows, docSerial("CBT"))}>Print</Btn>
@@ -156,7 +174,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
                         {r.state === "DISCONNECTED" && heard != null ? ` · last heard ${heard >= 120 ? `${Math.round(heard / 60)} min` : `${heard} s`} ago` : ""}
                         {r.violations ? ` · ${r.violations} flag${r.violations === 1 ? "" : "s"}` : ""}
                       </span>
-                    ) : <span className="sub2">{r.mark === "LATE" ? `Admitted ${r.minutes_late} min late${r.minutes_given ? `, +${r.minutes_given} min` : ""}` : r.mark === "ABSENT" ? (r.mark_note ?? "Marked absent") : begun ? "Has not started" : "Sitting not begun"}</span>}
+                    ) : <span className="sub2">{r.mark === "LATE" ? `Admitted ${r.minutes_late} min late${r.minutes_given ? `, +${r.minutes_given} min` : ""}` : r.mark === "ABSENT" ? (r.mark_note ?? "Marked absent") : r.checked_in_at ? `Checked in ${hhmm(r.checked_in_at)}${r.check_method === "SCAN" ? " by slip" : ""}` : begun ? "Has not started" : "Sitting not begun"}</span>}
                   </button>
                 );
               })}
@@ -166,10 +184,37 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
         </PBody>
       </Panel>
 
+      {board.incidents && board.incidents.length ? (
+        <Panel title="Incidents" right={<span className="sub2">{board.incidents.length} recorded</span>}>
+          <DTable cols={["When", "What", "Candidate", "Detail", "Recorded by"]} rows={board.incidents.map((x) => [
+            <span key="w" className="tnum">{hhmm(x.occurred_at)}</span>,
+            <span key="k">{INCIDENT_WORD[x.kind] ?? x.kind}{x.minutes_lost ? <span className="sub2"> · {x.minutes_lost} min lost</span> : null}{x.after_filing ? <Pil kind="grey" className="ml-1">after the report</Pil> : null}</span>,
+            <span key="c" className="sub2">{x.candidate_id ? `Seat ${x.seat_no ?? "—"} · ${(x.surname ?? "").toUpperCase()}, ${x.other_names ?? ""} · ${x.number ?? ""}` : "The hall"}</span>,
+            <span key="d">{x.detail}</span>,
+            <span key="b" className="sub2">{x.recorded_by ?? "—"}</span>,
+          ])} />
+        </Panel>
+      ) : null}
+
+      {scanning ? <SlipScanner onClose={() => setScanning(false)} onToken={(t) => { setScanning(false); router.push(`/cbt/checkin?t=${encodeURIComponent(t)}`); }} /> : null}
+      {incidentFor !== undefined ? <IncidentForm sittingId={id} candidate={incidentFor} onClose={() => setIncidentFor(undefined)} onDone={(j) => { setBoard(j as unknown as Board); setIncidentFor(undefined); }} /> : null}
+
       {current ? (
         <Modal title={`Seat ${current.seat_no} · ${nameOf(current)}`} sub={`${current.number}${current.level ? ` · ${current.level} level` : ""}${current.programme ? ` · ${current.programme}` : ""}`} onClose={() => setOpen(null)}
           foot={<Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>}>
-          <p><Pil kind={STATE[current.state][1]}>{STATE[current.state][0]}</Pil></p>
+          <div className="row row--inline" style={{ gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
+            {noPhoto === current.candidate_id ? <div className="sub2" style={{ width: 96, height: 116, border: "1px dashed var(--line, #d0d5dd)", borderRadius: 6, display: "grid", placeItems: "center", textAlign: "center", padding: 4 }}>No photograph on record</div> : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/bff/api/v1/cbt/sittings/${id}/candidates/${current.candidate_id}/photo`} alt={`Photograph of ${nameOf(current)} on the record`} onError={() => setNoPhoto(current.candidate_id)}
+                style={{ width: 96, height: 116, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line, #d0d5dd)" }} />
+            )}
+            <div style={{ display: "grid", gap: 4 }}>
+              <span><Pil kind={STATE[current.state][1]}>{STATE[current.state][0]}</Pil></span>
+              {current.checked_in_at ? <span className="sub2">Checked in {hhmm(current.checked_in_at)} {current.check_method === "SCAN" ? "by slip" : current.check_method === "ADMITTED" ? "on admission" : "by hand"}</span> : null}
+              {board.canMark && current.state === "NOT_COME" && !over ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/check-in`, { method: "MANUAL" }, `${nameOf(current)} checked in`)}>The face matches — check in</Btn> : null}
+              {board.canMark ? <Btn kind="ghost" size="sm" onClick={() => { const c = current; setOpen(null); setIncidentFor({ id: c.candidate_id, name: nameOf(c) }); }}>Record an incident</Btn> : null}
+            </div>
+          </div>
           {current.attempt_id ? (
             <div className="sub2 mb-2">
               Started {hhmm(current.started_at)}{current.ends_at ? ` · ends ${hhmm(current.ends_at)}` : ""}{current.submitted_at ? ` · finished ${hhmm(current.submitted_at)}` : ""} · {current.answered ?? 0} of {current.questions ?? 0} answered
@@ -189,7 +234,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
               <Field id="mark-note" label="Note" hint="Optional: why, as you would write it on the attendance sheet"><input id="mark-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
               <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
                 {begun && current.mark !== "ABSENT" ? <Btn kind="urgent" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/absent`, { note: note.trim() || null }, `${nameOf(current)} marked absent`)}>Mark absent</Btn> : null}
-                {current.mark ? <Btn kind="ghost" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/clear`, {}, `The mark on ${nameOf(current)} undone`)}>Undo the mark</Btn> : null}
+                {current.mark ? <Btn kind="ghost" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/clear`, {}, `The mark on ${nameOf(current)} undone`)}>{current.mark === "PRESENT" ? "Undo the check-in" : "Undo the mark"}</Btn> : null}
               </div>
               <div className="sub2 mt-2">A candidate marked absent cannot start. Admitting a late candidate lets them start past the late-entry limit; the minutes given back are added to their clock, never more than the time they lost — more than that is extra time, given by the examination office with its reason.</div>
             </>

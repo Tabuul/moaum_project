@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 219
+\set EXPECTED 220
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7711,6 +7711,158 @@ BEGIN
         format('st0=%s ready=%s checks=%s own=%s st1=%s ready2=%s pool=%s | v2=%s st2=%s by=%s direct=%s note=%s st3=%s decisions=%s | told=%s busy=%s staff=%s | late=%s minutes=%s left=%s begun=%s absent=%s cleared=%s rest=%s board=%s kept=%s remove=%s | audit %s/%s/%s',
                st0, r_ready, checks, r_own, st1, r_ready2, pool_n, v2, st2, by2 = who, r_direct, r_note, st3, decisions, told, r_busy, r_staff,
                r_late, r_minutes, left1, r_absent_begun, r_absent, r_after_clear, rest, board, r_kept, r_remove, aud0, aud1, aud2));
+END $$;
+
+-- ── V375: candidates checked in at the door; the sitting report and its incidents; moderation told and decided by sample ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); inv uuid := gen_random_uuid(); setter uuid := gen_random_uuid(); mod uuid := gen_random_uuid();
+        off uuid := gen_random_uuid(); pa text := 'C00023'; S text := '9959/9960'; ex assessment.cbt_exam; s1 assessment.cbt_sitting;
+        q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid();
+        ca uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()]; i int; reg uuid;
+        a1 assessment.cbt_attempt; a3 assessment.cbt_attempt; a4 assessment.cbt_attempt; m assessment.cbt_attendance;
+        r_unchecked text; r_late text; first_at timestamptz; again_at timestamptz; r_absent text; method3 text; board text; absent_in timestamptz;
+        r_running text; r_who text; r_twice text; rep assessment.cbt_sitting_report; inc_attempt uuid; after boolean;
+        bq uuid[] := '{}'; told int; told_again int; noticed int; r_size text; r_open text; r_unfinished text;
+        smp assessment.question_moderation_sample; closed assessment.question_moderation_sample; failed assessment.question_moderation_sample; rest_note text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9959-10-01', date '9960-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 959', 'Check check-in, reports, sampling', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 959', pa, 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 959', S, 1);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (inv, 'CHECK/V375/I', 'ZZINV375', 'Invented', NULL), (setter, 'CHECK/V375/S', 'ZZSET375', 'Invented', 'setter375@example.invalid'),
+            (mod, 'CHECK/V375/M', 'ZZMOD375', 'Invented', NULL);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to)
+        VALUES (gen_random_uuid(), inv, 'hod', 'department', 'MTC', 'check', gen_random_uuid(), current_date, NULL);
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES (q1, 'GST 959', 'V375 one', '["a","b"]', 0, 'MCQ', 1), (q2, 'GST 959', 'V375 two', '["a","b"]', 1, 'MCQ', 1);
+        PERFORM pg_temp.moderated();
+        ex := assessment.cbt_new_exam('GST', off, 'V375 hall', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', now() - interval '20 minutes', now() + interval '3 hours');
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2);
+        FOR i IN 1..4 LOOP
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (ca[i], 'MOAUM/ADM/59/' || lpad(i::text, 6, '0'), 'MOAUM/CHK/59/' || i, 'ZZV375', 'Seat ' || i, pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+            reg := registration.student_draft(ca[i], S, 1);
+            PERFORM registration.student_choose(reg, ARRAY[off]);
+            UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        END LOOP;
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        s1 := assessment.cbt_add_sitting(ex.id, 'Hall 1', 'CBT Lab D', now() - interval '10 minutes', now() + interval '50 minutes', 4);
+        PERFORM assessment.cbt_seat_all(ex.id, 'NUMBER');
+        PERFORM assessment.cbt_assign_invigilator(s1.id, inv, true);
+        PERFORM assessment.cbt_set_check_in_required(ex.id, true);
+        PERFORM assessment.cbt_set_late_entry(ex.id, 5);
+
+        -- (1) check-in: required, so an unchecked candidate does not start; checked in after the limit, admitted late; at the door in time, not late
+        PERFORM set_config('moaum.actor_id', ca[1]::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        BEGIN PERFORM assessment.cbt_start(ex.id, ca[1], '10.0.0.1', 'check'); r_unchecked := 'STARTED';
+        EXCEPTION WHEN check_violation THEN r_unchecked := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', inv::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        m := assessment.cbt_check_in(s1.id, ca[1], 'SCAN');
+        first_at := m.checked_in_at;
+        m := assessment.cbt_check_in(s1.id, ca[1], 'SCAN');
+        again_at := m.checked_in_at;
+        PERFORM set_config('moaum.actor_id', ca[1]::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        BEGIN PERFORM assessment.cbt_start(ex.id, ca[1], '10.0.0.1', 'check'); r_late := 'STARTED';
+        EXCEPTION WHEN check_violation THEN r_late := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', inv::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        PERFORM assessment.cbt_admit_late(s1.id, ca[1], 5, 'checked in after the limit');
+        PERFORM assessment.cbt_mark_absent(s1.id, ca[2], 'not in the hall');
+        BEGIN PERFORM assessment.cbt_check_in(s1.id, ca[2], 'SCAN'); r_absent := 'CHECKED_IN';
+        EXCEPTION WHEN check_violation THEN r_absent := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.cbt_admit_late(s1.id, ca[3], 0, 'no slip; identity checked');
+        SELECT check_method INTO method3 FROM assessment.cbt_attendance WHERE sitting_id = s1.id AND candidate_id = ca[3];
+        -- the fourth was at the door within the five minutes
+        PERFORM assessment.cbt_check_in(s1.id, ca[4], 'MANUAL');
+        UPDATE assessment.cbt_attendance SET checked_in_at = s1.starts_at + interval '2 minutes' WHERE sitting_id = s1.id AND candidate_id = ca[4];
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', ca[1]::text, true);
+        a1 := assessment.cbt_start(ex.id, ca[1], '10.0.0.1', 'check');
+        PERFORM set_config('moaum.actor_id', ca[3]::text, true);
+        a3 := assessment.cbt_start(ex.id, ca[3], '10.0.0.3', 'check');
+        PERFORM set_config('moaum.actor_id', ca[4]::text, true);
+        a4 := assessment.cbt_start(ex.id, ca[4], '10.0.0.4', 'check');
+        SELECT string_agg(b.seat_no || ':' || b.state || '/' || coalesce(b.check_method, '-'), ',' ORDER BY b.seat_no) INTO board FROM assessment.cbt_sitting_board(s1.id) b;
+
+        -- (2) the sitting report: incidents as they happen; filed once nobody is writing; filed once; added to, never rewritten
+        PERFORM set_config('moaum.actor_id', inv::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        PERFORM assessment.cbt_record_incident(s1.id, NULL, 'power', 'the generator failed; candidates waited', 5, now() - interval '5 minutes');
+        SELECT x.attempt_id INTO inc_attempt FROM assessment.cbt_record_incident(s1.id, ca[1], 'MALPRACTICE', 'a phone under the desk', NULL, NULL) x;
+        BEGIN PERFORM assessment.cbt_file_sitting_report(s1.id, s1.starts_at, now(), ARRAY[inv], 'went well'); r_running := 'FILED';
+        EXCEPTION WHEN check_violation THEN r_running := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.cbt_finalize(a1.id, 'SUBMITTED', NULL);
+        PERFORM assessment.cbt_finalize(a3.id, 'SUBMITTED', NULL);
+        PERFORM assessment.cbt_finalize(a4.id, 'SUBMITTED', NULL);
+        BEGIN PERFORM assessment.cbt_file_sitting_report(s1.id, s1.starts_at, now(), ARRAY[inv, setter], NULL); r_who := 'FILED';
+        EXCEPTION WHEN check_violation THEN r_who := split_part(SQLERRM, ':', 1); END;
+        rep := assessment.cbt_file_sitting_report(s1.id, s1.starts_at + interval '3 minutes', now(), ARRAY[inv], 'five minutes lost to the generator');
+        BEGIN PERFORM assessment.cbt_file_sitting_report(s1.id, s1.starts_at, now(), ARRAY[inv], NULL); r_twice := 'FILED';
+        EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        rep := assessment.cbt_sitting_report_addendum(s1.id, 'the malpractice case went to the committee');
+        SELECT x.after_filing INTO after FROM assessment.cbt_record_incident(s1.id, ca[1], 'OTHER', 'a further statement taken', NULL, NULL) x;
+        PERFORM assessment.cbt_mark_absent(s1.id, ca[2], 'confirmed');
+        SELECT checked_in_at INTO absent_in FROM assessment.cbt_attendance WHERE sitting_id = s1.id AND candidate_id = ca[2];
+
+        -- (3) moderation: the setter told once, per bank, with no question in the notice; a sample decided
+        PERFORM set_config('moaum.actor_id', setter::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        FOR i IN 1..6 LOOP
+            bq := bq || gen_random_uuid();
+            INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks, authored_by) VALUES (bq[i], 'GST 959', 'V375 bank ' || i, '["a","b"]', 0, 'MCQ', 1, setter);
+        END LOOP;
+        PERFORM set_config('moaum.actor_id', mod::text, true);
+        PERFORM assessment.question_moderate(bq[1], 'approve', NULL);
+        PERFORM assessment.question_moderate(bq[2], 'return', 'the stem is ambiguous');
+        told := assessment.notify_moderation(interval '0');
+        told_again := assessment.notify_moderation(interval '0');
+        SELECT count(*) INTO noticed FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = setter AND n.body LIKE '%1 approved and 1 returned%' AND n.body NOT LIKE '%V375 bank%' AND n.body NOT LIKE '%ambiguous%';
+        BEGIN PERFORM assessment.question_sample_draw('GST 959', NULL, 5); r_size := 'DRAWN';
+        EXCEPTION WHEN check_violation THEN r_size := split_part(SQLERRM, ':', 1); END;
+        smp := assessment.question_sample_draw('GST 959', NULL, 2);
+        BEGIN PERFORM assessment.question_sample_draw('GST 959', NULL, 1); r_open := 'DRAWN';
+        EXCEPTION WHEN check_violation THEN r_open := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM assessment.question_sample_close(smp.id); r_unfinished := 'CLOSED';
+        EXCEPTION WHEN check_violation THEN r_unfinished := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.question_moderate(smp.sample[1], 'approve', NULL);
+        PERFORM assessment.question_moderate(smp.sample[2], 'approve', NULL);
+        closed := assessment.question_sample_close(smp.id);
+        SELECT string_agg(DISTINCT q.moderation_note, '|') INTO rest_note FROM assessment.question q WHERE q.id = ANY (smp.population) AND NOT (q.id = ANY (smp.sample));
+        -- a sample with a question returned fails; the rest wait
+        PERFORM set_config('moaum.actor_id', setter::text, true);
+        bq := ARRAY[gen_random_uuid(), gen_random_uuid()];
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks, authored_by) VALUES (bq[1], 'GST 959', 'V375 more 1', '["a","b"]', 0, 'MCQ', 1, setter),
+                                                                                                       (bq[2], 'GST 959', 'V375 more 2', '["a","b"]', 0, 'MCQ', 1, setter);
+        PERFORM set_config('moaum.actor_id', mod::text, true);
+        failed := assessment.question_sample_draw('GST 959', NULL, 1);
+        PERFORM assessment.question_moderate(failed.sample[1], 'return', 'not clear');
+        failed := assessment.question_sample_close(failed.id);
+        RAISE EXCEPTION 'the V375 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V375: where the office requires it a candidate starts once checked in; a check-in is once, never of a candidate marked absent, an admission is one, and a candidate at the door within the late-entry limit is not late; a sitting''s report is filed once nobody is writing, names only its invigilators, is filed once and added to; a setter is told per bank with no question in the notice; a sample approves the rest when every sampled question is approved, and fails when one is returned',
+        coalesce(r_unchecked = 'CBT_NOT_CHECKED_IN' AND first_at IS NOT NULL AND again_at = first_at AND r_late = 'CBT_LATE_ENTRY' AND r_absent = 'CBT_CHECK_IN_ABSENT'
+                 AND method3 = 'ADMITTED' AND board = '1:WRITING/SCAN,2:ABSENT/-,3:WRITING/ADMITTED,4:WRITING/MANUAL'
+                 AND inc_attempt = a1.id AND r_running = 'CBT_SITTING_RUNNING' AND r_who = 'CBT_REPORT_INVIGILATORS' AND r_twice = 'CBT_REPORT_FILED'
+                 AND (rep.counts->>'seated')::int = 4 AND (rep.counts->>'checked_in')::int = 3 AND (rep.counts->>'absent')::int = 1 AND (rep.counts->>'incidents')::int = 2
+                 AND (rep.counts->>'minutes_lost')::int = 5 AND (rep.counts->>'submitted')::int = 3 AND rep.addendum LIKE '%went to the committee%' AND after AND absent_in IS NULL
+                 AND told >= 1 AND told_again = 0 AND noticed = 1 AND r_size = 'CBT_SAMPLE_SIZE' AND r_open = 'CBT_SAMPLE_OPEN' AND r_unfinished = 'CBT_SAMPLE_UNFINISHED'
+                 AND cardinality(smp.population) = 4 AND closed.state = 'APPROVED' AND closed.approved = 2 AND closed.left_as_they_were = 0 AND rest_note LIKE 'Approved by sample: 2 of 4%'
+                 AND failed.state = 'FAILED' AND failed.left_as_they_were = 1, false),
+        format('unchecked=%s in=%s/%s late=%s absent=%s m3=%s board=%s | incident=%s running=%s who=%s twice=%s counts=%s addendum=%s after=%s absent_in=%s | told=%s/%s noticed=%s size=%s open=%s unfinished=%s pop=%s closed=%s/%s/%s note=%s failed=%s/%s',
+               r_unchecked, first_at IS NOT NULL, again_at = first_at, r_late, r_absent, method3, board, inc_attempt = a1.id, r_running, r_who, r_twice, rep.counts,
+               rep.addendum IS NOT NULL, after, absent_in, told, told_again, noticed, r_size, r_open, r_unfinished, cardinality(smp.population),
+               closed.state, closed.approved, closed.left_as_they_were, rest_note, failed.state, failed.left_as_they_were));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

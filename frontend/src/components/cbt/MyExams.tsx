@@ -10,6 +10,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notifyProblem } from "@/components/proto/Toast";
+import { printSlips, type Slip } from "@/lib/cbt-slip";
 import { ATTEMPT_WORD, ELIGIBILITY_WORD, EXAM_TYPE_WORD, EXAM_WORD, codeOf, num, pct1, textOf, whenAt, type MyExam, type MyExams as Data } from "@/lib/cbt";
 
 export const tokenKey = (attemptId: string) => `cbt-token:${attemptId}`;
@@ -28,6 +29,14 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
   const openNow = rows.filter((r) => r.live_state === "OPEN").length;
   const upcoming = rows.filter((r) => r.live_state === "UPCOMING").length;
   const published = rows.filter((r) => r.result_published && r.attempt_id).length;
+
+  /* V375: the slip shown at the door of the sitting, its QR signed by the portal */
+  async function printSlip(x: MyExam) {
+    const r = await fetch(`${apiBase}/exams/${x.exam_id}/slip`);
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+    await printSlips("CBT slip", `${x.course_code} · ${x.title}`, [j as Slip]);
+  }
 
   async function start(x: MyExam) {
     setBusy(true); setProblem(null);
@@ -85,6 +94,7 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
                   {x.sitting_venue} · {whenAt(x.sitting_starts_at)}{x.sitting_ends_at ? ` to ${new Date(x.sitting_ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}. The examination opens to you only in your sitting; come to the venue in good time.
                   {/* V374: the office's late-entry limit, when it set one */}
                   {x.late_entry_until && x.attendance !== "LATE" ? <> You may start on your own until <b>{new Date(x.late_entry_until).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>; after that, only once the invigilator admits you.</> : null}
+                  <div className="mt-1"><Btn kind="secondary" size="sm" onClick={() => void printSlip(x)}>Print your CBT slip</Btn> <span className="sub2">Bring it to the door: the invigilator scans it and checks your face against your photograph.</span></div>
                 </Note>
               ) : null}
               {x.attendance === "ABSENT" ? <Note kind="bad" title="Marked absent">The invigilator marked you absent from your sitting, so the examination does not open to you. If you are in the hall, ask the invigilator to admit you.</Note> : null}

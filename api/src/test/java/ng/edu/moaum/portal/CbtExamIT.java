@@ -626,4 +626,109 @@ class CbtExamIT {
         assertThat(m(it.get(student2, "/api/v1/me/cbt/exams/" + exam).getBody()).get("attendance")).isEqualTo("ABSENT");
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/remove", Map.of()).getBody().get("code")).isIn("CBT_SITTING_SAT", "CBT_SITTING_MARKED");
     }
+
+    /** a member of staff on the record, holding an office today, with a token of their own */
+    private UUID staff(String surname, String email) {
+        UUID person = UUID.randomUUID();
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single();
+            jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (:id, :n, :s, 'Invented', :e)")
+                    .param("id", person).param("n", "IT/" + person.toString().substring(0, 8)).param("s", surname).param("e", email, java.sql.Types.VARCHAR).update();
+            jdbc.sql("INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES (gen_random_uuid(), :p, 'hod', 'department', :d, 'test', gen_random_uuid(), current_date)")
+                    .param("p", person).param("d", dept).update();
+            return null;
+        });
+        return person;
+    }
+
+    @Test
+    void aCandidateIsCheckedInByTheirSlipAndTheSittingIsReported() {
+        // V375: the office requires check-in; the candidate's slip carries the signed code the invigilator scans
+        UUID exam = publishedExam("Check-in CBT", 3, "WARN", "CONTINUE", paper());
+        register(s, student);
+        register(s2, student2);
+        OffsetDateTime now = OffsetDateTime.now();
+        String sitting = String.valueOf(l(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings", mapOf("label", "Hall C", "venue", "CBT Centre", "startsAt", now.minusSeconds(40), "endsAt", now.plusMinutes(60), "capacity", 10))
+                .getBody().get("sittings")).get(0).get("id"));
+        it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/seat-all", Map.of("order", "NUMBER"));
+        UUID inv = staff("ZZCHECKIN" + code.replace(" ", ""), null);
+        String invigilator = TestTokens.token(inv, List.of("hod"));
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/invigilators", Map.of("personId", inv, "chief", true)).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(eps, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/check-in", Map.of("required", true)).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/check-in", Map.of("required", true)).getBody().get("require_check_in")).isEqualTo(true);
+        assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of()).getBody().get("code")).isEqualTo("CBT_NOT_CHECKED_IN");
+
+        Map<String, Object> slip = it.get(student, "/api/v1/me/cbt/exams/" + exam + "/slip").getBody();
+        String token = String.valueOf(slip.get("token"));
+        assertThat(slip.get("sitting")).isEqualTo("Hall C");
+        assertThat(token).startsWith(exam + "." + s + ".");
+        Map<String, Object> seen = it.get(invigilator, "/api/v1/cbt/check-in?t=" + token).getBody();
+        assertThat(seen.get("canCheckIn")).isEqualTo(true);
+        assertThat(m(seen.get("candidate")).get("state")).isEqualTo("NOT_COME");
+        assertThat(it.get(lecturer, "/api/v1/cbt/check-in?t=" + token).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(student, "/api/v1/cbt/check-in?t=" + token).getStatusCode().value()).isEqualTo(403);
+        String forged = token.substring(0, token.length() - 1) + (token.endsWith("0") ? "1" : "0");
+        assertThat(it.get(invigilator, "/api/v1/cbt/check-in?t=" + forged).getBody().get("code")).isEqualTo("CBT_SLIP_NOT_GENUINE");
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s2 + "/check-in", Map.of("method", "SCAN", "token", token)).getBody().get("code")).isEqualTo("CBT_SLIP_MISMATCH");
+        Map<String, Object> board = it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s + "/check-in", Map.of("method", "SCAN", "token", token)).getBody();
+        assertThat(l(board.get("rows"))).anySatisfy(r -> { assertThat(r.get("candidate_id")).isEqualTo(s.toString()); assertThat(r.get("state")).isEqualTo("CHECKED_IN"); assertThat(r.get("check_method")).isEqualTo("SCAN"); });
+        assertThat(it.get(invigilator, "/api/v1/cbt/sittings/" + sitting + "/candidates/" + s + "/photo").getStatusCode().value()).isEqualTo(404);   // no photograph on record for a test student
+        ResponseEntity<Map> started = it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of());
+        assertThat(started.getStatusCode().value()).as(String.valueOf(started.getBody())).isEqualTo(200);
+        Map<String, Object> slips = it.get(gst, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/slips").getBody();
+        assertThat(l(slips.get("rows"))).hasSize(2).allSatisfy(r -> assertThat(String.valueOf(r.get("token"))).startsWith(exam + "."));
+
+        // incidents as they happen; the report once nobody is writing, by the chief invigilator; the office adds to it
+        it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents", mapOf("kind", "NETWORK", "detail", "the switch restarted", "minutesLost", 3));
+        Map<String, Object> withIncidents = it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents", mapOf("candidateId", s, "kind", "ILLNESS", "detail", "felt faint; given water")).getBody();
+        assertThat(l(withIncidents.get("incidents"))).hasSize(2);
+        Map<String, Object> reportBody = mapOf("began", now.minusSeconds(40).toString(), "ended", OffsetDateTime.now().toString(), "invigilators", List.of(inv), "remarks", "a quiet sitting");
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/report", reportBody).getBody().get("code")).isEqualTo("CBT_SITTING_RUNNING");
+        String attempt = String.valueOf(started.getBody().get("attemptId"));
+        it.callWith(student, HttpMethod.POST, "/api/v1/me/cbt/attempts/" + attempt + "/submit", Map.of(), tok(String.valueOf(started.getBody().get("token"))));
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/report", reportBody).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> filed = it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/report",
+                mapOf("began", now.minusSeconds(40).toString(), "ended", OffsetDateTime.now().toString(), "invigilators", List.of(inv), "remarks", "a quiet sitting"));
+        assertThat(filed.getStatusCode().value()).as(String.valueOf(filed.getBody())).isEqualTo(200);
+        assertThat(m(m(filed.getBody().get("report")).get("counts")).get("checked_in")).isEqualTo(1);
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/report/addendum", Map.of("text", "not mine")).getStatusCode().value()).isEqualTo(403);
+        assertThat(String.valueOf(m(it.call(gst, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/report/addendum", Map.of("text", "the network fault was logged with ICT")).getBody().get("report")).get("addendum")))
+                .contains("logged with ICT");
+        assertThat(it.call(invigilator, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents", mapOf("kind", "OTHER", "detail", "afterwards")).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.getList(gst, "/api/v1/cbt/sitting-reports?office=GST&session=" + SESSION).getBody())
+                .anySatisfy(r -> { assertThat(((Map) r).get("sitting_id")).isEqualTo(sitting); assertThat(((Map) r).get("phase")).isEqualTo("FILED"); });
+        assertThat(it.getList(eps, "/api/v1/cbt/sitting-reports?office=GST").getStatusCode().value()).isEqualTo(403);
+        assertThat(l(it.get(gst, "/api/v1/cbt/exams/" + exam + "/candidates/" + s).getBody().get("incidents"))).singleElement().satisfies(r -> assertThat(r.get("kind")).isEqualTo("ILLNESS"));
+    }
+
+    @Test
+    void aModeratorDecidesBySampleAndTheSetterIsTold() {
+        // V375: the setter's questions wait; the moderator's queue shows them; a sample of two, both approved, approves the rest
+        UUID setterId = staff("ZZSETTER" + code.replace(" ", ""), "zzsetter" + code.replace(" ", "") + "@example.com");
+        String setter = TestTokens.token(setterId, List.of("gst"));
+        for (int i = 1; i <= 4; i++) {
+            assertThat(it.call(setter, HttpMethod.POST, "/api/v1/cbt/questions", mapOf("course", code, "kind", "MCQ", "stem", "Sampled " + i, "options", List.of("a", "b"), "answer", 0)).getStatusCode().value()).isEqualTo(200);
+        }
+        String moderator = ItSupport.token("gst");
+        assertThat(it.getList(moderator, "/api/v1/cbt/moderation/queue").getBody()).anySatisfy(r -> { assertThat(((Map) r).get("bank")).isEqualTo(code); assertThat(((Number) ((Map) r).get("for_me")).intValue()).isEqualTo(4); });
+        assertThat(it.getList(setter, "/api/v1/cbt/moderation/queue").getBody()).anySatisfy(r -> { assertThat(((Map) r).get("bank")).isEqualTo(code); assertThat(((Number) ((Map) r).get("mine_waiting")).intValue()).isEqualTo(4); });
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/cbt/questions/samples", Map.of("course", code, "size", 2)).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(setter, HttpMethod.POST, "/api/v1/cbt/questions/samples", Map.of("course", code, "size", 2)).getBody().get("code")).isEqualTo("CBT_SAMPLE_NOTHING");
+        ResponseEntity<Map> drawn = it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/samples", Map.of("course", code, "size", 2));
+        assertThat(drawn.getStatusCode().value()).as(String.valueOf(drawn.getBody())).isEqualTo(200);
+        String sample = String.valueOf(drawn.getBody().get("id"));
+        assertThat(m(it.get(moderator, "/api/v1/cbt/questions/samples?course=" + code).getBody().get("open")).get("id")).isEqualTo(sample);
+        assertThat(it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/samples/" + sample + "/close", Map.of()).getBody().get("code")).isEqualTo("CBT_SAMPLE_UNFINISHED");
+        for (Map<String, Object> q : l(drawn.getBody().get("questions"))) {
+            assertThat(it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/" + q.get("id") + "/moderation", Map.of("decision", "APPROVE")).getStatusCode().value()).isEqualTo(200);
+        }
+        Map<String, Object> closed = it.call(moderator, HttpMethod.POST, "/api/v1/cbt/questions/samples/" + sample + "/close", Map.of()).getBody();
+        assertThat(closed.get("state")).isEqualTo("APPROVED");
+        assertThat(((Number) closed.get("approved")).intValue()).isEqualTo(2);
+        assertThat(bankRows(code).stream().filter(r -> String.valueOf(r.get("stem")).startsWith("Sampled"))).hasSize(4).allSatisfy(r -> assertThat(r.get("moderation")).isEqualTo("APPROVED"));
+        // the setter is told once, per bank, with no question in the notice
+        it.db(() -> jdbc.sql("SELECT assessment.notify_moderation(interval '0')").query(Integer.class).single());
+        List<String> bodies = jdbc.sql("SELECT body FROM platform.notice WHERE about_kind = 'person' AND about_id = :p").param("p", setterId).query(String.class).list();
+        assertThat(bodies).singleElement().satisfies(b -> { assertThat(b).contains("4 approved"); assertThat(b).doesNotContain("Sampled"); });
+    }
 }

@@ -10,6 +10,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
+import { INCIDENT_WORD } from "./IncidentForm";
 import { ATTEMPT_WORD, EVENT_WORD, SEVERITY_WORD, clock, liveStatus, num, pct1, whenAt, type Candidate, type CandidateDetail, type CandidatePage, type CbtExam } from "@/lib/cbt";
 import { cbtSend } from "./CbtExam";
 
@@ -107,6 +108,15 @@ export function CandidateModal({ examId, student, canManage, onClose, onChanged,
               <span key={`d${i}`} className="sub2">{e.detail ?? ""}</span>, <span key={`i${i}`} className="sub2 tnum">{e.ip ?? ""}</span>,
             ])} /> : <PBody><div className="sub2">Nothing recorded.</div></PBody>}
           </Panel>
+          {d.incidents && d.incidents.length ? (
+            <Panel title="Incidents in the sitting" right={<span className="sub2">Recorded by the invigilators</span>}>
+              <DTable cols={["When", "What", "Detail", "Sitting", "Recorded by"]} rows={d.incidents.map((x) => [
+                <span key="w" className="tnum sub2">{whenAt(x.occurred_at)}</span>,
+                <span key="k">{INCIDENT_WORD[x.kind] ?? x.kind}{x.after_filing ? <Pil kind="grey" className="ml-1">after the report</Pil> : null}</span>,
+                <span key="d">{x.detail}</span>, <span key="s" className="sub2">{x.sitting}</span>, <span key="b" className="sub2">{x.recorded_by ?? "—"}</span>,
+              ])} />
+            </Panel>
+          ) : null}
           {d.versions.length ? (
             <Panel title="Result versions" right={amend && canManage && c.attempt_id && c.attempt_status !== "IN_PROGRESS" ? <Btn kind="secondary" size="sm" onClick={() => amend(c.attempt_id as string, c.max_marks ?? 0)}>Amend the score</Btn> : null}>
               <DTable cols={["Version|mid", "Score|num", "%|num", "Grade|mid", "Outcome|mid", "Reason", "By", "When"]} rows={d.versions.map((v) => [

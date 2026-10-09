@@ -102,6 +102,8 @@ export interface CandidateDetail {
   attempts: { id: string; number: number; status: AttemptStatus; started_at: string; ends_at: string; submitted_at: string | null; last_activity_at: string; violations: number; answered: number; questions: number; score: number | null; max_marks: number; percentage: number | null; grade: string | null; passed: boolean | null; outcome: string; ip: string | null; user_agent: string | null; finished_reason: string | null; finished_office: string | null }[];
   events: { attempt_id: string; kind: string; violation: boolean; at: string; detail: string | null; ip: string | null; severity?: Severity; question_no?: number | null; duration_ms?: number | null }[];
   versions: { attempt_id: string; version: number; score: number; max_marks: number; percentage: number; grade: string | null; passed: boolean; outcome: string; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
+  /** V375: what the invigilators recorded about the candidate in their sitting */
+  incidents?: { id: string; kind: string; occurred_at: string; minutes_lost: number | null; detail: string; after_filing: boolean; sitting: string; recorded_by: string | null }[];
 }
 export interface CbtSummary {
   office: CbtOffice; session: string;

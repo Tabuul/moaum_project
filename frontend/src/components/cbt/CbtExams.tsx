@@ -184,6 +184,8 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
     <>
       <PageHead title={`${word} CBT examinations`} description={`The computer-based examinations ${office === "EXAMS" ? "of the University's CBT-enabled courses within your scope" : `of the ${office} office`} for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.${data.archived ? " Showing the archived examinations." : ""}`}
         actions={<span className="row row--inline row--tight">
+          {/* V375: every sitting's report, filed or due, in one place */}
+          <LinkBtn kind="secondary" size="sm" href={`/cbt/reports?office=${office}&session=${encodeURIComponent(data.session)}`}>Sitting reports</LinkBtn>
           <label htmlFor="cx-session" className="sub2">Session</label>
           <select id="cx-session" className="ctl" value={data.session} onChange={(e) => go(q({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
           <label htmlFor="cx-sem" className="sub2">Semester</label>

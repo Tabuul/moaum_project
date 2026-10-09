@@ -55,6 +55,13 @@ class CbtCandidateController {
         return door.one(Kind.STUDENT, me(auth), id);
     }
 
+    /** V375: the CBT slip — the sitting, the seat and the signed code the invigilator scans at the door */
+    @GetMapping("/exams/{id}/slip")
+    @Transactional(readOnly = true)
+    Map<String, Object> slip(Authentication auth, @PathVariable UUID id) {
+        return door.slip(Kind.STUDENT, me(auth), id);
+    }
+
     @PostMapping("/exams/{id}/start")
     @Transactional
     Map<String, Object> start(Authentication auth, @PathVariable UUID id, @RequestHeader(value = "User-Agent", required = false) String agent) {

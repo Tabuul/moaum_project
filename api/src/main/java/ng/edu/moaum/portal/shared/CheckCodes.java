@@ -34,7 +34,8 @@ public class CheckCodes {
 
     private static final Logger LOG = LoggerFactory.getLogger(CheckCodes.class);
 
-    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER }
+    /** V375: CBT_SLIP — a candidate's CBT slip (the examination and the candidate), scanned at the door of the sitting */
+    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP }
 
     private final byte[] key;
 
@@ -68,7 +69,9 @@ public class CheckCodes {
             case REG -> "REG|" + part(parts, 0) + "|" + part(parts, 1) + "|" + part(parts, 2);
             case RESULT -> "RESULT|" + part(parts, 0) + "|" + part(parts, 1) + "|" + part(parts, 2);
             case PG_OFFER -> part(parts, 0) + "|MOAUM-PG-OFFER";
+            case CBT_SLIP -> null;   // V375: no slip was ever printed before the signed code
         };
+        if (payload == null) return false;
         try {
             byte[] d = MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8));
             return same(code, HexFormat.of().formatHex(d).substring(0, 12).toUpperCase(Locale.ROOT));

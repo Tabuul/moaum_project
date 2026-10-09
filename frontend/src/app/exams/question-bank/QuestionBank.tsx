@@ -18,6 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { QuestionImport } from "@/components/cbt/QuestionImport";
+import { ModerationSample } from "@/components/cbt/ModerationSample";
 
 export interface Course { code: string; title: string; questions: number; total?: number; awaiting?: number; general_office?: string | null; kind?: string }
 export type Moderation = "PENDING" | "APPROVED" | "RETURNED";
@@ -221,6 +222,8 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         ) : <PBody><div className="sub2">{questions.length ? "No question here is in that state of moderation." : <>No question in this course&rsquo;s bank yet.</>}</div></PBody>}
       </Panel>
 
+      {/* V375: a sample read, the rest approved with it */}
+      {mayModerate ? <ModerationSample course={course} /> : null}
       {may ? <QuestionImport course={course} courseTitle={courses.find((c) => c.code === course)?.title} /> : null}
       {may ? (
         <Panel title="Author a question" right={`Added to ${course}`}>

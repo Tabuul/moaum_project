@@ -373,3 +373,47 @@ delta; all read through the indexes listed in section F.
 - Tests: check.sql 219; `CbtExamIT` (moderation through the API — the setter refused, a lecturer refused, return with a note, the paper
   refused then accepted, several decided at once — and a sitting run by an invigilator: late entry, admission, absence, the board for
   the invigilator, the office and a reader, a lecturer and a candidate refused).
+
+## O. Check-in at the door, the sitting report, moderation told and by sample (V375)
+
+- **The CBT slip** (student's CBT page and the JUPEB portal → *Print your CBT slip*; `GET /api/v1/me/cbt/exams/{id}/slip`,
+  `GET /api/v1/jupeb/me/cbt/exams/{id}/slip`; the office prints a whole sitting's from the Sittings tab, `GET
+  /api/v1/cbt/exams/{id}/sittings/{sitting}/slips`): the candidate, the examination, the sitting, the seat and the late-entry time, with a QR
+  of the portal's check-in page carrying `<examination>.<candidate>.<code>` — the code signed by the API under the check-code key
+  (`CheckCodes.Kind.CBT_SLIP`). Issued once the candidate has a seat. The slip proves nothing on paper; the portal checks the code.
+- **Check-in** (`/cbt/checkin?t=…`, `GET /api/v1/cbt/check-in?t=`, `POST /api/v1/cbt/sittings/{sitting}/candidates/{candidate}/check-in`): an
+  invigilator scans the slip with the phone's own camera — or with *Scan a slip* on the board where the browser reads QR codes itself — and
+  the portal shows the candidate's photograph from the record (the replaced photo, the admission passport or the JAMB photo; for a JUPEB
+  candidate, their JUPEB passport), name, number, level, sitting and seat; *The face matches — check in*. A forged or altered code is
+  refused (`CBT_SLIP_NOT_GENUINE`), as is a slip scanned for another candidate (`CBT_SLIP_MISMATCH`). The check-in is also made by hand from
+  the board's seat panel. Recorded in `assessment.cbt_attendance` (PRESENT, with when, by whom and how: SCAN, MANUAL, or ADMITTED for a late
+  admission). A candidate marked absent is not checked in until the mark is undone (`CBT_CHECK_IN_ABSENT`). Only the examination's
+  invigilators and its office look a slip up; a candidate never does.
+- **Check-in required** (Sittings tab → *Require it*; `PUT /api/v1/cbt/exams/{id}/check-in`): a candidate in a sitting then starts only once
+  checked in or admitted late (`CBT_NOT_CHECKED_IN`). Off unless the office says so. A candidate checked in at the door within the late-entry
+  limit is not late, however long they take to start.
+- **Incidents** (board → *Record an incident*, or from a seat; `POST /api/v1/cbt/sittings/{sitting}/incidents`): power, network, equipment,
+  suspected malpractice, illness, a disturbance, a question of identity, other — for the hall or for one candidate (their attempt linked),
+  with when and, for an outage, the minutes lost. Recording an outage changes nobody's clock; time lost is given back by the office as extra
+  time. They appear in the office's candidate view (*Incidents in the sitting*). After the report is filed, only the office adds one, marked so.
+- **The sitting report** (board → *Sitting report*, `/cbt/invigilate/{sitting}/report`; `GET/POST /api/v1/cbt/sittings/{sitting}/report`,
+  `POST …/report/addendum`): filed by the chief invigilator (any invigilator where none is chief, or the office) once nobody is writing or
+  the sitting's time is over (`CBT_SITTING_RUNNING`), naming only the sitting's invigilators as present, once (`CBT_REPORT_FILED`): when it
+  really began and ended, the remarks, and the counts as they stood (seated, checked in, started, absent, not come, admitted late,
+  finished, incidents, minutes lost). Not changed after filing; the office adds an addendum. Printed with a signature line per
+  invigilator. **Sitting reports** on each office's CBT examinations list (`/cbt/reports?office=…`, `GET /api/v1/cbt/sitting-reports`) lists
+  every sitting — filed, report due, running, to come — within the office's scope.
+- **Moderation told** (`assessment.notify_moderation`, run every ten minutes by `ModerationNotices`): each setter gets one notice per bank of
+  the decisions at least five minutes old — how many approved, how many returned. No question and no note goes in a notice; they are read in
+  the bank.
+- **The moderator's queue** (menu *Question Moderation* → `/cbt/moderation`; `GET /api/v1/cbt/moderation/queue`): the banks with questions
+  waiting, within the acting office's scope, with how many the signed-in person may decide (they did not set them), how many were returned
+  (and to them), and theirs waiting.
+- **Moderation by sample** (question bank → *Moderate by sample*; `GET/POST /api/v1/cbt/questions/samples`, `POST …/samples/{id}/close |
+  withdraw`): the moderator chooses how many of the waiting questions they did not set to read; the server draws them at random and keeps
+  the rest as they stood (each at its version). Every sampled question approved — the rest are approved with it, each decision naming the
+  sample; one returned — the sample fails and the rest wait to be moderated one by one; a question changed or decided since the draw is
+  left as it is. One open sample per bank per moderator.
+- Tests: check.sql 220; `CbtExamIT` (a slip, the check-in rule, a forged code, the wrong candidate's slip, a lecturer and a candidate refused,
+  slips for the office, incidents, the report refused while writing and to a lecturer, filed by the chief, the addendum the office's, the
+  list; a sample drawn, refused unfinished, closed approving the rest, the setter's queue and their one notice with no question in it).

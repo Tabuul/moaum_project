@@ -71,6 +71,13 @@ class JupebCbtController {
         return door.one(Kind.JUPEB, me(auth, request), id);
     }
 
+    /** V375: the CBT slip — the sitting, the seat and the signed code the invigilator scans at the door */
+    @GetMapping("/exams/{id}/slip")
+    @Transactional(readOnly = true)
+    Map<String, Object> slip(Authentication auth, HttpServletRequest request, @PathVariable UUID id) {
+        return door.slip(Kind.JUPEB, me(auth, request), id);
+    }
+
     @PostMapping("/exams/{id}/start")
     @Transactional
     Map<String, Object> start(Authentication auth, HttpServletRequest request, @PathVariable UUID id, @RequestHeader(value = "User-Agent", required = false) String agent) {

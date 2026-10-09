@@ -4,7 +4,8 @@
  *  the candidate's name, matric number, level and programme, extra time, and a column to sign. With sittings, a candidate starts only in
  *  their own sitting — the server judges that; this page only arranges it. V374: the office names each sitting's invigilators (one may be
  *  the chief), who are told and see the sitting's seats on their own screen; and it may set how late a candidate may still start on their
- *  own — after that, the invigilator admits them. */
+ *  own — after that, the invigilator admits them. V375: whether candidates must be checked in at the door before they start, each
+ *  sitting's slips printed for the office to hand out, and each sitting's report — filed, or due. */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
@@ -14,10 +15,14 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { ATTEMPT_WORD, num, whenAt, type CbtExam } from "@/lib/cbt";
 import { localInput } from "./CbtExams";
 import { cbtSend } from "./CbtExam";
+import { printSlips, type Slip } from "@/lib/cbt-slip";
 
 interface Invigilator { person_id: string; name: string; staff_number: string | null; chief: boolean }
-interface Sitting { id: string; label: string; venue: string; starts_at: string; ends_at: string; capacity: number; seated: number; begun: number; marked?: number; invigilators?: Invigilator[] }
-interface Sittings { sittings: Sitting[]; candidates: number; unseated: number; late_entry_minutes?: number | null; result?: { seated: number; unseated: number } }
+interface Sitting { id: string; label: string; venue: string; starts_at: string; ends_at: string; capacity: number; seated: number; begun: number; marked?: number; invigilators?: Invigilator[];
+  checked_in?: number; report_filed_at?: string | null; incidents?: number; ended?: boolean }
+interface Sittings { sittings: Sitting[]; candidates: number; unseated: number; late_entry_minutes?: number | null; require_check_in?: boolean; result?: { seated: number; unseated: number } }
+interface SlipRow { seat_no: number; candidate_id: string; number: string; surname: string; other_names: string; level: number | null; programme: string | null; token: string }
+interface SlipSet { exam: { reference: string; title: string; course_code: string; course_title: string | null; session: string; duration_minutes: number; late_entry_minutes: number | null }; sitting: Sitting; rows: SlipRow[] }
 interface Staff { id: string; staff_number: string | null; surname: string; given_names: string; offices: string }
 interface Seat { seat_no: number; candidate_id: string; number: string; surname: string; other_names: string; level: number; programme: string; extra_minutes: number | null; attempt_status: string | null }
 interface Form { id?: string; label: string; venue: string; startsAt: string; endsAt: string; capacity: string }
@@ -73,6 +78,25 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
       const j = await cbtSend(`/exams/${exam.id}/late-entry`, "PUT", { minutes }, minutes == null ? "No late-entry limit" : `Late entry closes ${minutes} minutes after a sitting begins`);
       if (j) { setLate(null); await load(); }
     } finally { setBusy(false); }
+  }
+  async function setCheckIn(required: boolean) {
+    setBusy(true);
+    try {
+      const j = await cbtSend(`/exams/${exam.id}/check-in`, "PUT", { required }, required ? "Candidates are checked in at the door before they start" : "Check-in at the door is no longer required");
+      if (j) await load();
+    } finally { setBusy(false); }
+  }
+  /* every candidate's slip for a sitting, two to a row, for the office to hand out */
+  async function slips(st: Sitting) {
+    const r = await fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/sittings/${st.id}/slips`);
+    if (!r.ok) return;
+    const j = (await r.json()) as SlipSet;
+    const until = j.exam.late_entry_minutes != null ? new Date(new Date(st.starts_at).getTime() + j.exam.late_entry_minutes * 60000).toISOString() : null;
+    await printSlips(`CBT slips · ${st.label}`, `${j.exam.course_code} · ${j.exam.title} · ${st.venue}`, j.rows.map((x): Slip => ({
+      token: x.token, course_code: j.exam.course_code, course_title: j.exam.course_title, title: j.exam.title, reference: j.exam.reference, session: j.exam.session,
+      sitting: st.label, sitting_venue: st.venue, sitting_starts_at: st.starts_at, sitting_ends_at: st.ends_at, seat_no: x.seat_no, duration_minutes: j.exam.duration_minutes,
+      late_entry_until: until, candidate: { surname: x.surname, other_names: x.other_names, number: x.number, level: x.level, programme: x.programme },
+    })));
   }
   async function search() {
     const t = q.trim();
@@ -156,20 +180,27 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
                   <Btn kind="ghost" onClick={() => setLate(null)}>Back</Btn>
                 </div>
               )}
+              <div className="row row--inline row--tight mt-1" style={{ flexWrap: "wrap" }}>
+                <span><b>Check-in:</b> {data.require_check_in ? "required — a candidate starts only once an invigilator has checked them in at the door (by their slip or by hand) or admitted them late" : "not required — candidates start on their own; invigilators may still check them in"}.</span>
+                {editable ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void setCheckIn(!data.require_check_in)}>{data.require_check_in ? "Stop requiring it" : "Require it"}</Btn> : null}
+              </div>
             </div>
           ) : null}
         </PBody>
         {data.sittings.length ? (
-          <DTable cols={["Sitting", "Venue", "Time", "Seats|num", "Begun|num", "Invigilators", "|mid"]} rows={data.sittings.map((s) => [
+          <DTable cols={["Sitting", "Venue", "Time", "Seats|num", "Begun|num", "Invigilators", "Report|mid", "|mid"]} rows={data.sittings.map((s) => [
             <b key="l">{s.label}</b>, <span key="v">{s.venue}</span>,
             <span key="t" className="sub2">{whenAt(s.starts_at)} to {hhmm(s.ends_at)}</span>,
             <span key="c" className="tnum">{s.seated} / {s.capacity}{s.seated >= s.capacity ? <Pil kind="warn" className="ml-1">full</Pil> : null}</span>,
             <span key="b" className="tnum">{s.begun}</span>,
             <span key="i" className="sub2">{s.invigilators?.length ? s.invigilators.map((p) => `${p.name}${p.chief ? " (chief)" : ""}`).join("; ") : "None named"}</span>,
+            <span key="r">{s.report_filed_at ? <Pil kind="ok">Filed</Pil> : s.ended ? <Pil kind="bad">Due</Pil> : <span className="sub2">—</span>}{s.incidents ? <div className="sub2">{s.incidents} incident{s.incidents === 1 ? "" : "s"}</div> : null}</span>,
             <span key="a" className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
               <a className="btn btn--secondary btn--sm" href={`/cbt/invigilate/${s.id}`} target="_blank" rel="noopener">Invigilator&rsquo;s screen</a>
               {editable ? <Btn kind="ghost" size="sm" onClick={() => { setNaming(s); setQ(""); setFound(null); }}>Invigilators</Btn> : null}
               <Btn kind="ghost" size="sm" onClick={() => void openList(s)}>Attendance list</Btn>
+              {canManage && s.seated ? <Btn kind="ghost" size="sm" onClick={() => void slips(s)}>Print slips</Btn> : null}
+              <a className="btn btn--ghost btn--sm" href={`/cbt/invigilate/${s.id}/report`} target="_blank" rel="noopener">Report</a>
               {editable ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => setForm({ id: s.id, label: s.label, venue: s.venue, startsAt: localInput(s.starts_at), endsAt: localInput(s.ends_at), capacity: String(s.capacity) })}>Edit</Btn> : null}
               {editable && !s.begun && !s.marked ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void remove(s)}>Remove</Btn> : null}
             </span>,
