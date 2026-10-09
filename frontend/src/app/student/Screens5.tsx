@@ -166,6 +166,7 @@ export function TimetableScreen({ t }: { t: Timetable }) {
 /* ── attendance ── */
 
 export function AttendanceScreen({ t }: { t: Timetable }) {
+  if (t.register) return <RegisterAttendance t={t} />;
   const below = t.attendance.filter((a) => a.rate !== null && a.rate < 75);
   return (
     <>
@@ -183,6 +184,39 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
           <Two key="c" a={a.course_code} b={a.title} />, <span className="tnum" key="a">{a.attended}</span>, <span className="tnum" key="h">{a.held}</span>,
           a.rate === null ? <span className="sub2" key="r">—</span> : <div key="r" className="row"><Bar pct={a.rate} colour={a.rate >= 75 ? "var(--green)" : "var(--red)"} /><span className="tnum b600">{a.rate}%</span></div>,
           a.rate === null ? <Pil kind="grey" key="s">Not yet held</Pil> : a.rate >= 75 ? <Pil kind="ok" key="s">Eligible</Pil> : <Pil kind="bad" key="s">At risk</Pil>,
+        ])} />
+      </Panel>
+    </>
+  );
+}
+
+/** V380: a CCE student's attendance, by the register of the Centre's evening classes — present, late, absent and excused — measured
+ *  against the minimum the Centre set (none is invented when it has set none) */
+function RegisterAttendance({ t }: { t: Timetable }) {
+  if (t.attendanceShown === false) {
+    return <Note kind="info" title="Attendance is not shown on the portal">The Centre for Continuing Education keeps the registers of its classes; its policy does not show them on the portal. Ask the Centre for your attendance.</Note>;
+  }
+  const min = t.attendance.find((a) => a.min_percent != null)?.min_percent ?? null;
+  const below = t.attendance.filter((a) => a.verdict === "NOT_ELIGIBLE");
+  return (
+    <>
+      {below.length ? (
+        <Note kind="bad" title={`${below.map((b) => b.course_code).join(", ")} ${below.length === 1 ? "is" : "are"} below the Centre's minimum of ${min}%`}>
+          The Centre for Continuing Education may bar a student below its minimum attendance from the examination &mdash; speak to the Centre before the semester ends.
+        </Note>
+      ) : t.attendance.some((a) => a.total) ? (
+        <Note kind="ok" title={min != null ? `Every class is at or above the Centre's minimum of ${min}%` : "Your attendance as the lecturers marked it"}>
+          Each lecture of your evening classes is marked present, late, absent or excused by the lecturer; late counts as attended and an excused lecture is not counted.{min == null ? " The Centre has not set a minimum attendance." : ""}
+        </Note>
+      ) : (
+        <Note kind="info" title="No lecture has been recorded yet">Attendance appears here as your lecturers mark the registers of your evening classes.</Note>
+      )}
+      <Panel title={`Attendance · CCE ${t.session} · ${semesterName(t.semester)} semester`} right="Marked by the lecturer at each lecture">
+        <DTable cols={["Course", "Present|mid", "Late|mid", "Absent|mid", "Excused|mid", "Rate", "Status|num"]} rows={t.attendance.map((a) => [
+          <Two key="c" a={a.course_code} b={a.title} />, <span className="tnum" key="p">{a.present ?? 0}</span>, <span className="tnum" key="l">{a.late ?? 0}</span>,
+          <span className="tnum" key="a">{a.absent ?? 0}</span>, <span className="tnum" key="e">{a.excused ?? 0}</span>,
+          a.rate === null || !a.total ? <span className="sub2" key="r">—</span> : <div key="r" className="row"><Bar pct={a.rate} colour={a.verdict === "NOT_ELIGIBLE" ? "var(--red)" : "var(--green)"} /><span className="tnum b600">{a.rate}%</span></div>,
+          !a.total ? <Pil kind="grey" key="s">Not yet held</Pil> : a.verdict === "NOT_ELIGIBLE" ? <Pil kind="bad" key="s">Below the minimum</Pil> : a.verdict === "ELIGIBLE" ? <Pil kind="ok" key="s">Meets the minimum</Pil> : a.verdict === "REQUIRES_REVIEW" ? <Pil kind="warn" key="s">Excused throughout</Pil> : <Pil kind="info" key="s">Recorded</Pil>,
         ])} />
       </Panel>
     </>

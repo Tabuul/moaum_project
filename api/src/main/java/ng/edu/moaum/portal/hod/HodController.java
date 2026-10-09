@@ -78,17 +78,26 @@ class HodController {
                  WHERE r.session = :s AND r.status = 'SUBMITTED' AND p.dept_code = :d
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
+        // V380: the department's CCE students register in the CCE session; their submitted registrations wait here too
+        part(out, unavailable, "cceApprovals", () -> jdbc.sql("""
+                SELECT jsonb_build_object('session', policy.route_session('CCE'), 'count', count(*))::text
+                  FROM registration.course_registration r
+                  JOIN people.student st ON st.id = r.student_id AND st.entry_mode = 'CCE'
+                  JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE r.session = policy.route_session('CCE') AND r.status = 'SUBMITTED' AND p.dept_code = :d
+                """).param("d", dept).query(String.class).optional().map(v -> new tools.jackson.databind.ObjectMapper().readValue(v, Map.class)).orElse(null));
+
         part(out, unavailable, "openQueries", () -> jdbc.sql("SELECT count(*) FROM assessment.result_query WHERE routed_dept = :d AND state = 'RAISED'")
                 .param("d", dept).query(Long.class).single());
 
         part(out, unavailable, "offeringsNeedLecturer", () -> jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL
+                 WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL AND o.stream = 'REGULAR'
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
         part(out, unavailable, "offeringsTotal", () -> jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.session = :s AND c.dept_code = :d
+                 WHERE o.session = :s AND c.dept_code = :d AND o.stream = 'REGULAR'
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
         part(out, unavailable, "deptStudents", () -> jdbc.sql("""
@@ -123,7 +132,7 @@ class HodController {
         part(out, unavailable, "needLecturer", () -> jdbc.sql("""
                 SELECT c.code, c.title, c.level, o.semester
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL
+                 WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL AND o.stream = 'REGULAR'
                  ORDER BY c.level, c.code LIMIT 12
                 """).param("s", s).param("d", dept).query().listOfRows());
 

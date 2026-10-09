@@ -42,7 +42,7 @@ const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", 
 /** Parse the approved-fees cross-tab (faculty blocks × 1st/2nd/Total rows × level bands × Indigene/Non-indigene)
  *  into one row per cell. A band like "100/200DE" is level 100 plus level 200 for Direct Entry. */
 interface FeeRow { faculty: string; level: number; entryMode: string | null; semester: number; indigene: string; amount: number; spillover?: boolean }
-function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
+function parseFeeMatrix(grid: (string | number | null)[][], cce = false): FeeRow[] {
   const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
   const hIdx = grid.findIndex((r) => r.some((c) => /faculty\s*\/\s*semester|^faculty$/i.test(norm(c))));
   if (hIdx < 0) return [];
@@ -73,14 +73,14 @@ function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
         const n = Number(v.replace(/[^0-9.]/g, ""));
         if (level && n > 0) rows.push({ faculty: fac, level, entryMode: mode, semester: sem, indigene, amount: Math.round(n * 100) / 100 });
       };
-      cell(r[b.col] ?? "", "INDIGENE", b.level, null);
-      cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.level, null);
-      if (b.de) { cell(r[b.col] ?? "", "INDIGENE", b.de, "DIRECT_ENTRY"); cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.de, "DIRECT_ENTRY"); }
+      cell(r[b.col] ?? "", "INDIGENE", b.level, cce ? "CCE" : null);
+      cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.level, cce ? "CCE" : null);
+      if (b.de && !cce) { cell(r[b.col] ?? "", "INDIGENE", b.de, "DIRECT_ENTRY"); cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.de, "DIRECT_ENTRY"); }
     }
     for (const b of spillBands) {
       const spill = (v: string, indigene: string) => {
         const n = Number(v.replace(/[^0-9.]/g, ""));
-        if (n > 0) rows.push({ faculty: fac, level: 0, entryMode: null, semester: sem, indigene, amount: Math.round(n * 100) / 100, spillover: true });
+        if (n > 0) rows.push({ faculty: fac, level: 0, entryMode: cce ? "CCE" : null, semester: sem, indigene, amount: Math.round(n * 100) / 100, spillover: true });
       };
       spill(r[b.col] ?? "", "INDIGENE");
       spill(r[b.col + 1] ?? "", "NON_INDIGENE");
@@ -102,7 +102,7 @@ function looksFlat(grid: (string | number | null)[][]): boolean {
  *  Entry mode, Semester, Indigene, Amount (Item / Spillover / Programme / Kind / Fee group / Order optional).
  *  Raw values pass straight to the importer, which normalises them; only the entry
  *  mode is canonicalised here so "Direct Entry"/"DE" reach it as DIRECT_ENTRY. */
-function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string>[] {
+function parseFeeFlat(grid: (string | number | null)[][], cce = false): Record<string, string>[] {
   const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
   const hIdx = grid.findIndex((r) => {
     const cs = r.map((c) => norm(c).toLowerCase());
@@ -123,6 +123,7 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
     if (!s) return null;
     if (s === "DE" || s.includes("DIRECT")) return "DIRECT_ENTRY";
     if (s.includes("TRANSFER")) return "TRANSFER";
+    if (s === "CCE" || s.includes("CONTINUING") || s.includes("PARTTIME")) return "CCE";
     if (s.includes("UTME")) return "UTME";
     if (s.includes("JUPEB")) return "JUPEB";
     if (s.includes("SANDWICH")) return "SANDWICH";
@@ -142,7 +143,7 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
     if (fac) row.faculty = fac;
     if (prog) row.programmeCode = prog;
     if (cell("level")) row.level = cell("level");
-    const m = col.mode >= 0 ? modeOf(cell("mode")) : null;
+    const m = cce ? "CCE" : col.mode >= 0 ? modeOf(cell("mode")) : null;
     if (m) row.entryMode = m;
     if (cell("semester")) row.semester = cell("semester");
     if (cell("indigene")) row.indigene = cell("indigene");
@@ -172,17 +173,21 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [filterFac, setFilterFac] = useState("");
   const [filterSem, setFilterSem] = useState("");
   const [filterSpill, setFilterSpill] = useState("");
+  // V380: the full-time lines and the CCE lines (entry mode CCE) of a session are kept apart; an upload replaces only its own kind
+  const [filterRoute, setFilterRoute] = useState("");
+  const [cceUpload, setCceUpload] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
   const val = (k: string, d = "") => edits[k] ?? d;
 
   const indigeneText = (i: ScheduleItem) => i.indigene === "INDIGENE" ? "Indigene" : i.indigene === "NON_INDIGENE" ? "Non-indigene" : null;
-  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
   const filteredItems = schedule.items.filter((i) =>
     (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&
     (!filterSem || String(i.semester ?? "") === filterSem) &&
-    (!filterSpill || (filterSpill === "spill" ? i.spillover : !i.spillover)));
+    (!filterSpill || (filterSpill === "spill" ? i.spillover : !i.spillover)) &&
+    (!filterRoute || (filterRoute === "CCE" ? i.entry_mode === "CCE" : i.entry_mode !== "CCE")));
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(filteredItems.length / pageSize)) : 1;
   const pageItems = pageSize > 0 ? filteredItems.slice(page * pageSize, page * pageSize + pageSize) : filteredItems;
 
@@ -342,16 +347,16 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` });
         return;
       }
-      const rows = looksFlat(grid) ? parseFeeFlat(grid) : parseFeeMatrix(grid);
+      const rows = looksFlat(grid) ? parseFeeFlat(grid, cceUpload) : parseFeeMatrix(grid, cceUpload);
       if (!rows.length) {
         setProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." }); notifyProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
         return;
       }
-      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
+      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved ${cceUpload ? "CCE " : ""}fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as { rows: number; lines: number; faculties: number; no_faculty: number; no_programme?: number; no_group?: number; spillover?: number; programmes?: number };
-      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.programmes ? `, ${c.programmes} programme${c.programmes === 1 ? "" : "s"} with their own lines` : ""}${c.spillover ? `, ${c.spillover} spillover line${c.spillover === 1 ? "" : "s"}` : ""}${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}${c.no_programme ? ` · ${c.no_programme} rows named a programme not on the register and were loaded without it` : ""}${c.no_group ? ` · ${c.no_group} rows named a fee group not on the register` : ""}. It replaced the previous structure for ${session}.`);
+      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.programmes ? `, ${c.programmes} programme${c.programmes === 1 ? "" : "s"} with their own lines` : ""}${c.spillover ? `, ${c.spillover} spillover line${c.spillover === 1 ? "" : "s"}` : ""}${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}${c.no_programme ? ` · ${c.no_programme} rows named a programme not on the register and were loaded without it` : ""}${c.no_group ? ` · ${c.no_group} rows named a fee group not on the register` : ""}. It replaced the previous ${rows.some((x) => (x as { entryMode?: string | null }).entryMode === "CCE") ? "CCE " : ""}${rows.some((x) => (x as { entryMode?: string | null }).entryMode !== "CCE") ? "full-time " : ""}structure for ${session}.`);
       router.refresh();
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
@@ -407,6 +412,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
                 <option value="">All students</option><option value="normal">Exclude spillover</option><option value="spill">Spillover only</option>
               </select>
             </Field>
+            <Field id="flt-route" label="Students">
+              <select id="flt-route" className="ctl" style={{ minWidth: 150 }} value={filterRoute} onChange={(e) => { setFilterRoute(e.target.value); setPage(0); }}>
+                <option value="">Full-time and CCE</option><option value="FULL_TIME">Full-time lines</option><option value="CCE">CCE (part-time) lines</option>
+              </select>
+            </Field>
             <Field id="flt-size" label="Per page">
               <select id="flt-size" className="ctl" style={{ minWidth: 120 }} value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
                 {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}<option value="0">All</option>
@@ -416,7 +426,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
             <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
           </div>
-          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill ? " (filtered)" : ""}.</div>
+          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line naming no entry mode is the full-time students&rsquo;; a CCE student is charged only the lines for entry mode CCE.</div>
         </PBody>
         <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
           <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,
@@ -442,14 +452,15 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2 mb-2">Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b> Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>. Two shapes work: this faculty×level cross-tab, or a plain <b>one-row-per-fee</b> table with columns <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> (the clearer format — one line, charged once).</div>
+            <div className="sub2 mb-2">Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the {cceUpload ? "CCE" : "full-time"} structure for {session}</b> — a CCE (part-time) structure and the full-time structure of the same session never replace each other. Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>. Two shapes work: this faculty×level cross-tab, or a plain <b>one-row-per-fee</b> table with columns <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> (the clearer format — one line, charged once).</div>
             <div className="row">
               <label className={`btn btn--primary m-0${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer" }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
                 <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
               </label>
-              <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} schedule`}</Btn>
+              <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`}</Btn>
             </div>
+            <label className="sub2 row row--tight mt-2" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={cceUpload} onChange={(e) => setCceUpload(e.target.checked)} /> This is the fee structure of the Centre for Continuing Education (CCE, part-time): every line is loaded for entry mode CCE</label>
             <div className="sub2 mt-2">An upload already replaces this session&rsquo;s schedule. Use <b>Clear</b> only to empty a session whose fees were stated by mistake (for example the wrong session) — then switch to the right session above and upload.</div>
             {feeMsg ? <Note kind="ok" title="Approved fees loaded">{feeMsg}</Note> : null}
           </PBody>
@@ -522,7 +533,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </Field>
           <div className="grid grid--2">
             <Field id="fl" label="Level" hint="Blank for every level; 700–900 are postgraduate"><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => <option key={l} value={l}>{l === 700 ? "700 · PGD" : l === 800 ? "800 · Master’s" : l === 900 ? "900 · Doctoral" : l}</option>)}</select></Field>
-            <Field id="fm" label="Entry mode" hint="Blank for every mode"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option><option>POSTGRADUATE</option></select></Field>
+            <Field id="fm" label="Entry mode" hint="Blank for every full-time mode; a CCE student is charged only CCE lines"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every full-time mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option><option>POSTGRADUATE</option><option value="CCE">CCE — Centre for Continuing Education (part-time)</option></select></Field>
           </div>
           <Field id="ff" label="Faculty" hint="Choose a faculty to list its programmes"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value, progs: "" })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
           <Field id="fp" label="Programmes" hint={facultyPick ? `Tick a single programme, two or more, or none for all programmes in ${facultyName ?? "the faculty"}` : "Choose a faculty above to target specific programmes; otherwise the charge applies to every programme"}>
@@ -563,9 +574,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </Modal>
       ) : null}
       {clearing ? (
-        <Modal title={`Clear the ${session} schedule`} sub={`${schedule.items.length} line${schedule.items.length === 1 ? "" : "s"} will be removed`} onClose={() => setClearing(false)}
-          foot={<><Btn kind="ghost" onClick={() => setClearing(false)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy !== null} onClick={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear`, {}, `Fee schedule cleared for ${session}`); if (ok) setClearing(false); }}>{busy === "clear" ? "Clearing…" : "Clear the schedule"}</Btn></>}>
-          <Note kind="bad" title={`Every fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
+        <Modal title={`Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`} sub={`${(filterRoute ? schedule.items.filter((i) => (filterRoute === "CCE") === (i.entry_mode === "CCE")) : schedule.items).length} line(s) will be removed`} onClose={() => setClearing(false)}
+          foot={<><Btn kind="ghost" onClick={() => setClearing(false)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy !== null} onClick={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear${filterRoute ? `?kind=${filterRoute}` : ""}`, {}, `Fee schedule cleared for ${session}${filterRoute === "CCE" ? " (CCE lines)" : filterRoute === "FULL_TIME" ? " (full-time lines)" : ""}`); if (ok) setClearing(false); }}>{busy === "clear" ? "Clearing…" : "Clear the schedule"}</Btn></>}>
+          <Note kind="bad" title={`Every ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
         </Modal>
       ) : null}
       <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />

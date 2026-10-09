@@ -93,12 +93,12 @@ class GstEligibilityIT {
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :b, 300, 'Core') ON CONFLICT DO NOTHING")
                     .param("c", plainCode).param("b", PROG_B).update();
             for (String code : List.of(gstCode, epsCode, plainCode)) {
-                jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+                jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                         .param("c", code).param("s", SESSION).update();
             }
             // last session: the 300-level student of B failed the GST course, published
             UUID earlier = UUID.randomUUID();
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                     .param("id", earlier).param("c", gstCode).param("s", EARLIER).update();
             earlier = jdbc.sql("SELECT id FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = 1").param("c", gstCode).param("s", EARLIER).query(UUID.class).single();
             UUID reg = UUID.randomUUID();
@@ -235,7 +235,7 @@ class GstEligibilityIT {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, 'Departmental, marked G', 3, 1, 300, :d, 'GST', 'LIVE') ON CONFLICT (code) DO NOTHING")
                     .param("c", dept).param("d", d).update();
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :b, 300, 'GST') ON CONFLICT DO NOTHING").param("c", dept).param("b", PROG_B).update();
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                     .param("id", off).param("c", dept).param("s", SESSION).update();
             return null;
         });

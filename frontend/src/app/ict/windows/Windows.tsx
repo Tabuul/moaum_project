@@ -16,9 +16,12 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 
 export interface WindowRow { type: string; scope: "SESSION" | "SEMESTER"; semesterAsked: number | null; configured: boolean; state: string; phase: string; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; forced: string | null; reason: string | null; window_id: string | null; semester: number | null }
 export interface WindowEvent { id: string; window_type: string; session: string; semester: number | null; action: string; previous_state: string | null; new_state: string | null; previous_opens_at: string | null; previous_closes_at: string | null; previous_late_until: string | null; new_opens_at: string | null; new_closes_at: string | null; new_late_until: string | null; late_fee_enabled: boolean | null; reason: string | null; office: string | null; at: string; officer: string | null }
-export interface WindowsPage { session: string; sessions: { name: string; state: string }[]; semesters: { number: number; state: string }[]; openSemester: number; windows: WindowRow[]; affected: number; lateFees: { kind: string; lines: number; total: number }[]; events: WindowEvent[]; now: string }
+export interface WindowsPage { session: string; sessions: { name: string; state: string }[]; semesters: { number: number; state: string }[]; openSemester: number; windows: WindowRow[]; affected: number; lateFees: { kind: string; lines: number; total: number }[]; events: WindowEvent[]; now: string;
+  /** V380: the CCE session (where the Centre's students study), the CCE calendar's open semester in this session, and how many CCE students there are */
+  cce?: { session: string | null; openSemester: number; students: number } }
 
-const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration", ADMISSION_STATUS_CHECKING: "Admission status checking", POST_UTME_REGISTRATION: "Post-UTME registration", POSTGRADUATE_APPLICATION: "Postgraduate application" };
+const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration", ADMISSION_STATUS_CHECKING: "Admission status checking", POST_UTME_REGISTRATION: "Post-UTME registration", POSTGRADUATE_APPLICATION: "Postgraduate application",
+  CCE_SCHOOL_FEES_PAYMENT: "CCE school fees payment", CCE_COURSE_REGISTRATION: "CCE course registration" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
 const remaining = (iso: string | null | undefined, now: string) => { if (!iso) return ""; const ms = new Date(iso).getTime() - new Date(now).getTime(); if (ms <= 0) return "passed"; const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000); return d ? `${d} day${d === 1 ? "" : "s"} ${h} h left` : `${h} h left`; };
@@ -43,6 +46,9 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
     windows.find((w) => w.type === type && w.semesterAsked === sem)
     ?? { type, scope: sem == null ? "SESSION" : "SEMESTER", semesterAsked: sem, configured: false, state: "OPEN", phase: "NORMAL", opens_at: null, closes_at: null, late_until: null, late_fee_enabled: false, forced: null, reason: null, window_id: null, semester: null };
   const fees = rowOf("SCHOOL_FEES_PAYMENT", null), reg = rowOf("COURSE_REGISTRATION", page.openSemester);
+  // V380: the Centre for Continuing Education's students answer to their own two windows, never to the full-time ones of the same session
+  const cceSem = page.cce?.openSemester ?? 1;
+  const cceFees = rowOf("CCE_SCHOOL_FEES_PAYMENT", null), cceReg = rowOf("CCE_COURSE_REGISTRATION", cceSem);
 
   const start = (type: string, semester: number | null, action: string) => {
     const row = rowOf(type, semester);
@@ -120,6 +126,16 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
         {card(fees, "SCHOOL FEES PAYMENT", `${session} · the whole session. A reference already generated is paid and confirmed as usual; closing stops new references only.`)}
         {card(reg, `COURSE REGISTRATION · SEMESTER ${page.openSemester}`, `${session} · the open semester. Closing stops drafting, changing and submitting a registration.`)}
       </div>
+      <Panel title="CCE STUDENTS&rsquo; WINDOWS" right={page.cce?.session ? `CCE session ${page.cce.session} · ${page.cce.students} CCE student${page.cce.students === 1 ? "" : "s"}` : null}>
+        <PBody>
+          <div className="sub2">The Centre for Continuing Education&rsquo;s students study in the CCE session on the CCE calendar; these two windows govern them, and the full-time windows above never do (nor do these reach a full-time student). Unset, each is open and the CCE calendar decides.
+            {page.cce?.session && page.cce.session !== session ? <> CCE students are in <b>{page.cce.session}</b>: <a href={`/ict/windows?session=${encodeURIComponent(page.cce.session)}`}>choose it</a> to set their windows.</> : null}</div>
+        </PBody>
+      </Panel>
+      <div className="grid grid--2">
+        {card(cceFees, "CCE SCHOOL FEES PAYMENT", `${session} · the CCE students' school fees. Closing stops new references only.`)}
+        {card(cceReg, `CCE COURSE REGISTRATION · SEMESTER ${cceSem}`, `${session} · the CCE calendar's open semester. Closing stops CCE students drafting, changing and submitting a registration.`)}
+      </div>
       <Panel title="EVERY SEMESTER" right="A semester&rsquo;s own rule stands over the session&rsquo;s">
         <DTable pageSize={0} cols={["Window", "Scope", "Status|mid", "Phase|mid", "Opens|mid", "Closes|mid", "Late until|mid", "Rule", "|num"]} rows={windows.map((w) => [
           TYPE_WORD[w.type] ?? w.type, w.scope === "SESSION" ? "Whole session" : `Semester ${w.semesterAsked}`,
@@ -129,7 +145,7 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
           may ? <span key="a" className="row row--inline row--tight row--end">{w.state === "OPEN" ? <Btn kind="urgent" size="sm" onClick={() => start(w.type, w.semesterAsked, "CLOSE")}>Close</Btn> : <Btn kind="go" size="sm" onClick={() => start(w.type, w.semesterAsked, w.configured ? "REOPEN" : "OPEN")}>Open</Btn>}<Btn kind="ghost" size="sm" onClick={() => start(w.type, w.semesterAsked, "EDIT")}>Edit</Btn></span> : null,
         ])} />
       </Panel>
-      <Panel title="WINDOW HISTORY" right={<span className="row row--inline row--tight"><select className="ctl" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Every window</option><option value="SCHOOL_FEES_PAYMENT">School fees payment</option><option value="COURSE_REGISTRATION">Course registration</option><option value="ADMISSION_STATUS_CHECKING">Admission status checking</option></select><Btn kind="secondary" size="sm" disabled={!events.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" size="sm" disabled={!events.length} onClick={pdf}>PDF</Btn></span>}>
+      <Panel title="WINDOW HISTORY" right={<span className="row row--inline row--tight"><select className="ctl" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Every window</option><option value="SCHOOL_FEES_PAYMENT">School fees payment</option><option value="COURSE_REGISTRATION">Course registration</option><option value="ADMISSION_STATUS_CHECKING">Admission status checking</option><option value="CCE_SCHOOL_FEES_PAYMENT">CCE school fees payment</option><option value="CCE_COURSE_REGISTRATION">CCE course registration</option></select><Btn kind="secondary" size="sm" disabled={!events.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" size="sm" disabled={!events.length} onClick={pdf}>PDF</Btn></span>}>
         {events.length ? <DTable pageSize={30} cols={["S/N|num", "Window", "Semester|mid", "Action|mid", "Before|mid", "After|mid", "Start|mid", "End|mid", "Late until|mid", "Reason", "Changed by", "At|mid"]} rows={events.map((e, i) => [
           <span key="n" className="tnum sub2">{i + 1}</span>, TYPE_WORD[e.window_type] ?? e.window_type, e.semester ?? "Session", <b key="a">{e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="s" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>, <span key="l" className="tnum sub2">{when(e.new_late_until)}{e.late_fee_enabled ? " · fee" : ""}</span>,
@@ -142,16 +158,16 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
           sub={`${session} · ${act.semester == null ? "whole session" : `semester ${act.semester}`}`} onClose={() => setAct(null)}
           foot={<><Btn kind="ghost" onClick={() => setAct(null)}>Back</Btn><Btn kind={act.action === "CLOSE" ? "urgent" : "primary"} disabled={busy} onClick={() => void submit()}>{act.action === "CLOSE" ? "Yes, close it now" : act.action === "REOPEN" || act.action === "OPEN" ? "Open it" : "Record"}</Btn></>}>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          {act.action === "CLOSE" ? <Note kind="bad" title={`Are you sure you want to close ${TYPE_WORD[act.type].toLowerCase()} for ${session}${act.semester ? ` semester ${act.semester}` : ""}?`}>It takes effect the moment you confirm. {act.type === "SCHOOL_FEES_PAYMENT" ? "A reference already generated is still paid and confirmed; no new reference is generated." : "No registration is drafted, changed or submitted."} The students of the session are told.</Note> : null}
+          {act.action === "CLOSE" ? <Note kind="bad" title={`Are you sure you want to close ${TYPE_WORD[act.type].toLowerCase()} for ${session}${act.semester ? ` semester ${act.semester}` : ""}?`}>It takes effect the moment you confirm. {act.type.endsWith("SCHOOL_FEES_PAYMENT") ? "A reference already generated is still paid and confirmed; no new reference is generated." : "No registration is drafted, changed or submitted."} The students of the session are told.</Note> : null}
           {act.action !== "CLOSE" ? (
             <>
               <div className="sub2 mb-2">{act.action === "OPEN" || act.action === "REOPEN" ? "Leave the dates blank to open now with no closing; or give the closing (and the late period) the window runs to." : act.action === "SCHEDULE" ? "The window opens and closes by these dates, on the server's clock in Africa/Lagos." : act.action === "EXTEND" ? "Move the closing, or the late period, later. The previous dates stay in the history." : act.action === "SHORTEN" ? "Move the closing earlier; the students are told." : "Change any of the dates; the rule before is kept in the history."}</div>
               <div className="grid grid--3">
                 <Field id="pw-o" label="Opens"><input id="pw-o" type="datetime-local" className="ctl" value={opens} onChange={(e) => setOpens(e.target.value)} /></Field>
                 <Field id="pw-c" label="Closes"><input id="pw-c" type="datetime-local" className="ctl" value={closes} onChange={(e) => setCloses(e.target.value)} /></Field>
-                <Field id="pw-l" label={act.type === "SCHOOL_FEES_PAYMENT" ? "Late payment until" : "Late registration until"}><input id="pw-l" type="datetime-local" className="ctl" value={late} onChange={(e) => setLate(e.target.value)} /></Field>
+                <Field id="pw-l" label={act.type.endsWith("SCHOOL_FEES_PAYMENT") ? "Late payment until" : "Late registration until"}><input id="pw-l" type="datetime-local" className="ctl" value={late} onChange={(e) => setLate(e.target.value)} /></Field>
               </div>
-              <label className="sub2 row row--tight" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={lateFee} onChange={(e) => setLateFee(e.target.checked)} /> {act.type === "SCHOOL_FEES_PAYMENT" ? "The late payment fee the Bursar stated applies in the late period" : "The late registration fee the Bursar stated applies in the late period"}{act.action === "REOPEN" ? " (a reopening with the late fee on charges it; off, the normal fee)" : ""}</label>
+              <label className="sub2 row row--tight" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={lateFee} onChange={(e) => setLateFee(e.target.checked)} /> {act.type.endsWith("SCHOOL_FEES_PAYMENT") ? "The late payment fee the Bursar stated applies in the late period" : "The late registration fee the Bursar stated applies in the late period"}{act.action === "REOPEN" ? " (a reopening with the late fee on charges it; off, the normal fee)" : ""}</label>
             </>
           ) : null}
           <Field id="pw-r" label="Reason" required={["CLOSE", "REOPEN", "SHORTEN"].includes(act.action)} hint="On the record and in the students' notice"><textarea id="pw-r" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>

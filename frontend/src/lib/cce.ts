@@ -3,13 +3,13 @@
  * and the headings JAMB's CCE list is read by. A CCE student is an ordinary student on a part-time route with a session of its
  * own; every rule here is the server's, and these pages show what it returns.
  */
-export { jcall as ccall, fileBase64, readSheet, naira, when } from "./jupeb";
+export { jcall as ccall, fileBase64, readSheet, naira, when, WEEKDAYS } from "./jupeb";
 
 export type Kind = "grey" | "info" | "ok" | "bad" | "warn";
 
 /** the CCE desk's screens, one a path under /cce (the server page checks the path against them) */
 export const CCE_TABS = ["dashboard", "upload", "imports", "candidates", "applications", "processing", "admission-list", "students", "programmes", "session",
-  "reports", "history", "fees"] as const;
+  "reports", "history", "fees", "calendar", "classes", "timetable", "registrations", "attendance", "school-fees"] as const;
 export type CceTab = (typeof CCE_TABS)[number];
 
 export interface Mapping {
@@ -181,3 +181,62 @@ export const day = (iso: string | null | undefined) =>
 export function labelOf(map: Record<string, [string, Kind]>, key: string | null | undefined): [string, Kind] {
   return key ? map[key] ?? [key.replace(/_/g, " ").toLowerCase(), "grey"] : ["—", "grey"];
 }
+
+/* ── phase 2 (V380): the CCE session in operation ─────────────────────────────────────────────────────────────── */
+
+export interface CalendarSemester {
+  number: number; id: string | null; state: "NOT_SET" | "NOT_YET_OPEN" | "OPEN" | "CLOSED"; lectures_from: string | null; lectures_to: string | null;
+  registration_opens: string | null; registration_closes: string | null; late_registration_closes: string | null; exams_from: string | null; exams_to: string | null;
+  note: string | null; updated_at: string | null; updated_office: string | null; updated_by_name: string | null; classes: number; registered: number;
+  window_configured: boolean; window_state: string; window_closes: string | null; window_reason: string | null;
+}
+export interface CalendarView {
+  session: string; cceSession: string; undergraduateSession: string | null; sessions: string[]; semesters: CalendarSemester[];
+  feesWindow: { configured: boolean; state: string; closes_at: string | null; reason: string | null };
+}
+export interface Slot { id: string; weekday: number; starts_at: string; ends_at: string; venue: string; kind: string }
+export interface CceClass {
+  id: string; course_code: string; title: string; units: number; level: number; semester: number; kind: string; dept_code: string; department: string | null;
+  faculty: string | null; lecturer_id: string | null; lecturer: string | null; second_examiner_id: string | null; second_examiner: string | null;
+  programmes: string | null; registered: number; drafted: number; slots: Slot[]; registers: number;
+}
+export interface ClassesView { session: string; semester: number | null; cceSession: string; sessions: string[]; programmesOnRoute: number; classes: CceClass[]; opened?: number }
+export interface TimetableSlot extends Slot { offering_id: string; course_code: string; title: string; units: number; level: number; dept_code: string; department: string | null; faculty: string | null; lecturer: string | null; programmes: string | null }
+export interface Clash { kind: "LECTURER" | "VENUE" | "STUDENTS" | "FULL_TIME_VENUE"; weekday: number; starts_at: string; ends_at: string; first_course: string; second_course: string; detail: string }
+export interface Period { id: string; label: string; starts_at: string; ends_at: string; active: boolean; ord: number }
+export interface TimetableView { session: string; semester: number; sessions: string[]; slots: TimetableSlot[]; unscheduled: { id: string; course_code: string; title: string; level: number }[]; clashes: Clash[]; periods: Period[] }
+export interface RegistrationRow {
+  id: string; number: string; name: string; programme_code: string; programme: string; level: number; student_status: string; registration_id: string | null;
+  registration: string; submitted_at: string | null; approved_at: string | null; units: number; fees_stated: boolean; fees_cleared: boolean;
+}
+export interface RegistrationsView { session: string; semester: number; sessions: string[]; counts: Record<string, number>; gate: string | null; rows: RegistrationRow[] }
+export interface AttendanceRow {
+  student_id: string; number: string; name: string; programme_code: string; programme: string; level: number; faculty: string | null; department: string | null;
+  offering_id: string; course_code: string; title: string; semester: number; total: number; present: number; absent: number; late: number; excused: number;
+  rate: number | null; min_percent: number | null; verdict: string | null;
+}
+export interface AttendanceView {
+  session: string; semester: number | null; sessions: string[];
+  policy: { session: string; min_percent: number | null; warn_band: number | null; min_classes: number; show_students: boolean; updated_at: string } | null;
+  rows: AttendanceRow[];
+  classes: { id: string; course_code: string; title: string; semester: number; lecturer: string | null; registers: number; locked: number; last_held: string | null; attended: number; counted: number }[];
+  faculties: { code: string; name: string }[]; programmes: { code: string; name: string; dept_code: string; faculty_code: string }[];
+}
+export interface SchoolFeesView {
+  session: string; sessions: string[];
+  lines: { id: string; item: string; amount: number; level: number | null; semester: number | null; kind: string; indigene: string | null; spillover: boolean; faculty: string | null; programme: string | null }[];
+  fullTimeLines: number; window: { configured: boolean; state: string; phase: string; closes_at: string | null; late_until: string | null; reason: string | null };
+  students: { students: number; stated: number; paid_in_full: number; part_paid: number; unpaid: number; due: number; paid: number; balance: number };
+  payments: { payer: "STUDENT" | "APPLICANT"; purpose: string; payments: number; amount: number }[];
+}
+
+/** a registration's place, in words */
+export const REG_LABEL: Record<string, [string, Kind]> = {
+  NONE: ["Not registered", "grey"], DRAFT: ["Drafting", "info"], RETURNED: ["Returned to the student", "warn"], SUBMITTED: ["Submitted — with the Head of Department", "warn"],
+  APPROVED: ["Approved", "ok"], LOCKED: ["Approved (locked)", "ok"],
+};
+export const CAL_LABEL: Record<string, [string, Kind]> = { NOT_SET: ["Not set", "grey"], NOT_YET_OPEN: ["Not yet open", "info"], OPEN: ["Open", "ok"], CLOSED: ["Closed", "bad"] };
+export const ATT_LABEL: Record<string, [string, Kind]> = { PRESENT: ["Present", "ok"], LATE: ["Late", "warn"], ABSENT: ["Absent", "bad"], EXCUSED: ["Excused", "info"] };
+export const VERDICT_LABEL: Record<string, [string, Kind]> = { ELIGIBLE: ["Meets the minimum", "ok"], NOT_ELIGIBLE: ["Below the minimum", "bad"], REQUIRES_REVIEW: ["Review: all excused", "warn"] };
+export const CLASH_LABEL: Record<string, string> = { LECTURER: "Lecturer in two classes", VENUE: "Venue in two classes", STUDENTS: "Students of one programme and level in two classes", FULL_TIME_VENUE: "Venue on the full-time timetable" };
+export const semesterWord = (n: number | null | undefined) => (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : "Every semester");

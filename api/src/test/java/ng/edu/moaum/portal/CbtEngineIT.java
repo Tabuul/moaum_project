@@ -83,7 +83,7 @@ class CbtEngineIT {
                     .param("c", code).param("t", "CBT engine " + code).param("d", dept).param("k", kind).update();
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, 100, :b) ON CONFLICT DO NOTHING")
                     .param("c", code).param("p", PROGRAMME).param("b", "GST".equals(kind) ? "GST" : "Core").update();
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                     .param("c", code).param("s", SESSION).update();
             return null;
         });

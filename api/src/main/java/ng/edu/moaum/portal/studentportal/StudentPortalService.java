@@ -183,8 +183,9 @@ public class StudentPortalService {
         v.put("fees", fees(id, session));
         // V288: the portal's windows as the dashboard shows them: school fees payment for the session, course registration for the open semester
         Map<String, Object> windows = new LinkedHashMap<>();
-        windows.put("schoolFees", repo.windowState("SCHOOL_FEES_PAYMENT", session, null));
-        windows.put("courseRegistration", repo.windowState("COURSE_REGISTRATION", session, repo.openSemester(session)));
+        // V380: a CCE student's windows are the CCE ones, on the CCE calendar's open semester
+        windows.put("schoolFees", repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null));
+        windows.put("courseRegistration", repo.windowFor(id, "COURSE_REGISTRATION", session, repo.openSemester(id, session)));
         v.put("windows", windows);
         List<Map<String, Object>> gpa = repo.gpa(id);
         v.put("gpa", gpa);
@@ -291,19 +292,19 @@ public class StudentPortalService {
         out.put("secondSemesterOutstanding", secondOutstanding);
         /* registration is now gated per semester on that semester's school fees, paid in full (V149) */
         boolean inForce = repo.schemeInForce();
-        out.put("clearsRegistration", repo.semesterCleared(id, session, repo.openSemester(session)));
+        out.put("clearsRegistration", repo.semesterCleared(id, session, repo.openSemester(id, session)));
         String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination, results and transcript are not yet released against a payment; the Bursar states the scheme. Course registration opens on this semester's school fees, paid in full.";
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
         out.put("sessions", "CCE".equals(student(id).entryMode()) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());
-        out.put("window", repo.windowState("SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period
+        out.put("window", repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period (V380: the CCE window for a CCE student)
         return out;
     }
 
     /** the portal's school-fees window (V288): a new reference is generated only while it is open; one already generated is paid as before */
-    private void assertFeesWindowOpen(String session) {
-        Map<String, Object> w = repo.windowState("SCHOOL_FEES_PAYMENT", session, null);
+    private void assertFeesWindowOpen(UUID id, String session) {
+        Map<String, Object> w = repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null);
         String state = String.valueOf(w.get("state"));
         if (!"OPEN".equals(state)) {
             throw new DomainRuleViolation("SCHOOL_FEES_PAYMENT_CLOSED", "School fees payment is currently " + ("SCHEDULED".equals(state) ? "not yet open" : "closed") + " for " + session + "."
@@ -315,7 +316,7 @@ public class StudentPortalService {
     @Transactional
     public Map<String, Object> newReference(UUID id, String session, BigDecimal amount) {
         String ses = session == null || session.isBlank() ? sessionFor(id) : session.trim();
-        assertFeesWindowOpen(ses);
+        assertFeesWindowOpen(id, ses);
         Map<String, Object> pos = repo.position(id, ses);
         BigDecimal balance = (BigDecimal) pos.get("balance");
         BigDecimal amt = amount == null ? balance : amount;
@@ -355,7 +356,7 @@ public class StudentPortalService {
         Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
         // on probation, the form's ceiling is the level's probation ceiling where the Registry has set one
         Map<String, Object> standing = repo.standing(s.id(), s.currentLevel());
-        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : new java.util.LinkedHashMap<>(repo.limit(s.currentLevel()));
+        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : new java.util.LinkedHashMap<>(repo.limit(id, s.currentLevel()));
         if (siwes == null && "PROBATION".equals(standing.get("standing")) && standing.get("probation_max_units") != null) {
             int cap = ((Number) standing.get("probation_max_units")).intValue();
             int max = ((Number) limit.get("max_units")).intValue();
@@ -378,23 +379,24 @@ public class StudentPortalService {
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));
         out.put("status", s.status());
-        out.put("addDropOpen", repo.addDropOpen(session, semester));
+        out.put("addDropOpen", repo.addDropOpen(id, session, semester));
         /* registration is gated per semester on that semester's fees (V149). A student who has paid
          * the whole session may register an earlier semester they never registered — the fee gate
          * clears it — so the screen offers each semester up to the open one and gates on the one in
          * view, not only the open one. */
         out.put("clears", repo.semesterCleared(id, session, semester));
-        out.put("openSemester", repo.openSemester(session));
+        out.put("openSemester", repo.openSemester(id, session));
         out.put("registeredSemesters", repo.registeredSemesters(id, session));
         // V287 · the semester's door: open, closed, not yet open, or open early to the session's fresh students
         Map<String, Object> window = new LinkedHashMap<>();
-        Map<String, Object> sm = repo.semesterWindow(session, semester);
+        Map<String, Object> sm = repo.semesterWindow(id, session, semester);
         if (sm != null) window.putAll(sm);
         String gate = repo.registrationGate(id, session, semester);
         window.put("gate", gate);
         window.put("open", gate == null);
         window.put("fresh", session.equals(s.entrySession()));
-        window.put("portal", repo.windowState("COURSE_REGISTRATION", session, semester));   // V288
+        window.put("portal", repo.windowFor(id, "COURSE_REGISTRATION", session, semester));   // V288 (V380: the CCE window for a CCE student)
+        window.put("cce", "CCE".equals(s.entryMode()));
         out.put("window", window);
         return out;
     }
@@ -430,8 +432,10 @@ public class StudentPortalService {
     private void assertWindowOpen(UUID id, String session, int semester) {
         String gate = repo.registrationGate(id, session, semester);
         if (gate != null) {
-            throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate,
-                    new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar or dates the early window for the session's fresh students.", "Directorate of ICT"));
+            throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate, "CCE".equals(student(id).entryMode())
+                    // V380: a CCE student's door is the Centre's calendar and classes
+                    ? new DomainRuleViolation.Remedy("The Centre for Continuing Education sets up the semester's classes and opens it on the CCE calendar; the Directorate of ICT may also hold the CCE registration window.", "Centre for Continuing Education")
+                    : new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar or dates the early window for the session's fresh students.", "Directorate of ICT"));
         }
     }
 
@@ -591,8 +595,22 @@ public class StudentPortalService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> timetable(UUID id, int semester) {
-        String session = session();
-        return Map.of("session", session, "semester", semester, "slots", repo.timetable(id, session, semester), "attendance", repo.attendance(id, session, semester));
+        // V380: a CCE student's timetable and attendance are the CCE session's, and their attendance is the register's
+        boolean cce = "CCE".equals(student(id).entryMode());
+        String session = cce ? sessionFor(id) : session();
+        if (!cce) {
+            return Map.of("session", session, "semester", semester, "slots", repo.timetable(id, session, semester), "attendance", repo.attendance(id, session, semester));
+        }
+        List<Map<String, Object>> att = repo.registerAttendance(id, session, semester);
+        boolean shown = att.stream().allMatch(a -> !Boolean.FALSE.equals(a.get("show_students")));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("slots", repo.timetable(id, session, semester));
+        out.put("attendance", shown ? att : List.of());
+        out.put("attendanceShown", shown);
+        out.put("register", true);
+        return out;
     }
 
     @Transactional(readOnly = true)

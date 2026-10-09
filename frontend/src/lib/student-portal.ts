@@ -81,7 +81,9 @@ export interface RegistrationView {
   /** V314: the GST fee's word on this student */
   gst?: GstEntitlement;
   /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */
-  window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean; portal?: PortalWindow };
+  window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean; portal?: PortalWindow;
+    /** V380: a student of the Centre for Continuing Education: the door is the CCE calendar and the CCE window */
+    cce?: boolean };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
   /** the highest open semester of the session; the student may also register any earlier one */
@@ -179,8 +181,12 @@ export interface Queries { queryable: Queryable[]; queries: ResultQuery[] }
 export interface DocketPaper { offering_id: string; course_code: string; title: string; units: number; held_on: string | null; starts_at: string | null; ends_at: string | null; venue: string | null; sheet_stage: string | null }
 export interface Docket { session: string; clearsExamination: boolean | null; schemeProblem: string | null; examSessions: { id: string; session: string; semester: number; kind: string; exams_from: string; exams_to: string; state: string; papers: DocketPaper[] }[] }
 export interface Slot { weekday: number; starts_at: string; ends_at: string; course_code: string; title: string; kind: string; venue: string; lecturer: string | null; carryover: boolean }
-export interface AttendanceRow { course_code: string; title: string; attended: number; held: number; rate: number | null }
-export interface Timetable { session: string; semester: number; slots: Slot[]; attendance: AttendanceRow[] }
+export interface AttendanceRow { course_code: string; title: string; attended: number; held: number; rate: number | null;
+  /** V380: the register's own counts, for a CCE student (present, absent, late, excused) against the Centre's minimum, when it set one */
+  total?: number; present?: number; absent?: number; late?: number; excused?: number; min_percent?: number | null; verdict?: string | null }
+export interface Timetable { session: string; semester: number; slots: Slot[]; attendance: AttendanceRow[];
+  /** V380: a CCE student's attendance is the register's; attendanceShown false when the Centre's policy keeps it off the portal */
+  register?: boolean; attendanceShown?: boolean }
 export interface Card { matricNo: string | null; cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null }[]; clearsIdCard: boolean | null }
 export interface TranscriptRow { id: string; ref: string; destination: string; destination_name: string | null; mode: string; copies: number; requested_at: string; paid_at: string | null; stage: string; produced_at: string | null; released_at: string | null; open_reference: string | null }
 export interface Transcripts { fee: number; requests: TranscriptRow[]; ref?: string; reference?: string }

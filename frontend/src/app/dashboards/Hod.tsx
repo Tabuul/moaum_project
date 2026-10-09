@@ -21,6 +21,8 @@ export interface HodHome {
   deptName?: string;
   session?: string;
   approvals?: number;
+  /** V380: the department's CCE students register in the CCE session; their submitted registrations wait here too */
+  cceApprovals?: { session: string | null; count: number } | null;
   openQueries?: number;
   offeringsNeedLecturer?: number;
   offeringsTotal?: number;
@@ -107,6 +109,12 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
         </Note>
       ) : null}
       <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
+      {home.cceApprovals && home.cceApprovals.count > 0 && home.cceApprovals.session ? (
+        <Note kind="bad" title={`${home.cceApprovals.count} CCE course registration${home.cceApprovals.count === 1 ? "" : "s"} waiting for your approval`}
+          action={<LinkBtn kind="urgent" href={`/results/approvals?session=${encodeURIComponent(home.cceApprovals.session)}`}>Open the CCE session&rsquo;s approvals</LinkBtn>}>
+          Part-time students of the Centre for Continuing Education in {home.deptName}&rsquo;s programmes register in the CCE session, {home.cceApprovals.session}, on the Centre&rsquo;s classes. You approve them as any other registration.
+        </Note>
+      ) : null}
       {approvals ? (
         <Note kind="bad" title={`${approvals} course registration${approvals === 1 ? "" : "s"} waiting for your approval`}
           action={<LinkBtn kind="urgent" href="/results/approvals">Open approvals</LinkBtn>}>

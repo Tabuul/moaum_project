@@ -87,9 +87,13 @@ Academic Office's publication (ADMITTED); CCE applicant fees; acceptance; the ad
 a CCE, part-time student in the CCE session; the student's dashboard session; the Academic Office's CCE Management menu and
 the Centre's desk; counts by status.
 
-**Phase 2 — the CCE academic session in operation.** A stream on course offerings (CCE offerings in the CCE session),
-course registration, evening timetable, attendance on the register/mark model, examinations and CBT eligibility, results,
-CCE school-fee lines, cohort positions and expected graduation from the route.
+**Phase 2a — V380 (built): the CCE session in operation.** A stream on course offerings (the Centre's classes in the CCE
+session), course registration through the engine on the CCE calendar and windows, the CCE course load, the evening timetable,
+attendance on the register/mark model, CCE school-fee lines in use. See F.
+
+**Phase 2b — still to build.** Examinations and CBT eligibility in the CCE session (an examination session of the CCE
+stream), score sheets and the result chain on CCE classes, cohort positions and expected graduation from the route, deferment
+on the CCE calendar.
 
 **Phase 3 — the rest of the life cycle.** CCE matriculation series, transcript lines (study mode, route), graduation and
 spillover reports, full CCE reporting with the mapped undergraduate session, old-portal CCE students imported.
@@ -137,3 +141,95 @@ its own offerings in the CCE session.
 **Tests.** check.sql — the V379 property (the whole path in the database; 223 properties with V383); `CceIT` (the whole path through the API, with the office and
 identity refusals); the applicant, admission, status-checking, window, student-portal, offers and calendar ITs unchanged;
 `admission-letter-pdf.test.ts` (the CCE letter).
+
+---
+
+## F. Phase 2a as built (V380)
+
+**The stream.** `catalogue.offering.stream` is `REGULAR` (every existing class) or `CCE`; a course has one class per session,
+semester and stream (`UNIQUE (course_code, session, semester, stream)`). Every lookup of a class by course, session and
+semester names its stream — the menu (`registration.student_menu` offers a CCE student only CCE classes and a full-time student
+only full-time ones), the full-time openings (`open_course_registration`, the catalogue's live-course openings, the GST office's,
+the allocation import, the legacy results import), the HOD's allocation desk and counts, the dean's and provost's counts, the CBT
+offering list, the support desk's course search (the student's own stream) and the class list (`?stream=`, `REGULAR` unless
+asked). The database refuses a registration entry whose class is not the student's stream (`REGISTRATION_STREAM`), and the
+support desk's checks refuse it before that (`OFFERING_PERIOD`).
+
+**The CCE calendar.** `policy.route_semester` (route, session, semester: state `NOT_YET_OPEN`/`OPEN`/`CLOSED`, lectures,
+registration, late registration, examinations), set by the Centre or the Academic Office (`policy.set_route_semester`); opened
+only in the CCE session; set for the CCE session and the one after it; a change to a semester already set says why; every change
+in the route's history. The student's calendar (`registration.calendar_semester`, `open_semester`, `add_drop_open(student, …)`,
+`semester_closed`) is the CCE calendar for a CCE student and the full-time calendar for every other; the missed semesters that
+lead to a voluntary withdrawal are read from it. `policy.archive_session` refuses a session the CCE session still studies in.
+
+**The windows.** `CCE_COURSE_REGISTRATION` and `CCE_SCHOOL_FEES_PAYMENT`, the Directorate of ICT's, beside the full-time
+two on Portal Windows (`policy.window_type_for(student, type)`); unset, each is open and the CCE calendar decides. A CCE
+student's gate (`registration.cce_gate`): the Centre's classes set up, then the CCE window if ICT set one, else the calendar.
+The late registration and late payment fees read the student's own window. ICT's notices reach only the window's students.
+
+**The course load.** `policy.route_level_limit` — the units a CCE student registers within per level, stated by the Academic
+Office (`policy.set_route_level_limit`, with the instrument); none is seeded, so until one is stated the University's
+`policy.level_limit` applies. Every reader of the range goes through `registration.unit_limit(student, level)`: submission,
+add, the support checks, the HOD's approval and the approvals desk, the student's registration screen and probation ceiling.
+
+**The classes.** `catalogue.cce_open_classes(session, semester)` opens a class for every course an active CCE programme offers in
+that semester (for a track still carrying a CCE student, or any track) and every carry-over a CCE student owes from it;
+`cce_add_class` adds one; `cce_withdraw_class` withdraws one nobody has used (no registration, sheet, register, material,
+examination or record refers to it). The Centre allocates the lecturer and second examiner (any lecturer of the University) with
+`catalogue.allocate_offering`, whose load and automatic score sheet now keep to the class's own stream; the HOD's allocation
+desk refuses a CCE class (`ALLOC_CCE`).
+
+**The evening timetable.** `policy.route_period` — the periods offered as quick picks (seeded with the University's four
+examples, 4–6, 5–7, 6–8 and 7–9 pm, as data the Centre edits or retires); a lecture may be at any time. A CCE class's slots are
+the Centre's or the Academic Office's (`CCE_SLOT_OFFICE`); no venue or lecturer is in two CCE classes at once
+(`CCE_SLOT_VENUE_CLASH`, `CCE_SLOT_LECTURER_CLASH`, the check serialised per session and semester so two lectures saved at the
+same moment cannot both pass); `catalogue.cce_clashes` reports what is left (a lecturer allocated after the slots, a
+programme-level's two core classes at once, a venue on the full-time timetable of the undergraduate session).
+
+**Attendance.** `attendance.register` opened to course classes (context `COURSE`, the class as the subject, a slot of the class
+as the lecture): present, absent, late, excused; a saved mark corrected with its reason; locked by the lecturer; reopened by the
+Centre or the Academic Office with a reason. The class list is the students registered on the class (submitted, approved or
+locked). `attendance.course_summary` (a student's classes), `attendance.course_report` (by stream, session, semester, faculty,
+department, programme, course and date range) and the Centre's policy (`attendance.set_cce_policy`: a minimum — none unless the
+Centre sets one — a warning band, the lectures before judging, and whether students read their own attendance). The department's
+attendance screen for full-time classes keeps `registration.attendance`.
+
+**Fees.** An uploaded fee structure replaces only the lines of its own kind (`finance.import_fee_structure`): a CCE structure the
+CCE lines, a full-time structure every other line; the Bursar's page states CCE lines (entry mode CCE), filters full-time and CCE
+lines, uploads a cross-tab as the CCE structure, and clears one kind (`?kind=CCE|FULL_TIME`). The GST/EPS fee is the full-time
+students' (`finance.gst_eps_rows`, `gst_population`, the GST runs read full-time classes only); a CCE student's GST and EPS
+courses are registered without it. The student's dashboard and registration screen say when the CCE fees are not yet stated.
+
+**Screens.** The CCE desk: `/cce/calendar` (and the course load), `/cce/classes`, `/cce/timetable`, `/cce/registrations`,
+`/cce/attendance`, `/cce/school-fees` (the Bursar's too); a lecturer's `/cce/teaching` (CCE Evening Classes: the classes, the
+class list, each lecture's register); the lecturer's *My Teaching* marks CCE classes; Portal Windows shows the CCE windows; the
+HOD's dashboard counts the department's CCE registrations awaiting approval in the CCE session; the student's registration,
+dashboard, timetable and attendance read the CCE calendar, windows and registers.
+
+**API.** `/api/v1/cce/calendar` (GET; PUT `/{session}/{number}`), `/course-load` (GET; PUT `/{level}`), `/classes` (GET, POST;
+`/open`, `/{id}/withdraw`, `/{id}/teaching`, `/{id}/slots`, `/{id}/slots/{slot}/end`), `/lecturers`, `/courses`, `/timetable`,
+`/periods` (GET, PUT), `/registrations`, `/attendance` (GET; PUT `/policy`; POST `/registers/{id}/unlock`), `/school-fees`;
+`/api/v1/cce/teaching` (GET; `/classes/{id}`, `/classes/{id}/registers`, `/registers/{id}`, `/registers/{id}/marks`,
+`/registers/{id}/lock`). `/api/v1/finance/sessions/{s}/{y}/schedule/clear?kind=`. `/api/v1/registration/class-list?stream=`.
+
+**Codes.** `REGISTRATION_STREAM`, `CCE_CALENDAR_SEMESTER`, `CCE_CALENDAR_STATE`, `CCE_CALENDAR_SESSION`, `CCE_CALENDAR_DATES`,
+`CCE_CALENDAR_REASON`, `CCE_CLASS_SEMESTER`, `CCE_CLASS_SESSION`, `CCE_CLASS_COURSE`, `CCE_CLASS_NOT_CCE`, `CCE_CLASS_REASON`,
+`CCE_CLASS_IN_USE`, `CCE_LECTURER`, `CCE_PERIOD_TIMES`, `CCE_PERIOD_LABEL`, `CCE_SLOT_OFFICE`, `CCE_SLOT_TIMES`,
+`CCE_SLOT_VENUE_CLASH`, `CCE_SLOT_LECTURER_CLASH`, `CCE_LOAD_LEVEL`, `CCE_LOAD_RANGE`, `ATT_OFFERING`, `ALLOC_CCE`, and the CCE
+reason of `SESSION_ARCHIVE_REFUSED`.
+
+**Decided by default (say if the University wants otherwise).** The Head of Department of the programme approves a CCE
+registration, as every other; the Centre allocates the lecturers of its classes; a CCE class's register lists the students whose
+registration is submitted, approved or locked (so the first lectures are marked before approval); the CCE calendar and the
+attendance policy are the Centre's or the Academic Office's, the CCE course load the Academic Office's; no minimum attendance
+and no CCE course load are invented; the four evening periods are seeded as editable data; the GST/EPS fee does not reach a
+CCE student (the Bursary states any such charge as a CCE line).
+
+**Kept apart on purpose until phase 2b.** Examination sessions, the score sheets they release, CBT offerings and the
+allocation's automatic sheet stay on full-time classes (`stream = 'REGULAR'`); results of CCE classes, CBT for CCE, cohort
+positions on the route and deferment on the CCE calendar come with the CCE examination step.
+
+**Tests.** check.sql — the V380 property (classes, menu and the stream guard, calendar and windows, the course load, timetable
+and clashes, the register, fee structures by kind, the late fee and GST fee, examination sessions, archiving; 224 with V383);
+the V379 property's registration gate now reads the Centre's classes. `CceClassesIT` (the whole of it through the API, rerunnable
+on one database). Every IT that upserts a class names the new key.

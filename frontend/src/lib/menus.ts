@@ -67,7 +67,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
           { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" },
           { "id": "jupeb/teaching", "icon": "book", "label": "JUPEB Teaching" },
-          { "id": "jupeb/attendance", "icon": "check", "label": "JUPEB Attendance" }
+          { "id": "jupeb/attendance", "icon": "check", "label": "JUPEB Attendance" },
+          { "id": "cce/teaching", "icon": "check", "label": "CCE Evening Classes" }
         ]
       },
       {
@@ -121,6 +122,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
           { "id": "r/upload", "icon": "box", "label": "Upload Material" },
           { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" },
+          { "id": "cce/teaching", "icon": "check", "label": "CCE Evening Classes" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -639,6 +641,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "cce/students", "icon": "cap", "label": "CCE Students" },
           { "id": "cce/programmes", "icon": "book", "label": "CCE Programmes" },
           { "id": "cce/session", "icon": "cal", "label": "CCE Session Mapping" },
+          { "id": "cce/calendar", "icon": "cal", "label": "CCE Calendar" },
+          { "id": "cce/classes", "icon": "book", "label": "CCE Classes" },
+          { "id": "cce/timetable", "icon": "cal", "label": "CCE Evening Timetable" },
+          { "id": "cce/registrations", "icon": "check", "label": "CCE Course Registration" },
+          { "id": "cce/attendance", "icon": "user", "label": "CCE Attendance" },
+          { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" },
           { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" },
           { "id": "cce/history", "icon": "doc", "label": "Audit History" }
         ]
@@ -706,6 +714,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
           { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
           { "id": "cce/fees", "icon": "card", "label": "CCE Applicant Fees" },
+          { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" },
           { "id": "t/nelmatch", "icon": "swap", "label": "Match a Remittance" },
           { "id": "t/pv", "icon": "doc", "label": "Payment Vouchers", "badge": "1" },
           { "id": "t/payroll", "icon": "card", "label": "Payroll", "badge": "3" },
@@ -1748,7 +1757,19 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "cce/students", "icon": "cap", "label": "CCE Students" }
+          { "id": "cce/students", "icon": "cap", "label": "CCE Students" },
+          { "id": "cce/registrations", "icon": "check", "label": "Course Registration" },
+          { "id": "cce/attendance", "icon": "user", "label": "Attendance" },
+          { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" }
+        ]
+      },
+      {
+        "name": "The CCE Session",
+        "items": [
+          { "id": "cce/calendar", "icon": "cal", "label": "CCE Calendar" },
+          { "id": "cce/classes", "icon": "book", "label": "CCE Classes" },
+          { "id": "cce/timetable", "icon": "cal", "label": "Evening Timetable" },
+          { "id": "cce/teaching", "icon": "check", "label": "Class Registers" }
         ]
       },
       {

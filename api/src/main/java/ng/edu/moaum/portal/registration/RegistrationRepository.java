@@ -66,7 +66,7 @@ class RegistrationRepository {
         return jdbc.sql("""
                 INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id, second_examiner_id, allocated_on)
                 VALUES (gen_random_uuid(), :c, :s, :sem, :l, :e, CASE WHEN :l::uuid IS NULL THEN NULL ELSE current_date END)
-                ON CONFLICT (course_code, session, semester) DO UPDATE SET
+                ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET
                         lecturer_id = EXCLUDED.lecturer_id, second_examiner_id = EXCLUDED.second_examiner_id,
                         allocated_on = CASE WHEN EXCLUDED.lecturer_id IS NULL THEN catalogue.offering.allocated_on
                                             ELSE coalesce(catalogue.offering.allocated_on, current_date) END
@@ -77,7 +77,8 @@ class RegistrationRepository {
                 .query(UUID.class).single();
     }
 
-    Optional<OfferingRow> offering(String course, String session, int semester) {
+    /** a class by course, session and semester — and stream (V380): REGULAR, the full-time class, or CCE, the Centre's */
+    Optional<OfferingRow> offering(String course, String session, int semester, String stream) {
         return jdbc.sql("""
                 SELECT o.id, o.course_code, c.title AS course_title, c.units, o.session, o.semester, c.dept_code, d.name AS dept_name,
                        o.lecturer_id, CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer
@@ -85,8 +86,8 @@ class RegistrationRepository {
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
                   LEFT JOIN iam.person p ON p.id = o.lecturer_id
-                 WHERE o.course_code = :c AND o.session = :s AND o.semester = :sem
-                """).param("c", course).param("s", session).param("sem", semester)
+                 WHERE o.course_code = :c AND o.session = :s AND o.semester = :sem AND o.stream = :st
+                """).param("c", course).param("s", session).param("sem", semester).param("st", stream)
                 .query(OfferingRow.class).optional();
     }
 
@@ -142,8 +143,9 @@ class RegistrationRepository {
     record Limit(int minUnits, int maxUnits) {
     }
 
-    Optional<Limit> limit(int level) {
-        return jdbc.sql("SELECT min_units, max_units FROM policy.level_limit WHERE level = :l").param("l", level)
+    /** the unit range at the level — V380: the CCE course load for a CCE student where the Academic Office stated one */
+    Optional<Limit> limit(UUID student, int level) {
+        return jdbc.sql("SELECT min_units, max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level)
                 .query(Limit.class).optional();
     }
 

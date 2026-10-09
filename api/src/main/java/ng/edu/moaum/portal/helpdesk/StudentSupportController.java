@@ -483,9 +483,10 @@ class StudentSupportController {
                 SELECT o.id AS offering_id, o.course_code, c.title, coalesce(o.units, c.units) AS units, c.level, c.kind, c.dept_code, d.name AS department
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code LEFT JOIN ref.department d ON d.code = c.dept_code
                  WHERE o.session = :ses AND o.semester = :sem AND c.state <> 'ENDED'
+                   AND o.stream = people.student_stream(:sid)   -- V380: the classes of the student's own stream
                    AND (upper(o.course_code) LIKE :p OR upper(replace(o.course_code, ' ', '')) LIKE :p2 OR upper(c.title) LIKE :t)
                  ORDER BY o.course_code LIMIT 25
-                """).param("ses", session.trim()).param("sem", semester).param("p", term.toUpperCase() + "%")
+                """).param("ses", session.trim()).param("sem", semester).param("sid", id).param("p", term.toUpperCase() + "%")
                 .param("p2", term.toUpperCase().replace(" ", "") + "%").param("t", "%" + term.toUpperCase() + "%").query().listOfRows();
     }
 

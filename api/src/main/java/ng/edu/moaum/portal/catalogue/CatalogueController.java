@@ -283,9 +283,9 @@ class CatalogueController {
                        (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
-                         WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
+                         WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur) AND o.stream = 'REGULAR'
                          ORDER BY o.semester LIMIT 1) AS lecturer,
-                       EXISTS (SELECT 1 FROM catalogue.offering o2 WHERE o2.course_code = c.code AND o2.session = (SELECT name FROM cur)) AS offered,
+                       EXISTS (SELECT 1 FROM catalogue.offering o2 WHERE o2.course_code = c.code AND o2.session = (SELECT name FROM cur) AND o2.stream = 'REGULAR') AS offered,
                        coalesce((SELECT jsonb_agg(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
                        coalesce((SELECT jsonb_agg(jsonb_build_object('programme_code', co.programme_code, 'programme', p.name, 'level', co.level, 'basis', co.basis, 'track', co.track) ORDER BY p.name, co.level)
                                    FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code WHERE co.course_code = c.code), '[]'::jsonb) AS bindings
@@ -697,7 +697,7 @@ class CatalogueController {
                  WHERE c.code = :c AND c.state <> 'ENDED'
                    AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
                    AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
-                                    WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = c.semester)
+                                    WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = c.semester AND o.stream = 'REGULAR')
                 """).param("c", code).update();
     }
 
@@ -753,7 +753,7 @@ class CatalogueController {
                        AND (:lvl::int IS NULL OR c.level = :lvl)
                        AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
                        AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
-                                        WHERE o.course_code = c.code AND o.session = :ses AND o.semester = c.semester)
+                                        WHERE o.course_code = c.code AND o.session = :ses AND o.semester = c.semester AND o.stream = 'REGULAR')
                     """).param("d", d).param("ses", session).param("lvl", level, java.sql.Types.INTEGER).update();
         }
         return Map.of("dept", d, "made_live", n, "offerings_created", offered);

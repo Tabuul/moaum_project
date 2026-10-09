@@ -502,7 +502,7 @@ class GstController {
                 SELECT c.code, c.title, c.units, c.level, c.semester, c.dept_code, d.name AS department, c.state, c.ended_on, c.general_office, c.ca_max,
                        (SELECT count(*) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes,
                        (SELECT string_agg(co.programme_code || ':' || co.level, ',' ORDER BY co.programme_code, co.level) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS offers,
-                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_this_session
+                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s AND o.stream = 'REGULAR') AS offered_this_session
                   FROM catalogue.course c JOIN ref.department d ON d.code = c.dept_code
                  WHERE c.kind = 'GST' AND c.general_office = :o
                  ORDER BY c.state = 'ENDED', c.level, c.code
@@ -651,7 +651,7 @@ class GstController {
     Map<String, Object> offer(@PathVariable String office, @Valid @RequestBody OfferingIn body) {
         String o = manage(office);
         own(o, body.courseCode());
-        UUID id = jdbc.sql("SELECT id FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = :sem")
+        UUID id = jdbc.sql("SELECT id FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = :sem AND stream = 'REGULAR'")
                 .param("c", body.courseCode()).param("s", body.session()).param("sem", body.semester()).query(UUID.class).optional().orElse(null);
         if (id == null) {
             id = UUID.randomUUID();
@@ -887,7 +887,7 @@ class GstController {
         return jdbc.sql("""
                 SELECT c.code, c.title, c.level, c.semester, c.units, c.dept_code, d.name AS department,
                        (SELECT count(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes,
-                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_this_session
+                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s AND o.stream = 'REGULAR') AS offered_this_session
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code
                  WHERE c.kind = 'GST' AND c.general_office IS NULL AND c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %'
                  ORDER BY c.code LIMIT 500
@@ -1021,7 +1021,7 @@ class GstController {
         o.put("departments", departments);
         o.put("programmes", programmes);
         o.put("levels", levels);
-        o.put("courses", jdbc.sql("SELECT DISTINCT c.code, c.title, c.level, o.semester FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.session = :s AND c.general_office = :o ORDER BY c.code")
+        o.put("courses", jdbc.sql("SELECT DISTINCT c.code, c.title, c.level, o.semester FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.session = :s AND o.stream = 'REGULAR' AND c.general_office = :o ORDER BY c.code")
                 .param("s", f.session()).param("o", f.office()).query().listOfRows());
         return o;
     }

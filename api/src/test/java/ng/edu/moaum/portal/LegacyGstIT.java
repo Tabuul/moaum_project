@@ -88,7 +88,7 @@ class LegacyGstIT {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, :t, 2, 1, 100, :d, 'GST', 'LIVE') ON CONFLICT (code) DO NOTHING")
                     .param("c", code).param("t", "Legacy General Studies " + n).param("d", dept).update();
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, 100, 'GST') ON CONFLICT DO NOTHING").param("c", code).param("p", PROGRAMME).update();
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING").param("c", code).param("s", SESSION).update();
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING").param("c", code).param("s", SESSION).update();
             return null;
         });
         offering = jdbc.sql("SELECT id FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = 1").param("c", code).param("s", SESSION).query(UUID.class).single();

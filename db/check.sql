@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 224
+\set EXPECTED 225
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -8213,7 +8213,7 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('V379: CCE — the route''s session follows undergraduate one behind unless the Academic Office names one with its reason; JAMB''s CCE list is read and reconciled by number (new, the same number again, no date of birth, a programme the Centre does not offer, then an update); only a listed number with its date of birth registers, once, while the window is open; a second sitting is complete or absent; the CCE fees are the Bursary''s and there is no checking fee; the officer who recommends does not approve, and the Academic Office publishes; the published offer is read without a window, accepted, and the student comes onto the register CCE, part-time, in the CCE session, with the CCE letter, course registration waiting for the CCE offerings, charged only the fees stated for CCE, and the study mode not changed behind the Academic Office',
+    PERFORM pg_temp.assert('V379: CCE — the route''s session follows undergraduate one behind unless the Academic Office names one with its reason; JAMB''s CCE list is read and reconciled by number (new, the same number again, no date of birth, a programme the Centre does not offer, then an update); only a listed number with its date of birth registers, once, while the window is open; a second sitting is complete or absent; the CCE fees are the Bursary''s and there is no checking fee; the officer who recommends does not approve, and the Academic Office publishes; the published offer is read without a window, accepted, and the student comes onto the register CCE, part-time, in the CCE session, with the CCE letter, course registration waiting for the Centre''s classes, charged only the fees stated for CCE, and the study mode not changed behind the Academic Office',
         coalesce(v_session = policy.session_before(ugs, 1) AND r_reason = 'CCE_SESSION_REASON' AND r_office = 'CCE_SESSION_OFFICE'
                  AND (cnt->>'NEW')::int = 1 AND (cnt->>'DUPLICATE')::int = 1 AND (cnt->>'INVALID')::int = 1 AND (cnt->>'REQUIRES_REVIEW')::int = 1
                  AND r_dup = 'DUPLICATE' AND r_nodob = 'INVALID' AND r_prog = 'REQUIRES_REVIEW' AND (applied->>'added')::int = 1
@@ -8221,7 +8221,7 @@ BEGIN
                  AND r_dob = 'CCE_DATE_OF_BIRTH' AND r_sit2 = 'CCE_OLEVEL_NUMBER' AND probs = 4 AND amount1 = 7500 AND r_chk = 'CCE_NO_CHECKING_FEE'
                  AND r_submit = 'submitted' AND r_own = 'CCE_APPROVE_OWN' AND r_pub_office = 'CCE_OFFICE' AND (pub->>'admitted')::int = 1
                  AND vis AND st_status = 'ADMITTED' AND amount2 = 30000 AND stu.entry_mode = 'CCE' AND stu.study_mode = 'PART_TIME' AND stu.entry_session = S
-                 AND stu.date_of_birth = date '1990-04-17' AND ctx_session = S AND gate LIKE 'Course registration for students of the Centre for Continuing Education%'
+                 AND stu.date_of_birth = date '1990-04-17' AND ctx_session = S AND gate LIKE 'Course registration for the first semester of ' || S || ' opens when the Centre for Continuing Education''s classes for it are set up.'
                  AND r_guard = 'STUDENT_ROUTE_LOCKED' AND fee_total = 45000 AND NOT old_stated AND letter.statement->>'studyMode' = 'PART-TIME' AND (letter.statement->>'durationYears')::int = 6
                  AND (stats->>'admitted')::int = 1 AND (stats->>'activated')::int = 1, false),
         format('session %s (ug %s) reason=%s office=%s | counts %s dup=%s nodob=%s prog=%s applied=%s again=%s | look %s/%s twice=%s | dob=%s sit2=%s problems=%s | fee %s chk=%s submit=%s | own=%s pub_office=%s pub=%s | visible=%s status=%s acceptance=%s | student %s %s %s dob=%s ctx=%s gate=%s guard=%s fees=%s old_stated=%s letter=%s/%s | stats %s',
@@ -8299,6 +8299,214 @@ BEGIN
                span_test, span_short, span_other, pr.purpose, pr.amount, cat, t.days, t.issued_by = burs, t.issued_office, r_days, r_amount, r_office,
                cu.valid, cu.surname, cu.other_names, cu.amount, cu.number, cu_old.valid, cu_old.why, wd.expires_at = now(), wd_by = burs, r_again, r_not_one,
                cu_paid.valid, cu_paid.why, paid, r_paid));
+END $$;
+
+-- ── V380: CCE classes in the CCE session, registration by the CCE calendar and windows, the evening timetable, attendance on the register, CCE fees kept apart ──
+-- The Centre opens its own classes in the CCE session beside the full-time classes of the same courses; a CCE student is offered and
+-- registered only on the Centre's, a full-time student only on the full-time ones (the database refuses a mix). Registration opens by
+-- the CCE calendar (set by the Centre, opened only in the CCE session) and the CCE window, never by the full-time ones of the same
+-- session; the semesters a CCE student missed are the CCE calendar's. A CCE class is put on the timetable by the Centre, with no
+-- venue or lecturer in two CCE classes at once. Attendance is the register's (late, corrected with a reason, locked). The fee
+-- structure is replaced by its own kind, the late fees read the CCE windows, the GST/EPS fee does not reach a CCE student, and
+-- examination sessions stay the full-time classes'. The block undoes its own writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); lect uuid := gen_random_uuid(); lect2 uuid := gen_random_uuid();
+        S text := '9951/9952'; T text := '9949/9950'; pa text := 'C00023'; stu uuid := gen_random_uuid(); ft uuid := gen_random_uuid();
+        ft_class uuid := gen_random_uuid(); c101 uuid; c102 uuid; reg uuid := gen_random_uuid(); ft_reg uuid := gen_random_uuid(); n_open int;
+        r_cal_office text; r_cal_session text; r_cal_reason text; r_cls_session text; r_cls_office text; gate0 text; gate1 text; gate_ug_closed text;
+        gate_cce_closed text; gate_reopened text; menu_cce text; menu_ft text; units int; r_mix text; chk_period boolean; chk_msg text; add_drop boolean;
+        missed int; r_slot_office text; r_venue text; r_lecturer text; clash_kinds text; ft_slot boolean; rg uuid; roster int; marked jsonb;
+        r_att_reason text; r_att_locked text; r_att_list text; r_att_offering text; summ record; rep int; ug_late boolean; cce_late boolean;
+        wt_cce text; wt_ft text; ft_lines int; cce_lines int; ft_after int; cce_after int; gst_rows int; gst_gate text; r_in_use text; r_not_cce text;
+        withdrawn boolean; ex uuid; sheets_ft int; sheets_cce int; r_archive text; gst_opened int; slot101 uuid;
+        load_before text; load_cce text; load_ft text; r_load_office text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V380', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9951-10-01', date '9952-08-31'),
+               (gen_random_uuid(), T, date '9949-10-01', date '9950-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT x.code, x.title, 3, 1, 100, p.dept_code, 'Core', 'LIVE' FROM ref.programme p,
+               (VALUES ('CCX 101', 'Check evening one'), ('CCX 102', 'Check evening two')) x(code, title) WHERE p.code = pa;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('CCX 101', pa, 100, 'Core'), ('CCX 102', pa, 100, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (ft_class, 'CCX 101', S, 1);   -- the full-time class of the same course and session
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (lect, 'CHECK/V380/L', 'ZZLECT380', 'Invented', NULL),
+               (lect2, 'CHECK/V380/M', 'ZZLECT380B', 'Invented', NULL);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (stu, 'MOAUM/ADM/51/990380', 'MOAUM/CHK/51/0380', 'ZZCCE380', 'Evening Student', pa, 'CCE', 'PART_TIME', S, 100, 100, 'ACTIVE', now()),
+               (ft, 'MOAUM/ADM/51/990381', 'MOAUM/CHK/51/0381', 'ZZFT380', 'Day Student', pa, 'UTME', 'FULL_TIME', S, 100, 100, 'ACTIVE', now());
+
+        -- (1) the CCE calendar: the Centre's, opened only in the CCE session, a change to a set semester with its reason
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        BEGIN PERFORM policy.set_route_semester('CCE', S, 1, 'OPEN', NULL, NULL, current_date - 1, current_date + 20, NULL, NULL, NULL, NULL, NULL); r_cal_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_cal_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        BEGIN PERFORM policy.set_route_semester('CCE', T, 1, 'OPEN', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL); r_cal_session := 'SET';
+        EXCEPTION WHEN check_violation THEN r_cal_session := split_part(SQLERRM, ':', 1); END;
+        PERFORM policy.set_route_semester('CCE', S, 1, 'NOT_YET_OPEN', NULL, NULL, current_date - 1, current_date + 20, NULL, NULL, NULL, NULL, NULL);
+        BEGIN PERFORM policy.set_route_semester('CCE', S, 1, 'OPEN', NULL, NULL, current_date - 1, current_date + 20, NULL, NULL, NULL, NULL, NULL); r_cal_reason := 'SET';
+        EXCEPTION WHEN check_violation THEN r_cal_reason := split_part(SQLERRM, ':', 1); END;
+        PERFORM policy.set_route_semester('CCE', S, 1, 'OPEN', NULL, NULL, current_date - 1, current_date + 20, NULL, NULL, NULL, NULL, 'registration opens');
+        gate0 := registration.registration_gate(stu, S, 1);   -- no CCE class yet
+
+        -- (2) the Centre's classes: opened by the Centre in the CCE session, beside the full-time class of the same course
+        BEGIN PERFORM catalogue.cce_open_classes(T, 1); r_cls_session := 'OPENED';
+        EXCEPTION WHEN check_violation THEN r_cls_session := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM catalogue.cce_open_classes(S, 1); r_cls_office := 'OPENED';
+        EXCEPTION WHEN check_violation THEN r_cls_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        n_open := catalogue.cce_open_classes(S, 1);
+        SELECT id INTO c101 FROM catalogue.offering WHERE course_code = 'CCX 101' AND session = S AND semester = 1 AND stream = 'CCE';
+        SELECT id INTO c102 FROM catalogue.offering WHERE course_code = 'CCX 102' AND session = S AND semester = 1 AND stream = 'CCE';
+
+        -- (3) the gate and the menu: the CCE window governs a CCE student, the full-time window of the same session does not
+        gate1 := registration.registration_gate(stu, S, 1);
+        PERFORM policy.window_act('COURSE_REGISTRATION', S, 1, 'CLOSE', NULL, NULL, NULL, NULL, 'the full-time semester is over', acad, 'ict');
+        gate_ug_closed := registration.registration_gate(stu, S, 1);
+        PERFORM policy.window_act('CCE_COURSE_REGISTRATION', S, 1, 'CLOSE', NULL, NULL, NULL, NULL, 'the Centre pauses registration', acad, 'ict');
+        gate_cce_closed := registration.registration_gate(stu, S, 1);
+        PERFORM policy.window_act('CCE_COURSE_REGISTRATION', S, 1, 'REOPEN', NULL, NULL, NULL, NULL, 'resumed', acad, 'ict');
+        gate_reopened := registration.registration_gate(stu, S, 1);
+        SELECT string_agg(m.course_code || '@' || o.stream, ',' ORDER BY m.course_code) INTO menu_cce
+          FROM registration.student_menu(stu, S, 1) m JOIN catalogue.offering o ON o.id = m.offering_id WHERE m.course_code LIKE 'CCX%';
+        SELECT string_agg(m.course_code || '@' || o.stream, ',' ORDER BY m.course_code) INTO menu_ft
+          FROM registration.student_menu(ft, S, 1) m JOIN catalogue.offering o ON o.id = m.offering_id WHERE m.course_code LIKE 'CCX%';
+
+        -- (4) the registration: the engine's, on the student's stream; the database refuses a mix; add/drop and the missed semesters by the CCE calendar
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, stu, S, 1, 100, 'DRAFT');
+        units := registration.student_choose(reg, ARRAY[c101, c102, ft_class]);
+        BEGIN INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (reg, ft_class, 3, 'CURRENT'); r_mix := 'MIXED';
+        EXCEPTION WHEN check_violation THEN r_mix := split_part(SQLERRM, ':', 1); END;
+        SELECT k.passed, k.message INTO chk_period, chk_msg FROM registration.support_add_checks(stu, S, 1, ft_class) k WHERE k.rule = 'OFFERING_PERIOD';
+        add_drop := registration.add_drop_open(stu, S, 1);
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 3, 'CLOSED') ON CONFLICT (session, number) DO UPDATE SET state = 'CLOSED';
+        PERFORM policy.set_route_semester('CCE', S, 2, 'CLOSED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        SELECT u.semesters INTO missed FROM registration.semesters_unregistered(stu) u;   -- the CCE second semester, not the full-time third
+        -- the course load: the University's range until the Academic Office states the CCE load; the Centre does not state it
+        SELECT l.min_units || '-' || l.max_units INTO load_before FROM registration.unit_limit(stu, 100) l;
+        BEGIN PERFORM policy.set_route_level_limit('CCE', 100, 6, 12, NULL, NULL); r_load_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_load_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM policy.set_route_level_limit('CCE', 100, 6, 12, NULL, 'the check''s Senate minute');
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        SELECT l.min_units || '-' || l.max_units INTO load_cce FROM registration.unit_limit(stu, 100) l;
+        SELECT l.min_units || '-' || l.max_units INTO load_ft FROM registration.unit_limit(ft, 100) l;
+        UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (ft_reg, ft, S, 1, 100, 'DRAFT');
+        PERFORM registration.student_choose(ft_reg, ARRAY[ft_class]);
+
+        -- (5) the evening timetable: the Centre's; no venue or lecturer twice at once; the rest reported
+        PERFORM catalogue.allocate_offering(c101, lect, NULL, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (c101, 1, '16:00', '18:00', 'LT1'); r_slot_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_slot_office := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (ft_class, 1, '10:00', '12:00', 'LT1');   -- the department's full-time slot, as before
+        ft_slot := true;
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        INSERT INTO catalogue.class_slot (id, offering_id, weekday, starts_at, ends_at, venue) VALUES (gen_random_uuid(), c101, 1, '16:00', '18:00', 'LT1') RETURNING id INTO slot101;
+        BEGIN INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (c102, 1, '17:00', '19:00', ' lt1'); r_venue := 'SET';
+        EXCEPTION WHEN check_violation THEN r_venue := split_part(SQLERRM, ':', 1); END;
+        PERFORM catalogue.allocate_offering(c102, lect, NULL, true);
+        BEGIN INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (c102, 1, '17:00', '19:00', 'LT2'); r_lecturer := 'SET';
+        EXCEPTION WHEN check_violation THEN r_lecturer := split_part(SQLERRM, ':', 1); END;
+        PERFORM catalogue.allocate_offering(c102, lect2, NULL, true);
+        INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (c102, 1, '17:00', '19:00', 'LT2');
+        SELECT string_agg(DISTINCT k.kind, ',' ORDER BY k.kind) INTO clash_kinds FROM catalogue.cce_clashes(S, 1) k;
+
+        -- (6) attendance on the register: the class's registered students; late; a correction says why; a locked register is not changed
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        rg := attendance.open_register('COURSE', S, 1, c101, NULL, current_date, 'Week one', lect);
+        UPDATE attendance.register SET slot_ref = slot101 WHERE id = rg;
+        SELECT count(*) INTO roster FROM attendance.roster(rg);
+        marked := attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', stu, 'status', 'LATE')), NULL, lect, false);
+        BEGIN PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', stu, 'status', 'PRESENT')), NULL, lect, false); r_att_reason := 'CHANGED';
+        EXCEPTION WHEN check_violation THEN r_att_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', ft, 'status', 'PRESENT')), NULL, lect, false); r_att_list := 'MARKED';
+        EXCEPTION WHEN check_violation THEN r_att_list := split_part(SQLERRM, ':', 1); END;
+        PERFORM attendance.lock_register(rg, lect, true, NULL);
+        BEGIN PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', stu, 'status', 'ABSENT')), 'wrong', lect, false); r_att_locked := 'CHANGED';
+        EXCEPTION WHEN check_violation THEN r_att_locked := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM attendance.open_register('COURSE', S, 2, c101, NULL, current_date, NULL, lect); r_att_offering := 'OPENED';
+        EXCEPTION WHEN check_violation THEN r_att_offering := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM attendance.set_cce_policy(S, 75, 10, 3, true);
+        SELECT * INTO summ FROM attendance.course_summary(stu, S) x WHERE x.course_code = 'CCX 101';
+        SELECT count(*) INTO rep FROM attendance.course_report('CCE', S, 1, NULL, NULL, pa, NULL, current_date - 7, current_date);
+
+        -- (7) the fees: the windows a CCE student answers to; the structure replaced by its own kind; the late fee and the GST/EPS fee
+        wt_cce := policy.window_type_for(stu, 'SCHOOL_FEES_PAYMENT');
+        wt_ft := policy.window_type_for(ft, 'SCHOOL_FEES_PAYMENT');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.import_fee_structure(S, '[{"faculty": "", "programmeCode": "C00023", "level": "100", "semester": "1", "amount": "99000"}]');
+        PERFORM finance.import_fee_structure(S, '[{"programmeCode": "C00023", "level": "100", "semester": "1", "entryMode": "CCE", "amount": "45000"}]');
+        SELECT count(*) FILTER (WHERE entry_mode IS DISTINCT FROM 'CCE'), count(*) FILTER (WHERE entry_mode = 'CCE') INTO ft_lines, cce_lines
+          FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL;
+        PERFORM finance.import_fee_structure(S, '[{"programmeCode": "C00023", "level": "100", "semester": "1", "amount": "98000"}]');
+        SELECT count(*) FILTER (WHERE entry_mode IS DISTINCT FROM 'CCE'), count(*) FILTER (WHERE entry_mode = 'CCE') INTO ft_after, cce_after
+          FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL;
+        PERFORM policy.window_act('COURSE_REGISTRATION', S, 1, 'REOPEN', now() - interval '3 days', now() - interval '1 day', now() + interval '5 days', true, 'late registration', acad, 'ict');
+        ug_late := finance.late_registration_applies(ft, S);
+        cce_late := finance.late_registration_applies(stu, S);
+        SELECT count(*) INTO gst_rows FROM finance.gst_eps_rows(S, stu);
+        gst_gate := registration.gst_gate(stu, S, 'CCX 101');
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        gst_opened := catalogue.open_gst_offerings(S, 'GST');
+
+        -- (8) a class nobody used is withdrawn; one with history stays; a full-time class is not the Centre's
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        BEGIN PERFORM catalogue.cce_withdraw_class(c101, 'opened in error'); r_in_use := 'WITHDRAWN';
+        EXCEPTION WHEN check_violation THEN r_in_use := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.cce_withdraw_class(ft_class, 'not ours'); r_not_cce := 'WITHDRAWN';
+        EXCEPTION WHEN check_violation THEN r_not_cce := split_part(SQLERRM, ':', 1); END;
+        DELETE FROM registration.entry WHERE offering_id = c102;
+        PERFORM catalogue.cce_withdraw_class(c102, 'no student took it');
+        withdrawn := NOT EXISTS (SELECT 1 FROM catalogue.offering WHERE id = c102);
+
+        -- (9) the examination session stays the full-time classes'; the CCE session is not archived under the Centre
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        PERFORM catalogue.allocate_offering(ft_class, lect2, NULL, true);
+        ex := gen_random_uuid();
+        INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state) VALUES (ex, S, 1, 'MAIN', current_date, current_date + 5, current_date + 10, 'OPEN');
+        PERFORM assessment.release_exam_sheets(ex);
+        SELECT count(*) FILTER (WHERE o.stream = 'REGULAR'), count(*) FILTER (WHERE o.stream = 'CCE') INTO sheets_ft, sheets_cce
+          FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE sh.exam_session_id = ex;
+        UPDATE policy.academic_session SET state = 'CLOSED' WHERE name = S;
+        BEGIN PERFORM policy.archive_session(S, 'the check'); r_archive := 'ARCHIVED';
+        EXCEPTION WHEN check_violation THEN r_archive := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V380 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V380: CCE — the Centre opens its classes in the CCE session beside the full-time classes of the same courses; a CCE student is offered and registered only on the Centre''s, a full-time student only on the full-time ones, and the database refuses a mix; registration opens by the CCE calendar (the Centre''s, opened only in the CCE session, changed with a reason) and the CCE window, never by the full-time window of the same session; add/drop and the missed semesters read the CCE calendar; a CCE student registers within the CCE course load the Academic Office states (the University''s until it does); a CCE class is timetabled by the Centre with no venue or lecturer twice at once, and the rest reported; attendance is the register''s (late, a correction with its reason, locked, the class list only); an uploaded fee structure replaces only its own kind; the late fee reads the CCE window and the GST/EPS fee does not reach a CCE student; examination sessions stay the full-time classes''; the CCE session is not archived under the Centre',
+        coalesce(r_cal_office = 'CCE_OFFICE' AND r_cal_session = 'CCE_CALENDAR_SESSION' AND r_cal_reason = 'CCE_CALENDAR_REASON'
+                 AND gate0 LIKE 'Course registration for the first semester of ' || S || ' opens when the Centre for Continuing Education''s classes for it are set up.'
+                 AND r_cls_session = 'CCE_CLASS_SESSION' AND r_cls_office = 'CCE_OFFICE' AND n_open >= 2 AND c101 IS NOT NULL AND c102 IS NOT NULL AND c101 <> ft_class
+                 AND gate1 IS NULL AND gate_ug_closed IS NULL AND gate_cce_closed LIKE 'CCE course registration is currently closed%' AND gate_reopened IS NULL
+                 AND menu_cce = 'CCX 101@CCE,CCX 102@CCE' AND menu_ft = 'CCX 101@REGULAR'
+                 AND units = 6 AND r_mix = 'REGISTRATION_STREAM' AND NOT chk_period AND chk_msg LIKE '%full-time class; a student of the Centre%' AND add_drop AND missed = 1
+                 AND load_before = load_ft AND load_cce = '6-12' AND r_load_office = 'CCE_OFFICE'
+                 AND r_slot_office = 'CCE_SLOT_OFFICE' AND ft_slot AND r_venue = 'CCE_SLOT_VENUE_CLASH' AND r_lecturer = 'CCE_SLOT_LECTURER_CLASH'
+                 AND clash_kinds = 'STUDENTS'
+                 AND roster = 1 AND (marked->>'marked')::int = 1 AND r_att_reason = 'ATT_REASON' AND r_att_list = 'ATT_NOT_ON_LIST' AND r_att_locked = 'ATT_LOCKED'
+                 AND r_att_offering = 'ATT_OFFERING' AND summ.total = 1 AND summ.late = 1 AND summ.rate = 100 AND summ.verdict = 'ELIGIBLE' AND rep = 1
+                 AND wt_cce = 'CCE_SCHOOL_FEES_PAYMENT' AND wt_ft = 'SCHOOL_FEES_PAYMENT' AND ft_lines = 1 AND cce_lines = 1 AND ft_after = 1 AND cce_after = 1
+                 AND ug_late AND NOT cce_late AND gst_rows = 0 AND gst_gate IS NULL AND gst_opened >= 0
+                 AND r_in_use = 'CCE_CLASS_IN_USE' AND r_not_cce = 'CCE_CLASS_NOT_CCE' AND withdrawn
+                 AND sheets_ft = 1 AND sheets_cce = 0 AND r_archive = 'SESSION_ARCHIVE_REFUSED', false),
+        format('calendar %s/%s/%s | gate0=%s | classes %s/%s opened=%s 101=%s 102=%s | gates %s/%s/%s/%s | menu %s / %s | units=%s mix=%s period=%s (%s) add_drop=%s missed=%s | load %s/%s/%s %s | slots %s/%s/%s/%s clashes=%s | register roster=%s marked=%s reason=%s list=%s locked=%s offering=%s summary=%s/%s/%s/%s report=%s | windows %s/%s lines %s/%s then %s/%s late %s/%s gst %s/%s/%s | withdraw %s/%s/%s | sheets %s/%s archive=%s',
+               r_cal_office, r_cal_session, r_cal_reason, gate0, r_cls_session, r_cls_office, n_open, c101 IS NOT NULL, c102 IS NOT NULL,
+               gate1, gate_ug_closed, gate_cce_closed, gate_reopened, menu_cce, menu_ft, units, r_mix, chk_period, chk_msg, add_drop, missed, load_before, load_cce, load_ft, r_load_office,
+               r_slot_office, ft_slot, r_venue, r_lecturer, clash_kinds, roster, marked, r_att_reason, r_att_list, r_att_locked, r_att_offering,
+               summ.total, summ.late, summ.rate, summ.verdict, rep, wt_cce, wt_ft, ft_lines, cce_lines, ft_after, cce_after, ug_late, cce_late,
+               gst_rows, gst_gate, gst_opened, r_in_use, r_not_cce, withdrawn, sheets_ft, sheets_cce, r_archive));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

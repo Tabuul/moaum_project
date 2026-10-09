@@ -75,7 +75,7 @@ class MatriculationIT {
                     """).update();
             return jdbc.sql("""
                     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZT 101', :sess, 1)
-                    ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
+                    ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
                     """).param("sess", SESSION).query(UUID.class).single();
         });
         // the year segment is the student's entry session (V263), which the invented student helper sets to 2020/2021

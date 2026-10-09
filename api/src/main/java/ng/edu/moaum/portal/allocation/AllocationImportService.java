@@ -218,7 +218,7 @@ public class AllocationImportService {
             List<String> realCodes = courseByCode.values().stream().map(Course::code).toList();
             if (!realCodes.isEmpty() && !sess.isEmpty()) {
                 for (List<String> part : chunks(realCodes, 2000)) {
-                    for (Map<String, Object> o : jdbc.sql("SELECT id, course_code, session, semester, lecturer_id, second_examiner_id FROM catalogue.offering WHERE session IN (:s) AND course_code IN (:c)")
+                    for (Map<String, Object> o : jdbc.sql("SELECT id, course_code, session, semester, lecturer_id, second_examiner_id FROM catalogue.offering WHERE session IN (:s) AND course_code IN (:c) AND stream = 'REGULAR'")
                             .param("s", new ArrayList<>(sess)).param("c", part).query().listOfRows()) {
                         Offering off = new Offering((UUID) o.get("id"), (String) o.get("course_code"), (String) o.get("session"), ((Number) o.get("semester")).intValue(),
                                 (UUID) o.get("lecturer_id"), (UUID) o.get("second_examiner_id"));
@@ -242,7 +242,7 @@ public class AllocationImportService {
                     for (Map<String, Object> l : jdbc.sql("""
                             SELECT o.lecturer_id, o.session, o.semester, coalesce(sum(c.units), 0) AS units
                               FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                             WHERE o.lecturer_id IN (:p) AND o.session IN (:s) GROUP BY 1, 2, 3
+                             WHERE o.lecturer_id IN (:p) AND o.session IN (:s) AND o.stream = 'REGULAR' GROUP BY 1, 2, 3
                             """).param("p", part).param("s", new ArrayList<>(sess)).query().listOfRows()) {
                         load.put(l.get("lecturer_id") + "|" + l.get("session") + "|" + l.get("semester"), ((Number) l.get("units")).intValue());
                     }

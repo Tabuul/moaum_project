@@ -107,7 +107,7 @@ class DefermentIT {
     private UUID registered(UUID student, String session, int semester) {
         return it.db(() -> {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES ('ZZD 101', 'A course for the deferment test', 3, 1, 200, 'MTC', 'LIVE') ON CONFLICT (code) DO NOTHING").update();
-            UUID offering = jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZD 101', :sess, :sem) ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id")
+            UUID offering = jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZD 101', :sess, :sem) ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id")
                     .param("sess", session).param("sem", semester).query(UUID.class).single();
             UUID reg = jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :sess, :sem, 200, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED' RETURNING id")
                     .param("s", student).param("sess", session).param("sem", semester).query(UUID.class).single();
@@ -309,7 +309,7 @@ class DefermentIT {
         assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
         assertThat(back.getBody().get("state")).isEqualTo("COMPLETED");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("ACTIVE");
-        it.db(() -> jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZD 101', :sess, 1) ON CONFLICT (course_code, session, semester) DO NOTHING").param("sess", NEXT).update());
+        it.db(() -> jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZD 101', :sess, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING").param("sess", NEXT).update());
         Map<String, Object> menuRow = jdbc.sql("SELECT * FROM registration.student_menu(:s, :ses, 1) WHERE course_code = 'ZZD 101'").param("s", student).param("ses", NEXT).query().singleRow();
         assertThat(menuRow.get("deferred")).isEqualTo(true);
         assertThat(menuRow.get("basis")).isEqualTo("Deferred");

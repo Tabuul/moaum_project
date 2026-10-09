@@ -40,7 +40,7 @@ class MeTeachingController {
                 : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
 
         List<Map<String, Object>> offerings = jdbc.sql("""
-                SELECT o.id, c.code, c.title, c.units, c.level, o.semester,
+                SELECT o.id, c.code, c.title, c.units, c.level, o.semester, o.session, o.stream,
                        CASE WHEN o.lecturer_id = :me THEN 'Lecturer'
                             WHEN o.second_examiner_id = :me THEN 'Second examiner'
                             ELSE 'Co-lecturer' END AS role,
@@ -52,10 +52,11 @@ class MeTeachingController {
                   FROM catalogue.offering o
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
-                 WHERE o.session = :s
+                 -- V380: and the evening classes of the Centre for Continuing Education the person teaches in the CCE session
+                 WHERE (o.session = :s OR (o.stream = 'CCE' AND o.session = policy.route_session('CCE')))
                    AND (o.lecturer_id = :me OR o.second_examiner_id = :me
                         OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :me))
-                 ORDER BY o.semester, c.level, c.code
+                 ORDER BY o.stream DESC, o.semester, c.level, c.code
                 """).param("me", me).param("s", s).query().listOfRows();
 
         for (Map<String, Object> o : offerings) {

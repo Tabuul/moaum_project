@@ -174,6 +174,7 @@ class AllocationController {
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
+                   AND o.stream = 'REGULAR'                   -- V380: the full-time classes; the Centre allocates its own
                    AND c.semester = :semester                 -- only courses actually offered in this semester
                    AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
                    AND (:level::int IS NULL OR c.level = :level)
@@ -211,7 +212,7 @@ class AllocationController {
         String live = "a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department'"
                 + " AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)";
         String load = "coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code"
-                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester), 0) AS load";
+                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester AND o.stream = 'REGULAR'), 0) AS load";
         if (all) {
             return jdbc.sql("""
                     SELECT p.id, concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS name, p.staff_number,
@@ -252,6 +253,11 @@ class AllocationController {
 
     /** an ended course is off the catalogue and is not allocated to a lecturer (restore it first) */
     private void assertOfferingLive(UUID offering) {
+        // V380: a class of the Centre for Continuing Education is allocated on the Centre's desk, not the department's
+        if (Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.offering WHERE id = :o AND stream = 'CCE')").param("o", offering).query(Boolean.class).single())) {
+            throw new DomainRuleViolation("ALLOC_CCE", "This is a class of the Centre for Continuing Education; the Centre allocates its lecturer.",
+                    new DomainRuleViolation.Remedy("Ask the Centre for Continuing Education, or allocate the full-time class of the course.", "Centre for Continuing Education"));
+        }
         String state = jdbc.sql("SELECT c.state FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o")
                 .param("o", offering).query(String.class).optional().orElse(null);
         if ("ENDED".equals(state)) {

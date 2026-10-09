@@ -66,7 +66,7 @@ class MatriculationManagementIT {
     private UUID offering() {
         return it.db(() -> {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES ('ZZT 102', 'A course for the management test', 3, 1, 100, 'MTC', 'LIVE') ON CONFLICT (code) DO NOTHING").update();
-            return jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZT 102', :s, 1) ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id")
+            return jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZT 102', :s, 1) ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id")
                     .param("s", SESSION).query(UUID.class).single();
         });
     }

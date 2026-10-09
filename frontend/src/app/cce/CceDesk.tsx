@@ -16,6 +16,7 @@ import { ccall, naira, when, type CceTab, type Overview } from "@/lib/cce";
 import { CceCandidates, CceImports, CceUpload } from "./CceList";
 import { CceAdmissionList, CceApplication, CceApplications, CceStudents } from "./CceApplications";
 import { CceFees, CceHistory, CceProgrammes, CceReports, CceSession } from "./CceSetup";
+import { CceAttendance, CceCalendar, CceClasses, CceRegistrations, CceSchoolFees, CceTimetable } from "./CceClasses";
 
 
 /** what the acting office may do here; the server decides again */
@@ -60,7 +61,8 @@ export function CceDesk({ tab, id, office, initialSession, initialStatus }: { ta
     return () => { live = false; };
   }, [session, tick, feesOnly]);
 
-  if (feesOnly) return <CceFees powers={powers} />;
+  // the Bursary reads the CCE fees only: the applicant fees, and (V380) the CCE school fees and the payments
+  if (feesOnly) return tab === "school-fees" ? <CceSchoolFees session={initialSession ?? ""} powers={powers} pick={null} refresh={() => undefined} /> : <CceFees powers={powers} />;
   if (problem) return <ProblemNotice problem={problem} />;
   if (!ov) return <Note kind="info" title="Loading the CCE desk…">One moment.</Note>;
   const s = ov.session;
@@ -79,6 +81,12 @@ export function CceDesk({ tab, id, office, initialSession, initialStatus }: { ta
     case "reports": return <CceReports {...props} overview={ov} />;
     case "history": return <CceHistory {...props} />;
     case "fees": return <CceFees powers={powers} session={s} />;
+    case "calendar": return <CceCalendar {...props} />;
+    case "classes": return <CceClasses {...props} />;
+    case "timetable": return <CceTimetable {...props} />;
+    case "registrations": return <CceRegistrations {...props} />;
+    case "attendance": return <CceAttendance {...props} />;
+    case "school-fees": return <CceSchoolFees {...props} />;
     default: return <CceOverview ov={ov} pick={pick} powers={powers} />;
   }
 }
@@ -136,6 +144,19 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
           </PBody>
         </Panel>
       </div>
+      <Panel title="The CCE session in operation" right={<Pil kind="info">{ov.mapping.route_session ?? ov.session}</Pil>}>
+        <PBody>
+          <div className="sub2 mb-2">The Centre&rsquo;s students study in the CCE session on classes of their own, beside the full-time classes of the same courses, through the University&rsquo;s registration engine.</div>
+          <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
+            <LinkBtn kind="ghost" href={q("calendar")}>CCE calendar</LinkBtn>
+            <LinkBtn kind="ghost" href={q("classes")}>CCE classes</LinkBtn>
+            <LinkBtn kind="ghost" href={q("timetable")}>Evening timetable</LinkBtn>
+            <LinkBtn kind="ghost" href={q("registrations")}>Course registration</LinkBtn>
+            <LinkBtn kind="ghost" href={q("attendance")}>Attendance</LinkBtn>
+            <LinkBtn kind="ghost" href={q("school-fees")}>CCE school fees</LinkBtn>
+          </div>
+        </PBody>
+      </Panel>
       <Panel title="By programme" right={<Pil kind="info">{ov.session}</Pil>}>
         {ov.byProgramme.length ? (
           <DTable cols={["Programme", "Faculty", "Listed|num", "Applied|num", "Admitted|num", "Students|num"]} texts={ov.byProgramme.map((r) => `${r.programme} ${r.faculty ?? ""}`)}

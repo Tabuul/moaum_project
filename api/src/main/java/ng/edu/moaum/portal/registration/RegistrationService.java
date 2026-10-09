@@ -139,7 +139,7 @@ public class RegistrationService {
                         new DomainRuleViolation.Remedy("This is the SIWES semester — only the industrial-training course is registered.", "Head of Department"));
             }
         } else {
-            RegistrationRepository.Limit limit = repo.limit(r.level()).orElse(null);
+            RegistrationRepository.Limit limit = repo.limit(r.studentId(), r.level()).orElse(null);
             if (limit != null && (units < limit.minUnits() || units > limit.maxUnits())) {
                 throw new DomainRuleViolation("REG_UNITS_OUT_OF_RANGE",
                         "The registration carries " + units + " units; at " + r.level() + " level the range is "
@@ -171,8 +171,8 @@ public class RegistrationService {
     }
 
     @Transactional(readOnly = true)
-    public ClassList classList(String course, String session, int semester) {
-        RegistrationRepository.OfferingRow o = repo.offering(course.trim().toUpperCase(), session, semester)
+    public ClassList classList(String course, String session, int semester, String stream) {
+        RegistrationRepository.OfferingRow o = repo.offering(course.trim().toUpperCase(), session, semester, stream)
                 .orElseThrow(() -> new NotFound("offering of " + course + " in " + session + " semester", semester));
         // a request made in the lecturer's office reads the roll of its own courses only — this session's or any past one
         if (scope.actingLecturer()) {

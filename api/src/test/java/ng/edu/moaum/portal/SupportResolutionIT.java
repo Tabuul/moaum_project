@@ -82,7 +82,7 @@ class SupportResolutionIT {
             for (String[] o : new String[][] {{"ZZR 101", S, "1"}, {"ZZR 102", S, "1"}, {"ZZR 103", S, "1"}, {"ZZR 104", S, "1"}, {"ZZR 301", S, "1"}, {"ZZR 105", S, "2"}, {"ZZR 101", P, "1"}}) {
                 UUID id = jdbc.sql("""
                         INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, :sem)
-                        ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
+                        ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
                         """).param("c", o[0]).param("s", o[1]).param("sem", Integer.parseInt(o[2])).query(UUID.class).single();
                 offering.put(o[0] + "@" + o[1], id);
             }

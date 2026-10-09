@@ -61,7 +61,7 @@ class GraduationIT {
                     """).update();
             UUID offering = jdbc.sql("""
                     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZG 401', :sess, 1)
-                    ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
+                    ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
                     """).param("sess", SESSION).query(UUID.class).single();
             UUID reg = jdbc.sql("""
                     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)

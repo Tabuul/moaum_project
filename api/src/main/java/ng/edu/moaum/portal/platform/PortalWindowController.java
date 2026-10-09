@@ -52,7 +52,8 @@ class PortalWindowController {
 
     /** the one office that opens and closes the portal's windows */
     private static final String DIRECTOR = "hasAuthority('OFFICE_ict')";
-    private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION");
+    /** V380: beside the full-time students' two, the Centre for Continuing Education's own — a CCE student is governed by these */
+    private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION", "CCE_SCHOOL_FEES_PAYMENT", "CCE_COURSE_REGISTRATION");
     /** V295: admission status checking, a window of the admission exercise, beside the two of the academic session */
     private static final String CHECKING = "ADMISSION_STATUS_CHECKING";
     /** V337: postgraduate admission status checking, its own window for the School's admission exercise of a session;
@@ -96,6 +97,12 @@ class PortalWindowController {
             }
         }
         out.put("windows", windows);
+        // V380: the CCE session (where the Centre's students study) and the CCE calendar's open semester, for the CCE windows
+        out.put("cce", jdbc.sql("""
+                SELECT policy.route_session('CCE') AS session,
+                       coalesce((SELECT max(number) FROM policy.route_semester WHERE route = 'CCE' AND session = :s AND state = 'OPEN'), 1) AS "openSemester",
+                       (SELECT count(*) FROM people.student st WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')) AS students
+                """).param("s", s).query().singleRow());
         out.put("affected", jdbc.sql("""
                 SELECT count(*) FROM people.student st
                  WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
@@ -129,7 +136,7 @@ class PortalWindowController {
         String t = type.trim().toUpperCase();
         boolean application = ApplicationWindows.TYPES.contains(t);
         if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking and the CCE application.", new DomainRuleViolation.Remedy("Name one of the nine.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time and for CCE students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking and the CCE application.", new DomainRuleViolation.Remedy("Name one of the eleven.", "Directorate of ICT"));
         }
         if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t)) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
@@ -374,6 +381,8 @@ class PortalWindowController {
     private static String word(String type) {
         return switch (type) {
             case "SCHOOL_FEES_PAYMENT" -> "School fees payment";
+            case "CCE_SCHOOL_FEES_PAYMENT" -> "CCE school fees payment";
+            case "CCE_COURSE_REGISTRATION" -> "CCE course registration";
             case CHECKING -> "Admission status checking";
             case ApplicationWindows.POST_UTME -> "Post-UTME registration";
             case ApplicationWindows.POSTGRADUATE -> "Postgraduate application";
@@ -407,27 +416,28 @@ class PortalWindowController {
         };
         String body = switch (action) {
             case "CLOSE" -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is closed from now. " + (after.get("reason") == null ? "" : String.valueOf(after.get("reason")) + " ")
-                    + ("SCHOOL_FEES_PAYMENT".equals(type) ? "A reference already generated may still be paid and is confirmed as usual; no new reference is generated until the window is reopened." : "No registration is drafted, changed or submitted until the window is reopened.");
+                    + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "A reference already generated may still be paid and is confirmed as usual; no new reference is generated until the window is reopened." : "No registration is drafted, changed or submitted until the window is reopened.");
             default -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is " + (action.equals("EXTEND") ? "extended" : "open") + "."
                     + (after.get("closes_at") == null ? "" : " It closes on " + day(after.get("closes_at")) + ".")
-                    + (after.get("late_until") == null ? "" : " Late " + ("SCHOOL_FEES_PAYMENT".equals(type) ? "payment" : "registration") + " runs until " + day(after.get("late_until")) + (Boolean.TRUE.equals(after.get("late_fee_enabled")) ? ", with the late fee the Bursar states" : "") + ".")
+                    + (after.get("late_until") == null ? "" : " Late " + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "payment" : "registration") + " runs until " + day(after.get("late_until")) + (Boolean.TRUE.equals(after.get("late_fee_enabled")) ? ", with the late fee the Bursar states" : "") + ".")
                     + ("LATE".equals(phase) ? " You are now in the late period." : "");
         };
         String sms = "MOAUM: " + subject + ". See the portal.";
-        return jdbc.sql("""
+        String audience = type.startsWith("CCE_") ? "st.entry_mode = 'CCE'" : "st.entry_mode IS DISTINCT FROM 'CCE'";   // V380
+        return jdbc.sql(("""
                 SELECT count(*) FROM (
                     SELECT platform.queue_notice('EMAIL', r.email, :subj, :body || E'\\n\\nDirectorate of ICT, ' || :uni, 'student', st.id) AS n
                       FROM people.student st CROSS JOIN LATERAL people.student_reach(st.id) r
-                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
+                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION') AND %1$s
                        AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
                             OR EXISTS (SELECT 1 FROM finance.payment_reference p WHERE p.student_id = st.id AND p.session = :s))
                     UNION ALL
                     SELECT platform.queue_notice('SMS', r.phone, :subj, :sms, 'student', st.id)
                       FROM people.student st CROSS JOIN LATERAL people.student_reach(st.id) r
-                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
+                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION') AND %1$s
                        AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
                             OR EXISTS (SELECT 1 FROM finance.payment_reference p WHERE p.student_id = st.id AND p.session = :s))) x
                  WHERE x.n IS NOT NULL
-                """).param("subj", subject).param("body", body).param("sms", sms).param("s", session).param("uni", Branding.name()).query(Integer.class).single();
+                """).formatted(audience)).param("subj", subject).param("body", body).param("sms", sms).param("s", session).param("uni", Branding.name()).query(Integer.class).single();
     }
 }

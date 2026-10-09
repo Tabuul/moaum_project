@@ -112,10 +112,11 @@ class RegistrationController {
     /** The roll of an offering: approved registrations only, and all of them. */
     @GetMapping("/class-list")
     @PreAuthorize(READERS)
-    ClassList classList(@RequestParam String course, @RequestParam String session, @RequestParam(defaultValue = "1") int sem) {
+    ClassList classList(@RequestParam String course, @RequestParam String session, @RequestParam(defaultValue = "1") int sem,
+                        @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
         // a course of another department is refused to a department office; a lecturer is bound by allocation instead —
         // the service refuses any offering not allocated to them, in their own department or a course they teach for another
         if (!scope.actingLecturer()) scope.assertCourseInScope(course);
-        return service.classList(course, session, sem);
+        return service.classList(course, session, sem, stream);   // V380: the full-time class unless the Centre's is asked for
     }
 }

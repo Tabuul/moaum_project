@@ -119,7 +119,7 @@ class ProvostController {
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
                   JOIN ref.faculty f ON f.code = d.faculty_code
-                 WHERE o.session = :s AND f.college_code = :c
+                 WHERE o.session = :s AND f.college_code = :c AND o.stream = 'REGULAR'
                 """).param("c", col).param("s", s).query().singleRow();
         out.put("offeringsTotal", off.get("total"));
         out.put("offeringsNeedLecturer", off.get("need_lecturer"));

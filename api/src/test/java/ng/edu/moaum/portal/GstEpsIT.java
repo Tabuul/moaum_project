@@ -79,9 +79,9 @@ class GstEpsIT {
                         .param("c", code).param("t", code.startsWith("ENT") ? "Venture Creation " + n : "General Studies " + n).param("d", dept).update();
                 jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, 100, 'GST') ON CONFLICT DO NOTHING").param("c", code).param("p", PROGRAMME).update();
             }
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                     .param("id", gstOffering).param("c", gstCode).param("s", SESSION).update();
-            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:id, :c, :s, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
                     .param("id", entOffering).param("c", entCode).param("s", SESSION).update();
             return null;
         });

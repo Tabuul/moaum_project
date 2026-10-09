@@ -257,7 +257,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           <PBody><div className="steps">
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : feesPaidStage ? "Matriculation pending" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
-              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
+              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : f.stated === false ? (s.entryMode === "CCE" ? "Waits on the Bursary's CCE school fees" : "Waits on the Bursary's fees for the session") : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
             <Step state="todo" title="Examination card" sub="Available after approval" />
           </div>
           {s.windows ? (

@@ -224,8 +224,12 @@ class FinanceController {
     @PostMapping("/sessions/{session}/{year}/schedule/clear")
     @PreAuthorize(BURSARY)
     @Transactional
-    Map<String, Object> clearSchedule(@PathVariable String session, @PathVariable String year) {
-        jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE session = :s AND ended_at IS NULL")
+    Map<String, Object> clearSchedule(@PathVariable String session, @PathVariable String year,
+                                      @RequestParam(required = false) @Pattern(regexp = "ALL|FULL_TIME|CCE") String kind) {
+        // V380: the CCE lines (entry mode CCE) or the full-time lines (every other) alone, when the Bursar names one; every line otherwise
+        String k = kind == null ? "ALL" : kind;
+        jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE session = :s AND ended_at IS NULL"
+                        + ("CCE".equals(k) ? " AND entry_mode = 'CCE'" : "FULL_TIME".equals(k) ? " AND entry_mode IS DISTINCT FROM 'CCE'" : ""))
                 .param("s", session + "/" + year).update();
         return schedule(session, year);
     }

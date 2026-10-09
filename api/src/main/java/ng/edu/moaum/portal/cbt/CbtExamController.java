@@ -269,7 +269,7 @@ class CbtExamController {
                 SELECT o.id, o.course_code, c.title, c.units, c.level, o.semester, o.session,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS questions
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.session = :s AND c.state <> 'ENDED' AND c.cbt_enabled
+                 WHERE o.session = :s AND o.stream = 'REGULAR' AND c.state <> 'ENDED' AND c.cbt_enabled   -- V380: CCE classes are examined at the CCE examination step
                    AND ((:o = 'EXAMS' AND c.general_office IS NULL) OR (:o <> 'EXAMS' AND c.general_office = :o))
                    AND (:dept::text IS NULL OR c.dept_code = :dept)
                    AND (:fac::text IS NULL OR EXISTS (SELECT 1 FROM ref.department d WHERE d.code = c.dept_code AND d.faculty_code = :fac))

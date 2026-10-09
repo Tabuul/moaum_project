@@ -279,6 +279,23 @@ class StudentPortalRepository {
                 .param("ses", session).query(Integer.class).single();
     }
 
+    /** V380: the open semester of the student's own calendar — the CCE calendar for a CCE student, the full-time one for every other */
+    int openSemester(UUID student, String session) {
+        return jdbc.sql("SELECT registration.open_semester(:s, :ses)").param("s", student).param("ses", session).query(Integer.class).single();
+    }
+
+    /** V380: the semester as the student's own calendar states it */
+    Map<String, Object> semesterWindow(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT state, registration_opens, registration_closes, late_registration_closes, fresh_registration_from, calendar FROM registration.calendar_semester(:s, :ses, :sem)")
+                .param("s", student).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V380: the portal window that governs the student — a CCE student's school fees and course registration are the CCE windows */
+    Map<String, Object> windowFor(UUID student, String type, String session, Integer semester) {
+        return jdbc.sql("SELECT configured, state, phase, opens_at, closes_at, late_until, late_fee_enabled, reason FROM policy.window_state(policy.window_type_for(:st, :t), :s, :sem)")
+                .param("st", student).param("t", type).param("s", session).param("sem", semester, Types.INTEGER).query().singleRow();
+    }
+
     /** the SIWES / industrial-training units for the student's programme at a level and semester, else null */
     Integer siwesUnits(UUID student, int level, int semester) {
         return jdbc.sql("""
@@ -407,9 +424,10 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT registration.student_submit(:r)").param("r", registration).query(String.class).single();
     }
 
-    boolean addDropOpen(String session, int semester) {
-        return Boolean.TRUE.equals(jdbc.sql("SELECT registration.add_drop_open(:ses, :sem)")
-                .param("ses", session).param("sem", semester).query(Boolean.class).single());
+    /** V380: add and drop by the student's own calendar */
+    boolean addDropOpen(UUID student, String session, int semester) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT registration.add_drop_open(:st, :ses, :sem)")
+                .param("st", student).param("ses", session).param("sem", semester).query(Boolean.class).single());
     }
 
     int addCourse(UUID student, String session, int semester, UUID offering) {
@@ -422,8 +440,9 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(Integer.class).single();
     }
 
-    Map<String, Object> limit(int level) {
-        return jdbc.sql("SELECT min_units, max_units FROM policy.level_limit WHERE level = :l").param("l", level).query().listOfRows().stream().findFirst()
+    /** the unit range at the level — V380: the CCE course load for a CCE student where the Academic Office stated one */
+    Map<String, Object> limit(UUID student, int level) {
+        return jdbc.sql("SELECT min_units, max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level).query().listOfRows().stream().findFirst()
                 .orElse(Map.of("min_units", 0, "max_units", 99));
     }
 
@@ -431,7 +450,7 @@ class StudentPortalRepository {
     Map<String, Object> standing(UUID student, int level) {
         Map<String, Object> st = jdbc.sql("SELECT standing, cgpa, pronounced_session, pronounced_semester, pronounced_level FROM assessment.student_standing(:s)")
                 .param("s", student).query().listOfRows().stream().findFirst().orElse(null);
-        Integer cap = jdbc.sql("SELECT probation_max_units FROM policy.level_limit WHERE level = :l").param("l", level)
+        Integer cap = jdbc.sql("SELECT probation_max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level)
                 .query(Integer.class).optional().orElse(null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("standing", st == null ? "GOOD" : st.get("standing"));
@@ -574,6 +593,15 @@ class StudentPortalRepository {
 
     List<Map<String, Object>> attendance(UUID student, String session, int semester) {
         return jdbc.sql("SELECT * FROM registration.attendance_rate(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
+    }
+
+    /** V380: a CCE student's attendance by the register (present, absent, late, excused), and whether the Centre's policy lets students read it */
+    List<Map<String, Object>> registerAttendance(UUID student, String session, int semester) {
+        return jdbc.sql("""
+                SELECT course_code, title, present + late AS attended, total - excused AS held, round(rate)::int AS rate, total, present, absent, late, excused,
+                       min_percent, verdict, show_students
+                  FROM attendance.course_summary(:s, :ses) WHERE semester = :sem
+                """).param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
     }
 
     List<Map<String, Object>> cards(UUID student) {

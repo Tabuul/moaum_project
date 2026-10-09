@@ -100,7 +100,7 @@ class DeanController {
                   FROM catalogue.offering o
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
-                 WHERE o.session = :s AND d.faculty_code = :f
+                 WHERE o.session = :s AND d.faculty_code = :f AND o.stream = 'REGULAR'
                 """).param("f", fac).param("s", s).query().singleRow();
         out.put("offeringsTotal", off.get("total"));
         out.put("offeringsNeedLecturer", off.get("need_lecturer"));

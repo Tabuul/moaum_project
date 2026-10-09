@@ -103,7 +103,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       <>
         {switcher}
         <Note kind="bad" title={v.window.portal && v.window.portal.configured && v.window.portal.state !== "OPEN" ? "COURSE REGISTRATION IS CURRENTLY CLOSED" : v.window.state === "CLOSED" ? "Registration is closed for this semester" : "Registration is not yet open for this semester"}>
-          {v.window.gate}{v.window.fresh && v.window.fresh_registration_from ? "" : v.window.fresh_registration_from ? "" : " The Academic Office opens the semester on the University calendar."}
+          {v.window.gate}{v.window.cce ? " The Centre for Continuing Education sets up its classes and opens the semester on the CCE calendar." : v.window.fresh && v.window.fresh_registration_from ? "" : v.window.fresh_registration_from ? "" : " The Academic Office opens the semester on the University calendar."}
         </Note>
       </>
     );
@@ -123,7 +123,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
             <div className="step__mark" style={{ background: "var(--red)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg></div>
             <div className="grow stack">
               <div><div className="b600 ink-red">Financial clearance</div>
-                <div className="t-sm mt-1">{fees.schemeProblem ? fees.schemeProblem : fees.stated === false || (fees.stated === undefined && fees.due === 0) ? `No charge is stated for ${fees.session} yet, so nothing can be paid or released; registration opens once the Bursary states it and it is paid.` : fees.hasArrears ? "Arrears from an earlier session stand against you." : <>Outstanding balance of <strong className="tnum">{naira(fees.balance)}</strong> on the {fees.session} charge.</>}</div></div>
+                <div className="t-sm mt-1">{fees.schemeProblem ? fees.schemeProblem : fees.stated === false || (fees.stated === undefined && fees.due === 0) ? (v.window?.cce ? `The Bursary has not yet stated the school fees of the Centre for Continuing Education for ${fees.session}, so nothing can be paid or released; registration opens once it states them and they are paid.` : `No charge is stated for ${fees.session} yet, so nothing can be paid or released; registration opens once the Bursary states it and it is paid.`) : fees.hasArrears ? "Arrears from an earlier session stand against you." : <>Outstanding balance of <strong className="tnum">{naira(fees.balance)}</strong> on the {fees.session} charge.</>}</div></div>
               {fees.due > 0 ? (
                 <div className="stack" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-md)", padding: "var(--s-3)" }}>
                   <Row k={<>School fees, {fees.session}</>} v={naira(fees.due)} />

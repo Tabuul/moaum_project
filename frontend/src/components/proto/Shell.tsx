@@ -306,6 +306,13 @@ export const ROUTES: Record<string, string> = {
   "cce/reports": "/cce/reports",
   "cce/history": "/cce/history",
   "cce/fees": "/cce/fees",
+  "cce/calendar": "/cce/calendar",
+  "cce/classes": "/cce/classes",
+  "cce/timetable": "/cce/timetable",
+  "cce/registrations": "/cce/registrations",
+  "cce/attendance": "/cce/attendance",
+  "cce/school-fees": "/cce/school-fees",
+  "cce/teaching": "/cce/teaching",
   /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
   "pg/portal": "/pg/portal",
   "pg/apply": "/pg/apply",
@@ -490,6 +497,13 @@ const OVERRIDES: Record<string, [string, string]> = {
   "cce/reports": ["CCE reports", "The CCE session's figures and lists"],
   "cce/history": ["CCE audit history", "Every step of the CCE lists, applications and session"],
   "cce/fees": ["CCE applicant fees", "The Bursary's CCE application and acceptance fees"],
+  "cce/calendar": ["CCE calendar", "Each CCE semester's lectures, registration and examinations"],
+  "cce/classes": ["CCE classes", "The Centre's classes in the CCE session and their lecturers"],
+  "cce/timetable": ["CCE evening timetable", "The evening lectures of the Centre's classes"],
+  "cce/registrations": ["CCE course registration", "Where each CCE student's registration stands"],
+  "cce/attendance": ["CCE attendance", "The registers of the Centre's evening classes"],
+  "cce/school-fees": ["CCE school fees", "The CCE fee lines the Bursary states and the CCE payments"],
+  "cce/teaching": ["CCE evening classes", "Your classes of the Centre for Continuing Education and their registers"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

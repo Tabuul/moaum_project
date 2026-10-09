@@ -73,7 +73,7 @@ class DeskController {
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                          WHERE e.registration_id = r.id), '[]'::jsonb) AS entries,
                        coalesce(registration.siwes_units(s.programme_code, r.level, r.semester)::text,
-                                (SELECT min_units || '–' || max_units FROM policy.level_limit l WHERE l.level = r.level)) AS range
+                                (SELECT l.min_units || '–' || l.max_units FROM registration.unit_limit(s.id, r.level) l)) AS range
                   FROM registration.course_registration r
                   JOIN people.student s ON s.id = r.student_id
                   JOIN ref.programme p ON p.code = s.programme_code
