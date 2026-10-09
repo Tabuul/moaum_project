@@ -51,6 +51,7 @@ class SecurityConfig {
                                 "/api/v1/auth/forgot", "/api/v1/auth/reset",
                                 "/api/v1/auth/sso", "/api/v1/auth/sso/start", "/api/v1/auth/sso/callback",
                                 "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in",
+                                "/api/v1/applicant/cce/lookup", "/api/v1/applicant/cce/register",
                                 "/api/v1/applicant/forgot", "/api/v1/applicant/reset",
                                 "/api/v1/payments/webhook/paystack", "/api/v1/payments/webhook/flutterwave",
                                 "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start", "/api/v1/payments/quickteller/return",

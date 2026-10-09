@@ -129,7 +129,7 @@ class PortalWindowController {
         String t = type.trim().toUpperCase();
         boolean application = ApplicationWindows.TYPES.contains(t);
         if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application and JUPEB admission status checking.", new DomainRuleViolation.Remedy("Name one of the eight.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking and the CCE application.", new DomainRuleViolation.Remedy("Name one of the nine.", "Directorate of ICT"));
         }
         if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t)) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
@@ -177,7 +177,8 @@ class PortalWindowController {
         out.put("session", s);
         out.put("liveSessions", Map.of(ApplicationWindows.POST_UTME, applications.sessionOf(ApplicationWindows.POST_UTME),
                                        ApplicationWindows.POSTGRADUATE, applications.sessionOf(ApplicationWindows.POSTGRADUATE),
-                                       ApplicationWindows.JUPEB, applications.sessionOf(ApplicationWindows.JUPEB)));
+                                       ApplicationWindows.JUPEB, applications.sessionOf(ApplicationWindows.JUPEB),
+                                       ApplicationWindows.CCE, applications.sessionOf(ApplicationWindows.CCE)));
         out.put("sessions", jdbc.sql("""
                 SELECT s.name, s.state,
                        (SELECT count(*) FROM admissions.applicant_account a WHERE a.session = s.name) AS registrations,
@@ -190,13 +191,18 @@ class PortalWindowController {
             Map<String, Object> w = new LinkedHashMap<>(state(t, s, null));
             w.put("type", t);
             w.put("session", s);
-            w.put("path", ApplicationWindows.POST_UTME.equals(t) ? "/apply" : ApplicationWindows.JUPEB.equals(t) ? "/jupeb/apply" : "/pg/apply");
+            w.put("path", ApplicationWindows.POST_UTME.equals(t) ? "/apply" : ApplicationWindows.JUPEB.equals(t) ? "/jupeb/apply" : ApplicationWindows.CCE.equals(t) ? "/cce/apply" : "/pg/apply");
             w.putAll(jdbc.sql("""
                     SELECT m.message, m.updated_at AS message_updated_at, m.updated_office AS message_office,
                            (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.updated_by) AS message_updated_by
                       FROM policy.portal_window_message m WHERE m.window_type = :t
                     """).param("t", t).query().singleRow());
-            String table = ApplicationWindows.POST_UTME.equals(t) ? "admissions.applicant_account" : ApplicationWindows.JUPEB.equals(t) ? "jupeb.application" : "admissions.pg_application";
+            // V379: a CCE applicant's account sits in the same table as a Post-UTME applicant's; each window counts its own
+            String table = ApplicationWindows.POST_UTME.equals(t)
+                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode <> 'CCE') x"
+                    : ApplicationWindows.CCE.equals(t)
+                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode = 'CCE') x"
+                    : ApplicationWindows.JUPEB.equals(t) ? "jupeb.application" : "admissions.pg_application";
             w.putAll(jdbc.sql("SELECT count(*) AS total, count(*) FILTER (WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS today,"
                     + " count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS week FROM " + table + " WHERE session = :s").param("s", s).query().singleRow());
             w.put("events", history(s, t, 200));
@@ -250,7 +256,7 @@ class PortalWindowController {
     Map<String, Object> message(@PathVariable String type, @Valid @RequestBody MessageIn body, @RequestParam(required = false) String session) {
         String t = type.trim().toUpperCase();
         if (!ApplicationWindows.TYPES.contains(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration, the postgraduate application or the JUPEB application.", new DomainRuleViolation.Remedy("Name one of the three.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration, the postgraduate application, the JUPEB application or the CCE application.", new DomainRuleViolation.Remedy("Name one of the four.", "Directorate of ICT"));
         }
         AuditContext ctx = AuditContextHolder.required();
         jdbc.sql("SELECT policy.window_message_set(:t, :m, :by, :office)")

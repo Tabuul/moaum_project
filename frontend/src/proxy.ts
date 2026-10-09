@@ -24,7 +24,9 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   /* the University's public figures for its website (V282): counts only, no session, any origin */
   "/api/v1/public/",
   /* the public JUPEB application and the forgotten-password page (V339) */
-  "/jupeb/apply", "/jupeb/reset"];
+  "/jupeb/apply", "/jupeb/reset",
+  /* the CCE application (V379): only those on JAMB's CCE list register, with the JAMB number and the date of birth */
+  "/cce/apply"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([
@@ -36,6 +38,8 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/jupeb/options",
   "/api/bff/api/v1/jupeb/apply",
   "/api/bff/api/v1/jupeb/forgot",
+  /* V379: the CCE list look-up (the API limits each connection; a number with the wrong date of birth reads as not listed) */
+  "/api/bff/api/v1/applicant/cce/lookup",
   /* the public ticket tracking (V251): the sign-in page sends someone who cannot sign in here, so it cannot ask them to; the
      ticket number and the email it was raised with open the ticket, and the API limits the lookups */
   "/track",

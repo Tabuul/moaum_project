@@ -57,6 +57,8 @@ class ApplicationWindowsPublicController {
         out.put("postUtme", view(all.get(ApplicationWindows.POST_UTME), "/apply"));
         out.put("postgraduate", view(all.get(ApplicationWindows.POSTGRADUATE), "/pg/apply"));
         out.put("jupeb", view(all.get(ApplicationWindows.JUPEB), "/jupeb/apply"));
+        // V379: the CCE application — only those on JAMB's CCE list may apply
+        out.put("cce", view(all.get(ApplicationWindows.CCE), "/cce/apply"));
         out.put("now", OffsetDateTime.now());
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic()).body(out);
     }

@@ -44,6 +44,8 @@ export default async function DashboardPage() {
   /* a JUPEB candidate signs in as an applicant too (V339); the sign-in leaves a cookie that sends them to their own portal */
   if (office === "applicant") redirect((await cookies()).get("moaum_jupeb") ? "/jupeb/portal" : "/applicant");
   if (office === "jupeb") redirect("/jupeb");
+  /* V379: the Centre for Continuing Education's home is its desk */
+  if (office === "cce") redirect("/cce");
   if (office === "student") {
     /* a College of Health Sciences student (a programme under the College) from 200 level up lands in
        the College's own student area; every other student keeps the standard student portal */

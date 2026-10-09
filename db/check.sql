@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 222
+\set EXPECTED 223
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 39, n || ' offices (37 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328 and the JUPEB Office V339; the applicant V021 and the student V026)');
+                           n = 40, n || ' offices (38 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339 and the Centre for Continuing Education V379; the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -7973,6 +7973,157 @@ BEGIN
         format('v=%s mod=%s mismatch=%s paper=%s opts=%s shows=%s other=%s | given to %s (%s min) moved %s reason=%s twice=%s | clash=%s seat_all=%s/%s/%s listed=%s',
                v_ver, v_mod, r_mismatch, paper_img = img1, opt_img, shows, shows_other, inc.time_given_to, inc.time_given_minutes, ends_after - ends_before,
                extra_reason, r_twice, r_clash, seat2.seated, seat2.unseated, seat2.clashed, clashes));
+END $$;
+
+-- ── V379: CCE — the route's own session, JAMB's list read and reconciled, a listed person applies, the Centre reviews, the Academic Office publishes, a part-time student in the CCE session ──
+DO $$
+DECLARE acad uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); cce2 uuid := gen_random_uuid(); burs uuid := gen_random_uuid();
+        S text := '9953/9954'; pa text := 'C00023'; v_session text; r_reason text; r_office text; b1 uuid; b2 uuid; cnt jsonb; cnt2 jsonb; applied jsonb;
+        r_dup text; r_nodob text; r_prog text; look text; look_bad text; acct uuid; app uuid; r_again text; r_dob text; r_sit2 text; probs int;
+        ref1 text; amount1 numeric; r_submit text; r_own text; r_pub_office text; pub jsonb; vis boolean; st_status text; ref2 text; amount2 numeric;
+        stu people.student; ctx_session text; gate text; r_guard text; r_chk text; letter credentials.issued; stats jsonb; doc uuid; ugs text;
+        fee_total numeric; old_stated boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V379', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9953-10-01', date '9954-08-31') ON CONFLICT (name) DO NOTHING;
+
+        -- (1) the session: one behind undergraduate by default; a named session needs its reason and the Academic Office
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        ugs := policy.university_current_session();
+        v_session := policy.route_session('CCE');
+        BEGIN PERFORM policy.set_route_session('CCE', -1, S, NULL, NULL); r_reason := 'SET';
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        BEGIN PERFORM policy.set_route_session('CCE', -1, S, 'the check', NULL); r_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+
+        -- (2) the list read: one new, the same number again, one with no date of birth, one in a programme the Centre does not offer
+        b1 := admissions.cce_preview(S, 'cce-list.xlsx', repeat('a', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99530000001CC', 'surname', 'Tersoo', 'first_name', 'Mimi', 'middle_name', 'Ngodoo', 'date_of_birth', '17/04/1990',
+                               'sex', 'Female', 'phone', '+234 803 555 0101', 'email', 'mimi@example.com', 'programme_code', pa, 'admission_session', S, 'study_mode', 'Part Time'),
+            jsonb_build_object('jamb_reg_no', '99530000001CC', 'surname', 'Tersoo', 'first_name', 'Mimi', 'date_of_birth', '1990-04-17', 'programme_code', pa),
+            jsonb_build_object('jamb_reg_no', '99530000002CC', 'surname', 'Adeyi', 'first_name', 'Peter', 'programme_code', pa),
+            jsonb_build_object('jamb_reg_no', '99530000003CC', 'surname', 'Ochai', 'first_name', 'Grace', 'date_of_birth', '32874',
+                               'programme_code', (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived AND code <> pa ORDER BY code LIMIT 1))));
+        SELECT counts INTO cnt FROM admissions.cce_batch WHERE id = b1;
+        SELECT classification INTO r_dup FROM admissions.cce_batch_row WHERE batch_id = b1 AND row_no = 2;
+        SELECT classification INTO r_nodob FROM admissions.cce_batch_row WHERE batch_id = b1 AND row_no = 3;
+        SELECT classification INTO r_prog FROM admissions.cce_batch_row WHERE batch_id = b1 AND row_no = 4;
+        applied := admissions.cce_commit(b1);
+        -- the list again, the phone changed: UPDATED, matched by number
+        b2 := admissions.cce_preview(S, 'cce-list-2.xlsx', repeat('b', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99530000001cc', 'surname', 'Tersoo', 'first_name', 'Mimi', 'middle_name', 'Ngodoo', 'date_of_birth', '17/04/1990',
+                               'sex', 'F', 'phone', '08035550199', 'email', 'mimi@example.com', 'programme_code', pa)));
+        SELECT counts INTO cnt2 FROM admissions.cce_batch WHERE id = b2;
+        PERFORM admissions.cce_commit(b2);
+
+        -- (3) the listed person applies: the JAMB number with the wrong date reads as not listed; the window is the Director of ICT's
+        SELECT state INTO look_bad FROM admissions.cce_lookup('99530000001CC', date '1990-04-18');
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        SELECT state INTO look FROM admissions.cce_lookup('99530000001CC', date '1990-04-17');
+        acct := admissions.cce_register('99530000001CC', date '1990-04-17', 'mimi.tersoo@example.com', '08035550199', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app FROM admissions.application WHERE account_id = acct;
+        BEGIN PERFORM admissions.cce_register('99530000001CC', date '1990-04-17', 'other@example.com', '08035550199', '$2a$12$' || repeat('x', 53)); r_again := 'REGISTERED TWICE';
+        EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+
+        -- (4) the form: the date of birth is the list's; a second sitting is complete or not given
+        BEGIN PERFORM admissions.cce_save_biodata(app, '{"date_of_birth": "1991-01-01"}'); r_dob := 'SAVED';
+        EXCEPTION WHEN check_violation THEN r_dob := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.cce_save_biodata(app, '{"date_of_birth": "17/04/1990", "home_address": "12 Gboko Road, Makurdi", "state_of_origin": "Benue", "lga": "Makurdi",
+                                                  "nationality": "Nigeria", "mobile": "08035550199", "kin_name": "Aondona Tersoo", "kin_relationship": "Brother", "kin_mobile": "08035550111"}');
+        BEGIN PERFORM admissions.cce_save_olevel(app, '[{"sitting": 1, "exam_body": "WAEC", "exam_number": "4250101001", "exam_year": "2008", "subjects": [{"subject": "English Language", "grade": "C5"}]},
+                                                        {"sitting": 2, "exam_body": "NECO", "exam_number": "", "exam_year": "2009", "subjects": []}]'); r_sit2 := 'SAVED';
+        EXCEPTION WHEN check_violation THEN r_sit2 := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.cce_save_olevel(app, '[{"sitting": 1, "exam_body": "WAEC", "exam_number": "4250101001", "exam_year": "2008", "subjects": [
+                                                    {"subject": "English Language", "grade": "C5"}, {"subject": "Biology", "grade": "B3"}, {"subject": "Economics", "grade": "C6"}]},
+                                                  {"sitting": 2, "exam_body": "NECO", "exam_number": "1003200456", "exam_year": "2009", "subjects": [
+                                                    {"subject": "Mathematics", "grade": "C4"}, {"subject": "Physics", "grade": "C6"}, {"subject": "Chemistry", "grade": "B2"}]}]');
+        PERFORM admissions.cce_confirm_programme(app);
+        SELECT count(*) INTO probs FROM admissions.cce_application_problems(app);   -- the fee (not stated yet), the passport, each sitting's result
+
+        -- (5) the Bursary states the CCE fees; the application fee is paid against its reference
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 7000, 500, 30000);
+        ref1 := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT amount INTO amount1 FROM admissions.fee_reference WHERE reference = ref1;
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_chk := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_chk := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.confirm_fee(ref1, 'BANK', 'check');
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes)
+        VALUES (gen_random_uuid(), app, 'PASSPORT', 'passport.jpg', 'image/jpeg', 1000), (gen_random_uuid(), app, 'OLEVEL_STATEMENT', 'waec.pdf', 'application/pdf', 1000),
+               (gen_random_uuid(), app, 'OLEVEL_STATEMENT_2', 'neco.pdf', 'application/pdf', 1000);
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        r_submit := admissions.cce_submit(app, '127.0.0.1');
+
+        -- (6) the Centre reviews: documents verified, recommended by one officer, approved by another; the Academic Office publishes
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM admissions.cce_act(app, 'START', NULL);
+        FOR doc IN SELECT id FROM admissions.application_document WHERE application_id = app LOOP PERFORM admissions.cce_review_document(doc, 'ACCEPTED', NULL); END LOOP;
+        PERFORM admissions.cce_act(app, 'RECOMMEND', 'Credits in English and Mathematics over two sittings');
+        BEGIN PERFORM admissions.cce_act(app, 'APPROVE', NULL); r_own := 'APPROVED';
+        EXCEPTION WHEN check_violation THEN r_own := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.cce_publish(S, NULL); r_pub_office := 'PUBLISHED';
+        EXCEPTION WHEN check_violation THEN r_pub_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM admissions.cce_act(app, 'APPROVE', NULL);
+        pub := admissions.cce_publish(S, NULL);
+
+        -- (7) the applicant reads the outcome (no window, no checking fee), accepts and pays the CCE acceptance fee: on the register
+        SELECT decision_visible INTO vis FROM admissions.status_checking(app);
+        SELECT status INTO st_status FROM admissions.admission_status(app);
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(app);
+        PERFORM admissions.sign_undertaking(app);
+        ref2 := admissions.new_fee_reference(app, 'ACCEPTANCE');
+        SELECT amount INTO amount2 FROM admissions.fee_reference WHERE reference = ref2;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(ref2, 'BANK', 'check');
+        SELECT s.* INTO stu FROM people.student s JOIN admissions.application a ON a.candidate_id = s.candidate_id WHERE a.id = app;
+        SELECT x.session INTO ctx_session FROM people.academic_context(stu.id) x;
+        -- (8) the CCE student is charged only what the Bursary states for CCE: the full-time line of the same session never reaches them
+        INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, ord, spillover, kind) VALUES
+            (S, 'School fees (full-time)', 99000, 100, NULL, 1, false, 'FEE'), (S, 'School fees (CCE)', 45000, 100, 'CCE', 1, false, 'FEE');
+        fee_total := finance.session_fee_total(stu.id, S);
+        old_stated := finance.fee_stated(stu.id, '2001/2002');   -- before the portal's fee schedule: stated for the old portal's students, not for CCE
+        gate := registration.registration_gate(stu.id, S, 1);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        BEGIN UPDATE people.student SET study_mode = 'FULL_TIME' WHERE id = stu.id; r_guard := 'CHANGED';
+        EXCEPTION WHEN check_violation THEN r_guard := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        letter := admissions.issue_admission_letter(app);
+        stats := admissions.cce_stats(S);
+        RAISE EXCEPTION 'the V379 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V379: CCE — the route''s session follows undergraduate one behind unless the Academic Office names one with its reason; JAMB''s CCE list is read and reconciled by number (new, the same number again, no date of birth, a programme the Centre does not offer, then an update); only a listed number with its date of birth registers, once, while the window is open; a second sitting is complete or absent; the CCE fees are the Bursary''s and there is no checking fee; the officer who recommends does not approve, and the Academic Office publishes; the published offer is read without a window, accepted, and the student comes onto the register CCE, part-time, in the CCE session, with the CCE letter, course registration waiting for the CCE offerings, charged only the fees stated for CCE, and the study mode not changed behind the Academic Office',
+        coalesce(v_session = policy.session_before(ugs, 1) AND r_reason = 'CCE_SESSION_REASON' AND r_office = 'CCE_SESSION_OFFICE'
+                 AND (cnt->>'NEW')::int = 1 AND (cnt->>'DUPLICATE')::int = 1 AND (cnt->>'INVALID')::int = 1 AND (cnt->>'REQUIRES_REVIEW')::int = 1
+                 AND r_dup = 'DUPLICATE' AND r_nodob = 'INVALID' AND r_prog = 'REQUIRES_REVIEW' AND (applied->>'added')::int = 1
+                 AND (cnt2->>'UPDATED')::int = 1 AND look_bad = 'nomatch' AND look = 'found' AND r_again = 'CCE_REGISTERED'
+                 AND r_dob = 'CCE_DATE_OF_BIRTH' AND r_sit2 = 'CCE_OLEVEL_NUMBER' AND probs = 4 AND amount1 = 7500 AND r_chk = 'CCE_NO_CHECKING_FEE'
+                 AND r_submit = 'submitted' AND r_own = 'CCE_APPROVE_OWN' AND r_pub_office = 'CCE_OFFICE' AND (pub->>'admitted')::int = 1
+                 AND vis AND st_status = 'ADMITTED' AND amount2 = 30000 AND stu.entry_mode = 'CCE' AND stu.study_mode = 'PART_TIME' AND stu.entry_session = S
+                 AND stu.date_of_birth = date '1990-04-17' AND ctx_session = S AND gate LIKE 'Course registration for students of the Centre for Continuing Education%'
+                 AND r_guard = 'STUDENT_ROUTE_LOCKED' AND fee_total = 45000 AND NOT old_stated AND letter.statement->>'studyMode' = 'PART-TIME' AND (letter.statement->>'durationYears')::int = 6
+                 AND (stats->>'admitted')::int = 1 AND (stats->>'activated')::int = 1, false),
+        format('session %s (ug %s) reason=%s office=%s | counts %s dup=%s nodob=%s prog=%s applied=%s again=%s | look %s/%s twice=%s | dob=%s sit2=%s problems=%s | fee %s chk=%s submit=%s | own=%s pub_office=%s pub=%s | visible=%s status=%s acceptance=%s | student %s %s %s dob=%s ctx=%s gate=%s guard=%s fees=%s old_stated=%s letter=%s/%s | stats %s',
+               v_session, ugs, r_reason, r_office, cnt, r_dup, r_nodob, r_prog, applied, cnt2, look_bad, look, r_again, r_dob, r_sit2, probs, amount1, r_chk, r_submit,
+               r_own, r_pub_office, pub, vis, st_status, amount2, stu.entry_mode, stu.study_mode, stu.entry_session, stu.date_of_birth, ctx_session, gate, r_guard, fee_total, old_stated,
+               letter.statement->>'studyMode', letter.statement->>'durationYears', stats));
 END $$;
 
 -- ── V383: an Interswitch test reference — payable for the days the Bursar chooses, answered 0 until it is paid or expires ──

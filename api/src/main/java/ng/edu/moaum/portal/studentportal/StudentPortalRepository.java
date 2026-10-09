@@ -347,6 +347,14 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL ORDER BY session DESC").query(String.class).list();
     }
 
+    /** V379: the sessions with a fee line that applies to this student (finance.fee_stated) */
+    List<String> sessionsWithChargesFor(UUID student) {
+        return jdbc.sql("""
+                SELECT x.session FROM (SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL) x
+                 WHERE finance.fee_stated(:s, x.session) ORDER BY x.session DESC
+                """).param("s", student).query(String.class).list();
+    }
+
     /* ── registration ── */
 
     List<Map<String, Object>> menu(UUID student, String session, int semester) {
@@ -486,6 +494,26 @@ class StudentPortalRepository {
     /** the latest session the University has run (CURRENT, CLOSED or ARCHIVED; never a draft or planned one) — the one a returning student stands in between sessions */
     Optional<String> latestRunSession() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state IN ('CURRENT', 'CLOSED', 'ARCHIVED') ORDER BY name DESC LIMIT 1").query(String.class).optional();
+    }
+
+    /** V379: the current session of a route with a calendar of its own (CCE) */
+    String routeSession(String route) {
+        return jdbc.sql("SELECT policy.route_session(:r)").param("r", route).query(String.class).optional().orElse(null);
+    }
+
+    /** V379: the student's route and study mode; for CCE the Centre, the CCE session beside the undergraduate one, the programme's
+     *  duration on the route and the expected completion (the CCE entry session and the duration — never the undergraduate session) */
+    Map<String, Object> routeFacts(UUID student) {
+        return jdbc.sql("""
+                SELECT s.entry_mode AS route, s.study_mode AS "studyMode",
+                       CASE WHEN s.entry_mode = 'CCE' THEN (SELECT u.name FROM ref.unit u WHERE u.code = t.centre_unit) END AS centre,
+                       CASE WHEN s.entry_mode = 'CCE' THEN policy.route_session('CCE') END AS "cceSession",
+                       CASE WHEN s.entry_mode = 'CCE' THEN policy.university_current_session() END AS "undergraduateSession",
+                       CASE WHEN s.entry_mode = 'CCE' THEN t.duration_years END AS "durationYears",
+                       CASE WHEN s.entry_mode = 'CCE' THEN policy.session_after(s.entry_session, t.duration_years - 1) END AS "expectedCompletion"
+                  FROM people.student s LEFT JOIN LATERAL ref.programme_route_terms(s.programme_code, 'CCE') t ON true
+                 WHERE s.id = :s
+                """).param("s", student).query().singleRow();
     }
 
     /** the session the student stands in and why (V289): CURRENT, or PREPARING for an entrant of a session still planned */

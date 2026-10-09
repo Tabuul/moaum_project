@@ -117,6 +117,11 @@ public class StudentPortalService {
      * planned session still stands in it.
      */
     private String sessionOf(StudentPortalRepository.Student s) {
+        // V379: a CCE student stands in the CCE session — the route's, one behind undergraduate by default — never the undergraduate one
+        if ("CCE".equals(s.entryMode())) {
+            String cce = repo.routeSession("CCE");
+            return s.entrySession() != null && (cce == null || s.entrySession().compareTo(cce) > 0) ? s.entrySession() : cce;
+        }
         String current = repo.currentSession().or(repo::latestRunSession).orElseGet(this::session);
         return s.entrySession() != null && s.entrySession().compareTo(current) > 0 ? s.entrySession() : current;
     }
@@ -231,6 +236,8 @@ public class StudentPortalService {
         boolean ready = steps.values().stream().allMatch(Boolean.TRUE::equals);
         ctx.put("steps", steps);
         ctx.put("ready", ready);
+        // V379: the route, the study mode and, for CCE, the Centre, the CCE session beside undergraduate's and the expected completion
+        ctx.putAll(repo.routeFacts(id));
         ctx.put("status", preparing ? (ready ? "READY_FOR_RESUMPTION" : "FRESH_STUDENT_PREPARING") : "CURRENT_SESSION");
         return ctx;
     }
@@ -288,7 +295,8 @@ public class StudentPortalService {
         String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination, results and transcript are not yet released against a payment; the Bursar states the scheme. Course registration opens on this semester's school fees, paid in full.";
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
-        out.put("sessions", repo.sessionsWithCharges());
+        // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
+        out.put("sessions", "CCE".equals(student(id).entryMode()) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());
         out.put("window", repo.windowState("SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period
         return out;
     }

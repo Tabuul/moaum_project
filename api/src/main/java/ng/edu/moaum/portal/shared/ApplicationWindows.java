@@ -22,7 +22,9 @@ public class ApplicationWindows {
     public static final String POSTGRADUATE = "POSTGRADUATE_APPLICATION";
     /** V339: the JUPEB programme's application; closed until the Director of ICT first opens it */
     public static final String JUPEB = "JUPEB_APPLICATION";
-    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB);
+    /** V379: the Centre for Continuing Education's application (only those on JAMB's CCE list); closed until first opened */
+    public static final String CCE = "CCE_APPLICATION";
+    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB, CCE);
 
     /** one window as the public reads it: the session it is for, its state, its dates, and the closure message */
     public record Window(String type, String session, String state, OffsetDateTime opensAt, OffsetDateTime closesAt, String message) {
@@ -38,7 +40,7 @@ public class ApplicationWindows {
     }
 
     public static String word(String type) {
-        return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : "Postgraduate application";
+        return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : CCE.equals(type) ? "The CCE application" : "Postgraduate application";
     }
 
     /** the session a new application of this kind is filed under today */
@@ -62,6 +64,7 @@ public class ApplicationWindows {
         out.put(POST_UTME, read(POST_UTME, postUtmeSession));
         out.put(POSTGRADUATE, read(POSTGRADUATE, null));
         out.put(JUPEB, read(JUPEB, null));
+        out.put(CCE, read(CCE, null));
         return out;
     }
 

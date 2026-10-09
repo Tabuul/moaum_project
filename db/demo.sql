@@ -95,7 +95,8 @@ BEGIN
             ('extexaminer',      '031', 'External Examiner',        'institution', NULL),
             ('dsa',              '032', 'Dean Of Student Affairs',  'institution', NULL),
             ('gst',              '033', 'General Studies',          'unit',        'GST'),   -- V314/V322: the GST office — fee standing, courses, question bank, CBT examinations
-            ('eps',              '034', 'Entrepreneurship Studies', 'unit',        'EPS')    -- V314/V322: the EPS office on the same engine
+            ('eps',              '034', 'Entrepreneurship Studies', 'unit',        'EPS'),   -- V314/V322: the EPS office on the same engine
+            ('cce',              '035', 'Continuing Education',     'unit',        'CCE')    -- V379: the Centre for Continuing Education — CCE applications, review, students
         ) AS t(office, n, given, scope_kind, scope_id)
     LOOP
         SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/' || o.n;

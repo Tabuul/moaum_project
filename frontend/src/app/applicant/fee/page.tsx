@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { api } from "@/lib/api";
@@ -14,6 +15,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
     await api("/api/v1/payments/verify", { method: "POST", body: { reference: q.paid }, reason: `Verify payment ${q.paid}` });
   }
   const loaded = await loadApplication();
+  /* V379: a CCE applicant pays on the CCE application, and comes back to it from the gateway */
+  if (loaded.app?.route === "CCE") redirect("/applicant/cce");
   return (
     <Shell route="a/fee" me={loaded.me}>
       {loaded.app ? <Fee a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}

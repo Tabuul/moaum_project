@@ -285,4 +285,84 @@ class ApplicantRepository {
         jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'password reset' WHERE person_id = :id AND ended_at IS NULL")
                 .param("id", account).update();
     }
+
+    /* ── V379: the CCE applicant ── */
+
+    /** the CCE list's answer for a JAMB number and date of birth: nomatch, found, registered or closed, with the list's session */
+    Map<String, Object> cceLookup(String jamb, java.time.LocalDate dob) {
+        return jdbc.sql("SELECT * FROM admissions.cce_lookup(:j, :d)").param("j", jamb).param("d", dob).query().singleRow();
+    }
+
+    UUID cceRegister(String jamb, java.time.LocalDate dob, String email, String phone, String hash) {
+        return jdbc.sql("SELECT admissions.cce_register(:j, :d, :e, :p, :h)").param("j", jamb).param("d", dob).param("e", email).param("p", phone)
+                .param("h", hash).query(UUID.class).single();
+    }
+
+    /** the Centre's review state of a CCE application, or empty for any other application */
+    Optional<String> cceState(UUID applicationId) {
+        return jdbc.sql("SELECT state FROM admissions.cce_review WHERE application_id = :a").param("a", applicationId).query(String.class).optional();
+    }
+
+    Map<String, Object> cceListed(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT l.session, l.jamb_reg_no, l.surname, l.first_name, l.middle_name, l.date_of_birth, l.sex, l.programme_code, p.name AS programme,
+                       d.name AS department, f.name AS faculty, t.duration_years, t.study_mode, t.active AS programme_admitting,
+                       (SELECT u.name FROM ref.unit u WHERE u.code = t.centre_unit) AS centre,
+                       r.state, r.programme_confirmed_at, r.submitted_at, r.request_note, r.requested_at, r.published_at, r.decision_note
+                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN admissions.cce_candidate l ON l.id = c.cce_candidate_id
+                  JOIN admissions.cce_review r ON r.application_id = a.id
+                  JOIN ref.programme p ON p.code = l.programme_code
+                  LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                  CROSS JOIN LATERAL ref.programme_route_terms(l.programme_code, 'CCE') t
+                 WHERE a.id = :a
+                """).param("a", applicationId).query().singleRow();
+    }
+
+    List<Map<String, Object>> cceFields(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT f.field, f.required, b.label, x.value FROM admissions.cce_form_fields() WITH ORDINALITY f(field, required, ord)
+                  LEFT JOIN ref.biodata_field b ON b.field = f.field
+                  LEFT JOIN admissions.screening_answer x ON x.application_id = :a AND x.field = f.field
+                 ORDER BY f.ord
+                """).param("a", applicationId).query().listOfRows();
+    }
+
+    List<Map<String, Object>> cceOlevel(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT sitting, exam_body, exam_number, exam_year, subject, grade FROM admissions.screening_olevel
+                 WHERE application_id = :a AND active ORDER BY sitting, ord
+                """).param("a", applicationId).query().listOfRows();
+    }
+
+    List<Map<String, Object>> cceProblems(UUID applicationId) {
+        return jdbc.sql("SELECT step, field, message FROM admissions.cce_application_problems(:a)").param("a", applicationId).query().listOfRows();
+    }
+
+    List<Map<String, Object>> cceEvents(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT at, action, to_state, CASE WHEN action IN ('REQUEST_DOCUMENTS', 'REQUIRE_VERIFICATION', 'DOCUMENT_REJECTED', 'SUBMITTED', 'PROVIDED', 'REGISTERED') THEN note END AS note
+                  FROM admissions.cce_review_event WHERE application_id = :a ORDER BY at
+                """).param("a", applicationId).query().listOfRows();
+    }
+
+    Map<String, Object> cceFees(String session) {
+        return jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, 'CCE')").param("s", session).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    void cceBiodata(UUID applicationId, String fieldsJson) {
+        jdbc.sql("SELECT admissions.cce_save_biodata(:a, :f::jsonb)").param("a", applicationId).param("f", fieldsJson).query(Integer.class).single();
+    }
+
+    void cceOlevelSave(UUID applicationId, String sittingsJson) {
+        jdbc.sql("SELECT admissions.cce_save_olevel(:a, :s::jsonb)").param("a", applicationId).param("s", sittingsJson).query(Integer.class).single();
+    }
+
+    void cceConfirmProgramme(UUID applicationId) {
+        jdbc.sql("SELECT admissions.cce_confirm_programme(:a)").param("a", applicationId).query().singleRow();
+    }
+
+    String cceSubmit(UUID applicationId, String ip) {
+        return jdbc.sql("SELECT admissions.cce_submit(:a, :ip)").param("a", applicationId).param("ip", ip).query(String.class).single();
+    }
 }

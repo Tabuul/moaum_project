@@ -1,11 +1,13 @@
 package ng.edu.moaum.portal.applicant;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.ClientAddress;
@@ -62,6 +64,20 @@ class ApplicantController {
     public record Accept(boolean undertaking) {
     }
 
+    /** V379: the CCE applicant — the JAMB number and the date of birth on the CCE list (yyyy-mm-dd) */
+    public record CceLookup(@NotBlank @Size(max = 30) String jambKey, @NotBlank @Size(max = 10) String dateOfBirth) {
+    }
+
+    public record CceRegister(@NotBlank @Size(max = 30) String jambKey, @NotBlank @Size(max = 10) String dateOfBirth, @NotBlank @Size(max = 200) String email,
+                              @NotBlank @Size(max = 30) String phone, @NotBlank @Size(max = 200) String password) {
+    }
+
+    public record CceFields(@NotNull @Size(max = 30) Map<String, String> fields) {
+    }
+
+    public record CceSittings(@NotNull @Size(min = 1, max = 2) List<Map<String, Object>> sittings) {
+    }
+
     private final ApplicantService service;
     private final Throttle throttle;
 
@@ -82,6 +98,44 @@ class ApplicantController {
         String source = ClientAddress.of(request);
         throttle.take(Throttle.Door.APPLICANT_REGISTER, source);
         return service.register(body.session(), body.jambKey(), body.email(), body.phone(), body.password(), source);
+    }
+
+    /** V379: every look-up counted against the connection — a match names the candidate, and the date of birth is not to be guessed */
+    @PostMapping("/cce/lookup")
+    Map<String, Object> cceLookup(@Valid @RequestBody CceLookup body, HttpServletRequest request) {
+        throttle.take(Throttle.Door.APPLICANT_LOOKUP, ClientAddress.of(request));
+        return service.cceLookup(body.jambKey(), body.dateOfBirth());
+    }
+
+    @PostMapping("/cce/register")
+    ApplicantService.SignedIn cceRegister(@Valid @RequestBody CceRegister body, HttpServletRequest request) {
+        String source = ClientAddress.of(request);
+        throttle.take(Throttle.Door.APPLICANT_REGISTER, source);
+        return service.cceRegister(body.jambKey(), body.dateOfBirth(), body.email(), body.phone(), body.password(), source);
+    }
+
+    @GetMapping("/me/cce")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> cce(Authentication authentication) {
+        return service.cce(account(authentication));
+    }
+
+    @PutMapping("/me/cce/biodata")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> cceBiodata(Authentication authentication, @Valid @RequestBody CceFields body) {
+        return service.cceBiodata(account(authentication), body.fields());
+    }
+
+    @PutMapping("/me/cce/olevel")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> cceOlevel(Authentication authentication, @Valid @RequestBody CceSittings body) {
+        return service.cceOlevel(account(authentication), body.sittings());
+    }
+
+    @PostMapping("/me/cce/programme")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> cceProgramme(Authentication authentication) {
+        return service.cceConfirmProgramme(account(authentication));
     }
 
     @PostMapping("/sign-in")

@@ -223,8 +223,15 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
             <Pil kind="grey">CGPA {s.cgpa ?? "—"}</Pil>
             {s.curriculumVersion ? <Pil kind="grey">Curriculum {s.curriculumVersion}</Pil> : null}
+            {s.academic?.route === "CCE" ? <Pil kind="info">Part-time · CCE</Pil> : null}
           </div>
         </div></div>
+        {s.academic?.route === "CCE" ? (
+          <Note kind="info" title={`${s.academic.centre ?? "Centre for Continuing Education"} · part-time`}>
+            You study in the CCE session <b className="tnum">{s.academic.cceSession ?? s.academic.session}</b>{s.academic.undergraduateSession ? <> (undergraduate students are in {s.academic.undergraduateSession})</> : null}.
+            Admitted for {s.entrySession}{s.academic.durationYears ? <>; the programme runs {s.academic.durationYears} years part-time, and you are expected to complete in <b className="tnum">{s.academic.expectedCompletion ?? "—"}</b> — completion is by the courses passed, not the years alone</> : null}.
+          </Note>
+        ) : null}
         {s.academic && s.academic.context === "PREPARING" ? (
           <Panel title="Admission session" right={<span className="row row--inline row--tight"><b className="tnum">{s.academic.session}</b><Pil kind={s.academic.ready ? "ok" : "info"}>{s.academic.ready ? "READY FOR RESUMPTION" : "PREPARING FOR RESUMPTION"}</Pil></span>}>
             <PBody>

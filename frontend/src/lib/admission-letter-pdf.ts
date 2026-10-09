@@ -15,8 +15,12 @@ export interface LetterApplication {
 export interface LetterTemplate { title?: string | null; subtitle?: string | null; signatory_name?: string | null; signatory_title?: string | null; second_name?: string | null; second_title?: string | null; footer?: string | null; remarks?: string | null }
 export interface LetterDoc { number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string; application?: LetterApplication; template?: LetterTemplate | null }
 
-/** what the route supplies from the server: the crest, the lodged signature, and the QR of the verifying address */
-export interface LetterArt { crest: Image | null; signature: Image | null; qr: { size: number; dark: Uint8Array | boolean[] | number[] } | null }
+/** what the route supplies from the server: the crest, the lodged signature, the QR of the verifying address, and (V379, a CCE
+ *  admission) the applicant's passport photograph as a JPEG */
+export interface LetterArt { crest: Image | null; signature: Image | null; qr: { size: number; dark: Uint8Array | boolean[] | number[] } | null; passport?: Image | null }
+
+/** V379: what a CCE admission's statement adds — the route, the study mode, the Centre and the programme's duration on the route */
+export interface CceStatement { admissionRoute?: string | null; studyMode?: string | null; centre?: string | null; durationYears?: number | null }
 
 function qr(p: Page, x: number, y: number, side: number, m: NonNullable<LetterArt["qr"]>) {
   const { size, dark } = m;
@@ -52,7 +56,8 @@ function titleCase(s: string): string {
 }
 
 export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, origin: string, art: LetterArt): Uint8Array {
-  const st = JSON.parse(letter.statement) as { changedFrom?: string | null; changedTo?: string | null; changedOn?: string | null };
+  const st = JSON.parse(letter.statement) as { changedFrom?: string | null; changedTo?: string | null; changedOn?: string | null } & CceStatement;
+  const cce = st.admissionRoute === "CCE";
   const t = letter.template ?? {};
   const p = new Page();
   const L = 56, W = A4.w - 2 * L, cx = A4.w / 2;
@@ -69,6 +74,8 @@ export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, orig
   p.textStyled(A4.w - L - dateText.length * 5.6 + 36, y, dateText.slice(6), 10.5, { font: R }); y -= 22;
   const name = a.surname && a.otherNames ? `${titleCase(a.otherNames)} ${titleCase(a.surname)}` : titleCase(a.name.includes(",") ? a.name.split(",").reverse().join(" ").trim() : a.name);
   const kv = (k: string, v: string, size = 10.5) => { p.textStyled(L, y, k, size, { font: B }); p.textStyled(L + k.length * size * 0.69 + 5, y, v, size, { font: R }); y -= 20; };
+  // V379: a CCE letter carries the applicant's passport photograph, top right beside the name
+  if (cce && art.passport) p.jpeg(A4.w - L - 74, y - 76, 66, 82, art.passport);
   kv("APPLICANT'S NAME:", name);
   kv("APPLICATION NUMBER:", a.jambKey || a.applicationNo);
   y -= 22;
@@ -83,8 +90,14 @@ export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, orig
   kv("COURSE:", programme);
   kv("PROGRAMME:", degree);
   kv("FACULTY:", (a.faculty ?? "").toUpperCase());
+  if (cce) {
+    // V379: the Centre for Continuing Education's admission: the route, part-time, the Centre, and the duration in years
+    kv("CENTRE:", (st.centre ?? "Centre for Continuing Education").toUpperCase());
+    kv("STUDY MODE:", (st.studyMode ?? "PART-TIME").toUpperCase());
+    kv("ADMISSION ROUTE:", "CCE");
+  }
   kv("LEVEL:", `${a.entryLevel} LEVEL`);
-  kv("DURATION:", `${a.durationSemesters ?? 8} SEMESTERS`);
+  kv("DURATION:", cce && st.durationYears ? `${st.durationYears} YEARS (PART-TIME)` : `${a.durationSemesters ?? 8} SEMESTERS`);
   if (st.changedTo) {
     y -= 2;
     y = p.paragraphStyled(L, y, `Your change of programme from ${st.changedFrom ?? "the programme first offered"} to ${st.changedTo} was approved${st.changedOn ? ` on ${longDate(st.changedOn)}` : ""}; this letter, version ${letter.version} under the same number, states the admission as it now stands.`, W, 9.5, { font: R });

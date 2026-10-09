@@ -627,6 +627,23 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "CCE Management",
+        "items": [
+          { "id": "cce/dashboard", "icon": "home", "label": "CCE Overview" },
+          { "id": "cce/upload", "icon": "upload", "label": "CCE Candidate List Upload" },
+          { "id": "cce/imports", "icon": "box", "label": "Import History" },
+          { "id": "cce/candidates", "icon": "user", "label": "CCE Candidate List" },
+          { "id": "cce/applications", "icon": "doc", "label": "CCE Applications" },
+          { "id": "cce/processing", "icon": "check", "label": "Admission Processing" },
+          { "id": "cce/admission-list", "icon": "cap", "label": "Admission List" },
+          { "id": "cce/students", "icon": "cap", "label": "CCE Students" },
+          { "id": "cce/programmes", "icon": "book", "label": "CCE Programmes" },
+          { "id": "cce/session", "icon": "cal", "label": "CCE Session Mapping" },
+          { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" },
+          { "id": "cce/history", "icon": "doc", "label": "Audit History" }
+        ]
+      },
+      {
         "name": "Reports",
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
@@ -688,6 +705,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
           { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
           { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
+          { "id": "cce/fees", "icon": "card", "label": "CCE Applicant Fees" },
           { "id": "t/nelmatch", "icon": "swap", "label": "Match a Remittance" },
           { "id": "t/pv", "icon": "doc", "label": "Payment Vouchers", "badge": "1" },
           { "id": "t/payroll", "icon": "card", "label": "Payroll", "badge": "3" },
@@ -1680,6 +1698,74 @@ export const MENUS: Record<string, Menu> = {
           { "id": "a/accept", "icon": "check", "label": "Accept Your Offer" },
           { "id": "a/clearance", "icon": "shield", "label": "Online Screening" },
           { "id": "a/matric", "icon": "user", "label": "Matriculation" }
+        ]
+      }
+    ]
+  },
+  "cceapplicant": {
+    "label": "CCE Applicant",
+    "home": "a/cce",
+    "groups": [
+      {
+        "name": "My application",
+        "open": true,
+        "items": [
+          { "id": "a/cce", "icon": "doc", "label": "CCE Application" }
+        ]
+      },
+      {
+        "name": "Admission",
+        "open": true,
+        "items": [
+          { "id": "a/admission", "icon": "check", "label": "Admission Status" },
+          { "id": "a/accept", "icon": "check", "label": "Accept Your Offer" },
+          { "id": "a/matric", "icon": "user", "label": "Matriculation" }
+        ]
+      }
+    ]
+  },
+  "cce": {
+    "label": "Centre for Continuing Education",
+    "home": "cce/dashboard",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "cce/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" }
+        ]
+      },
+      {
+        "name": "Admissions",
+        "items": [
+          { "id": "cce/processing", "icon": "check", "label": "Admission Processing" },
+          { "id": "cce/applications", "icon": "doc", "label": "CCE Applications" },
+          { "id": "cce/admission-list", "icon": "cap", "label": "Admission List" },
+          { "id": "cce/candidates", "icon": "user", "label": "CCE Candidate List" },
+          { "id": "cce/imports", "icon": "box", "label": "Import History" }
+        ]
+      },
+      {
+        "name": "Students",
+        "items": [
+          { "id": "cce/students", "icon": "cap", "label": "CCE Students" }
+        ]
+      },
+      {
+        "name": "Administration",
+        "items": [
+          { "id": "cce/programmes", "icon": "book", "label": "CCE Programmes" },
+          { "id": "cce/session", "icon": "cal", "label": "CCE Session" },
+          { "id": "cce/fees", "icon": "card", "label": "CCE Applicant Fees" },
+          { "id": "cce/history", "icon": "doc", "label": "Audit History" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
       }
     ]

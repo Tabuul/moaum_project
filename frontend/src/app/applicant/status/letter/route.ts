@@ -1,11 +1,29 @@
 import { NextResponse } from "next/server";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import type { Application } from "@/lib/applicant";
 import { admissionLetterPdf, type LetterDoc } from "@/lib/admission-letter-pdf";
 import { crestImage, signatureImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
+import { sessionToken } from "@/lib/session";
+import { jpegSize, type Image } from "@/lib/pdf-write";
 
 export const dynamic = "force-dynamic";
+
+/** V379: the CCE applicant's passport photograph for the letter, when it is a JPEG (the CCE form takes a JPEG); null otherwise */
+async function passport(a: Application): Promise<Image | null> {
+  const doc = a.documents.find((d) => d.kind === "PASSPORT");
+  if (a.route !== "CCE" || !doc) return null;
+  try {
+    const tok = await sessionToken();
+    const res = await fetch(`${API_URL}/api/v1/applicant/me/documents/${doc.id}/content`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+    if (!res.ok) return null;
+    const data = new Uint8Array(await res.arrayBuffer());
+    const dim = jpegSize(data);
+    return dim ? { data, width: dim.width, height: dim.height } : null;
+  } catch {
+    return null;
+  }
+}
 
 /** the letter of provisional admission as a PDF: the released offer, the programme, the terms, on one A4 page (V275, V282) */
 export async function GET(req: Request) {
@@ -25,6 +43,6 @@ export async function GET(req: Request) {
   if (!doc.ok) return NextResponse.json(doc.problem, { status: doc.problem.status });
   const letter = doc.data;
   const app = letter.application ?? { applicationNo: a.applicationNo, session: a.session, name: a.name, jambKey: a.jambKey, entryLevel: a.entryLevel, programme: a.programme, faculty: a.faculty, decision: a.decision, decisionReleasedAt: a.decisionReleasedAt, decisionBasis: a.decisionBasis, acceptedAt: a.acceptedAt };
-  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImage("registrar"), qr: qrMatrix(`${url.origin}${letter.verifyPath}`) });
+  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImage("registrar"), qr: qrMatrix(`${url.origin}${letter.verifyPath}`), passport: await passport(a) });
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `${download ? "attachment" : "inline"}; filename="admission-letter-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });
 }

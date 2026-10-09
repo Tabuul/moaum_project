@@ -108,6 +108,9 @@ export interface AcademicContext {
   session: string; context: "CURRENT" | "PREPARING" | "NONE" | string; session_state: string | null; current_session: string | null; transitions_on: string | null;
   steps: { admission: boolean; acceptance: boolean; screening: boolean; schoolFees: boolean; account: boolean; courseRegistration: boolean; matriculation: boolean };
   ready: boolean; status: "READY_FOR_RESUMPTION" | "FRESH_STUDENT_PREPARING" | "CURRENT_SESSION" | string;
+  /** V379: the route and study mode; for a CCE student the Centre, the CCE session beside undergraduate's, the duration and the expected completion */
+  route?: string | null; studyMode?: string | null; centre?: string | null; cceSession?: string | null; undergraduateSession?: string | null;
+  durationYears?: number | null; expectedCompletion?: string | null;
 }
 export interface Me {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;

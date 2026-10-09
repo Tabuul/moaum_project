@@ -291,6 +291,21 @@ export const ROUTES: Record<string, string> = {
   "a/clearance": "/applicant/clearance",
   "a/admission": "/applicant/admission",
   "a/matric": "/applicant/matric",
+  /* V379: the CCE applicant's application, and the CCE desk of the Academic Office and the Centre for Continuing Education */
+  "a/cce": "/applicant/cce",
+  "cce/dashboard": "/cce",
+  "cce/upload": "/cce/upload",
+  "cce/imports": "/cce/imports",
+  "cce/candidates": "/cce/candidates",
+  "cce/applications": "/cce/applications",
+  "cce/processing": "/cce/processing",
+  "cce/admission-list": "/cce/admission-list",
+  "cce/students": "/cce/students",
+  "cce/programmes": "/cce/programmes",
+  "cce/session": "/cce/session",
+  "cce/reports": "/cce/reports",
+  "cce/history": "/cce/history",
+  "cce/fees": "/cce/fees",
   /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
   "pg/portal": "/pg/portal",
   "pg/apply": "/pg/apply",
@@ -460,6 +475,21 @@ const OVERRIDES: Record<string, [string, string]> = {
   "jupeb/idcards": ["JUPEB identity cards", "Cards for the active students, each verifiable by its QR code"],
   "f/jupebfees": ["JUPEB fees", "The Bursary's rule for the JUPEB programme"],
   "t/unpaidreg": ["Registrations without fees cleared", "The session's course registrations made while the semester's school fees were not stated or not paid"],
+  /* V379: the Centre for Continuing Education */
+  "a/cce": ["CCE application", "Your application to the Centre for Continuing Education"],
+  "cce/dashboard": ["CCE overview", "The Centre for Continuing Education: the CCE list, applications, admission and students of the CCE session"],
+  "cce/upload": ["CCE candidate list upload", "JAMB's CCE list, read, previewed and committed"],
+  "cce/imports": ["CCE import history", "Every CCE list loaded, committed or discarded"],
+  "cce/candidates": ["CCE candidate list", "The people on the committed CCE list and where each stands"],
+  "cce/applications": ["CCE applications", "Every CCE application, from draft to the published outcome"],
+  "cce/processing": ["CCE admission processing", "The CCE applications still to be acted on"],
+  "cce/admission-list": ["CCE admission list", "Decisions waiting to be published, and the published list"],
+  "cce/students": ["CCE students", "Part-time students of the Centre for Continuing Education on the register"],
+  "cce/programmes": ["CCE programmes", "The programmes the Centre admits into, and their duration on the route"],
+  "cce/session": ["CCE session mapping", "How the CCE session follows the undergraduate session"],
+  "cce/reports": ["CCE reports", "The CCE session's figures and lists"],
+  "cce/history": ["CCE audit history", "Every step of the CCE lists, applications and session"],
+  "cce/fees": ["CCE applicant fees", "The Bursary's CCE application and acceptance fees"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

@@ -45,7 +45,11 @@ public class ApplicantService {
     static final UUID NOBODY = new UUID(0, 0);
     static final Pattern REG_SHAPE = Pattern.compile("^\\d{12}[A-Z]{2,3}$");
     static final Pattern EMAIL_SHAPE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$");
-    static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT",
+    /** V379: the CCE form and O'Level written for the database functions */
+    private static final tools.jackson.databind.ObjectMapper JSON_OUT = new tools.jackson.databind.ObjectMapper();
+    /** V379: a JAMB number or reference on the CCE list, as the list carries it */
+    static final Pattern CCE_SHAPE = Pattern.compile("^[A-Z0-9/-]{6,24}$");
+    static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "OLEVEL_STATEMENT_2", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT",
             "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
@@ -309,6 +313,9 @@ public class ApplicantService {
         v.put("entryMode", a.get("entry_mode"));
         v.put("entryLevel", a.get("entry_level"));
         v.put("listKind", a.get("list_kind"));
+        /* V379: a CCE applicant applies from the CCE list to the Centre for Continuing Education, not through Post-UTME */
+        boolean cce = "CCE".equals(a.get("entry_mode"));
+        v.put("route", cce ? "CCE" : "UTME");
         /* the released decision opens to the applicant through Admission Status Checking (V271, V295): a valid application, checking
            open, the checking fee confirmed — or an admission already under way; the office always reads it. Until then nothing in the
            view says what the decision is: not the decision, nor the candidate's offer state (ADMITTED once an offer is released) */
@@ -346,6 +353,15 @@ public class ApplicantService {
         feeMap.put("acceptanceFee", fees.get("acceptance_fee"));
         feeMap.put("checkingFee", fees.get("checking_fee"));
         feeMap.put("stated", fees.get("stated"));
+        if (cce) {
+            // V379: the CCE fees the Bursary stated — never the Post-UTME figures; no checking fee
+            Map<String, Object> cf = repo.cceFees(session);
+            feeMap.put("applicationFee", cf == null ? null : cf.get("application_fee"));
+            feeMap.put("portalCharge", cf == null ? null : cf.get("portal_charge"));
+            feeMap.put("acceptanceFee", cf == null ? null : cf.get("acceptance_fee"));
+            feeMap.put("checkingFee", 0);
+            feeMap.put("stated", cf != null);
+        }
         v.put("fees", feeMap);
         v.put("feeReferences", repo.feeReferences(applicationId));
         v.put("feeConfirmedAt", a.get("fee_confirmed_at"));
@@ -464,9 +480,20 @@ public class ApplicantService {
     public Map<String, Object> document(UUID account, String kind, String filename, String contentType, String base64) {
         UUID app = applicationOf(account);
         Map<String, Object> a = repo.application(app).orElseThrow();
+        /* V379: a CCE applicant's documents, the passport among them, change only while the application is theirs — a draft, or
+           back with them because the Centre asked; otherwise a verified document could be swapped behind the Centre's back */
+        Optional<String> cceState = repo.cceState(app);
+        if (cceState.isPresent() && !List.of("DRAFT", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED").contains(cceState.get())) {
+            throw new DomainRuleViolation("CCE_NOT_EDITABLE", "The application is with the Centre for Continuing Education; its documents are changed only when the Centre asks.",
+                    new DomainRuleViolation.Remedy("Wait for the Centre; if something is wrong, write to the Centre quoting your application number.", "Centre for Continuing Education"));
+        }
+        if ("OLEVEL_STATEMENT_2".equals(kind) && cceState.isEmpty()) {
+            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "The second sitting's result is a document of the CCE application.",
+                    new DomainRuleViolation.Remedy("Upload your O'Level result as OLEVEL_STATEMENT.", "You"));
+        }
         /* the passport photograph comes whenever the applicant has one (V022); everything else is part of the declaration —
            or of the online screening form while that form is the applicant's to edit (V269) */
-        if (a.get("submitted_at") != null && !"PASSPORT".equals(kind) && !repo.screeningOpen(app)) {
+        if (cceState.isEmpty() && a.get("submitted_at") != null && !"PASSPORT".equals(kind) && !repo.screeningOpen(app)) {
             throw new DomainRuleViolation("APP_SUBMITTED", "The application was submitted and can no longer be edited.",
                     new DomainRuleViolation.Remedy("Write to the Registry quoting your application number. The passport photograph can still be replaced.", "Registry"));
         }
@@ -511,8 +538,138 @@ public class ApplicantService {
             throw new DomainRuleViolation("APP_DECLARATION", "The declaration was not accepted.",
                     new DomainRuleViolation.Remedy("Tick the declaration that the particulars given are true.", "You"));
         }
-        repo.submit(app, ip);
+        // V379: a CCE application is submitted to the Centre (or sent back to it with what it asked for)
+        if (repo.cceState(app).isPresent()) {
+            repo.cceSubmit(app, ip);
+        } else {
+            repo.submit(app, ip);
+        }
         return view(app, false);
+    }
+
+    /* ── V379: the CCE applicant ── */
+
+    static String cceKey(String v) {
+        return v == null ? "" : v.replaceAll("\\s", "").toUpperCase();
+    }
+
+    static java.time.LocalDate isoDate(String v) {
+        try {
+            return v == null || v.isBlank() ? null : java.time.LocalDate.parse(v.trim());
+        } catch (java.time.format.DateTimeParseException bad) {
+            return null;
+        }
+    }
+
+    /** whether a JAMB number and date of birth are together on the CCE list — a number with the wrong date reads as not listed */
+    @Transactional(readOnly = true)
+    public Map<String, Object> cceLookup(String jambKey, String dateOfBirth) {
+        String key = cceKey(jambKey);
+        java.time.LocalDate dob = isoDate(dateOfBirth);
+        if (!CCE_SHAPE.matcher(key).matches() || dob == null) {
+            return Map.of("state", "idle");
+        }
+        Map<String, Object> row = repo.cceLookup(key, dob);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("state", row.get("state"));
+        if (!"nomatch".equals(row.get("state"))) {
+            out.put("name", row.get("surname") + ", " + row.get("first_name") + (row.get("middle_name") == null ? "" : " " + row.get("middle_name")));
+            out.put("programme", row.get("programme"));
+            out.put("session", row.get("session"));
+            out.put("window", row.get("window_state"));
+        }
+        return out;
+    }
+
+    public SignedIn cceRegister(String jambKey, String dateOfBirth, String email, String phoneIn, String password, String ip) {
+        String key = cceKey(jambKey);
+        java.time.LocalDate dob = isoDate(dateOfBirth);
+        String mail = email == null ? "" : email.trim();
+        String phone = phone(phoneIn);
+        if (!CCE_SHAPE.matcher(key).matches()) {
+            throw new DomainRuleViolation("CCE_NUMBER_SHAPE", "That is not a JAMB number as JAMB writes it.",
+                    new DomainRuleViolation.Remedy("Type it exactly as JAMB gave it: letters, digits, and any / or -.", "You"));
+        }
+        if (dob == null) {
+            throw new DomainRuleViolation("CCE_DATE_OF_BIRTH", "The date of birth was not given.", new DomainRuleViolation.Remedy("Give it as on the CCE list.", "You"));
+        }
+        if (!EMAIL_SHAPE.matcher(mail).matches()) {
+            throw new DomainRuleViolation("APP_EMAIL", "That is not a complete email address.",
+                    new DomainRuleViolation.Remedy("It needs a name, an @, and a domain with a dot in it — you@example.com.", "You"));
+        }
+        if (!phone.matches("^0\\d{10}$")) {
+            throw new DomainRuleViolation("APP_PHONE", "A Nigerian mobile number is eleven digits beginning with a zero.",
+                    new DomainRuleViolation.Remedy("Written as +234 or without the zero is fine; " + phone.length() + " digits were read.", "You"));
+        }
+        if (password == null || password.length() < MIN_PASSWORD) {
+            throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
+                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+        }
+        Map<String, Object> listed = repo.cceLookup(key, dob);
+        if ("found".equals(listed.get("state"))) {
+            windows.requireOpen(ApplicationWindows.CCE, String.valueOf(listed.get("session")));
+        }
+        String hash = encoder.encode(password);
+        UUID account = atTheDoor(null, "CCE application registration", () -> repo.cceRegister(key, dob, mail, phone, hash));
+        repo.byId(account).ifPresent(a -> atTheDoor(a.id(), "CCE applicant account created", () -> {
+            String link = portalUrl + "/login";
+            repo.queueNotice("EMAIL", a.email(), "Your MOAUM CCE application account",
+                    "Welcome to the " + ng.edu.moaum.portal.platform.Branding.name() + " applicant portal.\n\n"
+                            + "Your application account for the Centre for Continuing Education has been created:\n"
+                            + "  Application number: " + a.applicationNo() + "\n"
+                            + "  Sign-in email: " + a.email() + "\n"
+                            + "  JAMB number: " + a.jambKey() + "\n\n"
+                            + "Sign in at " + link + " to complete your CCE application: your details, your O'Level, your documents and passport, "
+                            + "and the application fee. Keep these details safe.", a.applicationId());
+            repo.queueNotice("SMS", a.phone(), "MOAUM CCE applicant account",
+                    "MOAUM: your CCE application account is created. Application no " + a.applicationNo() + ". Sign in at " + link, a.applicationId());
+            return null;
+        }));
+        return signIn(mail, password, ip);
+    }
+
+    private UUID cceApplication(UUID account) {
+        UUID app = applicationOf(account);
+        if (repo.cceState(app).isEmpty()) {
+            throw new DomainRuleViolation("CCE_NOT_CCE", "This is not a CCE application.", new DomainRuleViolation.Remedy("Use the applicant pages of your own application.", "You"));
+        }
+        return app;
+    }
+
+    /** the CCE application as the applicant works through it: the list's facts, the form, the O'Level, what is still needed, the history */
+    @Transactional(readOnly = true)
+    public Map<String, Object> cce(UUID account) {
+        UUID app = cceApplication(account);
+        Map<String, Object> v = new LinkedHashMap<>(view(app, false));
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("listed", repo.cceListed(app));
+        c.put("fields", repo.cceFields(app));
+        c.put("olevel", repo.cceOlevel(app));
+        c.put("problems", repo.cceProblems(app));
+        c.put("events", repo.cceEvents(app));
+        v.put("cce", c);
+        return v;
+    }
+
+    @Transactional
+    public Map<String, Object> cceBiodata(UUID account, Map<String, String> fields) {
+        UUID app = cceApplication(account);
+        repo.cceBiodata(app, JSON_OUT.writeValueAsString(fields == null ? Map.of() : fields));
+        return cce(account);
+    }
+
+    @Transactional
+    public Map<String, Object> cceOlevel(UUID account, List<Map<String, Object>> sittings) {
+        UUID app = cceApplication(account);
+        repo.cceOlevelSave(app, JSON_OUT.writeValueAsString(sittings == null ? List.of() : sittings));
+        return cce(account);
+    }
+
+    @Transactional
+    public Map<String, Object> cceConfirmProgramme(UUID account) {
+        UUID app = cceApplication(account);
+        repo.cceConfirmProgramme(app);
+        return cce(account);
     }
 
     @Transactional
