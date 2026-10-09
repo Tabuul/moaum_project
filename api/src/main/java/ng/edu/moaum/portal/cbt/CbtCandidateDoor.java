@@ -104,7 +104,8 @@ class CbtCandidateDoor {
         String ses = session == null || session.isBlank() ? sessionFor(kind, me) : session.trim();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", ses);
-        out.put("rows", jdbc.sql("SELECT * FROM " + kind.list + "(:s, :ses)").param("s", me).param("ses", ses, Types.VARCHAR).query().listOfRows());
+        out.put("rows", jdbc.sql("SELECT * FROM " + kind.list + "(:s, :ses)").param("s", me).param("ses", ses, Types.VARCHAR).query().listOfRows()
+                .stream().map(r -> placed(new LinkedHashMap<>(r), me)).toList());
         out.put("now", OffsetDateTime.now());
         return out;
     }
@@ -112,9 +113,22 @@ class CbtCandidateDoor {
     Map<String, Object> one(Kind kind, UUID me, UUID exam) {
         Map<String, Object> row = jdbc.sql("SELECT * FROM " + kind.list + "(:s, NULL) x WHERE x.exam_id = :e").param("s", me).param("e", exam)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("examination", exam.toString()));
-        Map<String, Object> out = new LinkedHashMap<>(row);
+        Map<String, Object> out = placed(new LinkedHashMap<>(row), me);
         out.put("now", OffsetDateTime.now());
         return out;
+    }
+
+    /** V373: where and when the candidate sits the examination (their sitting and seat), and any extra time they were given */
+    private Map<String, Object> placed(Map<String, Object> row, UUID me) {
+        Object exam = row.get("exam_id");
+        if (exam == null) return row;
+        jdbc.sql("""
+                SELECT s.label AS sitting, s.venue AS sitting_venue, s.starts_at AS sitting_starts_at, s.ends_at AS sitting_ends_at, x.seat_no
+                  FROM assessment.cbt_seat x JOIN assessment.cbt_sitting s ON s.id = x.sitting_id WHERE x.exam_id = :e AND x.candidate_id = :c
+                """).param("e", exam).param("c", me).query().listOfRows().stream().findFirst().ifPresent(row::putAll);
+        jdbc.sql("SELECT minutes FROM assessment.cbt_extra_time WHERE exam_id = :e AND candidate_id = :c").param("e", exam).param("c", me)
+                .query(Integer.class).optional().ifPresent(m -> row.put("extra_minutes", m));
+        return row;
     }
 
     /* ── the attempt ── */
@@ -167,6 +181,8 @@ class CbtCandidateDoor {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("attempt", attemptView(a));
+        // V373: the candidate's sitting and seat, and extra time, for the entry screen
+        out.put("placement", placed(new LinkedHashMap<>(Map.of("exam_id", exam)), me));
         out.put("exam", e);
         out.put("questions", questions);
         out.put("answers", answers);

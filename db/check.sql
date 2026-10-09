@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 217
+\set EXPECTED 218
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7446,6 +7446,112 @@ BEGIN
                  AND v_q1 = 'POSSIBLE_WRONG_KEY/NEGATIVE_DISCRIMINATION' AND d1 = -1.00 AND c1 = '{"0": 15, "2": 5}'::jsonb AND u1 = '{"2": 5}'::jsonb
                  AND v_q2 = 'WEAK_DISCRIMINATION/VERY_EASY' AND f2 = 1.00 AND v_q3 = '' AND d3 = 1.00, false),
         format('checks=%s | q1=%s d=%s choices=%s top=%s | q2=%s f=%s | q3=[%s] d=%s', checks, v_q1, d1, c1, u1, v_q2, f2, v_q3, d3));
+END $$;
+
+-- ── V373: a wrong key corrected with a record; candidates seated in sittings; extra time for a named candidate ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); off uuid := gen_random_uuid(); pa text := 'C00023'; S text := '9963/9964';
+        ex assessment.cbt_exam; ex2 assessment.cbt_exam; q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid(); k1 uuid := gen_random_uuid(); k2 uuid := gen_random_uuid();
+        st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()]; at uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        ca uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()]; i int; reg uuid;
+        r_live text; r_one text; r_same text; r_pub text; pv text; kc assessment.cbt_key_correction; after text; s3_versions int; bank_key int[]; bank_ver int; key_now int[];
+        s1 assessment.cbt_sitting; s2 assessment.cbt_sitting; seated record; a_a assessment.cbt_attempt; r_b text; r_c text; r_move text; r_remove text;
+        ends_first interval; ends_after interval;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9963-10-01', date '9964-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 963', 'Check key, sittings, time', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 963', pa, 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 963', S, 1);
+
+        -- (1) a key corrected: four candidates sat question 1, keyed A; the right answer was B
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES
+            (k1, 'GST 963', 'V373 keyed wrongly', '["a","b","c"]', 0, 'MCQ', 1), (k2, 'GST 963', 'V373 keyed rightly', '["a","b"]', 0, 'MCQ', 1);
+        ex2 := assessment.cbt_new_exam('GST', off, 'V373 key', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex2.id, k1, 1), (ex2.id, k2, 2);
+        FOR i IN 1..4 LOOP
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (st[i], 'MOAUM/ADM/63/' || lpad(i::text, 6, '0'), 'MOAUM/CHK/63/' || i, 'ZZV373', 'Key ' || i, pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+            INSERT INTO assessment.cbt_attempt (id, exam_id, student_id, ends_at, submitted_at, status, question_ids, seed, max_marks, score, outcome, question_versions, question_marks)
+            VALUES (at[i], ex2.id, st[i], now(), now(), 'SUBMITTED', ARRAY[k1, k2], i, 2, 0, CASE WHEN i = 4 THEN 'VOID' ELSE 'SCORED' END, ARRAY[1, 1], ARRAY[1, 1]);
+            INSERT INTO assessment.cbt_answer (attempt_id, question_id, chosen) VALUES (at[i], k1, CASE WHEN i = 2 THEN ARRAY[0] ELSE ARRAY[1] END), (at[i], k2, ARRAY[0]);
+            UPDATE assessment.cbt_attempt SET score = assessment.cbt_computed_score(at[i]) WHERE id = at[i];
+            INSERT INTO assessment.cbt_result (attempt_id, version, score, max_marks, percentage, grade, passed, outcome)
+            SELECT a.id, 1, a.score, 2, a.score * 50, NULL, a.score >= 1, a.outcome FROM assessment.cbt_attempt a WHERE a.id = at[i];
+        END LOOP;
+        -- the third candidate's score was cut by hand (a deduction); the correction must keep that
+        PERFORM assessment.cbt_amend_result(at[3], 0, 'SCORED', 'deduction for a malpractice finding');
+        BEGIN PERFORM assessment.cbt_correct_key(ex2.id, k1, ARRAY[1], 'B is right', true); r_live := 'CORRECTED';
+        EXCEPTION WHEN check_violation THEN r_live := split_part(SQLERRM, ':', 1); END;
+        UPDATE assessment.cbt_exam SET state = 'CLOSED', closed_at = now(), starts_at = now() - interval '3 hours', ends_at = now() - interval '1 hour', results_state = 'UNDER_REVIEW' WHERE id = ex2.id;
+        BEGIN PERFORM assessment.cbt_correct_key(ex2.id, k1, ARRAY[0, 1], 'two keys', false); r_one := 'CORRECTED';
+        EXCEPTION WHEN check_violation THEN r_one := split_part(SQLERRM, ':', 1); END;
+        SELECT string_agg(p.number || ':' || trim_scale(p.old_score) || '>' || trim_scale(p.new_score), ',' ORDER BY p.number) INTO pv FROM assessment.cbt_key_correction_preview(ex2.id, k1, ARRAY[1]) p;
+        kc := assessment.cbt_correct_key(ex2.id, k1, ARRAY[1], 'B is the right answer; the key was entered wrongly', true);
+        SELECT string_agg(s.matric_no || ':' || trim_scale(a.score) || '/' || a.outcome, ',' ORDER BY s.matric_no) INTO after
+          FROM assessment.cbt_attempt a JOIN people.student s ON s.id = a.student_id WHERE a.exam_id = ex2.id;
+        SELECT count(*) INTO s3_versions FROM assessment.cbt_result WHERE attempt_id = at[3];
+        SELECT answers, version INTO bank_key, bank_ver FROM assessment.question WHERE id = k1;
+        key_now := assessment.cbt_key(ex2.id, k1, 1);
+        BEGIN PERFORM assessment.cbt_correct_key(ex2.id, k1, ARRAY[1], 'again', false); r_same := 'CORRECTED';
+        EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        UPDATE assessment.cbt_exam SET results_state = 'PUBLISHED' WHERE id = ex2.id;
+        BEGIN PERFORM assessment.cbt_correct_key(ex2.id, k2, ARRAY[1], 'published', false); r_pub := 'CORRECTED';
+        EXCEPTION WHEN check_violation THEN r_pub := split_part(SQLERRM, ':', 1); END;
+
+        -- (2) sittings, and (3) extra time: three candidates, two sittings of one seat each
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES (q1, 'GST 963', 'V373 sitting one', '["a","b"]', 0, 'MCQ', 1), (q2, 'GST 963', 'V373 sitting two', '["a","b"]', 1, 'MCQ', 1);
+        ex := assessment.cbt_new_exam('GST', off, 'V373 sittings', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', now() - interval '20 minutes', now() + interval '3 hours');
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2);
+        FOR i IN 1..3 LOOP
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (ca[i], 'MOAUM/ADM/63/' || lpad((10 + i)::text, 6, '0'), 'MOAUM/CHK/63/1' || i, 'ZZV373', 'Seat ' || i, pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+            reg := registration.student_draft(ca[i], S, 1);
+            PERFORM registration.student_choose(reg, ARRAY[off]);
+            UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        END LOOP;
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        s1 := assessment.cbt_add_sitting(ex.id, 'Sitting 1', 'CBT Lab A', now() - interval '10 minutes', now() + interval '50 minutes', 1);
+        s2 := assessment.cbt_add_sitting(ex.id, 'Sitting 2', 'CBT Lab A', now() + interval '1 hour', now() + interval '2 hours', 1);
+        SELECT * INTO seated FROM assessment.cbt_seat_all(ex.id, 'NUMBER');
+        PERFORM assessment.cbt_grant_extra_time(ex.id, ca[1], 15, 'a candidate with a visual impairment');
+        PERFORM set_config('moaum.actor_id', ca[1]::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        a_a := assessment.cbt_start(ex.id, ca[1], '10.0.0.1', 'check');
+        ends_first := a_a.ends_at - now();
+        PERFORM set_config('moaum.actor_id', ca[2]::text, true);
+        BEGIN PERFORM assessment.cbt_start(ex.id, ca[2], '10.0.0.2', 'check'); r_b := 'STARTED';
+        EXCEPTION WHEN check_violation THEN r_b := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', ca[3]::text, true);
+        BEGIN PERFORM assessment.cbt_start(ex.id, ca[3], '10.0.0.3', 'check'); r_c := 'STARTED';
+        EXCEPTION WHEN check_violation THEN r_c := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        PERFORM assessment.cbt_grant_extra_time(ex.id, ca[1], 25, 'more time agreed by the office');
+        SELECT a.ends_at - now() INTO ends_after FROM assessment.cbt_attempt a WHERE a.id = a_a.id;
+        BEGIN PERFORM assessment.cbt_seat_candidate(ex.id, ca[3], s1.id); r_move := 'MOVED';
+        EXCEPTION WHEN check_violation THEN r_move := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM assessment.cbt_remove_sitting(s1.id); r_remove := 'REMOVED';
+        EXCEPTION WHEN check_violation THEN r_remove := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V373 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V373: a key is corrected only once the examination has ended — the preview is what is applied, a deduction made by hand is kept, a void result is untouched, the bank''s question corrected, the same key refused, published results the Registrar''s; candidates are seated by the sittings'' seats and start only in their own sitting; extra time lengthens the attempt at the start and while it runs',
+        coalesce(r_live = 'CBT_KEY_LIVE' AND r_one = 'CBT_KEY_ONE'
+                 AND pv = 'MOAUM/CHK/63/1:1>2,MOAUM/CHK/63/2:2>1,MOAUM/CHK/63/3:0>1,MOAUM/CHK/63/4:1>1'
+                 AND kc.attempts_seen = 4 AND kc.scores_changed = 3 AND kc.bank_fixed AND kc.old_key = ARRAY[0] AND kc.new_key = ARRAY[1]
+                 AND after = 'MOAUM/CHK/63/1:2/SCORED,MOAUM/CHK/63/2:1/SCORED,MOAUM/CHK/63/3:1/SCORED,MOAUM/CHK/63/4:1/VOID' AND s3_versions = 3
+                 AND bank_key = ARRAY[1] AND bank_ver = 2 AND key_now = ARRAY[1] AND r_same = 'CBT_KEY_SAME' AND r_pub = 'CBT_KEY_PUBLISHED'
+                 AND seated.seated = 2 AND seated.unseated = 1 AND r_b = 'CBT_NOT_YOUR_SITTING' AND r_c = 'CBT_NO_SITTING'
+                 AND ends_first BETWEEN interval '44 minutes' AND interval '46 minutes' AND ends_after BETWEEN interval '54 minutes' AND interval '56 minutes'
+                 AND r_move = 'CBT_SITTING_FULL' AND r_remove = 'CBT_SITTING_SAT', false),
+        format('live=%s one=%s | preview=%s | seen=%s changed=%s bank=%s %s>%s | after=%s s3 versions=%s | bank=%s v%s key=%s same=%s pub=%s | seated=%s/%s b=%s c=%s | ends %s then %s | move=%s remove=%s',
+               r_live, r_one, pv, kc.attempts_seen, kc.scores_changed, kc.bank_fixed, kc.old_key, kc.new_key, after, s3_versions, bank_key, bank_ver, key_now, r_same, r_pub,
+               seated.seated, seated.unseated, r_b, r_c, ends_first, ends_after, r_move, r_remove));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

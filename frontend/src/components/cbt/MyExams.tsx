@@ -79,6 +79,13 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
                 ["Date", whenAt(x.starts_at)], ["Closes", whenAt(x.ends_at)], ["Duration", `${x.duration_minutes} minutes`], ["Questions", `${x.questions}`],
                 ["Course", x.course_title], ["Mode", x.security_mode === "SECURE" ? "Secure CBT / kiosk" : x.proctoring === "CAMERA" ? "Web CBT, camera by consent" : "Standard web CBT"], ["Venue", x.venue === "LAB" ? "CBT laboratory" : "Remote"], ["Standing", eligibilityPill(x)],
               ]} />
+              {/* V373: the candidate's own sitting — the examination opens to them only then — and any extra time */}
+              {x.sitting ? (
+                <Note kind="info" title={`Your sitting: ${x.sitting}${x.seat_no ? ` · seat ${x.seat_no}` : ""}`}>
+                  {x.sitting_venue} · {whenAt(x.sitting_starts_at)}{x.sitting_ends_at ? ` to ${new Date(x.sitting_ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}. The examination opens to you only in your sitting; come to the venue in good time.
+                </Note>
+              ) : null}
+              {x.extra_minutes ? <div className="sub2 mt-1">You have <b>{x.extra_minutes} minutes&rsquo; extra time</b> on this paper; your clock includes it.</div> : null}
               {x.security_mode === "SECURE" ? <div className="sub2 mt-1">This examination is sat in the University&rsquo;s secure examination environment{x.venue === "LAB" ? " at the CBT laboratory" : ""}; it does not open in an ordinary browser.</div> : null}
               {x.eligibility && x.attempt_status !== "IN_PROGRESS" && codeOf(x.eligibility) !== "CBT_EXAM_NOT_OPEN" ? <div className="sub2 mt-1">{textOf(x.eligibility)}</div> : null}
               {x.result_published && x.attempt_id ? (

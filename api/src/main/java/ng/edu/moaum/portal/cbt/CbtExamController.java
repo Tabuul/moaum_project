@@ -525,10 +525,12 @@ class CbtExamController {
      * keys, so it opens only to the office that manages the examination and only once the examination has ended.
      */
     @GetMapping("/exams/{id}/items")
-    @PreAuthorize(MANAGERS)
+    @PreAuthorize(MANAGERS + " or " + STRONGER)
     @Transactional(readOnly = true)
     Map<String, Object> items(@PathVariable UUID id) {
-        Map<String, Object> e = managed(id);
+        // V373: the office that manages it, or (to correct a key on published results) the Registrar or the Super Administrator
+        Map<String, Object> e = readable(id);
+        if (!Set.of("registrar", "super").contains(acting())) manage((String) e.get("office"));
         String live = String.valueOf(e.get("live_state"));
         if (!Set.of("ENDED", "CLOSED", "COMPLETED", "CANCELLED").contains(live)) {
             throw new DomainRuleViolation("CBT_ANALYSIS_LIVE", "The question analysis opens once the examination has ended.",
@@ -609,7 +611,15 @@ class CbtExamController {
             default -> "c.surname, c.other_names";
         };
         long total = candidateFilters(jdbc.sql("SELECT count(*) FROM assessment.cbt_candidates(:id) c" + CANDIDATE_WHERE), id, e, fac, dept, prog, level, q, status).query(Long.class).single();
-        List<Map<String, Object>> rows = candidateFilters(jdbc.sql("SELECT c.* FROM assessment.cbt_candidates(:id) c" + CANDIDATE_WHERE + " ORDER BY " + order + " LIMIT :lim OFFSET :off"),
+        // V373: each candidate's sitting and seat, and any extra time the office gave them
+        List<Map<String, Object>> rows = candidateFilters(jdbc.sql("""
+                SELECT c.*, xt.minutes AS extra_minutes, xt.reason AS extra_reason, sit.id AS sitting_id, sit.label AS sitting, sit.venue AS sitting_venue,
+                       sit.starts_at AS sitting_starts_at, seat.seat_no
+                  FROM assessment.cbt_candidates(:id) c
+                  LEFT JOIN assessment.cbt_extra_time xt ON xt.exam_id = :id AND xt.candidate_id = c.student_id
+                  LEFT JOIN assessment.cbt_seat seat ON seat.exam_id = :id AND seat.candidate_id = c.student_id
+                  LEFT JOIN assessment.cbt_sitting sit ON sit.id = seat.sitting_id
+                """ + CANDIDATE_WHERE + " ORDER BY " + order + " LIMIT :lim OFFSET :off"),
                 id, e, fac, dept, prog, level, q, status).param("lim", sz).param("off", (long) (pg - 1) * sz).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("exam", Map.of("id", id, "title", e.get("title"), "course_code", e.get("course_code"), "live_state", e.get("live_state"), "violation_limit", e.get("violation_limit")));
@@ -798,6 +808,197 @@ class CbtExamController {
         if (!("super".equals(acting) || "registrar".equals(acting))) {
             throw new AccessDeniedException(what + " needs the Registrar or the Super Administrator.");
         }
+    }
+
+    /* ── V373: a wrong key corrected, with a record ── */
+
+    public record KeyIn(@NotNull List<Integer> key, @Size(max = 1000) String reason, Boolean fixBank) {
+    }
+
+    /** who may correct a key: the managing office until the results are published, then the Registrar or the Super Administrator */
+    private Map<String, Object> keyAuthority(UUID id) {
+        Map<String, Object> e = readable(id);
+        if ("PUBLISHED".equals(e.get("results_state"))) stronger("Correcting a key once the results are published");
+        else manage((String) e.get("office"));
+        return e;
+    }
+
+    /** what correcting the key would do to every candidate who sat the question — nothing written */
+    @GetMapping("/exams/{id}/questions/{question}/key-correction")
+    @PreAuthorize(MANAGERS + " or " + STRONGER)
+    @Transactional(readOnly = true)
+    Map<String, Object> keyPreview(@PathVariable UUID id, @PathVariable UUID question, @RequestParam List<Integer> key) {
+        keyAuthority(id);
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM assessment.cbt_key_correction_preview(:e, :q, :k::int[])")
+                .param("e", id).param("q", question).param("k", "{" + key.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("") + "}")
+                .query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("attempts", rows.size());
+        out.put("changed", rows.stream().filter(r -> !java.util.Objects.equals(new BigDecimal(String.valueOf(r.get("old_score"))).stripTrailingZeros(),
+                new BigDecimal(String.valueOf(r.get("new_score"))).stripTrailingZeros())).count());
+        out.put("passChanged", rows.stream().filter(r -> !java.util.Objects.equals(r.get("old_passed"), r.get("new_passed"))).count());
+        return out;
+    }
+
+    /** the key corrected: recorded, each changed score a new result version naming it, the bank's question corrected when asked */
+    @PostMapping("/exams/{id}/questions/{question}/key-correction")
+    @PreAuthorize(MANAGERS + " or " + STRONGER)
+    @Transactional
+    Map<String, Object> correctKey(@PathVariable UUID id, @PathVariable UUID question, @Valid @RequestBody KeyIn in) {
+        Map<String, Object> e = keyAuthority(id);
+        Map<String, Object> kc = jdbc.sql("""
+                SELECT id, attempts_seen, scores_changed, bank_fixed, array_to_string(old_key, ',') AS old_key, array_to_string(new_key, ',') AS new_key
+                  FROM assessment.cbt_correct_key(:e, :q, :k::int[], :r, :b)
+                """).param("e", id).param("q", question).param("k", "{" + in.key().stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("") + "}")
+                .param("r", in.reason() == null ? "" : in.reason()).param("b", in.fixBank() == null || in.fixBank()).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(kc);
+        // scores already on the course's score sheet are the ones before the correction: the office sends them again
+        out.put("sentToSheet", jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM assessment.score_sheet sh JOIN assessment.score s ON s.sheet_id = sh.id
+                                WHERE sh.offering_id = :o AND s.reason LIKE 'CBT ' || :ref || '%')
+                """).param("o", e.get("offering_id"), Types.OTHER).param("ref", String.valueOf(e.get("reference"))).query(Boolean.class).single());
+        return out;
+    }
+
+    /** the keys corrected on an examination, newest first */
+    @GetMapping("/exams/{id}/key-corrections")
+    @PreAuthorize(MANAGERS + " or " + STRONGER)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> keyCorrections(@PathVariable UUID id) {
+        readable(id);
+        return jdbc.sql("""
+                SELECT kc.id, kc.question_id, left(qv.stem, 200) AS stem, array_to_string(kc.old_key, ',') AS old_key, array_to_string(kc.new_key, ',') AS new_key, kc.reason,
+                       helpdesk.person_name(kc.corrected_by) AS corrected_by, kc.corrected_office, kc.corrected_at, kc.attempts_seen, kc.scores_changed, kc.bank_fixed
+                  FROM assessment.cbt_key_correction kc
+                  JOIN assessment.question_version qv ON qv.question_id = kc.question_id AND qv.version = kc.version
+                 WHERE kc.exam_id = :e ORDER BY kc.corrected_at DESC
+                """).param("e", id).query().listOfRows();
+    }
+
+    /* ── V373: sittings and seats ── */
+
+    public record SittingIn(@NotBlank @Size(max = 100) String label, @NotBlank @Size(max = 200) String venue, @NotNull OffsetDateTime startsAt,
+                            @NotNull OffsetDateTime endsAt, @NotNull Integer capacity) {
+    }
+
+    public record SeatAllIn(@Size(max = 12) String order) {
+    }
+
+    public record SeatIn(@NotNull UUID sittingId) {
+    }
+
+    /** the examination's sittings with how many are seated and have begun, and how many candidates have no seat yet */
+    @GetMapping("/exams/{id}/sittings")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> sittings(@PathVariable UUID id) {
+        readable(id);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sittings", jdbc.sql("""
+                SELECT s.id, s.label, s.venue, s.starts_at, s.ends_at, s.capacity,
+                       (SELECT count(*) FROM assessment.cbt_seat x WHERE x.sitting_id = s.id) AS seated,
+                       (SELECT count(*) FROM assessment.cbt_seat x JOIN assessment.cbt_attempt a ON a.exam_id = x.exam_id AND a.candidate_id = x.candidate_id WHERE x.sitting_id = s.id) AS begun
+                  FROM assessment.cbt_sitting s WHERE s.exam_id = :e ORDER BY s.starts_at, s.label
+                """).param("e", id).query().listOfRows());
+        out.put("candidates", jdbc.sql("SELECT count(*) FROM assessment.cbt_candidates(:e)").param("e", id).query(Integer.class).single());
+        out.put("unseated", jdbc.sql("""
+                SELECT count(*) FROM assessment.cbt_candidates(:e) c WHERE NOT EXISTS (SELECT 1 FROM assessment.cbt_seat x WHERE x.exam_id = :e AND x.candidate_id = c.student_id)
+                """).param("e", id).query(Integer.class).single());
+        return out;
+    }
+
+    @PostMapping("/exams/{id}/sittings")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> addSitting(@PathVariable UUID id, @Valid @RequestBody SittingIn in) {
+        managed(id);
+        jdbc.sql("SELECT id FROM assessment.cbt_add_sitting(:e, :l, :v, :s, :x, :c)").param("e", id).param("l", in.label()).param("v", in.venue())
+                .param("s", in.startsAt()).param("x", in.endsAt()).param("c", in.capacity()).query(UUID.class).single();
+        return sittings(id);
+    }
+
+    @PutMapping("/exams/{id}/sittings/{sitting}")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> editSitting(@PathVariable UUID id, @PathVariable UUID sitting, @Valid @RequestBody SittingIn in) {
+        managed(id);
+        sittingOf(id, sitting);
+        jdbc.sql("SELECT id FROM assessment.cbt_update_sitting(:s, :l, :v, :a, :x, :c)").param("s", sitting).param("l", in.label()).param("v", in.venue())
+                .param("a", in.startsAt()).param("x", in.endsAt()).param("c", in.capacity()).query(UUID.class).single();
+        return sittings(id);
+    }
+
+    @PostMapping("/exams/{id}/sittings/{sitting}/remove")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> removeSitting(@PathVariable UUID id, @PathVariable UUID sitting) {
+        managed(id);
+        sittingOf(id, sitting);
+        jdbc.sql("SELECT assessment.cbt_remove_sitting(:s)").param("s", sitting).query(Integer.class).single();
+        return sittings(id);
+    }
+
+    /** every candidate without a seat, seated in the sittings by time, in the order asked (PROGRAMME, NAME or NUMBER) */
+    @PostMapping("/exams/{id}/sittings/seat-all")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> seatAll(@PathVariable UUID id, @Valid @RequestBody SeatAllIn in) {
+        managed(id);
+        Map<String, Object> r = jdbc.sql("SELECT seated, unseated FROM assessment.cbt_seat_all(:e, :o)").param("e", id).param("o", in.order(), Types.VARCHAR).query().singleRow();
+        Map<String, Object> out = sittings(id);
+        out.put("result", r);
+        return out;
+    }
+
+    /** one candidate seated, or moved to another sitting, while they have not begun */
+    @PutMapping("/exams/{id}/seats/{candidate}")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> seat(@PathVariable UUID id, @PathVariable UUID candidate, @Valid @RequestBody SeatIn in) {
+        managed(id);
+        return jdbc.sql("SELECT sitting_id, seat_no FROM assessment.cbt_seat_candidate(:e, :c, :s)").param("e", id).param("c", candidate).param("s", in.sittingId()).query().singleRow();
+    }
+
+    /** a sitting's attendance list: seat by seat, the candidate's name, number, level and programme, extra time, and whether they have begun */
+    @GetMapping("/exams/{id}/sittings/{sitting}/attendance")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> attendance(@PathVariable UUID id, @PathVariable UUID sitting) {
+        Map<String, Object> e = readable(id);
+        Map<String, Object> s = sittingOf(id, sitting);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("exam", Map.of("id", id, "reference", e.get("reference"), "title", e.get("title"), "course_code", e.get("course_code"), "duration_minutes", e.get("duration_minutes")));
+        out.put("sitting", s);
+        out.put("rows", jdbc.sql("""
+                SELECT x.seat_no, x.candidate_id, c.number, c.surname, c.other_names, c.level, c.programme, xt.minutes AS extra_minutes, c.attempt_status
+                  FROM assessment.cbt_seat x
+                  JOIN assessment.cbt_candidates(:e) c ON c.student_id = x.candidate_id
+                  LEFT JOIN assessment.cbt_extra_time xt ON xt.exam_id = :e AND xt.candidate_id = x.candidate_id
+                 WHERE x.sitting_id = :s ORDER BY x.seat_no
+                """).param("e", id).param("s", sitting).query().listOfRows());
+        return out;
+    }
+
+    private Map<String, Object> sittingOf(UUID exam, UUID sitting) {
+        return jdbc.sql("SELECT id, label, venue, starts_at, ends_at, capacity FROM assessment.cbt_sitting WHERE id = :s AND exam_id = :e")
+                .param("s", sitting).param("e", exam).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("sitting", sitting.toString()));
+    }
+
+    /* ── V373: extra time for a named candidate ── */
+
+    public record ExtraIn(@NotNull Integer minutes, @NotBlank @Size(max = 500) String reason) {
+    }
+
+    @PutMapping("/exams/{id}/candidates/{student}/extra-time")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> extraTime(@PathVariable UUID id, @PathVariable UUID student, @Valid @RequestBody ExtraIn in) {
+        managed(id);
+        int minutes = jdbc.sql("SELECT assessment.cbt_grant_extra_time(:e, :c, :m, :r)").param("e", id).param("c", student).param("m", in.minutes()).param("r", in.reason())
+                .query(Integer.class).single();
+        return Map.of("candidate", student, "minutes", minutes);
     }
 
     /** a score corrected: a new version with its reason; once published, only with stronger authority */

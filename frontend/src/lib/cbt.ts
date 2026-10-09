@@ -68,6 +68,9 @@ export interface Candidate {
   attempt_status: AttemptStatus; connection: "ONLINE" | "DISCONNECTED" | null; started_at: string | null; ends_at: string | null; submitted_at: string | null;
   time_left: number | null; last_activity_at: string | null; violations: number; answered: number; score: number | null; max_marks: number | null; percentage: number | null;
   grade: string | null; passed: boolean | null; outcome: string | null; updated_at: string | null;
+  /** V373: the candidate's sitting and seat, and extra time the office gave them */
+  extra_minutes?: number | null; extra_reason?: string | null; sitting_id?: string | null; sitting?: string | null; sitting_venue?: string | null;
+  sitting_starts_at?: string | null; seat_no?: number | null;
 }
 export interface CandidatePage {
   exam: { id: string; title: string; course_code: string; live_state: LiveState; violation_limit: number }; total: number; page: number; size: number; rows: Candidate[];
@@ -108,14 +111,16 @@ export interface CbtSummary {
 }
 
 /* the candidate's side */
-export interface MyExam {
+/** V373: where and when a candidate sits an examination, and any extra time they were given */
+export interface Placement { sitting?: string | null; sitting_venue?: string | null; sitting_starts_at?: string | null; sitting_ends_at?: string | null; seat_no?: number | null; extra_minutes?: number | null }
+export type MyExam = {
   exam_id: string; reference: string; office: CbtOffice; course_code: string; course_title: string; title: string; session: string; semester: number; instructions: string | null;
   live_state: LiveState; starts_at: string; ends_at: string; duration_minutes: number; questions: number; security_mode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB";
   attempt_limit: number; violation_limit: number; violation_action: string; eligibility: string | null; attempts: number; attempt_id: string | null; attempt_status: AttemptStatus | null;
   attempt_ends_at: string | null; submitted_at: string | null; result_published: boolean; score: number | null; max_marks: number | null; percentage: number | null;
   grade: string | null; passed: boolean | null; pass_mark: number; outcome: string | null; partial_credit?: boolean;
   exam_type?: ExamType; negative_marks?: number; allow_back?: boolean; allow_review?: boolean; fullscreen_required?: boolean; proctoring?: "NONE" | "CAMERA"; score_on_submit?: boolean;
-}
+} & Placement;
 export interface MyExams { session: string; rows: MyExam[]; now: string }
 export interface RoomQuestion { n: number; id: string; kind: "MCQ" | "TRUE_FALSE" | "MULTI"; stem: string; marks: number; options: { i: number; text: string }[] }
 export interface Room {
@@ -129,6 +134,8 @@ export interface Room {
   flagged?: string[]; seqs?: Record<string, number>;
   /** the candidate the screen names: name, the number and what it is (Matric No., Admission No., JUPEB No.), a student's level */
   candidate?: { surname: string; other_names: string; number: string; number_label?: string; level?: number | null };
+  /** V373: the candidate's sitting and seat, and extra time */
+  placement?: Placement;
 }
 
 export const EXAM_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {

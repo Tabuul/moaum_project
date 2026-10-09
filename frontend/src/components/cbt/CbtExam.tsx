@@ -16,8 +16,9 @@ import { CbtCandidates } from "./CbtCandidates";
 import { CbtResults } from "./CbtResults";
 import { CbtPaperChecks } from "./CbtPaperChecks";
 import { CbtItems, useItemAnalysis } from "./CbtItems";
+import { CbtSittings } from "./CbtSittings";
 
-type Tab = "setup" | "paper" | "candidates" | "results" | "items";
+type Tab = "setup" | "paper" | "candidates" | "sittings" | "results" | "items";
 /** V372: the question analysis opens once nobody is still writing */
 const ENDED = ["ENDED", "CLOSED", "COMPLETED", "CANCELLED"];
 interface BankQuestion { id: string; topic: string | null; stem: string; kind: string; difficulty: string; marks: number; active: boolean; on_papers: number; options: string[] }
@@ -125,8 +126,8 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       ]} />
       <Tabs label="Examination" value={tab} onChange={setTab} items={[
         { id: "setup", label: "Setup & lifecycle" }, { id: "paper", label: "Paper", count: exam.paper.length || undefined },
-        { id: "candidates", label: "Candidates", count: num(counts.candidates) }, { id: "results", label: "Results & analytics", count: num(counts.scored) },
-        ...(canManage ? [{ id: "items" as Tab, label: "Question analysis" }] : []),
+        { id: "candidates", label: "Candidates", count: num(counts.candidates) }, { id: "sittings", label: "Sittings" }, { id: "results", label: "Results & analytics", count: num(counts.scored) },
+        ...(canManage || stronger ? [{ id: "items" as Tab, label: "Question analysis" }] : []),
       ]} />
 
       {tab === "setup" ? (
@@ -200,6 +201,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       ) : null}
 
       {tab === "candidates" ? <CbtCandidates exam={exam} base={base} canManage={canManage} /> : null}
+      {tab === "sittings" ? <CbtSittings exam={exam} canManage={canManage} /> : null}
       {tab === "results" && analysis.data && analysis.data.flagged > 0 ? (
         <Note kind="bad" title={`${analysis.data.flagged} question${analysis.data.flagged === 1 ? "" : "s"} may carry a wrong key`}
           action={<Btn kind="secondary" onClick={() => setTab("items")}>Open the question analysis</Btn>}>
@@ -207,7 +209,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
         </Note>
       ) : null}
       {tab === "results" ? <CbtResults exam={exam} base={base} canManage={canManage} stronger={stronger} /> : null}
-      {tab === "items" ? <CbtItems examId={exam.id} ended={ended} /> : null}
+      {tab === "items" ? <CbtItems examId={exam.id} ended={ended} canCorrect={canManage || stronger} /> : null}
 
       {ask ? (
         <Modal title={ask.title} sub={exam.reference} onClose={() => setAsk(null)}

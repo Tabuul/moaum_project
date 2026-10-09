@@ -290,3 +290,26 @@ delta; all read through the indexes listed in section F.
   Admission No. before matriculation, JUPEB No. or Application No.) and a student's level — in the header on a computer, in a strip
   beneath it on a phone, on the entry screen (with "check that these are yours before you enter") and on the review screen. The room's
   `candidate` carries `number_label` and `level`.
+
+## M. Wrong keys corrected, sittings, extra time (V373)
+
+- **Correcting a key** (Question analysis → *Correct the key*; `GET/POST /api/v1/cbt/exams/{id}/questions/{q}/key-correction`,
+  `GET /api/v1/cbt/exams/{id}/key-corrections`): once the examination has ended, the office picks the right option(s) and a reason,
+  reads the effect on every candidate who sat the question (score now and after, grade, pass or fail), then applies it. The correction is
+  kept in `assessment.cbt_key_correction` (before and after, reason, who, when, how many scores changed); every reading of the
+  attempts' keys takes the latest correction (`assessment.cbt_key`), and the question's frozen version is never rewritten. Each changed
+  score becomes a new version of the result (`assessment.cbt_result`) naming the correction; the score moves by the difference the key
+  makes, so an amendment made by hand stays; a void result is untouched. The bank's question is corrected too when asked, unless the
+  bank has changed it since or a running examination draws it. Once the results are published, only the Registrar or the Super
+  Administrator corrects a key. If the results were already sent to the score sheet, the office sends them again (while it is at entry).
+- **Sittings** (Sittings tab; `/api/v1/cbt/exams/{id}/sittings…`, `/seats/{candidate}`): each sitting has a name, a venue, a time inside
+  the examination's window (at least the paper's length) and seats. *Seat the … without a seat* seats every candidate by programme, name or
+  matric number, sitting after sitting by time; a candidate is moved from the attendance list while they have not begun. Each sitting's
+  attendance list (seat, matric number, name, level, programme, extra time, a signature column) prints or downloads. With sittings, a
+  candidate starts only in their own sitting (`CBT_NOT_YOUR_SITTING`, `CBT_NO_SITTING`) and the attempt ends with the sitting at the
+  latest. The student's CBT page and the entry screen show their sitting, venue, time and seat. A sitting nobody has begun in can be
+  removed.
+- **Extra time** (Candidates → *Extra time*; `PUT /api/v1/cbt/exams/{id}/candidates/{student}/extra-time`): minutes beyond the paper's
+  time for a named candidate, with a reason, on the record (`assessment.cbt_extra_time`; 0 withdraws it). Applied at the start, and to an
+  attempt already running (its clock follows within the half-minute heartbeat; an `EXTRA_TIME` event is logged). Shown to the candidate.
+- Tests: check.sql 218; `CbtExamIT` (sittings, extra time and a key correction through the API).

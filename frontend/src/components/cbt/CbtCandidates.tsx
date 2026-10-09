@@ -139,6 +139,20 @@ export function CbtCandidates({ exam, canManage }: { exam: CbtExam; base: string
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // V373: extra time for one candidate — minutes and the reason, on the record
+  const [extraFor, setExtraFor] = useState<Candidate | null>(null);
+  const [extraMin, setExtraMin] = useState("");
+  const [extraWhy, setExtraWhy] = useState("");
+  async function saveExtra() {
+    if (!extraFor) return;
+    const minutes = Number(extraMin);
+    setBusy(true);
+    try {
+      const j = await cbtSend(`/exams/${exam.id}/candidates/${extraFor.student_id}/extra-time`, "PUT", { minutes, reason: extraWhy.trim() },
+        minutes ? `${minutes} minutes' extra time for ${extraFor.surname}, ${extraFor.other_names}` : `Extra time withdrawn for ${extraFor.surname}, ${extraFor.other_names}`);
+      if (j) { setExtraFor(null); void load(); }
+    } finally { setBusy(false); }
+  }
   const load = useCallback(async () => {
     const r = await fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/candidates?${candidateQuery(f, page, 50)}`);
     const j = await r.json().catch(() => null);
@@ -179,18 +193,32 @@ export function CbtCandidates({ exam, canManage }: { exam: CbtExam; base: string
           const st = liveStatus(c.attempt_status, c.last_activity_at, serverNow);
           return [
             <span key="n" className="tnum sub2">{(page - 1) * data.size + i + 1}</span>,
-            <span key="s"><b>{c.surname}, {c.other_names}</b><div className="sub2 tnum">{c.number}</div></span>,
+            <span key="s"><b>{c.surname}, {c.other_names}</b><div className="sub2 tnum">{c.number}</div>
+              {c.sitting ? <div className="sub2">{c.sitting}{c.seat_no ? ` · seat ${c.seat_no}` : ""}</div> : null}
+              {c.extra_minutes ? <Pil kind="info" title={c.extra_reason ?? undefined}>+{c.extra_minutes} min</Pil> : null}</span>,
             <span key="p" className="sub2">{c.programme}<div>{c.department}</div></span>, <span key="l" className="tnum">{c.level}</span>,
             <Pil key="e" kind={c.entitled ? "ok" : "bad"}>{c.entitled ? "Paid" : "Unpaid"}</Pil>, <Pil key="g" kind={c.eligible ? "ok" : "grey"}>{c.eligible ? "Yes" : "No"}</Pil>,
             <Pil key="st" kind={(ATTEMPT_WORD[st] ?? ["", "grey"])[1]}>{(ATTEMPT_WORD[st] ?? [st])[0]}</Pil>,
             <span key="t" className="tnum">{c.attempt_status === "IN_PROGRESS" && c.time_left != null ? clock(c.time_left) : "—"}</span>,
             <span key="a" className="tnum">{c.attempt_id ? c.answered : "—"}</span>, <span key="v" className={`tnum${c.violations >= exam.violation_limit && c.violations ? " ink-red b600" : c.violations ? " ink-red" : ""}`}>{c.violations}</span>,
             <span key="sc" className="tnum">{c.score == null ? "—" : `${c.score}/${c.max_marks} · ${pct1(c.percentage)}`}</span>, <span key="gr" className="tnum">{c.grade ?? "—"}{c.outcome === "VOID" ? " void" : ""}</span>,
-            <Btn key="o" kind="ghost" size="sm" onClick={() => setOpen(c.student_id)}>Open</Btn>,
+            <span key="o" className="row row--inline row--tight">
+              <Btn kind="ghost" size="sm" onClick={() => setOpen(c.student_id)}>Open</Btn>
+              {canManage ? <Btn kind="ghost" size="sm" onClick={() => { setExtraFor(c); setExtraMin(c.extra_minutes ? String(c.extra_minutes) : ""); setExtraWhy(c.extra_reason ?? ""); }}>Extra time</Btn> : null}
+            </span>,
           ];
         })} texts={data.rows.map((c) => `${c.surname} ${c.other_names} ${c.number} ${c.attempt_status}`)} /> : <PBody><div className="sub2">Loading…</div></PBody>}
       </Panel>
       {open ? <CandidateModal examId={exam.id} student={open} canManage={canManage} onClose={() => setOpen(null)} onChanged={() => { void load(); router.refresh(); }} /> : null}
+      {extraFor ? (
+        <Modal title={`Extra time · ${extraFor.surname}, ${extraFor.other_names}`} sub={`${extraFor.number} · ${extraFor.programme} · ${extraFor.level} Level`} onClose={() => setExtraFor(null)}
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setExtraFor(null)}>Back</Btn>
+            <Btn kind="primary" disabled={busy || extraMin === "" || !extraWhy.trim() || Number(extraMin) < 0 || Number(extraMin) > 600} onClick={() => void saveExtra()}>{Number(extraMin) === 0 && extraFor.extra_minutes ? "Withdraw the extra time" : "Give the extra time"}</Btn></span>}>
+          <p className="sub2">Minutes beyond the paper&rsquo;s {exam.duration_minutes}, for this candidate alone — a disability, a sitting delayed by power. If the candidate is already writing, their clock moves at the next heartbeat. Enter 0 to withdraw it. Every change is on the record.</p>
+          <Field id="xt-min" label="Extra minutes" required><input id="xt-min" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 120 }} value={extraMin} onChange={(e) => setExtraMin(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
+          <Field id="xt-why" label="Reason" required><textarea id="xt-why" className="ctl" rows={2} value={extraWhy} onChange={(e) => setExtraWhy(e.target.value)} /></Field>
+        </Modal>
+      ) : null}
     </>
   );
 }

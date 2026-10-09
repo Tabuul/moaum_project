@@ -337,7 +337,9 @@ class CbtExamIT {
             assertThat(q.get("discrimination")).isNull(); // one candidate: no groups to compare
         });
         assertThat(it.get(eps, "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(403);
-        assertThat(it.get(registrar, "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(403);
+        // V373: the Registrar reads it (to correct a key once results are published); an office that only reads examinations does not
+        assertThat(it.get(registrar, "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(ItSupport.token("bursar"), "/api/v1/cbt/exams/" + exam + "/items").getStatusCode().value()).isEqualTo(403);
         ResponseEntity<Map> completed = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/complete", Map.of());
         assertThat(completed.getBody().get("state")).isEqualTo("COMPLETED");
         assertThat(completed.getBody().get("results_state")).isEqualTo("AUTO_SCORED");
@@ -422,6 +424,58 @@ class CbtExamIT {
         // the same answer on an all-or-nothing paper earns nothing: the rule is the examination's
         assertThat(jdbc.sql("SELECT assessment.cbt_marks_for('MULTI', ARRAY[1,3], ARRAY[1], 2, false)").query(BigDecimal.class).single()).isEqualByComparingTo("0");
         assertThat(jdbc.sql("SELECT assessment.cbt_marks_for('MULTI', ARRAY[1,3], ARRAY[0,1,2,3], 2, true)").query(BigDecimal.class).single()).as("select everything earns nothing").isEqualByComparingTo("0");
+    }
+
+    @Test
+    void theOfficeSeatsCandidatesGivesExtraTimeAndCorrectsAWrongKey() {
+        // V373: a sitting not yet begun keeps the candidate out; their own sitting lets them in; extra time lengthens the attempt
+        List<UUID> paper = paper();
+        UUID exam = publishedExam("Sittings CBT", 3, "WARN", "CONTINUE", paper);
+        register(s, student);
+        OffsetDateTime now = OffsetDateTime.now();
+        assertThat(it.call(eps, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings", mapOf("label", "Sitting A", "venue", "CBT Lab 1", "startsAt", now.plusMinutes(30), "endsAt", now.plusMinutes(100), "capacity", 50)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> added = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings", mapOf("label", "Sitting A", "venue", "CBT Lab 1", "startsAt", now.plusMinutes(30), "endsAt", now.plusMinutes(100), "capacity", 50));
+        assertThat(added.getStatusCode().value()).as(String.valueOf(added.getBody())).isEqualTo(200);
+        String sitting = String.valueOf(l(added.getBody().get("sittings")).get(0).get("id"));
+        ResponseEntity<Map> seated = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/seat-all", Map.of("order", "NUMBER"));
+        assertThat(((Number) m(seated.getBody().get("result")).get("seated")).intValue()).isPositive();
+        assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of()).getBody().get("code")).isEqualTo("CBT_NOT_YOUR_SITTING");
+        Map<String, Object> mine = it.get(student, "/api/v1/me/cbt/exams/" + exam).getBody();
+        assertThat(mine.get("sitting")).isEqualTo("Sitting A");
+        assertThat(mine.get("seat_no")).isNotNull();
+        ResponseEntity<Map> moved = it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting, mapOf("label", "Sitting A", "venue", "CBT Lab 1", "startsAt", now.minusSeconds(30), "endsAt", now.plusMinutes(90), "capacity", 50));
+        assertThat(moved.getStatusCode().value()).as(String.valueOf(moved.getBody())).isEqualTo(200);
+        assertThat(it.call(eps, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/candidates/" + s + "/extra-time", Map.of("minutes", 10, "reason", "not mine")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> extra = it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/candidates/" + s + "/extra-time", Map.of("minutes", 10, "reason", "a candidate with a visual impairment"));
+        assertThat(extra.getStatusCode().value()).as(String.valueOf(extra.getBody())).isEqualTo(200);
+        ResponseEntity<Map> started = it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of());
+        assertThat(started.getStatusCode().value()).as(String.valueOf(started.getBody())).isEqualTo(200);
+        String attempt = String.valueOf(started.getBody().get("attemptId"));
+        String token = String.valueOf(started.getBody().get("token"));
+        long minutes = jdbc.sql("SELECT round(extract(epoch FROM ends_at - now()) / 60)::bigint FROM assessment.cbt_attempt WHERE id = :a")
+                .param("a", UUID.fromString(attempt)).query(Long.class).single();
+        assertThat(minutes).as("30 minutes and 10 extra").isBetween(39L, 40L);
+        Map<String, Object> room = it.callWith(student, HttpMethod.GET, "/api/v1/me/cbt/attempts/" + attempt, null, tok(token)).getBody();
+        assertThat(m(room.get("placement")).get("extra_minutes")).isEqualTo(10);
+        Map<String, Object> list = it.get(gst, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/attendance").getBody();
+        assertThat(l(list.get("rows"))).anySatisfy(r -> { assertThat(r.get("candidate_id")).isEqualTo(s.toString()); assertThat(r.get("extra_minutes")).isEqualTo(10); });
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/" + sitting + "/remove", Map.of()).getBody().get("code")).isEqualTo("CBT_SITTING_SAT");
+
+        // V373: the first question is answered B under a key of C; once the examination has ended the office corrects the key to B
+        UUID first = paper.get(0);
+        it.callWith(student, HttpMethod.PUT, "/api/v1/me/cbt/attempts/" + attempt + "/answers", Map.of("answers", List.of(Map.of("q", first, "a", List.of(1)))), tok(token));
+        it.callWith(student, HttpMethod.POST, "/api/v1/me/cbt/attempts/" + attempt + "/submit", Map.of(), tok(token));
+        assertThat(it.get(gst, "/api/v1/cbt/exams/" + exam + "/questions/" + first + "/key-correction?key=1").getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/close", Map.of()).getBody().get("state")).isEqualTo("CLOSED");
+        Map<String, Object> preview = it.get(gst, "/api/v1/cbt/exams/" + exam + "/questions/" + first + "/key-correction?key=1").getBody();
+        assertThat(((Number) preview.get("changed")).intValue()).isEqualTo(1);
+        assertThat(it.call(eps, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/questions/" + first + "/key-correction", mapOf("key", List.of(1), "reason", "not mine")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> corrected = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/questions/" + first + "/key-correction",
+                mapOf("key", List.of(1), "reason", "B is the right answer", "fixBank", false));
+        assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
+        assertThat(((Number) corrected.getBody().get("scores_changed")).intValue()).isEqualTo(1);
+        assertThat(l(it.getList(gst, "/api/v1/cbt/exams/" + exam + "/key-corrections").getBody())).hasSize(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM assessment.cbt_result WHERE attempt_id = :a").param("a", UUID.fromString(attempt)).query(Long.class).single()).isEqualTo(2L);
     }
 
     @Test

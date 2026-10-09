@@ -564,6 +564,8 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         {room.candidate && !preview ? (
           <div className={css.idCard}>
             <CandidateId c={room.candidate} labelled className={css.idGrid} />
+            {room.placement?.sitting ? <div className="sub2"><b>{room.placement.sitting}</b> · {room.placement.sitting_venue}{room.placement.seat_no ? <> · seat <b className="tnum">{room.placement.seat_no}</b></> : null}</div> : null}
+            {room.placement?.extra_minutes ? <div className="sub2">Your time includes <b>{room.placement.extra_minutes} minutes&rsquo; extra time</b> granted by the examination office.</div> : null}
             <div className="sub2">Check that these are yours before you enter. If they are not, tell the invigilator and do not start.</div>
           </div>
         ) : null}
