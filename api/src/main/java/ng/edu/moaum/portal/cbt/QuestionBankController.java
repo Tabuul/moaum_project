@@ -15,9 +15,11 @@ import jakarta.validation.constraints.Size;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.shared.OfficeScope;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -42,6 +44,8 @@ import org.springframework.web.bind.annotation.RestController;
  * and only approved questions go on a paper. The rule is the database's (assessment.question_moderate); the screen only asks.
  * V375: the moderator's queue (the banks with questions waiting, within the acting office's scope, and the setter's returned
  * questions), and moderation by sample — a random sample of a bank's waiting questions, every one approved, approves the rest.
+ * V376: a question's diagram and its options' images (PNG or JPEG, at most 1 MB each) — part of its content, so each change is a new
+ * version waiting for moderation; formulas are written in the text between dollar signs and drawn by the screens.
  */
 @RestController
 class QuestionBankController {
@@ -58,11 +62,13 @@ class QuestionBankController {
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
+    private final FileObjects files;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    QuestionBankController(JdbcClient jdbc, OfficeScope scope) {
+    QuestionBankController(JdbcClient jdbc, OfficeScope scope, FileObjects files) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.files = files;
     }
 
     public record Question(@NotBlank @Size(max = 30) String course, @Size(max = 120) String topic, @NotBlank @Size(max = 4000) String stem,
@@ -72,7 +78,7 @@ class QuestionBankController {
 
     public record QuestionEdit(@Size(max = 120) String topic, @NotBlank @Size(max = 4000) String stem, @NotNull List<@Size(max = 500) String> options,
                                Integer answer, List<Integer> answers, @Size(max = 12) String kind, @Size(max = 10) String difficulty, Integer marks,
-                               @Size(max = 2000) String explanation) {
+                               @Size(max = 2000) String explanation, @Size(max = 8) List<UUID> optionImages) {
     }
 
     public record Active(boolean active) {
@@ -187,7 +193,7 @@ class QuestionBankController {
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS authored_by,
                        (SELECT count(*) FROM assessment.cbt_exam_question eq WHERE eq.question_id = q.id) AS on_papers,
                        (SELECT count(*) FROM assessment.cbt_attempt a WHERE q.id = ANY (a.question_ids)) AS sat,
-                       q.moderation, q.moderated_version, q.moderated_at, q.moderation_note,
+                       q.moderation, q.moderated_version, q.moderated_at, q.moderation_note, q.image_id, to_jsonb(q.option_images)::text AS option_images,
                        CASE WHEN mp.id IS NULL THEN NULL ELSE mp.surname || ', ' || mp.given_names END AS moderated_by,
                        CASE WHEN sp.id IS NULL THEN NULL ELSE sp.surname || ', ' || sp.given_names END AS set_by,
                        assessment.question_setter(q.id, q.version) IS NOT DISTINCT FROM nullif(current_setting('moaum.actor_id', true), '')::uuid AS mine
@@ -199,6 +205,8 @@ class QuestionBankController {
             // JSON arrays for the screen, not database objects
             r.put("options", mapper.readValue(String.valueOf(r.get("options")), new tools.jackson.core.type.TypeReference<List<String>>() { }));
             r.put("answers", r.get("answers") == null ? List.of() : mapper.readValue(String.valueOf(r.get("answers")), new tools.jackson.core.type.TypeReference<List<Integer>>() { }));
+            Object oi = r.get("option_images");
+            r.put("option_images", oi == null || "null".equals(String.valueOf(oi)) ? null : mapper.readValue(String.valueOf(oi), new tools.jackson.core.type.TypeReference<List<String>>() { }));
         }
         List<Map<String, Object>> blueprint = jdbc.sql("""
                 SELECT coalesce(topic, 'Untitled topic') AS topic,
@@ -513,14 +521,119 @@ class QuestionBankController {
         }
         jdbc.sql("""
                 UPDATE assessment.question SET topic = :t, stem = :s, options = :o::jsonb, answer = :a, answers = :as, kind = :k,
-                       difficulty = coalesce(:d, difficulty), marks = coalesce(:m, marks), explanation = :x
+                       difficulty = coalesce(:d, difficulty), marks = coalesce(:m, marks), explanation = :x, option_images = :oi::uuid[]
                  WHERE id = :id
                 """)
                 .param("t", blank(body.topic()), Types.VARCHAR).param("s", body.stem().trim()).param("o", mapper.writeValueAsString(c.options()))
                 .param("a", c.answer()).param("as", c.answers().toArray(new Integer[0])).param("k", c.kind())
                 .param("d", body.difficulty() == null || body.difficulty().isBlank() ? null : body.difficulty().toUpperCase(), Types.VARCHAR)
-                .param("m", body.marks(), Types.INTEGER).param("x", blank(body.explanation()), Types.VARCHAR).param("id", id).update();
+                .param("m", body.marks(), Types.INTEGER).param("x", blank(body.explanation()), Types.VARCHAR)
+                .param("oi", optionImages(id, c.options().size(), body.optionImages()), Types.ARRAY).param("id", id).update();
         return Map.of("id", id, "kind", c.kind());
+    }
+
+    /**
+     * V376: the options' images after an edit, one an option: as the screen sends them (each an image this question has carried), or —
+     * when it sends none — kept while the number of options is unchanged, else dropped; NULL when no option has one.
+     */
+    private UUID[] optionImages(UUID question, int options, List<UUID> sent) {
+        List<UUID> known = jdbc.sql("""
+                SELECT DISTINCT u FROM (
+                    SELECT unnest(coalesce(q.option_images, '{}')) AS u FROM assessment.question q WHERE q.id = :q
+                    UNION ALL SELECT unnest(coalesce(v.option_images, '{}')) FROM assessment.question_version v WHERE v.question_id = :q) x WHERE u IS NOT NULL
+                """).param("q", question).query(UUID.class).list();
+        List<UUID> now;
+        if (sent != null) {
+            if (sent.size() != options) {
+                throw new DomainRuleViolation("CBT_OPTION_IMAGES", "The options' images do not match the options one for one.", new DomainRuleViolation.Remedy("Reload the question and edit it again.", "You"));
+            }
+            for (UUID u : sent) {
+                if (u != null && !known.contains(u)) throw new DomainRuleViolation("CBT_OPTION_IMAGES", "An option's image is not one of this question's.", new DomainRuleViolation.Remedy("Upload the image on the option itself.", "You"));
+            }
+            now = sent;
+        } else {
+            String cur = jdbc.sql("SELECT to_jsonb(option_images)::text FROM assessment.question WHERE id = :q").param("q", question).query(String.class).optional().orElse(null);
+            List<UUID> current = cur == null || "null".equals(cur) ? null : mapper.readValue(cur, new tools.jackson.core.type.TypeReference<List<UUID>>() { });
+            now = current != null && current.size() == options ? current : null;
+        }
+        return now == null || now.stream().allMatch(java.util.Objects::isNull) ? null : now.toArray(new UUID[0]);
+    }
+
+    /* ── V376: a question's diagram and its options' images ── */
+
+    public record ImageIn(@Size(max = 200) String filename, @NotBlank @Size(max = 20) String contentType, @NotBlank @Size(max = 1_500_000) String data, Integer option) {
+    }
+
+    public record ImageOff(Integer option) {
+    }
+
+    /** an image is put on a question as an edit is: never while an open examination draws it, never on an archived question */
+    private Map<String, Object> editable(UUID id) {
+        Map<String, Object> q = jdbc.sql("""
+                SELECT q.archived_at, jsonb_array_length(q.options) AS options, to_jsonb(q.option_images)::text AS option_images, assessment.question_in_live_exam(q.id) AS live
+                  FROM assessment.question q WHERE q.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("question", id.toString()));
+        bankOf(id);
+        if (q.get("live") != null) {
+            throw new DomainRuleViolation("CBT_QUESTION_IN_LIVE_EXAM", "This question is on the paper of " + q.get("live") + ", which is published to candidates; its paper is fixed until it closes.",
+                    new DomainRuleViolation.Remedy("Change its image once the examination closes.", "You"));
+        }
+        if (q.get("archived_at") != null) {
+            throw new DomainRuleViolation("CBT_QUESTION_ARCHIVED", "An archived question is kept as it was.", new DomainRuleViolation.Remedy("Restore it from the archive first.", "You"));
+        }
+        return q;
+    }
+
+    private UUID[] withOption(Map<String, Object> q, int option, UUID image) {
+        int n = ((Number) q.get("options")).intValue();
+        if (option < 0 || option >= n) {
+            throw new DomainRuleViolation("CBT_OPTION_IMAGES", "There is no option " + (char) ('A' + option) + " on this question.", new DomainRuleViolation.Remedy("Choose one of its options.", "You"));
+        }
+        String cur = (String) q.get("option_images");
+        List<UUID> list = cur == null || "null".equals(cur) ? new java.util.ArrayList<>(java.util.Collections.nCopies(n, (UUID) null))
+                : new java.util.ArrayList<>(mapper.readValue(cur, new tools.jackson.core.type.TypeReference<List<UUID>>() { }));
+        list.set(option, image);
+        return list.stream().allMatch(java.util.Objects::isNull) ? null : list.toArray(new UUID[0]);
+    }
+
+    /** a diagram put on the question (option empty) or on one of its options: a new version, waiting for moderation again */
+    @PostMapping("/api/v1/cbt/questions/{id}/image")
+    @PreAuthorize(AUTHORS)
+    @Transactional
+    Map<String, Object> putImage(@PathVariable UUID id, @Valid @RequestBody ImageIn in) {
+        Map<String, Object> q = editable(id);
+        UUID actor = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
+        UUID image = CbtQuestionImages.add(jdbc, files, in.filename(), in.contentType(), in.data(), actor);
+        if (in.option() == null) {
+            jdbc.sql("UPDATE assessment.question SET image_id = :i WHERE id = :id").param("i", image).param("id", id).update();
+        } else {
+            jdbc.sql("UPDATE assessment.question SET option_images = :oi::uuid[] WHERE id = :id").param("oi", withOption(q, in.option(), image), Types.ARRAY).param("id", id).update();
+        }
+        return Map.of("id", id, "image", image, "moderation", "PENDING");
+    }
+
+    /** the question's diagram, or an option's image, taken off: a new version (the image stays with the versions that showed it) */
+    @PostMapping("/api/v1/cbt/questions/{id}/image/remove")
+    @PreAuthorize(AUTHORS)
+    @Transactional
+    Map<String, Object> removeImage(@PathVariable UUID id, @RequestBody ImageOff in) {
+        Map<String, Object> q = editable(id);
+        if (in == null || in.option() == null) {
+            jdbc.sql("UPDATE assessment.question SET image_id = NULL WHERE id = :id").param("id", id).update();
+        } else {
+            jdbc.sql("UPDATE assessment.question SET option_images = :oi::uuid[] WHERE id = :id").param("oi", withOption(q, in.option(), null), Types.ARRAY).param("id", id).update();
+        }
+        return Map.of("id", id);
+    }
+
+    /** an image of a question, for whoever reads the question's bank */
+    @GetMapping("/api/v1/cbt/questions/images/{image}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> image(@PathVariable UUID image) {
+        UUID question = jdbc.sql("SELECT assessment.question_of_image(:i)").param("i", image).query(UUID.class).optional().orElseThrow(() -> new NotFound("question image", image.toString()));
+        bankOf(question);
+        return CbtQuestionImages.stream(jdbc, files, image);
     }
 
     /* ── the bank from a spreadsheet: every row judged, the valid ones written, nothing silently corrected ── */

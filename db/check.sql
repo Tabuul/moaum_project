@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 220
+\set EXPECTED 221
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7876,6 +7876,103 @@ BEGIN
                r_unchecked, first_at IS NOT NULL, again_at = first_at, r_late, r_absent, method3, board, inc_attempt = a1.id, r_running, r_who, r_twice, rep.counts,
                rep.addendum IS NOT NULL, after, absent_in, told, told_again, noticed, r_size, r_open, r_unfinished, cardinality(smp.population),
                closed.state, closed.approved, closed.left_as_they_were, rest_note, failed.state, failed.left_as_they_were));
+END $$;
+
+-- ── V376: images in questions, frozen with the version; time back after an incident; never two sittings at once ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); off uuid := gen_random_uuid(); pa text := 'C00023'; S text := '9957/9958';
+        q uuid := gen_random_uuid(); img1 uuid := gen_random_uuid(); img2 uuid := gen_random_uuid(); img3 uuid := gen_random_uuid();
+        ca uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()]; i int; reg uuid;
+        ex assessment.cbt_exam; ex2 assessment.cbt_exam; ex3 assessment.cbt_exam; s1 assessment.cbt_sitting; s2 assessment.cbt_sitting; s3 assessment.cbt_sitting;
+        sh assessment.cbt_sitting; v_ver int; v_mod text; r_mismatch text; a1 assessment.cbt_attempt; a2 assessment.cbt_attempt; a3 assessment.cbt_attempt;
+        paper_img uuid; opt_img text; shows boolean; shows_other boolean; inc assessment.cbt_sitting_incident; ends_before timestamptz; ends_after timestamptz;
+        extra_reason text; r_twice text; r_clash text; seat2 record; clashes int; ca2_sitting text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9957-10-01', date '9958-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 957', 'Check images, time back, clashes', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = pa;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 957', pa, 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 957', S, 1);
+
+        -- (1) a diagram for the question and an image for option B: each a new version, waiting for moderation again
+        INSERT INTO assessment.question_image (id, filename, content_type, size_bytes) VALUES
+            (img1, 'circuit.png', 'image/png', 100), (img2, 'graph-b.png', 'image/png', 100), (img3, 'circuit-2.png', 'image/png', 100);
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES (q, 'GST 957', 'V376 the current in $R_1$ is', '["1 A","2 A","3 A"]', 1, 'MCQ', 1);
+        UPDATE assessment.question SET image_id = img1 WHERE id = q;
+        UPDATE assessment.question SET option_images = ARRAY[NULL, img2, NULL]::uuid[] WHERE id = q;
+        SELECT version, moderation INTO v_ver, v_mod FROM assessment.question WHERE id = q;
+        BEGIN UPDATE assessment.question SET option_images = ARRAY[img2]::uuid[] WHERE id = q; r_mismatch := 'SET';
+        EXCEPTION WHEN check_violation THEN r_mismatch := 'REFUSED'; END;
+        PERFORM pg_temp.moderated();
+        ex := assessment.cbt_new_exam('GST', off, 'V376 hall', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', now() - interval '1 hour', now() + interval '6 hours');
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q, 1);
+        FOR i IN 1..3 LOOP
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (ca[i], 'MOAUM/ADM/57/' || lpad(i::text, 6, '0'), 'MOAUM/CHK/57/' || i, 'ZZV376', 'Seat ' || i, pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+            reg := registration.student_draft(ca[i], S, 1);
+            PERFORM registration.student_choose(reg, ARRAY[off]);
+            UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        END LOOP;
+        PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        sh := assessment.cbt_add_sitting(ex.id, 'Hall', 'CBT Lab E', now() - interval '30 minutes', now() + interval '60 minutes', 10);
+        PERFORM assessment.cbt_seat_all(ex.id, 'NUMBER');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        FOR i IN 1..3 LOOP
+            PERFORM set_config('moaum.actor_id', ca[i]::text, true);
+            IF i = 1 THEN a1 := assessment.cbt_start(ex.id, ca[i], '10.0.0.1', 'check'); END IF;
+            IF i = 2 THEN a2 := assessment.cbt_start(ex.id, ca[i], '10.0.0.2', 'check'); END IF;
+            IF i = 3 THEN a3 := assessment.cbt_start(ex.id, ca[i], '10.0.0.3', 'check'); END IF;
+        END LOOP;
+        SELECT p.image, (SELECT string_agg(o->>'i' || '=' || coalesce(o->>'image', '-'), ',' ORDER BY (o->>'i')::int) FROM jsonb_array_elements(p.options) o)
+          INTO paper_img, opt_img FROM assessment.cbt_candidate_paper(a1.id) p;
+        -- the bank's diagram replaced after the attempt began: the attempt keeps the one it drew
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        UPDATE assessment.question SET image_id = img3 WHERE id = q;
+        shows := assessment.cbt_attempt_shows_image(a1.id, img1) AND assessment.cbt_attempt_shows_image(a1.id, img2);
+        shows_other := assessment.cbt_attempt_shows_image(a1.id, img3);
+
+        -- (2) time back: a power cut five minutes ago; the first two were writing then, the second has finished since, the third started after
+        UPDATE assessment.cbt_attempt SET started_at = now() - interval '10 minutes' WHERE id IN (a1.id, a2.id);
+        PERFORM assessment.cbt_finalize(a2.id, 'SUBMITTED', NULL);
+        PERFORM assessment.cbt_grant_extra_time(ex.id, ca[1], 15, 'a candidate with a visual impairment');
+        SELECT ends_at INTO ends_before FROM assessment.cbt_attempt WHERE id = a1.id;
+        inc := assessment.cbt_record_incident(sh.id, NULL, 'POWER', 'the mains failed', 7, now() - interval '5 minutes');
+        inc := assessment.cbt_give_time_back(inc.id, 7);
+        SELECT ends_at INTO ends_after FROM assessment.cbt_attempt WHERE id = a1.id;
+        SELECT reason INTO extra_reason FROM assessment.cbt_extra_time WHERE exam_id = ex.id AND candidate_id = ca[1];
+        BEGIN PERFORM assessment.cbt_give_time_back(inc.id, 7); r_twice := 'GIVEN';
+        EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+
+        -- (3) clashes: the first candidate sits a third examination at four hours; another examination's sitting at the same time refuses them,
+        --     and seating everyone passes them over; a sitting moved onto that time afterwards is listed as a clash
+        ex3 := assessment.cbt_new_exam('GST', off, 'V376 first', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', now() - interval '1 hour', now() + interval '6 hours');
+        s1 := assessment.cbt_add_sitting(ex3.id, 'At four', 'CBT Lab G', now() + interval '4 hours', now() + interval '5 hours', 1);
+        PERFORM assessment.cbt_seat_all(ex3.id, 'NUMBER');
+        ex2 := assessment.cbt_new_exam('GST', off, 'V376 other', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', now() - interval '1 hour', now() + interval '6 hours');
+        s2 := assessment.cbt_add_sitting(ex2.id, 'Same time', 'CBT Lab F', now() + interval '4 hours 15 minutes', now() + interval '5 hours', 2);
+        BEGIN PERFORM assessment.cbt_seat_candidate(ex2.id, ca[1], s2.id); r_clash := 'SEATED';
+        EXCEPTION WHEN check_violation THEN r_clash := split_part(SQLERRM, ':', 1); END;
+        SELECT * INTO seat2 FROM assessment.cbt_seat_all(ex2.id, 'NUMBER');
+        s3 := assessment.cbt_add_sitting(ex2.id, 'Later', 'CBT Lab F', now() + interval '5 hours 10 minutes', now() + interval '5 hours 50 minutes', 5);
+        PERFORM assessment.cbt_seat_candidate(ex2.id, ca[1], s3.id);
+        PERFORM assessment.cbt_update_sitting(s3.id, 'Later', 'CBT Lab F', now() + interval '4 hours', now() + interval '4 hours 40 minutes', 5);
+        SELECT count(*) INTO clashes FROM assessment.cbt_seat_clashes(ex2.id) c WHERE c.candidate_id = ca[1];
+        RAISE EXCEPTION 'the V376 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V376: a question''s diagram and its options'' images are content — each change a new version waiting for moderation, the options matched one for one — and an attempt shows the images of the version it drew; time lost to an incident goes back once, to those writing then and still writing, on their extra time with the incident named; a candidate is never seated in two sittings at the same time, and a clash made later is listed',
+        coalesce(v_ver = 3 AND v_mod = 'PENDING' AND r_mismatch = 'REFUSED' AND paper_img = img1 AND opt_img = '0=-,1=' || img2 || ',2=-' AND shows AND NOT shows_other
+                 AND inc.time_given_to = 1 AND inc.time_given_minutes = 7 AND ends_after - ends_before BETWEEN interval '6 minutes 59 seconds' AND interval '7 minutes 1 second'
+                 AND extra_reason LIKE 'a candidate with a visual impairment; 7 minutes given back for the power cut at %' AND r_twice = 'CBT_TIME_GIVEN'
+                 AND r_clash = 'CBT_SEAT_CLASH' AND seat2.seated = 2 AND seat2.clashed = 1 AND clashes = 1, false),
+        format('v=%s mod=%s mismatch=%s paper=%s opts=%s shows=%s other=%s | given to %s (%s min) moved %s reason=%s twice=%s | clash=%s seat_all=%s/%s/%s listed=%s',
+               v_ver, v_mod, r_mismatch, paper_img = img1, opt_img, shows, shows_other, inc.time_given_to, inc.time_given_minutes, ends_after - ends_before,
+               extra_reason, r_twice, r_clash, seat2.seated, seat2.unseated, seat2.clashed, clashes));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -468,7 +468,7 @@ class CbtExamController {
     @Transactional(readOnly = true)
     Map<String, Object> preview(@PathVariable UUID id) {
         Map<String, Object> e = managed(id);
-        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options FROM assessment.cbt_preview_paper(:e)")
+        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options, image FROM assessment.cbt_preview_paper(:e)")
                 .param("e", id).query().listOfRows();
         int marks = 0;
         for (Map<String, Object> q : questions) {
@@ -974,7 +974,7 @@ class CbtExamController {
     @Transactional
     Map<String, Object> seatAll(@PathVariable UUID id, @Valid @RequestBody SeatAllIn in) {
         managed(id);
-        Map<String, Object> r = jdbc.sql("SELECT seated, unseated FROM assessment.cbt_seat_all(:e, :o)").param("e", id).param("o", in.order(), Types.VARCHAR).query().singleRow();
+        Map<String, Object> r = jdbc.sql("SELECT seated, unseated, clashed FROM assessment.cbt_seat_all(:e, :o)").param("e", id).param("o", in.order(), Types.VARCHAR).query().singleRow();
         Map<String, Object> out = sittings(id);
         out.put("result", r);
         return out;
@@ -1007,6 +1007,15 @@ class CbtExamController {
                  WHERE x.sitting_id = :s ORDER BY x.seat_no
                 """).param("e", id).param("s", sitting).query().listOfRows());
         return out;
+    }
+
+    /** V376: every candidate of the examination seated at the same time in another examination's sitting (a sitting moved after seating may make one) */
+    @GetMapping("/exams/{id}/clashes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> clashes(@PathVariable UUID id) {
+        readable(id);
+        return jdbc.sql("SELECT * FROM assessment.cbt_seat_clashes(:e)").param("e", id).query().listOfRows();
     }
 
     private Map<String, Object> sittingOf(UUID exam, UUID sitting) {

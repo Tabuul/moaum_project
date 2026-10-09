@@ -126,7 +126,9 @@ export type MyExam = {
   exam_type?: ExamType; negative_marks?: number; allow_back?: boolean; allow_review?: boolean; fullscreen_required?: boolean; proctoring?: "NONE" | "CAMERA"; score_on_submit?: boolean;
 } & Placement;
 export interface MyExams { session: string; rows: MyExam[]; now: string }
-export interface RoomQuestion { n: number; id: string; kind: "MCQ" | "TRUE_FALSE" | "MULTI"; stem: string; marks: number; options: { i: number; text: string }[] }
+export interface RoomQuestion { n: number; id: string; kind: "MCQ" | "TRUE_FALSE" | "MULTI"; stem: string; marks: number; options: { i: number; text: string; image?: string }[];
+  /** V376: the question's diagram, at the version drawn */
+  image?: string | null }
 export interface Room {
   attempt: { id: string; number: number; status: AttemptStatus; started_at: string; ends_at: string; submitted_at: string | null; answered: number; violations: number; max_marks: number; questions: number;
              camera_consent_at?: string | null; camera_declined_at?: string | null };

@@ -296,6 +296,7 @@ class CbtInvigilationController {
         out.put("now", jdbc.sql("SELECT now()").query(java.time.OffsetDateTime.class).single());
         out.put("role", invigilator ? "INVIGILATOR" : canMark ? "OFFICE" : "READER");
         out.put("canMark", canMark);
+        out.put("office", a.office());   // V376: the office running the examination gives an incident's time back
         out.put("invigilators", jdbc.sql("""
                 SELECT p.id AS person_id, p.surname || ', ' || p.given_names AS name, p.staff_number, i.chief
                   FROM assessment.cbt_invigilator i JOIN iam.person p ON p.id = i.person_id WHERE i.sitting_id = :s ORDER BY i.chief DESC, p.surname
@@ -310,6 +311,7 @@ class CbtInvigilationController {
     private List<Map<String, Object>> incidents(UUID sitting) {
         return jdbc.sql("""
                 SELECT i.id, i.kind, i.occurred_at, i.minutes_lost, i.detail, i.after_filing, i.candidate_id, i.attempt_id, i.recorded_at, i.recorded_office,
+                       i.time_given_minutes, i.time_given_to, i.time_given_at,
                        x.seat_no, coalesce(st.matric_no, st.admission_no, ja.exam_no, ja.application_no) AS number,
                        coalesce(st.surname, upper(ja.surname)) AS surname, coalesce(st.other_names, ja.first_name) AS other_names,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS recorded_by
@@ -454,6 +456,38 @@ class CbtInvigilationController {
         jdbc.sql("SELECT id FROM assessment.cbt_record_incident(:s, :c, :k, :d, :m, :at)").param("s", sitting).param("c", in.candidateId(), Types.OTHER)
                 .param("k", in.kind()).param("d", in.detail()).param("m", in.minutesLost(), Types.INTEGER).param("at", in.occurredAt(), Types.TIMESTAMP_WITH_TIMEZONE)
                 .query(UUID.class).single();
+        return board(sitting);
+    }
+
+    public record TimeBackIn(@NotNull Integer minutes) {
+    }
+
+    private Map<String, Object> incidentOf(UUID sitting, UUID incident) {
+        return jdbc.sql("SELECT id, exam_id, kind, occurred_at, minutes_lost, candidate_id, time_given_at, time_given_minutes, time_given_to FROM assessment.cbt_sitting_incident WHERE id = :i AND sitting_id = :s")
+                .param("i", incident).param("s", sitting).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("incident", incident.toString()));
+    }
+
+    /** V376: who an incident's time would go back to — those writing when it happened, and whether they still are — for the office */
+    @GetMapping("/sittings/{sitting}/incidents/{incident}/time-back")
+    @PreAuthorize(MANAGERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> timeBackFor(@PathVariable UUID sitting, @PathVariable UUID incident) {
+        Map<String, Object> i = incidentOf(sitting, incident);
+        managed((UUID) i.get("exam_id"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("incident", i);
+        out.put("candidates", jdbc.sql("SELECT * FROM assessment.cbt_time_back_candidates(:i)").param("i", incident).query().listOfRows());
+        return out;
+    }
+
+    /** V376: the incident's time given back, once, to every candidate writing then and still writing, as extra time naming the incident */
+    @PostMapping("/sittings/{sitting}/incidents/{incident}/time-back")
+    @PreAuthorize(MANAGERS)
+    @Transactional
+    Map<String, Object> giveTimeBack(@PathVariable UUID sitting, @PathVariable UUID incident, @Valid @RequestBody TimeBackIn in) {
+        Map<String, Object> i = incidentOf(sitting, incident);
+        managed((UUID) i.get("exam_id"));
+        jdbc.sql("SELECT time_given_to FROM assessment.cbt_give_time_back(:i, :m)").param("i", incident).param("m", in.minutes()).query(Integer.class).single();
         return board(sitting);
     }
 

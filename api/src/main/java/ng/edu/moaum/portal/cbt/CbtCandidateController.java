@@ -74,6 +74,14 @@ class CbtCandidateController {
         return door.attempt(Kind.STUDENT, me(auth), id, token);
     }
 
+    /** V376: an image on the paper — the question's or an option's — inside this running attempt only */
+    @GetMapping("/attempts/{id}/images/{image}")
+    @Transactional(readOnly = true)
+    org.springframework.http.ResponseEntity<byte[]> image(Authentication auth, @PathVariable UUID id, @PathVariable UUID image,
+                                                          @RequestHeader(value = "X-Attempt-Token", required = false) String token) {
+        return door.image(Kind.STUDENT, me(auth), id, token, image);
+    }
+
     @PutMapping("/attempts/{id}/answers")
     @Transactional
     Map<String, Object> answers(Authentication auth, @PathVariable UUID id, @RequestHeader(value = "X-Attempt-Token", required = false) String token, @Valid @RequestBody AnswersIn in) {

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { cbtSend } from "./CbtExam";
+import { MathText } from "@/components/proto/MathText";
 
 interface SampleQuestion { id: string; topic: string | null; stem: string; options: string[]; answers: number[]; kind: string; marks: number; explanation: string | null; version: number; drawn_version: number;
   moderation: "PENDING" | "APPROVED" | "RETURNED"; moderated_version: number | null; moderation_note: string | null; set_by: string | null }
@@ -89,10 +90,10 @@ export function ModerationSample({ course }: { course: string }) {
               {s.questions.map((q, i) => (
                 <div key={q.id} style={{ border: "1px solid var(--line, #d0d5dd)", borderRadius: 8, padding: "8px 10px" }}>
                   <div className="row row--inline row--tight" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-                    <b>{i + 1}. {q.stem}</b>
+                    <b>{i + 1}. <MathText text={q.stem} /></b>
                     {q.moderation === "APPROVED" ? <Pil kind="ok">Approved</Pil> : q.moderation === "RETURNED" ? <Pil kind="bad">Returned</Pil> : <Pil kind="warn">Awaiting</Pil>}
                   </div>
-                  <ol type="A" style={{ margin: "4px 0 4px 18px" }}>{q.options.map((o, k) => <li key={k}>{o}{q.answers.includes(k) ? <b> — key</b> : null}</li>)}</ol>
+                  <ol type="A" style={{ margin: "4px 0 4px 18px" }}>{q.options.map((o, k) => <li key={k}><MathText text={o} />{q.answers.includes(k) ? <b> — key</b> : null}</li>)}</ol>
                   <div className="sub2">{q.marks} mark{q.marks === 1 ? "" : "s"}{q.topic ? ` · ${q.topic}` : ""}{q.set_by ? ` · set by ${q.set_by}` : ""}{q.version !== q.drawn_version ? " · changed since the draw: moderated on its own" : ""}{q.explanation ? ` · ${q.explanation}` : ""}</div>
                   {q.moderation === "PENDING" && q.version === q.drawn_version ? (
                     <div className="row row--inline row--tight mt-1">
@@ -110,7 +111,7 @@ export function ModerationSample({ course }: { course: string }) {
       {returning ? (
         <Modal title="Return the question" sub={course} onClose={() => setReturning(null)}
           foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setReturning(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !note.trim()} onClick={async () => { const j = await run(`/questions/${returning.id}/moderation`, { decision: "RETURN", note: note.trim() }, `A sampled question in ${course} returned: ${note.trim()}`); if (j) setReturning(null); }}>Return with this note</Btn></span>}>
-          <p>{returning.stem}</p>
+          <p><MathText text={returning.stem} /></p>
           <Field id="smp-note" label="What should change" required><textarea id="smp-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <div className="sub2">Returning a sampled question fails the sample: the rest are moderated one by one.</div>
         </Modal>

@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { MathText } from "@/components/proto/MathText";
 import { Field, Modal } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { reasonHeader } from "@/lib/reason";
@@ -83,7 +84,7 @@ export function CbtItems({ examId, ended, canCorrect = false }: { examId: string
         </PBody>
         <DTable pageSize={25} cols={["#|mid", "Question", "Facility|num", "Discrimination|num", "Options chosen", "To look at", ...(canCorrect ? ["|mid"] : [])]} rows={rows.map((q) => [
           <span key="n" className="tnum">{q.n}</span>,
-          <span key="q">{q.stem.length > 160 ? q.stem.slice(0, 160) + "…" : q.stem}<div className="sub2">{q.kind === "MULTI" ? "Multiple select" : q.kind === "TRUE_FALSE" ? "True / false" : "Multiple choice"} · key {q.key.map(letter).join(", ")} · {q.answered} of {q.seen} answered</div></span>,
+          <span key="q"><MathText text={q.stem.length > 160 ? q.stem.slice(0, 160) + "…" : q.stem} /><div className="sub2">{q.kind === "MULTI" ? "Multiple select" : q.kind === "TRUE_FALSE" ? "True / false" : "Multiple choice"} · key {q.key.map(letter).join(", ")} · {q.answered} of {q.seen} answered</div></span>,
           <span key="f" className="tnum">{two(q.facility)}</span>,
           <span key="d" className="tnum">{two(q.discrimination)}</span>,
           <span key="o" className="sub2">{q.options.map((o) => {
@@ -97,7 +98,7 @@ export function CbtItems({ examId, ended, canCorrect = false }: { examId: string
       {history.length ? (
         <Panel title="Keys corrected on this examination">
           <DTable cols={["Question", "Key", "Reason", "Scores changed|num", "Bank|mid", "By"]} rows={history.map((h) => [
-            <span key="q" className="sub2">{h.stem}</span>,
+            <span key="q" className="sub2"><MathText text={h.stem} /></span>,
             <span key="k" className="tnum">{keyWord(h.old_key)} → <b>{keyWord(h.new_key)}</b></span>,
             <span key="r" className="sub2">{h.reason}</span>,
             <span key="c" className="tnum">{h.scores_changed} of {h.attempts_seen}</span>,

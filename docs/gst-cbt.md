@@ -417,3 +417,43 @@ delta; all read through the indexes listed in section F.
 - Tests: check.sql 220; `CbtExamIT` (a slip, the check-in rule, a forged code, the wrong candidate's slip, a lecturer and a candidate refused,
   slips for the office, incidents, the report refused while writing and to a lecturer, filed by the chief, the addendum the office's, the
   list; a sample drawn, refused unfinished, closed approving the rest, the setter's queue and their one notice with no question in it).
+
+## P. Formulas and diagrams in questions, time given back after an incident, seating clashes (V376)
+
+- **Formulas** — written into a question's stem or options in the bank as `$...$` (the portal's existing `MathText` syntax: `$x^2$`,
+  `$H_2O$`, `$\frac{a}{b}$`, `$\sqrt{x}$`, `$\alpha$`, `$\to$`; `\$` is a dollar sign; drawn by the page's own elements, never as HTML). The bank shows a live preview under the editor; the examination room, the
+  office's preview, the paper picker, the item analysis and moderation by sample show them the same way. Nothing is stored but the text.
+- **Diagrams** (question bank → *Images* on a question; `POST /api/v1/cbt/questions/{id}/image` with `{filename, contentType, data, option}`,
+  `POST …/image/remove` with `{option}`): one PNG or JPEG of at most 1 MB for the question, and one for each option (`option` null for the
+  question). The file is checked by its own first bytes, not its name (`CBT_IMAGE_TYPE`, `CBT_IMAGE_CONTENT`, `CBT_IMAGE_SIZE`,
+  `CBT_IMAGE_ENCODING`) and kept in `assessment.question_image` (never changed; `object_id` → `platform.file_object`, with a blob fallback in
+  `question_image_blob`). `question.image_id` and `question.option_images` (one entry per option, `CBT_OPTION_IMAGES` when the count is
+  wrong) are versioned like the text: an image added, replaced or removed makes a new version, and the question waits for moderation again.
+  A question in a live examination or archived is not changed (`CBT_QUESTION_IN_LIVE_EXAM`, `CBT_QUESTION_ARCHIVED`). A paper already
+  frozen keeps the images of the version it froze.
+- **Who sees an image** — the office through the bank (`GET /api/v1/cbt/questions/images/{image}`, the bank's readers only); a candidate
+  only inside their running attempt (`GET /api/v1/me/cbt/attempts/{id}/images/{image}`, `GET /api/v1/jupeb/me/cbt/attempts/{id}/images/{image}`
+  with the attempt token), and only an image on a question of their own paper (`assessment.cbt_attempt_shows_image`); anything else is 404.
+  Served `no-store`, `nosniff`, under a sandboxing CSP. The room's paper carries image ids, never the key: an option's image is sent like its
+  text, and which option is right stays on the server.
+- **Time given back** (board → Incidents → *Give the time back*, the office running the examination only; `GET/POST
+  /api/v1/cbt/sittings/{sitting}/incidents/{incident}/time-back` with `{minutes}`): the office sees who was writing when the incident
+  happened — every candidate of the sitting (or the one named in the incident) whose attempt had started and not finished by then — and
+  which of them still write. The minutes (1 to 600, `CBT_EXTRA_RANGE`; the minutes recorded as lost are offered) are added to the extra time
+  of each still writing, with the reason naming the incident (*6 minutes given back for the power cut at 11:48 in Sitting 1*, appended to
+  any earlier reason). Once per incident (`CBT_TIME_GIVEN`); the incident keeps how much, to how many, when and by whom, and the board,
+  the sitting report and its print show it. A candidate who finished since is not reopened; their result can be reviewed with the incident
+  on record. Recording an incident still changes nobody's clock.
+- **Seating clashes** — a candidate is not seated in a sitting that overlaps a sitting of another (not cancelled) examination they are
+  seated in (`CBT_SEAT_CLASH`, naming the other sitting). *Seat everyone* passes over such sittings and says how many found no sitting
+  without a clash (`clashed`). A sitting moved after seating can still put someone in two halls at once, so the Sittings tab lists them
+  (`GET /api/v1/cbt/exams/{id}/clashes`): the candidate, the sitting here, the other examination's sitting, and *Move to…* with the sittings
+  that would clash too disabled.
+- Tests: check.sql 221 (an image versions the question and sends it back to moderation; option images of the wrong count refused; the
+  candidate paper carries the question's and options' images and no key; a frozen paper keeps its image after the bank changes; time given
+  back to the one still writing, with the incident in the reason, and refused the second time; a clashing seat refused; seat-all 2 seated,
+  1 clashed; the clash listed); `CbtExamIT` (a forged PNG refused; a diagram and an option image make version 3, PENDING; served to the
+  bank's office and refused to another office; on the candidate's paper and served inside their attempt with its token, refused without
+  it, 404 for an unknown image or another student; time back: who was writing listed, refused to another office, five minutes added to
+  the clock, refused the second time; a clashing seat refused, seat-all clashing both, a later sitting seated, and the clash listed once
+  that sitting is moved).

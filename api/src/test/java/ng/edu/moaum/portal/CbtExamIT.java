@@ -731,4 +731,73 @@ class CbtExamIT {
         List<String> bodies = jdbc.sql("SELECT body FROM platform.notice WHERE about_kind = 'person' AND about_id = :p").param("p", setterId).query(String.class).list();
         assertThat(bodies).singleElement().satisfies(b -> { assertThat(b).contains("4 approved"); assertThat(b).doesNotContain("Sampled"); });
     }
+
+    /** a one-pixel PNG, as a screen sends an image */
+    static final String PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+    @Test
+    void aQuestionCarriesADiagramTimeLostIsGivenBackAndClashesAreRefused() {
+        // V376: a diagram on the question and an image on option B — each a new version, moderated again — shown only inside the attempt that drew them
+        List<UUID> paper = new java.util.ArrayList<>(paper());
+        UUID q = paper.get(0);
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/image", mapOf("filename", "fake.png", "contentType", "image/png", "data", "aGVsbG8=")).getBody().get("code")).isEqualTo("CBT_IMAGE_CONTENT");
+        ResponseEntity<Map> put = it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/image", mapOf("filename", "circuit.png", "contentType", "image/png", "data", PIXEL));
+        assertThat(put.getStatusCode().value()).as(String.valueOf(put.getBody())).isEqualTo(200);
+        String diagram = String.valueOf(put.getBody().get("image"));
+        String optionImage = String.valueOf(it.call(gst, HttpMethod.POST, "/api/v1/cbt/questions/" + q + "/image", mapOf("filename", "graph.png", "contentType", "image/png", "data", PIXEL, "option", 1)).getBody().get("image"));
+        Map<String, Object> row = bankRows(code).stream().filter(r -> q.toString().equals(String.valueOf(r.get("id")))).findFirst().orElseThrow();
+        assertThat(row.get("image_id")).isEqualTo(diagram);
+        assertThat(row.get("moderation")).isEqualTo("PENDING");
+        assertThat(((Number) row.get("version")).intValue()).isEqualTo(3);
+        assertThat(it.getBytes(gst, "/api/v1/cbt/questions/images/" + diagram).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.getBytes(eps, "/api/v1/cbt/questions/images/" + diagram).getStatusCode().value()).isEqualTo(403);
+        it.approve(q);
+        UUID exam = publishedExam("Diagram CBT", 3, "WARN", "CONTINUE", paper);
+        register(s, student);
+        register(s2, student2);
+        OffsetDateTime now = OffsetDateTime.now();
+        String sitting = String.valueOf(l(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings", mapOf("label", "Hall D", "venue", "CBT Centre", "startsAt", now.minusSeconds(30), "endsAt", now.plusMinutes(60), "capacity", 10))
+                .getBody().get("sittings")).get(0).get("id"));
+        it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/sittings/seat-all", Map.of("order", "NUMBER"));
+        ResponseEntity<Map> started = it.call(student, HttpMethod.POST, "/api/v1/me/cbt/exams/" + exam + "/start", Map.of());
+        assertThat(started.getStatusCode().value()).as(String.valueOf(started.getBody())).isEqualTo(200);
+        String attempt = String.valueOf(started.getBody().get("attemptId"));
+        String token = String.valueOf(started.getBody().get("token"));
+        Map<String, Object> room = it.callWith(student, HttpMethod.GET, "/api/v1/me/cbt/attempts/" + attempt, null, tok(token)).getBody();
+        Map<String, Object> drawn = l(room.get("questions")).stream().filter(x -> q.toString().equals(String.valueOf(x.get("id")))).findFirst().orElseThrow();
+        assertThat(drawn.get("image")).isEqualTo(diagram);
+        assertThat(l(drawn.get("options"))).anySatisfy(o -> { assertThat(o.get("i")).isEqualTo(1); assertThat(o.get("image")).isEqualTo(optionImage); });
+        assertThat(it.getBytesWith(student, "/api/v1/me/cbt/attempts/" + attempt + "/images/" + diagram, tok(token)).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.getBytesWith(student, "/api/v1/me/cbt/attempts/" + attempt + "/images/" + diagram, Map.of()).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.getBytesWith(student, "/api/v1/me/cbt/attempts/" + attempt + "/images/" + UUID.randomUUID(), tok(token)).getStatusCode().value()).isEqualTo(404);
+        assertThat(it.getBytesWith(student2, "/api/v1/me/cbt/attempts/" + attempt + "/images/" + diagram, tok(token)).getStatusCode().value()).isEqualTo(404);
+
+        // a power cut while the candidate writes: the office gives the minutes back, once
+        Map<String, Object> withIncident = it.call(gst, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents", mapOf("kind", "POWER", "detail", "the mains failed", "minutesLost", 5)).getBody();
+        String incident = String.valueOf(l(withIncident.get("incidents")).get(0).get("id"));
+        assertThat(l(it.get(gst, "/api/v1/cbt/sittings/" + sitting + "/incidents/" + incident + "/time-back").getBody().get("candidates")))
+                .singleElement().satisfies(c -> assertThat(c.get("still_writing")).isEqualTo(true));
+        OffsetDateTime before = jdbc.sql("SELECT ends_at FROM assessment.cbt_attempt WHERE id = :a").param("a", UUID.fromString(attempt)).query(OffsetDateTime.class).single();
+        assertThat(it.call(eps, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents/" + incident + "/time-back", Map.of("minutes", 5)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> given = it.call(gst, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents/" + incident + "/time-back", Map.of("minutes", 5));
+        assertThat(given.getStatusCode().value()).as(String.valueOf(given.getBody())).isEqualTo(200);
+        OffsetDateTime after = jdbc.sql("SELECT ends_at FROM assessment.cbt_attempt WHERE id = :a").param("a", UUID.fromString(attempt)).query(OffsetDateTime.class).single();
+        assertThat(java.time.Duration.between(before, after).toMinutes()).isEqualTo(5L);
+        assertThat(it.call(gst, HttpMethod.POST, "/api/v1/cbt/sittings/" + sitting + "/incidents/" + incident + "/time-back", Map.of("minutes", 5)).getBody().get("code")).isEqualTo("CBT_TIME_GIVEN");
+
+        // another examination's sitting at the same time: the candidates are not seated there
+        ResponseEntity<Map> other = it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams", examBody("Clash CBT", now.minusMinutes(1), now.plusHours(5), 3, "WARN", "CONTINUE"));
+        String exam2 = String.valueOf(other.getBody().get("id"));
+        String same = String.valueOf(l(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam2 + "/sittings", mapOf("label", "Same hour", "venue", "Hall E", "startsAt", now.plusMinutes(5), "endsAt", now.plusMinutes(50), "capacity", 10))
+                .getBody().get("sittings")).get(0).get("id"));
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam2 + "/seats/" + s, Map.of("sittingId", same)).getBody().get("code")).isEqualTo("CBT_SEAT_CLASH");
+        Map<String, Object> seated = m(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam2 + "/sittings/seat-all", Map.of("order", "NUMBER")).getBody().get("result"));
+        assertThat(((Number) seated.get("clashed")).intValue()).isEqualTo(2);
+        assertThat(((Number) seated.get("seated")).intValue()).isEqualTo(0);
+        String later = String.valueOf(l(it.call(gst, HttpMethod.POST, "/api/v1/cbt/exams/" + exam2 + "/sittings", mapOf("label", "Later", "venue", "Hall E", "startsAt", now.plusHours(2), "endsAt", now.plusHours(3), "capacity", 10))
+                .getBody().get("sittings")).stream().filter(x -> "Later".equals(x.get("label"))).findFirst().orElseThrow().get("id"));
+        assertThat(it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam2 + "/seats/" + s, Map.of("sittingId", later)).getStatusCode().value()).isEqualTo(200);
+        it.call(gst, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam2 + "/sittings/" + later, mapOf("label", "Later", "venue", "Hall E", "startsAt", now.plusMinutes(10), "endsAt", now.plusMinutes(55), "capacity", 10));
+        assertThat(it.getList(gst, "/api/v1/cbt/exams/" + exam2 + "/clashes").getBody()).singleElement().satisfies(c -> assertThat(((Map) c).get("candidate_id")).isEqualTo(s.toString()));
+    }
 }

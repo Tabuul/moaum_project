@@ -16,6 +16,7 @@ import { num, whenAt } from "@/lib/cbt";
 import { cbtSend } from "./CbtExam";
 import { IncidentForm, INCIDENT_WORD } from "./IncidentForm";
 import { SlipScanner, scannerAvailable } from "./SlipScanner";
+import { TimeBack } from "./TimeBack";
 
 export type SeatState = "NOT_COME" | "CHECKED_IN" | "ABSENT" | "ADMITTED" | "WRITING" | "DISCONNECTED" | "TIME_UP" | "SUBMITTED" | "TIME_EXPIRED" | "TERMINATED";
 export interface BoardRow {
@@ -25,11 +26,13 @@ export interface BoardRow {
   mark: "ABSENT" | "LATE" | "PRESENT" | null; minutes_late: number | null; minutes_given: number | null; mark_note: string | null; marked_at: string | null; marked_by: string | null;
   checked_in_at?: string | null; check_method?: "SCAN" | "MANUAL" | "ADMITTED" | null;
 }
-export interface Incident { id: string; kind: string; occurred_at: string; minutes_lost: number | null; detail: string; after_filing: boolean; candidate_id: string | null; seat_no: number | null; number: string | null; surname: string | null; other_names: string | null; recorded_by: string | null }
+export interface Incident { id: string; kind: string; occurred_at: string; minutes_lost: number | null; detail: string; after_filing: boolean; candidate_id: string | null; seat_no: number | null; number: string | null; surname: string | null; other_names: string | null; recorded_by: string | null;
+  /** V376: the time given back for it, once */
+  time_given_minutes?: number | null; time_given_to?: number | null; time_given_at?: string | null }
 export interface Board {
   sitting: { id: string; exam_id: string; label: string; venue: string; starts_at: string; ends_at: string; capacity: number };
   exam: { id: string; reference: string; title: string; course_code: string; office: string; state: string; live_state: string; duration_minutes: number; late_entry_minutes: number | null; require_check_in?: boolean };
-  now: string; role: "INVIGILATOR" | "OFFICE" | "READER"; canMark: boolean;
+  now: string; role: "INVIGILATOR" | "OFFICE" | "READER"; canMark: boolean; office?: boolean;
   invigilators: { person_id: string; name: string; staff_number: string | null; chief: boolean }[];
   rows: BoardRow[]; marked?: number; incidents?: Incident[]; reportFiledAt?: string | null;
 }
@@ -69,6 +72,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
   const [scanning, setScanning] = useState(false);
   const [canScan] = useState(() => scannerAvailable());
   const [noPhoto, setNoPhoto] = useState<string | null>(null);
+  const [timeBack, setTimeBack] = useState<Incident | null>(null);
   const router = useRouter();
   const id = initial.sitting.id;
 
@@ -186,17 +190,20 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
 
       {board.incidents && board.incidents.length ? (
         <Panel title="Incidents" right={<span className="sub2">{board.incidents.length} recorded</span>}>
-          <DTable cols={["When", "What", "Candidate", "Detail", "Recorded by"]} rows={board.incidents.map((x) => [
+          <DTable cols={["When", "What", "Candidate", "Detail", "Recorded by", "Time back|mid"]} rows={board.incidents.map((x) => [
             <span key="w" className="tnum">{hhmm(x.occurred_at)}</span>,
             <span key="k">{INCIDENT_WORD[x.kind] ?? x.kind}{x.minutes_lost ? <span className="sub2"> · {x.minutes_lost} min lost</span> : null}{x.after_filing ? <Pil kind="grey" className="ml-1">after the report</Pil> : null}</span>,
             <span key="c" className="sub2">{x.candidate_id ? `Seat ${x.seat_no ?? "—"} · ${(x.surname ?? "").toUpperCase()}, ${x.other_names ?? ""} · ${x.number ?? ""}` : "The hall"}</span>,
             <span key="d">{x.detail}</span>,
             <span key="b" className="sub2">{x.recorded_by ?? "—"}</span>,
+            x.time_given_at ? <span key="t" className="sub2">{x.time_given_minutes} min to {x.time_given_to}</span>
+              : board.office ? <Btn key="t" kind="secondary" size="sm" onClick={() => setTimeBack(x)}>Give the time back</Btn> : <span key="t" className="sub2">—</span>,
           ])} />
         </Panel>
       ) : null}
 
       {scanning ? <SlipScanner onClose={() => setScanning(false)} onToken={(t) => { setScanning(false); router.push(`/cbt/checkin?t=${encodeURIComponent(t)}`); }} /> : null}
+      {timeBack ? <TimeBack sittingId={id} incident={timeBack} onClose={() => setTimeBack(null)} onDone={(j) => { setBoard(j as unknown as Board); setTimeBack(null); }} /> : null}
       {incidentFor !== undefined ? <IncidentForm sittingId={id} candidate={incidentFor} onClose={() => setIncidentFor(undefined)} onDone={(j) => { setBoard(j as unknown as Board); setIncidentFor(undefined); }} /> : null}
 
       {current ? (

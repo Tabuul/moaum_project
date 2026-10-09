@@ -90,6 +90,14 @@ class JupebCbtController {
         return door.attempt(Kind.JUPEB, me(auth, request), id, token);
     }
 
+    /** V376: an image on the paper — the question's or an option's — inside this running attempt only */
+    @GetMapping("/attempts/{id}/images/{image}")
+    @Transactional(readOnly = true)
+    org.springframework.http.ResponseEntity<byte[]> image(Authentication auth, HttpServletRequest request, @PathVariable UUID id, @PathVariable UUID image,
+                                                          @RequestHeader(value = "X-Attempt-Token", required = false) String token) {
+        return door.image(Kind.JUPEB, me(auth, request), id, token, image);
+    }
+
     @PutMapping("/attempts/{id}/answers")
     @Transactional
     Map<String, Object> answers(Authentication auth, HttpServletRequest request, @PathVariable UUID id, @RequestHeader(value = "X-Attempt-Token", required = false) String token,

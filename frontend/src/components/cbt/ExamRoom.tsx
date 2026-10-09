@@ -12,6 +12,8 @@ import { DEFAULT_INSTITUTION } from "@/lib/document/institution";
 import { clock, type Detector, type Room, type RoomQuestion } from "@/lib/cbt";
 import { tokenKey } from "./MyExams";
 import css from "./ExamRoom.module.css";
+import { MathText } from "@/components/proto/MathText";
+import { CbtImage } from "./CbtImage";
 
 type Phase = "loading" | "gate" | "camera" | "writing" | "summary" | "ended" | "replaced" | "noToken" | "noCamera" | "error";
 interface Warn { level: "WARNING" | "FINAL_WARNING"; violations: number; limit: number }
@@ -69,6 +71,8 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraNote, setCameraNote] = useState<string | null>(null);
   const token = useRef<string | null>(null);
+  /* V376: the token as state too, for the images the page draws (a ref is not read while drawing) */
+  const [imageToken, setImageToken] = useState<string | null>(null);
   const pending = useRef<Map<string, Pending>>(new Map());
   const seqs = useRef<Map<string, number>>(new Map());
   const saveTimer = useRef<number | null>(null);
@@ -113,6 +117,8 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const proctored = exam?.proctoring === "CAMERA";
 
   const headers = useCallback((): HeadersInit => ({ "Content-Type": "application/json", "X-Attempt-Token": token.current ?? "" }), []);
+  /* V376: an image on the paper — inside the attempt, with its token; in the office's preview, through the question's bank */
+  const imageSrc = (image: string) => (preview ? `/api/bff/api/v1/cbt/questions/images/${image}` : `${apiBase}/attempts/${attemptId}/images/${image}`);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -160,6 +166,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     const rm = j as Room;
     if (previewExamId) setPreviewNotes((j as { preview?: PreviewNotes }).preview ?? null);
     setRoom(rm);
+    setImageToken(token.current);
     seqs.current = new Map(Object.entries(rm.seqs ?? {}).map(([k, v]) => [k, Number(v)]));
     // answers kept on this device and newer than the server's (by their save number) are restored and sent again
     const merged: Record<string, number[]> = { ...(rm.answers ?? {}) };
@@ -668,14 +675,17 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
                     <span>{q.kind === "MULTI" ? (exam.partial_credit ? "Select every correct option · each right one earns a share, each wrong one costs a share" : "Select every correct option") : q.kind === "TRUE_FALSE" ? "True or false" : "Select one option"}</span>
                     {onFlag ? <span className={css.flagMark}>Marked for review</span> : null}
                   </div>
-                  <div className={css.stem}>{q.stem}</div>
+                  {/* V376: formulas drawn from the text, and the question's diagram */}
+                  <div className={css.stem}><MathText text={q.stem} /></div>
+                  {q.image ? <CbtImage src={imageSrc(q.image)} headers={preview ? undefined : { "X-Attempt-Token": imageToken ?? "" }} alt={`Diagram for question ${q.n}`} /> : null}
                   <div className={css.options} role={q.kind === "MULTI" ? "group" : "radiogroup"} aria-label={`Question ${q.n} options`}>
                     {q.options.map((o, idx) => {
                       const on = (answers[q.id] ?? []).includes(o.i);
                       return (
                         <label key={o.i} className={`${css.option}${on ? ` ${css.optionOn}` : ""}`}>
                           <input type={q.kind === "MULTI" ? "checkbox" : "radio"} name={`q-${q.id}`} checked={on} onChange={() => choose(q, o.i)} />
-                          <span><span className={css.letter}>{String.fromCharCode(65 + idx)}.</span>{o.text}</span>
+                          <span><span className={css.letter}>{String.fromCharCode(65 + idx)}.</span><MathText text={o.text} />
+                            {o.image ? <CbtImage src={imageSrc(o.image)} headers={preview ? undefined : { "X-Attempt-Token": imageToken ?? "" }} alt={`Option ${String.fromCharCode(65 + idx)} image`} style={{ maxHeight: 220 }} /> : null}</span>
                         </label>
                       );
                     })}

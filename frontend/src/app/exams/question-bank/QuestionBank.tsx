@@ -5,7 +5,9 @@
  *  the marker, search on the server, edit, retire, archive, read a question's history, export. A question is never deleted; from V364 every
  *  change is a new version, and each attempt keeps the version it was examined on — so a question is corrected after it is sat, but not
  *  while an examination drawing it is open. From V374 a question written or changed waits for moderation: someone other than the person
- *  who set it approves it, or returns it with a note, and only approved questions go on a paper — the server's rule; this page asks. */
+ *  who set it approves it, or returns it with a note, and only approved questions go on a paper — the server's rule; this page asks.
+ *  V376: formulas written between dollar signs are drawn (as the candidate will see them), and a question may carry a diagram and its
+ *  options images — each a new version, moderated again. */
 import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
@@ -19,12 +21,16 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { QuestionImport } from "@/components/cbt/QuestionImport";
 import { ModerationSample } from "@/components/cbt/ModerationSample";
+import { QuestionImages } from "@/components/cbt/QuestionImages";
+import { MathText } from "@/components/proto/MathText";
 
 export interface Course { code: string; title: string; questions: number; total?: number; awaiting?: number; general_office?: string | null; kind?: string }
 export type Moderation = "PENDING" | "APPROVED" | "RETURNED";
 export interface Question { id: string; course_code: string; topic: string | null; stem: string; options: string[]; answer: number; answers: number[] | null; kind: string; difficulty: string; marks: number; active: boolean; explanation?: string | null; authored_by?: string | null; authored_at?: string; updated_at?: string | null; on_papers?: number; version?: number; archived_at?: string | null; sat?: number;
   /** V374: the moderation of the question's current version, who decided and with what note, who set the version, and whether that was the signed-in person */
-  moderation?: Moderation; moderated_by?: string | null; moderated_at?: string | null; moderation_note?: string | null; set_by?: string | null; mine?: boolean }
+  moderation?: Moderation; moderated_by?: string | null; moderated_at?: string | null; moderation_note?: string | null; set_by?: string | null; mine?: boolean;
+  /** V376: the question's diagram and its options' images (one an option, null for none) */
+  image_id?: string | null; option_images?: (string | null)[] | null }
 interface Version { version: number; kind: string; stem: string; options: string[]; answers: number[]; explanation: string | null; marks: number; topic: string | null; difficulty: string; created_at: string; created_by: string | null; attempts: number }
 interface Decision { version: number; decision: "APPROVED" | "RETURNED"; note: string | null; decided_at: string; decided_by: string | null; decided_office: string | null }
 const MOD_WORD: Record<Moderation, [string, "ok" | "warn" | "bad"]> = { APPROVED: ["Approved", "ok"], PENDING: ["Awaiting moderation", "warn"], RETURNED: ["Returned", "bad"] };
@@ -33,7 +39,9 @@ export interface BlueprintRow { topic: string; easy: number; medium: number; har
 
 const DIFF: Record<string, ["ok" | "info" | "bad" | "grey", string]> = { EASY: ["ok", "Easy"], MEDIUM: ["info", "Medium"], HARD: ["bad", "Hard"] };
 const KIND_WORD: Record<string, string> = { MCQ: "Multiple choice", TRUE_FALSE: "True / false", MULTI: "Multiple select" };
-interface Draft { topic: string; stem: string; kind: string; options: string[]; answers: number[]; difficulty: string; marks: string; explanation: string }
+interface Draft { topic: string; stem: string; kind: string; options: string[]; answers: number[]; difficulty: string; marks: string; explanation: string;
+  /** V376: in an edit, the images the options carry, kept beside their options as options are added and removed */
+  optionImages?: (string | null)[] }
 const EMPTY: Draft = { topic: "", stem: "", kind: "MCQ", options: ["", "", "", ""], answers: [0], difficulty: "MEDIUM", marks: "1", explanation: "" };
 
 export function QuestionBank({ courses, course, questions, blueprint, actingOffice, base = "/exams/question-bank", search = "", status = "" }: { courses: Course[]; course: string | null; questions: Question[]; blueprint: BlueprintRow[]; actingOffice: string | null; base?: string; search?: string; status?: string }) {
@@ -44,6 +52,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
   const [modFilter, setModFilter] = useState("");
   const [returning, setReturning] = useState<Question | null>(null);
   const [returnNote, setReturnNote] = useState("");
+  const [imagesFor, setImagesFor] = useState<string | null>(null);
   const where = (patch: Record<string, string>) => {
     const p = new URLSearchParams();
     const all = { course: course ?? "", q: search, status, ...patch };
@@ -88,9 +97,12 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
   }
 
   const body = (d: Draft) => {
-    const options = d.kind === "TRUE_FALSE" ? ["True", "False"] : d.options.map((o) => o.trim()).filter(Boolean);
+    const kept = d.kind === "TRUE_FALSE" ? [0, 1] : d.options.map((o, i) => (o.trim() ? i : -1)).filter((i) => i >= 0);
+    const options = d.kind === "TRUE_FALSE" ? ["True", "False"] : kept.map((i) => d.options[i].trim());
     const answers = d.answers.filter((a) => a < options.length);
-    return { topic: d.topic || null, stem: d.stem.trim(), kind: d.kind, options, answer: d.kind === "MULTI" ? null : answers[0] ?? 0, answers: d.kind === "MULTI" ? answers : [answers[0] ?? 0], difficulty: d.difficulty, marks: d.marks ? Number(d.marks) : 1, explanation: d.explanation.trim() || null };
+    // V376: each option's image goes with its option
+    const optionImages = d.optionImages ? kept.map((i) => d.optionImages?.[i] ?? null) : undefined;
+    return { topic: d.topic || null, stem: d.stem.trim(), kind: d.kind, options, answer: d.kind === "MULTI" ? null : answers[0] ?? 0, answers: d.kind === "MULTI" ? answers : [answers[0] ?? 0], difficulty: d.difficulty, marks: d.marks ? Number(d.marks) : 1, explanation: d.explanation.trim() || null, optionImages };
   };
   const valid = (d: Draft) => d.stem.trim() && (d.kind === "TRUE_FALSE" || d.options.filter((o) => o.trim()).length >= 2) && d.answers.length > 0;
   const pickAnswer = (d: Draft, set: (x: Draft) => void, i: number) => set({ ...d, answers: d.kind === "MULTI" ? (d.answers.includes(i) ? d.answers.filter((x) => x !== i) : [...d.answers, i].sort((a, b) => a - b)) : [i] });
@@ -103,16 +115,26 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         <Field id={`${prefix}-topic`} label="Topic" hint="Optional"><input id={`${prefix}-topic`} className="ctl" value={d.topic} onChange={(ev) => set({ ...d, topic: ev.target.value })} /></Field>
         <Field id={`${prefix}-diff`} label="Difficulty"><select id={`${prefix}-diff`} className="ctl" value={d.difficulty} onChange={(ev) => set({ ...d, difficulty: ev.target.value })}>{["EASY", "MEDIUM", "HARD"].map((x) => <option key={x} value={x}>{x.charAt(0) + x.slice(1).toLowerCase()}</option>)}</select></Field>
       </div>
-      <Field id={`${prefix}-stem`} label="Question" required><textarea id={`${prefix}-stem`} className="ctl" rows={3} value={d.stem} onChange={(ev) => set({ ...d, stem: ev.target.value })} /></Field>
+      <Field id={`${prefix}-stem`} label="Question" required hint="Formulas between dollar signs: $x^2$, $H_2O$, $\frac{1}{2}mv^2$, $\sqrt{b^2-4ac}$, $\alpha$, $\to$">
+        <textarea id={`${prefix}-stem`} className="ctl" rows={3} value={d.stem} onChange={(ev) => set({ ...d, stem: ev.target.value })} /></Field>
+      {/* V376: how a formula will read, as the candidate sees it */}
+      {[d.stem, ...d.options].some((t) => t.includes("$")) ? (
+        <div className="mb-2" style={{ border: "1px dashed var(--line, #d0d5dd)", borderRadius: 6, padding: "6px 10px" }}>
+          <div className="sub2">As the candidate will read it</div>
+          <div><MathText text={d.stem} /></div>
+          {d.options.map((o, i) => (o.trim() ? <div key={i} className="sub2" style={{ color: "inherit" }}>{String.fromCharCode(65 + i)}. <MathText text={o} /></div> : null))}
+        </div>
+      ) : null}
       {d.options.map((opt, i) => (
         <div key={i} className="row mb-2">
           <input type={d.kind === "MULTI" ? "checkbox" : "radio"} name={`${prefix}-answer`} checked={d.answers.includes(i)} onChange={() => pickAnswer(d, set, i)} title="Correct option" aria-label={`Option ${String.fromCharCode(65 + i)} is correct`} />
           <input className="ctl grow" placeholder={`Option ${String.fromCharCode(65 + i)}`} disabled={locked || d.kind === "TRUE_FALSE"} value={opt} onChange={(ev) => { const options = [...d.options]; options[i] = ev.target.value; set({ ...d, options }); }} />
-          {!locked && d.kind !== "TRUE_FALSE" && d.options.length > 2 ? <Btn kind="ghost" size="sm" onClick={() => set({ ...d, options: d.options.filter((_, k) => k !== i), answers: d.answers.filter((a) => a !== i).map((a) => (a > i ? a - 1 : a)) })}>Remove</Btn> : null}
+          {!locked && d.kind !== "TRUE_FALSE" && d.options.length > 2 ? <Btn kind="ghost" size="sm" onClick={() => set({ ...d, options: d.options.filter((_, k) => k !== i), optionImages: d.optionImages?.filter((_, k) => k !== i), answers: d.answers.filter((a) => a !== i).map((a) => (a > i ? a - 1 : a)) })}>Remove</Btn> : null}
+          {d.optionImages?.[i] ? <span className="sub2" title="This option carries an image; manage it with Images">image</span> : null}
         </div>
       ))}
       <div className="row row--inline row--tight mb-2">
-        {!locked && d.kind !== "TRUE_FALSE" && d.options.length < 8 ? <Btn kind="ghost" size="sm" onClick={() => set({ ...d, options: [...d.options, ""] })}>Add an option</Btn> : null}
+        {!locked && d.kind !== "TRUE_FALSE" && d.options.length < 8 ? <Btn kind="ghost" size="sm" onClick={() => set({ ...d, options: [...d.options, ""], optionImages: d.optionImages ? [...d.optionImages, null] : undefined })}>Add an option</Btn> : null}
         <span className="sub2">{d.kind === "MULTI" ? "Tick every correct option; a candidate earns the marks only with exactly those." : "Select the radio beside the correct option."}</span>
       </div>
       <div className="grid grid--3">
@@ -203,7 +225,12 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         </span>}>
         {shown.length ? (
           <DTable pageSize={25} cols={["Question", "Kind|mid", "Topic|mid", "Difficulty|mid", "Marks|num", "Moderation|mid", "Action|num"]} rows={shown.map((x) => [
-            <span key="s">{x.stem}<div className="sub2">Key: {keyOf(x)}{x.on_papers ? ` · on ${x.on_papers} paper${x.on_papers === 1 ? "" : "s"}` : ""}{x.sat ? ` · sat ${x.sat} time${x.sat === 1 ? "" : "s"}` : ""}{(x.version ?? 1) > 1 ? ` · version ${x.version}` : ""}{x.authored_by ? ` · ${x.authored_by}` : ""}</div></span>,
+            <span key="s"><MathText text={x.stem} />
+              {x.image_id ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/bff/api/v1/cbt/questions/images/${x.image_id}`} alt="The question's diagram" style={{ display: "block", maxWidth: 160, maxHeight: 90, objectFit: "contain", margin: "4px 0" }} />
+              ) : null}
+              <div className="sub2">Key: <MathText text={keyOf(x)} />{x.option_images?.some(Boolean) ? ` · ${x.option_images.filter(Boolean).length} option image${x.option_images.filter(Boolean).length === 1 ? "" : "s"}` : ""}{x.on_papers ? ` · on ${x.on_papers} paper${x.on_papers === 1 ? "" : "s"}` : ""}{x.sat ? ` · sat ${x.sat} time${x.sat === 1 ? "" : "s"}` : ""}{(x.version ?? 1) > 1 ? ` · version ${x.version}` : ""}{x.authored_by ? ` · ${x.authored_by}` : ""}</div></span>,
             <span className="sub2" key="k">{KIND_WORD[x.kind] ?? x.kind}</span>,
             <span className="sub2" key="t">{x.topic ?? "—"}</span>,
             <Pil kind={DIFF[x.difficulty]?.[0] ?? "grey"} key="d">{DIFF[x.difficulty]?.[1] ?? x.difficulty}</Pil>,
@@ -215,7 +242,8 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
               {mayModerate && !x.archived_at && !x.mine && x.moderation !== "RETURNED" ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setReturning(x); setReturnNote(""); }}>Return</Btn> : null}
             </span>,
             <span key="ac" className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>{x.archived_at ? <Pil kind="grey" key="p">Archived</Pil> : x.active ? <Pil kind="ok" key="p">Active</Pil> : <Pil kind="grey" key="p">Retired</Pil>}
-              {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setEditing(x); setE({ topic: x.topic ?? "", stem: x.stem, kind: x.kind ?? "MCQ", options: [...x.options], answers: x.answers ?? [x.answer], difficulty: x.difficulty, marks: String(x.marks), explanation: x.explanation ?? "" }); }}>Edit</Btn> : null}
+              {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setEditing(x); setE({ topic: x.topic ?? "", stem: x.stem, kind: x.kind ?? "MCQ", options: [...x.options], answers: x.answers ?? [x.answer], difficulty: x.difficulty, marks: String(x.marks), explanation: x.explanation ?? "", optionImages: x.option_images ? [...x.option_images] : x.options.map(() => null) }); }}>Edit</Btn> : null}
+              {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => setImagesFor(x.id)}>Images</Btn> : null}
               {may && !x.archived_at ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void send(`/questions/${x.id}/active`, "POST", { active: !x.active }, `${x.active ? "Retire" : "Restore"} a question in ${course}`)}>{x.active ? "Retire" : "Restore"}</Btn> : null}
               {may ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void send(`/questions/${x.id}/archive`, "POST", { archived: !x.archived_at }, `${x.archived_at ? "Restore from the archive" : "Archive"} a question in ${course}`)}>{x.archived_at ? "Unarchive" : "Archive"}</Btn> : null}
               <Btn kind="ghost" size="sm" onClick={() => void openHistory(x)}>History</Btn></span>,
@@ -268,6 +296,9 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
             </>
           ) : history.versions ? <div className="sub2 mt-2">{history.q.moderation === "APPROVED" && !history.q.moderated_by ? "In the bank before moderation began: taken as approved." : "No moderation decision yet."}</div> : null}
         </Modal>
+      ) : null}
+      {imagesFor && questions.find((x) => x.id === imagesFor) ? (
+        <QuestionImages q={questions.find((x) => x.id === imagesFor) as Question} course={course} onChanged={() => router.refresh()} onClose={() => setImagesFor(null)} />
       ) : null}
       {returning ? (
         <Modal title="Return the question" sub={course} onClose={() => setReturning(null)}

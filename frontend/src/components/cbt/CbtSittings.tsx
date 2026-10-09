@@ -20,7 +20,9 @@ import { printSlips, type Slip } from "@/lib/cbt-slip";
 interface Invigilator { person_id: string; name: string; staff_number: string | null; chief: boolean }
 interface Sitting { id: string; label: string; venue: string; starts_at: string; ends_at: string; capacity: number; seated: number; begun: number; marked?: number; invigilators?: Invigilator[];
   checked_in?: number; report_filed_at?: string | null; incidents?: number; ended?: boolean }
-interface Sittings { sittings: Sitting[]; candidates: number; unseated: number; late_entry_minutes?: number | null; require_check_in?: boolean; result?: { seated: number; unseated: number } }
+interface Sittings { sittings: Sitting[]; candidates: number; unseated: number; late_entry_minutes?: number | null; require_check_in?: boolean; result?: { seated: number; unseated: number; clashed?: number } }
+/** V376: a candidate seated here at the same time as in another examination's sitting */
+interface Clash { candidate_id: string; number: string; surname: string; other_names: string; sitting_id: string; sitting: string; seat_no: number; starts_at: string; ends_at: string; other_reference: string; other_course: string; other_title: string; other_sitting: string; other_venue: string; other_starts_at: string; other_ends_at: string }
 interface SlipRow { seat_no: number; candidate_id: string; number: string; surname: string; other_names: string; level: number | null; programme: string | null; token: string }
 interface SlipSet { exam: { reference: string; title: string; course_code: string; course_title: string | null; session: string; duration_minutes: number; late_entry_minutes: number | null }; sitting: Sitting; rows: SlipRow[] }
 interface Staff { id: string; staff_number: string | null; surname: string; given_names: string; offices: string }
@@ -42,9 +44,11 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
   const [found, setFound] = useState<Staff[] | null>(null);
   const editable = canManage && exam.state !== "COMPLETED" && exam.state !== "CANCELLED";
 
+  const [clashes, setClashes] = useState<Clash[]>([]);
   const load = useCallback(async () => {
-    const r = await fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/sittings`);
+    const [r, c] = await Promise.all([fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/sittings`), fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/clashes`)]);
     if (r.ok) setData((await r.json()) as Sittings);
+    if (c.ok) setClashes((await c.json()) as Clash[]);
   }, [exam.id]);
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t); }, [load]);
 
@@ -132,6 +136,17 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
     const r = await fetch(`/api/bff/api/v1/cbt/exams/${exam.id}/sittings/${s.id}/attendance`);
     if (r.ok) { const j = await r.json(); setList({ sitting: s, rows: j.rows as Seat[] }); }
   }
+  /* V376: candidates seated here at the same time as in another examination's sitting */
+  async function moveClash(c: Clash, sittingId: string) {
+    const target = data?.sittings.find((x) => x.id === sittingId);
+    if (!target) return;
+    setBusy(true);
+    try {
+      const j = await cbtSend(`/exams/${exam.id}/seats/${c.candidate_id}`, "PUT", { sittingId }, `${c.surname}, ${c.other_names} moved to ${target.label}`);
+      if (j) { await load(); router.refresh(); }
+    } finally { setBusy(false); }
+  }
+
   async function move(row: Seat, sittingId: string) {
     const target = data?.sittings.find((x) => x.id === sittingId);
     if (!target || !list) return;
@@ -165,7 +180,7 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
               </> : null}
             </div>
           ) : null}
-          {data.result ? <div className="sub2 mt-1">{num(data.result.seated)} seated just now{data.result.unseated ? ` · ${num(data.result.unseated)} found no free seat` : ""}.</div> : null}
+          {data.result ? <div className="sub2 mt-1">{num(data.result.seated)} seated just now{data.result.unseated - (data.result.clashed ?? 0) > 0 ? ` · ${num(data.result.unseated - (data.result.clashed ?? 0))} found no free seat` : ""}{data.result.clashed ? ` · ${num(data.result.clashed)} not seated: every sitting with room clashes with another examination they sit at the same time — add a sitting at another time` : ""}.</div> : null}
           {data.sittings.length ? (
             <div className="mt-2">
               {late == null ? (
@@ -207,6 +222,28 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
           ])} />
         ) : <PBody><div className="sub2">No sittings: the examination opens to every candidate in its window.</div></PBody>}
       </Panel>
+
+      {clashes.length ? (
+        <Panel title="Clashes" right={<span className="sub2">{clashes.length} candidate{clashes.length === 1 ? "" : "s"} seated here at the same time as in another examination</span>}>
+          <PBody><div className="sub2">A sitting moved after seating can put a candidate in two halls at once. Move each to a sitting that does not clash, here or in the other examination; the portal refuses a clashing seat.</div></PBody>
+          <DTable cols={["Candidate", "Here", "Also, at the same time", "Move to"]} rows={clashes.map((c) => [
+            <span key="c">{c.surname.toUpperCase()}, {c.other_names}<div className="sub2 tnum">{c.number}</div></span>,
+            <span key="h">{c.sitting} · seat {c.seat_no}<div className="sub2">{whenAt(c.starts_at)} to {hhmm(c.ends_at)}</div></span>,
+            <span key="o"><b className="tnum">{c.other_course}</b> {c.other_title}<div className="sub2">{c.other_sitting} · {c.other_venue} · {whenAt(c.other_starts_at)} to {hhmm(c.other_ends_at)}</div></span>,
+            editable ? (
+              <select key="m" className="ctl" aria-label={`Move ${c.surname} to another sitting`} value="" disabled={busy} onChange={(e) => { if (e.target.value) void moveClash(c, e.target.value); }}>
+                <option value="">Move to…</option>
+                {data.sittings.filter((x) => x.id !== c.sitting_id).map((x) => {
+                  const full = x.seated >= x.capacity;
+                  // the other examination's sittings this candidate is seated in: a sitting overlapping one of them clashes too
+                  const clashesToo = clashes.some((k) => k.candidate_id === c.candidate_id && new Date(x.starts_at) < new Date(k.other_ends_at) && new Date(x.ends_at) > new Date(k.other_starts_at));
+                  return <option key={x.id} value={x.id} disabled={full || clashesToo}>{x.label} · {hhmm(x.starts_at)}{full ? " (full)" : clashesToo ? " (clashes too)" : ""}</option>;
+                })}
+              </select>
+            ) : <span key="m" className="sub2">—</span>,
+          ])} />
+        </Panel>
+      ) : null}
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.label}` : "Add a sitting"} sub={exam.reference} onClose={() => setForm(null)}

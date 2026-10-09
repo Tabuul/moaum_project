@@ -15,6 +15,7 @@ import { EMPTY_FORM, ExamFields, formBody, localInput, type ExamForm } from "./C
 import { CbtCandidates } from "./CbtCandidates";
 import { CbtResults } from "./CbtResults";
 import { CbtPaperChecks } from "./CbtPaperChecks";
+import { MathText } from "@/components/proto/MathText";
 import { CbtItems, useItemAnalysis } from "./CbtItems";
 import { CbtSittings } from "./CbtSittings";
 
@@ -189,7 +190,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
                 return [
                   <input key="c" type="checkbox" checked={on} disabled={!editable || ((!q.active || !approved(q)) && !on)} onChange={() => toggle(q.id)} aria-label={`Include ${q.stem}`} />,
                   <span key="n" className="tnum sub2">{on ? picked.indexOf(q.id) + 1 : "—"}</span>,
-                  <span key="s">{q.stem}{!q.active ? <Pil kind="grey" className="ml-1">retired</Pil> : null}{!approved(q) ? <Pil kind={q.moderation === "RETURNED" ? "bad" : "warn"} className="ml-1">{q.moderation === "RETURNED" ? "returned by the moderator" : "awaiting moderation"}</Pil> : null}<div className="sub2">{q.options.length} options{q.on_papers ? ` · on ${q.on_papers} paper${q.on_papers === 1 ? "" : "s"}` : ""}</div></span>,
+                  <span key="s"><MathText text={q.stem} />{!q.active ? <Pil kind="grey" className="ml-1">retired</Pil> : null}{!approved(q) ? <Pil kind={q.moderation === "RETURNED" ? "bad" : "warn"} className="ml-1">{q.moderation === "RETURNED" ? "returned by the moderator" : "awaiting moderation"}</Pil> : null}<div className="sub2">{q.options.length} options{q.on_papers ? ` · on ${q.on_papers} paper${q.on_papers === 1 ? "" : "s"}` : ""}</div></span>,
                   <span key="t" className="sub2">{q.topic ?? "—"}</span>,
                   <span key="k" className="sub2">{q.kind === "MULTI" ? "Multiple select" : q.kind === "TRUE_FALSE" ? "True / false" : "Multiple choice"}</span>,
                   <span key="d" className="sub2">{q.difficulty.charAt(0) + q.difficulty.slice(1).toLowerCase()}</span>,

@@ -16,6 +16,7 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -64,11 +65,24 @@ class CbtCandidateDoor {
 
     private final JdbcClient jdbc;
     private final CheckCodes codes;
+    private final FileObjects files;
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    CbtCandidateDoor(JdbcClient jdbc, CheckCodes codes) {
+    CbtCandidateDoor(JdbcClient jdbc, CheckCodes codes, FileObjects files) {
         this.jdbc = jdbc;
         this.codes = codes;
+        this.files = files;
+    }
+
+    /** V376: an image on the candidate's paper — only inside their own running attempt, held by this screen, that drew it */
+    org.springframework.http.ResponseEntity<byte[]> image(Kind kind, UUID me, UUID attempt, String token, UUID image) {
+        own(kind, attempt, me);
+        boolean ok = jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM assessment.cbt_attempt a WHERE a.id = :a AND a.token = :t AND a.status = 'IN_PROGRESS')
+                       AND assessment.cbt_attempt_shows_image(:a, :i)
+                """).param("a", attempt).param("t", token(token)).param("i", image).query(Boolean.class).single();
+        if (!ok) throw new NotFound("image", image.toString());
+        return CbtQuestionImages.stream(jdbc, files, image);
     }
 
     /** V375: what a CBT slip's QR carries — the examination, the candidate, and the check code the API signs for the pair */
@@ -209,7 +223,7 @@ class CbtCandidateDoor {
                  WHERE e.id = :e
                 """).param("e", exam).query().singleRow());
         // V364: the paper as it was drawn and frozen — the questions' own versions; the function selects neither key nor explanation
-        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options FROM assessment.cbt_candidate_paper(:a)")
+        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options, image FROM assessment.cbt_candidate_paper(:a)")
                 .param("a", id).query().listOfRows();
         for (Map<String, Object> q : questions) {
             q.put("options", mapper.readValue(String.valueOf(q.get("options")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));

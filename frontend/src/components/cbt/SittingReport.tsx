@@ -64,7 +64,7 @@ export function SittingReport({ initial }: { initial: ReportView }) {
       ["Terminated", String(c.terminated)], ["Incidents", `${c.incidents}${c.minutes_lost ? ` · ${c.minutes_lost} minutes lost by the hall` : ""}`],
       ["Remarks", r.remarks ?? "—"], ["Filed", `${whenAt(r.filed_at)} by ${r.filed_by ?? "—"}`],
     ];
-    const incidents = v.incidents.map((x) => `<tr><td>${esc(hhmm(x.occurred_at))}</td><td>${esc(INCIDENT_WORD[x.kind] ?? x.kind)}${x.minutes_lost ? ` (${esc(x.minutes_lost)} min)` : ""}${x.after_filing ? " · after the report" : ""}</td><td>${x.candidate_id ? esc(`Seat ${x.seat_no ?? "—"} · ${(x.surname ?? "").toUpperCase()}, ${x.other_names ?? ""} · ${x.number ?? ""}`) : "The hall"}</td><td>${esc(x.detail)}</td></tr>`).join("");
+    const incidents = v.incidents.map((x) => `<tr><td>${esc(hhmm(x.occurred_at))}</td><td>${esc(INCIDENT_WORD[x.kind] ?? x.kind)}${x.minutes_lost ? ` (${esc(x.minutes_lost)} min)` : ""}${x.time_given_at ? ` · ${esc(x.time_given_minutes)} min given back to ${esc(x.time_given_to)}` : ""}${x.after_filing ? " · after the report" : ""}</td><td>${x.candidate_id ? esc(`Seat ${x.seat_no ?? "—"} · ${(x.surname ?? "").toUpperCase()}, ${x.other_names ?? ""} · ${x.number ?? ""}`) : "The hall"}</td><td>${esc(x.detail)}</td></tr>`).join("");
     const signatures = r.present.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.staff_number ?? "")}</td><td style="height:28px"></td><td></td></tr>`).join("");
     void printDocument("FORM", {
       title: "CBT sitting report", subtitle: `${v.exam.course_code} · ${s.label} · ${s.venue}`, reference: v.exam.reference,
@@ -93,7 +93,7 @@ export function SittingReport({ initial }: { initial: ReportView }) {
         {v.incidents.length ? (
           <DTable cols={["When", "What", "Candidate", "Detail", "Recorded by"]} rows={v.incidents.map((x) => [
             <span key="w" className="tnum">{hhmm(x.occurred_at)}</span>,
-            <span key="k">{INCIDENT_WORD[x.kind] ?? x.kind}{x.minutes_lost ? <span className="sub2"> · {x.minutes_lost} min</span> : null}{x.after_filing ? <Pil kind="grey" className="ml-1">after the report</Pil> : null}</span>,
+            <span key="k">{INCIDENT_WORD[x.kind] ?? x.kind}{x.minutes_lost ? <span className="sub2"> · {x.minutes_lost} min</span> : null}{x.time_given_at ? <span className="sub2"> · {x.time_given_minutes} min given back to {x.time_given_to}</span> : null}{x.after_filing ? <Pil kind="grey" className="ml-1">after the report</Pil> : null}</span>,
             <span key="c" className="sub2">{x.candidate_id ? `Seat ${x.seat_no ?? "—"} · ${(x.surname ?? "").toUpperCase()}, ${x.other_names ?? ""}` : "The hall"}</span>,
             <span key="d">{x.detail}</span>, <span key="b" className="sub2">{x.recorded_by ?? "—"}</span>,
           ])} />

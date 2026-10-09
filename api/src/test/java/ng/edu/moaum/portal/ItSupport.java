@@ -44,6 +44,13 @@ final class ItSupport {
         if (r.getStatusCode().value() != 200) throw new IllegalStateException("approving " + question + ": " + r.getBody());
     }
 
+    /** V376: a GET whose answer is bytes (an image), with the headers given */
+    ResponseEntity<byte[]> getBytesWith(String token, String path, Map<String, String> headers) {
+        RestClient.RequestHeadersSpec<?> spec = client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        for (Map.Entry<String, String> h : headers.entrySet()) spec = spec.header(h.getKey(), h.getValue());
+        return spec.retrieve().toEntity(byte[].class);
+    }
+
     /** a call with no token at all: the public doors (apply, sign-in, status) */
     @SuppressWarnings("rawtypes")
     ResponseEntity<Map> anon(HttpMethod method, String path, Object body) {
