@@ -452,6 +452,63 @@ class CbtExamController {
         return exam(id);
     }
 
+    /**
+     * V371: the paper as a candidate's screen shows it, for the office that manages the examination to check before anyone sits it —
+     * the pool at its current versions, in the room's own shape. No attempt is made and nothing is saved; like the candidate's paper,
+     * it carries neither key nor explanation (assessment.cbt_preview_paper).
+     */
+    @GetMapping("/exams/{id}/preview")
+    @PreAuthorize(MANAGERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> preview(@PathVariable UUID id) {
+        Map<String, Object> e = managed(id);
+        List<Map<String, Object>> questions = jdbc.sql("SELECT n, id, kind, stem, marks, options::text AS options FROM assessment.cbt_preview_paper(:e)")
+                .param("e", id).query().listOfRows();
+        int marks = 0;
+        for (Map<String, Object> q : questions) {
+            q.put("options", mapper.readValue(String.valueOf(q.get("options")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+            marks += ((Number) q.get("marks")).intValue();
+        }
+        Map<String, Object> exam = new LinkedHashMap<>();
+        for (String k : List.of("id", "reference", "title", "course_code", "course_title", "session", "semester", "duration_minutes", "randomize_options", "security_mode",
+                "venue", "violation_limit", "violation_action", "instructions", "partial_credit", "live_state", "exam_type", "negative_marks", "allow_back", "allow_review",
+                "fullscreen_required", "detectors", "proctoring", "office", "warn_at", "final_warn_at", "disconnect_minutes")) {
+            exam.put(k, e.get(k));
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        int minutes = e.get("duration_minutes") == null ? 60 : ((Number) e.get("duration_minutes")).intValue();
+        Map<String, Object> attempt = new LinkedHashMap<>();
+        attempt.put("id", "preview");
+        attempt.put("number", 1);
+        attempt.put("status", "IN_PROGRESS");
+        attempt.put("started_at", now);
+        attempt.put("ends_at", now.plusMinutes(minutes));
+        attempt.put("submitted_at", null);
+        attempt.put("answered", 0);
+        attempt.put("violations", 0);
+        attempt.put("max_marks", marks);
+        attempt.put("questions", questions.size());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("attempt", attempt);
+        out.put("exam", exam);
+        out.put("questions", questions);
+        out.put("answers", Map.of());
+        out.put("flagged", List.of());
+        out.put("seqs", Map.of());
+        out.put("candidate", Map.of("surname", "PREVIEW", "other_names", "the paper as a candidate sees it", "number", String.valueOf(e.get("reference"))));
+        out.put("now", now);
+        // how a candidate's paper differs from this one: drawn from the pool, shuffled
+        Map<String, Object> notes = new LinkedHashMap<>();
+        notes.put("selection", e.get("selection"));
+        notes.put("total_questions", e.get("total_questions"));
+        notes.put("pool_size", questions.size());
+        notes.put("randomize_questions", e.get("randomize_questions"));
+        notes.put("randomize_options", e.get("randomize_options"));
+        notes.put("paper_problem", e.get("paper_problem"));
+        out.put("preview", notes);
+        return out;
+    }
+
     @PostMapping("/exams/{id}/{action}")
     @PreAuthorize(MANAGERS)
     @Transactional

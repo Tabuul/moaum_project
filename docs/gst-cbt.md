@@ -248,3 +248,21 @@ delta; all read through the indexes listed in section F.
   room: `/jupeb/portal?tab=cbt` and `/jupeb/portal/cbt/room/[attempt]`. The JUPEB Office's desk is `/jupeb/cbt` and `/jupeb/question-bank`.
 - JUPEB's practice tests (V348) stay self-study, not examinations.
 - Tests: `JupebCbtIT`, check.sql 209.
+
+## K. The examination room made easier to work through, and the office's preview (V371)
+
+- **The room on a wide screen** (de1e4e47): the question navigator takes about a third of the room (300 to 460px) and is never taller
+  than the screen — its numbers scroll inside it, the current one kept in sight — and Previous, Next and the smaller actions stay pinned
+  to the foot of the screen, as on a phone.
+- **Long papers**: a navigator filter (all questions, the unanswered, the marked for review) and *Next unanswered*, which goes to the
+  next question with no answer (round to the start where the paper allows going back). On a phone it sits in the Questions panel so the
+  bar stays two rows.
+- **Keyboard and text size**: on a computer A–E choose an option, ← and → move to the previous and next question (up and down are left
+  to the browser, which moves between a question's options), M marks for review; nothing is taken while a warning is on screen or a key is
+  held. A− / A+ change the question text size (0.9× to 1.5×), remembered on that browser only.
+- **The office's preview**: *Preview as a candidate* on an examination's page (offices that manage it only) opens the examination room on
+  the paper — `/cbt/preview/{id}`, from `GET /api/v1/cbt/exams/{id}/preview` and `assessment.cbt_preview_paper`, the pool at each
+  question's current version, options in their written order, never a key or an explanation. No attempt is made; nothing is saved,
+  reported or submitted; there is no camera or fullscreen; the screen says how a candidate's paper differs (drawn from the pool,
+  questions or options shuffled).
+- Tests: check.sql 216; `CbtExamIT` (the preview carries no key; the other office and reading offices are refused).

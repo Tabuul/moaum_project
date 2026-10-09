@@ -199,6 +199,18 @@ class CbtExamIT {
         assertThat(l(detail.get("paper"))).hasSize(4);
         assertThat(((Number) detail.get("pool_marks")).intValue()).isEqualTo(5);
         assertThat(detail.get("paper_problem")).isNull();
+        // V371: the office previews the paper as a candidate sees it — the questions and their options, never a key; nobody else may
+        ResponseEntity<Map> preview = it.get(gst, "/api/v1/cbt/exams/" + exam + "/preview");
+        assertThat(preview.getStatusCode().value()).as(String.valueOf(preview.getBody())).isEqualTo(200);
+        assertThat(l(preview.getBody().get("questions"))).hasSize(4).allSatisfy(q -> {
+            assertThat(q).containsKeys("n", "id", "kind", "stem", "marks", "options").doesNotContainKeys("answer", "answers", "explanation");
+            assertThat(l(q.get("options"))).allSatisfy(o -> assertThat(o.keySet()).containsExactlyInAnyOrder("i", "text"));
+        });
+        assertThat(String.valueOf(preview.getBody())).doesNotContain("answer=").doesNotContain("explanation");
+        assertThat(m(preview.getBody().get("attempt")).get("id")).isEqualTo("preview");
+        assertThat(jdbc.sql("SELECT count(*) FROM assessment.cbt_attempt WHERE exam_id = :e").param("e", exam).query(Long.class).single()).isZero();
+        assertThat(it.get(eps, "/api/v1/cbt/exams/" + exam + "/preview").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(registrar, "/api/v1/cbt/exams/" + exam + "/preview").getStatusCode().value()).isEqualTo(403);
 
         // registered candidates are told on publication
         register(s, student);

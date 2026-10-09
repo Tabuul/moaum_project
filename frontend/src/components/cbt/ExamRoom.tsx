@@ -26,10 +26,25 @@ const EVENT_GAP_MS = 10_000;
 const ALL_DETECTORS: Detector[] = ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"];
 const FACE_EVERY_MS = 3000;
 
-export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHref = "/student/cbt", listLabel = "CBT examinations" }: {
-  attemptId: string; apiBase?: string; listHref?: string; listLabel?: string;
+/** V371: how a candidate's paper differs from the office's preview of it */
+interface PreviewNotes { selection: string; total_questions: number | null; pool_size: number; randomize_questions: boolean; randomize_options: boolean; paper_problem: string | null }
+type NavFilter = "ALL" | "UNANSWERED" | "MARKED";
+/** the question text sizes a candidate may choose, remembered on this browser only */
+const TEXT_SIZES = [0.9, 1, 1.15, 1.3, 1.5];
+const TEXT_SIZE_KEY = "cbt-text-size";
+const OFFICE_HOME: Record<string, string> = { GST: "/gst/cbt", EPS: "/eps/cbt", EXAMS: "/exams/cbt", JUPEB: "/jupeb/cbt" };
+
+/** previewExamId (V371): the office opens its own paper in the room — no attempt, nothing saved, nothing reported, nothing submitted */
+export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHref = "/student/cbt", listLabel = "CBT examinations", previewExamId }: {
+  attemptId: string; apiBase?: string; listHref?: string; listLabel?: string; previewExamId?: string;
 }) {
+  const preview = !!previewExamId;
   const [phase, setPhase] = useState<Phase>("loading");
+  const [previewNotes, setPreviewNotes] = useState<PreviewNotes | null>(null);
+  const [navFilter, setNavFilter] = useState<NavFilter>("ALL");
+  const [textSize, setTextSize] = useState<number>(() => {
+    try { const v = Number(window.localStorage.getItem(TEXT_SIZE_KEY)); return TEXT_SIZES.includes(v) ? v : 1; } catch { return 1; }
+  });
   const [room, setRoom] = useState<Room | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [answers, setAnswers] = useState<Record<string, number[]>>({});
@@ -84,6 +99,9 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   }, [current]);
 
   const exam = room?.exam;
+  // V371: a preview goes back to the examination's own page on its office's desk
+  const backHref = preview ? (exam?.office && OFFICE_HOME[exam.office] ? `${OFFICE_HOME[exam.office]}/${previewExamId}` : "/") : listHref;
+  const backLabel = preview ? "the examination" : listLabel;
   const detectors = useMemo(() => new Set<Detector>(exam?.detectors ?? ALL_DETECTORS), [exam?.detectors]);
   const allowBack = exam?.allow_back !== false;
   const allowReview = exam?.allow_review !== false;
@@ -114,12 +132,18 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
 
   /* ── the paper ── */
   const load = useCallback(async () => {
-    try { token.current = sessionStorage.getItem(tokenKey(attemptId)); } catch { token.current = null; }
-    if (!token.current) { setPhase("noToken"); return; }
-    const r = await fetch(`${apiBase}/attempts/${attemptId}`, { headers: headers() });
+    if (!previewExamId) {
+      try { token.current = sessionStorage.getItem(tokenKey(attemptId)); } catch { token.current = null; }
+      if (!token.current) { setPhase("noToken"); return; }
+    }
+    // V371: a preview reads the office's own paper; there is no attempt and no token
+    const r = previewExamId
+      ? await fetch(`/api/bff/api/v1/cbt/exams/${encodeURIComponent(previewExamId)}/preview`)
+      : await fetch(`${apiBase}/attempts/${attemptId}`, { headers: headers() });
     const j = await r.json().catch(() => null);
     if (!r.ok) { const p = (j as Problem) ?? { status: r.status, title: r.statusText }; if (!handleProblem(p)) { setProblem(p); setPhase("error"); } return; }
     const rm = j as Room;
+    if (previewExamId) setPreviewNotes((j as { preview?: PreviewNotes }).preview ?? null);
     setRoom(rm);
     setAnswers(rm.answers ?? {});
     setFlagged(rm.flagged ?? []);
@@ -133,7 +157,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     }
     if (rm.attempt.status !== "IN_PROGRESS") { end(rm.attempt.status); return; }
     setPhase("gate");
-  }, [attemptId, apiBase, headers, handleProblem, end]);
+  }, [attemptId, apiBase, headers, handleProblem, end, previewExamId]);
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t); }, [load]);
 
   /* ── the browser's reports ── */
@@ -150,12 +174,13 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   }, [attemptId, apiBase, headers, handleProblem, end]);
   /** a report, at most one of a kind in a short span, naming the question the candidate was on */
   const report = useCallback((kind: string, detail?: string, ms?: number, always = false) => {
+    if (preview) return; // V371: a preview reports nothing
     const t = Date.now();
     if (!always && t - (lastReport.current.get(kind) ?? 0) < EVENT_GAP_MS) return;
     lastReport.current.set(kind, t);
     eventQueue.current.push({ kind, detail, n: currentRef.current + 1, ms: ms == null ? undefined : Math.max(0, Math.round(ms)) });
     void flushEvents();
-  }, [flushEvents]);
+  }, [flushEvents, preview]);
 
   /* ── the server's clock, ticking locally; at the end of time the attempt submits itself; a device clock moved is reported ── */
   useEffect(() => {
@@ -169,10 +194,10 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         clock0.current = { wall: n, perf: p };
         if (phaseRef.current === "writing") report("TIME_MANIPULATION_ATTEMPT", `the device clock moved by ${Math.round(drift / 1000)}s; the server's clock stands`);
       }
-      if ((phaseRef.current === "writing" || phaseRef.current === "summary") && endsAtRef.current && n + offsetRef.current >= endsAtRef.current) void submitRef.current(true);
+      if (!preview && (phaseRef.current === "writing" || phaseRef.current === "summary") && endsAtRef.current && n + offsetRef.current >= endsAtRef.current) void submitRef.current(true);
     }, 1000);
     return () => window.clearInterval(id);
-  }, [report]);
+  }, [report, preview]);
   const serverNow = now + offset;
   const left = Math.max(0, (endsAt - serverNow) / 1000);
 
@@ -205,6 +230,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   }, [attemptId, apiBase, headers, handleProblem, end]);
 
   const queueSave = (q: string, patch: Omit<Pending, "seq">) => {
+    if (preview) return; // V371: a preview saves nothing
     const seq = (seqs.current.get(q) ?? 0) + 1;
     seqs.current.set(q, seq);
     pending.current.set(q, { ...pending.current.get(q), ...patch, seq });
@@ -232,7 +258,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   };
 
   useEffect(() => {
-    if (phase !== "writing" && phase !== "summary") return;
+    if (preview || (phase !== "writing" && phase !== "summary")) return;
     const onVisibility = () => {
       if (!detectors.has("TAB")) return;
       if (document.visibilityState === "hidden") { hiddenAt.current = Date.now(); report("TAB_SWITCH", "the examination tab was hidden"); }
@@ -291,7 +317,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       document.removeEventListener("copy", onCopy); document.removeEventListener("cut", onCopy); document.removeEventListener("paste", onPaste);
       document.removeEventListener("contextmenu", onContext); window.removeEventListener("pagehide", onLeave);
     };
-  }, [phase, detectors, fullscreenRequired, report, flushAnswers, flushEvents, apiBase, attemptId, headers]);
+  }, [phase, detectors, fullscreenRequired, report, flushAnswers, flushEvents, apiBase, attemptId, headers, preview]);
 
   /* ── the heartbeat: the server's word on the attempt every half minute, and a retry of anything unsaved ── */
   const heartbeat = useCallback(async () => {
@@ -308,7 +334,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       setOffline(false);
     } catch { setOffline(true); }
   }, [attemptId, apiBase, headers, handleProblem, end, flushAnswers, flushEvents]);
-  useEffect(() => { if (phase !== "writing" && phase !== "summary") return; const id = window.setInterval(() => void heartbeat(), HEARTBEAT_MS); return () => window.clearInterval(id); }, [phase, heartbeat]);
+  useEffect(() => { if (preview || (phase !== "writing" && phase !== "summary")) return; const id = window.setInterval(() => void heartbeat(), HEARTBEAT_MS); return () => window.clearInterval(id); }, [phase, heartbeat, preview]);
 
   /* ── the camera, by consent: presence and, where the browser can see faces, face signals — never a recording ── */
   useEffect(() => {
@@ -376,6 +402,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   /* ── the end of time, or the candidate's submission: what was saved first, then the server's word ── */
   const submit = useCallback(async (auto: boolean) => {
     if (phaseRef.current !== "writing" && phaseRef.current !== "summary") return;
+    if (preview) { end("PREVIEW"); return; } // V371: a preview is closed, never submitted
     setBusy(true);
     try {
       await flushAnswers();
@@ -385,7 +412,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       end(j.status ?? "SUBMITTED");
     } catch { if (auto) end("TIME_EXPIRED"); else setProblem({ status: 0, title: "The submission could not reach the server. Stay on this screen; it will retry." }); }
     finally { setBusy(false); }
-  }, [attemptId, apiBase, headers, handleProblem, end, flushAnswers]);
+  }, [attemptId, apiBase, headers, handleProblem, end, flushAnswers, preview]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 
   /* fullscreen asked for, but never waited on for long: a browser that refuses or never answers still lets the candidate write */
@@ -399,6 +426,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     report("RESUMED", "the examination screen was entered", undefined, true);
   }
   const begin = async () => {
+    if (preview) { setPhase("writing"); return; } // V371: no camera, no fullscreen, nothing reported
     if (proctored && !room?.attempt.camera_consent_at && !cameraOn) { setPhase("camera"); return; }
     if (proctored && !cameraOn) { await consentAndStart(); return; }
     await enter();
@@ -418,16 +446,55 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     setNavOpen(false);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  /* the next question with no answer after this one — round to the start where the paper lets the candidate go back */
+  const isOpen = (x: RoomQuestion) => !(answers[x.id] ?? []).length;
+  const nextUnanswered = (() => {
+    for (let k = current + 1; k < questions.length; k++) if (isOpen(questions[k])) return k;
+    if (allowBack) for (let k = 0; k < current; k++) if (isOpen(questions[k])) return k;
+    return -1;
+  })();
+  const shown = questions.map((x, i) => ({ x, i })).filter(({ x }) => navFilter === "ALL" || (navFilter === "UNANSWERED" ? isOpen(x) : flagged.includes(x.id)));
+  const setSize = (step: number) => setTextSize((was) => TEXT_SIZES[Math.min(TEXT_SIZES.length - 1, Math.max(0, TEXT_SIZES.indexOf(was) + step))] ?? 1);
+  useEffect(() => { try { window.localStorage.setItem(TEXT_SIZE_KEY, String(textSize)); } catch { /* remembered for this visit only */ } }, [textSize]);
+
+  /* the keyboard on a computer: A–E choose an option, ← → previous and next, M marks for review. Up and down are left to the
+     browser, which moves between a question's options; nothing is taken while a warning is on screen or a key is held. */
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  const onKeys = (e: KeyboardEvent) => {
+    if (phase !== "writing" || warn || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !q) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["radio", "checkbox"].includes((t as HTMLInputElement).type)) || t.isContentEditable)) return;
+    const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    if (key >= "A" && key <= "E" && key.length === 1) {
+      const idx = key.charCodeAt(0) - 65;
+      if (q.options[idx]) { e.preventDefault(); choose(q, q.options[idx].i); }
+    } else if (key === "ArrowRight") {
+      e.preventDefault();
+      if (current < questions.length - 1) go(current + 1);
+    } else if (key === "ArrowLeft") {
+      e.preventDefault();
+      if (allowBack) go(current - 1);
+    } else if (key === "M" && allowReview) {
+      e.preventDefault();
+      toggleFlag(q);
+    }
+  };
+  useEffect(() => { keysRef.current = onKeys; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keysRef.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (phase === "loading") return <Screen><p className="sub2">Opening your examination…</p></Screen>;
-  if (phase === "noToken") return <Screen title="This screen does not hold your attempt"><p>Open the examination again from your CBT examinations page; your attempt continues where it was.</p><a className="btn btn--primary" href={listHref}>{listLabel}</a></Screen>;
-  if (phase === "replaced") return <Screen title="Your examination was opened elsewhere"><p>The attempt continues on the browser or device where it was opened last. This screen no longer holds it, and the second sign-in is on the record.</p><a className="btn btn--ghost" href={listHref}>Back to {listLabel}</a></Screen>;
-  if (phase === "error") return <Screen title="The examination could not be opened"><p>{problem?.detail ?? problem?.title}</p><a className="btn btn--ghost" href={listHref}>Back to {listLabel}</a></Screen>;
+  if (phase === "noToken") return <Screen title="This screen does not hold your attempt"><p>Open the examination again from your CBT examinations page; your attempt continues where it was.</p><a className="btn btn--primary" href={backHref}>{backLabel}</a></Screen>;
+  if (phase === "replaced") return <Screen title="Your examination was opened elsewhere"><p>The attempt continues on the browser or device where it was opened last. This screen no longer holds it, and the second sign-in is on the record.</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
+  if (phase === "error") return <Screen title="The examination could not be opened"><p>{problem?.detail ?? problem?.title}</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
   if (phase === "noCamera") return (
     <Screen title="This examination is sat with the camera on">
       <p>The examination&rsquo;s rules ask for the camera, with your consent, while you write. Without it no answer can be saved. Your choice is recorded; nothing else is.</p>
       <p className="sub2">If you did not consent, or your camera could not be used, speak to the examination office: they decide how you may sit it. You may also try again.</p>
-      <span className="row row--inline row--tight"><button type="button" className="btn btn--primary" onClick={() => setPhase("camera")}>Try again</button><a className="btn btn--ghost" href={listHref}>Back to {listLabel}</a></span>
+      <span className="row row--inline row--tight"><button type="button" className="btn btn--primary" onClick={() => setPhase("camera")}>Try again</button><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></span>
     </Screen>
   );
   if (phase === "ended") {
@@ -436,15 +503,17 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       TIME_EXPIRED: ["Time expired", "The examination ended at the end of your time. Whatever you had answered has been submitted and recorded; your result will be released according to University examination policy."],
       TERMINATED: ["Examination ended", "Your examination was ended under the University's examination policy. The record is reviewed by the office."],
       CLOSED: ["Examination closed", "The examination was closed. Whatever you had answered has been submitted and recorded; your result will be released according to University examination policy."],
+      PREVIEW: ["Preview closed", "Nothing was saved, no attempt was made and no candidate was affected."],
     };
     const [t, text] = words[endStatus] ?? ["Examination ended", "Your attempt is no longer open."];
-    return <Screen title={t}><p>{text}</p><a className="btn btn--primary" href={listHref} onClick={() => { try { sessionStorage.removeItem(tokenKey(attemptId)); } catch { /* ignored */ } }}>Back to {listLabel}</a></Screen>;
+    return <Screen title={t}><p>{text}</p><a className="btn btn--primary" href={backHref} onClick={() => { try { sessionStorage.removeItem(tokenKey(attemptId)); } catch { /* ignored */ } }}>Back to {backLabel}</a></Screen>;
   }
   if (!room || !exam) return <Screen><p className="sub2">…</p></Screen>;
   if (phase === "gate") {
     return (
-      <Screen title={`${exam.course_code} · ${exam.title}`}>
-        <p>{room.attempt.questions} questions · {room.attempt.max_marks} marks · your time ends at <b className="tnum">{new Date(room.attempt.ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b> ({clock(left)} left).</p>
+      <Screen title={`${preview ? "PREVIEW · " : ""}${exam.course_code} · ${exam.title}`}>
+        {preview ? <PreviewNote notes={previewNotes} /> : null}
+        <p>{room.attempt.questions} questions · {room.attempt.max_marks} marks · {preview ? <>{exam.duration_minutes} minutes for a candidate</> : <>your time ends at <b className="tnum">{new Date(room.attempt.ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b> ({clock(left)} left)</>}.</p>
         <ul className="sub2" style={{ margin: 0, paddingLeft: 18 }}>
           {fullscreenRequired ? <li>The examination opens in fullscreen.</li> : null}
           {detectors.size ? <li>Leaving the examination screen is recorded; {exam.violation_limit} recorded violation{exam.violation_limit === 1 ? " is" : "s are"} allowed.</li> : null}
@@ -454,7 +523,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
           <li>Your answers are saved as you go.</li>
         </ul>
         {room.attempt.number > 1 || room.attempt.answered ? <p className="sub2">You return to the attempt as you left it: {room.attempt.answered} answered.</p> : null}
-        <button type="button" className="btn btn--primary" onClick={() => void begin()}>ENTER THE EXAMINATION</button>
+        <button type="button" className="btn btn--primary" onClick={() => void begin()}>{preview ? "OPEN THE PREVIEW" : "ENTER THE EXAMINATION"}</button>
       </Screen>
     );
   }
@@ -492,10 +561,12 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
           <div className={css.exam}><b>{exam.course_code}</b> · {exam.title}</div>
           <div className={css.cand}>{name}{room.candidate ? <> · <span className="tnum">{room.candidate.number}</span></> : null}</div>
         </div>
+        {preview ? <span className={css.previewMark}>PREVIEW</span> : null}
         <button type="button" className={`btn btn--go ${css.finishTop}`} disabled={busy} onClick={() => setPhase("summary")}>FINISH</button>
-        <div className={`${css.timer}${low ? ` ${css.low}` : ""}`} aria-live="polite"><span className={css.timerLabel}>TIME LEFT</span>{clock(left)}</div>
+        <div className={`${css.timer}${low && !preview ? ` ${css.low}` : ""}`} aria-live="polite"><span className={css.timerLabel}>TIME LEFT</span>{clock(left)}</div>
       </header>
       <div className={css.progress} aria-hidden="true"><div style={{ width: `${percent}%` }} /></div>
+      {preview ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><PreviewNote notes={previewNotes} /><a className="btn btn--ghost btn--sm" href={backHref}>Close the preview</a></div> : null}
       {offline ? <div role="status" className={`${css.banner} ${css.bannerWarn}`}>Connection interrupted. Your exam session is being preserved. Please reconnect. Your answers are kept on this screen and saved when the connection returns; the clock continues.</div> : null}
       {fullscreenLost ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>You have exited fullscreen mode. This has been recorded.</span><button type="button" className="btn btn--primary btn--sm" onClick={() => void returnToFullscreen()}>Return to fullscreen</button></div> : null}
       {refused ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>{refused}</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setRefused(null)}>Dismiss</button></div> : null}
@@ -518,18 +589,18 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
                 {flaggedOnPaper.length ? <div className="sub2">Marked for review: {flaggedOnPaper.map((x) => <button key={x.id} type="button" className="btn btn--ghost btn--sm" style={{ margin: 2 }} onClick={() => { setPhase("writing"); go(questions.indexOf(x)); }}>{x.n}</button>)}</div> : null}
               </div>
             ) : null}
-            <p className="sub2">Once submitted, the attempt cannot be reopened.{unsaved ? ` ${unsaved} answer${unsaved === 1 ? "" : "s"} still saving will be sent first.` : ""}</p>
+            <p className="sub2">{preview ? "This is the review a candidate sees before submitting. In the preview nothing is submitted." : <>Once submitted, the attempt cannot be reopened.{unsaved ? ` ${unsaved} answer${unsaved === 1 ? "" : "s"} still saving will be sent first.` : ""}</>}</p>
             {problem ? <p className="sub2">{problem.title}</p> : null}
             <div className="row row--inline row--tight">
               <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setPhase("writing")}>Back to the paper</button>
-              <button type="button" className="btn btn--go" disabled={busy} onClick={() => void submit(false)}>{busy ? "Submitting…" : "SUBMIT EXAM"}</button>
+              <button type="button" className="btn btn--go" disabled={busy} onClick={() => void submit(false)}>{preview ? "CLOSE THE PREVIEW" : busy ? "Submitting…" : "SUBMIT EXAM"}</button>
             </div>
           </main>
         </div>
       ) : (
         <>
           <div className={css.body}>
-            <main className={css.paper}>
+            <main className={css.paper} style={{ ["--qscale" as string]: String(textSize) }}>
               {q ? (
                 <>
                   <div className={css.qhead}>
@@ -558,8 +629,15 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
                 <span className="sub2">{allowBack ? "Questions · tap to go to one" : "Questions · this paper moves forward only"}</span>
                 <button type="button" className={`btn btn--ghost btn--sm ${css.navToggle}`} onClick={() => setNavOpen(false)}>Close</button>
               </div>
+              <button type="button" className={`btn btn--secondary btn--sm mb-2 ${css.onlySmall}`} style={{ width: "100%" }} disabled={nextUnanswered < 0} onClick={() => go(nextUnanswered)}>{nextUnanswered < 0 ? "Every question is answered" : `Go to the next unanswered (question ${questions[nextUnanswered]?.n})`}</button>
+              {/* which questions the grid shows: every one, the unanswered, or those marked for review */}
+              <div className={css.navFilter} role="group" aria-label="Show questions">
+                {([["ALL", `All ${questions.length}`], ["UNANSWERED", `Unanswered ${unanswered}`], ...(allowReview ? [["MARKED", `Marked ${flaggedOnPaper.length}`]] : [])] as [NavFilter, string][]).map(([f, label]) => (
+                  <button key={f} type="button" aria-pressed={navFilter === f} className={navFilter === f ? css.navFilterOn : undefined} onClick={() => setNavFilter(f)}>{label}</button>
+                ))}
+              </div>
               <div className={css.navGrid} ref={navGridRef}>
-                {questions.map((x, i) => {
+                {shown.map(({ x, i }) => {
                   const done = (answers[x.id] ?? []).length > 0;
                   const fl = flagged.includes(x.id);
                   return (
@@ -568,16 +646,25 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
                       className={`${css.navBtn}${done ? ` ${css.navAnswered}` : ""}${fl ? ` ${css.navFlagged}` : ""}${i === current ? ` ${css.navCurrent}` : ""}`}>{x.n}</button>
                   );
                 })}
+                {!shown.length ? <span className="sub2" style={{ gridColumn: "1 / -1" }}>{navFilter === "UNANSWERED" ? "Every question is answered." : "No question is marked for review."}</span> : null}
               </div>
               <div className={css.legend}><span className={css.lgAnswered}>Answered</span><span>Unanswered</span><span className={css.lgCurrent}>Current</span>{allowReview ? <span className={css.lgFlagged}>Marked for review</span> : null}</div>
-              <div className="sub2 mt-2">{answered} answered · {unanswered} unanswered{allowReview ? ` · ${flaggedOnPaper.length} marked` : ""}{unsaved ? ` · ${unsaved} saving…` : " · saved"}</div>
-              {detectors.size ? <div className="sub2 mt-1">Violations recorded: <b className="tnum">{warn?.violations ?? room.attempt.violations}</b> of {exam.violation_limit} allowed</div> : null}
+              <div className="sub2 mt-2">{answered} answered · {unanswered} unanswered{allowReview ? ` · ${flaggedOnPaper.length} marked` : ""}{preview ? " · nothing is saved in a preview" : unsaved ? ` · ${unsaved} saving…` : " · saved"}</div>
+              <div className={css.textSize} role="group" aria-label="Question text size">
+                <span className="sub2">Text size</span>
+                <button type="button" className="btn btn--ghost btn--sm" disabled={textSize <= TEXT_SIZES[0]} aria-label="Smaller question text" onClick={() => setSize(-1)}>A−</button>
+                <button type="button" className="btn btn--ghost btn--sm" disabled={textSize >= TEXT_SIZES[TEXT_SIZES.length - 1]} aria-label="Larger question text" onClick={() => setSize(1)}>A+</button>
+              </div>
+              <div className={`sub2 ${css.keysHint}`}>Keys: <kbd>A</kbd>–<kbd>E</kbd> choose · <kbd>←</kbd> <kbd>→</kbd> previous and next{allowReview ? <> · <kbd>M</kbd> mark for review</> : null}</div>
+              {detectors.size && !preview ? <div className="sub2 mt-1">Violations recorded: <b className="tnum">{warn?.violations ?? room.attempt.violations}</b> of {exam.violation_limit} allowed</div> : null}
               <button type="button" className="btn btn--go mt-2" style={{ width: "100%" }} disabled={busy} onClick={() => { setNavOpen(false); setPhase("summary"); }}>Review and submit</button>
             </aside>
           </div>
           <footer className={css.controls}>
             <div className={css.ctlSecondary}>
               <button type="button" className={`btn btn--ghost btn--sm ${css.navToggle}`} aria-expanded={navOpen} onClick={() => setNavOpen(!navOpen)}>{navOpen ? "Close" : `Questions (${answered}/${questions.length})`}</button>
+              {/* on a phone this lives in the Questions panel, so the bar stays two rows */}
+              <button type="button" className={`btn btn--ghost btn--sm ${css.hideSmall}`} disabled={nextUnanswered < 0} onClick={() => go(nextUnanswered)}>{nextUnanswered < 0 ? "All answered" : "Next unanswered"}</button>
               {q && (answers[q.id] ?? []).length ? <button type="button" className="btn btn--ghost btn--sm" onClick={() => clear(q)}>Clear answer</button> : null}
               {q && allowReview ? <button type="button" className="btn btn--ghost btn--sm" aria-pressed={onFlag} onClick={() => toggleFlag(q)}>{onFlag ? "Unmark review" : "Mark for review"}</button> : null}
             </div>
@@ -604,6 +691,21 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** V371: what the office is looking at, and how a candidate's paper differs from it */
+function PreviewNote({ notes }: { notes: PreviewNotes | null }) {
+  const drawn = notes && notes.selection === "RANDOM" && notes.total_questions && notes.total_questions < notes.pool_size;
+  return (
+    <span>
+      <b>Preview</b> — the paper as a candidate sees it. Nothing is saved, no attempt is made and nothing is reported.
+      {notes ? <>
+        {drawn ? ` Each candidate gets ${notes.total_questions} of these ${notes.pool_size} questions${notes.randomize_questions ? ", in their own order" : ""}.` : notes.randomize_questions ? " Each candidate gets these questions in their own order." : ""}
+        {notes.randomize_options ? " The options are shuffled for each candidate." : ""}
+        {notes.paper_problem ? ` The paper is not ready: ${notes.paper_problem.replace(/^[A-Z_]+:\s*/, "")}.` : ""}
+      </> : null}
+    </span>
   );
 }
 

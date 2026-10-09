@@ -97,6 +97,8 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
           <Pil kind={(EXAM_WORD[live] ?? ["", "grey"])[1]}>{(EXAM_WORD[live] ?? [live])[0]}</Pil>
           <Pil kind={(RESULTS_WORD[exam.results_state] ?? ["", "grey"])[1]}>Results: {(RESULTS_WORD[exam.results_state] ?? [exam.results_state])[0].toLowerCase()}</Pil>
           {live === "OPEN" || counts.in_progress > 0 ? <LinkBtn kind="go" href={`${base}/cbt/${exam.id}/monitor`}>Live monitor</LinkBtn> : null}
+          {/* V371: the paper in the examination room, as a candidate sees it — nothing saved, no attempt made */}
+          {canManage && Number(exam.pool_size) > 0 ? <a className="btn btn--secondary btn--sm" href={`/cbt/preview/${exam.id}`} target="_blank" rel="noopener">Preview as a candidate</a> : null}
           <LinkBtn kind="ghost" href={`${base}/cbt?session=${encodeURIComponent(exam.session)}`}>All examinations</LinkBtn>
         </span>} />
       {exam.paper_problem && exam.state !== "COMPLETED" && exam.state !== "CANCELLED" ? <Note kind="bad" title="The paper is not ready">{textOf(exam.paper_problem)}. Set the paper before publishing.</Note> : null}

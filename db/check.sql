@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 215
+\set EXPECTED 216
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7354,6 +7354,41 @@ BEGIN
         format('preview bus=%s/%s gst=%s | loaded bus=%s/%s ele=%s gst=%s/%s | sms=%s | chase %s/%s then %s/%s then %s/%s, reminded=%s escalated=%s academic=%s | setting by gst=%s order=%s set=%s/%s',
                c_bus, o_bus, c_gst, k_bus, g_bus, k_ele, k_gst, g_gst, n_sms, ch1.reminded, ch1.escalated, ch2.reminded, ch2.escalated, ch3.reminded, ch3.escalated,
                rem IS NOT NULL, esc IS NOT NULL, n_acad, r_set, r_order, v_set.remind_after_days, v_set.escalate_after_days));
+END $$;
+
+-- ── V371: the office previews its paper as a candidate sees it — the paper's questions at their current version, never the key ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); off uuid := gen_random_uuid(); q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid(); q3 uuid := gen_random_uuid();
+        ex assessment.cbt_exam; n_rows int; m_first int; stem_first text; opts text; v_result text; n_attempts int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9967/9968', date '9967-10-01', date '9968-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'GST 967', 'Check paper preview', 2, 1, 100, p.dept_code, 'GST', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023';
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'GST 967', '9967/9968', 1);
+        INSERT INTO assessment.question (id, course_code, stem, options, answer, kind, marks) VALUES
+            (q1, 'GST 967', 'V371 first, as written', '["a","b","c","d"]', 2, 'MCQ', 1),
+            (q2, 'GST 967', 'V371 second', '["yes","no"]', 0, 'MCQ', 1),
+            (q3, 'GST 967', 'V371 not on the paper', '["a","b"]', 1, 'MCQ', 1);
+        -- the first question corrected after it was written: the preview shows its current version
+        UPDATE assessment.question SET stem = 'V371 first, corrected' WHERE id = q1;
+        ex := assessment.cbt_new_exam('GST', off, 'V371 preview', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'WARN', 'CONTINUE', NULL, NULL);
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal, marks) VALUES (ex.id, q1, 1, 3), (ex.id, q2, 2, NULL);
+        SELECT count(*) INTO n_rows FROM assessment.cbt_preview_paper(ex.id);
+        SELECT marks, stem, (SELECT string_agg(o->>'i' || '=' || (o->>'text'), ',') FROM jsonb_array_elements(options) o) INTO m_first, stem_first, opts
+          FROM assessment.cbt_preview_paper(ex.id) WHERE n = 1;
+        v_result := pg_get_function_result('assessment.cbt_preview_paper(uuid)'::regprocedure);
+        SELECT count(*) INTO n_attempts FROM assessment.cbt_attempt WHERE exam_id = ex.id;
+        RAISE EXCEPTION 'the V371 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V371: the office''s preview is the paper''s questions in order, at their current version, with the paper''s marks and the options as written — and the function returns no key and no explanation; previewing makes no attempt',
+        coalesce(n_rows = 2 AND m_first = 3 AND stem_first = 'V371 first, corrected' AND opts = '0=a,1=b,2=c,3=d'
+                 AND v_result !~* 'answer|explanation|key' AND n_attempts = 0, false),
+        format('rows=%s marks=%s stem=%s options=%s result=%s attempts=%s', n_rows, m_first, stem_first, opts, v_result, n_attempts));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
