@@ -52,12 +52,17 @@ class QuestionBankController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean','OFFICE_academic',"
             + "'OFFICE_registrar','OFFICE_dregistrar','OFFICE_gst','OFFICE_eps','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_jupeb')";
-    private static final String AUTHORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb')";
+    /** V385: the Directorate of ICT authors and moderates the Post-UTME banks (never its own questions: CBT_MODERATE_OWN holds for it too) */
+    private static final String AUTHORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb','OFFICE_ict')";
     /** V365: a JUPEB subject's bank is named "JUPEB:<subject code>" wherever a course's is named by its code */
     static final String JUPEB_PREFIX = "JUPEB:";
+    /** V385: a Post-UTME bank is the admission session's, named "PUTME:<session>" */
+    static final String PUTME_PREFIX = "PUTME:";
     private static final Set<String> KINDS = Set.of("MCQ", "TRUE_FALSE", "MULTI");
     /** V374: who moderates — never the person who set the version (the database refuses that, CBT_MODERATE_OWN) */
-    private static final String MODERATORS = "hasAnyAuthority('OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb')";
+    private static final String MODERATORS = "hasAnyAuthority('OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean','OFFICE_gst','OFFICE_eps','OFFICE_super','OFFICE_jupeb','OFFICE_ict')";
+    /** the bank a question is in, whichever of the three kinds: bound by bind() */
+    private static final String IN_BANK = "CASE WHEN :sub::uuid IS NOT NULL THEN q.jupeb_subject_id = :sub::uuid WHEN :ps::text IS NOT NULL THEN q.putme_session = :ps ELSE q.course_code = :c END";
     private static final Set<String> MODERATION = Set.of("PENDING", "APPROVED", "RETURNED");
 
     private final JdbcClient jdbc;
@@ -93,15 +98,21 @@ class QuestionBankController {
         return "gst".equals(acting) ? "GST" : "eps".equals(acting) ? "EPS" : null;
     }
 
-    /** V365: a bank — a course's (course) or a JUPEB subject's (subject) — and the name it goes by */
-    record Bank(String course, UUID subject, String label) {
+    /** V365: a bank — a course's (course), a JUPEB subject's (subject) or, V385, an admission session's Post-UTME bank (putme) — and the name it goes by */
+    record Bank(String course, UUID subject, String putme, String label) {
+    }
+
+    /** the bank's three keys bound on a statement that uses IN_BANK (or the three columns of an insert) */
+    private static JdbcClient.StatementSpec bind(JdbcClient.StatementSpec spec, Bank b) {
+        return spec.param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("ps", b.putme(), Types.VARCHAR);
     }
 
     private static String acting() {
         return AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
     }
 
-    /** the bank a name means, held to the acting office: a JUPEB subject's is the JUPEB Office's alone, and the JUPEB Office works in no other */
+    /** the bank a name means, held to the acting office: a JUPEB subject's is the JUPEB Office's alone, and the JUPEB Office works in no other;
+     *  a Post-UTME bank is the Directorate of ICT's alone */
     private Bank bank(String key) {
         String k = key == null ? "" : key.trim();
         if (k.toUpperCase().startsWith(JUPEB_PREFIX)) {
@@ -109,19 +120,36 @@ class QuestionBankController {
             String code = k.substring(JUPEB_PREFIX.length()).trim();
             UUID sid = jdbc.sql("SELECT id FROM jupeb.subject WHERE upper(code) = upper(:c)").param("c", code).query(UUID.class).optional()
                     .orElseThrow(() -> new NotFound("JUPEB subject", code));
-            return new Bank(null, sid, JUPEB_PREFIX + code.toUpperCase());
+            return new Bank(null, sid, null, JUPEB_PREFIX + code.toUpperCase());
+        }
+        if (k.toUpperCase().startsWith(PUTME_PREFIX)) {
+            if (!Set.of("ict", "super").contains(acting())) throw new AccessDeniedException("A Post-UTME question bank is the Directorate of ICT's.");
+            String session = k.substring(PUTME_PREFIX.length()).trim();
+            if (!jdbc.sql("SELECT EXISTS (SELECT 1 FROM policy.academic_session WHERE name = :s)").param("s", session).query(Boolean.class).single()) {
+                throw new NotFound("admission session", session);
+            }
+            return new Bank(null, null, session, PUTME_PREFIX + session);
         }
         if ("jupeb".equals(acting())) throw new AccessDeniedException("The JUPEB Office works in its own subjects' question banks.");
+        if ("ict".equals(acting())) throw new AccessDeniedException("The Directorate of ICT works in the Post-UTME question banks.");
         scoped(k);
-        return new Bank(k, null, k);
+        return new Bank(k, null, null, k);
     }
 
     /** the bank a question is in, held to the acting office as bank() holds a name */
     private Bank bankOf(UUID question) {
         Map<String, Object> q = jdbc.sql("""
-                SELECT q.course_code, s.code AS subject FROM assessment.question q LEFT JOIN jupeb.subject s ON s.id = q.jupeb_subject_id WHERE q.id = :id
+                SELECT q.course_code, s.code AS subject, q.putme_session FROM assessment.question q LEFT JOIN jupeb.subject s ON s.id = q.jupeb_subject_id WHERE q.id = :id
                 """).param("id", question).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("question", question.toString()));
-        return bank(q.get("course_code") != null ? (String) q.get("course_code") : JUPEB_PREFIX + q.get("subject"));
+        return bank(q.get("course_code") != null ? (String) q.get("course_code") : q.get("putme_session") != null ? PUTME_PREFIX + q.get("putme_session") : JUPEB_PREFIX + q.get("subject"));
+    }
+
+    /** V385: moderation by sample is drawn over a course's or a JUPEB subject's bank; a Post-UTME bank is moderated question by question */
+    private static void sampled(Bank b) {
+        if (b.putme() != null) {
+            throw new DomainRuleViolation("CBT_SAMPLE_BANK", "A Post-UTME bank is moderated question by question, not by sample.",
+                    new DomainRuleViolation.Remedy("Approve or return each question on the bank.", "Directorate of ICT"));
+        }
     }
 
     private void scoped(String course) {
@@ -136,6 +164,22 @@ class QuestionBankController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam(required = false) String office) {
+        if ("ict".equals(acting()) || "POST_UTME".equalsIgnoreCase(office == null ? "" : office.trim())) {
+            if (!Set.of("ict", "super").contains(acting())) throw new AccessDeniedException("The Post-UTME question banks are the Directorate of ICT's.");
+            // V385: a bank per admission session — the one applications are filed under today, and any session that already has questions or applicants
+            return jdbc.sql("""
+                    SELECT 'PUTME:' || s.name AS code, 'Post-UTME ' || s.name AS title, 'POST_UTME' AS kind, 'POST_UTME' AS general_office, NULL::int AS level, NULL::int AS semester, NULL::int AS units,
+                           CASE WHEN s.state = 'ARCHIVED' THEN 'ENDED' ELSE 'LIVE' END AS state, true AS cbt_enabled,
+                           (SELECT count(*) FROM assessment.question q WHERE q.putme_session = s.name AND q.active) AS questions,
+                           (SELECT count(*) FROM assessment.question q WHERE q.putme_session = s.name) AS total,
+                           (SELECT count(*) FROM assessment.question q WHERE q.putme_session = s.name AND q.moderation <> 'APPROVED' AND q.archived_at IS NULL) AS awaiting
+                      FROM policy.academic_session s
+                     WHERE s.name = policy.application_session('POST_UTME_REGISTRATION')
+                        OR EXISTS (SELECT 1 FROM assessment.question q WHERE q.putme_session = s.name)
+                        OR EXISTS (SELECT 1 FROM admissions.application a WHERE a.session = s.name)
+                     ORDER BY s.name DESC
+                    """).query().listOfRows();
+        }
         if ("jupeb".equals(acting()) || "JUPEB".equalsIgnoreCase(office == null ? "" : office.trim())) {
             if (!Set.of("jupeb", "super").contains(acting())) throw new AccessDeniedException("JUPEB subjects' question banks are the JUPEB Office's.");
             // V365: the JUPEB Office's banks are its subjects'
@@ -174,8 +218,8 @@ class QuestionBankController {
         String m = moderation == null || moderation.isBlank() ? null : moderation.trim().toUpperCase();
         String mod = m != null && (MODERATION.contains(m) || "AWAITING".equals(m)) ? m : null;
         int sz = Math.max(1, Math.min(size, 1000)), pg = Math.max(1, page);
-        String where = """
-                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END
+        String where = " WHERE " + IN_BANK + """
+
                    AND (:q::text IS NULL OR lower(q.stem) LIKE :q OR lower(coalesce(q.topic, '')) LIKE :q OR lower(coalesce(q.explanation, '')) LIKE :q)
                    AND (:topic::text IS NULL OR lower(btrim(coalesce(q.topic, ''))) = lower(btrim(:topic)))
                    AND (:diff::text IS NULL OR q.difficulty = upper(:diff)) AND (:kind::text IS NULL OR q.kind = upper(:kind))
@@ -183,7 +227,7 @@ class QuestionBankController {
                         WHEN 'ARCHIVED' THEN q.archived_at IS NOT NULL WHEN 'ALL' THEN true ELSE q.archived_at IS NULL END
                    AND (:mod::text IS NULL OR CASE WHEN :mod = 'AWAITING' THEN q.moderation <> 'APPROVED' ELSE q.moderation = :mod END)
                 """;
-        java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> spec.param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER)
+        java.util.function.UnaryOperator<JdbcClient.StatementSpec> bind = spec -> bind(spec, b)
                 .param("q", q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%", Types.VARCHAR).param("topic", blank(topic), Types.VARCHAR)
                 .param("diff", blank(difficulty), Types.VARCHAR).param("kind", blank(kind), Types.VARCHAR).param("st", st, Types.VARCHAR).param("mod", mod, Types.VARCHAR);
         long total = bind.apply(jdbc.sql("SELECT count(*) FROM assessment.question q" + where)).query(Long.class).single();
@@ -208,23 +252,22 @@ class QuestionBankController {
             Object oi = r.get("option_images");
             r.put("option_images", oi == null || "null".equals(String.valueOf(oi)) ? null : mapper.readValue(String.valueOf(oi), new tools.jackson.core.type.TypeReference<List<String>>() { }));
         }
-        List<Map<String, Object>> blueprint = jdbc.sql("""
-                SELECT coalesce(topic, 'Untitled topic') AS topic,
-                       count(*) FILTER (WHERE difficulty = 'EASY' AND active) AS easy,
-                       count(*) FILTER (WHERE difficulty = 'MEDIUM' AND active) AS medium,
-                       count(*) FILTER (WHERE difficulty = 'HARD' AND active) AS hard,
-                       count(*) FILTER (WHERE active) AS total,
-                       coalesce(sum(marks) FILTER (WHERE active), 0) AS marks
-                  FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END GROUP BY topic ORDER BY topic NULLS FIRST
-                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query().listOfRows();
+        List<Map<String, Object>> blueprint = bind(jdbc.sql("""
+                SELECT coalesce(q.topic, 'Untitled topic') AS topic,
+                       count(*) FILTER (WHERE q.difficulty = 'EASY' AND q.active) AS easy,
+                       count(*) FILTER (WHERE q.difficulty = 'MEDIUM' AND q.active) AS medium,
+                       count(*) FILTER (WHERE q.difficulty = 'HARD' AND q.active) AS hard,
+                       count(*) FILTER (WHERE q.active) AS total,
+                       coalesce(sum(q.marks) FILTER (WHERE q.active), 0) AS marks
+                  FROM assessment.question q
+                """ + " WHERE " + IN_BANK + " GROUP BY q.topic ORDER BY q.topic NULLS FIRST"), b).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows);
         out.put("total", total);
         out.put("page", pg);
         out.put("size", sz);
         out.put("blueprint", blueprint);
-        out.put("awaiting", jdbc.sql("SELECT count(*) FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END AND moderation <> 'APPROVED' AND archived_at IS NULL")
-                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query(Long.class).single());
+        out.put("awaiting", bind(jdbc.sql("SELECT count(*) FROM assessment.question q WHERE " + IN_BANK + " AND q.moderation <> 'APPROVED' AND q.archived_at IS NULL"), b).query(Long.class).single());
         return out;
     }
 
@@ -304,6 +347,14 @@ class QuestionBankController {
                      GROUP BY js.code, js.title ORDER BY waiting_since NULLS LAST, js.code
                     """).param("me", me, Types.OTHER).query().listOfRows();
         }
+        if ("ict".equals(acting())) {
+            // V385: the Directorate of ICT's queue is the Post-UTME banks'
+            return jdbc.sql("SELECT 'PUTME:' || q.putme_session AS bank, 'Post-UTME ' || q.putme_session AS title, 'POST_UTME' AS office, " + counts + """
+                      FROM assessment.question q
+                     WHERE q.putme_session IS NOT NULL AND q.moderation <> 'APPROVED' AND q.archived_at IS NULL
+                     GROUP BY q.putme_session ORDER BY waiting_since NULLS LAST, q.putme_session DESC
+                    """).param("me", me, Types.OTHER).query().listOfRows();
+        }
         String o = actingOffice();
         OfficeScope.Bound b = o != null ? new OfficeScope.Bound(null, null, null) : scope.bound(null, null, null);
         return jdbc.sql("SELECT c.code AS bank, c.title, c.general_office AS office, " + counts + """
@@ -353,14 +404,24 @@ class QuestionBankController {
         UUID me = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
         Map<String, Object> out = new LinkedHashMap<>();
         // what waits in the bank, and how much of it the signed-in moderator may decide (never what they set themselves)
-        Map<String, Object> w = jdbc.sql("""
+        Map<String, Object> w = bind(jdbc.sql("""
                 SELECT count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) IS DISTINCT FROM :me) AS for_me,
                        count(*) FILTER (WHERE q.moderation = 'PENDING' AND assessment.question_setter(q.id, q.version) IS NOT DISTINCT FROM :me) AS mine,
                        count(*) FILTER (WHERE q.moderation = 'RETURNED') AS returned,
                        count(*) FILTER (WHERE q.moderation = 'APPROVED') AS approved
                   FROM assessment.question q
-                 WHERE CASE WHEN :sub::uuid IS NULL THEN q.course_code = :c ELSE q.jupeb_subject_id = :sub::uuid END AND q.archived_at IS NULL
-                """).param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("me", me, Types.OTHER).query().singleRow();
+                """ + " WHERE " + IN_BANK + " AND q.archived_at IS NULL"), b).param("me", me, Types.OTHER).query().singleRow();
+        if (b.putme() != null) {
+            // V385: no sampling over a Post-UTME bank
+            out.put("waitingForMe", w.get("for_me"));
+            out.put("waitingMine", w.get("mine"));
+            out.put("returned", w.get("returned"));
+            out.put("approved", w.get("approved"));
+            out.put("open", null);
+            out.put("recent", List.of());
+            out.put("sampling", false);
+            return out;
+        }
         out.put("waitingForMe", w.get("for_me"));
         out.put("waitingMine", w.get("mine"));
         out.put("returned", w.get("returned"));
@@ -384,6 +445,7 @@ class QuestionBankController {
     @Transactional
     Map<String, Object> drawSample(@Valid @RequestBody SampleIn in) {
         Bank b = bank(in.course());
+        sampled(b);
         UUID id = jdbc.sql("SELECT id FROM assessment.question_sample_draw(:c, :sub, :n)").param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER)
                 .param("n", in.size()).query(UUID.class).single();
         return sampleView(id);
@@ -489,12 +551,12 @@ class QuestionBankController {
     Map<String, Object> add(@Valid @RequestBody Question body) {
         Bank b = bank(body.course());
         Checked c = check(body.kind(), body.options(), body.answer(), body.answers());
-        UUID id = jdbc.sql("""
-                INSERT INTO assessment.question (course_code, jupeb_subject_id, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by)
-                VALUES (:c, :sub, :t, :s, :o::jsonb, :a, :as, :k, coalesce(:d, 'MEDIUM'), coalesce(:m, 1), :x, nullif(current_setting('moaum.actor_id', true), '')::uuid)
+        UUID id = bind(jdbc.sql("""
+                INSERT INTO assessment.question (course_code, jupeb_subject_id, putme_session, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by)
+                VALUES (:c, :sub, :ps, :t, :s, :o::jsonb, :a, :as, :k, coalesce(:d, 'MEDIUM'), coalesce(:m, 1), :x, nullif(current_setting('moaum.actor_id', true), '')::uuid)
                 RETURNING id
-                """)
-                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("t", blank(body.topic()), Types.VARCHAR).param("s", body.stem().trim()).param("o", mapper.writeValueAsString(c.options()))
+                """), b)
+                .param("t", blank(body.topic()), Types.VARCHAR).param("s", body.stem().trim()).param("o", mapper.writeValueAsString(c.options()))
                 .param("a", c.answer()).param("as", c.answers().toArray(new Integer[0])).param("k", c.kind())
                 .param("d", body.difficulty() == null || body.difficulty().isBlank() ? null : body.difficulty().toUpperCase(), Types.VARCHAR)
                 .param("m", body.marks(), Types.INTEGER).param("x", blank(body.explanation()), Types.VARCHAR)
@@ -692,7 +754,10 @@ class QuestionBankController {
     Map<String, Object> importQuestions(@Valid @RequestBody ImportIn in) {
         Bank b = bank(in.course());
         String course = b.label();
-        Map<String, Object> courseRow = (b.subject() != null
+        // V385: a Post-UTME bank belongs to an admission session, which is always examinable by CBT and never "ended" while applications may still be filed
+        Map<String, Object> courseRow = (b.putme() != null
+                ? jdbc.sql("SELECT name AS code, true AS cbt_enabled, CASE WHEN state = 'ARCHIVED' THEN 'ENDED' ELSE 'LIVE' END AS state FROM policy.academic_session WHERE name = :s").param("s", b.putme())
+                : b.subject() != null
                 ? jdbc.sql("SELECT code, cbt_enabled, CASE WHEN active THEN 'LIVE' ELSE 'ENDED' END AS state FROM jupeb.subject WHERE id = :s").param("s", b.subject())
                 : jdbc.sql("SELECT code, cbt_enabled, state FROM catalogue.course WHERE code = :c").param("c", b.course()))
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("course", course));
@@ -707,8 +772,7 @@ class QuestionBankController {
         }
         boolean dry = Boolean.TRUE.equals(in.dryRun());
         boolean allOrNothing = !Boolean.FALSE.equals(in.allOrNothing());
-        Set<String> inBank = new java.util.HashSet<>(jdbc.sql("SELECT lower(regexp_replace(btrim(stem), '\\s+', ' ', 'g')) FROM assessment.question WHERE CASE WHEN :sub::uuid IS NULL THEN course_code = :c ELSE jupeb_subject_id = :sub::uuid END")
-                .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).query(String.class).list());
+        Set<String> inBank = new java.util.HashSet<>(bind(jdbc.sql("SELECT lower(regexp_replace(btrim(q.stem), '\\s+', ' ', 'g')) FROM assessment.question q WHERE " + IN_BANK), b).query(String.class).list());
         Set<String> seen = new java.util.HashSet<>();
         List<Map<String, Object>> findings = new java.util.ArrayList<>();
         int valid = 0, errors = 0, dupFile = 0, dupBank = 0, imported = 0;
@@ -741,7 +805,7 @@ class QuestionBankController {
             }
             // V364: the row's own course, when the sheet names one, is this course; never another, and never one created on the way
             if (r.courseCode() != null && !r.courseCode().isBlank()
-                    && !norm(r.courseCode()).replace(" ", "").replaceFirst("^jupeb:", "").equals(norm(course).replace(" ", "").replaceFirst("^jupeb:", ""))) {
+                    && !norm(r.courseCode()).replace(" ", "").replaceFirst("^(jupeb|putme):", "").equals(norm(course).replace(" ", "").replaceFirst("^(jupeb|putme):", ""))) {
                 codes.add("COURSE_MISMATCH"); messages.add("the row names " + r.courseCode().trim() + "; this import is for " + course);
             }
             boolean active = true;
@@ -772,11 +836,11 @@ class QuestionBankController {
                 @SuppressWarnings("unchecked") Map<String, Object> f = (Map<String, Object>) w[0];
                 ImportRow r = (ImportRow) w[1];
                 @SuppressWarnings("unchecked") List<Integer> answers = (List<Integer>) w[4];
-                jdbc.sql("""
-                        INSERT INTO assessment.question (course_code, jupeb_subject_id, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by, active)
-                        VALUES (:c, :sub, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid, :act)
-                        """)
-                        .param("c", b.course(), Types.VARCHAR).param("sub", b.subject(), Types.OTHER).param("t", blank(r.topic()), Types.VARCHAR).param("s", (String) w[2]).param("o", mapper.writeValueAsString(w[3]))
+                bind(jdbc.sql("""
+                        INSERT INTO assessment.question (course_code, jupeb_subject_id, putme_session, topic, stem, options, answer, answers, kind, difficulty, marks, explanation, authored_by, active)
+                        VALUES (:c, :sub, :ps, :t, :s, :o::jsonb, :a, :as, :k, :d, :m, :x, nullif(current_setting('moaum.actor_id', true), '')::uuid, :act)
+                        """), b)
+                        .param("t", blank(r.topic()), Types.VARCHAR).param("s", (String) w[2]).param("o", mapper.writeValueAsString(w[3]))
                         .param("a", answers.get(0)).param("as", answers.toArray(new Integer[0])).param("k", (String) w[5]).param("d", (String) w[6]).param("m", (int) w[7])
                         .param("x", blank(r.explanation()), Types.VARCHAR).param("act", (boolean) w[8]).update();
                 f.put("status", "IMPORTED");

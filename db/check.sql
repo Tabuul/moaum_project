@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 225
+\set EXPECTED 226
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 40, n || ' offices (38 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339 and the Centre for Continuing Education V379; the applicant V021 and the student V026)');
+                           n = 41, n || ' offices (38 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339 and the Centre for Continuing Education V379; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -8507,6 +8507,128 @@ BEGIN
                r_slot_office, ft_slot, r_venue, r_lecturer, clash_kinds, roster, marked, r_att_reason, r_att_list, r_att_locked, r_att_offering,
                summ.total, summ.late, summ.rate, summ.verdict, rep, wt_cce, wt_ft, ft_lines, cce_lines, ft_after, cce_after, ug_late, cce_late,
                gst_rows, gst_gate, gst_opened, r_in_use, r_not_cce, withdrawn, sheets_ft, sheets_cce, r_archive));
+END $$;
+
+-- ── V385. Post-UTME examined on the one CBT engine: the Director's windows closed until opened; a Post-UTME bank and examination of an
+--          admission session; the candidate verified by JAMB number and the examination's second factor (yes or no, never which), judged on
+--          the record and the window; the attempt owned by the application; no score through the examination door; the official file
+--          generated only from approved results, sent, received, previewed and imported into the screening score (a released score never
+--          touched, a different one replaced only with a reason and the old value kept); the released score read only on its own window ──
+DO $$
+DECLARE S text := '9961/9962'; who uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        cr uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid(); q3 uuid := gen_random_uuid();
+        ex assessment.cbt_exam; a assessment.cbt_attempt; x admissions.putme_score_export; imp admissions.putme_score_import; imp2 admissions.putme_score_import; imp3 admissions.putme_score_import; imp4 admissions.putme_score_import; rc record;
+        w_cbt text; w_res text; w_cbt2 text; v_office int; r_bank text; r_sos text; r_nopro text; v_pub text; v_right uuid; v_wrong uuid; v_factor text;
+        e_before text; e_after text; n_cand int; n_elig int; m_cand bigint; v_owned boolean; r_deny text; v_score numeric; v_hidden numeric; v_status text;
+        r_unapproved text; r_publish text; v_rows int; v_hash text; v_sent text; v_recv text; v_prev text; v_app_score numeric;
+        v_hist int; v_hist_prev numeric; r_cancel text; rc_closed text; rc_unrel text; rc_wrong text; rc_rel text; rc_score numeric; v_summary text; v_count bigint;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V385', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9961-10-01', date '9962-08-31') ON CONFLICT (name) DO NOTHING;
+        -- (1) the office of the examination token, and the two windows closed until the Director opens them
+        SELECT count(*) INTO v_office FROM ref.office WHERE code = 'putmecbt';
+        SELECT state INTO w_cbt FROM policy.window_state('POST_UTME_CBT', S, NULL);
+        SELECT state INTO w_res FROM policy.window_state('POST_UTME_RESULT_CHECKING', S, NULL);
+        -- (2) a question is in one bank only
+        BEGIN
+            INSERT INTO assessment.question (id, course_code, putme_session, stem, options, answer, kind, marks) VALUES (gen_random_uuid(), 'GST 101', S, 'two banks', '["a","b"]', 0, 'MCQ', 1);
+            r_bank := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_bank := 'REFUSED'; END;
+        INSERT INTO assessment.question (id, putme_session, stem, options, answer, kind, marks) VALUES
+            (q1, S, 'one', '["a","b","c","d"]', 1, 'MCQ', 1), (q2, S, 'two', '["a","b","c","d"]', 2, 'MCQ', 1), (q3, S, 'three', '["a","b","c","d"]', 3, 'MCQ', 1);
+        PERFORM pg_temp.moderated();
+        -- (3) the applicant on the record: on the CAPS list, registered, paid, submitted
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (batch, S, 'CAPS_DOWNLOAD', 'UTME', '\xB385'::bytea, 1, current_date, who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        VALUES (cr, batch, S, '20619610001', '{"Subject1":"Use of English","Subject2":"Lit. in English","Subject3":"Christian Rel. Know","Subject4":"Government"}'::jsonb, 'CHECKPUTME', 'Cand', 'C00066', 250, 'UTME', 'F', 'Benue', 'Makurdi');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (cand, S, '20619610001', 'CHECKPUTME', 'Cand', (SELECT name FROM ref.programme WHERE code = 'C00066'), 'UTME', 100, 'PROPOSED', cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '20619610001', 'checkputme@example.com', '08031234567', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at)
+        VALUES (app, acct, cand, S, 'APP/61/000001', now(), now());
+        -- (4) the examination: a score on submission refused; published only once a programme is screened by examination
+        ex := assessment.cbt_new_putme_exam(S, 'Check Post-UTME', 'read', 30, 3, 'FIXED', false, false, 0, 1, 'STANDARD', 'LAB', 3, 'WARN', 'DENY', now() - interval '1 minute', now() + interval '2 hours');
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2), (ex.id, q3, 3);
+        BEGIN ex := assessment.cbt_configure(ex.id, '{"scoreOnSubmit":true}'::jsonb); r_sos := 'ACCEPTED'; EXCEPTION WHEN check_violation THEN r_sos := split_part(SQLERRM, ':', 1); END;
+        ex := assessment.cbt_configure(ex.id, '{"putmeVerify":"APPLICATION_NO"}'::jsonb);
+        BEGIN PERFORM assessment.cbt_exam_action(ex.id, 'publish', NULL); r_nopro := 'PUBLISHED'; EXCEPTION WHEN check_violation THEN r_nopro := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (S, 'C00066');
+        ex := assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        v_pub := ex.state;
+        -- (5) the door: yes or no
+        v_right := admissions.putme_cbt_verify(S, '20619610001', 'app/61/000001');
+        v_wrong := admissions.putme_cbt_verify(S, '20619610001', 'APP/61/000009');
+        v_factor := admissions.putme_cbt_factor(S);
+        -- (6) the Director's window gates the sitting; the record decides the rest
+        e_before := split_part(assessment.cbt_putme_eligibility(ex.id, app), ':', 1);
+        PERFORM policy.window_act('POST_UTME_CBT', S, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', who, 'ict');
+        SELECT state INTO w_cbt2 FROM policy.window_state('POST_UTME_CBT', S, NULL);
+        e_after := coalesce(assessment.cbt_putme_eligibility(ex.id, app), 'ELIGIBLE');
+        SELECT count(*), count(*) FILTER (WHERE eligible) INTO n_cand, n_elig FROM assessment.cbt_candidates(ex.id);
+        SELECT candidates INTO m_cand FROM assessment.cbt_monitor_counts(ex.id);
+        -- (7) the attempt is the application's; a second screen is refused by the examination's rule; the score is the engine's and never the candidate's
+        PERFORM set_config('moaum.actor_id', app::text, true); PERFORM set_config('moaum.actor_office', 'putmecbt', true);
+        a := assessment.cbt_start(ex.id, app, '10.0.0.1', 'check');
+        v_owned := a.application_id = app AND a.candidate_id = app AND a.student_id IS NULL AND a.jupeb_application_id IS NULL;
+        BEGIN PERFORM assessment.cbt_start(ex.id, app, '10.0.0.2', 'check'); r_deny := 'STARTED'; EXCEPTION WHEN check_violation THEN r_deny := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.cbt_save_answers(a.id, a.token, (SELECT jsonb_agg(jsonb_build_object('q', q.question_id, 'a', to_jsonb(q.answers))) FROM assessment.cbt_attempt_questions(a.id) q));
+        PERFORM assessment.cbt_submit(a.id, a.token);
+        SELECT score INTO v_score FROM assessment.cbt_attempt WHERE id = a.id;
+        SELECT percentage, attempt_status INTO v_hidden, v_status FROM assessment.cbt_putme_exams(app, NULL) WHERE exam_id = ex.id;
+        -- (8) the file: only from approved results; never published to candidates through the examination
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN x := admissions.putme_export_scores(S, NULL, who, 'ict'); r_unapproved := 'EXPORTED'; EXCEPTION WHEN check_violation THEN r_unapproved := split_part(SQLERRM, ':', 1); END;
+        PERFORM assessment.cbt_exam_action(ex.id, 'close', NULL); PERFORM assessment.cbt_exam_action(ex.id, 'complete', NULL);
+        PERFORM assessment.cbt_results_action(ex.id, 'review'); PERFORM assessment.cbt_results_action(ex.id, 'approve');
+        BEGIN PERFORM assessment.cbt_results_action(ex.id, 'publish'); r_publish := 'PUBLISHED'; EXCEPTION WHEN check_violation THEN r_publish := split_part(SQLERRM, ':', 1); END;
+        x := admissions.putme_export_scores(S, NULL, who, 'ict');
+        v_rows := x.rows_count; v_hash := x.sha256;
+        x := admissions.putme_send_export(x.id, 'please import', who);
+        v_sent := x.state;
+        -- (9) the Academic Office: received, previewed, imported once; a different score kept or replaced with a reason; a released score never touched
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        x := admissions.putme_export_act(x.id, 'RECEIVE', NULL, who); v_recv := x.state;
+        SELECT outcome INTO v_prev FROM admissions.putme_import_preview(x.id);
+        imp := admissions.putme_import_scores(x.id, 'KEEP', NULL, who, 'academic');
+        SELECT screening_score INTO v_app_score FROM admissions.application WHERE id = app;
+        imp2 := admissions.putme_import_scores(x.id, 'KEEP', NULL, who, 'academic');
+        UPDATE admissions.application SET screening_score = 50 WHERE id = app;
+        imp3 := admissions.putme_import_scores(x.id, 'REPLACE', 'check: the engine''s score stands', who, 'academic');
+        SELECT count(*), max(previous_score) INTO v_hist, v_hist_prev FROM admissions.putme_score_history WHERE application_id = app;
+        BEGIN x := admissions.putme_export_act(x.id, 'CANCEL', 'too late', who); r_cancel := 'CANCELLED'; EXCEPTION WHEN check_violation THEN r_cancel := split_part(SQLERRM, ':', 1); END;
+        -- (10) the candidate reads a score only on the result-checking window, only once released
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20619610001', 'APP/61/000001'); rc_closed := rc.outcome;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('POST_UTME_RESULT_CHECKING', S, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', who, 'ict');
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20619610001', 'APP/61/000001'); rc_unrel := rc.outcome;
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20619610001', 'wrong'); rc_wrong := rc.outcome;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM admissions.release_scores(S);
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20619610001', 'APP/61/000001'); rc_rel := rc.outcome; rc_score := rc.score;
+        imp4 := admissions.putme_import_scores(x.id, 'REPLACE', 'check: after release', who, 'academic');
+        SELECT exams || '/' || candidates INTO v_summary FROM assessment.cbt_office_summary('POST_UTME', S);
+        v_count := assessment.cbt_candidate_count(ex);
+        RAISE EXCEPTION 'the V385 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V385: Post-UTME on the one CBT engine — the candidate''s office exists; the CBT and result-checking windows are closed until opened; a question is in one bank; a score on submission is refused; publishing needs a programme screened by examination; the door answers yes or no; the window gates the start and the record decides eligibility; the attempt is the application''s and a second screen is refused; the engine scores and the candidate sees nothing; export needs approved results and results are never published through the examination; the file is sent, received, previewed and imported once, a different score replaced only with a reason and the old value kept, a released score never touched, an imported file never cancelled; the result-checking page reads only a released score on its own window',
+        coalesce(v_office = 1 AND w_cbt = 'CLOSED' AND w_res = 'CLOSED' AND r_bank = 'REFUSED' AND r_sos = 'CBT_PUTME_NO_SCORE_ON_SUBMIT' AND r_nopro = 'CBT_PUTME_NO_PROGRAMME' AND v_pub = 'PUBLISHED'
+                 AND v_right = app AND v_wrong IS NULL AND v_factor = 'APPLICATION_NO'
+                 AND e_before = 'CBT_PUTME_WINDOW' AND w_cbt2 = 'OPEN' AND e_after = 'ELIGIBLE' AND n_cand = 1 AND n_elig = 1 AND m_cand = 1
+                 AND v_owned AND r_deny = 'CBT_SECOND_SESSION_DENIED' AND v_score = 3 AND v_hidden IS NULL AND v_status = 'SUBMITTED'
+                 AND r_unapproved = 'PUTME_EXPORT_UNAPPROVED' AND r_publish = 'CBT_PUTME_NOT_PUBLISHED_HERE' AND v_rows = 1 AND length(v_hash) = 64 AND v_sent = 'SENT_TO_ACADEMIC'
+                 AND v_recv = 'RECEIVED' AND v_prev = 'NEW' AND imp.applied = 1 AND v_app_score = 100 AND imp2.applied = 0 AND imp2.unchanged = 1
+                 AND imp3.replaced = 1 AND v_hist = 2 AND v_hist_prev = 50 AND r_cancel = 'PUTME_EXPORT_STATE'
+                 AND rc_closed = 'CLOSED' AND rc_unrel = 'NOT_RELEASED' AND rc_wrong = 'NOT_VERIFIED' AND rc_rel = 'RELEASED' AND rc_score = 100
+                 AND imp4.released = 1 AND imp4.replaced = 0 AND v_summary = '1/1' AND v_count = 1, false),
+        format('office=%s windows=%s/%s/%s bank=%s sos=%s nopro=%s pub=%s | verify=%s/%s factor=%s | elig %s→%s cands=%s/%s monitor=%s | owned=%s deny=%s score=%s hidden=%s status=%s | export %s publish=%s rows=%s hash=%s sent=%s | recv=%s prev=%s imp=%s score=%s again=%s/%s replace=%s hist=%s/%s cancel=%s | rc %s/%s/%s/%s=%s released-import=%s/%s | summary=%s count=%s',
+               v_office, w_cbt, w_res, w_cbt2, r_bank, r_sos, r_nopro, v_pub, v_right = app, v_wrong, v_factor, e_before, e_after, n_cand, n_elig, m_cand, v_owned, r_deny, v_score, v_hidden, v_status,
+               r_unapproved, r_publish, v_rows, length(v_hash), v_sent, v_recv, v_prev, imp.applied, v_app_score, imp2.applied, imp2.unchanged, imp3.replaced, v_hist, v_hist_prev, r_cancel,
+               rc_closed, rc_unrel, rc_wrong, rc_rel, rc_score, imp4.released, imp4.replaced, v_summary, v_count));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

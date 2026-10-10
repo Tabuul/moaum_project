@@ -66,6 +66,20 @@ No sign-in, cross-origin allowed, cached for one minute, nothing personal:
 `open` is true; show `message` (plain text, blank lines are paragraphs) when it is not. `?session=2027/2028`
 asks about another session's Post-UTME window.
 
+## The Post-UTME CBT windows (V385)
+
+Two further windows of the Director of ICT sit on the same screen, over the Post-UTME **examination** rather than
+the application, and are **closed until first opened**:
+
+| Window | What it opens | Public page |
+|---|---|---|
+| `POST_UTME_CBT` | whether a verified candidate may sit the session's Post-UTME CBT examination (judged again at the start, `assessment.cbt_putme_eligibility`) | `/post-utme/cbt` |
+| `POST_UTME_RESULT_CHECKING` | whether a verified candidate may read the Post-UTME score the Academic Office released | `/post-utme/results` |
+
+Both are session-wide (no semester, no late period), carry their own closure messages, and appear on
+`/api/v1/public/application-windows` as `postUtmeCbt` and `postUtmeResults`. Nobody is told when they open: the
+examination's own publication tells the candidates. See `docs/putme-cbt.md`.
+
 ## Where it is recorded
 
 Every act is a row in `policy.portal_window_event` (what it was, what it became, who, when, why), shown in the

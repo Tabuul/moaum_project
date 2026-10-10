@@ -35,7 +35,9 @@ class CbtCandidateDoor {
     /** the kind of candidate: where their attempts are owned, and which list names their examinations */
     enum Kind {
         STUDENT("student_id", "assessment.cbt_student_exams"),
-        JUPEB("jupeb_application_id", "assessment.cbt_jupeb_exams");
+        JUPEB("jupeb_application_id", "assessment.cbt_jupeb_exams"),
+        /** V385: a Post-UTME applicant (admissions.application), through the public JAMB-number door */
+        PUTME("application_id", "assessment.cbt_putme_exams");
 
         final String owner;
         final String list;
@@ -92,6 +94,13 @@ class CbtCandidateDoor {
 
     /** the candidate's name, number and (a student's) level, each named, so the candidate and the invigilator see whose paper it is */
     private Map<String, Object> candidate(Kind kind, UUID me) {
+        if (kind == Kind.PUTME) {
+            // V385: the Post-UTME candidate by JAMB registration number — the one identifier the examination knows them by
+            return jdbc.sql("""
+                    SELECT upper(c.surname) AS surname, c.other_names, c.jamb_reg_no AS number, 'JAMB Reg. No.' AS number_label, c.programme, a.application_no
+                      FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.id = :s
+                    """).param("s", me).query().singleRow();
+        }
         return kind == Kind.JUPEB
                 ? jdbc.sql("""
                         SELECT upper(surname) AS surname, first_name || coalesce(' ' || middle_name, '') AS other_names, coalesce(exam_no, application_no) AS number,
@@ -145,6 +154,9 @@ class CbtCandidateDoor {
     private String sessionFor(Kind kind, UUID me) {
         if (kind == Kind.JUPEB) {
             return jdbc.sql("SELECT session FROM jupeb.application WHERE id = :s").param("s", me).query(String.class).optional().orElse(null);
+        }
+        if (kind == Kind.PUTME) {
+            return jdbc.sql("SELECT session FROM admissions.application WHERE id = :s").param("s", me).query(String.class).optional().orElse(null);
         }
         return jdbc.sql("""
                 SELECT coalesce((SELECT cr.session FROM registration.course_registration cr WHERE cr.student_id = :s ORDER BY cr.session DESC LIMIT 1),
@@ -346,6 +358,11 @@ class CbtCandidateDoor {
     /** the result — once the office has published it, or on submission where the examination's release policy says so (V364) */
     Map<String, Object> result(Kind kind, UUID me, UUID id) {
         UUID exam = own(kind, id, me);
+        if (kind == Kind.PUTME) {
+            // V385: a Post-UTME score never leaves the engine through the examination door; the result-checking page reads what the Academic Office released
+            throw new DomainRuleViolation("CBT_PUTME_NO_RESULT_HERE", "Your examination has been submitted. Post-UTME scores are released by the University, not shown here.",
+                    new DomainRuleViolation.Remedy("Check your result on the Post-UTME result-checking page once the University opens it.", "Academic Office"));
+        }
         Map<String, Object> r = jdbc.sql("""
                 SELECT e.results_state, e.results_published_at, e.title, coalesce(e.course_code, js.code) AS course_code, e.pass_mark, a.status, a.submitted_at, a.answered,
                        cardinality(a.question_ids) AS questions, a.score, a.max_marks, a.percentage, a.grade, a.passed, a.outcome, e.score_on_submit

@@ -135,11 +135,13 @@ class PortalWindowController {
     Map<String, Object> act(@PathVariable String type, @Valid @RequestBody ActIn body) {
         String t = type.trim().toUpperCase();
         boolean application = ApplicationWindows.TYPES.contains(t);
-        if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time and for CCE students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking and the CCE application.", new DomainRuleViolation.Remedy("Name one of the eleven.", "Directorate of ICT"));
+        // V385: the Post-UTME CBT door and result checking — windows of the admission exercise, like admission status checking
+        boolean putmeCbt = ApplicationWindows.POST_UTME_CBT_TYPES.contains(t);
+        if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && !putmeCbt) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time and for CCE students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking, the CCE application, the Post-UTME CBT examination and Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the thirteen.", "Directorate of ICT"));
         }
-        if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t)) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
-            throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
+        if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t) || putmeCbt) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
+            throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "This window opens and closes for the whole admission exercise of a session, with no semester and no late period.",
                     new DomainRuleViolation.Remedy("Leave the semester and the late period blank.", "Directorate of ICT"));
         }
         if (application && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
@@ -158,7 +160,7 @@ class PortalWindowController {
                 .query(UUID.class).single();
         Map<String, Object> after = state(t, body.session(), body.semester());
         int told = 0;
-        if (!application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
+        if (!application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && !putmeCbt && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
             told = CHECKING.equals(t)
                     ? jdbc.sql("SELECT admissions.tell_status_checking(:s, :a)").param("s", body.session().trim()).param("a", body.action()).query(Integer.class).single()
                     : tell(t, body.session().trim(), body.semester(), body.action(), after);
@@ -168,7 +170,7 @@ class PortalWindowController {
         out.put("before", before);
         out.put("after", after);
         out.put("told", told);
-        out.putAll(application || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t) ? applicationsOf(body.session()) : CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
+        out.putAll(application || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t) || putmeCbt ? applicationsOf(body.session()) : CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
         return out;
     }
 
@@ -247,6 +249,29 @@ class PortalWindowController {
                 """).param("s", s).query().singleRow());
         jc.put("events", history(s, JUPEB_CHECKING, 200));
         windows.add(jc);
+        // V385: the Post-UTME CBT door and result checking — the session's submitted applicants, who has sat, who is scored, who may read a released score
+        for (String t : ApplicationWindows.POST_UTME_CBT_TYPES) {
+            Map<String, Object> pc = new LinkedHashMap<>(state(t, s, null));
+            pc.put("type", t);
+            pc.put("session", s);
+            pc.put("path", ApplicationWindows.POST_UTME_CBT.equals(t) ? "/post-utme/cbt" : "/post-utme/results");
+            pc.putAll(jdbc.sql("""
+                    SELECT m.message, m.updated_at AS message_updated_at, m.updated_office AS message_office,
+                           (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.updated_by) AS message_updated_by
+                      FROM policy.portal_window_message m WHERE m.window_type = :t
+                    """).param("t", t).query().singleRow());
+            pc.putAll(jdbc.sql("""
+                    SELECT count(*) FILTER (WHERE a.submitted_at IS NOT NULL) AS total,
+                           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM assessment.cbt_attempt x WHERE x.application_id = a.id AND x.status <> 'IN_PROGRESS')) AS sat,
+                           count(*) FILTER (WHERE a.screening_score IS NOT NULL) AS scored,
+                           count(*) FILTER (WHERE a.score_released_at IS NOT NULL) AS released,
+                           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM assessment.cbt_attempt x WHERE x.application_id = a.id AND x.started_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos')) AS today,
+                           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM assessment.cbt_attempt x WHERE x.application_id = a.id AND x.started_at >= now() - interval '7 days')) AS week
+                      FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.session = :s AND c.entry_mode <> 'CCE'
+                    """).param("s", s).query().singleRow());
+            pc.put("events", history(s, t, 200));
+            windows.add(pc);
+        }
         out.put("windows", windows);
         out.put("publicPath", "/api/v1/public/application-windows");
         out.put("now", OffsetDateTime.now());
@@ -262,8 +287,8 @@ class PortalWindowController {
     @Transactional
     Map<String, Object> message(@PathVariable String type, @Valid @RequestBody MessageIn body, @RequestParam(required = false) String session) {
         String t = type.trim().toUpperCase();
-        if (!ApplicationWindows.TYPES.contains(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration, the postgraduate application, the JUPEB application or the CCE application.", new DomainRuleViolation.Remedy("Name one of the four.", "Directorate of ICT"));
+        if (!ApplicationWindows.TYPES.contains(t) && !ApplicationWindows.POST_UTME_CBT_TYPES.contains(t)) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration, the postgraduate application, the JUPEB application, the CCE application, the Post-UTME CBT examination or Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the six.", "Directorate of ICT"));
         }
         AuditContext ctx = AuditContextHolder.required();
         jdbc.sql("SELECT policy.window_message_set(:t, :m, :by, :office)")

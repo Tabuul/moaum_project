@@ -61,7 +61,9 @@ class SecurityConfig {
                                 "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
                                 "/api/v1/jupeb/options", "/api/v1/jupeb/apply", "/api/v1/jupeb/sign-in", "/api/v1/jupeb/forgot", "/api/v1/jupeb/reset",
                                 "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/helpdesk/sign-in-help", "/api/v1/public/**",
-                                "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate").permitAll()
+                                "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate",
+                                // V385: the Post-UTME CBT door and result checking — public, verified by JAMB number and a second factor, throttled
+                                "/api/v1/putme/cbt/public", "/api/v1/putme/cbt/verify", "/api/v1/putme/results/check").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);

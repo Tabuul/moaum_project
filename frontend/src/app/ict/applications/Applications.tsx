@@ -24,6 +24,8 @@ export interface AppWindow {
   opens_at?: string | null; closes_at?: string | null; forced?: string | null; reason?: string | null; window_id?: string | null;
   message: string; message_updated_at?: string | null; message_updated_by?: string | null; message_office?: string | null;
   total: number; today: number; week: number; paid?: number; events: WindowEvent[];
+  /** V385: the Post-UTME CBT windows count who sat, who is scored and who is released */
+  sat?: number; scored?: number; released?: number;
 }
 export interface ApplicationsPage {
   session: string; liveSessions: Record<string, string>; sessions: { name: string; state: string; registrations: number; applications: number }[];
@@ -35,8 +37,12 @@ const PG_CHECKING = "POSTGRADUATE_ADMISSION_STATUS_CHECKING";
 /** V342: JUPEB admission status checking, beside the JUPEB application */
 const JUPEB_CHECKING = "JUPEB_ADMISSION_STATUS_CHECKING";
 const CHECKING = new Set([PG_CHECKING, JUPEB_CHECKING]);
-const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking", CCE_APPLICATION: "CCE Application" };
-const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee", CCE_APPLICATION: "CCE registration" };
+/** V385: the Post-UTME CBT door and result checking — the Director's windows over the examination, closed until first opened */
+const PUTME_CBT = "POST_UTME_CBT";
+const PUTME_RESULTS = "POST_UTME_RESULT_CHECKING";
+const PUTME = new Set([PUTME_CBT, PUTME_RESULTS]);
+const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking", CCE_APPLICATION: "CCE Application", [PUTME_CBT]: "Post-UTME CBT Examination", [PUTME_RESULTS]: "Post-UTME Result Checking" };
+const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee", CCE_APPLICATION: "CCE registration", [PUTME_CBT]: "examination sitting", [PUTME_RESULTS]: "result check" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
@@ -101,23 +107,32 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
     const live = page.liveSessions[w.type];
     const noun = NOUN[w.type];
     const checking = CHECKING.has(w.type);
+    const putme = PUTME.has(w.type);
+    const closedByDefault = putme || w.type === "JUPEB_APPLICATION" || checking || w.type === "CCE_APPLICATION";
     return (
       <Panel key={w.type} title={`${WORD[w.type].toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>
           <Tiles items={[
             ["STATUS", word, w.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", w.state === "OPEN" ? (w.closes_at ? `Closes ${when(w.closes_at)}` : "No closing date") : w.state === "SCHEDULED" ? `Opens ${when(w.opens_at)}` : w.state === "EXPIRED" ? `Closed ${when(w.closes_at)}` : "Closed by the Director"],
-            checking
+            putme
+              ? [w.type === PUTME_CBT ? "SUBMITTED APPLICANTS" : "SCORES RELEASED", Number(w.type === PUTME_CBT ? w.total : w.released ?? 0).toLocaleString(), null,
+                 w.type === PUTME_CBT ? `${Number(w.sat ?? 0).toLocaleString()} sat the CBT · ${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in 7 days` : `${Number(w.scored ?? 0).toLocaleString()} scored on the record · ${Number(w.total).toLocaleString()} submitted applicants`]
+              : checking
               ? ["VALID APPLICANTS", Number(w.total).toLocaleString(), null, `${Number(w.paid ?? 0).toLocaleString()} paid to check · ${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in 7 days`]
               : [`${noun.toUpperCase()}S`, Number(w.total).toLocaleString(), null, `${Number(w.today).toLocaleString()} today · ${Number(w.week).toLocaleString()} in the last 7 days`],
-            checking
+            putme
+              ? ["PUBLIC PAGE", w.path, null, w.state === "OPEN" ? (w.type === PUTME_CBT ? "Candidates verify by JAMB number and the examination's second factor, then sit" : "Verified candidates read the score the Academic Office released") : "The closure message"]
+              : checking
               ? ["WHERE", w.path, null, w.state === "OPEN" ? "Valid applicants pay once and check, as often as they like" : "No new checking fee; a paid applicant waits for it to reopen"]
               : ["PUBLIC PAGE", w.path, null, w.state === "OPEN" ? "The form; the login page shows its button" : "The closure message; the login page hides its button"],
-            ["LAST ACT", w.events[0] ? w.events[0].action : "None", null, w.events[0] ? `${when(w.events[0].at)}${w.events[0].officer ? ` · ${w.events[0].officer}` : ""}` : `Open by default until the Director first acts`],
+            ["LAST ACT", w.events[0] ? w.events[0].action : "None", null, w.events[0] ? `${when(w.events[0].at)}${w.events[0].officer ? ` · ${w.events[0].officer}` : ""}` : closedByDefault ? "Closed by default until the Director first opens it" : `Open by default until the Director first acts`],
           ]} />
           <KvGrid cls="grid--3" pairs={[
             ["Opens", w.state === "CLOSED" ? "—" : w.opens_at ? when(w.opens_at) : w.configured ? "Immediately" : "—"], ["Closes", w.state === "CLOSED" ? "Closed now" : w.closes_at ? `${when(w.closes_at)} · ${remaining(w.closes_at, page.now)}` : w.configured ? "No closing date" : "—"],
-            ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : "Not configured: open"], ["Reason", w.reason ?? "—"],
-            ["Scope", "Whole admission exercise of the session"], checking ? ["Who checks", w.type === JUPEB_CHECKING ? "JUPEB applicants of the session who submitted with the application fee confirmed" : "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
+            ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : closedByDefault ? "Not configured: closed" : "Not configured: open"], ["Reason", w.reason ?? "—"],
+            ["Scope", "Whole admission exercise of the session"],
+            putme ? ["Who may use it", w.type === PUTME_CBT ? "Submitted applicants of the session, eligible on the record, verified by JAMB number and the second factor the examination names" : "Verified applicants whose Post-UTME score the Academic Office has released"]
+              : checking ? ["Who checks", w.type === JUPEB_CHECKING ? "JUPEB applicants of the session who submitted with the application fee confirmed" : "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
           ]} />
           {live && live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>To change what applicants meet today, choose {live} above.</Note> : null}
           {may ? (
@@ -145,7 +160,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{ACTION_WORD[e.action] ?? e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
           <span key="r" className="sub2">{e.reason ?? ""}</span>, <span key="w" className="sub2">{e.officer ?? ""}{e.office ? ` (${e.office})` : ""}</span>, <span key="t" className="tnum sub2">{when(e.at)}</span>,
-        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {w.type === "JUPEB_APPLICATION" || w.type === JUPEB_CHECKING || w.type === "CCE_APPLICATION" ? "closed" : "open"} by default.</div></PBody>}
+        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {closedByDefault ? "closed" : "open"} by default.</div></PBody>}
       </Panel>
     );
   };

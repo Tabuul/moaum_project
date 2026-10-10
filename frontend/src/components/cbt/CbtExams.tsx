@@ -7,13 +7,14 @@ import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import type { PutmeSession } from "@/lib/cbt";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import type { Problem } from "@/lib/api";
-import { COUNTABLE, DETECTOR_WORD, EXAM_TYPE_WORD, EXAM_WORD, RESULTS_WORD, num, whenAt, type CaComponent, type CbtExamList, type CbtOffice, type Detector, type ExamType, type JupebSubject } from "@/lib/cbt";
+import { COUNTABLE, DETECTOR_WORD, EXAM_TYPE_WORD, EXAM_WORD, PUTME_VERIFY_WORD, RESULTS_WORD, num, whenAt, type CaComponent, type CbtExamList, type CbtOffice, type Detector, type ExamType, type JupebSubject, type PutmeVerify } from "@/lib/cbt";
 
-/** the office's name in a heading: the University's examinations office reads as the University's CBT */
-export const officeWord = (o: CbtOffice) => (o === "EXAMS" ? "University" : o);
+/** the office's name in a heading: the University's examinations office reads as the University's CBT; V385: the Directorate's as Post-UTME */
+export const officeWord = (o: CbtOffice) => (o === "EXAMS" ? "University" : o === "POST_UTME" ? "Post-UTME" : o);
 const SUBJECT_REQUIRED = "Choose the subject";
 
 const SEM = (n: number | null | undefined) => (n == null ? "Whole session" : n === 1 ? "First semester" : n === 2 ? "Second semester" : "Third semester");
@@ -36,15 +37,19 @@ export interface ExamForm {
   warnAt: string; finalWarnAt: string; disconnectMinutes: string; proctoring: "NONE" | "CAMERA"; scoreOnSubmit: boolean; sheetComponent: "EXAM" | "CA" | "NONE";
   /** V365: the part of the JUPEB continuous assessment a JUPEB examination counts towards */
   jupebCaComponentId: string;
+  /** V385: the second factor at a Post-UTME examination's door */
+  putmeVerify: PutmeVerify;
 }
 export const EMPTY_FORM: ExamForm = {
   title: "", instructions: "", durationMinutes: "60", selection: "FIXED", totalQuestions: "0", randomizeQuestions: true, randomizeOptions: false, passMark: "40", attemptLimit: "1",
   securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "", partialCredit: false,
   examType: "EXAMINATION", negativeMarks: "0", allowBack: true, allowReview: true, fullscreenRequired: true, detectors: ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"],
   countedEvents: ["TAB_SWITCH", "WINDOW_BLUR", "FULLSCREEN_EXIT"], warnAt: "", finalWarnAt: "", disconnectMinutes: "", proctoring: "NONE", scoreOnSubmit: false, sheetComponent: "EXAM",
-  jupebCaComponentId: "",
+  jupebCaComponentId: "", putmeVerify: "APPLICATION_NO",
 };
-export const formBody = (f: ExamForm) => ({
+/** V385: a Post-UTME examination starts from the settings a hall examination of thousands wants: random paper, shuffled options, lab, one screen */
+export const PUTME_FORM: ExamForm = { ...EMPTY_FORM, selection: "RANDOM", totalQuestions: "50", randomizeOptions: true, passMark: "0", venue: "LAB", violationLimit: "3", secondSession: "DENY", sheetComponent: "NONE", scoreOnSubmit: false };
+export const formBody = (f: ExamForm, office?: CbtOffice) => ({
   title: f.title.trim(), instructions: f.instructions.trim() || null, durationMinutes: Number(f.durationMinutes) || 60, totalQuestions: Number(f.totalQuestions) || 0,
   selection: f.selection, randomizeQuestions: f.randomizeQuestions, randomizeOptions: f.randomizeOptions, passMark: Number(f.passMark) || 0, attemptLimit: Number(f.attemptLimit) || 1,
   securityMode: f.securityMode, venue: f.venue, violationLimit: Number(f.violationLimit) || 0, violationAction: f.violationAction, secondSession: f.secondSession,
@@ -52,15 +57,17 @@ export const formBody = (f: ExamForm) => ({
   settings: {
     examType: f.examType, negativeMarks: Number(f.negativeMarks) || 0, allowBack: f.allowBack, allowReview: f.allowBack && f.allowReview, fullscreenRequired: f.fullscreenRequired,
     detectors: f.detectors, countedEvents: f.countedEvents, warnAt: f.warnAt ? Number(f.warnAt) : null, finalWarnAt: f.finalWarnAt ? Number(f.finalWarnAt) : null,
-    disconnectMinutes: f.disconnectMinutes ? Number(f.disconnectMinutes) : null, proctoring: f.proctoring, scoreOnSubmit: f.scoreOnSubmit, sheetComponent: f.sheetComponent,
+    disconnectMinutes: f.disconnectMinutes ? Number(f.disconnectMinutes) : null, proctoring: f.proctoring,
+    scoreOnSubmit: office === "POST_UTME" ? false : f.scoreOnSubmit, sheetComponent: office === "POST_UTME" ? "NONE" : f.sheetComponent,
     ...(f.jupebCaComponentId ? { jupebCaComponentId: f.jupebCaComponentId } : {}),
+    ...(office === "POST_UTME" ? { putmeVerify: f.putmeVerify } : {}),
   },
 });
 
 const toggle = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
 
 /** the configuration fields, shared by the create form and the setup tab */
-export function ExamFields({ f, set, locked, jupeb }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean; jupeb?: { components: CaComponent[] } }) {
+export function ExamFields({ f, set, locked, jupeb, putme }: { f: ExamForm; set: (patch: Partial<ExamForm>) => void; locked?: boolean; jupeb?: { components: CaComponent[] }; putme?: boolean }) {
   const dis = !!locked;
   return (
     <>
@@ -102,7 +109,7 @@ export function ExamFields({ f, set, locked, jupeb }: { f: ExamForm; set: (patch
         <Field id="x-fwarn" label="Final warning at" hint="Blank = at the number allowed"><input id="x-fwarn" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.finalWarnAt} onChange={(e) => set({ finalWarnAt: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
         <Field id="x-disc" label="Out of contact" hint="Minutes without contact before the attempt is submitted with what was saved; blank = wait to the end of time"><input id="x-disc" className="ctl tnum" inputMode="numeric" disabled={dis} value={f.disconnectMinutes} onChange={(e) => set({ disconnectMinutes: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
       </div>
-      <Field id="x-det" label="What the examination screen watches" hint="Each is reported to the office as evidence; a standard browser cannot stop a switch to another application or device">
+      <Field id="x-det" label="What the examination screen watches" hint="Reported to the office as evidence; a browser cannot stop a switch to another app or device">
         <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>{(Object.keys(DETECTOR_WORD) as Detector[]).map((d) => <label key={d} className="row row--inline row--tight" style={{ marginRight: 12 }}><input type="checkbox" disabled={dis} checked={f.detectors.includes(d)} onChange={() => set({ detectors: toggle(f.detectors, d) })} /> {DETECTOR_WORD[d]}</label>)}</div>
       </Field>
       <Field id="x-cnt" label="Counted as violations" hint="The rest are recorded without counting towards the thresholds">
@@ -110,8 +117,18 @@ export function ExamFields({ f, set, locked, jupeb }: { f: ExamForm; set: (patch
       </Field>
       <div className="grid grid--3">
         <Field id="x-proc" label="Camera proctoring" hint={f.proctoring === "CAMERA" ? "By the candidate's consent; face signals only, no video kept, no microphone" : "No camera"}><select id="x-proc" className="ctl" disabled={dis} value={f.proctoring} onChange={(e) => set({ proctoring: e.target.value as ExamForm["proctoring"] })}><option value="NONE">None</option><option value="CAMERA">Camera, by consent</option></select></Field>
-        <Field id="x-sos" label="The candidate's score" hint="By default the result is seen only once published"><select id="x-sos" className="ctl" disabled={dis} value={f.scoreOnSubmit ? "1" : "0"} onChange={(e) => set({ scoreOnSubmit: e.target.value === "1" })}><option value="0">Once the results are published</option><option value="1">On submission</option></select></Field>
-        {jupeb ? (
+        {putme ? (
+          <Field id="x-sos" label="The candidate's score" hint="Never shown on submission; the Academic Office releases Post-UTME scores and the result-checking page shows them"><input id="x-sos" className="ctl" disabled value="Released by the Academic Office" readOnly /></Field>
+        ) : (
+          <Field id="x-sos" label="The candidate's score" hint="By default the result is seen only once published"><select id="x-sos" className="ctl" disabled={dis} value={f.scoreOnSubmit ? "1" : "0"} onChange={(e) => set({ scoreOnSubmit: e.target.value === "1" })}><option value="0">Once the results are published</option><option value="1">On submission</option></select></Field>
+        )}
+        {putme ? (
+          <Field id="x-verify" label="Verification at the door" hint="Beside the JAMB registration number, which alone never opens the examination">
+            <select id="x-verify" className="ctl" disabled={dis} value={f.putmeVerify} onChange={(e) => set({ putmeVerify: e.target.value as PutmeVerify })}>
+              {(Object.keys(PUTME_VERIFY_WORD) as PutmeVerify[]).map((k) => <option key={k} value={k}>{PUTME_VERIFY_WORD[k]}</option>)}
+            </select>
+          </Field>
+        ) : jupeb ? (
           <Field id="x-sheet" label="Into the JUPEB continuous assessment" hint="The Board examines JUPEB; a CBT result counts only towards the assessment part the office set">
             <select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent === "CA" ? f.jupebCaComponentId || "CA" : "NONE"}
               onChange={(e) => set(e.target.value === "NONE" ? { sheetComponent: "NONE", jupebCaComponentId: "" } : { sheetComponent: "CA", jupebCaComponentId: e.target.value === "CA" ? "" : e.target.value })}>
@@ -123,7 +140,7 @@ export function ExamFields({ f, set, locked, jupeb }: { f: ExamForm; set: (patch
           <Field id="x-sheet" label="On the score sheet"><select id="x-sheet" className="ctl" disabled={dis} value={f.sheetComponent} onChange={(e) => set({ sheetComponent: e.target.value as ExamForm["sheetComponent"] })}><option value="EXAM">As the examination</option><option value="CA">As continuous assessment</option><option value="NONE">Not at all (a quiz or mock)</option></select></Field>
         )}
       </div>
-      {jupeb && !jupeb.components.length ? <div className="sub2">No part of this session&rsquo;s JUPEB continuous assessment is set yet; the office sets them on Continuous Assessment.</div> : null}
+      {jupeb && !jupeb.components.length ? <div className="sub2">No JUPEB continuous-assessment part is set for this session yet.</div> : null}
       <Field id="x-instr" label="Instructions to candidates" hint="Shown before the start, under the University's standard instructions"><textarea id="x-instr" className="ctl" rows={3} value={f.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
     </>
   );
@@ -138,6 +155,10 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
   const [f, setF] = useState<ExamForm>(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const jupeb = office === "JUPEB";
+  /* V385: a Post-UTME examination is made for an admission session, on the Directorate's bank for it */
+  const putme = office === "POST_UTME";
+  const putmeSessions = data.putmeSessions ?? [];
+  const [putmeSession, setPutmeSession] = useState(data.session);
   const [subjectId, setSubjectId] = useState("");
   const [semester, setSemester] = useState("1");
   const subjects: JupebSubject[] = data.subjects ?? [];
@@ -160,8 +181,8 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
   async function create() {
     setBusy(true);
     try {
-      const target = jupeb ? { jupebSubjectId: subjectId, session: data.session, semester: Number(semester) } : { offeringId: offering };
-      const r = await fetch("/api/bff/api/v1/cbt/exams", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Create the CBT examination ${f.title}`) }, body: JSON.stringify({ office, ...target, ...formBody(f) }) });
+      const target = putme ? { session: putmeSession } : jupeb ? { jupebSubjectId: subjectId, session: data.session, semester: Number(semester) } : { offeringId: offering };
+      const r = await fetch("/api/bff/api/v1/cbt/exams", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Create the CBT examination ${f.title}`) }, body: JSON.stringify({ office, ...target, ...formBody(f, office) }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       notify(`${j.reference} created as a draft`);
@@ -182,7 +203,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
 
   return (
     <>
-      <PageHead title={`${word} CBT examinations`} description={`The computer-based examinations ${office === "EXAMS" ? "of the University's CBT-enabled courses within your scope" : `of the ${office} office`} for ${data.session}: created and configured here, scheduled and published to the registered candidates, watched live, scored the moment a candidate submits, and their results reviewed, approved and published from the same desk.${data.archived ? " Showing the archived examinations." : ""}`}
+      <PageHead title={`${word} CBT examinations`} description={`${office === "EXAMS" ? "CBT-enabled courses within your scope" : putme ? "The Directorate of ICT's examinations of the session's Post-UTME applicants" : `The ${office} office`} · ${data.session}${data.archived ? " · archived examinations" : ""}`}
         actions={<span className="row row--inline row--tight">
           {/* V375: every sitting's report, filed or due, in one place */}
           <LinkBtn kind="secondary" size="sm" href={`/cbt/reports?office=${office}&session=${encodeURIComponent(data.session)}`}>Sitting reports</LinkBtn>
@@ -191,7 +212,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           <label htmlFor="cx-sem" className="sub2">Semester</label>
           <select id="cx-sem" className="ctl" value={data.semester == null ? "" : String(data.semester)} onChange={(e) => go(q({ semester: e.target.value }))}><option value="">Whole session</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select>
           <Btn kind="ghost" onClick={() => go(q({ archived: data.archived ? "" : "true" }))}>{data.archived ? "Current examinations" : "Archived"}</Btn>
-          {canManage ? <Btn kind="primary" onClick={() => { setF({ ...EMPTY_FORM, sheetComponent: jupeb ? "NONE" : "EXAM" }); setOffering(data.offerings[0]?.id ?? ""); setSubjectId(cbtSubjects[0]?.id ?? ""); setCreating(true); }}>Create examination</Btn> : null}
+          {canManage ? <Btn kind="primary" onClick={() => { setF(putme ? PUTME_FORM : { ...EMPTY_FORM, sheetComponent: jupeb ? "NONE" : "EXAM" }); setOffering(data.offerings[0]?.id ?? ""); setSubjectId(cbtSubjects[0]?.id ?? ""); setPutmeSession(data.session); setCreating(true); }}>Create examination</Btn> : null}
         </span>} />
       <Tiles items={[
         ["EXAMINATIONS", num(rows.length), null, `${data.session} · ${SEM(data.semester).toLowerCase()}`],
@@ -226,12 +247,33 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           ) : <PBody><div className="sub2">No active JUPEB subject.</div></PBody>}
         </Panel>
       ) : null}
-      {!jupeb && !data.offerings.length ? <Note kind="info" title={office === "EXAMS" ? `No CBT course of yours is offered in ${data.session}` : `No ${office} course is offered in ${data.session}`}>{office === "EXAMS" ? "An examination is created over an offering of a course the University allows to be examined by CBT (CBT courses), within your department or faculty." : `An examination is created over an offering; offer the course for the session on ${office} Courses first.`}</Note> : null}
+      {putme ? (
+        <Panel title="Admission sessions" right={<span className="sub2">{putmeSessions.length} with applicants, questions or applications open</span>}>
+          {putmeSessions.length ? (
+            <DTable pageSize={10} cols={["Session", "Applicants|num", "Screened programmes|num", "Questions|num", "CBT door|mid", "Result checking|mid"]} rows={putmeSessions.map((x) => [
+              <span key="s"><b className="tnum">{x.name}</b><div className="sub2">{x.state}</div></span>,
+              <span key="a" className="tnum">{num(x.applicants)}</span>,
+              <span key="p" className={`tnum${Number(x.screened_programmes) ? "" : " b600"}`}>{num(x.screened_programmes)}</span>,
+              <span key="q" className="tnum">{num(x.questions)}</span>,
+              <Pil key="w" kind={x.cbt_window === "OPEN" ? "ok" : "grey"}>{x.cbt_window}</Pil>,
+              <Pil key="r" kind={x.results_window === "OPEN" ? "ok" : "grey"}>{x.results_window}</Pil>,
+            ])} texts={putmeSessions.map((x) => x.name)} />
+          ) : <PBody><div className="sub2">No admission session with Post-UTME applicants yet.</div></PBody>}
+          <PBody><div className="sub2">The paper is drawn from the session&rsquo;s Post-UTME question bank. A session&rsquo;s examination is published only once the admission settings name the programmes screened by examination; candidates sit it only while the Post-UTME CBT door (Application Registration Control) is open.</div></PBody>
+        </Panel>
+      ) : null}
+      {!jupeb && !putme && !data.offerings.length ? <Note kind="info" title={office === "EXAMS" ? `No CBT course of yours is offered in ${data.session}` : `No ${office} course is offered in ${data.session}`}>{office === "EXAMS" ? "An examination is created over an offering of a course the University allows to be examined by CBT (CBT courses), within your department or faculty." : `An examination is created over an offering; offer the course for the session on ${office} Courses first.`}</Note> : null}
 
       {creating ? (
         <Modal title="Create a CBT examination" sub={`${word} · ${data.session}`} wide onClose={() => setCreating(false)}
-          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || (jupeb ? !subjectId : !offering) || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
-          {jupeb ? (
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setCreating(false)}>Cancel</Btn><Btn kind="primary" disabled={busy || (putme ? !putmeSession : jupeb ? !subjectId : !offering) || !f.title.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create as draft"}</Btn></span>}>
+          {putme ? (
+            <Field id="x-psession" label="Admission session" required hint="The session's submitted Post-UTME applicants are the candidates; the paper is drawn from the session's Post-UTME bank">
+              <select id="x-psession" className="ctl" value={putmeSession} onChange={(e) => setPutmeSession(e.target.value)}>
+                {(putmeSessions.length ? putmeSessions : [{ name: data.session, applicants: 0, questions: 0 } as PutmeSession]).map((x) => <option key={x.name} value={x.name}>{x.name} · {num(x.applicants)} applicant{Number(x.applicants) === 1 ? "" : "s"} · {num(x.questions)} active question{Number(x.questions) === 1 ? "" : "s"}</option>)}
+              </select>
+            </Field>
+          ) : jupeb ? (
             <div className="grid grid--2">
               <Field id="x-subject" label="Subject" required hint={cbtSubjects.length ? "A subject the JUPEB Office has allowed CBT; the paper is drawn from its own bank" : "Allow a subject CBT first, in the panel below"}>
                 <select id="x-subject" className="ctl" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
@@ -248,8 +290,8 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
             </select>
           </Field>
           )}
-          <ExamFields f={f} set={(p) => setF({ ...f, ...p })} jupeb={jupeb ? { components: [] } : undefined} />
-          <div className="sub2 mt-2">The examination is created as a draft: set its paper, then schedule and publish it. Only {jupeb ? "JUPEB students registered for the subject whose share of the semester’s school fee is paid" : `students registered on the offering whose ${office === "EXAMS" ? "school fees are cleared for examinations" : "GST fee is paid (where the Bursar’s rule requires it)"}`} can sit it; the server judges that at the start, not the button.{jupeb ? " The part of the continuous assessment it counts towards is set on the examination once created." : ""}</div>
+          <ExamFields f={f} set={(p) => setF({ ...f, ...p })} jupeb={jupeb ? { components: [] } : undefined} putme={putme} />
+          <div className="sub2 mt-2">Created as a draft. Only {putme ? "the session's applicants who submitted with the screening fee confirmed, of a programme screened by examination, not disqualified and not yet scored" : jupeb ? "JUPEB students registered for the subject whose share of the semester’s school fee is paid" : `students registered on the offering whose ${office === "EXAMS" ? "school fees are cleared for examinations" : "GST fee is paid (where the Bursar’s rule requires it)"}`} can sit it.</div>
         </Modal>
       ) : null}
     </>

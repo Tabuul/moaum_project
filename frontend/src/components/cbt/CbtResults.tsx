@@ -4,7 +4,7 @@
  *  the analytics by faculty, department, programme, level and grade, the score distribution, and the exports. */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -104,10 +104,12 @@ export function CbtResults({ exam, canManage, stronger }: { exam: CbtExam; base:
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
             {canManage && (rs === "PENDING" || rs === "AUTO_SCORED") ? <Btn kind="secondary" disabled={busy} onClick={() => void workflow("review")}>Start the review</Btn> : null}
             {canManage && (rs === "AUTO_SCORED" || rs === "UNDER_REVIEW") ? <Btn kind="primary" disabled={busy || exam.state !== "COMPLETED"} onClick={() => setAsk({ action: "approve", title: "Approve the results", text: "The scores as they stand are approved. Publication follows as a separate act." })}>Approve</Btn> : null}
-            {canManage && rs === "APPROVED" ? <Btn kind="go" disabled={busy} onClick={() => setAsk({ action: "publish", title: "Publish the results", text: "Every candidate who sat the examination is told by e-mail and sees their score, percentage, grade and pass/fail on the portal." })}>Publish to students</Btn> : null}
+            {canManage && rs === "APPROVED" && exam.office !== "POST_UTME" ? <Btn kind="go" disabled={busy} onClick={() => setAsk({ action: "publish", title: "Publish the results", text: "Every candidate who sat the examination is told by e-mail and sees their score, percentage, grade and pass/fail on the portal." })}>Publish to students</Btn> : null}
+            {/* V385: a Post-UTME score reaches candidates through the Academic Office's release and the result-checking window, never through the examination */}
+            {exam.office === "POST_UTME" && (rs === "APPROVED" || rs === "PUBLISHED") ? <LinkBtn kind="go" href={`/ict/putme-scores?session=${encodeURIComponent(exam.putme_session ?? exam.session)}&exam=${exam.id}`}>Export the official score file</LinkBtn> : null}
             {stronger && rs === "PUBLISHED" ? <Btn kind="urgent" disabled={busy} onClick={() => setAsk({ action: "unpublish", title: "Withdraw the publication", text: "Students no longer see the results; they return to approved." })}>Withdraw publication</Btn> : null}
-            {canManage && (rs === "APPROVED" || rs === "PUBLISHED") ? <Btn kind="secondary" disabled={busy || !exam.has_sheet || exam.sheet_stage !== "ENTRY"} onClick={() => setAsk({ action: "to-sheet", title: "Send the scores to the score sheet", text: `Each candidate's best percentage becomes the examination component of ${exam.course_code} (scaled to ${100 - exam.ca_max} marks) on the course's score sheet, as a new version with this examination named as the reason; a CA already entered is kept, and without one the mark is incomplete until the lecturer enters it. The result pipeline carries it from there.` })}>Send to the score sheet</Btn> : null}
-            {canManage && (rs === "APPROVED" || rs === "PUBLISHED") && !exam.has_sheet ? <span className="sub2">No score sheet yet: it opens with the examination session.</span> : null}
+            {canManage && (rs === "APPROVED" || rs === "PUBLISHED") && exam.office !== "POST_UTME" ? <Btn kind="secondary" disabled={busy || !exam.has_sheet || exam.sheet_stage !== "ENTRY"} onClick={() => setAsk({ action: "to-sheet", title: "Send the scores to the score sheet", text: `Each candidate's best percentage becomes the examination component of ${exam.course_code} (scaled to ${100 - exam.ca_max} marks) on the course's score sheet, as a new version with this examination named as the reason; a CA already entered is kept, and without one the mark is incomplete until the lecturer enters it. The result pipeline carries it from there.` })}>Send to the score sheet</Btn> : null}
+            {canManage && (rs === "APPROVED" || rs === "PUBLISHED") && !exam.has_sheet && exam.office !== "POST_UTME" ? <span className="sub2">No score sheet yet: it opens with the examination session.</span> : null}
             {canManage && exam.has_sheet && exam.sheet_stage && exam.sheet_stage !== "ENTRY" ? <span className="sub2">The score sheet is past entry ({exam.sheet_stage.toLowerCase().replace(/_/g, " ")}).</span> : null}
           </div>
         </PBody>

@@ -47,9 +47,11 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     fullscreenRequired: exam.fullscreen_required !== false, detectors: exam.detectors ?? EMPTY_FORM.detectors, countedEvents: exam.counted_events ?? EMPTY_FORM.countedEvents,
     warnAt: exam.warn_at == null ? "" : String(exam.warn_at), finalWarnAt: exam.final_warn_at == null ? "" : String(exam.final_warn_at),
     disconnectMinutes: exam.disconnect_minutes == null ? "" : String(exam.disconnect_minutes), proctoring: exam.proctoring ?? "NONE", scoreOnSubmit: !!exam.score_on_submit,
-    sheetComponent: exam.sheet_component ?? "EXAM", jupebCaComponentId: exam.jupeb_ca_component_id ?? "",
+    sheetComponent: exam.sheet_component ?? "EXAM", jupebCaComponentId: exam.jupeb_ca_component_id ?? "", putmeVerify: exam.putme_verify ?? "APPLICATION_NO",
   }));
-  const bankName = exam.office === "JUPEB" ? `JUPEB:${exam.course_code}` : exam.course_code;
+  /* V385: a Post-UTME examination's bank is the admission session's */
+  const putme = exam.office === "POST_UTME";
+  const bankName = exam.office === "JUPEB" ? `JUPEB:${exam.course_code}` : putme ? `PUTME:${exam.putme_session}` : exam.course_code;
   const [bpDim, setBpDim] = useState<"" | "DIFFICULTY" | "TOPIC">(exam.blueprint ?? "");
   const [bpRows, setBpRows] = useState<Record<string, string>>(() => Object.fromEntries((exam.blueprintRows ?? []).map((r) => [r.value, String(r.questions)])));
   const [ask, setAsk] = useState<{ action: string; title: string; text: string; reason: boolean } | null>(null);
@@ -80,7 +82,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     try { const j = await work(); if (j) router.refresh(); } finally { setBusy(false); }
   }
   const act = (action: string, why?: string) => run(() => cbtSend(`/exams/${exam.id}/${action}`, "POST", { reason: why ?? null }, `${action.charAt(0).toUpperCase() + action.slice(1)} ${exam.reference}`));
-  const save = () => run(() => cbtSend(`/exams/${exam.id}`, "PUT", formBody(f), `Edit ${exam.reference}`));
+  const save = () => run(() => cbtSend(`/exams/${exam.id}`, "PUT", formBody(f, exam.office), `Edit ${exam.reference}`));
   const savePaper = () => run(() => cbtSend(`/exams/${exam.id}/paper`, "PUT", { questions: picked.map((id) => ({ id, marks: marks[id] ? Number(marks[id]) : null })) }, `Set the paper of ${exam.reference}: ${picked.length} question${picked.length === 1 ? "" : "s"}`));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const bpValues = bpDim === "DIFFICULTY" ? ["EASY", "MEDIUM", "HARD"] : bpDim === "TOPIC" ? (exam.topics ?? []).map((t) => t.topic) : [];
@@ -91,7 +93,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
 
   const actions: { action: string; label: string; kind: "primary" | "secondary" | "ghost" | "go" | "urgent"; when: boolean; confirm: string; reason?: boolean }[] = [
     { action: "schedule", label: "Schedule", kind: "secondary", when: exam.state === "DRAFT", confirm: "Mark the examination as scheduled for its window. Candidates are not yet told; publishing tells them." },
-    { action: "publish", label: "Publish to candidates", kind: "go", when: exam.state === "DRAFT" || exam.state === "SCHEDULED", confirm: "Every student registered on the offering is told by e-mail of the date, time and duration. The paper and the rules are then fixed; only the closing time and the instructions can still change." },
+    { action: "publish", label: "Publish to candidates", kind: "go", when: exam.state === "DRAFT" || exam.state === "SCHEDULED", confirm: putme ? "Every submitted Post-UTME applicant of the session is told by e-mail and SMS of the date, time and duration, and how to open the Post-UTME CBT page. The paper and the rules are then fixed; only the closing time and the instructions can still change. Candidates sit it only while the Post-UTME CBT door is open." : "Every student registered on the offering is told by e-mail of the date, time and duration. The paper and the rules are then fixed; only the closing time and the instructions can still change." },
     { action: "unpublish", label: "Withdraw", kind: "ghost", when: exam.state === "PUBLISHED" && counts.candidates - counts.not_started === 0, confirm: "Withdraw the examination to scheduled. Possible only while nobody has started." },
     { action: "close", label: "Close now", kind: "urgent", when: exam.state === "PUBLISHED" && (live === "OPEN" || live === "ENDED"), confirm: "Close the window now: no further start, and every attempt still running is submitted as it stands and scored." },
     { action: "complete", label: "Complete", kind: "primary", when: exam.state === "CLOSED" || (exam.state === "PUBLISHED" && live === "ENDED"), confirm: "Complete the examination: any attempt still open is finalised at time expired, and the results move to auto-scored for review." },
@@ -138,7 +140,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
           <Panel title="Configuration" right={editable ? <Btn kind="primary" disabled={busy || !f.title.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Btn> : exam.state === "PUBLISHED" && canManage ? <Btn kind="secondary" disabled={busy} onClick={() => void save()}>Save closing time & instructions</Btn> : <span className="sub2">Read only</span>}>
             <PBody>
               {exam.state === "PUBLISHED" ? <div className="sub2 mb-2">Published: the paper and rules are fixed; the title, instructions and closing time may still change.</div> : null}
-              <ExamFields f={f} set={(p) => setF({ ...f, ...p })} locked={!editable} jupeb={exam.office === "JUPEB" ? { components: exam.caComponents ?? [] } : undefined} />
+              <ExamFields f={f} set={(p) => setF({ ...f, ...p })} locked={!editable} jupeb={exam.office === "JUPEB" ? { components: exam.caComponents ?? [] } : undefined} putme={putme} />
             </PBody>
           </Panel>
           <Panel title="Lifecycle" right={<span className="sub2">Created {whenAt(exam.created_at)}{exam.created_by_name ? ` by ${exam.created_by_name}` : ""}{exam.created_office ? ` (${exam.created_office})` : ""}</span>}>

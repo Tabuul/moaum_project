@@ -25,6 +25,11 @@ public class ApplicationWindows {
     /** V379: the Centre for Continuing Education's application (only those on JAMB's CCE list); closed until first opened */
     public static final String CCE = "CCE_APPLICATION";
     public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB, CCE);
+    /** V385: the Post-UTME CBT examination's door (may candidates sit) and the result-checking page (may candidates read a released score);
+     *  the Director's windows over the admission exercise, closed until first opened, independent of Post-UTME registration */
+    public static final String POST_UTME_CBT = "POST_UTME_CBT";
+    public static final String POST_UTME_RESULTS = "POST_UTME_RESULT_CHECKING";
+    public static final List<String> POST_UTME_CBT_TYPES = List.of(POST_UTME_CBT, POST_UTME_RESULTS);
 
     /** one window as the public reads it: the session it is for, its state, its dates, and the closure message */
     public record Window(String type, String session, String state, OffsetDateTime opensAt, OffsetDateTime closesAt, String message) {
@@ -40,7 +45,8 @@ public class ApplicationWindows {
     }
 
     public static String word(String type) {
-        return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : CCE.equals(type) ? "The CCE application" : "Postgraduate application";
+        return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : CCE.equals(type) ? "The CCE application"
+                : POST_UTME_CBT.equals(type) ? "The Post-UTME CBT examination" : POST_UTME_RESULTS.equals(type) ? "Post-UTME result checking" : "Postgraduate application";
     }
 
     /** the session a new application of this kind is filed under today */

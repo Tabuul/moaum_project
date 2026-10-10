@@ -2,7 +2,15 @@
  *  candidate's examinations, attempt and result. The words for every state live here so the screens agree. */
 
 /** V364: EXAMS is the University's examinations office, for every other CBT-enabled course */
-export type CbtOffice = "GST" | "EPS" | "EXAMS" | "JUPEB";
+/** V385: POST_UTME is the Directorate of ICT's Post-UTME examination of an admission session */
+export type CbtOffice = "GST" | "EPS" | "EXAMS" | "JUPEB" | "POST_UTME";
+/** V385: the second factor a Post-UTME candidate gives beside the JAMB registration number at the examination door */
+export type PutmeVerify = "APPLICATION_NO" | "SLIP_TOKEN" | "PHONE" | "DATE_OF_BIRTH";
+export const PUTME_VERIFY_WORD: Record<PutmeVerify, string> = {
+  APPLICATION_NO: "Application number", SLIP_TOKEN: "Screening slip code", PHONE: "Phone number registered with", DATE_OF_BIRTH: "Date of birth on record",
+};
+/** V385: an admission session a Post-UTME examination may be made for, as the office's list shows it */
+export interface PutmeSession { name: string; state: string; applicants: number; screened_programmes: number; questions: number; cbt_window: string; results_window: string }
 export type ExamState = "DRAFT" | "SCHEDULED" | "PUBLISHED" | "CLOSED" | "COMPLETED" | "CANCELLED";
 export type LiveState = ExamState | "UPCOMING" | "OPEN" | "ENDED";
 export type ResultsState = "PENDING" | "AUTO_SCORED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED";
@@ -13,11 +21,13 @@ export interface CbtExamRow {
   live_state: LiveState; starts_at: string | null; ends_at: string | null; duration_minutes: number; selection: "FIXED" | "RANDOM"; total_questions: number;
   security_mode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB"; pass_mark: number; published_at: string | null; completed_at: string | null;
   pool_size: number; candidates: number; started: number; writing: number; scored: number;
+  /** V385: the admission session a Post-UTME examination examines */
+  putme_session?: string | null;
 }
 export interface CbtOffering { id: string; course_code: string; title: string; units: number; level: number; semester: number; session: string; questions: number }
 /** V365: a JUPEB subject the JUPEB Office may examine by CBT */
 export interface JupebSubject { id: string; code: string; title: string; cbt_enabled: boolean; questions: number; registered: number }
-export interface CbtExamList { office: CbtOffice; session: string; semester: number | null; archived?: boolean; rows: CbtExamRow[]; sessions: { name: string; state: string }[]; offerings: CbtOffering[]; subjects?: JupebSubject[]; now: string }
+export interface CbtExamList { office: CbtOffice; session: string; semester: number | null; archived?: boolean; rows: CbtExamRow[]; sessions: { name: string; state: string }[]; offerings: CbtOffering[]; subjects?: JupebSubject[]; putmeSessions?: PutmeSession[]; now: string }
 export interface CaComponent { id: string; code: string; title: string; max_score: number }
 
 /** V364: the examination's further settings, as the API keeps them */
@@ -60,6 +70,8 @@ export interface CbtExam extends Omit<CbtExamRow, "candidates" | "started" | "wr
   blueprintRows: { value: string; questions: number }[]; topics: { topic: string; questions: number }[];
   /** V365: a JUPEB examination's subject, and the parts of the JUPEB continuous assessment it may count towards */
   jupeb_subject_id?: string | null; jupeb_ca_component_id?: string | null; caComponents?: CaComponent[];
+  /** V385: a Post-UTME examination's admission session and the second factor at its door */
+  putme_session?: string | null; putme_verify?: PutmeVerify | null;
 }
 
 export interface Candidate {
@@ -171,6 +183,10 @@ export const ELIGIBILITY_WORD: Record<string, string> = {
   CBT_ATTEMPT_LIMIT: "Attempts used", CBT_FEES_NOT_CLEARED: "School fees not cleared", CBT_COURSE_NOT_ENABLED: "Not a CBT course", CBT_BLUEPRINT_SHORT: "Paper not ready",
   CBT_BLUEPRINT_TOTAL: "Paper not ready", CBT_BLUEPRINT_EMPTY: "Paper not ready",
   CBT_JUPEB_FEES: "School fee share not paid", CBT_JUPEB_SUBJECT_NOT_REGISTERED: "Subject not registered", CBT_JUPEB_NOT_STUDENT: "Not yet a JUPEB student",
+  /* V385: the Post-UTME candidate */
+  CBT_PUTME_WINDOW: "Not open to candidates", CBT_PUTME_NOT_CANDIDATE: "Not an applicant of this session", CBT_PUTME_NOT_ELIGIBLE: "Not eligible on the record",
+  CBT_PUTME_DISQUALIFIED: "Disqualified", CBT_PUTME_FEE: "Screening fee not confirmed", CBT_PUTME_NOT_SUBMITTED: "Application not submitted",
+  CBT_PUTME_SCORED: "A score is already on record", CBT_PUTME_SAT: "Recorded as sat",
 };
 
 export const codeOf = (why: string | null | undefined): string | null => (why ? why.split(":")[0] : null);

@@ -619,6 +619,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Upload PUTME Score" },
+          { "id": "t/putmefiles", "icon": "doc", "label": "Post-UTME Score Files" },
           { "id": "t/merit", "icon": "chart", "label": "Merit List" },
           { "id": "t/offers", "icon": "cal", "label": "Offers & Waiting List" },
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
@@ -1297,6 +1298,9 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
+          { "id": "t/putmecbt", "icon": "doc", "label": "Post-UTME CBT Examinations" },
+          { "id": "t/putmebank", "icon": "book", "label": "Post-UTME Question Bank" },
+          { "id": "t/putmescores", "icon": "chart", "label": "Post-UTME CBT Scores" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" }
         ]
       },
