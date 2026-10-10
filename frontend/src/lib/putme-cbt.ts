@@ -45,6 +45,8 @@ export interface PutmePublic {
   cbt: { type: string; state: string; open: boolean; opensAt: string | null; closesAt: string | null; message: string | null };
   results: { type: string; state: string; open: boolean; opensAt: string | null; closesAt: string | null; message: string | null };
   factor: string; factorLabel: string;
+  /** V388: the result-checking page always asks for a second factor */
+  resultFactor: string; resultFactorLabel: string;
   exams: { id: string; title: string; starts_at: string | null; ends_at: string | null; duration_minutes: number; live_state: string; questions: number }[];
   now: string;
 }

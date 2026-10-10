@@ -1,6 +1,6 @@
 "use client";
-/** V385: the Post-UTME CBT door. The candidate gives the JAMB registration number and the verification the examination names; the
- *  server answers yes or no and never which part was wrong. A yes shows what the server knows them as, their examination and its rules,
+/** V385: the Post-UTME CBT door. The candidate gives the JAMB registration number (V388: alone, unless the examination names a second
+ *  factor); the server answers yes or no and never which part was wrong. A yes shows what the server knows them as, their examination and its rules,
  *  and the confirmation before the start; the start opens the examination room. No dashboard, no password, no score here. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,12 +26,13 @@ export function PutmeGate({ state }: { state: PutmePublic }) {
   const [agreed, setAgreed] = useState(false);
 
   // an attempt this browser already holds the key to may be resumed straight away (read on the client, after verification)
+  const jambAlone = state.factor === "NONE";
   const held = (attemptId: string) => { try { return typeof window !== "undefined" && !!sessionStorage.getItem(tokenKey(attemptId)); } catch { return false; } };
 
   async function verify() {
     setBusy(true); setProblem(null);
     try {
-      const r = await fetch("/api/auth/putme-cbt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: state.session, jambRegNo: jamb.trim().toUpperCase(), proof: proof.trim() }) });
+      const r = await fetch("/api/auth/putme-cbt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: state.session, jambRegNo: jamb.trim().toUpperCase(), proof: jambAlone ? "" : proof.trim() }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       setVerified(j as Verified);
@@ -67,7 +68,7 @@ export function PutmeGate({ state }: { state: PutmePublic }) {
         <div className="grid grid--2">
           <div><div className="sub2">Candidate name</div><b>{c.name}</b></div>
           <div><div className="sub2">JAMB registration number</div><b className="tnum">{c.jambRegNo}</b></div>
-          <div><div className="sub2">Application number</div><b className="tnum">{c.applicationNo ?? "—"}</b></div>
+          {c.applicationNo ? <div><div className="sub2">Application number</div><b className="tnum">{c.applicationNo}</b></div> : null}
           <div><div className="sub2">Programme</div><b>{c.programme ?? "—"}</b></div>
         </div>
         {problem ? <ProblemNotice problem={problem} /> : null}
@@ -102,15 +103,17 @@ export function PutmeGate({ state }: { state: PutmePublic }) {
   }
 
   return (
-    <AuthLayout eyebrow={`Post-UTME CBT examination · ${state.session}`} lead="Enter your JAMB registration number and the verification detail. The JAMB number alone does not open the examination.">
+    <AuthLayout eyebrow={`Post-UTME CBT examination · ${state.session}`} lead={jambAlone ? "Enter your JAMB registration number." : "Enter your JAMB registration number and the verification detail."}>
       <PageHead title="Post-UTME CBT examination" description={state.exams.length ? state.exams.map((x) => `${x.title} · ${x.duration_minutes} min · ${x.questions} questions${x.starts_at ? ` · ${whenAt(x.starts_at)} → ${whenAt(x.ends_at)}` : ""}`).join(" · ") : "Your examination is published by the Directorate of ICT."} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       <form onSubmit={(e) => { e.preventDefault(); if (!busy) void verify(); }}>
         <label className="lbl" htmlFor="pc-jamb">JAMB registration number</label>
         <input id="pc-jamb" className="ctl tnum" autoComplete="off" autoCapitalize="characters" value={jamb} onChange={(e) => setJamb(e.target.value.toUpperCase())} placeholder="e.g. 20XXXXXXXXAB" />
-        <label className="lbl mt-2" htmlFor="pc-proof">{state.factorLabel}</label>
-        <input id="pc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.factor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : state.factor === "PHONE" ? "0803…" : ""} />
-        <div className="mt-2"><Btn kind="primary" disabled={busy || !REG_SHAPE.test(jamb.trim()) || !proof.trim()}>{busy ? "Verifying…" : "Verify candidate"}</Btn></div>
+        {jambAlone ? null : <>
+          <label className="lbl mt-2" htmlFor="pc-proof">{state.factorLabel}</label>
+          <input id="pc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.factor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : state.factor === "PHONE" ? "0803…" : ""} />
+        </>}
+        <div className="mt-2"><Btn kind="primary" disabled={busy || !REG_SHAPE.test(jamb.trim()) || (!jambAlone && !proof.trim())}>{busy ? "Verifying…" : "Verify candidate"}</Btn></div>
       </form>
       <div className="sub2 mt-2">Checking a result? <a href="/post-utme/results">Post-UTME result checking</a>.</div>
     </AuthLayout>

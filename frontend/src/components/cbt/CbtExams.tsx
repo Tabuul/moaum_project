@@ -45,7 +45,7 @@ export const EMPTY_FORM: ExamForm = {
   securityMode: "STANDARD", venue: "REMOTE", violationLimit: "2", violationAction: "WARN", secondSession: "CONTINUE", startsAt: "", endsAt: "", partialCredit: false,
   examType: "EXAMINATION", negativeMarks: "0", allowBack: true, allowReview: true, fullscreenRequired: true, detectors: ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"],
   countedEvents: ["TAB_SWITCH", "WINDOW_BLUR", "FULLSCREEN_EXIT"], warnAt: "", finalWarnAt: "", disconnectMinutes: "", proctoring: "NONE", scoreOnSubmit: false, sheetComponent: "EXAM",
-  jupebCaComponentId: "", putmeVerify: "APPLICATION_NO",
+  jupebCaComponentId: "", putmeVerify: "NONE",
 };
 /** V385: a Post-UTME examination starts from the settings a hall examination of thousands wants: random paper, shuffled options, lab, one screen */
 export const PUTME_FORM: ExamForm = { ...EMPTY_FORM, selection: "RANDOM", totalQuestions: "50", randomizeOptions: true, passMark: "0", venue: "LAB", violationLimit: "3", secondSession: "DENY", sheetComponent: "NONE", scoreOnSubmit: false };
@@ -123,7 +123,7 @@ export function ExamFields({ f, set, locked, jupeb, putme }: { f: ExamForm; set:
           <Field id="x-sos" label="The candidate's score" hint="By default the result is seen only once published"><select id="x-sos" className="ctl" disabled={dis} value={f.scoreOnSubmit ? "1" : "0"} onChange={(e) => set({ scoreOnSubmit: e.target.value === "1" })}><option value="0">Once the results are published</option><option value="1">On submission</option></select></Field>
         )}
         {putme ? (
-          <Field id="x-verify" label="Verification at the door" hint="Beside the JAMB registration number, which alone never opens the examination">
+          <Field id="x-verify" label="Verification at the door" hint="What the candidate gives beside the JAMB registration number">
             <select id="x-verify" className="ctl" disabled={dis} value={f.putmeVerify} onChange={(e) => set({ putmeVerify: e.target.value as PutmeVerify })}>
               {(Object.keys(PUTME_VERIFY_WORD) as PutmeVerify[]).map((k) => <option key={k} value={k}>{PUTME_VERIFY_WORD[k]}</option>)}
             </select>

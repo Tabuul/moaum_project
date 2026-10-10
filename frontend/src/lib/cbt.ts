@@ -4,10 +4,10 @@
 /** V364: EXAMS is the University's examinations office, for every other CBT-enabled course */
 /** V385: POST_UTME is the Directorate of ICT's Post-UTME examination of an admission session */
 export type CbtOffice = "GST" | "EPS" | "EXAMS" | "JUPEB" | "POST_UTME";
-/** V385: the second factor a Post-UTME candidate gives beside the JAMB registration number at the examination door */
-export type PutmeVerify = "APPLICATION_NO" | "SLIP_TOKEN" | "PHONE" | "DATE_OF_BIRTH";
+/** V385, V388: what a Post-UTME candidate gives at the examination door beside the JAMB registration number (NONE: nothing more) */
+export type PutmeVerify = "NONE" | "APPLICATION_NO" | "SLIP_TOKEN" | "PHONE" | "DATE_OF_BIRTH";
 export const PUTME_VERIFY_WORD: Record<PutmeVerify, string> = {
-  APPLICATION_NO: "Application number", SLIP_TOKEN: "Screening slip code", PHONE: "Phone number registered with", DATE_OF_BIRTH: "Date of birth on record",
+  NONE: "Nothing more: the JAMB registration number alone", APPLICATION_NO: "Application number", SLIP_TOKEN: "Screening slip code", PHONE: "Phone number registered with", DATE_OF_BIRTH: "Date of birth on record",
 };
 /** V385: an admission session a Post-UTME examination may be made for, as the office's list shows it */
 export interface PutmeSession { name: string; state: string; applicants: number; screened_programmes: number; questions: number; cbt_window: string; results_window: string }

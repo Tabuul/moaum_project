@@ -47,7 +47,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
     fullscreenRequired: exam.fullscreen_required !== false, detectors: exam.detectors ?? EMPTY_FORM.detectors, countedEvents: exam.counted_events ?? EMPTY_FORM.countedEvents,
     warnAt: exam.warn_at == null ? "" : String(exam.warn_at), finalWarnAt: exam.final_warn_at == null ? "" : String(exam.final_warn_at),
     disconnectMinutes: exam.disconnect_minutes == null ? "" : String(exam.disconnect_minutes), proctoring: exam.proctoring ?? "NONE", scoreOnSubmit: !!exam.score_on_submit,
-    sheetComponent: exam.sheet_component ?? "EXAM", jupebCaComponentId: exam.jupeb_ca_component_id ?? "", putmeVerify: exam.putme_verify ?? "APPLICATION_NO",
+    sheetComponent: exam.sheet_component ?? "EXAM", jupebCaComponentId: exam.jupeb_ca_component_id ?? "", putmeVerify: exam.putme_verify ?? "NONE",
   }));
   /* V385: a Post-UTME examination's bank is the admission session's */
   const putme = exam.office === "POST_UTME";

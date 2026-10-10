@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 227
+\set EXPECTED 228
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -8764,6 +8764,64 @@ BEGIN
                v_office, w_cbt, w_res, w_cbt2, r_bank, r_sos, r_nopro, v_pub, v_right = app, v_wrong, v_factor, e_before, e_after, n_cand, n_elig, m_cand, v_owned, r_deny, v_score, v_hidden, v_status,
                r_unapproved, r_publish, v_rows, length(v_hash), v_sent, v_recv, v_prev, imp.applied, v_app_score, imp2.applied, imp2.unchanged, imp3.replaced, v_hist, v_hist_prev, r_cancel,
                rc_closed, rc_unrel, rc_wrong, rc_rel, rc_score, imp4.released, imp4.replaced, v_summary, v_count));
+END $$;
+
+-- ── V388. The Post-UTME CBT door by the JAMB registration number alone: NONE is the default and opens the door on the JAMB number,
+--          an unknown number is still refused; the result-checking page still asks for the application number; the setting accepts
+--          NONE and refuses anything else ──
+DO $$
+DECLARE S text := '9963/9964'; who uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        cr uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); q1 uuid := gen_random_uuid(); q2 uuid := gen_random_uuid();
+        ex assessment.cbt_exam; ex2 assessment.cbt_exam; rc record;
+        v_default text; v_factor text; v_alone uuid; v_null uuid; v_unknown uuid; v_strict uuid; v_rfactor text; rc_alone text; rc_number text; r_none text; r_bogus text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V388', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9963-10-01', date '9964-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO assessment.question (id, putme_session, stem, options, answer, kind, marks) VALUES
+            (q1, S, 'one', '["a","b","c","d"]', 1, 'MCQ', 1), (q2, S, 'two', '["a","b","c","d"]', 2, 'MCQ', 1);
+        PERFORM pg_temp.moderated();
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (batch, S, 'CAPS_DOWNLOAD', 'UTME', '\xB388'::bytea, 1, current_date, who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        VALUES (cr, batch, S, '20639630001', '{"Subject1":"Use of English","Subject2":"Lit. in English","Subject3":"Christian Rel. Know","Subject4":"Government"}'::jsonb, 'CHECKJAMB', 'Cand', 'C00066', 250, 'UTME', 'F', 'Benue', 'Makurdi');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (cand, S, '20639630001', 'CHECKJAMB', 'Cand', (SELECT name FROM ref.programme WHERE code = 'C00066'), 'UTME', 100, 'PROPOSED', cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '20639630001', 'checkjamb@example.com', '08031234568', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at)
+        VALUES (app, acct, cand, S, 'APP/63/000001', now(), now());
+        INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (S, 'C00066');
+        -- (1) an examination made without a word on the door asks for the JAMB number alone
+        ex := assessment.cbt_new_putme_exam(S, 'Check JAMB alone', 'read', 30, 2, 'FIXED', false, false, 0, 1, 'STANDARD', 'LAB', 3, 'WARN', 'DENY', now() - interval '1 minute', now() + interval '2 hours');
+        v_default := ex.putme_verify;
+        INSERT INTO assessment.cbt_exam_question (exam_id, question_id, ordinal) VALUES (ex.id, q1, 1), (ex.id, q2, 2);
+        ex := assessment.cbt_exam_action(ex.id, 'publish', NULL);
+        -- (2) the door: the JAMB number alone; an unknown number refused; the stricter factor still needs its proof
+        v_factor := admissions.putme_cbt_factor(S);
+        v_alone := admissions.putme_cbt_verify(S, '20639630001', '');
+        v_null := admissions.putme_cbt_verify(S, ' 20639630001 ', NULL);
+        v_unknown := admissions.putme_cbt_verify(S, '20639639999', '');
+        v_strict := admissions.putme_verify_as(S, '20639630001', '', 'APPLICATION_NO');
+        -- (3) the result-checking page asks for the application number
+        v_rfactor := admissions.putme_result_factor(S);
+        PERFORM policy.window_act('POST_UTME_RESULT_CHECKING', S, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', who, 'ict');
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20639630001', ''); rc_alone := rc.outcome;
+        SELECT * INTO rc FROM admissions.putme_result_check(S, '20639630001', 'APP/63/000001'); rc_number := rc.outcome;
+        -- (4) the setting accepts NONE and refuses anything else
+        ex2 := assessment.cbt_new_putme_exam(S, 'Check JAMB alone 2', 'read', 30, 2, 'FIXED', false, false, 0, 1, 'STANDARD', 'LAB', 3, 'WARN', 'DENY', now() + interval '1 day', now() + interval '2 days');
+        ex2 := assessment.cbt_configure(ex2.id, '{"putmeVerify":"APPLICATION_NO"}'::jsonb);
+        ex2 := assessment.cbt_configure(ex2.id, '{"putmeVerify":"none"}'::jsonb); r_none := ex2.putme_verify;
+        BEGIN ex2 := assessment.cbt_configure(ex2.id, '{"putmeVerify":"PASSWORD"}'::jsonb); r_bogus := 'ACCEPTED'; EXCEPTION WHEN check_violation THEN r_bogus := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V388 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V388: the Post-UTME CBT door by the JAMB registration number alone — an examination asks for nothing more by default and the door opens on the JAMB number, an unknown number is refused, a stricter factor still needs its proof; the result-checking page asks for the application number; the setting accepts NONE and refuses anything else',
+        coalesce(v_default = 'NONE' AND v_factor = 'NONE' AND v_alone = app AND v_null = app AND v_unknown IS NULL AND v_strict IS NULL
+                 AND v_rfactor = 'APPLICATION_NO' AND rc_alone = 'NOT_VERIFIED' AND rc_number = 'NOT_RELEASED' AND r_none = 'NONE' AND r_bogus = 'CBT_SETTING', false),
+        format('default=%s factor=%s alone=%s null=%s unknown=%s strict=%s | result factor=%s alone=%s number=%s | setting none=%s bogus=%s',
+               v_default, v_factor, v_alone = app, v_null = app, v_unknown, v_strict, v_rfactor, rc_alone, rc_number, r_none, r_bogus));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

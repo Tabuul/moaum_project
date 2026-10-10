@@ -53,8 +53,8 @@ export function ResultCheck({ state }: { state: PutmePublic }) {
       <form onSubmit={(e) => { e.preventDefault(); if (!busy) void check(); }}>
         <label className="lbl" htmlFor="rc-jamb">JAMB registration number</label>
         <input id="rc-jamb" className="ctl tnum" autoComplete="off" value={jamb} onChange={(e) => setJamb(e.target.value.toUpperCase())} />
-        <label className="lbl mt-2" htmlFor="rc-proof">{state.factorLabel}</label>
-        <input id="rc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.factor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : ""} />
+        <label className="lbl mt-2" htmlFor="rc-proof">{state.resultFactorLabel}</label>
+        <input id="rc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.resultFactor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : ""} />
         <div className="mt-2"><Btn kind="primary" disabled={busy || !jamb.trim() || !proof.trim()}>{busy ? "Checking…" : "Check result"}</Btn></div>
       </form>
     </AuthLayout>

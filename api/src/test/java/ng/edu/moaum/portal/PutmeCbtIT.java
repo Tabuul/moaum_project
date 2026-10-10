@@ -10,7 +10,10 @@ import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,10 +33,12 @@ import org.springframework.web.client.RestClient;
  * door; the Directorate monitors by JAMB number, approves the results, may not publish them through the examination, generates the official
  * file, downloads it and sends it; the Academic Office receives, previews and imports it into the screening score, once; the result-checking
  * door reads nothing until the window is open and the Academic Office releases the scores; the wrong offices are refused. Needs DATABASE_URL.
+ * The two tests share one admission session, whose newest open examination decides what the door asks for: they run in order.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
 @SuppressWarnings({"rawtypes", "unchecked"})
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PutmeCbtIT {
 
     static final String SESSION = "2098/2099";
@@ -119,6 +124,7 @@ class PutmeCbtIT {
     }
 
     @Test
+    @Order(1)
     void fromTheBankToTheReleasedScore() {
         String tag = String.format("%04d", new Random().nextInt(10_000));
         it.db(() -> jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :p) ON CONFLICT DO NOTHING").param("s", SESSION).param("p", PROGRAMME).update());
@@ -154,8 +160,9 @@ class PutmeCbtIT {
         assertThat(published.getBody().get("state")).isEqualTo("PUBLISHED");
 
         // ── 2 · the public door: closed until the Director opens it; one word for a wrong verification; a token for the right one ──
-        ResponseEntity<Map> pub = it.anon(HttpMethod.GET, "/api/v1/putme/cbt/public?session=" + SESSION.replace("/", "%2F"), null);
+        ResponseEntity<Map> pub = it.anon(HttpMethod.GET, "/api/v1/putme/cbt/public?session=" + SESSION, null);
         assertThat(pub.getStatusCode().value()).as(String.valueOf(pub.getBody())).isEqualTo(200);
+        assertThat(pub.getBody().get("session")).isEqualTo(SESSION);
         assertThat(((Map<String, Object>) pub.getBody().get("cbt")).get("state")).isEqualTo("CLOSED");
         assertThat(pub.getBody().get("factor")).isEqualTo("APPLICATION_NO");
         ResponseEntity<Map> shut = post("/api/v1/putme/cbt/verify", Map.of("session", SESSION, "jambRegNo", c[2], "proof", c[1]));
@@ -278,5 +285,59 @@ class PutmeCbtIT {
         assertThat(it.call(ict, HttpMethod.POST, SCORES + "/exports/" + file + "/cancel", Map.of("reason", "too late")).getStatusCode().value()).isEqualTo(422);
         Map<String, Object> afterRelease = it.call(academic, HttpMethod.POST, SCORES + "/exports/" + file + "/import", Map.of("mode", "REPLACE", "reason", "test")).getBody();
         assertThat(((Map<String, Object>) afterRelease.get("import")).get("released")).isEqualTo(1);
+    }
+
+    /** V388: by default the door asks for the JAMB registration number alone and shows no application number; the result-checking page still asks for it */
+    @Test
+    @Order(2)
+    void theJambNumberAloneOpensTheExaminationButNotTheScore() {
+        String tag = String.format("%04d", new Random().nextInt(10_000));
+        it.db(() -> jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :p) ON CONFLICT DO NOTHING").param("s", SESSION).param("p", PROGRAMME).update());
+        String[] c = applicant("ZZPUTMEJAMB-" + tag);
+        String bank = "PUTME:" + SESSION;
+        List<UUID> paper = List.of(question(bank, "alone one " + tag, 1), question(bank, "alone two " + tag, 2));
+        Map<String, Object> examIn = new java.util.LinkedHashMap<>();
+        examIn.put("office", "POST_UTME"); examIn.put("session", SESSION); examIn.put("title", "Post-UTME CBT by JAMB number " + tag); examIn.put("durationMinutes", 30);
+        examIn.put("selection", "FIXED"); examIn.put("randomizeQuestions", false); examIn.put("randomizeOptions", false); examIn.put("passMark", 0); examIn.put("attemptLimit", 1);
+        examIn.put("securityMode", "STANDARD"); examIn.put("venue", "LAB"); examIn.put("violationLimit", 3); examIn.put("violationAction", "WARN"); examIn.put("secondSession", "DENY");
+        // the newest open examination of the session decides what the door asks for
+        examIn.put("startsAt", OffsetDateTime.now().toString()); examIn.put("endsAt", OffsetDateTime.now().plusHours(2).toString());
+        ResponseEntity<Map> created = it.call(ict, HttpMethod.POST, "/api/v1/cbt/exams", examIn);
+        assertThat(created.getStatusCode().value()).as(String.valueOf(created.getBody())).isEqualTo(200);
+        String exam = String.valueOf(created.getBody().get("id"));
+        assertThat(created.getBody().get("putme_verify")).isEqualTo("NONE");
+        assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/cbt/exams/" + exam + "/paper", Map.of("questions", paper.stream().map(q -> Map.of("id", q)).toList())).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(ict, HttpMethod.POST, "/api/v1/cbt/exams/" + exam + "/publish", Map.of()).getStatusCode().value()).isEqualTo(200);
+        window("POST_UTME_CBT", "OPEN");
+
+        Map<String, Object> pub = it.anon(HttpMethod.GET, "/api/v1/putme/cbt/public?session=" + SESSION, null).getBody();
+        assertThat(pub.get("session")).isEqualTo(SESSION);
+        assertThat(pub.get("factor")).isEqualTo("NONE");
+        assertThat(pub.get("resultFactor")).isEqualTo("APPLICATION_NO");
+        // a JAMB number not on the record is still refused with one word, and counted
+        ResponseEntity<Map> unknown = post("/api/v1/putme/cbt/verify", Map.of("session", SESSION, "jambRegNo", jamb()));
+        assertThat(unknown.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(unknown.getBody())).contains("Candidate verification failed");
+        // the candidate's JAMB number alone opens the door; the application number is not shown
+        ResponseEntity<Map> verified = post("/api/v1/putme/cbt/verify", Map.of("session", SESSION, "jambRegNo", c[2]));
+        assertThat(verified.getStatusCode().value()).as(String.valueOf(verified.getBody())).isEqualTo(200);
+        Map<String, Object> who = (Map<String, Object>) verified.getBody().get("candidate");
+        assertThat(who.get("jambRegNo")).isEqualTo(c[2]);
+        assertThat(who.get("applicationNo")).isNull();
+        String candidate = String.valueOf(verified.getBody().get("token"));
+        Map<String, Object> mine = it.get(candidate, "/api/v1/putme/cbt").getBody();
+        assertThat(((Map<String, Object>) mine.get("candidate")).get("applicationNo")).isNull();
+        assertThat(((List<Map<String, Object>>) mine.get("rows")).stream().map(r -> r.get("exam_id"))).contains(exam);
+        assertThat(it.call(candidate, HttpMethod.POST, "/api/v1/putme/cbt/exams/" + exam + "/start", Map.of()).getStatusCode().value()).isEqualTo(200);
+        // the token still opens no dashboard
+        assertThat(it.get(candidate, "/api/v1/applicant/me").getStatusCode().value()).isEqualTo(403);
+
+        // the result-checking page: the JAMB number alone reads nothing; with the application number it reads the record
+        window("POST_UTME_RESULT_CHECKING", "OPEN");
+        assertThat(post("/api/v1/putme/results/check", Map.of("session", SESSION, "jambRegNo", c[2])).getStatusCode().value()).isEqualTo(422);
+        assertThat(post("/api/v1/putme/results/check", Map.of("session", SESSION, "jambRegNo", c[2], "proof", "")).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> withNumber = post("/api/v1/putme/results/check", Map.of("session", SESSION, "jambRegNo", c[2], "proof", c[1]));
+        assertThat(withNumber.getStatusCode().value()).as(String.valueOf(withNumber.getBody())).isEqualTo(200);
+        assertThat(withNumber.getBody().get("outcome")).isEqualTo("NOT_RELEASED");
     }
 }

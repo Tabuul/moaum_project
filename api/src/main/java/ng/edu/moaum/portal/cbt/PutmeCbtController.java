@@ -41,13 +41,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * V385: the Post-UTME candidate's door to the one CBT engine — not the applicant dashboard. The candidate gives their JAMB
- * registration number and the second factor the examination names (the application number, the screening slip's token, the phone
- * they registered with, or the date of birth on record); the database says yes or no and never which part was wrong; a wrong
- * answer counts against the connection (V359). A yes opens a short session of its own office ({@code putmecbt}): the token it
+ * registration number and, when the examination asks for one, a second factor (V388: by default it asks for none; otherwise the
+ * application number, the screening slip's token, the phone they registered with, or the date of birth on record); the database says
+ * yes or no and never which part was wrong; a wrong answer counts against the connection (V359). A yes opens a short session of its own office ({@code putmecbt}): the token it
  * carries opens this door and nothing else — not the applicant's dashboard, not the student's. Behind the door the candidate's
  * examinations, the start, the paper, the answers, the browser's reports and the submission go through the one implementation
  * every candidate shares ({@link CbtCandidateDoor}); a result is never given here. The result-checking door is separate and reads
- * only what the Academic Office released, only while the Director of ICT's window is open.
+ * only what the Academic Office released, only while the Director of ICT's window is open, and always with a second factor.
  */
 @RestController
 @RequestMapping("/api/v1/putme")
@@ -56,10 +56,14 @@ class PutmeCbtController {
     private static final String CANDIDATE = "hasAuthority('OFFICE_putmecbt')";
     /** the examination session lasts this long from the door; the attempt's own clock is the server's regardless */
     private static final Duration SESSION_LENGTH = Duration.ofHours(6);
-    private static final Map<String, String> FACTOR_WORD = Map.of(
+    private static final Map<String, String> FACTOR_WORD = Map.of("NONE", "None",
             "APPLICATION_NO", "Application number", "SLIP_TOKEN", "Screening slip code", "PHONE", "Phone number you registered with", "DATE_OF_BIRTH", "Date of birth (yyyy-mm-dd)");
 
-    public record VerifyIn(@Size(max = 9) String session, @NotBlank @Size(max = 40) String jambRegNo, @NotBlank @Size(max = 80) String proof) {
+    /** V388: {@code proof} is blank when the examination asks for the JAMB registration number alone */
+    public record VerifyIn(@Size(max = 9) String session, @NotBlank @Size(max = 40) String jambRegNo, @Size(max = 80) String proof) {
+        String proofOrBlank() {
+            return proof == null ? "" : proof.trim();
+        }
     }
 
     private final CbtCandidateDoor door;
@@ -109,6 +113,10 @@ class PutmeCbtController {
         String factor = jdbc.sql("SELECT admissions.putme_cbt_factor(:s)").param("s", s).query(String.class).single();
         out.put("factor", factor);
         out.put("factorLabel", FACTOR_WORD.getOrDefault(factor, "Verification"));
+        // V388: the result-checking page shows a score, so it asks for a second factor even when the examination door does not
+        String resultFactor = jdbc.sql("SELECT admissions.putme_result_factor(:s)").param("s", s).query(String.class).single();
+        out.put("resultFactor", resultFactor);
+        out.put("resultFactorLabel", FACTOR_WORD.getOrDefault(resultFactor, "Verification"));
         // the examinations of the session as the public may know them: title, when, how long, how many questions — no candidate, no paper
         out.put("exams", jdbc.sql("""
                 SELECT e.id, e.title, e.starts_at, e.ends_at, e.duration_minutes, assessment.cbt_live_state(e) AS live_state,
@@ -120,7 +128,7 @@ class PutmeCbtController {
         return out;
     }
 
-    /** the door: JAMB registration number plus the examination's second factor; one answer for every failure, counted against the connection */
+    /** the door: JAMB registration number, with the examination's second factor when it asks for one; one answer for every failure, counted against the connection */
     @PostMapping("/cbt/verify")
     @Transactional
     Map<String, Object> verify(@Valid @RequestBody VerifyIn in, HttpServletRequest request, @RequestHeader(value = "User-Agent", required = false) String agent) {
@@ -132,14 +140,16 @@ class PutmeCbtController {
             String msg = cbt.get("message") == null ? "The Post-UTME CBT for " + s + " is " + String.valueOf(cbt.get("state")).toLowerCase() + "." : String.valueOf(cbt.get("message"));
             throw new DomainRuleViolation("CBT_PUTME_WINDOW", msg, new DomainRuleViolation.Remedy("The examination opens at the time the University announces.", "Directorate of ICT"));
         }
-        UUID app = jdbc.sql("SELECT admissions.putme_cbt_verify(:s, :j, :p)").param("s", s).param("j", in.jambRegNo().trim()).param("p", in.proof().trim())
+        boolean jambAlone = "NONE".equals(jdbc.sql("SELECT admissions.putme_cbt_factor(:s)").param("s", s).query(String.class).single());
+        UUID app = jdbc.sql("SELECT admissions.putme_cbt_verify(:s, :j, :p)").param("s", s).param("j", in.jambRegNo().trim()).param("p", in.proofOrBlank())
                 .query(UUID.class).optional().orElse(null);
         if (app == null) {
             throttle.count(Throttle.Door.APPLICANT_LOOKUP, source);
             jdbc.sql("INSERT INTO admissions.applicant_event (account_id, identifier, outcome, ip) VALUES (NULL, :i, 'PUTME_CBT_VERIFY_FAILED', :ip)")
                     .param("i", in.jambRegNo().trim().toUpperCase()).param("ip", source, Types.VARCHAR).update();
             throw new DomainRuleViolation("CBT_PUTME_VERIFY", "Candidate verification failed.",
-                    new DomainRuleViolation.Remedy("Check the JAMB registration number and the verification detail on your screening slip, then try again.", "You"));
+                    new DomainRuleViolation.Remedy(jambAlone ? "Check the JAMB registration number on your screening slip, then try again."
+                            : "Check the JAMB registration number and the verification detail on your screening slip, then try again.", "You"));
         }
         Map<String, Object> who = jdbc.sql("""
                 SELECT a.account_id, a.application_no, upper(c.surname) AS surname, c.other_names, c.jamb_reg_no, c.programme
@@ -160,7 +170,8 @@ class PutmeCbtController {
         Map<String, Object> candidate = new LinkedHashMap<>();
         candidate.put("name", name);
         candidate.put("jambRegNo", who.get("jamb_reg_no"));
-        candidate.put("applicationNo", who.get("application_no"));
+        // V388: a door opened by the JAMB number alone does not show the application number, which the result-checking page asks for
+        candidate.put("applicationNo", jambAlone ? null : who.get("application_no"));
         candidate.put("programme", who.get("programme"));
         out.put("candidate", candidate);
         out.put("session", s);
@@ -175,7 +186,7 @@ class PutmeCbtController {
         String source = ClientAddress.of(request);
         throttle.take(Throttle.Door.VERIFY, source);
         String s = sessionOf(in.session());
-        Map<String, Object> r = jdbc.sql("SELECT * FROM admissions.putme_result_check(:s, :j, :p)").param("s", s).param("j", in.jambRegNo().trim()).param("p", in.proof().trim())
+        Map<String, Object> r = jdbc.sql("SELECT * FROM admissions.putme_result_check(:s, :j, :p)").param("s", s).param("j", in.jambRegNo().trim()).param("p", in.proofOrBlank())
                 .query().singleRow();
         if ("NOT_VERIFIED".equals(r.get("outcome"))) {
             throttle.count(Throttle.Door.VERIFY, source);
@@ -206,7 +217,8 @@ class PutmeCbtController {
         UUID app = me(auth);
         Map<String, Object> out = new LinkedHashMap<>(door.list(Kind.PUTME, app, session));
         out.put("candidate", jdbc.sql("""
-                SELECT upper(c.surname) || ', ' || c.other_names AS name, c.jamb_reg_no AS "jambRegNo", a.application_no AS "applicationNo", c.programme
+                SELECT upper(c.surname) || ', ' || c.other_names AS name, c.jamb_reg_no AS "jambRegNo",
+                       CASE WHEN admissions.putme_cbt_factor(a.session) = 'NONE' THEN NULL ELSE a.application_no END AS "applicationNo", c.programme
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.id = :a
                 """).param("a", app).query().singleRow());
         return out;
