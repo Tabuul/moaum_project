@@ -496,6 +496,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
       add("level", at(/current\s*level/, /^level$/, /^lvl$/));
       add("schoolId", at(/school\s*id/, /schoolid/, /^school$/));
+      // V381: a CCE (part-time) student is told by the route or the study mode as well as the entry mode
+      add("studyMode", at(/study\s*mode/, /mode of study/, /^study$/));
+      add("route", at(/^route$/, /admission\s*route/, /study\s*route/, /^programme\s*type$/));
     } else if (kind === "jamb") {
       add("jamb", at(/jamb/, /jamb\s*reg/, /jamb\s*no/, /jamb\s*number/, /utme\s*reg/));
     } else if (kind === "pgresearch") {
@@ -555,12 +558,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   return (
     <>
       <Note kind="info" title="Bring the record over from the old portal">
-        Start with the students, so results and registration can match them by matriculation number: upload the
-        <b> full student biography</b> (biodata, contact, guardian, sponsor and next-of-kin, and a sign-in account in one
-        pass) or, if you only have the core list, <b>students (core only)</b>. Then the course registration and the past
-        results. Each upload reads the spreadsheet&rsquo;s own columns and matches on the matriculation number and the
-        course code &mdash; nothing is typed. A past result is imported as final under a legacy minute, so it counts on
-        the transcript and the GPA exactly as one entered here. Every import is your act.
+        Upload the students first (<b>full student biography</b>, or <b>students (core only)</b>), then the course registration,
+        then the past results. Matched on matriculation number and course code; past results import as final under a legacy minute.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
 
@@ -573,16 +572,14 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {resumable ? (
         <Note kind="info" title={`Stopped at ${resumable.sent.toLocaleString()} of ${resumable.of.toLocaleString()} rows`}
               action={<Btn kind="primary" disabled={busy} onClick={() => { if (jobRef.current) void runJob(jobRef.current); }}>Resume from the failed batch</Btn>}>
-          {resumable.where}. The file is still held in this page, so Resume continues from that batch. If you reload the page, choose the file again; re-uploading is safe.
+          {resumable.where}. Resume continues from that batch; if you reload the page, choose the file again.
         </Note>
       ) : null}
 
       {tab === "clearance" ? (
         <>
           <Note kind="info" title="The last step: the students you brought over arrive cleared">
-            A student migrated from the old portal at 100 to 400 level is cleared at every unit for every purpose as the upload
-            lands — the old portal&rsquo;s clearance, carried over. This panel shows that it held, and clears any the upload
-            missed. A unit may still hold any of them afterwards; that hold stands.
+            Students migrated at 100 to 400 level arrive cleared at every unit; this clears any the upload missed. A unit may still hold them.
           </Note>
           <MigratedPanelLive />
         </>
@@ -592,10 +589,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         <Panel title="Passport photos exported from the old portal" right="Matched by JAMB reg no in the file name">
           <PBody>
             <div className="sub2 mb-2">
-              Select the passport image files. Each file must be named by the student&rsquo;s <b>JAMB registration number</b>
-              (for example <span className="tnum">202412345AB.jpg</span>); the number is read from the file name and matched
-              to the student. A photo whose number matches no student on the portal is <b>skipped</b> and listed, not
-              guessed at. JPEG or PNG; the photo then shows on the student&rsquo;s dashboard, course form and receipts.
+              Name each file by the student&rsquo;s <b>JAMB registration number</b> (for example <span className="tnum">202412345AB.jpg</span>).
+              A photo matching no student is <b>skipped</b> and listed. JPEG or PNG.
             </div>
             <div className="row">
               <label className={`btn btn--primary m-0${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", opacity: !may ? 0.6 : 1 }}>
@@ -623,7 +618,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <div className="sub2 mb-2">
             {tab === "pgstudents" ? "Columns read: matno (the MOAU/… postgraduate matric), appno, name, sex, dob, programme (the old-portal code, e.g. C14569 — created as a POST GRADUATE programme in the shared table from the faculty, department and the award in the matric when it is not there yet), level (kept as 700/800/900), phone, email/login_email, address, nationality, state, LGA, guardian, sponsor, next-of-kin, extracurricular. Entry mode is set to POSTGRADUATE and the school to S002 (→ BMAS curriculum), so each lands on their own postgraduate dashboard. A matric sign-in account is created — the student signs in first with their matric number and is asked to set a password."
               : tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
-              : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
+              : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level, and — for the Centre for Continuing Education's students — route (CCE) or study mode (part-time): such a student comes over as CCE and part-time. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
               : tab === "pgregistration" ? "Columns read: matriculation number, course code, course title, units, kind (CORE/ELECTIVE/DEFICIENCY/RESEARCH), mode (full/part-time), session (YYYY/YYYY) and semester (First/Second or 1/2 — postgraduate study has two semesters). The student must be a postgraduate already on the register (upload the postgraduate students first). A course not yet in the postgraduate catalogue is created for the student's programme from the title/units/kind; an endorsed registration and its entries are created for each session/semester."
@@ -647,7 +642,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
           </div>
-          <div className="sub2 mt-2">Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly, so an export that already has these columns can be uploaded as-is.</div>
+          <div className="sub2 mt-2">Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly.</div>
         </PBody>
       </Panel>
       )}
@@ -665,7 +660,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             {pResult.stored + pResult.attached} photo{pResult.stored + pResult.attached === 1 ? "" : "s"} matched a student and were saved.
             {pResult.notFound > 0 ? <> {pResult.notFound} file{pResult.notFound === 1 ? "" : "s"} matched no student on the portal and were skipped — download the list to see which numbers.</> : null}
             {pResult.skipped > 0 ? <> {pResult.skipped} file{pResult.skipped === 1 ? "" : "s"} could not be read as an image.</> : null}
-            {" "}Uploading the same photo again replaces it, so this is safe to re-run.
+            {" "}Uploading the same photo again replaces it.
           </Note>
           {pResult.failures.length ? (
             <Note kind="bad" title={`${pResult.failures.length.toLocaleString()} file${pResult.failures.length === 1 ? "" : "s"} failed`}
@@ -695,7 +690,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "pgresearch" ? `${result.counts.matched ?? 0} research records set (${result.counts.created ?? 0} new, ${result.counts.updated ?? 0} updated); ${result.counts.supervisors ?? 0} supervisors recorded.`
               : tab === "pgresults" ? `${result.counts.results ?? 0} postgraduate results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}. These count on the postgraduate register's CGPA.`
               : `${result.counts.results ?? 0} results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}.`}
-            {" "}Rows that did not match are counted above; fix them at source and re-upload — the import is idempotent.
+            {" "}Fix unmatched rows at source and re-upload.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
             {(result.counts.skipped ?? 0) > 0 ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
           </Note>
@@ -705,24 +700,19 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {rejected && rejected.kind === tab ? (
         <Note kind="bad" title={`${rejected.rows.length.toLocaleString()} row${rejected.rows.length === 1 ? "" : "s"} had no valid matriculation number and were not uploaded`}
               action={<Btn kind="ghost" onClick={downloadRejected}>Download the skipped rows</Btn>}>
-          A matriculation number must be the University&rsquo;s own (MOAUM/DEPT/YY/NNNN) or a legacy old-portal number. These rows carried none the importer could read (often a blank or &ldquo;NULL&rdquo;). Download them, fix the numbers at source, and upload again &mdash; the import is idempotent, so the rows already in are untouched.
+          A matriculation number must be the University&rsquo;s (MOAUM/DEPT/YY/NNNN) or a legacy old-portal number. Download the rows, fix the numbers and upload again.
         </Note>
       ) : null}
 
       <Note kind="info" title="Order matters, and re-uploading is safe">
         <Pil kind="grey">1</Pil> Students &rarr; <Pil kind="grey">2</Pil> Registration &rarr; <Pil kind="grey">3</Pil> Results.
-        A result needs the student and the course registration to exist, so the results import also creates the
-        registration entry if it is missing. Uploading the same file again updates rather than duplicates.
-        A large export is sent up in batches automatically, so a file of any size uploads in one go; if a batch is
-        refused part-way, the rows already in stand and you can simply upload the file again.
+        Re-uploading updates rather than duplicates; large files are sent in batches.
       </Note>
 
       {may ? (
         <Note kind="info" title="How migrated students sign in — no password reset needed">
-          A student brought over from the old portal signs in with their <b>number as both the username and the
-          password</b> (matriculation number, or admission / JAMB number). The portal then makes them choose a real
-          password on that first sign-in. Nothing is pre-set for the whole cohort — each student&rsquo;s first password
-          is granted at the moment they sign in, so there is nothing to run here.
+          A migrated student signs in with their <b>number as both username and password</b> (matriculation, admission or JAMB number)
+          and must choose a new password at first sign-in.
         </Note>
       ) : null}
     </>

@@ -18,7 +18,9 @@ export interface Format { id: string; university_code: string; faculty_code: boo
 export interface Series { code: string; name: string; last_issued: number; active: boolean; note: string | null; issued: number; last_issued_at: string | null }
 export interface Faculty { code: string; name: string; matric_code: string | null; matric_series: string | null; programmes: number }
 export interface ProgrammeRow { programme_code: string; programme: string; faculty_code: string; faculty: string; faculty_matric_code: string | null; faculty_series: string | null; matric_code: string | null; matric_uses_code: boolean; matric_faculty_code: string | null; matric_series: string | null; series_effective: string; sample: string; problem: string | null; students_admitted: number; archived: boolean; category: string | null }
-export interface ConfigData { format: Format; series: Series[]; faculties: Faculty[]; programmes: ProgrammeRow[]; recent: { matric_no: string; series_code: string; sequence: number; issued_at: string; reason: string | null; student_name: string; programme: string | null }[] }
+/** V381: a study route's own run of numbers — the CCE students in their own series, with their own segment after the University code */
+export interface RouteRow { code: string; name: string; matric_series: string | null; matric_segment: string | null; matriculated: number; awaiting: number; last_change: string | null }
+export interface ConfigData { format: Format; series: Series[]; faculties: Faculty[]; programmes: ProgrammeRow[]; routes?: RouteRow[]; recent: { matric_no: string; series_code: string; sequence: number; issued_at: string; reason: string | null; student_name: string; programme: string | null }[] }
 
 const CONFIG = ["academic", "registrar", "dregistrar", "super"];
 async function put<T>(path: string, body: unknown, reason: string): Promise<{ ok: true; data: T } | { ok: false; problem: Problem }> {
@@ -39,6 +41,7 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
   const [ser, setSer] = useState<{ code: string; name: string; lastIssued: string; active: boolean; note: string; isNew: boolean } | null>(null);
   const [facForm, setFacForm] = useState<{ code: string; name: string; matricCode: string; matricSeries: string } | null>(null);
   const [prog, setProg] = useState<{ row: ProgrammeRow; matricCode: string; uses: boolean; facultyCode: string; series: string } | null>(null);
+  const [route, setRoute] = useState<{ row: RouteRow; series: string; segment: string; reason: string } | null>(null);
   const rows = data.programmes.filter((p) => (!fac || p.faculty_code === fac) && (!q || `${p.programme} ${p.programme_code} ${p.matric_code ?? ""}`.toLowerCase().includes(q.toLowerCase())));
   const missing = data.programmes.filter((p) => p.problem);
   const sample = (facSeg: string, progSeg: string | null, seq: number) => [fmt.universityCode, fmt.facultyCode ? facSeg : null, fmt.programmeCode ? progSeg : null, fmt.year ? new Date().getFullYear().toString().slice(2) : null, Number(fmt.sequenceDigits) > 0 ? String(seq).padStart(Number(fmt.sequenceDigits), "0") : String(seq)].filter((x) => x && x.trim()).join(fmt.separator);
@@ -50,6 +53,15 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
   const saveFormat = () => run(put("/format", { ...fmt, sequenceDigits: Number(fmt.sequenceDigits) || 0 }, "Matriculation format rule"), "Format saved");
   const saveSeries = async () => { if (!ser) return; if (await run(put(`/series/${ser.code}`, { name: ser.name, lastIssued: ser.lastIssued === "" ? null : Number(ser.lastIssued), active: ser.active, note: ser.note || null }, `Matriculation series ${ser.code}`), "Series saved")) setSer(null); };
   const saveFaculty = async () => { if (!facForm) return; if (await run(put(`/faculties/${facForm.code}`, { matricCode: facForm.matricCode || null, matricSeries: facForm.matricSeries || null }, `Matriculation segment of faculty ${facForm.code}`), "Faculty saved")) setFacForm(null); };
+  const saveRoute = async () => { if (!route) return; if (await run(put(`/routes/${route.row.code}`, { matricSeries: route.series || null, matricSegment: route.segment || null, reason: route.reason.trim() }, `Matriculation series and segment of the ${route.row.code} route`), "Route saved")) setRoute(null); };
+  /** the shape a route's next number takes: the segment after the University code, and the route's own series' next number when it has one */
+  const routeSample = (r: RouteRow) => {
+    const next = r.matric_series ? (data.series.find((s) => s.code === r.matric_series)?.last_issued ?? 0) + 1 : null;
+    const seq = next == null ? "{SEQUENCE}" : Number(fmt.sequenceDigits) > 0 ? String(next).padStart(Number(fmt.sequenceDigits), "0") : String(next);
+    return [fmt.universityCode, r.matric_segment, fmt.facultyCode ? "{FACULTY}" : null, fmt.programmeCode ? "{PROGRAMME}" : null, fmt.year ? new Date().getFullYear().toString().slice(2) : null, seq]
+      .filter((x) => x && x.trim()).join(fmt.separator);
+  };
+  const lastChange = (r: RouteRow) => { try { return r.last_change ? JSON.parse(r.last_change) as { at: string; reason: string | null; office: string | null } : null; } catch { return null; } };
   const saveProgramme = async () => { if (!prog) return; if (await run(put(`/programmes/${prog.row.programme_code}`, { matricCode: prog.matricCode || null, matricUsesCode: prog.uses, matricFacultyCode: prog.facultyCode || null, matricSeries: prog.series || null }, `Matriculation code of ${prog.row.programme}`), "Programme saved")) setProg(null); };
 
   const HEAD = ["S/N", "Faculty", "Programme", "Programme Ref", "Faculty Segment", "Programme Code", "Carries Code", "Series", "Next Number", "Problem"];
@@ -59,14 +71,14 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/matriculation">Matriculation</Link><span>›</span><strong>Number format</strong></div>
-      <PageHead title="Matriculation number format" description={`${f.university_code}${f.separator}{FACULTY}${f.programme_code ? `${f.separator}{PROGRAMME}` : ""}${f.year ? `${f.separator}{YY}` : ""}${f.separator}{SEQUENCE} — the programme segment only where the programme is configured to carry one; the sequence from the series the faculty or programme belongs to.`}
+      <PageHead title="Matriculation number format" description={`${f.university_code}${f.separator}{FACULTY}${f.programme_code ? `${f.separator}{PROGRAMME}` : ""}${f.year ? `${f.separator}{YY}` : ""}${f.separator}{SEQUENCE}`}
         actions={<><Btn kind="secondary" onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Matriculation Number Configuration", "", HEAD, body(), docSerial("MAT"))}>PDF</Btn><LinkBtn kind="ghost" href="/matriculation">Back to matriculation</LinkBtn></>} />
       {!may ? <Note kind="info" title="You are reading this configuration">The Registry and the Academic Office change it.</Note> : null}
-      {missing.length ? <Note kind="bad" title={`${missing.length} programme(s) are set to carry a code and have none`}>A run that reaches one of them stops: no code is invented. Give each its code below, or set it to carry none.</Note> : null}
+      {missing.length ? <Note kind="bad" title={`${missing.length} programme(s) are set to carry a code and have none`}>A run that reaches one stops; no code is invented.</Note> : null}
       <Tiles items={[["Series", String(data.series.length), null, data.series.map((s) => `${s.code} ${s.last_issued}`).join(" · ")], ["Programmes with a code", String(data.programmes.filter((p) => p.matric_code).length), "var(--green-ink)", `of ${data.programmes.length}`], ["Carrying none", String(data.programmes.filter((p) => !p.matric_uses_code).length), null, "Medicine, Pharmacy, Law and the unconfigured"], ["Numbers issued on record", String(data.series.reduce((a, s) => a + Number(s.issued), 0)), null, "Since this rule"]]} cls="grid--4" />
 
-      <Note kind="info" title="Matriculation Management (V267)" action={<><LinkBtn kind="secondary" href="/matriculation/manage">Open Matriculation Management</LinkBtn><Btn kind={f.separate_duties ? "urgent" : "ghost"} disabled={!may || busy} onClick={() => void run(put("/duties", { separateDuties: !f.separate_duties }, f.separate_duties ? "Separation of duties turned off" : "Separation of duties turned on"), f.separate_duties ? "The preparer may now issue" : "Duties separated: the preparer does not issue")}>{f.separate_duties ? "Separation of duties: ON" : "Separation of duties: OFF"}</Btn></>}>
-        Numbers are proposed and reviewed faculty by faculty on a batch, and issued only when an authorised officer confirms. With the separation of duties on, the officer who generated or marked a batch ready cannot be the one who issues it.
+      <Note kind="info" title="Matriculation Management" action={<><LinkBtn kind="secondary" href="/matriculation/manage">Open Matriculation Management</LinkBtn><Btn kind={f.separate_duties ? "urgent" : "ghost"} disabled={!may || busy} onClick={() => void run(put("/duties", { separateDuties: !f.separate_duties }, f.separate_duties ? "Separation of duties turned off" : "Separation of duties turned on"), f.separate_duties ? "The preparer may now issue" : "Duties separated: the preparer does not issue")}>{f.separate_duties ? "Separation of duties: ON" : "Separation of duties: OFF"}</Btn></>}>
+        With separation of duties on, the officer who prepared a batch cannot issue it.
       </Note>
       <div className="grid grid--2">
         <Panel title="The format rule" right={<span className="tnum">{sample("AD", fmt.programmeCode ? "ACC" : null, 13557)} · {sample("MBBS", null, 6094)}</span>}>
@@ -95,6 +107,24 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
       <Panel title="Faculties" right="The segment the number carries, and the series">
         <DTable cols={["Faculty", "Code|mid", "Segment|mid", "Series|mid", "Programmes|num", "|num"]} rows={data.faculties.map((x) => [x.name, <span key="c" className="tnum sub2">{x.code}</span>, <strong key="m" className="tnum">{x.matric_code ?? x.code}</strong>, <span key="s" className="tnum">{x.matric_series ?? "GENERAL"}</span>, <span key="p" className="tnum">{x.programmes}</span>, may ? <Btn key="e" kind="ghost" onClick={() => setFacForm({ code: x.code, name: x.name, matricCode: x.matric_code ?? "", matricSeries: x.matric_series ?? "" })}>Edit</Btn> : <span key="e" />])} />
       </Panel>
+
+      {(data.routes ?? []).length ? (
+        <Panel title="Study routes" right="A route's own series and segment">
+          <DTable cols={["Route", "Segment|mid", "Series|mid", "Matriculated|num", "Awaiting|num", "Next number looks like", "Last change", "|num"]} rows={(data.routes ?? []).map((r) => {
+            const ch = lastChange(r);
+            return [
+              <span key="r"><strong>{r.name}</strong><div className="sub2 tnum">{r.code}</div></span>,
+              <strong key="g" className="tnum">{r.matric_segment ?? "—"}</strong>,
+              <span key="s" className="tnum">{r.matric_series ?? <span className="sub2">The programme&rsquo;s</span>}</span>,
+              <span key="m" className="tnum">{r.matriculated}</span>, <span key="a" className="tnum">{r.awaiting}</span>,
+              <span key="x" className="tnum">{routeSample(r)}</span>,
+              <span key="c" className="sub2">{ch ? `${new Date(ch.at).toLocaleDateString("en-GB")}${ch.reason ? ` — ${ch.reason}` : ""}` : "Never changed"}</span>,
+              may ? <Btn key="e" kind="ghost" onClick={() => setRoute({ row: r, series: r.matric_series ?? "", segment: r.matric_segment ?? "", reason: "" })}>Edit</Btn> : <span key="e" />,
+            ];
+          })} />
+          <PBody><div className="sub2">Blank series: numbered in the programme&rsquo;s (or faculty&rsquo;s) series. Numbers already issued never change.</div></PBody>
+        </Panel>
+      ) : null}
 
       <Panel title="Programmes" right={<span className="row row--inline row--tight"><Field id="pc-fac" label=""><select id="pc-fac" className="ctl" value={fac} onChange={(e) => setFac(e.target.value)}><option value="">Every faculty</option>{data.faculties.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field><Field id="pc-q" label=""><input id="pc-q" className="ctl" placeholder="Search programme or code" value={q} onChange={(e) => setQ(e.target.value)} /></Field></span>}>
         <DTable pageSize={50} cols={["S/N|num", "Programme", "Faculty segment|mid", "Programme code|mid", "Carries code|mid", "Series|mid", "Next number", "|num"]} rows={rows.map((p, i) => [
@@ -130,6 +160,16 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
             <Field id="ff-c" label="Segment the number carries" hint="Blank: the faculty's own code"><input id="ff-c" className="ctl" value={facForm.matricCode} onChange={(e) => setFacForm({ ...facForm, matricCode: e.target.value.toUpperCase() })} maxLength={6} /></Field>
             <Field id="ff-s" label="Series"><select id="ff-s" className="ctl" value={facForm.matricSeries} onChange={(e) => setFacForm({ ...facForm, matricSeries: e.target.value })}><option value="">General</option>{data.series.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
           </div>
+        </Modal>
+      ) : null}
+      {route ? (
+        <Modal title={route.row.name} sub={`The ${route.row.code} route's matriculation number`} onClose={() => setRoute(null)} foot={<><Btn kind="ghost" onClick={() => setRoute(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void saveRoute()} disabled={busy || !route.reason.trim()}>Save</Btn></>}>
+          <div className="grid grid--2">
+            <Field id="rt-g" label="Segment after the University code" hint="Two to six letters or digits; blank: none"><input id="rt-g" className="ctl" value={route.segment} onChange={(e) => setRoute({ ...route, segment: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} maxLength={6} /></Field>
+            <Field id="rt-s" label="Series" hint="An active series; blank: the programme's"><select id="rt-s" className="ctl" value={route.series} onChange={(e) => setRoute({ ...route, series: e.target.value })}><option value="">The programme&rsquo;s</option>{data.series.filter((s) => s.active || s.code === route.series).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
+          </div>
+          <Field id="rt-r" label="Why" required full><input id="rt-r" className="ctl" value={route.reason} onChange={(e) => setRoute({ ...route, reason: e.target.value })} placeholder="The Senate decision or memo this follows" /></Field>
+          <div className="sub2 mt-1">A new series is added under Series above first.</div>
         </Modal>
       ) : null}
       {prog ? (

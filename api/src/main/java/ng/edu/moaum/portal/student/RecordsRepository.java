@@ -153,7 +153,7 @@ class RecordsRepository {
                 SELECT x.id::text AS "id", x.kind AS "kind", x.semester AS "semester",
                        to_char(x.exams_from, 'YYYY-MM-DD') AS "examsFrom",
                        to_char(x.exams_to, 'YYYY-MM-DD') AS "examsTo",
-                       to_char(x.sheets_due, 'YYYY-MM-DD') AS "sheetsDue", x.state AS "state",
+                       to_char(x.sheets_due, 'YYYY-MM-DD') AS "sheetsDue", x.state AS "state", x.stream AS "stream",
                        coalesce(n.candidates, 0) AS "candidates", coalesce(n.cleared, 0) AS "cleared"
                   FROM assessment.exam_session x
                   LEFT JOIN LATERAL (
@@ -165,6 +165,7 @@ class RecordsRepository {
                           JOIN ref.programme p ON p.code = s.programme_code
                          WHERE r.session = x.session AND r.semester = x.semester
                            AND r.status IN ('APPROVED', 'LOCKED')
+                           AND (CASE WHEN s.entry_mode = 'CCE' THEN 'CCE' ELSE 'REGULAR' END) = x.stream   -- V381: the session's own students
                            AND (CAST(:fac AS text) IS NULL OR p.faculty_code = CAST(:fac AS text))
                            AND (CAST(:dept AS text) IS NULL OR p.dept_code = CAST(:dept AS text))
                            AND (CAST(:prog AS text) IS NULL OR p.code = CAST(:prog AS text))

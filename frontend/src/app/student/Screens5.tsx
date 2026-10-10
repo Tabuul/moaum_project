@@ -33,7 +33,7 @@ export function Query({ q }: { q: Queries }) {
     <>
       {open ? (
         <Note kind="info" title={`The query window is open until ${onDay(q.queryable.map((x) => x.window_until).sort().slice(-1)[0])}`}>
-          Seven days from release &mdash; five working days and a weekend. A query is against <b>one mark in one course</b>, is routed automatically to the department that owns that course, and is answered on the record &mdash; you will see the answer here, not be told to come back next week.
+          A query is against <b>one mark in one course</b>. It goes to the department that owns the course, and the answer appears here.
         </Note>
       ) : (
         <Note kind="bad" title="The query window is not open">It opens when results are released and runs for seven days. {q.queries.length ? "Your earlier queries are below." : "There is nothing to query yet, because nothing has been published in the last seven days."}</Note>
@@ -68,8 +68,8 @@ export function Query({ q }: { q: Queries }) {
         ])} />
         {!q.queries.length ? <PBody><div className="sub2">No query yet.</div></PBody> : null}
       </Panel>
-      <Note kind="info" title="A corrected mark does not quietly change your result">
-        A correction sends the whole set back through the department, the faculty and Senate for an amendment minute. Your published result changes when that finishes and not before. The old figure is not deleted &mdash; the transcript will show one grade, and the record behind it will show both versions and why it changed.
+      <Note kind="info" title="A corrected mark goes back through approval">
+        Your published result changes only after the department, the faculty and Senate approve the amendment.
       </Note>
     </>
   );
@@ -83,7 +83,7 @@ export function Carryover({ r }: { r: Results }) {
     <>
       {r.carryovers.length ? (
         <Note kind="bad" title={`You are carrying ${r.carryovers.length} course${r.carryovers.length === 1 ? "" : "s"}, ${units} units`}>
-          A failed course does not go away and it is not replaced by a later course. It is repeated, in a semester where it is offered, and it counts against the maximum units you may register in that semester &mdash; which is why carryovers are on the registration form from the start, not discovered during one.
+          Each is repeated in a semester where it is offered and counts towards that semester&rsquo;s maximum units.
         </Note>
       ) : (
         <Note kind="ok" title="You are carrying nothing">No published sheet has a fail against you that a later pass has not settled.</Note>
@@ -115,22 +115,25 @@ export function Exams({ d }: { d: Docket; s: Me }) {
   return (
     <>
       {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
-        : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, sitting an examination is released on payment in full. The papers below are what your approved registration carries; the card prints the moment the Bursary&rsquo;s position releases it.</Note>
-          : <Note kind="info" title="Bring your identity card">Your photograph is checked against the record on file before the paper opens. Arrive 20 minutes early &mdash; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
+        : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
+          : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
       {!withPapers.length ? (
-        <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and your examination card appear here when the University releases them, over your approved registration.</Note>
+        <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
         <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
             <Two key="c" a={p.course_code} b={p.title} />,
             <span className="tnum" key="w">{p.held_on ? `${onDay(p.held_on)} · ${String(p.starts_at).slice(0, 5)}` : "Not yet timetabled"}</span>,
             <span key="v">{p.venue ?? "—"}</span>,
-            !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
+            p.bar ? <Pil kind="bad" key="s" title={p.bar.replace(/^[A-Z_]+: /, "")}>Barred: attendance</Pil> : !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
+          {x.papers.some((p) => p.bar) ? <div className="card__body"><Note kind="bad" title="Attendance below the minimum">
+            {x.papers.filter((p) => p.bar).map((p) => p.bar!.replace(/^[A-Z_]+: /, "").replace(/^your/, "Your")).join(". ")}. The Centre for Continuing Education&rsquo;s policy bars the examination of a class below its minimum attendance; see the Centre if a lecture you missed was excused.
+          </Note></div> : null}
           {cleared ? <div className="card__body row">
             <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
             <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination card"); }}>Print the card</Btn>
-            <span className="sub2">The card carries your photograph and a QR the invigilator scans to verify it — it cannot be cloned.</span>
+
           </div> : null}
         </Panel>
       ))}
@@ -147,9 +150,9 @@ export function TimetableScreen({ t }: { t: Timetable }) {
   return (
     <>
       <Note kind="info" title={`${WEEKDAY[today]} · ${t.session} · ${semesterName(t.semester)} semester`}>
-        {mine.length ? `${mine.length} class${mine.length === 1 ? "" : "es"} today.` : "Nothing today."} {t.slots.some((x) => x.carryover) ? "Your carryover is on the timetable beside the rest." : ""} The slots are the department&rsquo;s, given to each offering; a clash is theirs to resolve.
+        {mine.length ? `${mine.length} class${mine.length === 1 ? "" : "es"} today.` : "Nothing today."} {t.slots.some((x) => x.carryover) ? "Your carryover is on the timetable." : ""}
       </Note>
-      {!t.slots.length ? <Note kind="info" title="No slot has been given to your courses yet">The department gives each offering its day, time and venue; the timetable fills the moment it does.</Note> : null}
+      {!t.slots.length ? <Note kind="info" title="No slot has been given to your courses yet" /> : null}
       {days.map((x) => (
         <Panel key={x.d} title={WEEKDAY[x.d]} right={x.d === today ? "today" : ""}>
           <DTable cols={["Time|mid", "Course", "Venue", "Lecturer"]} rows={x.slots.map((s) => [
@@ -172,7 +175,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
     <>
       {below.length ? (
         <Note kind="bad" title={`${below.map((b) => b.course_code).join(", ")} ${below.length === 1 ? "is" : "are"} below the 75% threshold`}>
-          Departments may bar a student below 75% from sitting the examination &mdash; check with the department before the semester ends.
+          Students below 75% may be barred from the examination.
         </Note>
       ) : t.attendance.some((a) => a.held) ? (
         <Note kind="ok" title="Every course is at or above 75%">Recorded by your lecturers against the class list, lecture by lecture.</Note>
@@ -194,7 +197,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
  *  against the minimum the Centre set (none is invented when it has set none) */
 function RegisterAttendance({ t }: { t: Timetable }) {
   if (t.attendanceShown === false) {
-    return <Note kind="info" title="Attendance is not shown on the portal">The Centre for Continuing Education keeps the registers of its classes; its policy does not show them on the portal. Ask the Centre for your attendance.</Note>;
+    return <Note kind="info" title="Attendance is not shown on the portal">Ask the Centre for Continuing Education for your attendance.</Note>;
   }
   const min = t.attendance.find((a) => a.min_percent != null)?.min_percent ?? null;
   const below = t.attendance.filter((a) => a.verdict === "NOT_ELIGIBLE");
@@ -202,11 +205,11 @@ function RegisterAttendance({ t }: { t: Timetable }) {
     <>
       {below.length ? (
         <Note kind="bad" title={`${below.map((b) => b.course_code).join(", ")} ${below.length === 1 ? "is" : "are"} below the Centre's minimum of ${min}%`}>
-          The Centre for Continuing Education may bar a student below its minimum attendance from the examination &mdash; speak to the Centre before the semester ends.
+          Students below the Centre&rsquo;s minimum may be barred from the examination.
         </Note>
       ) : t.attendance.some((a) => a.total) ? (
         <Note kind="ok" title={min != null ? `Every class is at or above the Centre's minimum of ${min}%` : "Your attendance as the lecturers marked it"}>
-          Each lecture of your evening classes is marked present, late, absent or excused by the lecturer; late counts as attended and an excused lecture is not counted.{min == null ? " The Centre has not set a minimum attendance." : ""}
+          Late counts as attended; an excused lecture is not counted.{min == null ? " No minimum attendance is set." : ""}
         </Note>
       ) : (
         <Note kind="info" title="No lecture has been recorded yet">Attendance appears here as your lecturers mark the registers of your evening classes.</Note>
@@ -251,19 +254,19 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
   return (
     <>
       {live ? (
-        <Note kind="ok" title={`Card ${live.card_no} · issued ${onDay(live.issued_at)} · valid to ${onDay(live.valid_to)}`}>Collected at the Library. The card is keyed on your matriculation number and carries the photograph on file.</Note>
+        <Note kind="ok" title={`Card ${live.card_no} · issued ${onDay(live.issued_at)} · valid to ${onDay(live.valid_to)}`}>Collected at the Library.</Note>
       ) : !c.matricNo ? (
         <Note kind="info" title="A card is made after matriculation">It is keyed on the matriculation number, which you do not have yet.</Note>
       ) : c.clearsIdCard === false ? (
         <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
       ) : (
-        <Note kind="info" title="Your card has not been issued yet">This is what your card will carry. The Library prints it and Security hands it over — bring your fee receipt to the Library; your photograph and signature are checked at the counter. The printable copy opens once the card is issued.</Note>
+        <Note kind="info" title="Your card has not been issued yet">Bring your fee receipt to the Library. The printable copy opens once the card is issued.</Note>
       )}
       {card ? (
         <Panel title="Your identity card" right={live ? "This is a picture of the card, not the card" : "Preview — not yet issued"}>
           <PBody>
             <IdCardPair c={card} big />
-            <div className="sub2 mt-1">The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does. A field shown as &ldquo;&mdash;&rdquo; is one the University has not recorded against you.</div>
+            
           </PBody>
         </Panel>
       ) : null}
@@ -305,8 +308,8 @@ export function Transcript({ t, s }: { t: Transcripts; s: Me }) {
   const stage = (x: string) => x === "AWAITING_PAYMENT" ? ["Awaiting payment", "info"] : x === "HELD_AT_CLEARANCE" ? ["Held at clearance", "bad"] : x === "READY" ? ["Being produced", "info"] : x === "VERIFIED" ? ["Produced, awaiting release", "info"] : ["Released", "ok"];
   return (
     <>
-      <Note kind="info" title="An official transcript is produced by the Registry from the published record">
-        Request it here, pay the fee against the reference the portal generates, and follow it to release. A transcript is held at clearance while any unit holds you; the Registry produces it and a different officer releases it.
+      <Note kind="info" title="Official transcript">
+        Request it here and pay the fee against the reference generated. A transcript is held while any clearance unit holds you.
       </Note>
       {!s.matricNo ? <Note kind="bad" title="A transcript is issued on the matriculation number">You do not have one yet.</Note> : (
         <Panel title="Request a transcript" right={`${naira(t.fee)} per copy`}>

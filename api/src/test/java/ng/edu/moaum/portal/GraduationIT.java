@@ -75,7 +75,7 @@ class GraduationIT {
             UUID examSession = jdbc.sql("""
                     INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state, opened_at)
                     VALUES (gen_random_uuid(), :sess, 1, 'MAIN', DATE '2094-12-08', DATE '2094-12-19', DATE '2095-01-16', 'OPEN', now())
-                    ON CONFLICT (session, semester, kind) DO UPDATE SET state = 'OPEN' RETURNING id
+                    ON CONFLICT (session, semester, kind, stream) DO UPDATE SET state = 'OPEN' RETURNING id
                     """).param("sess", SESSION).query(UUID.class).single();
             UUID sheet = jdbc.sql("""
                     INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at)

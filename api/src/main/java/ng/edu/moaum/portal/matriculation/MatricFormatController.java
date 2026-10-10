@@ -27,7 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
  * The matriculation number's configuration (V263): the format rule, the series with their last numbers, each faculty's
  * segment and series, each programme's code (or none), its faculty segment and series — and the number every programme
  * would give next, so the Registry sees the rule before a run spends it. Readers of matriculation read; the Registry
- * and the Academic Office change.
+ * and the Academic Office change. V381: a study route's own series and segment — the CCE students numbered in their own
+ * run, MOAU/CCE/… when the Registry sets the segment — on the same screen, with the reason for each change kept.
  */
 @RestController
 @RequestMapping("/api/v1/matriculation/config")
@@ -65,6 +66,14 @@ class MatricFormatController {
                 """).query().listOfRows());
         out.put("faculties", jdbc.sql("SELECT f.code, f.name, f.matric_code, f.matric_series, (SELECT count(*) FROM ref.programme p WHERE p.faculty_code = f.code AND NOT p.archived) AS programmes FROM ref.faculty f ORDER BY f.name").query().listOfRows());
         out.put("programmes", jdbc.sql("SELECT * FROM people.matric_config_rows() WHERE NOT archived").query().listOfRows());
+        out.put("routes", jdbc.sql("""
+                SELECT r.code, r.name, r.matric_series, r.matric_segment,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_mode = r.code AND s.matric_no IS NOT NULL) AS matriculated,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_mode = r.code AND s.matric_no IS NULL) AS awaiting,
+                       (SELECT jsonb_build_object('at', e.at, 'reason', e.reason, 'office', e.office) FROM policy.study_route_event e
+                         WHERE e.route = r.code AND e.what = 'MATRICULATION' ORDER BY e.at DESC LIMIT 1)::text AS last_change
+                  FROM policy.study_route r ORDER BY r.code
+                """).query().listOfRows());
         out.put("recent", jdbc.sql("""
                 SELECT h.matric_no, h.series_code, h.sequence, h.issued_at, h.reason, s.surname || ', ' || s.other_names AS student_name, p.name AS programme
                   FROM people.matric_history h JOIN people.student s ON s.id = h.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code ORDER BY h.issued_at DESC LIMIT 25
@@ -137,6 +146,21 @@ class MatricFormatController {
                 .param("m", mc, Types.VARCHAR).param("u", uses).param("f", code(body.matricFacultyCode(), "faculty segment"), Types.VARCHAR).param("s", blank(body.matricSeries()) == null ? null : body.matricSeries().trim().toUpperCase(), Types.VARCHAR).param("c", code.trim()).update();
         if (n == 0) throw new NotFound("programme", code);
         return jdbc.sql("SELECT * FROM people.matric_config_rows() WHERE programme_code = :c").param("c", code.trim()).query().singleRow();
+    }
+
+    public record RouteIn(String matricSeries, String matricSegment, @NotBlank @Size(max = 400) String reason) {
+    }
+
+    /** V381: a route's series and segment — the database refuses an inactive series, a malformed segment, a change without its reason */
+    @PutMapping("/routes/{code}")
+    @PreAuthorize(CONFIG)
+    @Transactional
+    Map<String, Object> route(@PathVariable String code, @Valid @RequestBody RouteIn body) {
+        String c = code.trim().toUpperCase();
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM policy.study_route WHERE code = :c)").param("c", c).query(Boolean.class).single())) throw new NotFound("route", code);
+        jdbc.sql("SELECT people.set_route_matric(:c, :s, :g, :r)").param("c", c).param("s", blank(body.matricSeries()), Types.VARCHAR)
+                .param("g", blank(body.matricSegment()), Types.VARCHAR).param("r", body.reason().trim()).query().listOfRows();
+        return jdbc.sql("SELECT code, name, matric_series, matric_segment FROM policy.study_route WHERE code = :c").param("c", c).query().singleRow();
     }
 
     @GetMapping("/preview/{studentId}")

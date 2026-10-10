@@ -40,7 +40,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
     return (
       <>
         <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
-        <Note kind="info" title="This office holds no stage of the result chain">The chain runs lecturer → verification → Departmental Board → faculty scrutiny → compilation → Faculty Board → Exams and Records → Senate. Every sheet in scope is readable from the approval chain.</Note>
+        <Note kind="info" title="This office holds no stage of the result chain">Lecturer → verification → Departmental Board → faculty scrutiny → compilation → Faculty Board → Exams and Records → Senate.</Note>
       </>
     );
   }
@@ -72,7 +72,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
   }
 
   const row = (s: SheetListed) => [
-    <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}</span>} b={s.courseTitle} />,
+    <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}{s.stream === "CCE" ? <span className="pill pill--info" style={{ marginLeft: 6 }} title="A class of the Centre for Continuing Education">CCE</span> : null}</span>} b={s.courseTitle} />,
     <span className="sub2" key="d">{s.deptName}</span>,
     <span className="tnum" key="n">{s.candidates}</span>,
     s.failRate === null ? <span className="sub2" key="f">—</span> : <span className={`tnum${s.failRate > 50 ? " ink-red b700" : ""}`} key="f">{s.failRate}%</span>,
@@ -83,7 +83,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
       <Note kind="info" title={`${d.title} — ${d.unit}`}>A set arrives from {d.back} and leaves for {d.next}. <b>What this desk may not do:</b> {d.cannot}</Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {said ? <Note kind="ok" title={said}>Each act is on the record in your name, and you cannot act on the same set at the next desk.</Note> : null}
+      {said ? <Note kind="ok" title={said}>You cannot act on the same set at the next desk.</Note> : null}
       <Tiles items={[
         ["On this desk now", String(here.length), "var(--chrome)", "Waiting on you"],
         ["Not yet arrived", String(late.length), late.length ? "var(--red-ink)" : null, "Still behind you in the chain"],

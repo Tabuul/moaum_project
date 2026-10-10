@@ -9,7 +9,7 @@ export type Kind = "grey" | "info" | "ok" | "bad" | "warn";
 
 /** the CCE desk's screens, one a path under /cce (the server page checks the path against them) */
 export const CCE_TABS = ["dashboard", "upload", "imports", "candidates", "applications", "processing", "admission-list", "students", "programmes", "session",
-  "reports", "history", "fees", "calendar", "classes", "timetable", "registrations", "attendance", "school-fees"] as const;
+  "reports", "history", "fees", "calendar", "classes", "timetable", "registrations", "attendance", "school-fees", "exams", "progression"] as const;
 export type CceTab = (typeof CCE_TABS)[number];
 
 export interface Mapping {
@@ -217,10 +217,30 @@ export interface AttendanceRow {
 }
 export interface AttendanceView {
   session: string; semester: number | null; sessions: string[];
-  policy: { session: string; min_percent: number | null; warn_band: number | null; min_classes: number; show_students: boolean; updated_at: string } | null;
+  policy: { session: string; min_percent: number | null; warn_band: number | null; min_classes: number; show_students: boolean; bars_exams?: boolean; updated_at: string } | null;
   rows: AttendanceRow[];
   classes: { id: string; course_code: string; title: string; semester: number; lecturer: string | null; registers: number; locked: number; last_held: string | null; attended: number; counted: number }[];
   faculties: { code: string; name: string }[]; programmes: { code: string; name: string; dept_code: string; faculty_code: string }[];
+}
+/** V381: the CCE examination sessions and where each CCE class's sheet stands */
+export interface CceExamsView {
+  session: string; semester: number | null; sessions: string[];
+  examSessions: { id: string; session: string; semester: number; kind: string; state: string; exams_from: string; exams_to: string; sheets_due: string;
+    cards_released_at: string | null; sheets_released_at: string | null; sheets: number }[];
+  stages: { stage: string; desk: string; sheets: number }[];
+  sheets: { offering_id: string; course_code: string; title: string; semester: number; dept_code: string | null; dept: string | null; lecturer: string | null; candidates: number;
+    sheet_id: string | null; stage: string | null; desk: string | null; due_on: string | null; submitted_at: string | null; published_at: string | null; sitting: string | null; exam_state: string | null }[];
+  policy: { session: string; min_percent: number | null; min_classes: number; bars_exams: boolean } | null;
+}
+/** V381: the CCE students' place, from the one academic position */
+export interface CceProgressionView {
+  session: string;
+  counts: Record<string, number>;
+  rows: { id: string; matric_no: string | null; surname: string; other_names: string; status: string; programme_code: string; programme: string | null;
+    entry_session: string | null; entry_level: number | null; current_session: string | null; current_level: number | null; final_level: number | null; duration_years: number | null;
+    expected_completion: string | null; elapsed_sessions: number | null; deferred_sessions: number; spillover_years: number; spillover_state: string;
+    registered_current: boolean; graduation_state: string | null; graduation_session: string | null; confidence: string; issues: string[] }[];
+  programmes: { code: string; name: string }[];
 }
 export interface SchoolFeesView {
   session: string; sessions: string[];

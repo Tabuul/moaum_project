@@ -14,6 +14,8 @@ export interface Statement {
   research?: { kind?: string; topic?: string; stage?: string; vivaGrade?: string; awardedAt?: string };
   gradingScale?: { grade: string; low: number; high: number; points: number }[]; classificationBands?: { class: string; low: number; high: number }[];
   kind: string; number: string; version: number; templateVersion?: number; issuedOn: string; issuingAuthority?: string;
+  /** V381: how the holder studied — "Part-time" through the Centre for Continuing Education (route, centre, the CCE programme length) */
+  studyMode?: string; route?: string | null; centre?: string | null; durationYears?: number | null;
 }
 export interface Template { id?: string; kind: string; version: number; title: string; subtitle: string | null; signatory_name: string; signatory_title: string; second_name: string | null; second_title: string | null; footer: string | null; remarks: string | null; active?: boolean; created_at?: string }
 export interface DocumentRow {

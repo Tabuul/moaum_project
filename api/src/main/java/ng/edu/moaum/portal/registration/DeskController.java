@@ -94,11 +94,36 @@ class DeskController {
 
     private static final tools.jackson.databind.ObjectMapper ENTRIES = new tools.jackson.databind.ObjectMapper();
 
+    /**
+     * V381: a class's register and timetable are reached by those it belongs to — a lecturer on the classes they teach (lead,
+     * second examiner or co-lecturer), a department or faculty office on the classes of its own department or faculty, the
+     * University's offices on any. Without this an office could set another department's timetable by guessing an id.
+     * Returns the class's stream.
+     */
+    private String reach(UUID offeringId) {
+        Map<String, Object> o = jdbc.sql("SELECT course_code, stream FROM catalogue.offering WHERE id = :o").param("o", offeringId).query().listOfRows()
+                .stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("class", offeringId));
+        String course = String.valueOf(o.get("course_code"));
+        if (scope.actingLecturer()) {
+            UUID me = scope.actorId();
+            if (me == null || !Boolean.TRUE.equals(jdbc.sql("SELECT attendance.course_teaches(:me, :o)").param("me", me).param("o", offeringId).query(Boolean.class).single())) {
+                throw new org.springframework.security.access.AccessDeniedException(course + " is not a class you teach; a lecturer keeps the register and slots of their own classes.");
+            }
+        } else {
+            scope.assertCourseInScope(course);
+        }
+        return String.valueOf(o.get("stream"));
+    }
+
     /** the register of one class on one day, over the class list; marking again on the same day replaces the day's register */
     @PostMapping("/offerings/{offeringId}/attendance")
     @PreAuthorize("hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_dean','OFFICE_super')")
     @Transactional
     Map<String, Object> attendance(@PathVariable UUID offeringId, @Valid @RequestBody Attendance body) {
+        if ("CCE".equals(reach(offeringId))) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ATT_CCE_REGISTER", "A class of the Centre for Continuing Education keeps its attendance on the register (present, absent, late, excused).",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Take it on CCE Evening Classes.", "Lecturer"));
+        }
         int marked = jdbc.sql("SELECT registration.mark_attendance(:o, :d, :p)").param("o", offeringId).param("d", body.heldOn())
                 .param("p", body.present().toArray(UUID[]::new)).query(Integer.class).single();
         return Map.of("offeringId", offeringId, "heldOn", body.heldOn(), "marked", marked, "present", body.present().size());
@@ -108,6 +133,7 @@ class DeskController {
     @PreAuthorize(DEPARTMENT)
     @Transactional(readOnly = true)
     Map<String, Object> attendanceOf(@PathVariable UUID offeringId) {
+        reach(offeringId);
         List<Map<String, Object>> days = jdbc.sql("""
                 SELECT held_on, count(*) AS on_roll, count(*) FILTER (WHERE present) AS present FROM registration.attendance
                  WHERE offering_id = :o GROUP BY held_on ORDER BY held_on DESC
@@ -126,6 +152,7 @@ class DeskController {
     @GetMapping("/offerings/{offeringId}/slots")
     @PreAuthorize(DEPARTMENT)
     List<Map<String, Object>> slots(@PathVariable UUID offeringId) {
+        reach(offeringId);
         return jdbc.sql("SELECT id, weekday, starts_at, ends_at, venue, kind FROM catalogue.class_slot WHERE offering_id = :o AND ended_at IS NULL ORDER BY weekday, starts_at")
                 .param("o", offeringId).query().listOfRows();
     }
@@ -134,6 +161,7 @@ class DeskController {
     @PreAuthorize("hasAnyAuthority('OFFICE_hod','OFFICE_lecturer','OFFICE_dean','OFFICE_super')")
     @Transactional
     List<Map<String, Object>> addSlot(@PathVariable UUID offeringId, @Valid @RequestBody SlotIn body) {
+        reach(offeringId);
         String kind = body.kind() == null || body.kind().isBlank() ? "LECTURE" : body.kind().trim().toUpperCase();
         jdbc.sql("INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue, kind) VALUES (:o, :w, :s, :e, :v, :k)")
                 .param("o", offeringId).param("w", body.weekday()).param("s", body.startsAt()).param("e", body.endsAt()).param("v", body.venue().trim()).param("k", kind).update();
@@ -144,6 +172,7 @@ class DeskController {
     @PreAuthorize("hasAnyAuthority('OFFICE_hod','OFFICE_lecturer','OFFICE_dean','OFFICE_super')")
     @Transactional
     List<Map<String, Object>> endSlot(@PathVariable UUID offeringId, @PathVariable UUID slotId) {
+        reach(offeringId);
         jdbc.sql("UPDATE catalogue.class_slot SET ended_at = now() WHERE id = :id AND offering_id = :o AND ended_at IS NULL").param("id", slotId).param("o", offeringId).update();
         return slots(offeringId);
     }
@@ -152,6 +181,7 @@ class DeskController {
     @GetMapping("/offerings/{offeringId}/exam-slot")
     @PreAuthorize(DEPARTMENT)
     Map<String, Object> examSlot(@PathVariable UUID offeringId) {
+        reach(offeringId);
         return jdbc.sql("SELECT held_on, starts_at, ends_at, venue FROM assessment.exam_timetable WHERE offering_id = :o").param("o", offeringId)
                 .query().listOfRows().stream().findFirst().orElse(Map.of());
     }

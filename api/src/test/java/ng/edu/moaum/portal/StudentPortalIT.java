@@ -175,8 +175,10 @@ class StudentPortalIT {
         assertThat(rows.get(0).get("published")).isEqualTo(false);
         assertThat(results.get("cgpa")).isNull();
 
-        // the services (V027): the department gives a slot and marks the register, and the student sees both
+        // the services (V027): the department gives a slot and marks the register, and the student sees both — the
+        // Head of the course's own department (V381: another department's class is refused)
         UUID offering = offerings.get(0);
+        String hod = it.officer("hod", "department", jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = 'ITP 101'").query(String.class).single());
         assertThat(it.callList(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/slots",
                 Map.of("weekday", 3, "startsAt", "08:00", "endsAt", "10:00", "venue", "LT 2")).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> marked = it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/attendance",

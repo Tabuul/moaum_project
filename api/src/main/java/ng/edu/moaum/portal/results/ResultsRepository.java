@@ -29,7 +29,7 @@ class ResultsRepository {
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
                    (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
                      ORDER BY dd.decided_at DESC LIMIT 1) AS last_actor,
-                   c.general_office
+                   c.general_office, o.stream
               FROM assessment.score_sheet s
               JOIN catalogue.offering o ON o.id = s.offering_id
               JOIN catalogue.course c ON c.code = o.course_code
@@ -413,7 +413,7 @@ class ResultsRepository {
                           JOIN registration.course_registration r ON r.id = en.registration_id
                          WHERE s.exam_session_id = e.id) AS candidates,
                        (SELECT count(*) FROM assessment.score_sheet s WHERE s.exam_session_id = e.id AND s.stage = 'ENTRY') AS outstanding,
-                       e.cards_released_at, e.sheets_released_at
+                       e.cards_released_at, e.sheets_released_at, e.stream
                   FROM assessment.exam_session e
                  WHERE (:session::text IS NULL OR e.session = :session)
                  ORDER BY e.session DESC, e.semester DESC, e.kind
@@ -427,31 +427,31 @@ class ResultsRepository {
     UUID createExamSession(ResultsService.ExamSessionIn in) {
         UUID id = UUID.randomUUID();
         jdbc.sql("""
-                INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due)
-                VALUES (:id, :s, :sem, :k, :f, :t, :d)
+                INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, stream)
+                VALUES (:id, :s, :sem, :k, :f, :t, :d, :st)
                 """).param("id", id).param("s", in.session()).param("sem", in.semester())
                 .param("k", in.kind() == null ? "MAIN" : in.kind()).param("f", in.examsFrom()).param("t", in.examsTo())
-                .param("d", in.sheetsDue()).update();
+                .param("d", in.sheetsDue()).param("st", in.stream() == null || in.stream().isBlank() ? "REGULAR" : in.stream()).update();
         return id;
     }
 
     /** update an examination session (identity + dates) that is not closed; returns rows changed */
-    int updateExamSession(UUID id, String session, int semester, String kind,
+    int updateExamSession(UUID id, String session, int semester, String kind, String stream,
                           java.time.LocalDate from, java.time.LocalDate to, java.time.LocalDate due) {
         return jdbc.sql("""
                 UPDATE assessment.exam_session
-                   SET session = :s, semester = :sem, kind = :k, exams_from = :f, exams_to = :t, sheets_due = :d
+                   SET session = :s, semester = :sem, kind = :k, stream = :st, exams_from = :f, exams_to = :t, sheets_due = :d
                  WHERE id = :id AND state <> 'CLOSED'
-                """).param("id", id).param("s", session).param("sem", semester).param("k", kind)
+                """).param("id", id).param("s", session).param("sem", semester).param("k", kind).param("st", stream)
                 .param("f", from).param("t", to).param("d", due).update();
     }
 
     /** is there another examination session for this academic session, semester and type? */
-    boolean examSessionExists(String session, int semester, String kind, UUID excludeId) {
+    boolean examSessionExists(String session, int semester, String kind, String stream, UUID excludeId) {
         return Boolean.TRUE.equals(jdbc.sql("""
                 SELECT EXISTS (SELECT 1 FROM assessment.exam_session
-                                WHERE session = :s AND semester = :sem AND kind = :k AND id <> :id)
-                """).param("s", session).param("sem", semester).param("k", kind).param("id", excludeId).query(Boolean.class).single());
+                                WHERE session = :s AND semester = :sem AND kind = :k AND stream = :st AND id <> :id)
+                """).param("s", session).param("sem", semester).param("k", kind).param("st", stream).param("id", excludeId).query(Boolean.class).single());
     }
 
     record Opened(int sheetsMade, int offeringsWithoutLecturer) {
@@ -593,7 +593,8 @@ class ResultsRepository {
 
     /* ── the broadsheet: computed from the sheets, by programme and level (proto/part26 tBroadsheet) ── */
 
-    List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
+    /** V381: the broadsheet of one stream — the full-time students' (REGULAR) or the Centre's (CCE) — never the two mixed */
+    List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem, String stream) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
                        o.course_code, coalesce(o.title, c.title) AS title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
@@ -605,9 +606,9 @@ class ResultsRepository {
                   JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN LATERAL assessment.course_final(st.id, o.id) cf ON true
                  WHERE st.programme_code = :prog AND r.level = :level AND r.session = :session AND r.semester = :sem
-                   AND r.status IN ('APPROVED','LOCKED')
+                   AND r.status IN ('APPROVED','LOCKED') AND o.stream = :stream
                  ORDER BY st.surname, st.other_names, o.course_code
-                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem)
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
                 .query(Sheets.BroadsheetCell.class).list();
     }
 
@@ -616,11 +617,11 @@ class ResultsRepository {
     record ClassMember(UUID studentId, String number, String surname, String otherNames, String entryMode) {
     }
 
-    List<ClassMember> unregistered(String prog, int level, String session, int sem) {
+    List<ClassMember> unregistered(String prog, int level, String session, int sem, String stream) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode
                   FROM people.student st
-                 WHERE st.programme_code = :prog
+                 WHERE st.programme_code = :prog AND (CASE WHEN st.entry_mode = 'CCE' THEN 'CCE' ELSE 'REGULAR' END) = :stream
                    AND (EXISTS (SELECT 1 FROM registration.course_registration r
                                  WHERE r.student_id = st.id AND r.session = :session AND r.level = :level AND r.status IN ('APPROVED','LOCKED'))
                         OR (st.current_level = :level AND st.status IN ('ACTIVE','PROBATION')
@@ -628,7 +629,7 @@ class ResultsRepository {
                    AND NOT EXISTS (SELECT 1 FROM registration.course_registration r
                                     WHERE r.student_id = st.id AND r.session = :session AND r.semester = :sem AND r.status IN ('APPROVED','LOCKED'))
                  ORDER BY st.surname, st.other_names
-                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem)
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
                 .query(ClassMember.class).list();
     }
 
@@ -681,7 +682,7 @@ class ResultsRepository {
 
     /* ── Senate: the schedule by faculty, and the minutes recorded (proto/part26 tSenate, tPublish) ── */
 
-    List<Sheets.SenateFaculty> senateFaculties(String session, int sem) {
+    List<Sheets.SenateFaculty> senateFaculties(String session, int sem, String stream) {
         return jdbc.sql("""
                 SELECT f.code AS faculty_code, f.name AS faculty_name, count(*) AS sets,
                        count(*) FILTER (WHERE s.stage = 'SENATE') AS at_senate,
@@ -694,33 +695,33 @@ class ResultsRepository {
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
                   JOIN ref.faculty f ON f.code = d.faculty_code
-                 WHERE o.session = :session AND o.semester = :sem
+                 WHERE o.session = :session AND o.semester = :sem AND o.stream = :stream
                  GROUP BY f.code, f.name ORDER BY f.name
-                """).param("session", session).param("sem", sem).query(Sheets.SenateFaculty.class).list();
+                """).param("session", session).param("sem", sem).param("stream", stream).query(Sheets.SenateFaculty.class).list();
     }
 
-    List<Sheets.SenateMinute> senateMinutes(String session, int sem) {
+    List<Sheets.SenateMinute> senateMinutes(String session, int sem, String stream) {
         return jdbc.sql("""
                 SELECT s.senate_minute AS minute, min(s.published_at) AS first_published_at, max(s.published_at) AS last_published_at,
                        count(*) AS sets,
                        coalesce(sum((SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                                       WHERE e.offering_id = o.id AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED'))), 0) AS candidates
                   FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
-                 WHERE o.session = :session AND o.semester = :sem AND s.stage = 'PUBLISHED'
+                 WHERE o.session = :session AND o.semester = :sem AND s.stage = 'PUBLISHED' AND o.stream = :stream
                  GROUP BY s.senate_minute ORDER BY min(s.published_at) DESC
-                """).param("session", session).param("sem", sem).query(Sheets.SenateMinute.class).list();
+                """).param("session", session).param("sem", sem).param("stream", stream).query(Sheets.SenateMinute.class).list();
     }
 
-    List<UUID> sheetsAtSenate(String session, int sem, String fac) {
+    List<UUID> sheetsAtSenate(String session, int sem, String fac, String stream) {
         return jdbc.sql("""
                 SELECT s.id FROM assessment.score_sheet s
                   JOIN catalogue.offering o ON o.id = s.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
-                 WHERE o.session = :session AND o.semester = :sem AND s.stage = 'SENATE'
+                 WHERE o.session = :session AND o.semester = :sem AND s.stage = 'SENATE' AND o.stream = :stream
                    AND (:fac::text IS NULL OR d.faculty_code = :fac)
                  ORDER BY o.course_code
-                """).param("session", session).param("sem", sem).param("fac", fac).query(UUID.class).list();
+                """).param("session", session).param("sem", sem).param("fac", fac).param("stream", stream).query(UUID.class).list();
     }
 
     /* ── migration from the old portal (V082) ── */

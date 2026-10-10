@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
   ]);
   const reg = v.ok ? v.data.registration : null;
   const cleared = dk.ok ? dk.data.clearsExamination : null;
+  // V381: a paper the Centre's attendance policy bars is printed as barred, with no signature line
+  const barred = new Set(dk.ok ? dk.data.examSessions.filter((x) => x.session === session && x.semester === semester).flatMap((x) => x.papers.filter((pp) => pp.bar).map((pp) => pp.course_code)) : []);
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return NextResponse.json({ status: 409, title: "No approved registration", detail: "An examination card is issued for an approved registration." }, { status: 409 });
   }
@@ -131,7 +133,8 @@ export async function GET(request: NextRequest) {
     p.text(L + 8, y, clean(e.courseCode), 9, true);
     p.text(titleX, y, cut(clean(e.title), titleMax), 8.5);
     p.text(unitX + 2, y, String(e.units), 9);
-    p.rule(signX, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
+    if (barred.has(e.courseCode)) p.text(signX, y, "BARRED: ATTENDANCE", 8, true, [0.6, 0.1, 0.1]);
+    else p.rule(signX, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
     y -= 16;
   }
   p.rule(L, y + 7, A4.w - L, y + 7, 0.8, 0.55);

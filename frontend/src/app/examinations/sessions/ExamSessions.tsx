@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import { chaseWords, type ExamSession, type Monitor } from "@/lib/results";
+import { chaseWords, streamWords, type ExamSession, type Monitor } from "@/lib/results";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
@@ -21,14 +21,14 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
-  const [f, setF] = useState({ session: scope.session, semester: "1", kind: "MAIN", examsFrom: "", examsTo: "", sheetsDue: "" });
+  const [f, setF] = useState({ session: scope.session, semester: "1", kind: "MAIN", stream: "REGULAR", examsFrom: "", examsTo: "", sheetsDue: "" });
   const [today] = useState(() => Date.now());
   const [edit, setEdit] = useState<ExamSession | null>(null);
-  const [ed, setEd] = useState({ session: "", semester: "1", kind: "MAIN", examsFrom: "", examsTo: "", sheetsDue: "" });
+  const [ed, setEd] = useState({ session: "", semester: "1", kind: "MAIN", stream: "REGULAR", examsFrom: "", examsTo: "", sheetsDue: "" });
 
   function openEdit(e: ExamSession) {
     setEdit(e);
-    setEd({ session: e.session, semester: String(e.semester), kind: e.kind, examsFrom: (e.examsFrom ?? "").slice(0, 10), examsTo: (e.examsTo ?? "").slice(0, 10), sheetsDue: (e.sheetsDue ?? "").slice(0, 10) });
+    setEd({ session: e.session, semester: String(e.semester), kind: e.kind, stream: e.stream ?? "REGULAR", examsFrom: (e.examsFrom ?? "").slice(0, 10), examsTo: (e.examsTo ?? "").slice(0, 10), sheetsDue: (e.sheetsDue ?? "").slice(0, 10) });
     setProblem(null);
   }
 
@@ -75,10 +75,10 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
   }
 
   async function create(open: boolean) {
-    const made = await post("/api/bff/api/v1/results/exam-sessions", { ...f, semester: Number(f.semester) }, `Examination session ${f.session} semester ${f.semester} ${open ? "opened" : "saved as a draft"}`, "create");
+    const made = await post("/api/bff/api/v1/results/exam-sessions", { ...f, semester: Number(f.semester) }, `Examination session ${f.session} semester ${f.semester}${f.stream === "CCE" ? " (CCE)" : ""} ${open ? "opened" : "saved as a draft"}`, "create");
     if (made && open && made.id) {
       const r = await post(`/api/bff/api/v1/results/exam-sessions/${made.id}/open`, {}, `Examination session opened`, "open");
-      if (r) setSaid(`The session is open. Release the examination cards to students and the score sheets to lecturers below when you decide; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`);
+      if (r) setSaid(`The session is open; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`);
     }
   }
 
@@ -92,9 +92,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
 
   return (
     <>
-      <Note kind="info" title="An examination session is the container everything else hangs in">
-        It fixes the dates, the courses to be examined, the halls, the candidates and the deadline by which every score sheet must be in. Once it is open the portal can answer the only question that matters in December: which sheets are missing, and whose are they.
-      </Note>
+
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="info" title="Done">{said}</Note> : null}
       <Tiles items={[
@@ -111,15 +109,16 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
             <Field id="es-s" label="Academic session"><select id="es-s" className="ctl" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
             <Field id="es-m" label="Semester"><select id="es-m" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
             <Field id="es-t" label="Type"><select id="es-t" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
+            <Field id="es-w" label="Students" hint="A CCE session examines the Centre's evening classes only"><select id="es-w" className="ctl" value={f.stream} onChange={(e) => setF({ ...f, stream: e.target.value })}><option value="REGULAR">Full-time</option><option value="CCE">CCE (part-time)</option></select></Field>
             <Field id="es-f" label="Examinations begin"><input id="es-f" className="ctl" type="date" value={f.examsFrom} onChange={(e) => setF({ ...f, examsFrom: e.target.value })} /></Field>
             <Field id="es-e" label="Examinations end"><input id="es-e" className="ctl" type="date" value={f.examsTo} onChange={(e) => setF({ ...f, examsTo: e.target.value })} /></Field>
             <Field id="es-d" label="Score sheets due"><input id="es-d" className="ctl" type="date" value={f.sheetsDue} onChange={(e) => setF({ ...f, sheetsDue: e.target.value })} /></Field>
           </div>
           <Note kind="info" title="Opening a session releases nothing by itself">
-            Open sets the session up for the Examinations Office to timetable its papers. The examination cards reach students only when you press <b>Release examination cards</b>, and the score sheets reach lecturers only when you press <b>Release score sheets</b> — each on its own row below, whatever the dates say.
+            Examination cards and score sheets are released separately, with <b>Release examination cards</b> and <b>Release score sheets</b> below.
           </Note>
           <Note kind="info" title="Releasing the score sheets generates every sheet at once">
-            One sheet per course offered, over the approved register at the moment of opening, in the name of the lecturer the department allocated. A course with no allocated lecturer generates no sheet — and is counted the moment the session opens, which is where an unallocated course is found before December rather than in it.
+            One sheet per course offered, in the allocated lecturer&rsquo;s name; a course without a lecturer gets none. A full-time session makes sheets for full-time classes only, a CCE session for the Centre&rsquo;s evening classes only.
           </Note>
           <div className="row">
             <Btn kind="primary" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(true)}>Open the session</Btn>
@@ -129,7 +128,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
       </Panel>
       ) : (
         <Note kind="info" title="Set up by the Director of ICT">
-          Examination sessions are created, dated and opened by the Director of ICT, from Portal Management. Here you can follow each one and its submission monitor.
+          Examination sessions are created and opened by the Director of ICT, from Portal Management.
         </Note>
       )}
 
@@ -139,7 +138,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
             cols={["Session|mid", "Semester|mid", "Type|mid", "Examinations|mid", "Sheets due|mid", "Sheets|mid", "Outstanding|mid", "State|mid", "Examination cards|mid", "Score sheets|mid", "|num"]}
             rows={list.map((e) => [
               <b className="tnum" key="s">{e.session}</b>, <span className="tnum" key="m">{e.semester === 1 ? "First" : e.semester === 2 ? "Second" : "Third"}</span>,
-              <span className="sub2" key="k">{e.kind === "MAIN" ? "Main" : e.kind === "RESIT" ? "Re-sit" : "Special"}</span>,
+              <span className="sub2" key="k">{e.kind === "MAIN" ? "Main" : e.kind === "RESIT" ? "Re-sit" : "Special"}{e.stream === "CCE" ? <> <Pil kind="info">CCE</Pil></> : null}</span>,
               <span className="tnum" key="x">{day(e.examsFrom, false)} – {day(e.examsTo, false)}</span>,
               <span className="tnum" key="d">{day(e.sheetsDue)}</span>, <span className="tnum" key="n">{e.sheets}</span>,
               <span className={`tnum${e.outstanding ? " ink-red b700" : ""}`} key="o">{e.outstanding}</span>,
@@ -155,7 +154,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
               </span>,
               <span key="a" className="row row--inline row--tight row--right">
                 {canEdit && e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
-                {e.state === "DRAFT" ? (canEdit ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => { if (r) { setSaid(`The session is open. Release the examination cards and the score sheets on its row when you decide; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`); router.refresh(); } })}>Open</Btn> : null) : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
+                {e.state === "DRAFT" ? (canEdit ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => { if (r) { setSaid(`The session is open; ${r.offeringsWithoutLecturer} courses have no lecturer yet.`); router.refresh(); } })}>Open</Btn> : null) : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
               </span>,
             ])}
           />
@@ -163,7 +162,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
       ) : null}
 
       {edit ? (
-        <Modal title="Edit the examination session" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"}`} onClose={() => setEdit(null)}
+        <Modal title="Edit the examination session" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"} · ${streamWords(edit.stream)}`} onClose={() => setEdit(null)}
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy !== null || !ed.examsFrom || !ed.examsTo || !ed.sheetsDue} onClick={() => void saveDates()}>{busy === "edit" ? "Saving…" : "Save the dates"}</Btn></>}>
           <Note kind={edit.sheets > 0 ? "info" : "info"} title={edit.sheets > 0 ? "Only the dates can change" : "Session, semester, type and dates can all change"}>
@@ -177,6 +176,7 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
             <Field id="ee-s" label="Academic session"><select id="ee-s" className="ctl" value={ed.session} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
             <Field id="ee-m" label="Semester"><select id="ee-m" className="ctl" value={ed.semester} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
             <Field id="ee-t" label="Type"><select id="ee-t" className="ctl" value={ed.kind} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
+            <Field id="ee-w" label="Students"><select id="ee-w" className="ctl" value={ed.stream} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, stream: e.target.value })}><option value="REGULAR">Full-time</option><option value="CCE">CCE (part-time)</option></select></Field>
             <Field id="ee-f" label="Examinations begin"><input id="ee-f" className="ctl" type="date" value={ed.examsFrom} onChange={(e) => setEd({ ...ed, examsFrom: e.target.value })} /></Field>
             <Field id="ee-e" label="Examinations end"><input id="ee-e" className="ctl" type="date" value={ed.examsTo} onChange={(e) => setEd({ ...ed, examsTo: e.target.value })} /></Field>
             <Field id="ee-d" label="Score sheets due"><input id="ee-d" className="ctl" type="date" value={ed.sheetsDue} onChange={(e) => setEd({ ...ed, sheetsDue: e.target.value })} /></Field>

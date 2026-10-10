@@ -575,7 +575,8 @@ public class StudentPortalService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> docket(UUID id) {
-        String session = session();
+        // V381: a CCE student's examination card is the CCE session's
+        String session = "CCE".equals(student(id).entryMode()) ? sessionFor(id) : session();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         boolean inForce = repo.schemeInForce();
@@ -584,9 +585,15 @@ public class StudentPortalService {
         out.put("clearsExamination", cleared);
         out.put("schemeProblem", schemeProblem);
         List<Map<String, Object>> sessions = new ArrayList<>();
-        for (Map<String, Object> x : repo.examSessions(session)) {
+        for (Map<String, Object> x : repo.examSessions(id, session)) {
             Map<String, Object> e = new LinkedHashMap<>(x);
-            e.put("papers", repo.docket(id, (UUID) x.get("id")));
+            List<Map<String, Object>> papers = new ArrayList<>();
+            for (Map<String, Object> p : repo.docket(id, (UUID) x.get("id"))) {
+                Map<String, Object> paper = new LinkedHashMap<>(p);
+                paper.put("bar", repo.examBar(id, (UUID) p.get("offering_id")));   // V381: attendance below the Centre's minimum, where it bars
+                papers.add(paper);
+            }
+            e.put("papers", papers);
             sessions.add(e);
         }
         out.put("examSessions", sessions);

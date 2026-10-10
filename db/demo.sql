@@ -245,7 +245,7 @@ BEGIN
     END IF;
 
     PERFORM set_config('moaum.actor_office', 'academic', true);
-    SELECT id INTO v_exam FROM assessment.exam_session WHERE session = v_session AND semester = 1 AND kind = 'MAIN';
+    SELECT id INTO v_exam FROM assessment.exam_session WHERE session = v_session AND semester = 1 AND kind = 'MAIN' AND stream = 'REGULAR';   -- V381: the full-time classes' session
     IF v_exam IS NULL THEN
         v_exam := gen_random_uuid();
         INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due)

@@ -43,12 +43,15 @@ public class ResultsService {
         }
     }
 
+    /** V381: stream REGULAR (the full-time classes, the default) or CCE (the Centre for Continuing Education's classes) */
     public record ExamSessionIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
-                                @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
+                                @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue,
+                                @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
     }
 
     public record ExamEditIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
-                             @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
+                             @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue,
+                             @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
     }
 
     /** the three dates are ordered: begin ≤ end ≤ sheets due. A clear message beats the raw DB constraint. */
@@ -392,7 +395,7 @@ public class ResultsService {
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
                 r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
-                r.lecturer(), r.candidates(), r.received(), failRate, mayAct, blocked, r.caMax(), r.heldScripts(), chase);
+                r.lecturer(), r.candidates(), r.received(), failRate, mayAct, blocked, r.caMax(), r.heldScripts(), chase, r.stream());
     }
 
     private static String desk(String office) {
@@ -703,20 +706,22 @@ public class ResultsService {
         }
         checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
         String kind = in.kind() == null || in.kind().isBlank() ? "MAIN" : in.kind();
-        boolean identityChanged = !cur.session().equals(in.session()) || cur.semester() != in.semester() || !cur.kind().equalsIgnoreCase(kind);
+        String stream = in.stream() == null || in.stream().isBlank() ? cur.stream() : in.stream();
+        boolean identityChanged = !cur.session().equals(in.session()) || cur.semester() != in.semester() || !cur.kind().equalsIgnoreCase(kind)
+                || !cur.stream().equals(stream);
         if (identityChanged) {
             if (cur.sheets() > 0) {
                 throw new DomainRuleViolation("EXAM_HAS_SHEETS",
                         "This session already has " + cur.sheets() + " score sheet(s), so its academic session, semester and type are fixed — only the dates can change.",
                         new DomainRuleViolation.Remedy("Move it before it is opened, or open a new session for the other academic session.", "Examinations"));
             }
-            if (repo.examSessionExists(in.session(), in.semester(), kind, id)) {
+            if (repo.examSessionExists(in.session(), in.semester(), kind, stream, id)) {
                 throw new DomainRuleViolation("EXAM_DUPLICATE",
                         "An examination session already exists for that academic session, semester and type.",
                         new DomainRuleViolation.Remedy("Edit that one instead, or choose a different type.", "Examinations"));
             }
         }
-        repo.updateExamSession(id, in.session(), in.semester(), kind, in.examsFrom(), in.examsTo(), in.sheetsDue());
+        repo.updateExamSession(id, in.session(), in.semester(), kind, stream, in.examsFrom(), in.examsTo(), in.sheetsDue());
         return repo.examSession(id).orElseThrow();
     }
 
@@ -796,8 +801,8 @@ public class ResultsService {
     private static final List<String> COUNTED = List.of("RECORDS", "SENATE", "PUBLISHED");
 
     @Transactional(readOnly = true)
-    public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem) {
-        List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem);
+    public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem, String stream) {
+        List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem, stream);
         Map<String, Integer> courses = new LinkedHashMap<>();
         Map<String, String> courseKind = new LinkedHashMap<>();
         Map<String, Integer> courseLevel = new LinkedHashMap<>();
@@ -932,7 +937,7 @@ public class ResultsService {
         /* a student in the class with no approved registration for the semester is on the sheet with every course
            empty, no current figures, and the remark DID NOT REGISTER FOR THIS SEMESTER; the summary counts them as
            not registered, never as absent, and nothing is pronounced on them */
-        for (ResultsRepository.ClassMember m : repo.unregistered(prog, level, session, sem)) {
+        for (ResultsRepository.ClassMember m : repo.unregistered(prog, level, session, sem, stream)) {
             if (byStudent.containsKey(m.studentId())) continue;
             List<Sheets.BroadsheetMark> marks = courses.keySet().stream()
                     .map(code -> new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false)).toList();
@@ -962,13 +967,13 @@ public class ResultsService {
     /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */
 
     @Transactional(readOnly = true)
-    public Sheets.Senate senate(String session, int sem) {
-        List<Sheets.SenateFaculty> f = repo.senateFaculties(session, sem);
+    public Sheets.Senate senate(String session, int sem, String stream) {
+        List<Sheets.SenateFaculty> f = repo.senateFaculties(session, sem, stream);
         long sets = f.stream().mapToLong(Sheets.SenateFaculty::sets).sum();
         long at = f.stream().mapToLong(Sheets.SenateFaculty::atSenate).sum();
         long pub = f.stream().mapToLong(Sheets.SenateFaculty::published).sum();
         long out = f.stream().mapToLong(Sheets.SenateFaculty::outstanding).sum();
-        List<Sheets.SenateMinute> minutes = repo.senateMinutes(session, sem);
+        List<Sheets.SenateMinute> minutes = repo.senateMinutes(session, sem, stream);
         long cands = minutes.stream().mapToLong(Sheets.SenateMinute::candidates).sum();
         return new Sheets.Senate(session, sem, f, minutes, sets, at, pub, out, cands);
     }
@@ -978,12 +983,13 @@ public class ResultsService {
      * its own transaction: one the rules refuse (the same person took the
      * previous stage) is reported by name and does not hold the others.
      */
-    public Map<String, Object> recordMinute(String session, int sem, String fac, String minute) {
+    public Map<String, Object> recordMinute(String session, int sem, String fac, String minute, String stream) {
         if (minute == null || minute.isBlank()) {
             throw new DomainRuleViolation("RES_MINUTE_REQUIRED", "A result reaches a student on the Senate minute that approved it, and none was cited.",
                     new DomainRuleViolation.Remedy("Cite the minute of the sitting that approved the results.", "Registrar"));
         }
-        List<UUID> waiting = eachInItsOwn.execute(status -> repo.sheetsAtSenate(session, sem, fac));
+        // V381: one stream's sets at a time — a CCE minute never publishes the full-time sets of the same session, nor the reverse
+        List<UUID> waiting = eachInItsOwn.execute(status -> repo.sheetsAtSenate(session, sem, fac, stream));
         List<Map<String, Object>> published = new ArrayList<>();
         List<Map<String, Object>> refused = new ArrayList<>();
         for (UUID id : waiting == null ? List.<UUID>of() : waiting) {
@@ -995,6 +1001,6 @@ public class ResultsService {
                 refused.add(Map.of("id", id, "why", why.length() > 300 ? why.substring(0, 300) : why));
             }
         }
-        return Map.of("session", session, "semester", sem, "minute", minute.trim(), "published", published, "refused", refused);
+        return Map.of("session", session, "semester", sem, "stream", stream, "minute", minute.trim(), "published", published, "refused", refused);
     }
 }

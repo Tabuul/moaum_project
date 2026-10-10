@@ -41,6 +41,9 @@ import org.springframework.web.bind.annotation.RestController;
  * evening timetable and its periods, the CCE students' course registration, attendance on the register, and the CCE school
  * fees as the Bursary stated them. The Centre for Continuing Education and the Academic Office act; the Registry reads; the
  * Bursary reads the fees. Every rule — which session, which office, which clash — is the database's as well as this desk's.
+ * V381: the CCE examinations (the CCE exam sessions and where each CCE score sheet stands on the one results chain) and the
+ * CCE students' progression (expected completion from the CCE programme length, spillover, graduation), read here; the
+ * exam sessions are set by ICT like any other, the sheets move on the results desks like any other.
  */
 @RestController
 @RequestMapping("/api/v1/cce")
@@ -473,7 +476,7 @@ class CceClassesController {
         out.put("semester", semester);
         out.put("sessions", sessions());
         out.put("policy", jdbc.sql("""
-                SELECT p.session, p.min_percent, p.warn_band, p.min_classes, p.show_students, p.updated_at
+                SELECT p.session, p.min_percent, p.warn_band, p.min_classes, p.show_students, p.bars_exams, p.updated_at
                   FROM attendance.policy p WHERE p.context = 'CCE' AND p.session IN (:s, '*') ORDER BY (p.session = '*') LIMIT 1
                 """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         out.put("rows", jdbc.sql("SELECT * FROM attendance.course_report('CCE', :s, :sem, :f, :d, :p, :c, :from, :to)")
@@ -505,16 +508,17 @@ class CceClassesController {
     }
 
     public record Policy(@NotBlank @Pattern(regexp = "\\*|\\d{4}/\\d{4}") String session, @DecimalMin("0") @DecimalMax("100") BigDecimal minPercent,
-                         @DecimalMin("0") @DecimalMax("50") BigDecimal warnBand, @Min(1) @Max(50) Integer minClasses, Boolean showStudents) {
+                         @DecimalMin("0") @DecimalMax("50") BigDecimal warnBand, @Min(1) @Max(50) Integer minClasses, Boolean showStudents,
+                         Boolean barsExams) {
     }
 
     @PutMapping("/attendance/policy")
     @PreAuthorize(CceDeskController.DECIDE)
     @Transactional
     Map<String, Object> setPolicy(@Valid @RequestBody Policy body) {
-        jdbc.sql("SELECT attendance.set_cce_policy(:s, :m, :w, :n, :show)").param("s", body.session()).param("m", body.minPercent(), Types.NUMERIC)
+        jdbc.sql("SELECT attendance.set_cce_policy(:s, :m, :w, :n, :show, :bars)").param("s", body.session()).param("m", body.minPercent(), Types.NUMERIC)
                 .param("w", body.warnBand(), Types.NUMERIC).param("n", body.minClasses(), Types.INTEGER).param("show", body.showStudents(), Types.BOOLEAN)
-                .query().listOfRows();
+                .param("bars", body.barsExams(), Types.BOOLEAN).query().listOfRows();
         return attendance("*".equals(body.session()) ? null : body.session(), null, null, null, null, null, null, null);
     }
 
@@ -532,6 +536,108 @@ class CceClassesController {
         jdbc.sql("SELECT attendance.lock_register(:r, :a, false, :why)").param("r", id).param("a", AuditContextHolder.required().actorId())
                 .param("why", body.reason().trim()).query().listOfRows();
         return Map.of("registerId", id, "locked", false);
+    }
+
+    /* ── V381: the CCE examinations ── */
+
+    /**
+     * The CCE exam sessions of a session (ICT sets them with the stream CCE; a CCE session's sheets are its CCE classes' only)
+     * and every CCE class's score sheet with the desk it sits at — the one results chain, read for the Centre.
+     */
+    @GetMapping("/exams")
+    @PreAuthorize(CceDeskController.READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> exams(@RequestParam(required = false) String session, @RequestParam(required = false) Integer semester) {
+        String s = sessionOr(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("semester", semester);
+        out.put("sessions", sessions());
+        out.put("examSessions", jdbc.sql("""
+                SELECT e.id, e.session, e.semester, e.kind, e.state, e.exams_from, e.exams_to, e.sheets_due, e.cards_released_at, e.sheets_released_at,
+                       (SELECT count(*) FROM assessment.score_sheet sh WHERE sh.exam_session_id = e.id) AS sheets
+                  FROM assessment.exam_session e
+                 WHERE e.stream = 'CCE' AND e.session = :s AND (:sem::int IS NULL OR e.semester = :sem)
+                 ORDER BY e.semester, e.kind
+                """).param("s", s).param("sem", semester, Types.INTEGER).query().listOfRows());
+        out.put("stages", jdbc.sql("""
+                SELECT sh.stage, assessment.stage_desk_name(sh.stage) AS desk, count(*) AS sheets
+                  FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id AND o.stream = 'CCE'
+                 WHERE o.session = :s AND (:sem::int IS NULL OR o.semester = :sem)
+                 GROUP BY sh.stage
+                 ORDER BY min(CASE sh.stage WHEN 'ENTRY' THEN 1 WHEN 'VERIFICATION' THEN 2 WHEN 'DEPT_BOARD' THEN 3 WHEN 'FACULTY_SCRUTINY' THEN 4
+                                            WHEN 'FACULTY_COMPILATION' THEN 5 WHEN 'FACULTY_BOARD' THEN 6 WHEN 'RECORDS' THEN 7 WHEN 'SENATE' THEN 8 ELSE 9 END)
+                """).param("s", s).param("sem", semester, Types.INTEGER).query().listOfRows());
+        out.put("sheets", jdbc.sql("""
+                SELECT o.id AS offering_id, o.course_code, coalesce(o.title, c.title) AS title, o.semester, c.dept_code, d.name AS dept,
+                       nullif(btrim(coalesce(lp.surname, '') || ', ' || coalesce(lp.given_names, '')), ',') AS lecturer,
+                       (SELECT count(*) FROM registration.entry en JOIN registration.course_registration r ON r.id = en.registration_id
+                         WHERE en.offering_id = o.id AND en.status IN ('REGISTERED', 'APPROVED') AND r.status IN ('SUBMITTED', 'APPROVED', 'LOCKED')) AS candidates,
+                       sh.id AS sheet_id, sh.stage, CASE WHEN sh.id IS NULL THEN NULL ELSE assessment.stage_desk_name(sh.stage) END AS desk,
+                       sh.due_on, sh.submitted_at, sh.published_at, e.kind AS sitting, e.state AS exam_state
+                  FROM catalogue.offering o
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                  LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
+                  LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
+                  LEFT JOIN assessment.exam_session e ON e.id = sh.exam_session_id
+                 WHERE o.stream = 'CCE' AND o.session = :s AND (:sem::int IS NULL OR o.semester = :sem)
+                 ORDER BY o.semester, o.course_code, e.kind NULLS FIRST
+                """).param("s", s).param("sem", semester, Types.INTEGER).query().listOfRows());
+        out.put("policy", jdbc.sql("""
+                SELECT p.session, p.min_percent, p.min_classes, p.bars_exams
+                  FROM attendance.policy p WHERE p.context = 'CCE' AND p.session IN (:s, '*') ORDER BY (p.session = '*') LIMIT 1
+                """).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        return out;
+    }
+
+    /* ── V381: the CCE students' progression ── */
+
+    /**
+     * Where each CCE student stands: entry, the CCE programme length, the current level, expected completion, spillover and
+     * graduation, read from the one academic position (recomputed by the database) — never a second reckoning. Six years
+     * elapsing graduates no one: graduation is the results chain's and the Senate's.
+     */
+    @GetMapping("/progression")
+    @PreAuthorize(CceDeskController.READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> progression(@RequestParam(required = false) String programme, @RequestParam(required = false) String state,
+                                    @RequestParam(required = false) String q, @RequestParam(defaultValue = "200") int limit) {
+        int lim = Math.max(1, Math.min(limit, 1000));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", jdbc.sql("SELECT policy.route_session('CCE')").query(String.class).single());
+        out.put("counts", jdbc.sql("""
+                SELECT count(*) AS students,
+                       count(*) FILTER (WHERE ap.spillover_state = 'NORMAL') AS normal,
+                       count(*) FILTER (WHERE ap.spillover_state LIKE 'SPILLOVER_YEAR_%') AS spillover,
+                       count(*) FILTER (WHERE ap.spillover_state = 'SPILLOVER_LIMIT_REACHED') AS limit_reached,
+                       count(*) FILTER (WHERE ap.registered_current) AS registered,
+                       count(*) FILTER (WHERE ap.expected_completion = ap.current_session) AS final_session,
+                       count(*) FILTER (WHERE ap.graduation_state IS NOT NULL) AS graduation,
+                       count(*) FILTER (WHERE ap.confidence = 'REVIEW') AS review
+                  FROM people.student st JOIN people.academic_position ap ON ap.student_id = st.id
+                 WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION', 'DEFERRED', 'SUSPENDED')
+                """).query().singleRow());
+        out.put("rows", jdbc.sql("""
+                SELECT st.id, st.matric_no, st.surname, st.other_names, st.status, st.programme_code, p.name AS programme,
+                       ap.entry_session, ap.entry_level, ap.current_session, ap.current_level, ap.final_level, ap.duration_years,
+                       ap.expected_completion, ap.elapsed_sessions, ap.deferred_sessions, ap.spillover_years, ap.spillover_state,
+                       ap.registered_current, ap.graduation_state, ap.graduation_session, ap.confidence, ap.issues
+                  FROM people.student st
+                  JOIN people.academic_position ap ON ap.student_id = st.id
+                  LEFT JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION', 'DEFERRED', 'SUSPENDED')
+                   AND (:p::text IS NULL OR st.programme_code = :p)
+                   AND (:st::text IS NULL OR ap.spillover_state = :st OR (:st = 'SPILLOVER' AND ap.spillover_state LIKE 'SPILLOVER_YEAR_%'))
+                   AND (:q::text IS NULL OR st.matric_no ILIKE '%' || :q || '%' OR st.surname ILIKE '%' || :q || '%')
+                 ORDER BY ap.spillover_years DESC, ap.expected_completion NULLS LAST, st.surname, st.other_names
+                 LIMIT :lim
+                """).param("p", blank(programme), Types.VARCHAR).param("st", blank(state), Types.VARCHAR).param("q", blank(q), Types.VARCHAR)
+                .param("lim", lim).query().listOfRows());
+        out.put("programmes", jdbc.sql("""
+                SELECT p.code, p.name FROM ref.programme p JOIN ref.programme_route pr ON pr.programme_code = p.code AND pr.route = 'CCE' ORDER BY p.name
+                """).query().listOfRows());
+        return out;
     }
 
     /* ── the CCE school fees ── */

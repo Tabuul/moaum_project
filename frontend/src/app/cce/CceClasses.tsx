@@ -85,10 +85,10 @@ export function CceCalendar({ session, powers, pick }: TabProps) {
   );
   return (
     <>
-      <PageHead title="CCE calendar" description={`The Centre's own calendar for ${v.session}: when each CCE semester's lectures, registration and examinations run. A CCE student's registration opens by this calendar — never by the full-time calendar of the same session — and a semester opens only in the CCE session (${v.cceSession}).`} actions={pick} />
+      <PageHead title="CCE calendar" description={`${v.session}: when each CCE semester's lectures, registration and examinations run. CCE registration follows this calendar, not the full-time one.`} actions={pick} />
       <Note kind={v.session === v.cceSession ? "ok" : "info"} title={`CCE session ${v.cceSession} · undergraduate ${v.undergraduateSession ?? "—"}`}>
         {v.session === v.cceSession ? "You are setting the current CCE session." : `You are looking at ${v.session}; a semester opens only in the CCE session.`}{" "}
-        The Directorate of ICT can also hold the CCE registration and CCE school-fees windows on Portal Windows; while it has set one, that window decides.
+        A CCE window set on Portal Windows takes precedence.
       </Note>
       <div className="grid grid--3">
         {v.semesters.map((s) => {
@@ -113,7 +113,7 @@ export function CceCalendar({ session, powers, pick }: TabProps) {
         })}
       </div>
       <Panel title="CCE course load" right={<Pil kind="info">The Academic Office&rsquo;s</Pil>}>
-        <PBody><div className="sub2">The units a CCE student registers within at each level. A part-time student usually carries less than the full-time range; until the Academic Office states the CCE load for a level, the University&rsquo;s range applies to CCE students too.</div></PBody>
+        <PBody><div className="sub2">Units a CCE student registers within at each level. Until stated, the University&rsquo;s range applies.</div></PBody>
         {loads ? (
           <DTable noPrint cols={["Level|num", "The University's range|mid", "CCE (part-time)|mid", "Instrument", ""]} rows={loads.map((l) => [
             l.level, <span key="u" className="tnum">{l.university_min}–{l.university_max}{l.university_probation_max != null ? ` · probation ${l.university_probation_max}` : ""}</span>,
@@ -215,13 +215,13 @@ export function CceClasses({ session, powers, pick }: TabProps) {
 
   return (
     <>
-      <PageHead title="CCE classes" description={`The Centre's classes in ${session}: each course its CCE programmes offer (and each carry-over its students owe), a class of its own beside the full-time class of the same course — so CCE registration, attendance and, later, the score sheets stay apart from the full-time students'.`}
+      <PageHead title="CCE classes" description={`${session}: each course the CCE programmes offer, as a class of its own beside the full-time class.`}
         actions={<span className="row row--inline row--tight">{pick}<SemesterPick all value={semester} onChange={setSemester} /></span>} />
       {v.session !== v.cceSession ? <Note kind="info" title={`The CCE session is ${v.cceSession}`}>Classes are opened in the CCE session and the one after it.</Note> : null}
-      {!v.programmesOnRoute ? <Note kind="bad" title="No programme is offered on CCE yet">The Academic Office offers programmes on the route first (CCE programmes); the classes follow from them.</Note> : null}
+      {!v.programmesOnRoute ? <Note kind="bad" title="No programme is offered on CCE yet">Offer programmes on CCE first (CCE programmes).</Note> : null}
       {powers.decide ? (
         <Panel title="Open the classes of a semester" right={<span className="row row--inline row--tight"><SemesterPick value={openSem} onChange={(n) => setOpenSem(n ?? 1)} /><Btn kind="primary" onClick={() => void openAll()}>Open the classes</Btn><Btn kind="ghost" onClick={() => setAdding(true)}>Add one class</Btn></span>}>
-          <PBody><div className="sub2">Opens a class for every course the CCE programmes offer in that semester, and every carry-over a CCE student owes from it. A class already open stays as it is.</div></PBody>
+          <PBody><div className="sub2">Opens a class for every course and carry-over of the semester; open classes stay as they are.</div></PBody>
         </Panel>
       ) : null}
       <Panel title={`${rows.length} class${rows.length === 1 ? "" : "es"} · ${semesterWord(semester)}`} right={<Btn kind="secondary" disabled={!rows.length} onClick={exportXlsx}>Excel</Btn>}>
@@ -320,7 +320,7 @@ export function CceTimetable({ session, powers, pick }: TabProps) {
 
   return (
     <>
-      <PageHead title="CCE evening timetable" description={`The evening lectures of the Centre's classes in ${session}: the day, the time, the venue and the lecturer. The periods below are quick picks the Centre configures; a lecture may be at any time. No venue or lecturer is in two CCE classes at once.`}
+      <PageHead title="CCE evening timetable" description={`${session} evening lectures. No venue or lecturer is in two CCE classes at once.`}
         actions={<span className="row row--inline row--tight">{pick}<SemesterPick value={semester} onChange={(n) => setSemester(n ?? 1)} /></span>} />
       <Tiles cls="grid--4" items={[
         ["LECTURES A WEEK", v.slots.length, null, `${semesterWord(semester)} of ${session}`],
@@ -405,7 +405,7 @@ export function CceRegistrations({ session, pick }: TabProps) {
       r.fees_stated ? "Yes" : "No", r.fees_cleared ? "Yes" : "No"]), "CCE registrations"), `cce-registrations-${session.replace("/", "-")}-s${semester}.xlsx`);
   return (
     <>
-      <PageHead title="CCE course registration" description={`Where each CCE student's course registration for ${session} stands. They register on the student portal through the University's registration engine, on the Centre's classes only; the Head of Department of the programme approves, as for every student.`}
+      <PageHead title="CCE course registration" description={`${session}: the Head of Department of each programme approves.`}
         actions={<span className="row row--inline row--tight">{pick}<SemesterPick value={semester} onChange={(n) => setSemester(n ?? 1)} /></span>} />
       <Note kind={v.gate ? "bad" : "ok"} title={v.gate ? "Registration is closed to CCE students now" : `Registration is open for the ${semesterWord(semester).toLowerCase()} of ${session}`}>
         {v.gate ?? "The Centre's classes are set up and the CCE calendar (and any CCE window the Directorate of ICT holds) lets students register."}{" "}
@@ -444,12 +444,12 @@ export function CceAttendance({ session, powers, pick }: TabProps) {
   const qs = [`session=${q(session)}`, f.semester ? `semester=${f.semester}` : "", f.faculty ? `faculty=${q(f.faculty)}` : "", f.programme ? `programme=${q(f.programme)}` : "",
     f.course.trim() ? `course=${q(f.course.trim())}` : "", f.from ? `from=${f.from}` : "", f.to ? `to=${f.to}` : ""].filter(Boolean).join("&");
   const v = useLoad<AttendanceView>(`/api/v1/cce/attendance?${qs}`, tick);
-  const [pol, setPol] = useState<{ scope: string; min: string; warn: string; classes: string; show: boolean } | null>(null);
+  const [pol, setPol] = useState<{ scope: string; min: string; warn: string; classes: string; show: boolean; bars: boolean } | null>(null);
   if (!v) return <Note kind="info" title="Reading the CCE attendance…">One moment.</Note>;
   async function savePolicy() {
     if (!pol) return;
     const out = await cceSend("/attendance/policy", "PUT", { session: pol.scope, minPercent: pol.min ? Number(pol.min) : null, warnBand: pol.warn ? Number(pol.warn) : null,
-      minClasses: pol.classes ? Number(pol.classes) : 3, showStudents: pol.show }, `CCE attendance policy for ${pol.scope === "*" ? "every session" : pol.scope} saved`);
+      minClasses: pol.classes ? Number(pol.classes) : 3, showStudents: pol.show, barsExams: pol.bars && !!pol.min }, `CCE attendance policy for ${pol.scope === "*" ? "every session" : pol.scope} saved`);
     if (out) { setPol(null); setTick((t) => t + 1); }
   }
   const p = v.policy;
@@ -460,7 +460,7 @@ export function CceAttendance({ session, powers, pick }: TabProps) {
   const facultyProgs = v.programmes.filter((x) => !f.faculty || x.faculty_code === f.faculty);
   return (
     <>
-      <PageHead title="CCE attendance" description={`The register of the Centre's evening classes in ${session}: each lecture's attendance as the lecturer marked it (present, absent, late or excused), by student and class. A corrected mark keeps its reason; a locked register is reopened only by the Centre or the Academic Office.`} actions={pick} />
+      <PageHead title="CCE attendance" description={`${session}: a locked register is reopened only by the Centre or the Academic Office.`} actions={pick} />
       <Panel title="Filter">
         <PBody>
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
@@ -474,8 +474,8 @@ export function CceAttendance({ session, powers, pick }: TabProps) {
         </PBody>
       </Panel>
       <Note kind="info" title={p?.min_percent != null ? `The Centre's minimum attendance: ${p.min_percent}%` : "No minimum attendance is set"}
-        action={powers.decide ? <Btn kind="ghost" onClick={() => setPol({ scope: p?.session ?? session, min: p?.min_percent != null ? String(p.min_percent) : "", warn: p?.warn_band != null ? String(p.warn_band) : "", classes: String(p?.min_classes ?? 3), show: p?.show_students ?? true })}>Set the policy</Btn> : null}>
-        {p ? <>For {p.session === "*" ? "every session" : p.session}{p.warn_band != null ? `; a warning within ${p.warn_band} points above it` : ""}; counted after {p.min_classes} lectures. Students {p.show_students ? "read" : "do not read"} their own attendance on the portal.</>
+        action={powers.decide ? <Btn kind="ghost" onClick={() => setPol({ scope: p?.session ?? session, min: p?.min_percent != null ? String(p.min_percent) : "", warn: p?.warn_band != null ? String(p.warn_band) : "", classes: String(p?.min_classes ?? 3), show: p?.show_students ?? true, bars: p?.bars_exams ?? false })}>Set the policy</Btn> : null}>
+        {p ? <>For {p.session === "*" ? "every session" : p.session}{p.warn_band != null ? `; a warning within ${p.warn_band} points above it` : ""}; counted after {p.min_classes} lectures. Students {p.show_students ? "read" : "do not read"} their own attendance on the portal. {p.bars_exams ? "Attendance below the minimum bars the examination of the class: the examination card marks the paper and CBT refuses the student." : "Attendance does not bar anyone from an examination."}</>
           : "Until the Centre sets one, the register shows the rates and no student is judged against a minimum. Students read their own attendance."}
       </Note>
       <Tiles cls="grid--4" items={[
@@ -512,6 +512,8 @@ export function CceAttendance({ session, powers, pick }: TabProps) {
             <Field id="po-c" label="Lectures before judging"><input id="po-c" className="ctl tnum" inputMode="numeric" value={pol.classes} onChange={(e) => setPol({ ...pol, classes: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
           </div>
           <label className="row row--inline row--tight"><input type="checkbox" checked={pol.show} onChange={(e) => setPol({ ...pol, show: e.target.checked })} /> Students read their own attendance on the portal</label>
+          <label className="row row--inline row--tight"><input type="checkbox" checked={pol.bars && !!pol.min} disabled={!pol.min} onChange={(e) => setPol({ ...pol, bars: e.target.checked })} /> Attendance below the minimum bars the examination of the class{pol.min ? "" : " (state a minimum first)"}</label>
+          <div className="sub2">Off unless the Centre turns it on. The examination card then marks the paper and CBT refuses the student at the start; an excused lecture is not counted against anyone.</div>
         </Modal>
       ) : null}
     </>
@@ -528,10 +530,10 @@ export function CceSchoolFees({ session, powers, pick }: TabProps) {
     l.indigene === "INDIGENE" ? "Indigene" : l.indigene === "NON_INDIGENE" ? "Non-indigene" : null, l.spillover ? "Spillover" : null].filter(Boolean).join(" · ");
   return (
     <>
-      <PageHead title="CCE school fees" description={`The school-fee lines the Bursary stated for CCE in ${v.session}, and the CCE students' standing against them. A CCE student is charged only these lines (entry mode CCE) — never the full-time lines of the same session — and pays on the University's one payment system.`} actions={pick} />
+      <PageHead title="CCE school fees" description={`${v.session}: CCE students are charged only these lines, never the full-time lines.`} actions={pick} />
       {!v.lines.length ? (
         <Note kind="bad" title={`The Bursary has not stated CCE school fees for ${v.session}`} action={powers.bursar ? <LinkBtn kind="primary" href={`/finance/fees?session=${q(v.session)}`}>State them</LinkBtn> : null}>
-          Until it does, a CCE student has nothing to pay and is not cleared for registration; their portal says the fees are not yet stated.
+          Until it does, CCE students have nothing to pay and are not cleared for registration.
           {v.fullTimeLines ? ` The ${v.fullTimeLines} full-time line${v.fullTimeLines === 1 ? "" : "s"} of ${v.session} never reach a CCE student.` : ""}
         </Note>
       ) : null}

@@ -286,7 +286,7 @@ export function CbtExams({ data, base, office, canManage }: { data: CbtExamList;
           ) : (
           <Field id="x-off" label="Course offering" required hint="A CBT course of the office offered this session; the paper is drawn from that course's question bank">
             <select id="x-off" className="ctl" value={offering} onChange={(e) => setOffering(e.target.value)}>
-              {data.offerings.map((o) => <option key={o.id} value={o.id}>{o.course_code} — {o.title} · semester {o.semester} · {o.questions} active question{o.questions === 1 ? "" : "s"}</option>)}
+              {data.offerings.map((o) => <option key={o.id} value={o.id}>{o.course_code}{o.stream === "CCE" ? " (CCE class)" : ""} — {o.title} · semester {o.semester} · {o.questions} active question{o.questions === 1 ? "" : "s"}</option>)}
             </select>
           </Field>
           )}

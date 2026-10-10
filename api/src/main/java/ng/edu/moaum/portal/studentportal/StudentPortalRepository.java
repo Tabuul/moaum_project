@@ -578,9 +578,15 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT assessment.raise_query(:s, :sh, :p, :t)").param("s", student).param("sh", sheet).param("p", part).param("t", said).query(String.class).single();
     }
 
-    List<Map<String, Object>> examSessions(String session) {
-        return jdbc.sql("SELECT id, session, semester, kind, exams_from, exams_to, state FROM assessment.exam_session WHERE session = :s AND state <> 'DRAFT' AND cards_released_at IS NOT NULL ORDER BY semester, kind")
-                .param("s", session).query().listOfRows();
+    /** the examination sessions whose cards are released — V381: of the student's own stream (a CCE student's are the CCE ones) */
+    List<Map<String, Object>> examSessions(UUID student, String session) {
+        return jdbc.sql("SELECT id, session, semester, kind, exams_from, exams_to, state, stream FROM assessment.exam_session WHERE session = :s AND state <> 'DRAFT' AND cards_released_at IS NOT NULL AND stream = people.student_stream(:st) ORDER BY semester, kind")
+                .param("s", session).param("st", student).query().listOfRows();
+    }
+
+    /** V381: why attendance bars the student from the paper, or null (the Centre's policy, where it says so) */
+    String examBar(UUID student, UUID offering) {
+        return jdbc.sql("SELECT attendance.exam_bar(:s, :o)").param("s", student).param("o", offering).query(String.class).optional().orElse(null);
     }
 
     List<Map<String, Object>> docket(UUID student, UUID examSession) {

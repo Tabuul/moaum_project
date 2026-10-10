@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 226
+\set EXPECTED 227
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -8437,7 +8437,7 @@ BEGIN
         EXCEPTION WHEN check_violation THEN r_att_offering := split_part(SQLERRM, ':', 1); END;
         PERFORM set_config('moaum.actor_id', cce1::text, true);
         PERFORM set_config('moaum.actor_office', 'cce', true);
-        PERFORM attendance.set_cce_policy(S, 75, 10, 3, true);
+        PERFORM attendance.set_cce_policy(S, 75, 10, 3, true, false);
         SELECT * INTO summ FROM attendance.course_summary(stu, S) x WHERE x.course_code = 'CCX 101';
         SELECT count(*) INTO rep FROM attendance.course_report('CCE', S, 1, NULL, NULL, pa, NULL, current_date - 7, current_date);
 
@@ -8507,6 +8507,141 @@ BEGIN
                r_slot_office, ft_slot, r_venue, r_lecturer, clash_kinds, roster, marked, r_att_reason, r_att_list, r_att_locked, r_att_offering,
                summ.total, summ.late, summ.rate, summ.verdict, rep, wt_cce, wt_ft, ft_lines, cce_lines, ft_after, cce_after, ug_late, cce_late,
                gst_rows, gst_gate, gst_opened, r_in_use, r_not_cce, withdrawn, sheets_ft, sheets_cce, r_archive));
+END $$;
+
+-- ── V381: CCE examinations in a session of their own, the attendance bar, the CCE student's place in the programme, deferment on the CCE calendar, the CCE matriculation series, the route on the transcript, old-portal CCE students ──
+-- An examination session is the full-time classes' or the Centre's; each releases sheets to its own stream's classes and a sheet
+-- is refused against the other's; the examination card lists the student's own stream's papers. The Centre may let attendance
+-- below its minimum bar the examination (never without a minimum). A CCE student's expected completion and spillover run from
+-- the CCE entry session for the CCE duration against the CCE session, and six years elapsing graduates nobody; a deferment's
+-- dates are the CCE calendar's. The Registry sets the CCE series and segment with a reason; the statement names the route and
+-- the study mode; the old portal's CCE students come over as CCE and part-time. The block undoes its own writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); lect uuid := gen_random_uuid(); reg_uuid uuid := gen_random_uuid();
+        S text := '9947/9948'; OLD text := '9941/9942'; pa text := 'C00023'; stu uuid := gen_random_uuid(); old_stu uuid := gen_random_uuid();
+        ft uuid := gen_random_uuid(); ft_class uuid := gen_random_uuid(); c101 uuid; c102 uuid; ex_ft uuid := gen_random_uuid(); ex_cce uuid := gen_random_uuid();
+        r_cce uuid := gen_random_uuid(); r_ft uuid := gen_random_uuid(); sheets_cce int; sheets_ft int; r_stream text; auto_sheet boolean; dock_cce int; dock_ft int;
+        r_bar_min text; bar_on text; bar_off text; rg uuid; pos people.academic_position; pos_old people.academic_position; pos_ft people.academic_position;
+        start_cce date; start_ft date; ret record; tl record; r_m_office text; r_m_series text; comps record; prev record; ft_series text;
+        stmt jsonb; imp record; imported people.student; stored_cur text; moved_cur text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V381', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9947-10-01', date '9948-08-31'),
+               (gen_random_uuid(), OLD, date '9941-10-01', date '9942-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT x.code, x.title, 3, 1, 100, p.dept_code, 'Core', 'LIVE' FROM ref.programme p,
+               (VALUES ('CCZ 101', 'Check exam one'), ('CCZ 102', 'Check exam two')) x(code, title) WHERE p.code = pa;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('CCZ 101', pa, 100, 'Core'), ('CCZ 102', pa, 100, 'Core');
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (lect, 'CHECK/V381/L', 'ZZLECT381', 'Invented', NULL);
+        INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id) VALUES (ft_class, 'CCZ 101', S, 1, lect);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (stu, 'MOAUM/ADM/47/990381', 'MOAUM/CHK/47/0381', 'ZZCCE381', 'Examined', pa, 'CCE', 'PART_TIME', S, 100, 100, 'ACTIVE', now()),
+               (old_stu, 'MOAUM/ADM/41/990382', 'MOAUM/CHK/41/0382', 'ZZCCE381', 'Spilling over', pa, 'CCE', 'PART_TIME', OLD, 100, 600, 'ACTIVE', now()),
+               (ft, 'MOAUM/ADM/47/990383', 'MOAUM/CHK/47/0383', 'ZZFT381', 'Day', pa, 'UTME', 'FULL_TIME', S, 100, 100, 'ACTIVE', now());
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM policy.set_route_semester('CCE', S, 1, 'OPEN', date '9947-11-02', date '9948-02-27', current_date - 1, current_date + 30, NULL, NULL, NULL, NULL, NULL);
+        PERFORM policy.set_route_semester('CCE', S, 2, 'NOT_YET_OPEN', date '9948-03-09', date '9948-07-31', NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        PERFORM catalogue.cce_open_classes(S, 1);
+        SELECT id INTO c101 FROM catalogue.offering WHERE course_code = 'CCZ 101' AND session = S AND semester = 1 AND stream = 'CCE';
+        SELECT id INTO c102 FROM catalogue.offering WHERE course_code = 'CCZ 102' AND session = S AND semester = 1 AND stream = 'CCE';
+        PERFORM catalogue.allocate_offering(c101, lect, NULL, true);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by)
+        VALUES (r_cce, stu, S, 1, 100, 'APPROVED', now(), now(), acad), (r_ft, ft, S, 1, 100, 'APPROVED', now(), now(), acad);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r_cce, c101, 3, 'CURRENT', 'APPROVED'), (r_cce, c102, 3, 'CURRENT', 'APPROVED'),
+               (r_ft, ft_class, 3, 'CURRENT', 'APPROVED');
+
+        -- (1) the examination sessions: a full-time and a CCE one of the same session, semester and kind; each releases its own stream's sheets
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state, stream)
+        VALUES (ex_ft, S, 1, 'MAIN', current_date, current_date + 5, current_date + 10, 'OPEN', 'REGULAR'),
+               (ex_cce, S, 1, 'MAIN', current_date, current_date + 5, current_date + 10, 'OPEN', 'CCE');
+        PERFORM assessment.release_exam_sheets(ex_ft);
+        PERFORM assessment.release_exam_sheets(ex_cce);
+        SELECT count(*) FILTER (WHERE sh.exam_session_id = ex_cce AND o.stream = 'CCE'), count(*) FILTER (WHERE sh.exam_session_id = ex_ft AND o.stream = 'REGULAR')
+          INTO sheets_cce, sheets_ft
+          FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE sh.exam_session_id IN (ex_cce, ex_ft);
+        BEGIN INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, due_on) VALUES (gen_random_uuid(), c102, ex_ft, current_date + 10); r_stream := 'MADE';
+        EXCEPTION WHEN check_violation THEN r_stream := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM catalogue.allocate_offering(c102, lect, NULL, true);   -- the CCE session is open and released: its sheet follows the lecturer
+        auto_sheet := EXISTS (SELECT 1 FROM assessment.score_sheet WHERE offering_id = c102 AND exam_session_id = ex_cce);
+        SELECT count(*) INTO dock_cce FROM assessment.student_docket(stu, ex_cce);
+        SELECT count(*) INTO dock_ft FROM assessment.student_docket(stu, ex_ft);
+
+        -- (2) attendance bars the examination only where the Centre says so, and only against a minimum
+        BEGIN PERFORM attendance.set_cce_policy(S, NULL, NULL, 1, true, true); r_bar_min := 'SET';
+        EXCEPTION WHEN check_violation THEN r_bar_min := split_part(SQLERRM, ':', 1); END;
+        rg := attendance.open_register('COURSE', S, 1, c101, NULL, current_date, 'Week one', lect);
+        PERFORM attendance.save_marks(rg, jsonb_build_array(jsonb_build_object('member', stu, 'status', 'ABSENT')), NULL, lect, false);
+        PERFORM attendance.set_cce_policy(S, 75, NULL, 1, true, false);
+        bar_off := attendance.exam_bar(stu, c101);
+        PERFORM attendance.set_cce_policy(S, 75, NULL, 1, true, true);
+        bar_on := attendance.exam_bar(stu, c101);
+
+        -- (3) the CCE student's place: the CCE session, six years, registered now; one six years in spills over and is not graduated
+        SELECT * INTO pos FROM people.academic_position_rows(stu);
+        SELECT * INTO pos_old FROM people.academic_position_rows(old_stu);
+        SELECT * INTO pos_ft FROM people.academic_position_rows(ft);
+        -- the stored position follows the CCE session mapping
+        stored_cur := (SELECT current_session FROM people.academic_position WHERE student_id = stu);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM policy.set_route_session('CCE', -1, OLD, 'the check moves the CCE session', NULL);
+        moved_cur := (SELECT current_session FROM people.academic_position WHERE student_id = stu);
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check moves it back', NULL);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+
+        -- (4) deferment dates on the CCE calendar
+        start_cce := people.period_start(stu, S, 1);
+        start_ft := people.period_start(ft, S, 1);
+        SELECT * INTO ret FROM people.deferment_return(stu, 'SEMESTER', S, 1);
+        SELECT * INTO tl FROM people.programme_timeline(stu);
+
+        -- (5) the CCE matriculation series and segment: the Registry's, with a reason
+        BEGIN PERFORM people.set_route_matric('CCE', NULL, 'CCE', 'the check'); r_m_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_m_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM people.set_route_matric('CCE', 'NOSUCH381', 'CCE', 'the check'); r_m_series := 'SET';
+        EXCEPTION WHEN check_violation THEN r_m_series := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO people.matric_series (code, name, last_issued, active) VALUES ('CCEX381', 'CCE check series', 40, true);
+        PERFORM people.set_route_matric('CCE', 'CCEX381', 'CCE', 'the Centre''s own run of numbers');
+        SELECT * INTO comps FROM people.matric_components(stu);
+        SELECT * INTO prev FROM people.matric_preview(stu);
+        SELECT c.series_code INTO ft_series FROM people.matric_components(ft) c;
+
+        -- (6) the statement names the route and the study mode; the old portal's CCE student comes over CCE and part-time
+        stmt := credentials.build_statement(stu, 'TRANSCRIPT', NULL, NULL);
+        SELECT * INTO imp FROM people.import_students_rows(jsonb_build_array(jsonb_build_object(
+            'matric', 'MOAUM/CCE/47/9381', 'surname', 'ZZOLDCCE', 'otherNames', 'Migrated', 'programme', pa, 'entryMode', 'Part time', 'entrySession', S, 'level', '300')));
+        SELECT * INTO imported FROM people.student WHERE matric_no = 'MOAUM/CCE/47/9381';
+        RAISE EXCEPTION 'the V381 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V381: CCE — a CCE examination session beside the full-time one of the same session, semester and kind releases sheets to the Centre''s classes only, and a sheet is refused against the other stream''s session; the card lists the student''s own stream''s papers; attendance bars the examination only where the Centre says so and only against a minimum; a CCE student stands in the CCE session for six years, and six years elapsing spills over and graduates nobody; deferment dates are the CCE calendar''s; the Registry sets the CCE series and segment with a reason; the statement names the route and the study mode; an old-portal CCE student comes over CCE and part-time',
+        coalesce(sheets_cce = 1 AND sheets_ft = 1 AND r_stream = 'EXAM_STREAM' AND auto_sheet AND dock_cce = 2 AND dock_ft = 0
+                 AND r_bar_min = 'CCE_ATTENDANCE_BAR' AND bar_off IS NULL AND bar_on LIKE 'CBT_ATTENDANCE:%'
+                 AND pos.current_session = S AND pos.duration_years = 6 AND pos.expected_completion = policy.session_after(S, 5) AND pos.registered_current
+                 AND pos.spillover_years = 0 AND pos_old.spillover_years >= 1 AND pos_old.spillover_state LIKE 'SPILLOVER%' AND pos_old.classification <> 'GRADUATED'
+                 AND pos_ft.current_session IS DISTINCT FROM S AND stored_cur = S AND moved_cur = OLD
+                 AND start_cce = date '9947-11-02' AND start_ft IS DISTINCT FROM date '9947-11-02' AND ret.return_session = S AND ret.return_semester = 2
+                 AND ret.return_on = date '9948-03-09' AND tl.original_completion_session = policy.session_after(S, 5)
+                 AND r_m_office = 'CCE_OFFICE' AND r_m_series = 'CCE_MATRIC_SERIES' AND comps.series_code = 'CCEX381' AND comps.university_code LIKE '%/CCE'
+                 AND prev.matric_no LIKE '%/CCE/%' AND people.matric_shape_ok(prev.matric_no) AND ft_series IS DISTINCT FROM 'CCEX381'
+                 AND stmt->>'studyMode' = 'Part-time' AND stmt->>'route' LIKE 'Centre for Continuing Education%' AND (stmt->>'durationYears')::int = 6
+                 AND imp.created = 1 AND imported.entry_mode = 'CCE' AND imported.study_mode = 'PART_TIME', false),
+        format('sheets %s/%s stream=%s auto=%s docket %s/%s | bar min=%s off=%s on=%s | pos %s/%s/%s reg=%s spill=%s old=%s/%s/%s ft=%s stored=%s moved=%s | defer %s/%s return %s/%s/%s timeline=%s | matric %s/%s %s/%s %s shape=%s ft=%s | stmt %s/%s/%s | import %s %s/%s',
+               sheets_cce, sheets_ft, r_stream, auto_sheet, dock_cce, dock_ft, r_bar_min, bar_off, bar_on,
+               pos.current_session, pos.duration_years, pos.expected_completion, pos.registered_current, pos.spillover_years,
+               pos_old.spillover_years, pos_old.spillover_state, pos_old.classification, pos_ft.current_session, stored_cur, moved_cur,
+               start_cce, start_ft, ret.return_session, ret.return_semester, ret.return_on, tl.original_completion_session,
+               r_m_office, r_m_series, comps.series_code, comps.university_code, prev.matric_no, people.matric_shape_ok(prev.matric_no), ft_series,
+               stmt->>'studyMode', stmt->>'route', stmt->>'durationYears', imp.created, imported.entry_mode, imported.study_mode));
 END $$;
 
 -- ── V385. Post-UTME examined on the one CBT engine: the Director's windows closed until opened; a Post-UTME bank and examination of an

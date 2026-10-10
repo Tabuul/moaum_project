@@ -178,7 +178,9 @@ export function receiptPurpose(purpose: string | null | undefined): string {
 export interface Queryable { sheet_id: string; course_code: string; title: string; session: string; semester: number; published_at: string; window_until: string; ca: number | null; exam: number | null; total: number | null; grade: string | null; outcome: string | null }
 export interface ResultQuery { id: string; ref: string; part: string; said: string; routed_dept: string; dept_name: string; raised_at: string; state: string; answer: string | null; answered_at: string | null; course_code: string; title: string }
 export interface Queries { queryable: Queryable[]; queries: ResultQuery[] }
-export interface DocketPaper { offering_id: string; course_code: string; title: string; units: number; held_on: string | null; starts_at: string | null; ends_at: string | null; venue: string | null; sheet_stage: string | null }
+export interface DocketPaper { offering_id: string; course_code: string; title: string; units: number; held_on: string | null; starts_at: string | null; ends_at: string | null; venue: string | null; sheet_stage: string | null;
+  /** V381: why attendance bars the paper — the Centre's policy, where it says so — or null */
+  bar?: string | null }
 export interface Docket { session: string; clearsExamination: boolean | null; schemeProblem: string | null; examSessions: { id: string; session: string; semester: number; kind: string; exams_from: string; exams_to: string; state: string; papers: DocketPaper[] }[] }
 export interface Slot { weekday: number; starts_at: string; ends_at: string; course_code: string; title: string; kind: string; venue: string; lecturer: string | null; carryover: boolean }
 export interface AttendanceRow { course_code: string; title: string; attended: number; held: number; rate: number | null;

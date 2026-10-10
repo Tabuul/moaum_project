@@ -17,6 +17,7 @@ import { CceCandidates, CceImports, CceUpload } from "./CceList";
 import { CceAdmissionList, CceApplication, CceApplications, CceStudents } from "./CceApplications";
 import { CceFees, CceHistory, CceProgrammes, CceReports, CceSession } from "./CceSetup";
 import { CceAttendance, CceCalendar, CceClasses, CceRegistrations, CceSchoolFees, CceTimetable } from "./CceClasses";
+import { CceExams, CceProgression } from "./CceExams";
 
 
 /** what the acting office may do here; the server decides again */
@@ -87,6 +88,8 @@ export function CceDesk({ tab, id, office, initialSession, initialStatus }: { ta
     case "registrations": return <CceRegistrations {...props} />;
     case "attendance": return <CceAttendance {...props} />;
     case "school-fees": return <CceSchoolFees {...props} />;
+    case "exams": return <CceExams {...props} />;
+    case "progression": return <CceProgression {...props} />;
     default: return <CceOverview ov={ov} pick={pick} powers={powers} />;
   }
 }
@@ -99,7 +102,7 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
   const q = (path: string, status?: string) => `/cce/${path}?session=${encodeURIComponent(ov.session)}${status ? `&status=${status}` : ""}`;
   return (
     <>
-      <PageHead title="Centre for Continuing Education" description={`CCE ${ov.session}: the CCE list JAMB supplied, the applications, the admission list and the students — a regular part-time route, ${m.default_duration_years} years by default.`}
+      <PageHead title="Centre for Continuing Education" description={`CCE ${ov.session} · part-time, ${m.default_duration_years} years by default`}
         actions={pick} />
       <div className="grid grid--2">
         <Note kind={m.route_session === ov.session ? "ok" : "info"} title={`CCE session ${m.route_session ?? "—"} · undergraduate ${m.undergraduate_session ?? "—"}`}>
@@ -108,7 +111,7 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
           <LinkBtn kind="ghost" size="sm" href="/cce/session">The session mapping</LinkBtn>
         </Note>
         <Note kind={ov.window.state === "OPEN" ? "ok" : "info"} title={`CCE application window for ${ov.session}: ${ov.window.state.toLowerCase()}`}>
-          The Director of ICT opens and closes it on Portal Windows; only those on the committed CCE list may apply, with their JAMB number and date of birth.
+          Only those on the committed CCE list may apply.
           {ov.window.closes_at ? ` Closes ${when(ov.window.closes_at)}.` : ""}
         </Note>
       </div>
@@ -146,7 +149,7 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
       </div>
       <Panel title="The CCE session in operation" right={<Pil kind="info">{ov.mapping.route_session ?? ov.session}</Pil>}>
         <PBody>
-          <div className="sub2 mb-2">The Centre&rsquo;s students study in the CCE session on classes of their own, beside the full-time classes of the same courses, through the University&rsquo;s registration engine.</div>
+          
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
             <LinkBtn kind="ghost" href={q("calendar")}>CCE calendar</LinkBtn>
             <LinkBtn kind="ghost" href={q("classes")}>CCE classes</LinkBtn>
@@ -154,6 +157,8 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
             <LinkBtn kind="ghost" href={q("registrations")}>Course registration</LinkBtn>
             <LinkBtn kind="ghost" href={q("attendance")}>Attendance</LinkBtn>
             <LinkBtn kind="ghost" href={q("school-fees")}>CCE school fees</LinkBtn>
+            <LinkBtn kind="ghost" href={q("exams")}>Examinations</LinkBtn>
+            <LinkBtn kind="ghost" href={q("progression")}>Progression</LinkBtn>
           </div>
         </PBody>
       </Panel>

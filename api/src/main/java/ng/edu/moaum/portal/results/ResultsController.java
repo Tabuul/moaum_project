@@ -286,23 +286,27 @@ class ResultsController {
 
     @GetMapping("/broadsheet")
     @PreAuthorize(READERS)
-    Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem) {
+    Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem,
+                                 @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
         scope.bound(null, null, prog);   // a programme outside the office's bound is refused
-        return service.broadsheet(prog, level, session, sem);
+        return service.broadsheet(prog, level, session, sem, stream);   // V381: the full-time students' unless the Centre's is asked for
     }
 
     @GetMapping("/senate")
     @PreAuthorize(READERS)
-    Sheets.Senate senate(@RequestParam String session, @RequestParam int sem) {
-        return service.senate(session, sem);
+    Sheets.Senate senate(@RequestParam String session, @RequestParam int sem,
+                         @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+        return service.senate(session, sem, stream);
     }
 
-    public record MinuteIn(@NotBlank String session, @NotNull Integer sem, String fac, @NotBlank String minute) {
+    /** V381: stream REGULAR (the default) or CCE — a minute publishes one stream's sets */
+    public record MinuteIn(@NotBlank String session, @NotNull Integer sem, String fac, @NotBlank String minute,
+                           @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
     }
 
     @PostMapping("/senate/minute")
     @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar')")
     Map<String, Object> minute(@Valid @RequestBody MinuteIn body) {
-        return service.recordMinute(body.session(), body.sem(), blank(body.fac()), body.minute());
+        return service.recordMinute(body.session(), body.sem(), blank(body.fac()), body.minute(), body.stream() == null ? "REGULAR" : body.stream());
     }
 }

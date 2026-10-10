@@ -648,6 +648,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "cce/registrations", "icon": "check", "label": "CCE Course Registration" },
           { "id": "cce/attendance", "icon": "user", "label": "CCE Attendance" },
           { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" },
+          { "id": "cce/exams", "icon": "doc", "label": "CCE Examinations" },
+          { "id": "cce/progression", "icon": "chart", "label": "CCE Progression" },
           { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" },
           { "id": "cce/history", "icon": "doc", "label": "Audit History" }
         ]
@@ -1764,7 +1766,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "cce/students", "icon": "cap", "label": "CCE Students" },
           { "id": "cce/registrations", "icon": "check", "label": "Course Registration" },
           { "id": "cce/attendance", "icon": "user", "label": "Attendance" },
-          { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" }
+          { "id": "cce/school-fees", "icon": "card", "label": "CCE School Fees" },
+          { "id": "cce/exams", "icon": "doc", "label": "Examinations" },
+          { "id": "cce/progression", "icon": "chart", "label": "Progression" }
         ]
       },
       {

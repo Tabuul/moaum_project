@@ -9,6 +9,8 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Senate } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { StreamTabs } from "@/components/results/StreamTabs";
+import type { Stream } from "@/lib/results";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Steps } from "@/components/proto/blocks";
@@ -19,7 +21,7 @@ function when(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) + ", " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function SenateScreen({ scope, structure, sessions, senate, actingOffice, publish }: { scope: Scope; structure: ScopeStructure; sessions: string[]; senate: Senate; actingOffice: string | null; publish: boolean }) {
+export function SenateScreen({ scope, structure, sessions, senate, actingOffice, publish, stream = "REGULAR" }: { scope: Scope; structure: ScopeStructure; sessions: string[]; senate: Senate; actingOffice: string | null; publish: boolean; stream?: Stream }) {
   const router = useRouter();
   const [minute, setMinute] = useState("");
   const [fac, setFac] = useState("");
@@ -34,7 +36,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/bff/api/v1/results/senate/minute", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Senate minute ${minute} recorded for ${senate.session} semester ${senate.semester}`) }, body: JSON.stringify({ session: senate.session, sem: senate.semester, fac: fac || null, minute }) });
+      const r = await fetch("/api/bff/api/v1/results/senate/minute", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Senate minute ${minute} recorded for ${senate.session} semester ${senate.semester}${stream === "CCE" ? " (CCE)" : ""}`) }, body: JSON.stringify({ session: senate.session, sem: senate.semester, fac: fac || null, minute, stream }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
@@ -54,6 +56,8 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
       <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
         action="Publishing result sets on a Senate minute" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
+      <div className="row"><StreamTabs stream={stream} /></div>
+      {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's result sets">A minute recorded here publishes the Centre&rsquo;s sets only.</Note> : null}
       {publish ? (
         <Note kind={senate.published ? "ok" : "bad"} title={senate.published ? `${senate.published} set${senate.published === 1 ? " is" : "s are"} live to their candidates` : "Publication is held: there is no Senate minute"}>
           {senate.published
@@ -86,7 +90,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
         ["Minute", latest ? latest.minute : "Not yet", latest ? "var(--green-ink)" : "var(--chrome)", latest ? when(latest.firstPublishedAt) : "When Senate has risen"],
       ]} />
       <Panel title={`Senate schedule — ${senate.session} ${semester} semester`} right="Prepared from the sheets, by faculty">
-        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} {semester.toLowerCase()} semester. The schedule is empty until an examination session is opened and the sheets move.</div> : (
+        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} {semester.toLowerCase()} semester.</div> : (
           <DTable cols={["Faculty", "Sets|mid", "Candidates|mid", "At Senate|mid", "Published|mid", "Outstanding|mid", "Recommendation|num"]}
             rows={senate.faculties.map((f) => [
               <strong key="f">{f.facultyName}</strong>,
@@ -139,7 +143,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
               <span className="sub2">The Registrar records the minute; this office reads the schedule.</span>
             </div>
           )}
-          <Note kind="info" title="Two people, not one">The minute is recorded by the Registry against sets Exams and Records validated. The office that validated a set does not also record the minute on it — BR-006 applies to a minute exactly as it applies to a mark, and the portal refuses the second act by the same person.</Note>
+          <Note kind="info" title="Two people, not one">The office that validated a set does not also record its minute.</Note>
         </PBody>
       </Panel>
       {senate.minutes.length ? (

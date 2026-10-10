@@ -233,3 +233,48 @@ positions on the route and deferment on the CCE calendar come with the CCE exami
 and clashes, the register, fee structures by kind, the late fee and GST fee, examination sessions, archiving; 224 with V383);
 the V379 property's registration gate now reads the Centre's classes. `CceClassesIT` (the whole of it through the API, rerunnable
 on one database). Every IT that upserts a class names the new key.
+
+## G. Phase 2b and 3 as built (V381)
+
+**Examinations on the one chain.** `assessment.exam_session.stream` (REGULAR | CCE; the unique key is now session, semester,
+kind and stream): ICT sets a CCE examination session beside the full-time one of the same session, semester and kind, on the
+same Examination Sessions screen ("Students: CCE (part-time)"). Opening, releasing sheets and the allocation's automatic sheet
+read the class's own stream; a trigger refuses a score sheet against the other stream's session (`EXAM_STREAM`). The sheets move
+on the same desks; the broadsheet, the Senate schedule and a Senate minute read one stream at a time (`?stream=CCE`; the full-time
+students' by default), and the results desk tags a CCE sheet. The student's examination card lists the papers of the student's own
+stream in the CCE session; CBT lists the Centre's classes beside the full-time ones, marked.
+
+**Attendance and the examination.** `attendance.policy.bars_exams` — off unless the Centre (or the Academic Office) turns it on,
+and refused without a minimum (`CCE_ATTENDANCE_BAR`). Where it is on, `attendance.exam_bar` names a student below the minimum:
+CBT refuses them at the start (`CBT_ATTENDANCE`), the card marks the paper "Barred: attendance" (on screen and on the PDF), and
+an excused lecture is not counted against anyone. Nothing is invented: no minimum, no bar, by default.
+
+**Progression.** The academic position reads a CCE student in the CCE session (`policy.route_session('CCE')`), on the programme's
+CCE length and final level (`ref.programme_route_terms`), with spillover counted past it; six years passing graduates nobody.
+The stored position of every CCE student is recomputed when V381 runs, and again whenever the CCE session mapping, the route's
+default length or a programme's CCE terms change (`people.refresh_route_positions`).
+Deferment dates come from the CCE calendar (`people.period_start`, `period_end`, `deferment_return`); the programme timeline and
+the deferment tick read the CCE semesters. The Centre's desk has **Examinations** (its exam sessions and where each CCE class's
+sheet stands) and **Progression** (each CCE student's entry, length, expected completion, spillover, registration now).
+
+**Matriculation.** `policy.study_route.matric_series` and `matric_segment`, set by the Registry or the Academic Office on the
+Matriculation number format screen (Study routes) with a reason kept in the route's history (`people.set_route_matric`;
+`CCE_MATRIC_SERIES`, `CCE_MATRIC_SEGMENT`, `CCE_MATRIC_REASON`). A segment, when set, is printed after the University code
+(MOAU/CCE/…); a series, when set, gives the CCE students their own run, drawn under the same lock as every series. Blank: the
+programme's series and no segment, as for everyone. Numbers already issued never change.
+
+**Records.** The statement and transcripts carry the study mode, the route and the CCE length (a full-time record is unchanged);
+the old-portal student upload reads a route or study-mode column and brings such a student over as CCE and part-time.
+
+**Departments reach their own classes.** The class register and timetable endpoints (`/api/v1/registration/offerings/{id}/…`)
+now check the class: a lecturer reaches the classes they teach, a department or faculty office its own department's or faculty's,
+the University's offices any — another department's class is refused (`SCOPE_DEPARTMENT`), a lecturer not teaching it 403. A CCE
+class's attendance is taken on its register (`ATT_CCE_REGISTER`).
+
+**API.** `/api/v1/cce/exams`, `/api/v1/cce/progression`; `/api/v1/cce/attendance/policy` takes `barsExams`;
+`/api/v1/results/exam-sessions` takes `stream`; `/api/v1/results/broadsheet|senate?stream=`; `/api/v1/results/senate/minute`
+takes `stream`; `/api/v1/matriculation/config` lists `routes`, PUT `/routes/{code}`.
+
+**Tests.** check.sql — the V381 property (sheets by stream, the stream guard, the card, the bar, the position and spillover,
+deferment dates, the matriculation series and segment, the statement, the import; 226). `CceExamsIT` (through the API,
+rerunnable). `StudentPortalIT` now acts as the Head of the course's own department.

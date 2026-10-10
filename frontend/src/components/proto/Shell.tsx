@@ -316,6 +316,8 @@ export const ROUTES: Record<string, string> = {
   "cce/registrations": "/cce/registrations",
   "cce/attendance": "/cce/attendance",
   "cce/school-fees": "/cce/school-fees",
+  "cce/exams": "/cce/exams",
+  "cce/progression": "/cce/progression",
   "cce/teaching": "/cce/teaching",
   /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
   "pg/portal": "/pg/portal",
@@ -510,6 +512,8 @@ const OVERRIDES: Record<string, string> = {
   "cce/registrations": "CCE course registration",
   "cce/attendance": "CCE attendance",
   "cce/school-fees": "CCE school fees",
+  "cce/exams": "CCE examinations",
+  "cce/progression": "CCE progression",
   "cce/teaching": "CCE evening classes",
 };
 

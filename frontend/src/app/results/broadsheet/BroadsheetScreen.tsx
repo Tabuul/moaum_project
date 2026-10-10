@@ -2,13 +2,14 @@
 
 /** tBroadsheet — proto/part26.html: every candidate in one programme at one level, across all their courses. */
 import type { Scope } from "@/lib/scope";
-import { STAGE_LABEL, type Broadsheet } from "@/lib/results";
+import { STAGE_LABEL, type Broadsheet, type Stream } from "@/lib/results";
 import { loadCrest } from "@/lib/xlsx";
 import { currentInstitution } from "@/lib/document/institution-cache";
 import { institutionLogoAbsoluteUrl, institutionLogoUrl } from "@/lib/document/institution-client";
 import { colName, xlsx, type Cell } from "@/lib/xlsx-write";
 import { docSerial } from "@/lib/exportbrand";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { StreamTabs } from "@/components/results/StreamTabs";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
@@ -16,11 +17,11 @@ const COLOUR = (points: number | null | undefined) => (points == null ? "var(--m
 const UNI = () => currentInstitution().name;
 const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
-export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null }) {
+export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "REGULAR" }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null; stream?: Stream }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
   /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
-  const fileName = (degree: string, level: number | string, session: string) => `Result ${degree} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
+  const fileName = (degree: string, level: number | string, session: string) => `Result ${degree}${stream === "CCE" ? " CCE" : ""} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
      this semester), then the core courses with the GST courses leading them, then elective */
   const lvl = Number(sheet?.level ?? 0);
@@ -248,15 +249,15 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   return (
     <>
       <Note kind="info" title="The broadsheet is computed, not typed">
-        Every figure on this sheet comes from the score sheets and the grading scheme in force for the session. Nobody keys a GPA. A mark counts here once its set has passed the Faculty Board; a score still in the chain shows greyed as not yet counted, and the GPA is computed over what is approved so far. A candidate with no score on a counted set did not sit: ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
+        A mark counts once its set has passed the Faculty Board; scores still in the chain are greyed. No score on a counted set is ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
       </Note>
-      <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course.">
-        A score sheet carries every candidate registered for one course, from every programme the course was made available to. A broadsheet carries every candidate in one programme at one level, across all their courses, because a GPA belongs to a student in a programme.
-      </Note>
+      <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course." />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
         onExport={sheet ? () => void exportExcel() : undefined} />
+      <div className="row"><StreamTabs stream={stream} /></div>
+      {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's students">On the Centre&rsquo;s evening classes in the session chosen above; never mixed with the full-time class.</Note> : null}
       {!sheet ? (
-        <Note kind="info" title="Choose a programme and a level">The broadsheet is one programme at one level in one semester. Pick them in the bar above; the session and semester are the ones the bar holds.</Note>
+        <Note kind="info" title="Choose a programme and a level" />
       ) : (
         <>
           <Tiles items={[
@@ -350,7 +351,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
           ) : null}
           <Panel title="" right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
-              <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme. The broadsheet has nobody to compute.</div>
+              <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme.</div>
             ) : sections.map((sec, si) => (
               <div key={si} className={si ? "tablewrap mt-4" : "tablewrap"}>
                 {sec.title ? <div className="ers__h row row--base" style={{ margin: "var(--s-2) 0 6px" }}>{sec.title}<span className="sub2" style={{ textTransform: "none", fontWeight: 400 }}>{sec.rows.length} candidate{sec.rows.length === 1 ? "" : "s"}</span></div> : null}

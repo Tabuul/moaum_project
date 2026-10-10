@@ -55,13 +55,14 @@ public final class Sheets {
     public record Row(UUID id, String courseCode, String courseTitle, int units, String deptCode, String deptName,
                       String facultyCode, String facultyName, String session, int semester, String stage,
                       LocalDate dueOn, OffsetDateTime submittedAt, int returnedTimes, UUID lecturerId, String sitting, String lecturer,
-                      long candidates, long received, long graded, long failed, UUID lastActor, int caMax, long heldScripts, String generalOffice) {
+                      long candidates, long received, long graded, long failed, UUID lastActor, int caMax, long heldScripts, String generalOffice,
+                      String stream) {
     }
 
     public record Listed(UUID id, String courseCode, String courseTitle, int units, String deptName, String facultyName,
                          String session, int semester, String stage, int spineStage, String sitting, LocalDate dueOn, Integer daysLate,
                          int returnedTimes, String lecturer, long candidates, long received, Integer failRate, boolean mayAct,
-                         boolean blockedForYou, int caMax, long heldScripts, Chase chase) {
+                         boolean blockedForYou, int caMax, long heldScripts, Chase chase, String stream) {
     }
 
     /** V359: how a sheet at entry has been chased — reminders to its lecturer, escalations and to whom; null when never */
@@ -146,7 +147,7 @@ public final class Sheets {
 
     public record ExamSession(UUID id, String session, int semester, String kind, LocalDate examsFrom, LocalDate examsTo,
                               LocalDate sheetsDue, String state, OffsetDateTime openedAt, long sheets, long candidates,
-                              long outstanding, OffsetDateTime cardsReleasedAt, OffsetDateTime sheetsReleasedAt) {
+                              long outstanding, OffsetDateTime cardsReleasedAt, OffsetDateTime sheetsReleasedAt, String stream) {
     }
 
     public record FacultyProgress(String facultyCode, String facultyName, long expected, long submitted, long verified,
