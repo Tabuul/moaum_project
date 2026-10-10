@@ -357,9 +357,12 @@ jobs:
             if curl -fsS http://localhost:3000/ >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          # nobody reaches a screen without signing in: the door sends a visitor to /login
-          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)
-          [ "$code" = "307" ] || [ "$code" = "302" ] || { echo "::error::GET / without a session returned $code, not a redirect to sign in"; docker logs portal-web; exit 1; }
+          # nobody reaches a screen without signing in: the bare address is the sign-in itself (no redirect, one round trip
+          # fewer on a slow link), and any other screen sends the visitor to /login
+          code=$(curl -s -o /tmp/door.html -w '%{http_code}' http://localhost:3000/)
+          [ "$code" = "200" ] && grep -q "Sign in" /tmp/door.html || { echo "::error::GET / without a session returned $code, not the sign-in"; docker logs portal-web; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ict/windows)
+          [ "$code" = "307" ] || [ "$code" = "302" ] || { echo "::error::GET /ict/windows without a session returned $code, not a redirect to sign in"; docker logs portal-web; exit 1; }
           curl -fsS http://localhost:3000/login | grep -q "Sign in" || { echo "::error::The sign-in page did not render."; docker logs portal-web; exit 1; }
           # the first account, made once with the secret the API trusts, then a sign-in through the portal's own handler
           curl -fsS -X POST http://localhost:8081/api/v1/auth/bootstrap \

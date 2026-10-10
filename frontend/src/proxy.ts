@@ -10,7 +10,12 @@ import { NextRequest, NextResponse } from "next/server";
  * answers 401, the stale cookies are cleared here, and the visitor lands on a
  * fresh sign-in rather than a dead session. A momentary failure to reach the
  * API does not lock anyone out: the request is allowed through and the page's
- * own call decides.
+ * own call decides. The question is /iam/session, which reads nothing beyond
+ * the session itself (Oct 2026: it was /iam/me, which also counted the menu's
+ * queues, on every page anyone opened).
+ *
+ * The bare address without a session shows the sign-in itself (app/page.tsx)
+ * rather than a redirect to /login: one round trip fewer on a slow link.
  */
 const SESSION_COOKIE = "moaum_session";
 const OFFICE_COOKIE = "moaum_office";
@@ -85,7 +90,7 @@ export async function proxy(request: NextRequest) {
     const isPrefetch = request.headers.get("next-router-prefetch") === "1" || request.headers.get("purpose") === "prefetch";
     if (!isApi && !isPrefetch) {
       try {
-        const r = await fetch(`${API_URL}/api/v1/iam/me`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+        const r = await fetch(`${API_URL}/api/v1/iam/session`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
         if (r.status === 401) return toLogin(request, true);
       } catch {
         /* the API is unreachable for a moment; do not lock the user out */
@@ -96,6 +101,8 @@ export async function proxy(request: NextRequest) {
   if (process.env.NODE_ENV !== "production" && process.env.PORTAL_API_TOKEN) {
     return NextResponse.next();
   }
+  /* the bare address draws the sign-in itself, with no redirect (app/page.tsx) */
+  if (pathname === "/") return NextResponse.next();
   return toLogin(request, false);
 }
 

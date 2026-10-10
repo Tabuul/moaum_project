@@ -84,6 +84,16 @@ class IamController {
         return me;
     }
 
+    /**
+     * Whether the session still stands, and nothing else: the token verified, and its server-side session neither ended,
+     * expired nor issued before this deploy — the security chain refuses each with 401 (AuditContextFilter, SessionGuard)
+     * before this method runs. The portal asks it on every page it opens, so it reads no person and counts no queue.
+     */
+    @GetMapping("/session")
+    ResponseEntity<Void> session() {
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/persons/{id}")
     @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> person(@PathVariable UUID id) {

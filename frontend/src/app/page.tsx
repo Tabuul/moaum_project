@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { api } from "@/lib/api";
+import { sessionToken } from "@/lib/session";
+import { SIGN_IN_TITLE, ssoOption } from "./login/options";
+import { SignIn } from "./login/SignIn";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { ScopeNotice } from "@/components/ScopeNotice";
@@ -37,7 +41,14 @@ const PLATFORM = new Set(["ict", "super"]);
    institutional overview, so it redirects there rather than to this dashboard) */
 const ACADEMIC = new Set(["academic", "dregistrar", "records", "dvc"]);
 
+/** without a session the bare address is the sign-in (proxy.ts lets it through), and its tab reads as the sign-in's */
+export async function generateMetadata(): Promise<Metadata> {
+  return (await sessionToken()) ? {} : { title: SIGN_IN_TITLE };
+}
+
 export default async function DashboardPage() {
+  /* no session: the sign-in here, not a redirect to /login — one round trip fewer on a slow link */
+  if (!(await sessionToken())) return <SignIn sso={await ssoOption()} />;
   const [me, sessions] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ name: string; state: string }[]>("/api/v1/ref/sessions")]);
   const office = me.ok ? me.data.activeOffice : null;
   /* an applicant's home is their application, not an office's dashboard */

@@ -96,6 +96,9 @@ class AuthIT {
         assertThat(((List<?>) me.getBody().get("offices")).stream().map(String::valueOf)).contains("dean");
         assertThat(me.getBody().get("name")).isEqualTo("ZZAUTHONE, Invented");
         assertThat(me.getBody().get("sessionId")).isNotNull();
+        // the portal's per-page check: the session stands, nothing more is read (a token that is not one is refused)
+        assertThat(it.get(token, "/api/v1/iam/session").getStatusCode().value()).isEqualTo(204);
+        assertThat(it.get("not-a-token", "/api/v1/iam/session").getStatusCode().value()).isEqualTo(401);
 
         // the person changes the password
         assertThat(post("/api/v1/auth/change-password", Map.of("current", "wrong", "next", "another password 2026"), token).getStatusCode().value()).isEqualTo(422);
@@ -105,6 +108,7 @@ class AuthIT {
         assertThat(it.getList(token, "/api/v1/auth/sessions").getBody()).isNotEmpty();
         assertThat(post("/api/v1/auth/sign-out", null, token).getStatusCode().value()).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/iam/me").getStatusCode().value()).isEqualTo(401);
+        assertThat(it.get(token, "/api/v1/iam/session").getStatusCode().value()).as("the per-page check refuses an ended session too").isEqualTo(401);
 
         // five wrong passwords lock the account
         for (int i = 0; i < 5; i++) {
