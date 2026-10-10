@@ -34,7 +34,7 @@ export interface Question { id: string; course_code: string; topic: string | nul
 interface Version { version: number; kind: string; stem: string; options: string[]; answers: number[]; explanation: string | null; marks: number; topic: string | null; difficulty: string; created_at: string; created_by: string | null; attempts: number }
 interface Decision { version: number; decision: "APPROVED" | "RETURNED"; note: string | null; decided_at: string; decided_by: string | null; decided_office: string | null }
 const MOD_WORD: Record<Moderation, [string, "ok" | "warn" | "bad"]> = { APPROVED: ["Approved", "ok"], PENDING: ["Awaiting moderation", "warn"], RETURNED: ["Returned", "bad"] };
-const MODERATORS = ["hod", "exams", "facultyexams", "dean", "gst", "eps", "super", "jupeb"];
+const MODERATORS = ["hod", "exams", "facultyexams", "dean", "gst", "eps", "super", "jupeb", "ict"];
 export interface BlueprintRow { topic: string; easy: number; medium: number; hard: number; total: number; marks?: number }
 
 const DIFF: Record<string, ["ok" | "info" | "bad" | "grey", string]> = { EASY: ["ok", "Easy"], MEDIUM: ["info", "Medium"], HARD: ["bad", "Hard"] };
@@ -72,7 +72,8 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
       x.marks, x.topic ?? "", x.difficulty, x.explanation ?? "", x.archived_at ? "ARCHIVED" : x.active ? "ACTIVE" : "INACTIVE", x.version ?? 1, x.moderation ?? ""]);
     downloadBlob(await brandedXlsx(`${course} question bank`, head, body, { sheetName: "Questions", serial: docSerial("QBK"), sub: `${questions.length} questions · keys included: keep this file within the office`, noSerialColumn: true }), `${(course ?? "bank").replace(/\s+/g, "-")}-question-bank.xlsx`);
   }
-  const may = ["lecturer", "hod", "exams", "dean", "gst", "eps", "super", "jupeb"].includes(actingOffice ?? "");
+  // V385: the Directorate of ICT authors, imports and moderates the Post-UTME banks (the server holds it to those banks)
+  const may = ["lecturer", "hod", "exams", "dean", "gst", "eps", "super", "jupeb", "ict"].includes(actingOffice ?? "");
   const mayModerate = MODERATORS.includes(actingOffice ?? "");
   const [q, setQ] = useState<Draft>({ ...EMPTY, options: [...EMPTY.options] });
   const [editing, setEditing] = useState<Question | null>(null);
@@ -249,7 +250,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
       </Panel>
 
       {/* V375: a sample read, the rest approved with it */}
-      {mayModerate ? <ModerationSample course={course} /> : null}
+      {mayModerate && !course?.startsWith("PUTME:") ? <ModerationSample course={course} /> : null}
       {may ? <QuestionImport course={course} courseTitle={courses.find((c) => c.code === course)?.title} /> : null}
       {may ? (
         <Panel title="Author a question" right={`Added to ${course}`}>
