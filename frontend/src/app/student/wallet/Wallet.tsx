@@ -75,7 +75,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
 
       {owed ? (canApply ? (
         <Note kind="ok" title="Your funding covers part or all of what you owe" action={<Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("apply", "POST", "/me/wallet/apply", { session: w.session }, `Wallet applied to the ${w.session} charge`, ""); if (r) setSaid(`${naira(Math.min(bal, owed))} applied to your ${w.session} fees.`); }}>Apply {naira(Math.min(bal, owed))} to my fees</Btn>}>
-          There is {naira(bal)} in the wallet and {naira(owed)} outstanding for {w.session}. Applying it settles the invoice in the same moment — the money is already with the University. The loan is used first, then a grant, then your own money.
+          Wallet {naira(bal)} · outstanding {naira(owed)} for {w.session}. The loan is used first, then a grant, then your own money.
         </Note>
       ) : null) : (
         <Note kind="ok" title="Nothing outstanding">Your {w.session} charges are settled. The receipts on your Fees page show which source paid.</Note>
@@ -90,14 +90,14 @@ export function Wallet({ w }: { w: StudentWallet }) {
           ]} />
           {t.allowed ? (
             <div className="mt-2">
-              <div className="sub2 mb-2">A top-up is for exactly the shortfall{t.over_shortfall_allowed ? ", or more if you choose" : ""}; it is your own money, never the Fund&rsquo;s, and it is credited to your wallet the moment the gateway confirms. The shortfall is worked out again when you ask.</div>
+              <div className="sub2 mb-2">A top-up covers the shortfall{t.over_shortfall_allowed ? ", or more if you choose" : ""}.</div>
               <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: t.max_topup }, `Top-up reference for the ${w.session} shortfall`, ""); if (r) setTopupRef({ reference: String(r.reference), amount: Number(r.amount) }); }}>TOP UP {naira(t.max_topup)}</Btn>
               {topupRef ? (
                 <div className="mt-2" style={{ paddingTop: "var(--s-2)", borderTop: "1px solid var(--line-2)" }}>
-                  <div className="sub2 mb-2">Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay it by card or USSD; the moment the gateway confirms, your wallet is credited and you can apply it.</div>
+                  <div className="sub2 mb-2">Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay by card or USSD; your wallet is credited once the gateway confirms.</div>
                   <PayByCard reference={topupRef.reference} amount={topupRef.amount} />
                 </div>
-              ) : t.open_reference ? <div className="sub2 mt-2">A top-up reference <span className="tnum">{t.open_reference}</span> is open; asking again retires it and issues a fresh one for today&rsquo;s shortfall.</div> : null}
+              ) : t.open_reference ? <div className="sub2 mt-2">A top-up reference <span className="tnum">{t.open_reference}</span> is open; a new request replaces it.</div> : null}
             </div>
           ) : null}
         </PBody>
@@ -111,7 +111,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
                 {naira(wdl.amount)} of {wdl.source_code ?? "funding"} for {wdl.session} to {wdl.bank_name} {wdl.account_no}. {wdl.state === "PAID" ? `Paid ${wdl.paid_at ? onDay(wdl.paid_at) : ""}${wdl.paid_ref ? ` · ${wdl.paid_ref}` : ""}.` : wdl.state === "REJECTED" ? (wdl.reason ?? "") : "You will be told the decision."}
               </Note>
             ) : null}
-            {elig.nelfund_after_settlement ? <Note kind="info" title="NELFUND funds received after your school fees were already paid">The Fund&rsquo;s {naira(nelRefundable)} for {w.session} arrived after your fees were settled by other means, so it may be refunded to you. The University approves each refund before any money leaves it.</Note> : null}
+            {elig.nelfund_after_settlement ? <Note kind="info" title="NELFUND funds received after your school fees were already paid">The Fund&rsquo;s {naira(nelRefundable)} for {w.session} arrived after your fees were settled, so it may be refunded to you, subject to the University&rsquo;s approval.</Note> : null}
             {elig.eligible && refundCap > 0 ? (
               <>
                 <div className="sub2 mb-2">Your {w.session} fees are cleared and {naira(refundCap)} of {refundSource === "NELFUND" ? "the Fund's money" : "your own money"} may be refunded. Enter <b>your own</b> bank account.</div>
@@ -138,7 +138,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
             {w.balances.length ? <DTable cols={["Source", "Credited|num", "Used|num", "Refunded|num", "Available|num"]} rows={w.balances.map((b) => [
               <Two key="s" a={<span>{b.source_name}</span>} b={<Pil kind={NATURE[b.nature]?.[1] ?? "grey"}>{NATURE[b.nature]?.[0] ?? b.nature}</Pil>} />,
               <span key="c" className="tnum">{naira(b.credited)}</span>, <span key="a" className="tnum">{naira(b.applied)}</span>, <span key="r" className="tnum">{naira(b.refunded)}</span>, <b key="v" className="tnum">{naira(b.available)}</b>,
-            ])} /> : <div className="sub2">No funding on your wallet yet. NELFUND, a scholarship or your own top-up each show as their own line here.</div>}
+            ])} /> : <div className="sub2">No funding on your wallet yet.</div>}
             <div className="sub2 mt-2">The Fund&rsquo;s money and your own are refundable once the session&rsquo;s fees are settled; a scholarship or a sponsor&rsquo;s grant is not. <LinkBtn kind="ghost" size="sm" href="/student/fees">Fees page</LinkBtn></div>
           </PBody>
         </Panel>

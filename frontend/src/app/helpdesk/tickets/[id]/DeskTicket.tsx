@@ -122,7 +122,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
             <div className="stack">
               {t.requester_kind === "PUBLIC" ? (
                 <Note kind="bad" title="Asked from the sign-in page, not signed in">
-                  Nothing here is proven: the name, the number and the email are what the person typed. Confirm who they are &mdash; a call to the phone they gave, or in person with their identity card &mdash; before acting on any account. A reset link goes only to the address the account already holds.
+                  The name, number and email are as typed. Confirm who they are (a call to their phone, or in person with an identity card) before acting on any account. A reset link goes only to the account&rsquo;s own address.
                 </Note>
               ) : null}
               <KvGrid cls="grid--2" pairs={[
@@ -196,7 +196,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
         <Modal title={t.agent ? `Reassign ${t.number}` : `Assign ${t.number}`} sub="To an ICT Support Agent, the Head of ICT Support Desk or the Director" onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy || !agent || agent === t.assigned_to} onClick={async () => { if (await call("/assign", { agentId: agent, reason: reason.trim() || null }, `${t.number}: ${t.agent ? "reassigned" : "assigned"} to ${agents.find((a) => a.id === agent)?.name ?? "an agent"}`)) closeDialog(); }}>{t.agent ? "Reassign" : "Assign"}</Btn></>}>
           <div className="stack">
-            <Field id="hd-agent" label="Agent" required hint={ranked.some((a) => a.eligible) ? "The agents the routing would choose are listed first: posted on this queue, covering this faculty or department, available." : "No posted agent covers this ticket; any agent of the desk may take it."}>
+            <Field id="hd-agent" label="Agent" required hint={ranked.some((a) => a.eligible) ? "Agents the routing would choose are listed first." : "No posted agent covers this ticket; any agent may take it."}>
               <select id="hd-agent" className="ctl" value={agent} onChange={(e) => setAgent(e.target.value)}>
                 <option value="">Choose…</option>
                 {ranked.map((a) => <option key={a.id} value={a.id}>{a.posted ? "Posted here · " : a.eligible ? "Eligible · " : ""}{describe(a)}</option>)}
@@ -207,7 +207,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
         </Modal>
       ) : null}
       {dialog === "transfer" ? (
-        <Modal title={`Transfer ${t.number} to another queue`} sub="The same ticket, the same number: it leaves this queue for one that handles the matter, and is routed to an agent there" onClose={closeDialog}
+        <Modal title={`Transfer ${t.number} to another queue`} sub="The same ticket moves to the queue that handles the matter" onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy || !queueTo || queueTo === t.queue_code || reason.trim().length < 5} onClick={async () => { if (await call("/transfer", { queue: queueTo, reason: reason.trim() }, `${t.number}: transferred to ${queues.find((q) => q.code === queueTo)?.name ?? queueTo}`)) closeDialog(); }}>Transfer</Btn></>}>
           <div className="stack">
             <Field id="hd-queue-to" label="Queue" required>
@@ -221,7 +221,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
         </Modal>
       ) : null}
       {dialog === "office" ? (
-        <Modal title={`Escalate ${t.number} to an office`} sub="A policy or administrative decision goes to the office responsible for this queue; a technical fault to the Director of ICT. The ticket waits for the office's answer." onClose={closeDialog}
+        <Modal title={`Escalate ${t.number} to an office`} sub="A policy decision goes to the queue's office; a technical fault to the Director of ICT" onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="urgent" disabled={busy || !officeTo || reason.trim().length < 5} onClick={async () => { if (await call("/escalate-office", { office: officeTo, reason: reason.trim() }, `${t.number}: escalated to ${offices.find((o) => o.code === officeTo)?.label ?? officeTo}`)) closeDialog(); }}>Escalate to the Office</Btn></>}>
           <div className="stack">
             <Field id="hd-office-to" label="Office" required>
@@ -231,7 +231,7 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
               </select>
             </Field>
             <Field id="hd-office-reason" label="What the office must decide" required hint="The office reads this first; say what was found and what you need from them"><textarea id="hd-office-reason" className="ctl" rows={4} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} /></Field>
-            <div className="sub2">Support access is never administrative authority: the office changes what support cannot, and its answer comes back to you on the ticket.</div>
+            <div className="sub2">Support access is not administrative authority; the office&rsquo;s answer comes back on the ticket.</div>
           </div>
         </Modal>
       ) : null}
@@ -242,11 +242,11 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
         </Modal>
       ) : null}
       {dialog === "reset" ? (
-        <Modal title={`Send a password reset link for ${t.number}`} sub="Through the portal's own secure door: a one-hour link goes to the email address and phone on the requester's account. No password is shown or set by the desk." onClose={closeDialog}
+        <Modal title={`Send a password reset link for ${t.number}`} sub="A one-hour link goes to the email and phone on the account. The desk never sets or sees a password." onClose={closeDialog}
           foot={<><Btn kind="ghost" onClick={closeDialog}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={async () => { if (await call("/password-reset", {}, `${t.number}: password reset link sent to the requester`)) closeDialog(); }}>Send the Link</Btn></>}>
           <div className="stack">
             <KvGrid cls="grid--2" pairs={[["Account", <span key="a" className="tnum">{t.requester_number ?? t.requester_email}</span>], ["Email on record", t.requester_email ?? "—"]]} />
-            <div className="sub2">The requester is told on the ticket that the link was sent, and the act goes on the history in your name.</div>
+            <div className="sub2">The requester is told; the act is recorded in your name.</div>
           </div>
         </Modal>
       ) : null}

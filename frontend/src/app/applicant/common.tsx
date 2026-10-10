@@ -136,7 +136,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   if (wired === false) {
     return (
       <Note kind="info" title="Card and USSD payment is not open yet">
-        Pay &#8358;{amount.toLocaleString()} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference and nothing else. The Bursary confirms it against the bank&rsquo;s record and this page shows it paid.
+        Pay &#8358;{amount.toLocaleString()} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference.
       </Note>
     );
   }

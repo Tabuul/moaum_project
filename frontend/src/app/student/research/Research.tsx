@@ -141,7 +141,7 @@ export function Research() {
   return (
     <>
       <Note kind={r.awarded_at ? "ok" : "info"} title={`${KIND[r.degree_kind] ?? r.degree_kind} — ${STAGE_LABEL[r.stage] ?? r.stage}`}>
-        {r.programme_name} · {r.department_name}. Your research runs from supervision through the proposal, seminar, title, panel and viva to the award; the School records each step.
+        {r.programme_name} · {r.department_name}
       </Note>
 
       <Panel title="Progress">
@@ -232,7 +232,7 @@ export function Research() {
               <Btn kind="primary" disabled={busy || !docFile} onClick={() => void submitDocument()}>Submit Document</Btn>
             </div>
           ) : null}
-          <div className="sub2 mt-2">A new version never replaces an earlier one. A draft submitted once your title is registered moves your record to draft submitted; a final copy after the oral examination moves it to final submitted.</div>
+          <div className="sub2 mt-2">A new version never replaces an earlier one.</div>
         </PBody>
       </Panel>
 

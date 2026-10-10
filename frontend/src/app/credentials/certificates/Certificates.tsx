@@ -59,7 +59,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
         ["Security stock left", t.stockLeft.toLocaleString(), t.stockLeft < 1000 ? "var(--red-ink)" : null, "Reorder at 1,000"],
       ]} />
       <Note kind="info" title="A certificate cannot be printed before Senate approves the award">
-        The graduand list, the classification and the clearance are all checked by the system first. Stationery serial numbers are tracked from issue to collection, so a spoiled certificate is accounted for.
+        Stationery serial numbers are tracked from issue to collection.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
 

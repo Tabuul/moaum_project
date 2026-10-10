@@ -7,9 +7,7 @@ export function OfficeDashboard({ me, requestsOpen = null, openQueries = null }:
   const label = officeLabel(me?.activeOffice);
   return (
     <>
-      <Note kind="info" title={`The ${label}'s dashboard arrives with its module`}>
-        The menu on the left is this office&rsquo;s, exactly as designed; the screens it can already reach are the portal&rsquo;s, and the rest say so when pressed. The figures this dashboard will carry come from modules not yet on the portal, so none are shown here.
-      </Note>
+      <Note kind="info" title={`The ${label}'s dashboard arrives with its module`} />
       {openQueries !== null ? (
         <Note kind={openQueries ? "bad" : "ok"} title={openQueries ? `${openQueries} result quer${openQueries === 1 ? "y" : "ies"} awaiting an answer` : "No result query is waiting"}>
           {openQueries ? "A student has questioned a mark. Answer it on the record — the student sees your reply." : "Result queries students raise arrive on the queries desk."} <a href="/results/queries">Open result queries</a>.

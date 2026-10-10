@@ -106,7 +106,7 @@ export function BoardPanel({ session, canWrite }: { session: string; canWrite: b
             r.changed ? <span key="w" style={{ color: "var(--bad)" }}>{`Changed since sent: ${(r.changed_facts ?? []).map((f) => FACT[f] ?? f).join(", ")} — send the correction`}</span>
               : r.stage === "NOT_SENT" ? (r.ready ? "Ready to send" : r.problems.join(" · ")) : r.note ?? "—"])} />
         {canWrite && rows.length ? <label className="row mt-2" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={allShown} onChange={() => setPicked(allShown ? new Set() : new Set(rows.map((r) => r.application_id)))} /> Choose all {rows.length} shown</label> : null}
-        <p className="sub2 mt-2">The export carries every fact the Board asks for and the photographs are named by application number; upload them on the Board&rsquo;s registration portal, then mark the records sent. What was sent is kept: a record changed after it (a name, a date of birth, a subject option) is flagged here until the correction is sent.</p>
+        <p className="sub2 mt-2">Upload the export on the Board&rsquo;s portal, then mark the records sent. A record changed afterwards is flagged until the correction is sent.</p>
       </PBody>
       {ask ? (
         <Modal title={`${STAGE[ask.stage]?.[0]} — ${picked.size} record${picked.size === 1 ? "" : "s"}`} onClose={() => setAsk(null)}
@@ -193,7 +193,7 @@ export function ExamTimetablePanel({ session, canWrite }: { session: string; can
               ...(canWrite ? [<span key="a" className="row"><Btn kind="ghost" onClick={() => setForm({ id: p.id, subject: subjectKey(p), title: p.title, kind: p.kind, sitsOn: p.sits_on, startsAt: p.starts_at, endsAt: p.ends_at, centre: p.centre ?? "", note: p.note ?? "" })}>Edit</Btn>
                 <Btn kind="ghost" onClick={() => void remove(p)}>Remove</Btn></span>] : [])])} />
         )}
-        <p className="sub2 mt-2">Published, each student sees their own papers (of an either/or subject, the option they sit) and a student cleared to sit prints an admit card with a verification code.</p>
+        <p className="sub2 mt-2">Once published, each student sees their own papers; a cleared student prints an admit card.</p>
       </PBody>
       {form ? (
         <Modal wide title={form.id ? "Edit the paper" : "Add a paper"} onClose={() => setForm(null)}

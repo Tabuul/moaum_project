@@ -51,7 +51,7 @@ export default async function ReconcilePage() {
               <LinkBtn key="l" kind="primary" href="/finance/exceptions">{c.state === "PROPOSED" ? "Approve" : "Investigate"}</LinkBtn>,
             ]),
           ]} />
-        ) : <PBody><div className="sub2">Nothing to reconcile: every gateway event posted or was resolved, and no bank credit waits.</div></PBody>}
+        ) : <PBody><div className="sub2">Nothing to reconcile.</div></PBody>}
       </Panel>
       <Panel title="The other exception types, and how each resolves">
         <DTable cols={["Exception", "What it means", "Resolution", "Approvals|num"]} rows={[
@@ -63,7 +63,7 @@ export default async function ReconcilePage() {
         ]} />
       </Panel>
       <Note kind="info" title="A payment is confirmed by the gateway or the bank, never by the browser">
-        The candidate&rsquo;s browser may never return from the payment page. Two independent paths therefore converge on one idempotent settlement: the gateway&rsquo;s signed callback, and the sweep that asks the gateway about every open checkout. Whichever arrives first settles the payment; the second finds it already settled and does nothing. {events.some((e) => e.outcome === "ALREADY_SETTLED") ? <Pil kind="ok">Seen happening in this log</Pil> : null}
+        The signed callback and the sweep settle a payment once, whichever arrives first. {events.some((e) => e.outcome === "ALREADY_SETTLED") ? <Pil kind="ok">Seen happening in this log</Pil> : null}
       </Note>
     </Shell>
   );

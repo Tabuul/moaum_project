@@ -90,13 +90,13 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
   const c = v.counts;
   return (
     <>
-      <PageHead title="Offers and the waiting list" description="The session's acceptance deadline, the offers past it, and the places they free — filled from the waiting list in merit order, by the Admissions Office's choice."
+      <PageHead title="Offers and the waiting list" 
         actions={<select className="ctl" aria-label="Session" value={s} onChange={(e) => { setS(e.target.value); setProg(""); setW(null); }}>{sessions.map((x) => <option key={x}>{x}</option>)}</select>} />
       <KvGrid cls="grid--3" pairs={[["Offers released", String(c.offered)], ["Accepted", String(c.accepted)], ["Declined", String(c.declined)],
         ["Lapsed", String(c.lapsed)], ["Promoted from the waiting list", String(c.promoted)], ["On the waiting list", String(c.waiting)]]} />
       <Panel title="The acceptance deadline" right={v.deadline ? <Pil kind="info">Set</Pil> : <Pil kind="grey">None — no offer lapses</Pil>}>
         <PBody>
-          <p className="sub2">An offer neither accepted nor paid for by its deadline may be lapsed. Give a date, or the days allowed after each offer&rsquo;s own release, or both — then the later of the two holds, so an offer released late (a promotion) still has its days. An applicant who has paid the acceptance fee is never lapsed.</p>
+          <p className="sub2">An offer not accepted or paid by its deadline may be lapsed. With both a date and days after release, the later holds. An applicant who has paid the acceptance fee is never lapsed.</p>
           <div className="grid grid--3">
             <Field id="od-by" label="Accept by"><input id="od-by" className="ctl" type="date" value={f.acceptBy} disabled={!canDecide} onChange={(e) => setF({ ...f, acceptBy: e.target.value })} /></Field>
             <Field id="od-days" label="Days after release" hint="1 to 120" error={badDays ? "1 to 120 days" : undefined}><input id="od-days" className="ctl tnum" inputMode="numeric" value={f.days} disabled={!canDecide} onChange={(e) => setF({ ...f, days: e.target.value })} /></Field>
@@ -119,7 +119,7 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
       </Panel>
       <Panel title="Places freed — filled from the waiting list" right={v.vacancies.length ? <Pil kind="info">{`${v.vacancies.length} place${v.vacancies.length === 1 ? "" : "s"}`}</Pil> : <Pil kind="grey">None</Pil>}>
         <PBody>
-          {!v.vacancies.length ? <p className="sub2">No place is freed: an offer lapsed or declined frees one, until it is filled from the waiting list.</p> : (
+          {!v.vacancies.length ? <p className="sub2">No place is freed.</p> : (
             <>
               <DTable pageSize={25} cols={["Programme", "Place of", "Basis", "Freed", "|mid"]} rows={v.vacancies.map((x) => [x.programme_name, `${x.application_no} — ${x.name}`,
                 x.basis ? BASIS[x.basis] ?? x.basis : "—", `${x.why === "LAPSED" ? "Lapsed" : "Declined"} ${day(x.freed_at)}`,
@@ -132,7 +132,7 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
       {prog && w ? (
         <Panel title={`Waiting list — ${programmes.find(([code]) => code === prog)?.[1] ?? prog}`} right={<Pil kind="info">{`${w.vacancies.length} place${w.vacancies.length === 1 ? "" : "s"} to fill`}</Pil>}>
           <PBody>
-            <p className="sub2">{`In merit order. The places to fill, in the order they were freed: ${w.vacancies.map((x) => `${x.basis ? BASIS[x.basis] ?? x.basis : "unstated basis"} (${x.application_no})`).join(", ")}. Choose whom to promote — the top of the list is chosen for you; keep the quota as the policy holds it (a State Merit place for an indigene, a Locality place for the catchment).`}</p>
+            <p className="sub2">{`In merit order. The places to fill, in the order they were freed: ${w.vacancies.map((x) => `${x.basis ? BASIS[x.basis] ?? x.basis : "unstated basis"} (${x.application_no})`).join(", ")}. Keep the quota as the policy holds it (a State Merit place for an indigene, a Locality place for the catchment).`}</p>
             {!w.waiting.length ? <p className="sub2">No eligible candidate is waiting in this programme.</p> : (
               <DTable pageSize={0} cols={["|mid", "Rank|num", "Application", "Name", "Aggregate|num", "State", "LGA"]} rows={w.waiting.map((x) => [
                 <input key="c" type="checkbox" aria-label={`Promote ${x.name}`} disabled={!canDecide} checked={pick.has(x.app_id)}
@@ -147,13 +147,13 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
       {lapse ? (
         <Modal title={`Lapse ${v.pastDeadline.length} offer${v.pastDeadline.length === 1 ? "" : "s"}`} onClose={() => setLapse(false)}
           foot={<><Btn kind="ghost" onClick={() => setLapse(false)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy} onClick={() => void doLapse()}>Lapse them</Btn></>}>
-          <p>Each applicant listed is told that the offer was not accepted by its deadline and has lapsed. A lapsed offer is not reinstated; each frees a place to fill from the waiting list.</p>
+          <p>Each applicant is told. A lapsed offer is not reinstated.</p>
         </Modal>
       ) : null}
       {ask && w ? (
         <Modal title={`Promote ${pick.size} from the waiting list`} onClose={() => setAsk(false)}
           foot={<><Btn kind="ghost" onClick={() => setAsk(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void promote()}>Promote</Btn></>}>
-          <p>{`${w.waiting.filter((x) => pick.has(x.app_id)).map((x) => x.name).join("; ")} — each offered the next freed place, released at once and told; the decision is read under Admission Status, and each has the days allowed after release to accept.`}</p>
+          <p>{`${w.waiting.filter((x) => pick.has(x.app_id)).map((x) => x.name).join("; ")} — each offered the next freed place, released at once and told.`}</p>
         </Modal>
       ) : null}
     </>

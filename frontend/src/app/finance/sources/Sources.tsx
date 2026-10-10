@@ -58,7 +58,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
     <>
       <RoleLine allowed={["bursar"]} actingOffice={actingOffice} canAct={canEdit} action="Adding and editing funding sources" />
       <Note kind="info" title="The sources of income, kept in the database">
-        Every source here is a row the University keeps and can add to at any time. A source is a <b>loan</b> the student repays the Fund (NELFUND), a <b>grant</b> that is never repaid (a scholarship or bursary), or the student&rsquo;s <b>own money</b> (a top-up). Every wallet credit names one of these, and a student&rsquo;s wallet shows one card per source with the balance as their total.
+        A <b>loan</b> repaid to the Fund (NELFUND), a <b>grant</b> never repaid, or the student&rsquo;s <b>own money</b>. Every wallet credit names one.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
@@ -103,7 +103,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
               {editing ? <Btn kind="ghost" onClick={() => { setSrc({ ...BLANK }); setEditing(null); }}>Cancel</Btn> : null}
               <LinkBtn kind="ghost" href="/finance/nelfund?tab=report">Funding report</LinkBtn>
             </div>
-            <div className="sub2 mt-2">NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here. Add as many as you need.</div>
+            <div className="sub2 mt-2">NELFUND, Scholarship and Self top-up are seeded.</div>
           </PBody>
         </Panel>
       ) : (

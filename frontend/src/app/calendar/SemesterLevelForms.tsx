@@ -64,7 +64,7 @@ export function SemesterModal({
         <Field id="rf_ropen" label="Registration opens" hint="Makes the course form writable for cleared students.">
           <RecDay k="ropen" draft={draft} set={set} />
         </Field>
-        <Field id="rf_fresh" label="Fresh students register from" hint="While the semester is still planned, the session's entrants register their courses from this day; the semester's courses are put on offer when it is saved. Everyone else waits for the semester to open.">
+        <Field id="rf_fresh" label="Fresh students register from" hint="Entrants register from this day while the semester is planned; everyone else waits for it to open.">
           <RecDay k="fresh" draft={draft} set={set} />
         </Field>
         <Field
@@ -131,14 +131,14 @@ export function LevelModal({
         <Field id="rf_max" label="Maximum units per semester">
           <RecText k="max" draft={draft} set={set} num />
         </Field>
-        <Field id="rf_prob" label="Maximum units on probation" full hint="A student the broadsheet has put on probation registers no more than this at this level. Leave blank and probation is pronounced but does not cut the units.">
+        <Field id="rf_prob" label="Maximum units on probation" full hint="Maximum units for a student on probation. Blank: no cut.">
           <RecText k="prob" draft={draft} set={set} num ph="e.g. 15" />
         </Field>
         <Field
           id="rf_carry"
           label="Carryover counts toward the maximum"
           full
-          hint="It does, and it has to: a student repeating three courses has three courses’ worth of examinations to sit."
+          
         >
           <RecSelect k="carry" draft={draft} set={set} options={YESNO} />
         </Field>

@@ -22,7 +22,7 @@ export function UnpaidRegistrations({ view }: { view: UnpaidView }) {
   return (
     <>
       <PageHead
-        description={<>Course registrations of the session made while the semester&rsquo;s school fees were not cleared — the fees not yet stated for the student on Fee Setup, or stated and not paid. From V362 a registration, an examination card, results and an identity card wait on stated and paid fees; these were made before. Nothing here changes a registration or a payment: what is done about each is the Bursary&rsquo;s and the Registry&rsquo;s own act.</>}
+        description={<>Registrations made before the fee gate while the semester&rsquo;s school fees were not cleared. Nothing here changes a registration or a payment.</>}
         actions={
           <select className="ctl" aria-label="Session" value={view.session} onChange={(e) => router.push(`/finance/unpaid-registrations?session=${encodeURIComponent(e.target.value)}`)}>
             {sessions.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -39,7 +39,7 @@ export function UnpaidRegistrations({ view }: { view: UnpaidView }) {
       />
       {view.notStated > 0 ? (
         <Note kind="info" title={`${view.notStated.toLocaleString()} registration${view.notStated === 1 ? "" : "s"} with no fee stated for the student`}>
-          The Bursary states the session&rsquo;s fees on Fee Setup and Schedule; each student then owes their line and pays it before the next semester registers. A group the University means to be free is stated as a ₦0 line.
+          The Bursary states them on Fee Setup; a free group is stated as a ₦0 line.
         </Note>
       ) : null}
       <Panel title="Registrations without fees cleared" right={`${view.rows.length.toLocaleString()} shown · ${view.session}`}>

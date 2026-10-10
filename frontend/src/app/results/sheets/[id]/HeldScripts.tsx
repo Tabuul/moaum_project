@@ -122,21 +122,21 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
     <Panel title="Scripts from candidates not on the roll" right={held ? `${held} held · released when the candidate registers` : "None held"}>
       <PBody>
         <div className="sub2 mb-2">
-          A candidate who sat the paper without registering the course is not on the roll, so the sheet has no row for them. Hold the script here by matriculation number: the mark waits, not graded and not on the broadsheet, and the register releases it into this sheet the moment the candidate pays, registers the course and the registration is approved.
-          {closesOn ? <> Late registration for this semester closes on <b>{day(closesOn)}</b>; a script not released by then lapses and never grades.</> : <> The Registry has not set a late-registration closing date for this semester on the calendar; until it does, held scripts do not lapse.</>}
+          For a candidate who sat without registering the course. The mark waits, ungraded, until the registration is approved.
+          {closesOn ? <> Late registration for this semester closes on <b>{day(closesOn)}</b>; a script not released by then lapses and never grades.</> : <> No late-registration closing date is set; held scripts do not lapse.</>}
         </div>
         {err ? <ProblemNotice problem={err} /> : null}
         {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
         {own && !closed ? (
           <div className="row mb-2">
-            <span className="sub2">Many candidates? Fill the template and upload it — every line holds, or none does and each refusal is named.</span>
+            <span className="sub2">Many candidates? Upload the template; every line holds, or none does.</span>
             <Btn kind="ghost" onClick={template}>Download the held-scripts template</Btn>
             <Btn kind="ghost" disabled={busy} onClick={() => file.current?.click()}>{busy ? "Working…" : "Upload held scripts"}</Btn>
             <input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} />
           </div>
         ) : null}
         {own ? closed ? (
-          <Note kind="bad" title="Late registration has closed for this semester">No more scripts can be held for {courseCode}. A script still held has lapsed; the Registry can move the date on the calendar if Senate extends it.</Note>
+          <Note kind="bad" title="Late registration has closed for this semester">No more scripts can be held for {courseCode}. A script still held has lapsed.</Note>
         ) : (
           <div className="row row--end mb-2">
             <div className="field" style={{ flex: "1 1 200px" }}><label htmlFor="hs-num">Matriculation number</label>

@@ -68,7 +68,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
     <>
       <RoleLine allowed={["hrm"]} actingOffice={actingOffice} canAct={may} action="Building and approving payroll" />
       <Note kind="info" title="A payroll is built by one officer and approved by another">
-        The run is computed over the active establishment: each payslip is a snapshot of the grade&rsquo;s components and the statutory deductions — the employee&rsquo;s 8% pension and PAYE after the consolidated relief. The officer who builds a run cannot approve it, and only an approved run is marked paid.
+        Statutory deductions: the employee&rsquo;s 8% pension and PAYE after the consolidated relief. Only an approved run is marked paid.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

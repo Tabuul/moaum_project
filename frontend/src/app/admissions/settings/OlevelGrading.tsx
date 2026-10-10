@@ -108,10 +108,8 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
     >
       <PBody>
         <div className="sub2 mb-3">
-          JAMB uploads each candidate&rsquo;s O&rsquo;Level results, one or two sittings of WAEC, NECO or NABTEB. The screening prices each grade,
-          counts the subjects most relevant to the programme &mdash; the better grade in a subject sat twice &mdash; and adds a bonus for how many
-          sittings it took. <b>These numbers are the Academic Office&rsquo;s to state</b>, per session, and are recorded against it. The score is
-          computed under them and shown to the Academic Office only; the applicant sees the results as JAMB sent them, never the score.
+          Points per grade over the relevant subjects (the better grade of a subject sat twice), plus a sittings bonus.
+          <b> Stated by the Academic Office</b> per session; the score is shown to the Academic Office only, never the applicant.
         </div>
         {problem ? <ProblemNotice problem={problem} /> : null}
         {grading ? (
@@ -140,7 +138,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
             <div className="mt-4">
               <div className="eyebrow">Programmes screened by the post-UTME examination</div>
               <div className="sub2 mt-1 mb-2">
-                The departments named here sit the examination. Their candidates are scored on the examination alone, and the O&rsquo;Level grading above is not applied to them. Every other programme is screened on its O&rsquo;Level results.
+                Scored on the examination alone; every other programme is screened on O&rsquo;Level results.
               </div>
               <DTable cols={["Programme", "Faculty", "|num"]} rows={examCodes.map((code) => {
                 const p = programmes.find((x) => x.code === code);
@@ -150,7 +148,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
                   <IcoBtn key="x" icon="trash" label={`Remove ${p ? p.name : code} from examination screening`} danger disabled={!may} onClick={() => setExam(examCodes.filter((c) => c !== code))} />,
                 ];
               })} />
-              {!examCodes.length ? <div className="sub2 mb-2">No programme is screened by examination this session; every programme is screened on its O&rsquo;Level results.</div> : null}
+              {!examCodes.length ? <div className="sub2 mb-2">No programme is screened by examination this session.</div> : null}
               <div className="row">
                 <select className="ws__select" style={{ maxWidth: 460 }} value={pick} disabled={!may} onChange={(e) => setPick(e.target.value)} aria-label="Programme to add">
                   <option value="">Add a programme that sits the examination…</option>

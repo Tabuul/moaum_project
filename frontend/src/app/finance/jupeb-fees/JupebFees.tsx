@@ -83,7 +83,7 @@ export function JupebFees({ canWrite }: { canWrite: boolean }) {
       {session !== "*" && !d.own && d.carryFrom ? (
         <Note kind="info" title={`${d.carryFrom} has fees of its own; ${d.session} has none`}
           action={canWrite ? <Btn kind="secondary" disabled={busy} onClick={() => void carry(d.carryFrom!)}>{`Carry ${d.carryFrom}'s fees`}</Btn> : undefined}>
-          {`Until it has its own, ${d.session} takes the default below. Carrying copies ${d.carryFrom}'s fees and school fees, unchanged; fees already charged keep their amounts.`}
+          {`Until it has its own, ${d.session} takes the default below. Fees already charged keep their amounts.`}
         </Note>
       ) : null}
       <Panel title="Fees">

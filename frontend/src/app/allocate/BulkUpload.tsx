@@ -198,8 +198,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
         <input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></span>}>
         <PBody>
           <div className="t-sm" style={{ lineHeight: 1.6 }}>
-            Download the template, fill the <b>Allocations</b> sheet (Staff ID, Course code, Session and Semester are required; the Lecturers, Courses, Programmes, Departments and Sessions sheets are the register as it stands), upload it, read the check, then import the valid rows.
-            Every row is judged against the register: the lecturer and their department, the course and its department, the programme and level it is offered to, the session, the semester, the offering, duplicates in the file and allocations already on record. Nothing is written until you press Import. The file never creates or changes a lecturer, a course, a programme, a session or a semester.
+            Fill the template&rsquo;s <b>Allocations</b> sheet (Staff ID, Course code, Session and Semester required), upload it, then import the valid rows. Nothing is written until you press Import.
           </div>
           {phase ? <div className="row row--inline row--tight mt-2"><span className="spinner" aria-hidden /> <span className="sub2">{phase}</span></div> : null}
           {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
@@ -207,7 +206,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
         {grid && !validation && !result ? (
           <PBody>
             <div className="eyebrow">{fileName} · {grid.rows.length} row{grid.rows.length === 1 ? "" : "s"} · columns mapped</div>
-            <div className="sub2 mt-1">Each system field reads the column named beside it; change one if the file names it differently. Session and Semester fall back to the bar&rsquo;s {session}, {semName(semester).toLowerCase()} semester when the file leaves them blank.</div>
+            <div className="sub2 mt-1">Blank Session and Semester read {session}, {semName(semester).toLowerCase()} semester.</div>
             <div className="grid grid--3 mt-2">
               {FIELDS.map((f) => (
                 <div key={f.key} className="field">
@@ -257,7 +256,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
               <Btn kind="go" disabled={busy || !validation.summary.willImport || !canImport} onClick={() => void doImport()}>{busy ? "Importing…" : `Import ${validation.summary.willImport} valid record${validation.summary.willImport === 1 ? "" : "s"}`}</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => { setValidation(null); setGrid(null); setFileName(null); }}>Cancel</Btn>
             </div>
-            {validation.summary.errors + validation.summary.duplicates ? <div className="sub2 mt-2">{validation.summary.willImport} record{validation.summary.willImport === 1 ? "" : "s"} will be imported; {validation.summary.errors + validation.summary.duplicates} will not. Correct them in the file and upload it again afterwards.</div> : null}
+            {validation.summary.errors + validation.summary.duplicates ? <div className="sub2 mt-2">{validation.summary.willImport} record{validation.summary.willImport === 1 ? "" : "s"} will be imported; {validation.summary.errors + validation.summary.duplicates} will not.</div> : null}
           </PBody>
           <DTable cols={["Row|mid", "Lecturer", "Department", "Course", "Session", "Role", "Status|mid", "Findings"]} rows={shown.map(findingRow)} texts={shown.map((r) => `${r.row} ${r.lecturer} ${r.staffId} ${r.courseCode} ${r.course} ${r.status} ${r.codes.join(" ")}`)} pageSize={25} noPrint />
         </Panel>
@@ -272,12 +271,12 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
             ["Rows", String(result.summary.total), null, fileName ?? ""],
           ]} />
           <PBody>
-            {result.repeated ? <Note kind="info" title="This file was imported already">The same import was submitted twice; the record made the first time is shown and nothing was allocated again.</Note> : null}
+            {result.repeated ? <Note kind="info" title="This file was imported already">Nothing was allocated again.</Note> : null}
             <div className="row">
               {result.summary.errors + result.summary.duplicates ? <Btn kind="primary" onClick={() => void errorReport(result.rows, result.reference)}>Download error report</Btn> : null}
               <Btn kind="ghost" onClick={() => { setResult(null); setGrid(null); setFileName(null); }}>Done</Btn>
             </div>
-            <div className="sub2 mt-2">Each lecturer allocated is told by e-mail and sees the course on their teaching page; the score sheet opens in the lead&rsquo;s name once the examination session is open, and the result pipeline reads the same allocation.</div>
+            <div className="sub2 mt-2">Each lecturer allocated is told by e-mail.</div>
           </PBody>
         </Panel>
       ) : null}

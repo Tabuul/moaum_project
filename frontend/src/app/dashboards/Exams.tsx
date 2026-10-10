@@ -23,15 +23,15 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
       <ScopeNotice scope={scope} what="desk" />
       {q ? (
         <Note kind="bad" title={`${q} result quer${q === 1 ? "y" : "ies"} awaiting an answer`} action={<LinkBtn kind="urgent" href="/results/queries">Answer queries</LinkBtn>}>
-          A student has questioned a published mark. Each is routed to the department that owns the course and answered on the record; the corrected mark flows back through the chain.
+          A student has questioned a published mark.
         </Note>
       ) : (t?.notSubmitted ?? 0) ? (
         <Note kind="info" title={`${t?.notSubmitted} score sheet${(t?.notSubmitted ?? 0) === 1 ? " is" : "s are"} still with lecturers`} action={<LinkBtn kind="primary" href="/results/desk">Result desk</LinkBtn>}>
-          A sheet that misses this Senate waits for the next sitting, and its candidates carry an incomplete result. Chase the ones below before the deadline.
+          A sheet that misses this Senate waits for the next sitting.
         </Note>
       ) : (
         <Note kind="ok" title="Every sheet is submitted" action={<LinkBtn kind="primary" href="/results/desk">Result desk</LinkBtn>}>
-          No sheet is still with a lecturer this session. Move the ones in the workflow along, and record the Senate minute when the Board sits.
+          Record the Senate minute when the Board sits.
         </Note>
       )}
 

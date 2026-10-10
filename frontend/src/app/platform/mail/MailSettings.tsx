@@ -66,7 +66,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
   return (
     <>
       <Note kind="info" title="Manual mail server settings for Microsoft 365">
-        The IMAP, POP and SMTP parameters of the mail account the portal sends from. The account password is written once, encrypted at rest with the portal&rsquo;s own passphrase, and never shown again &mdash; the same rule as a payment gateway key. The defaults below are the standard Microsoft 365 servers; change them for another provider.
+        The mail account the portal sends from. The password is encrypted and never shown again. Defaults are the standard Microsoft 365 servers.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
@@ -80,7 +80,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
 
       <Panel title="The account" right={config.password_set ? <Pil kind="ok">Password set</Pil> : <Pil kind="grey">No password</Pil>}>
         <PBody>
-          {config.password_set ? <div className="sub2 mb-2">A password is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the password blank to keep it; type a new one to replace it.</div> : null}
+          {config.password_set ? <div className="sub2 mb-2">A password is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave it blank to keep it.</div> : null}
           <div className="grid grid--2">
             <Field id="username" label="Username" hint="The full email address"><input id="username" className="ctl tnum" value={f.username} onChange={(e) => set("username", e.target.value)} disabled={!may} autoComplete="off" placeholder="portal@moaum.edu.ng" /></Field>
             <Field id="fromAddress" label="From address" hint="What recipients see; blank uses the username"><input id="fromAddress" className="ctl tnum" value={f.fromAddress} onChange={(e) => set("fromAddress", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM Portal <portal@moaum.edu.ng>" /></Field>
@@ -104,7 +104,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
       </Panel>
 
       <Note kind="info" title="Sending over SMTP arrives with the mail transport">
-        These settings are stored now. The portal&rsquo;s notice sender uses them to send over Microsoft 365 once the SMTP transport is enabled on the API. Until then the outbox holds each notice and this screen keeps the settings ready.
+        Used once the SMTP transport is enabled on the API; until then the outbox holds each notice.
       </Note>
     </>
   );

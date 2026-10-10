@@ -51,7 +51,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
   return (
     <>
       <Note kind="info" title="Commitment accounting — budget is consumed at approval, not at payment">
-        An approved voucher reduces the available balance immediately, before the money leaves. That is what stops a cost centre committing money it has already promised elsewhere. Available is the budget less what is committed and what is spent.
+        Available is the budget less what is committed and what is spent.
       </Note>
 
       {said ? <Note kind="ok" title={said} /> : null}
@@ -87,7 +87,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
               <span key="u" className="row"><Bar pct={Math.min(100, pct)} colour={pct >= 100 ? "var(--red)" : pct >= 85 ? "var(--chrome)" : "var(--green)"} /><span className="tnum sub2">{pct}%</span></span>,
             ];
           })} texts={d.rows.map((r) => r.cost_centre)} />
-        ) : <PBody><div className="sub2">No budget is set for {d.year}, and no voucher has been raised against a cost centre. Set a cost centre&rsquo;s budget to begin.</div></PBody>}
+        ) : <PBody><div className="sub2">No budget is set for {d.year}.</div></PBody>}
       </Panel>
 
       {ie ? (() => {
@@ -108,7 +108,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
               <>
                 <DTable cols={["", "Budget|num", "Actual|num", "Variance|num"]} rows={rows}
                   texts={[...income.map((l) => l.name), "Total income", ...expense.map((l) => l.name), "Total expenditure", surplus >= 0 ? "Surplus for the year" : "Deficit for the year"]} />
-                <PBody><div className="sub2">Income and expenditure are read off the general ledger&rsquo;s income and expense accounts for the year. The budget is the cost-centre budget the Bursary set; the variance is what remains of it against actual expenditure. Income is not budgeted in the portal, so its budget column is blank.</div></PBody>
+                <PBody><div className="sub2">From the general ledger. Income is not budgeted, so its budget column is blank.</div></PBody>
               </>
             ) : <PBody><div className="sub2">No income or expense has been posted to the ledger for {ie.year} yet.</div></PBody>}
           </Panel>

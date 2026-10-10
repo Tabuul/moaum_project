@@ -71,7 +71,7 @@ export function JupebClaims({ may, onChanged }: { may: boolean; onChanged: () =>
   return (
     <Panel title={`JUPEB withdrawal refund claims${open ? ` — ${open} to decide` : ""}`}>
       <PBody>
-        <p className="sub2">A withdrawal opens a claim with the fees the candidate paid on the portal. Raise a refund against a payment (it then waits below for a second officer&rsquo;s approval) or decline the claim with your reason.</p>
+        <p className="sub2">Raise a refund against a payment (a second officer approves it) or decline the claim with your reason.</p>
         <DTable pageSize={10} cols={["Candidate", "Opened", "Paid|num", "Account", "Refunds", "Stage", ...(may ? [""] : [])]}
           texts={claims.map((c) => `${c.name} ${c.application_no}`)}
           rows={claims.map((c) => [

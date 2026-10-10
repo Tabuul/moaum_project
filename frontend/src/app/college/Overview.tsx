@@ -27,7 +27,7 @@ export function Overview({ data, problem, office }: { data: OverviewData | null;
     <>
       <PageHead
         title="College of Health Sciences"
-        description={`${MBBS.degree} · the College's students from 200 Level run on the College's own years, postings and Professional examinations inside this portal; 100 Level runs on the University's courses and GPA sheet.`}
+        description={`${MBBS.degree} · from 200 Level on the College's own years, postings and Professional examinations`}
         actions={<>
           <LinkBtn kind="primary" href="/college/examinations">Professional Examinations</LinkBtn>
           <LinkBtn href="/college/postings">Postings</LinkBtn>
@@ -55,7 +55,7 @@ export function Overview({ data, problem, office }: { data: OverviewData | null;
           <span key="k">{l.level >= 200 ? (l.dated ? <Pil kind="ok">Dated</Pil> : <Pil kind="grey">Undated</Pil>) : <span className="sub2">—</span>}</span>,
           <span key="o">{l.exam_code ? <LinkBtn href={`/college/examinations?exam=${encodeURIComponent(l.exam_code)}`}>Open</LinkBtn> : <LinkBtn href="/results/broadsheet">Broadsheet</LinkBtn>}</span>,
         ])} />
-        <PBody><div className="sub2">A year opens when a student registers it from their dashboard, or when the desk opens it for them; a cohort is the year begun in a session. The examination sits once, at the end of the year; the rule applies its decision provisionally and the College Academic Board confirms.</div></PBody>
+        <PBody><div className="sub2">The examination sits once, at the end of the year; the College Academic Board confirms decisions.</div></PBody>
       </Panel>
 
       <Panel title="Blocks and postings" right={`${data.session} · ${t.allocations} allocation${t.allocations === 1 ? "" : "s"}`}>
@@ -65,7 +65,7 @@ export function Overview({ data, problem, office }: { data: OverviewData | null;
           <span className="tnum" key="w">{b.total_weeks ?? "—"}</span>,
           <span className="tnum" key="a">{b.allocated}</span>,
         ])} />
-        <PBody><div className="row"><span className="sub2">The College allocates students to a block&rsquo;s postings for a session, with a rotation group, a supervisor and dates; the supervisor keeps the logbook.</span><span className="grow" /><LinkBtn href="/college/postings">Postings desk</LinkBtn></div></PBody>
+        <PBody><div className="row"><span className="sub2">Block postings, with a supervisor who keeps the logbook.</span><span className="grow" /><LinkBtn href="/college/postings">Postings desk</LinkBtn></div></PBody>
       </Panel>
 
       <Panel title="The programme, from the prospectus" right={`Regulations effective ${MBBS.regulationsEffective}`}>
@@ -79,11 +79,11 @@ export function Overview({ data, problem, office }: { data: OverviewData | null;
       </Panel>
       {TO_CONFIRM.length ? (
         <Note kind="info" title="Still to confirm with the College">
-          {TO_CONFIRM.join(" · ")} — the portal holds each as the prospectus states it until the College says otherwise. The prospectus&rsquo;s eleven conflicts stand on the examinations desk beside the subject they touch.
+          {TO_CONFIRM.join(" · ")} — held as the prospectus states until the College says otherwise.
         </Note>
       ) : null}
       <Note kind="info" title="Students of the College">
-        A College student signs in through the one University login and lands on the College dashboard: the journey from 100 to 600 Level, the year in hand with its fees and registration, and the results history. <Link href="/students">The register</Link> lists them with everyone else.
+        They sign in through the University login. <Link href="/students">The register</Link> lists them with everyone else.
       </Note>
     </>
   );

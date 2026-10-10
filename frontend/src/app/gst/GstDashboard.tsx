@@ -106,8 +106,8 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
   return (
     <>
       <PageHead title={`${word} Office dashboard`} description={eps
-        ? "Entrepreneurship Studies: who is entitled through the GST payment, who has registered the EPS courses, the courses and the results. The GST payment covers EPS; there is no separate EPS fee, and the Bursar states the GST fee."
-        : "General Studies: who is required to take GST courses, who has paid the GST fee, who has registered, the courses and the results. The Bursar states the GST fee; one payment covers GST and EPS."}
+        ? "Entrepreneurship Studies · the GST payment covers EPS; there is no separate EPS fee."
+        : "General Studies · one payment covers GST and EPS."}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="gd-session" className="sub2">Session</label>
           <select id="gd-session" className="ctl" value={data.session} onChange={(e) => go(withFilter({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
@@ -116,7 +116,7 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
         </span>} />
       {!rules.length ? (
         <Note kind="bad" title={`No GST fee is stated for ${data.session}`}>
-          Until the Bursar states the GST fee on Finance → Fee Setup, nothing is owed and nothing gates {word} registration; every student shows as &ldquo;no fee stated&rdquo;.
+          Until the Bursar states it on Fee Setup, nothing is owed and nothing gates {word} registration.
         </Note>
       ) : general ? (
         <Note kind="info" title={`GST fee for ${data.session}: ${naira(general.amount)}${rules.length > 1 ? ` (${rules.length} rules; the most specific prices a student)` : ""}`}>
@@ -128,8 +128,8 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
       {data.reach && (!data.reach.length || data.reach.some((r) => !r.email && !r.phone)) ? (
         <Note kind="bad" title={data.reach.length ? `${data.reach.filter((r) => !r.email && !r.phone).length} of the ${o} office's ${data.reach.length} holder${data.reach.length === 1 ? "" : "s"} cannot be told of course moves or requests` : `Nobody holds the ${o} office, so nobody is told of course moves or requests`}>
           {data.reach.length
-            ? <>No email or phone is on the record of {data.reach.filter((r) => !r.email && !r.phone).map((r) => r.name).join(", ")}. A holder with an email is told by email, one with only a phone by text message. The contact details are added on Users &amp; Roles (the Directorate of ICT or the Super Administrator).</>
-            : <>Post a holder of the {o} office on Users &amp; Roles, with an email or a phone on their record (the Directorate of ICT or the Super Administrator).</>}
+            ? <>No email or phone is on the record of {data.reach.filter((r) => !r.email && !r.phone).map((r) => r.name).join(", ")}. Add contact details on Users &amp; Roles.</>
+            : <>Post a holder of the {o} office on Users &amp; Roles, with an email or a phone.</>}
         </Note>
       ) : null}
       {data.waiting && (Number(data.waiting.moves_to_confirm) > 0 || Number(data.waiting.requests_to_answer) > 0) ? (

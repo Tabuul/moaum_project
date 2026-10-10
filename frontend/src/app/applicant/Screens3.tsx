@@ -30,7 +30,7 @@ export function Accept({ a }: { a: Application }) {
     return (
       <>
         <Note kind="info" title="Check your admission status first" action={<LinkBtn kind="primary" href="/applicant/status">Admission status</LinkBtn>}>
-          An offer of admission is read through Admission Status Checking and accepted here afterwards, with the acceptance fee.
+          Read your offer through Admission Status Checking, then accept it here.
         </Note>
         <Rail a={a} />
       </>
@@ -84,7 +84,7 @@ export function Accept({ a }: { a: Application }) {
         </PBody>
       </Panel>
       <Note kind="info" title="Accepting does not complete your admission">
-        It holds your place. Admission is complete only after the Registry has seen your original documents at clearance and Senate has approved the list.
+        It holds your place. Admission completes after clearance and Senate approval.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <div className="row">
@@ -101,7 +101,7 @@ export function Accept({ a }: { a: Application }) {
           <PBody>
             <div className="eyebrow">Reference</div>
             <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
-            <div className="sub2 mt-2">Quote this reference and nothing else. You do not need a new one &mdash; pay this one now: on the gateway it confirms at once and your place is held (the undertaking signed), or pay it at a bank and the Bursary confirms it against the reference.</div>
+            <div className="sub2 mt-2">Quote this reference only.</div>
             <div className="row mt-2"><PayByCard reference={open.reference} amount={fee} /></div>
           </PBody>
         </Panel>
@@ -141,7 +141,7 @@ export function Clearance({ a }: { a: Application }) {
         })} />
       </Panel>
       <Note kind="info" title="Nothing is paid at clearance, to anyone">
-        Clearance is a check of documents. Any request for money at the counter, in the corridor or afterwards should be reported to the Registrar with the name and the date.
+        Clearance is a document check. Report any request for money to the Registrar.
       </Note>
     </>
   );
@@ -154,8 +154,8 @@ export function Matric({ a }: { a: Application }) {
     const dept = a.studentProgramme ?? a.programmeCode ?? "—";
     return (
       <>
-        <Note kind="info" title="You register your courses first, and are matriculated afterwards">
-          This is the order the Academic Office works in, and it is deliberate. You pay your fees and register your courses under your <b>admission number</b>. Your Faculty Officer then generates the list of students who actually registered, the Academic Office confirms it, and matriculation numbers are issued over that confirmed list in one run. A number is not issued to somebody who accepted an offer and did not come.
+        <Note kind="info" title="Courses first, then matriculation">
+          Pay your fees and register your courses under your <b>admission number</b>; your matriculation number is issued afterwards.
         </Note>
         <Rail a={a} />
         <div className="grid grid--2">
@@ -164,9 +164,9 @@ export function Matric({ a }: { a: Application }) {
               {a.admissionNo ? (
                 <div className="tnum b700" style={{ fontFamily: "var(--serif)", fontSize: "clamp(19px,4vw,26px)", letterSpacing: ".6px" }}>{a.admissionNo}</div>
               ) : (
-                <div className="sub2"><b>Not issued yet.</b> The Academic Office issues it when it brings the accepted candidates onto the register.</div>
+                <div className="sub2"><b>Not issued yet.</b></div>
               )}
-              <p className="sub2 m-0">Issued when the Academic Office brings you onto the register after you accept. It identifies you for your fees and for your course registration. Quote it at any counter until you are matriculated. It is kept on your record afterwards &mdash; it is retired, not deleted.</p>
+              <p className="sub2 m-0">It identifies you for fees and course registration until you are matriculated.</p>
             </PBody>
           </Panel>
           <Panel title="What you will be issued" right="Your matriculation number">
@@ -190,9 +190,7 @@ export function Matric({ a }: { a: Application }) {
             ["todo", "The Library", "Cannot make your identity card yet — the card is keyed on the matriculation number."],
           ]} />
         </Panel>
-        <Note kind="info" title="Where a matriculation number does not exist yet, the portal says so">
-          It does not quietly show your admission number in a field labelled matriculation number. Two identifiers that look alike in the same box is how a record ends up attached to the wrong person.
-        </Note>
+
       </>
     );
   }
@@ -207,14 +205,14 @@ export function Matric({ a }: { a: Application }) {
           <div className="tnum b700" style={{ fontFamily: "var(--serif)", fontSize: "clamp(24px,5vw,34px)", letterSpacing: "1px" }}>{a.matricNo}</div>
           <div className="sub2">{a.name} &middot; {a.programme} &middot; {a.entryLevel} Level</div>
           <div className="hr" />
-          <div className="sub2">This number identifies you for the rest of your studies and beyond &mdash; on every course registration, every score sheet, every result slip, your certificate and your transcript. Quote it in all correspondence. It never changes.</div>
+          <div className="sub2">Quote it in all correspondence. It never changes.</div>
         </PBody>
       </div>
       <Note kind="ok" title="Your application account is now your student account">
-        Your application number {a.applicationNo} and your admission number {a.admissionNo} are both retired and both kept on your record &mdash; a document issued to you under either of them is still yours. Student sign-in arrives with the student module.
+        Your application number {a.applicationNo} and admission number {a.admissionNo} stay on your record.
       </Note>
       <Note kind="info" title="You are admitted provisionally until your results are verified">
-        The Registry completes verification with WAEC, NECO and JAMB during your first session. Admission obtained on a result that does not verify is void at any point afterwards, including after graduation.
+        Verification with WAEC, NECO and JAMB is completed in your first session; admission on a result that does not verify is void at any point.
       </Note>
     </>
   );

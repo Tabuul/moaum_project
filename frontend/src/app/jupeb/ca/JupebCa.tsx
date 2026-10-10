@@ -63,12 +63,12 @@ export function JupebCa({ canWrite }: { canWrite: boolean }) {
   const validComps = comps.every((c) => /^[A-Za-z0-9_]{1,20}$/.test(c.code.trim()) && c.title.trim().length >= 2 && Number(c.max_score) > 0);
   return (
     <>
-      <PageHead title="JUPEB continuous assessment" description="The session's parts of the continuous assessment and their maxima, each subject's scores entered by its lecturers, locked when final for the Board."
+      <PageHead title="JUPEB continuous assessment" 
         actions={<select className="ctl" aria-label="Session" value={d.session} onChange={(e) => { setSession(e.target.value); setSubject(""); }}>{sessions.map((x) => <option key={x}>{x}</option>)}</select>} />
       {due ? <Note kind="info" title={`Due to the Board ${day(due)}`}>{d.due?.title}</Note> : null}
       <Panel title="The parts of the assessment" right={<Pil kind="info">{`Out of ${total}`}</Pil>}>
         <PBody>
-          <p className="sub2">The parts the session&rsquo;s assessment is made of, and the most each is marked out of — set by the JUPEB Office as the Board asks; nothing is assumed. A part taken off is set aside with its scores kept.</p>
+          <p className="sub2">Set by the JUPEB Office as the Board asks. A part taken off keeps its scores.</p>
           {comps.map((c, i) => (
             <div key={i} className="row" style={{ gap: "var(--s-2)", marginTop: "var(--s-1)" }}>
               <input className="ctl" style={{ width: 110 }} aria-label={`Part ${i + 1} code`} placeholder="TEST1" maxLength={20} disabled={!canWrite} value={c.code} onChange={(e) => setComps(comps.map((x, j) => (j === i ? { ...x, code: e.target.value.toUpperCase() } : x)))} />

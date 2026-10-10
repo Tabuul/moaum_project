@@ -213,13 +213,9 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
     <>
       <RoleLine allowed={["ict", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Onboarding teaching staff" />
       <Note kind="info" title="Upload the list of teaching staff, and see who is on record">
-        Straight from the <b>List of teaching staff</b>: PNO, full names, sex, date of first appointment, department, present
-        rank, phone and CONUASS. Each row becomes a lecturer four ways at once — the person on record; a sign-in where the
-        <b> username and first password are both the staff id</b> (the PNO becomes <b>P29</b>, changed on first sign-in); the
-        <b> lecturer office at the home department</b>; and the establishment record (sex, appointment, rank, CONUASS). A
-        lecturer who teaches another department&rsquo;s course is handled by that department&rsquo;s <b>teaching allocation</b>,
-        and every course assigned to them shows on their one dashboard. Re-uploading never duplicates, and a password already
-        set is never reset. The department must exist first (add it on the Department upload screen).
+        From the <b>List of teaching staff</b>. Each row gets a sign-in where the <b>username and first password are both the
+        staff id</b> (changed on first sign-in) and the <b>lecturer office at the home department</b>. Re-uploading never
+        duplicates or resets a password. The department must exist first.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Registry">Your office may not onboard teaching staff.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -235,7 +231,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
           <Note kind={tally.no_department || tally.skipped || tally.failedRows ? "bad" : "ok"} title={tally.no_department || tally.skipped || tally.failedRows ? "Loaded, with some rows to follow up" : "Teaching staff loaded"}>
             {tally.rows} row(s) read · {tally.created} new · {tally.existing} already on record · {tally.granted} department grant(s)
             {tally.no_department ? ` · ${tally.no_department} with no matching department` : ""}{tally.skipped ? ` · ${tally.skipped} skipped` : ""}.
-            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send</b> (a slow batch). The upload is idempotent — just upload the same file again to fill the gap.</> : null}
+            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send</b>. Upload the same file again to fill the gap.</> : null}
             {tally.missing.length ? <><br /><b>Create these departments first, then re-upload:</b> {tally.missing.join(", ")}.</> : null}
             {tally.firstError ? <><br />First problem: {tally.firstError}</> : null}
           </Note>

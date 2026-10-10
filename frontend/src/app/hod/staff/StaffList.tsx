@@ -13,8 +13,7 @@ export function StaffList({ data, scope = null }: { data: DeptStaff; scope?: Off
   if (!data.resolved) {
     return scope && !scope.resolved ? <ScopeNotice scope={scope} what="list" /> : (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
-        The list is scoped to your department, and the portal cannot tell which one this office holds. Ask the Registry to
-        set the department on your Head-of-Department assignment.
+        Ask the Registry to set the department on your assignment.
       </Note>
     );
   }
@@ -41,7 +40,7 @@ export function StaffList({ data, scope = null }: { data: DeptStaff; scope?: Off
             ])}
             texts={staff.map((s) => `${s.name} ${s.present_rank ?? ""}`)}
           />
-        ) : <PBody><div className="sub2">No staff are recorded with {data.deptName} as their home department. Staff records are set by HR when the establishment is imported or a staff member is added.</div></PBody>}
+        ) : <PBody><div className="sub2">No staff are recorded with {data.deptName} as their home department.</div></PBody>}
       </Panel>
     </>
   );

@@ -35,7 +35,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       {justPaid && !justPaid.confirmed_at ? (
         <div className="card"><div className="card__body" style={{ alignItems: "center", textAlign: "center", gap: "var(--s-4)", padding: "var(--s-6) var(--s-5)" }}>
           <div><div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>Confirming your payment</div>
-            <p className="sub2" style={{ margin: "6px auto 0", maxWidth: "44ch", lineHeight: 1.55 }}>The gateway tells the University directly when the money lands, and this page updates itself. Reference {justPaid.reference}.</p></div>
+            <p className="sub2" style={{ margin: "6px auto 0", maxWidth: "44ch", lineHeight: 1.55 }}>Reference {justPaid.reference}. This page updates when the payment is confirmed.</p></div>
           <Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>
         </div></div>
       ) : null}
@@ -45,7 +45,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : "Cleared"}</span></div>
       </div>
       {noCharge ? (
-        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>The Bursar states the session&rsquo;s fee schedule; your charge is computed from it the moment it is stated. Nothing is paid against a charge that does not exist, and course registration for the session opens only once it is stated and paid.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
+        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>Your charge appears when the Bursar states the fee schedule. Course registration opens once it is stated and paid.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
       ) : fees.schemeProblem ? (
         <Note kind="info" title="What a payment releases is not yet stated">{fees.schemeProblem}</Note>
       ) : fees.clearsRegistration ? (
@@ -54,12 +54,12 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         <Note kind="bad" title="Course registration waits on this semester’s school fees">{fees.hasArrears ? "Arrears from an earlier session stand against you, and block everything while they do." : "Course registration for a semester opens once that semester’s school fees are paid in full; the examination waits on the session paid in full."}</Note>
       )}
       {justPaid && justPaid.confirmed_at && isGst(justPaid.purpose) ? (
-        <Note kind="ok" title="GST fee payment confirmed">Reference {justPaid.reference} is confirmed. It covers both GST and EPS: register your GST/EPS courses on Course registration.</Note>
+        <Note kind="ok" title="GST fee payment confirmed">Reference {justPaid.reference} confirmed. It covers GST and EPS; register your GST/EPS courses on Course registration.</Note>
       ) : null}
       {openGst ? (
         <Panel title="GST fee awaiting payment" right={<LinkBtn kind="ghost" size="sm" href={`/student/gst?session=${encodeURIComponent(fees.session)}`}>GST &amp; EPS</LinkBtn>}>
           <PBody>
-            <div className="sub2">Reference <b className="tnum">{openGst.reference}</b> · {naira(openGst.amount)} · expires {when(openGst.expires_at)}. A separate payment from school fees; one payment covers GST and EPS.</div>
+            <div className="sub2">Reference <b className="tnum">{openGst.reference}</b> · {naira(openGst.amount)} · expires {when(openGst.expires_at)}. Separate from school fees; covers GST and EPS.</div>
             <div className="row mt-2"><PayByCard reference={openGst.reference} amount={Number(openGst.amount)} /></div>
           </PBody>
         </Panel>
@@ -88,7 +88,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
               <>
                 <div className="eyebrow">Reference</div>
                 <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
-                <div className="sub2">{naira(open.amount)} · expires {when(open.expires_at)}. Quote this reference and nothing else: at a bank branch, by transfer, or by card below. The Bursary confirms it against the bank&rsquo;s record; a gateway confirms it the moment the money lands.</div>
+                <div className="sub2">{naira(open.amount)} · expires {when(open.expires_at)}. Pay with this reference only: at a bank branch, by transfer, or by card below.</div>
                 <div className="row mt-2"><PayByCard reference={open.reference} amount={Number(open.amount)} /></div>
               </>
             ) : (
@@ -138,7 +138,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
           r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn> : <span key="x" />,
         ])} />
-        {!fees.references.length ? <PBody><div className="sub2">Every payment against a reference this portal generated appears here, with its receipt. Nothing is released against a payment the bank has not confirmed.</div></PBody> : null}
+        {!fees.references.length ? <PBody><div className="sub2">No payments yet.</div></PBody> : null}
       </Panel>
       {fees.sessions.some((x) => x !== fees.session) ? (
         <div className="sub2">Sessions with a charge: {fees.sessions.map((x) => <Link key={x} href={`/student/fees?session=${encodeURIComponent(x)}`} style={{ marginRight: "var(--s-2)" }}>{x}</Link>)}</div>
@@ -185,7 +185,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.note ?? "—"}</span></div>
         </div>
         <div className="row" style={{ gap: "var(--s-4)", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
-          <div className="kv grow" style={{ minWidth: 200 }}><span className="k">Verification</span><span className="v tnum">{r.receipt_no}</span><span className="sub2">Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary&rsquo;s ledger.{token ? ` Check code ${token}.` : ""}</span>
+          <div className="kv grow" style={{ minWidth: 200 }}><span className="k">Verification</span><span className="v tnum">{r.receipt_no}</span><span className="sub2">Scan the QR code or use the check code to verify this receipt.{token ? ` Check code ${token}.` : ""}</span>
             {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 ink-chrome">Open the verification page</a> : null}</div>
           {qr ? (
             <div style={{ textAlign: "center" }}>

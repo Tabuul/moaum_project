@@ -97,7 +97,7 @@ export function HostelImport({ office }: { office: string | null }) {
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/hostel">Accommodation</Link><span>›</span><strong>Import hostels &amp; rooms</strong></div>
-      <PageHead title="Import hostels and rooms" description="The University's workbook, read here: choose the sheet and the header row, check the mapping, preview what would change, then import. A room already on the record is updated, never duplicated." />
+      <PageHead title="Import hostels and rooms" description="A room already on the record is updated, never duplicated." />
       {!may ? <Note kind="info" title="You are reading this desk">The Dean of Student Affairs and the housing desk import.</Note> : null}
 
       <Panel title="1 · The workbook" right=".xlsx or .csv">
@@ -135,7 +135,7 @@ export function HostelImport({ office }: { office: string | null }) {
         <>
           <Tiles items={[["NEW", c.NEW, "var(--green-ink)", "Will be created"], ["UPDATED", c.UPDATED, null, "Capacity or category changes"], ["EXISTING", c.EXISTING, "var(--chrome)", "Already as stated"], ["DUPLICATE", c.DUPLICATE, "var(--amber-ink)", "Repeated in the file"], ["ERROR", c.ERROR, "var(--red-ink)", "Not importable"]]} cls="grid--5" />
           <Panel title={report.committed ? "3 · Imported" : "3 · Preview — nothing written yet"} right={report.committed ? <Pil kind="ok">Done</Pil> : <Btn kind="primary" onClick={() => void run(true)} disabled={!may || busy || (c.NEW + c.UPDATED) === 0}>{busy ? "Importing…" : `Import ${c.NEW + c.UPDATED} rows`}</Btn>}>
-            {c.ERROR ? <PBody><Note kind="info" title={`${c.ERROR} row${c.ERROR === 1 ? "" : "s"} will be skipped`}>Correct them in the workbook and upload again, or import the rest now; the import is safe to repeat.</Note></PBody> : null}
+            {c.ERROR ? <PBody><Note kind="info" title={`${c.ERROR} row${c.ERROR === 1 ? "" : "s"} will be skipped`}>The import is safe to repeat.</Note></PBody> : null}
             <DTable
               cols={["S/N|mid", "Row|mid", "Hostel", "Block|mid", "Room|mid", "Beds|mid", "Category", "Gender|mid", "Outcome|mid", "Note"]}
               rows={report.rows.map((r, i) => [i + 1, <span className="tnum" key="r">{r.row_no}</span>, <span key="h">{r.hall_name ?? ""} <span className="sub2 tnum">{r.hall_code ?? ""}</span></span>, r.block ?? "", <b className="tnum" key="n">{r.room_no ?? ""}</b>, <span className="tnum" key="b">{r.beds ?? ""}</span>, r.category ?? "", r.sex ?? "", <Pil kind={TONE[r.outcome]} key="o">{r.outcome}</Pil>, <span className="sub2" key="m">{r.message}</span>])}

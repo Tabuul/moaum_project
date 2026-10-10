@@ -30,7 +30,7 @@ export function LeaveSelf({ d }: { d: MyLeave }) {
   if (!d.isStaff) {
     return (
       <Panel title="Leave">
-        <PBody><Note kind="info" title="Leave is for serving staff">Your record does not carry an active employment, so there is no leave to request. If you have just been appointed, it appears here once the Human Resource office records your employment.</Note></PBody>
+        <PBody><Note kind="info" title="Leave is for serving staff">Your record carries no active employment.</Note></PBody>
       </Panel>
     );
   }

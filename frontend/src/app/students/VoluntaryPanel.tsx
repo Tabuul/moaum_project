@@ -59,7 +59,7 @@ export function VoluntaryPanel({ summary }: { summary: VoluntarySummary }) {
         {due.length ? (
           <>
             <Note kind="bad" title="The regulation names these students; the Registry closes the records">
-              A student who has not registered for courses in four consecutive semesters has withdrawn voluntarily and is removed from the University&rsquo;s records. The count runs over the calendar&rsquo;s closed semesters since the last approved registration, or since entry. Closing a record puts the student off every roll, class list and result sheet and refuses them at the portal; the change stays on the record with the regulation as its instrument.
+              A student who has not registered for courses in four consecutive semesters has withdrawn voluntarily and is removed from the University&rsquo;s records. Closing a record takes the student off every roll and sheet and refuses them at the portal.
             </Note>
             <div className="row mb-2">
               <Btn kind="urgent" onClick={() => close(null)} disabled={busy !== null}>{busy === "all" ? "Closing…" : `Close all ${due.length} due`}</Btn>

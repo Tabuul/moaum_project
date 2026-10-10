@@ -50,12 +50,12 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={t.finalists} of={t.finalists} />
       {t.outstanding ? (
         <Note kind="bad" title={`${t.outstanding} finalist${t.outstanding === 1 ? " has" : "s have"} an unmet requirement`} action={<LinkBtn href="#exceptions" kind="urgent">Open the exception list</LinkBtn>}>
-          The degree audit checks every curriculum rule — core courses, elective credit minima, GST, project, and the minimum total credits. These {t.outstanding} cannot be presented to Senate until each gap is closed or waived.
+          They cannot be presented to Senate until each gap is closed or waived.
         </Note>
       ) : t.finalists ? (
         <Note kind="ok" title="Every finalist audited has met the requirements">Nothing stands between the list and Senate but the clearance of those still held.</Note>
       ) : (
-        <Note kind="info" title={`No degree audit has been run for ${scope.session}`}>The audit is computed from the published record — every finalist enrolled in the session, every registered course, every Senate-approved mark. Run it and the list below fills; nothing on it is compiled by hand.</Note>
+        <Note kind="info" title={`No degree audit has been run for ${scope.session}`} />
       )}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="info" title="Done">{said}</Note> : null}

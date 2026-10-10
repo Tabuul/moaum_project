@@ -54,7 +54,7 @@ export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; 
         ["Issued today", String(desk.cards.filter((c) => c.issued_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).length), null, "By the Library"],
       ]} />
       <Note kind="info" title="A card is keyed on the matriculation number and released by the scheme">
-        The Library prints it when the Bursary&rsquo;s position releases ID_CARD &mdash; the first instalment under the recommended scheme &mdash; and Security hands it over against the photograph on file. A student with no matriculation number has no card yet; a lost card is ended here and a replacement issued.
+        Printed once the first instalment is paid; Security hands it over against the photograph on file. A lost card is ended here and replaced.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} className="row row--inline row--tight"><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>

@@ -79,7 +79,7 @@ export function ProjectDetail({ p, examiners, rubrics }: { p: ProjectFull; exami
             <span key="as">{x.total != null ? <><span className="tnum b600">{x.total} / {x.max_total}</span> <span className="sub2 tnum">{x.percentage}% · {x.grade}</span><div><RecommendationPil value={x.final_recommendation} /></div></> : <span className="sub2">—</span>}</span>,
             <LinkBtn key="o" href={`/examiners/assignments/${x.id}`} size="sm">Open</LinkBtn>,
           ])} />
-        ) : <PBody><Note kind="info" title="Not yet assigned">Assign an active examiner by a review deadline. A project may go to more than one examiner; each assessment stands on its own.</Note></PBody>}
+        ) : <PBody><Note kind="info" title="Not yet assigned">A project may go to more than one examiner.</Note></PBody>}
       </Panel>
 
       <Panel title="History" right="Every act on this project"><PBody><History events={p.history} /></PBody></Panel>

@@ -42,7 +42,7 @@ export function CceApplications({ session, pick, processing, initialState }: Tab
   return (
     <>
       <PageHead title={processing ? "Admission processing" : "CCE applications"}
-        description={processing ? `The CCE applications of ${session} the Centre or the Academic Office still has to act on, oldest submission first.` : `Every CCE application of ${session}, from draft to the published outcome.`} actions={pick} />
+        description={processing ? `${session} · oldest submission first` : session} actions={pick} />
       <Panel title={processing ? "To act on" : "Applications"} right={<span className="row row--inline row--tight">
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); setPage(0); }}><input className="ctl" style={{ width: 230 }} placeholder="JAMB, application no, name, phone…" aria-label="Search the applications" value={q} onChange={(e) => setQ(e.target.value)} /></form>
         <select className="ctl" aria-label="State" value={state} onChange={(e) => { setState(e.target.value); setPage(0); }}>
@@ -176,7 +176,7 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
                 </>
               ) : null}
             </div>
-            {ownRecommendation ? <div className="sub2 mt-1">You recommended this admission; it is approved by someone else — the Director of the Centre or the Academic Office.</div> : null}
+            {ownRecommendation ? <div className="sub2 mt-1">You recommended this admission; someone else approves it.</div> : null}
             {r.state === "APPROVED" ? <div className="sub2 mt-1">Approved: it is published with the admission list by the Academic Office.</div> : null}
           </PBody>
         </Panel>
@@ -313,7 +313,7 @@ export function CceAdmissionList({ session, powers, pick, refresh }: TabProps) {
   ];
   return (
     <>
-      <PageHead title="CCE admission list" description={`The decisions of ${session}: approved and declined, waiting for the Academic Office to publish them; and the published list.`} actions={pick} />
+      <PageHead title="CCE admission list" description={session} actions={pick} />
       <Panel title={`Waiting to be published · ${waiting.length}`} right={powers.academic && waiting.length ? <span className="row row--inline row--tight">
         <Btn kind="secondary" disabled={busy || !chosen.length} onClick={() => void publish(chosen)}>Publish the {chosen.length} chosen</Btn>
         <Btn kind="go" disabled={busy} onClick={() => void publish(null)}>Publish all {waiting.length}</Btn>
@@ -347,7 +347,7 @@ export function CceStudents({ session, pick }: TabProps) {
   }, [session, all, query, page]);
   return (
     <>
-      <PageHead title="CCE students" description="Students of the Centre for Continuing Education on the register: part-time, in the CCE session they were admitted for; expected completion from that session and the programme's duration on the route." actions={pick} />
+      <PageHead title="CCE students"  actions={pick} />
       <Panel title={all ? "Every CCE student" : `Admitted for ${session}`} right={<span className="row row--inline row--tight">
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); setPage(0); }}><input className="ctl" style={{ width: 220 }} placeholder="Matric, admission, JAMB number, name" aria-label="Search the CCE students" value={q} onChange={(e) => setQ(e.target.value)} /></form>
         <label className="row row--inline row--tight"><input type="checkbox" checked={all} onChange={(e) => { setAll(e.target.checked); setPage(0); }} /> every session</label>

@@ -466,7 +466,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
       <RoleLine allowed={["pgschool", "pgsecretary", "hod", "dean", "academic", "registrar"]} actingOffice={actingOffice}
         action="Deciding postgraduate admissions" />
       <Note kind="info" title="Postgraduate admission is decided on the record, not on a UTME score">
-        A postgraduate applicant applies on a first degree — no JAMB, no UTME aggregate. The <b>department</b> considers its own applications once the fee is paid: it recommends, does not recommend, or returns one to the applicant for correction. The <b>faculty</b> vets a recommendation, and the <b>School of Postgraduate Studies</b> takes the final decision on every recommendation (or returns it to the department). The applicant checks their status, pays the acceptance fee, is screened in person where the session requires it, and is then on the register to pay school fees, register and be matriculated.
+        <b>Department</b> recommends → <b>faculty</b> vets → <b>School of Postgraduate Studies</b> decides.
         {bound ? <> You see your own {actingOffice === "hod" ? "department" : "faculty"}&rsquo;s paid applications only.</> : null}
       </Note>
 

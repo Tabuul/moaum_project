@@ -54,7 +54,7 @@ export function GstClassification({ office, may, families, unassigned }: { offic
       <PBody>
         <div className="sub2">
           A course is the {office} office&rsquo;s when its subject is one of its code families{office === "EPS" ? " or its title is entrepreneurship" : ""}: {mine.length ? mine.map((f) => f.prefix).join(", ") : "none yet"}
-          {other.length ? <> (the {office === "GST" ? "EPS" : "GST"} office&rsquo;s: {other.map((f) => f.prefix).join(", ")})</> : null}. Only those courses are on this desk, owe the GST fee and are examined by this office.
+          {other.length ? <> (the {office === "GST" ? "EPS" : "GST"} office&rsquo;s: {other.map((f) => f.prefix).join(", ")})</> : null}. Only those are on this desk and owe the GST fee.
         </div>
         {may ? (
           <form className="row row--inline row--tight mt-1" onSubmit={(e) => { e.preventDefault(); const p = prefix.trim().toUpperCase(); if (!/^[A-Z]{2,5}$/.test(p)) { notifyProblem({ status: 422, title: "A family is the two to five letters of a course code, e.g. GNS." }); return; } void call(`/families/${p}`, "PUT", { office }, `${office} code family ${p} added`, `${p} is now a ${office} family`).then(() => setPrefix("")); }}>
@@ -65,7 +65,7 @@ export function GstClassification({ office, may, families, unassigned }: { offic
         ) : null}
         {unassigned.length ? (
           <Note kind="info" title="Courses a course upload marked general that no office runs">
-            A programme structure gave these courses status G (or a GST/EPS classification), but their subject is in no office&rsquo;s family. They stay with their department: they are not on this desk, owe no GST fee, and the examinations office examines them. Take one this office runs, or give it back to its department as a Core course.
+            Their subject is in no office&rsquo;s family, so they stay with their department and owe no GST fee. Take one this office runs, or give it back as a Core course.
           </Note>
         ) : null}
       </PBody>
@@ -110,9 +110,7 @@ export function GstMoves({ office, may, moves }: { office: "GST" | "EPS"; may: b
       {open ? (
         <PBody>
           <Note kind="info" title="Check each move">
-            These courses came to the {office} office or left it — most when the classification ran on deploy. Confirm a move that is right; take a course
-            this office runs but lost, or give back to its department one it does not run. A course given back stays its department&rsquo;s even if a later
-            course upload marks it G.
+            These courses came to the {office} office or left it. A course given back stays its department&rsquo;s even if a later upload marks it G.
           </Note>
         </PBody>
       ) : null}

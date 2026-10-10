@@ -46,7 +46,7 @@ export default async function StudentsRegisterView({ searchParams }: { searchPar
       columns={columns}
       rows={shown as unknown as Record<string, string | number | null>[]}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
-      note={`${total.toLocaleString()} student${total === 1 ? "" : "s"} matched${rows.length < total ? `; the first ${rows.length.toLocaleString()} are printed — narrow the filters or take the Excel download for the whole set` : ""}. Read off the register at the moment of printing; it is not a copy.`}
+      note={`${total.toLocaleString()} student${total === 1 ? "" : "s"} matched${rows.length < total ? `; the first ${rows.length.toLocaleString()} are printed — the Excel download carries the whole set` : ""}.`}
       toolbar={<ReportToolbar headers={STUDENT_HEADERS} rows={rows.map(studentSheetRow)} filename={`student-register-${new Date().toISOString().slice(0, 10)}`} title="Student register" keep={{ report: "students", period: `as at ${new Date().toISOString().slice(0, 10)}`, subtitle: rows.length < total ? `PARTIAL — the first ${rows.length.toLocaleString()} of ${total.toLocaleString()} rows; narrow the filters or take the Excel export for the whole set` : (filters || undefined) }} />}
     />
   );

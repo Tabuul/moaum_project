@@ -52,7 +52,7 @@ export function AdviceDialog({ advice, onClose, onSent }: { advice: Advice; onCl
   return (
     <Modal title={`Advise ${a.name}`} onClose={onClose}
       foot={<><Btn kind="ghost" onClick={onClose}>Cancel</Btn><Btn kind="primary" disabled={busy || a.title.trim().length < 3 || a.body.trim().length < 3} onClick={() => void send()}>{busy ? "Sending…" : "Send"}</Btn></>}>
-      <p className="sub2">It shows on the student&rsquo;s dashboard at once, marked unread, and is kept with the announcements.</p>
+      <p className="sub2">Shown on the student&rsquo;s dashboard at once.</p>
       <Field id="ad-t" label="Title" required><input id="ad-t" className="ctl" maxLength={160} value={a.title} onChange={(e) => setA({ ...a, title: e.target.value })} /></Field>
       <Field id="ad-b" label="Message" required><textarea id="ad-b" className="ctl" rows={8} maxLength={5000} value={a.body} onChange={(e) => setA({ ...a, body: e.target.value })} /></Field>
       <div className="row" style={{ gap: "var(--s-4)" }}>

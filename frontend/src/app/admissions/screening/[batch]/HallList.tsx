@@ -66,7 +66,7 @@ export function HallList({ data }: { data: HallListData }) {
         <Note kind="info" title="No seat has been assigned in this batch">Seat the submitted applications from the Admissions desk, and the list fills here.</Note>
       )}
       <Note kind="info" title="A candidate with no photograph on file is checked against the JAMB slip and photo identification">
-        The photograph is the one the applicant uploaded; where none is, the box is grey and the door relies on identification. A candidate not on this list is not seated in this batch, whatever they say at the door.
+        A candidate not on this list is not seated in this batch.
       </Note>
     </div>
   );

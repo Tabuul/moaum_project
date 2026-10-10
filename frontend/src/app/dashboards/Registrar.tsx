@@ -35,7 +35,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
     <>
       <Note kind="bad" title="The NDPA Compliance Audit Return is due on 31 March"
         action={<LinkBtn kind="urgent" href="/people">Open users &amp; roles</LinkBtn>}>
-        The return is filed by the Data Protection Officer under your signature. The record of processing activities and the impact assessments arrive with the governance module; until then, the offices held under your grants are the part of it this portal can already show.
+        Filed by the Data Protection Officer under your signature.
       </Note>
       <StatsPanel session={session} />
       <FinancePanel />
@@ -59,9 +59,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
           [<Two key="i" a="Name of the University" b="Renamed 30 December 2024" />, <span key="d">Credentials issued before that date bear the former name</span>, <Pil kind="ok" key="s">Both names verify</Pil>],
         ]} />
       </Panel>
-      <Note kind="info" title="Both names must resolve for as long as a graduate is alive">
-        A degree awarded in 2011 says Benue State University, Makurdi. An employer verifying it in 2041 must get an answer, not a dead page. The verification service therefore accepts either name and answers for the same institution &mdash; and the old web domain must keep redirecting for the same reason.
-      </Note>
+
       <Panel title="Council and Senate">
         <DTable cols={["Body", "Next sitting|mid", "Papers|mid", "Status|num"]} rows={[
           ["Governing Council", <span className="sub2" key="n">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="grey" key="s">No sitting recorded</Pil>],

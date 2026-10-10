@@ -346,20 +346,12 @@ export function CapsIntake({
 
   return (
     <>
-      <Note kind="info" title="Two lists, uploaded separately, and never as one">
-        JAMB approves the UTME and Direct Entry lists separately and the Academic Office downloads them as separate
-        files, weeks apart. <b>Each has its own button</b>, and the list kind is fixed by the button you press
-        rather than guessed from the file &mdash; a Direct Entry list loaded as UTME puts every one of those
-        candidates at 100 Level with a blank aggregate, repeating a year they were admitted past.
+      <Note kind="info" title="Two lists, uploaded separately">
+        <b>Each list has its own button</b>; the list kind is set by the button you press, not read from the file.
       </Note>
 
-      <Note kind="ok" title="Upload the CAPS download itself — the spreadsheet step is no longer needed">
-        The file JAMB gives you names the course in <b>its own words</b> (<code>CO_NAME</code> = &ldquo;Medicine
-        &amp; Surgery&rdquo;) and carries no course code. The University&rsquo;s programme table is keyed on the
-        code, <b>C00061</b>, which this University calls <b>MBBS</b> &mdash; so until now somebody has been
-        translating name to code by hand in Excel, for every row of every list.{" "}
-        <b>The portal does it here, from all {programmes.length} programmes.</b> Both layouts are read: the raw
-        download, and the file the office builds from it today.
+      <Note kind="ok" title="Upload the CAPS download itself">
+        JAMB&rsquo;s course names are mapped to the University&rsquo;s programme codes here, from all {programmes.length} programmes.
       </Note>
 
       {/* ── the two buttons ── */}
@@ -436,8 +428,7 @@ export function CapsIntake({
             })}
           </div>
           <div className="sub2">
-            Nothing leaves this browser until you press the button below: the workbook is unzipped and read here,
-            shown back to you, and only then loaded.
+            Nothing is sent until you press the button below.
           </div>
         </div>
       </div>
@@ -454,14 +445,13 @@ export function CapsIntake({
             </LinkBtn>
           }
         >
-          The list loads under the general cut-off above. The faculty&rsquo;s and the programme&rsquo;s own cut-offs, the quotas and the rules
-          come from the session&rsquo;s admission settings and apply at screening; nobody is ranked or admitted until those are in force.
+          Cut-offs, quotas and rules come from the session&rsquo;s admission settings; nobody is ranked or admitted until they are in force.
           {policyProblem?.detail ? <> <span className="sub2">{policyProblem.detail}</span></> : null}
         </Note>
       ) : !policy.inForce ? (
         <Note
           kind="info"
-          title={`The admission settings for ${session} are a draft — the list still loads, nobody is screened until they are in force`}
+          title={`The admission settings for ${session} are a draft — nobody is screened until they are in force`}
           action={
             <LinkBtn kind="ghost" href={`/admissions/settings?session=${encodeURIComponent(session)}`}>
               Go to the admission settings
@@ -469,7 +459,7 @@ export function CapsIntake({
           }
         >
           {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
-          from being put in force. Each names the rule and the office that answers it. The cut-offs below are the screening&rsquo;s.
+          from being put in force.
         </Note>
       ) : null}
       {policy !== null && (
@@ -505,10 +495,7 @@ export function CapsIntake({
 
       {!d ? (
         <Note kind="info" title={`Nothing uploaded for ${list.label} yet`}>
-          Choose a file above, or press <b>Use the sample instead</b> to see the screen work. The file is read
-          whole and checked before a single row is written: one whose rows contradict the list you chose is
-          refused entirely rather than loaded and corrected afterwards, because a half-loaded admission list
-          looks complete at every desk it passes.
+          Choose a file above, or press <b>Use the sample instead</b>. A file whose rows contradict the chosen list is refused entirely.
         </Note>
       ) : (
         <>
@@ -524,9 +511,7 @@ export function CapsIntake({
           {bad.length ? (
             <>
               <Note kind="bad" title={`${bad.length} row${bad.length === 1 ? "" : "s"} cannot be accepted, so none of the file is written`}>
-                The file is accepted whole or not at all. Each row below names the line in your file and what is
-                wrong with it. Correct them and upload again &mdash; or, where the finding is a course the
-                University has not mapped, map it first.
+                Each row below names the line in your file and what is wrong. Correct them and upload again, or map an unmapped course first.
               </Note>
               <Panel title="What the importer refuses" right={bad.length > 12 ? `The first 12 of ${bad.length}, by line, as the file numbers them` : "By line, as the file numbers them"}>
                 <DTable
@@ -541,8 +526,7 @@ export function CapsIntake({
             </>
           ) : unresolved.length ? (
             <Note kind="bad" title={`${unresolved.length} candidate${unresolved.length === 1 ? "" : "s"} on a course this University does not run`}>
-              The University has to say which programme each of these means before the list can be loaded &mdash;
-              the row itself is left exactly as JAMB sent it. <span className="sub2">&mdash; Academic Office, with the Directorate of ICT</span>
+              Say which programme each of these means before the list can be loaded. <span className="sub2">&mdash; Academic Office, with the Directorate of ICT</span>
             </Note>
           ) : done ? (
             <Note
@@ -679,9 +663,7 @@ export function CapsIntake({
               </LinkBtn>
             }
           >
-            JAMB sends the photographs as a separate folder, each file named with the candidate&rsquo;s registration
-            number. Once uploaded they appear in this list, which is what an officer checking a name against a face
-            actually needs.
+            Once uploaded, the photographs appear in this list.
           </Note>
 
           <div className="row">
@@ -714,8 +696,7 @@ export function CapsIntake({
         ) : batches.length === 0 ? (
           <PBody>
             <div className="sub2">
-              No admission list has been loaded for {session}. Loaded lists are held here until the database says
-              they reconcile, and are committed by a second, deliberate act.
+              No admission list has been loaded for {session}. A loaded list is committed by a separate act once it reconciles.
             </div>
           </PBody>
         ) : (
@@ -799,7 +780,7 @@ export function CapsIntake({
           </>}
         >
           <Note kind="info" title="Withdrawn, not deleted">
-            The upload happened, and the record keeps saying so: the file, its rows, who loaded it and when. Withdrawn, the list counts for nothing &mdash; the reconciliation no longer sees it, it cannot be committed, and the registration numbers on it are free for the list that should have been loaded. A list whose candidates already hold admission numbers cannot be withdrawn.
+            The upload stays on the record. A withdrawn list counts for nothing and cannot be committed; its registration numbers are free for the correct list. A list whose candidates already hold admission numbers cannot be withdrawn.
           </Note>
           <div className="grid grid--2 rfgrid">
             <Field id="wd-why" label="Why the list is withdrawn" hint="Goes on the record with the withdrawal" full>
@@ -810,16 +791,8 @@ export function CapsIntake({
         </Modal>
       ) : null}
 
-      <Note kind="info" title="JAMB’s name is the JOIN, not a footnote">
-        The download names the course and gives no code, so <b>JAMB&rsquo;s name is what the row is matched on</b>{" "}
-        &mdash; it is the only thing in the file that says which programme the candidate was admitted to. The
-        University&rsquo;s name is then the label: it is what appears on the registration form, the matriculation
-        list and the certificate. <b>C00061</b> is the case that shows why the two cannot be collapsed. JAMB calls
-        it <i>Medicine &amp; Surgery</i>; this University calls it <b>MBBS</b>. That is not a missing award prefix
-        or a capitalisation difference &mdash; the two institutions use different words for the same degree, and
-        only one of them belongs on a certificate. The names that match today are not a rule: either side can edit
-        a label, so the alias is held per code rather than worked out by comparing strings. A name the alias list
-        does not carry is a finding with a candidate against it, never a guess.
+      <Note kind="info" title="JAMB’s course name is the match key">
+        Each JAMB course name maps to a University programme code; a name not on the list is a finding, never a guess.
       </Note>
 
       {mayLoad ? (

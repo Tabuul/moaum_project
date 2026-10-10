@@ -70,10 +70,7 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
   return (
     <>
       <Note kind="info" title="The screening register — everyone, and how they were screened">
-        Every candidate with a submitted application for the session, and the mark they were screened by: the
-        <b> Post-UTME</b> they sat, or — for Direct Entry and programmes screened by O&rsquo;Level — a
-        <b> computed</b> figure (the O&rsquo;Level aggregate scaled to 100, blended with the UTME where present). It is a
-        report; it does not change the sat score or the merit engine.
+        The <b>Post-UTME</b> sat, or a <b>computed</b> figure for Direct Entry and O&rsquo;Level-screened programmes. A report only.
       </Note>
 
       <div className="scope">
@@ -132,7 +129,7 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
             ])}
             texts={shown.map((r) => `${r.jamb_reg_no} ${r.name} ${r.programme} ${r.source}`)}
           />
-        ) : <PBody><div className="sub2">No submitted application matches — try another session or clear the filters. A fresh intake session is empty until its applicants are committed.</div></PBody>}
+        ) : <PBody><div className="sub2">No submitted application matches.</div></PBody>}
       </Panel>
     </>
   );

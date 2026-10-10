@@ -72,7 +72,7 @@ export function CaSheetEditor({ url, saveUrl, canEdit, extra }: { url: string; s
         {extra ? extra(d, () => setTick((t) => t + 1)) : null}
         {editable ? <Btn kind="primary" disabled={busy || !changed.length || bad.length > 0} onClick={() => void save()}>{busy ? "Saving…" : changed.length ? `Save ${changed.length} score${changed.length === 1 ? "" : "s"}` : "Save"}</Btn> : null}
       </div>
-      {!d.components.length ? <Note kind="info" title="No parts of the assessment set">The JUPEB Office sets the session&rsquo;s parts of the continuous assessment (each with its maximum) before scores are entered.</Note> : (
+      {!d.components.length ? <Note kind="info" title="No parts of the assessment set" /> : (
         <DTable pageSize={50} cols={["Application No", "Name", "Class", ...d.components.map((c) => `${c.title} /${fmt(c.max_score)}|num`), `Total /${fmt(d.rows[0]?.out_of)}|num`, "|mid"]}
           texts={d.rows.map((r) => `${r.application_no} ${r.name}`)}
           rows={d.rows.map((r) => [r.application_no, r.name, r.class_name ?? "—",

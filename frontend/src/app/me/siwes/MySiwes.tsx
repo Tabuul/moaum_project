@@ -49,7 +49,7 @@ export function MySiwes({ students }: { students: MySiwesStudent[] }) {
   return (
     <>
       <Note kind="info" title="You supervise these students for SIWES">
-        Record each student&rsquo;s assessment out of 40. The SIWES Coordinator records the report of the practicals out of 60; a student&rsquo;s total is complete when both are in. A mark can be entered only while the sheet is at entry.
+        Assessment out of 40; the SIWES Coordinator records the practicals report out of 60. Entry only while the sheet is at entry.
       </Note>
       {err ? <ProblemNotice problem={err} /> : null}
       <Panel title="My SIWES students" right={`${students.length} student${students.length === 1 ? "" : "s"}`}>
@@ -71,7 +71,7 @@ export function MySiwes({ students }: { students: MySiwesStudent[] }) {
               s.sheet_stage ? <span className="sub2" key="s">{s.sheet_stage === "ENTRY" ? "Entry open" : s.sheet_stage.toLowerCase().replace(/_/g, " ")}</span> : <span className="sub2 ink-red" key="s">Not open</span>,
             ];
           })} texts={students.map((s) => `${s.number} ${s.surname} ${s.other_names} ${s.course_code}`)} />
-        ) : <PBody><div className="sub2">No student is assigned to you for SIWES. The Head of Department or SIWES Coordinator assigns supervisors.</div></PBody>}
+        ) : <PBody><div className="sub2">No student is assigned to you for SIWES.</div></PBody>}
       </Panel>
     </>
   );

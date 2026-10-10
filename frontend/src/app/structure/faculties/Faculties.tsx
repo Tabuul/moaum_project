@@ -87,8 +87,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
     <>
       <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing faculties" />
       <Note kind="info" title="Create a faculty, or upload the list">
-        A faculty is a code and a name. Create one below, or upload a spreadsheet of them. Uploading again updates rather
-        than duplicates; every change is on the record in your name. Programmes and departments hang off the faculty.
+        A code and a name. Uploading again updates rather than duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Academic Office">Your office may not manage faculties.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}

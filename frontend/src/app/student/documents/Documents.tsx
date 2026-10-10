@@ -79,7 +79,7 @@ export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments;
 
   return (
     <>
-      <PageHead title="My documents" description={`${d.student.name} · ${d.student.number} · ${d.student.programme ?? "—"}. Your official documents, each verifiable by its reference; your requests, each with its timeline.`}
+      <PageHead title="My documents" description={`${d.student.name} · ${d.student.number} · ${d.student.programme ?? "—"}`}
         actions={<><Btn kind="primary" onClick={() => { setDone(null); setStep(1); }}>Request a document</Btn><LinkBtn kind="ghost" href="/verify/document">Verify a document</LinkBtn></>} />
       <Tiles items={[
         ["Certificates", String(d.counts.certificates), d.counts.certificates ? "var(--green-ink)" : null, "Issued and valid"],
@@ -162,7 +162,7 @@ export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments;
           ) : step === 5 ? (
             <>
               <KvGrid cls="grid--2" pairs={[["Student", `${d.student.name} · ${d.student.number}`], ["Programme", d.student.programme ?? "—"], ["Document", `${KIND[w.kind]?.[0]}${w.session ? ` · ${w.session}` : ""}${w.semester ? ` · ${semesterName(Number(w.semester))}` : ""}`], ["Delivery", `${w.delivery.toLowerCase()} · ${w.copies} cop${w.copies === "1" ? "y" : "ies"}${w.express ? " · urgent" : ""}`], ["Recipient", thirdParty ? `${w.destinationName}${w.recipientName ? ` · ${w.recipientName}` : ""}${w.recipientEmail ? ` · ${w.recipientEmail}` : ""}` : "Myself"], ["Fee", naira(fee(chosen))]]} />
-              <div className="sub2 mt-2">Your academic information is read from your record; the document is generated from the published results and cannot be edited by hand.</div>
+              
             </>
           ) : done ? (
             <>
@@ -177,7 +177,7 @@ export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments;
           foot={<>{["AWAITING_PAYMENT", "READY", "HELD_AT_CLEARANCE"].includes(timeline.stage) ? <Btn kind="ghost" onClick={() => void cancel(timeline)}>Cancel request</Btn> : null}<Btn kind="primary" onClick={() => { setTimeline(null); if (open) router.replace("/student/documents"); }}>Close</Btn></>}>
           <KvGrid cls="grid--3" pairs={[["Requested", whenAt(timeline.requested_at)], ["Payment", timeline.fee ? `${naira(timeline.fee)} · ${PAYMENT[timeline.payment_status]?.[0] ?? timeline.payment_status}${timeline.receipt_no ? ` · receipt ${timeline.receipt_no}` : ""}` : "No fee"], ["Expected by", timeline.sla_due_on ? dayOf(timeline.sla_due_on) : "After payment"], ["Delivery", timeline.delivery.toLowerCase()], ["Recipient", timeline.destination === "SELF" ? "Myself" : timeline.destination_name ?? ""], ["Document", timeline.document_number ? `${timeline.document_number}${timeline.document_version && timeline.document_version > 1 ? ` v${timeline.document_version}` : ""}` : "Not yet generated"]]} />
           {timeline.stage === "AWAITING_PAYMENT" && timeline.reference ? <Note kind="info" title={`Pay ${naira(timeline.fee)} against ${timeline.reference}`}><PayByCard reference={timeline.reference} amount={Number(timeline.fee)} /></Note> : null}
-          {timeline.stage === "HELD_AT_CLEARANCE" ? <Note kind="bad" title="Held at clearance">A unit holds you; the transcript moves when every unit clears you. Your clearance screen names the unit.</Note> : null}
+          {timeline.stage === "HELD_AT_CLEARANCE" ? <Note kind="bad" title="Held at clearance">A clearance unit holds you; your clearance screen names it.</Note> : null}
           <Panel title="Timeline">
             <DTable cols={["When|mid", "Step", "Note"]} rows={timeline.events.map((e) => [<span key="w" className="tnum sub2">{whenAt(e.at)}</span>, <strong key="a">{EVENT_WORDS[e.action] ?? e.action.toLowerCase()}{e.to_state && e.action === "QUALITY_CHECK" ? ` · ${e.to_state.toLowerCase()}` : ""}</strong>, <span key="n" className="sub2">{e.note ?? ""}</span>])} />
           </Panel>
@@ -191,7 +191,7 @@ export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments;
       {link ? (
         <Modal title="Secure download link" sub="Valid for seven days; each use is logged" onClose={() => setLink(null)} foot={<Btn kind="primary" onClick={() => setLink(null)}>Close</Btn>}>
           <Field id="lk" label="Link" full><input id="lk" className="ctl tnum" readOnly value={link} onFocus={(e) => e.currentTarget.select()} /></Field>
-          <div className="sub2">Share it with the recipient; the document opens as a PDF with its verification reference. The link stops working when the document is revoked or replaced.</div>
+          <div className="sub2">The link stops working when the document is revoked or replaced.</div>
         </Modal>
       ) : null}
       <div className="sub2">The document verification page for third parties is public: <Link className="lnk" href="/verify/document">/verify/document</Link>.</div>

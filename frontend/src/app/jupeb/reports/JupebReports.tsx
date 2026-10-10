@@ -66,7 +66,7 @@ export function JupebReports() {
   const t = data?.enrolment.totals;
   return (
     <>
-      <PageHead title="JUPEB reports" description="A session's enrolment, fees, attendance, results and practice, as the record stands. Each table downloads in Excel and PDF."
+      <PageHead title="JUPEB reports" 
         actions={<select className="ctl" aria-label="Session" value={session} onChange={(e) => setSession(e.target.value)}>
           {(sessions.length ? sessions : session ? [session] : []).map((x) => <option key={x}>{x}</option>)}</select>} />
       {!data ? <Note kind="info" title="Loading the report…">One moment.</Note> : (
@@ -92,7 +92,7 @@ export function JupebReports() {
             </div>
           ) : tab === "fees" ? (
             <>
-              <Note kind="info" title="The Bursary's figures, read only">Amounts are those the Bursary&rsquo;s fee engine charged and the gateway (or the old portal&rsquo;s upload) confirmed; this report changes nothing.</Note>
+              <Note kind="info" title="The Bursary's figures, read only" />
               <div className="grid grid--2">
                 <Table s={data.session} title="Confirmed payments by fee" heads={["Fee", "Payments", "Amount", "From the old portal"]}
                   rows={data.fees.byKind.map((x) => [FEE_KIND[x.kind] ?? x.kind, x.payments, naira(x.amount), x.oldPortal])} foot={["Total", data.fees.byKind.reduce((a, x) => a + x.payments, 0), naira(data.fees.total), ""]} />

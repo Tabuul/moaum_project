@@ -36,7 +36,7 @@ export default async function CoordinatorPage() {
   return (
     <Shell route="r/mbbscoordinator" me={me.ok ? me.data : null}>
       <Note kind="info" title={`Welcome${me.ok && me.data.name ? `, ${me.data.name}` : ""} — MBBS Coordinator, ${s.level} Level`}>
-        You coordinate the College&rsquo;s students at {s.level} Level{s.department ? `, from the Department of ${s.department}` : ""}: their cohorts, their score sheet, their results and CA, and their years. {ex.code ? `The examination at this level is the ${ex.name}${ex.min_attendance_pct != null ? `, with attendance of at least ${ex.min_attendance_pct}%` : ""}.` : ""} The Board&rsquo;s confirmation, the calendar and Senate appeals are the College Secretary&rsquo;s.
+        {s.department ? `Department of ${s.department}. ` : ""}{ex.code ? `The examination at this level is the ${ex.name}${ex.min_attendance_pct != null ? `, with attendance of at least ${ex.min_attendance_pct}%` : ""}.` : ""}
       </Note>
       <Tiles items={[
         ["Level", `${s.level}`, null, ex.code ? `${ex.code} — ${ex.name}` : "No examination"],
@@ -56,7 +56,7 @@ export default async function CoordinatorPage() {
         </PBody>
       </Panel>
       <Panel title="What waits on you" right={s.waiting?.length ? `${s.waiting.length} item${s.waiting.length === 1 ? "" : "s"}` : "Nothing outstanding at your level"}>
-        {!s.waiting?.length ? <PBody><div className="sub2">Every cohort at {s.level} Level is registered, every candidate at the end of a year has a result in every subject, and every decision is with the Board or confirmed.</div></PBody> : (
+        {!s.waiting?.length ? <PBody><div className="sub2">Nothing waits.</div></PBody> : (
           <DTable cols={["", "What", ""]} rows={s.waiting.map((w, i) => [
             <Pil key={"k" + i} kind={KIND[w.kind]?.[1] ?? "info"}>{KIND[w.kind]?.[0] ?? w.kind}</Pil>,
             <span key={"t" + i}>{w.text}</span>,
@@ -80,7 +80,7 @@ export default async function CoordinatorPage() {
         </Panel>
       ) : null}
       <Panel title={`Cohorts at ${s.level} Level`} right={`The next year opens in ${s.nextSession}`}>
-        {s.cohorts.length === 0 ? <PBody><div className="sub2">No student has a {s.level} Level year yet. A year opens when the student registers from their dashboard, or when you open it for them on the examination desk.</div></PBody> : (
+        {s.cohorts.length === 0 ? <PBody><div className="sub2">No student has a {s.level} Level year yet.</div></PBody> : (
           <DTable cols={["Cohort|mid", "Students|mid", "Registered|mid", "Year|mid", "Runs", "With results|mid", "Decisions|mid", "Waiting on"]} rows={s.cohorts.map((c) => [
             <strong className="tnum" key="s">{c.session}</strong>,
             <span className="tnum" key="n">{c.students}</span>,

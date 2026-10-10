@@ -88,7 +88,7 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
     <Panel title="GST fee · General Studies & Entrepreneurship" right={general ? `${naira(general.amount)} for ${session}${rules.length > 1 ? ` · ${rules.length} rules` : ""}` : `Not yet stated for ${session}`}>
       <PBody>
         {problem ? <ProblemNotice problem={problem} /> : null}
-        <div className="sub2">A separate obligation from school fees, paid once per session against a reference of its own on the same gateway and ledger. It is owed only by a student a GST or EPS course requires it of — a course their programme offers at their level this session, or a carryover — never by level alone. One payment covers both GST and EPS; there is no EPS fee. While it is unpaid the student&rsquo;s GST and EPS courses are locked on the registration form. A new statement supersedes the old for the same scope; payments already confirmed keep their amount.{data ? ` Paid so far for ${session}: ${num(data.paid.students)} students, ${naira(data.paid.amount)}.` : ""}</div>
+        <div className="sub2">Paid once per session, owed only where a GST or EPS course requires it (never by level alone). One payment covers GST and EPS. Unpaid, the student&rsquo;s GST and EPS courses are locked at registration. Confirmed payments keep their amount.{data ? ` Paid so far for ${session}: ${num(data.paid.students)} students, ${naira(data.paid.amount)}.` : ""}</div>
         <div className="mt-2"><GstGapsNote gaps={data?.gaps} session={session} office={null} may={false} /></div>
         {st ? (
           <div className="mt-2">
@@ -101,7 +101,7 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
             ]} />
             {Number(st.review) ? (
               <details className="mt-1" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void loadReview(); }}>
-                <summary className="sub2">The {num(st.review)} payment{Number(st.review) === 1 ? "" : "s"} no GST or EPS course requires this session — review through the refund workflow where the University&rsquo;s policy says so</summary>
+                <summary className="sub2">The {num(st.review)} payment{Number(st.review) === 1 ? "" : "s"} no GST or EPS course requires this session</summary>
                 {review === null ? <div className="sub2">Reading…</div> : review.length ? (
                   <DTable cols={["S/N|num", "Student", "Programme", "Level|num", "Paid|num", "Why not required", "Payment · decision"]} rows={review.map((x, i) => [
                     <span key="n" className="tnum sub2">{i + 1}</span>, <span key="s"><b>{x.surname}, {x.other_names}</b><div className="sub2 tnum">{x.number}</div></span>,
@@ -151,7 +151,7 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
             ) : null}
           </div>
         ) : null}
-        {!general && rules.length === 0 ? <Note kind="info" title={`No GST fee for ${session}`}>Until it is stated nothing is owed and nothing is locked; the GST and EPS dashboards show every student as &ldquo;no fee stated&rdquo;.</Note> : null}
+        {!general && rules.length === 0 ? <Note kind="info" title={`No GST fee for ${session}`}>Until it is stated nothing is owed and nothing is locked.</Note> : null}
         {may ? (
           <>
             <div className="grid grid--4 mt-2">

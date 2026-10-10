@@ -66,8 +66,7 @@ export function JupebApply() {
     return (
       <Wrap>
         <Note kind="ok" title={`Application started — ${applied.application_no}`}>
-          Keep your application number: it is yours for good. <b>Sign in to pay the application fee of {naira(applied.amount)}</b>, then continue on your
-          dashboard — your other biodata, your O&rsquo;Level results and your documents — and submit.
+          Keep your application number. <b>Sign in to pay the application fee of {naira(applied.amount)}</b>, then complete your biodata, O&rsquo;Level results and documents, and submit.
         </Note>
         <div className="card"><div className="card__body">
           <Row k="Application number" v={applied.application_no} />
@@ -83,9 +82,8 @@ export function JupebApply() {
   return (
     <Wrap>
       <Note kind="info" title={`Apply for JUPEB${opts ? ` · ${opts.session}` : ""}`}>
-        Start your application here. You need an email address and phone you can reach, your NIN, and at least five O&rsquo;Level credits including
-        English Language and Mathematics, in no more than two sittings. The application fee is {opts ? naira(opts.applicationFee) : "stated after you submit"}.
-        After signing in you complete the rest on your dashboard.
+        You need an email address and phone, your NIN, and at least five O&rsquo;Level credits including English Language and Mathematics in no more than two
+        sittings. Application fee: {opts ? naira(opts.applicationFee) : "stated after you submit"}.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <div className="card"><div className="card__body">
@@ -128,7 +126,7 @@ export function JupebApply() {
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
-    <AuthLayout eyebrow="JUPEB programme" lead={<>Apply for the Joint Universities Preliminary Examinations Board programme: one year of three subjects, examined by the Board, leading to direct entry into 200 level. No JAMB number is needed to apply.</>} stats={[["3", "subjects"], ["5", <>O&rsquo;Level credits</>], ["0", "JAMB number needed"]]} wide>
+    <AuthLayout eyebrow="JUPEB programme" lead={<>The Joint Universities Preliminary Examinations Board programme: one year of three subjects, leading to direct entry into 200 level. No JAMB number is needed.</>} stats={[["3", "subjects"], ["5", <>O&rsquo;Level credits</>], ["0", "JAMB number needed"]]} wide>
         <div style={{ width: "100%", maxWidth: 640, display: "grid", gap: "var(--s-4)" }}>{children}</div>
     </AuthLayout>
   );

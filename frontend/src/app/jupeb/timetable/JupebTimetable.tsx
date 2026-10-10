@@ -114,7 +114,7 @@ export function JupebTimetable({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB timetable" description="The week's lectures of each JUPEB subject, for a class or for every class. A room, or a class, is never booked twice in the same hour — lectures in other rooms run side by side; the lecturer is the instructor assigned on Attendance."
+      <PageHead title="JUPEB timetable" description="A room or a class is never booked twice in the same hour."
         actions={<span className="row">
           <select className="ctl" aria-label="Session" value={session} onChange={(e) => setSession(e.target.value)}>{sessions.map((x) => <option key={x}>{x}</option>)}</select>
           <select className="ctl" aria-label="Semester" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option></select>
@@ -141,7 +141,7 @@ export function JupebTimetable({ canWrite }: { canWrite: boolean }) {
       {rows.length ? (
         <Panel title="The Board's rules" right={rules.short.length || rules.shortPractical.length || rules.noRoom.length || untaught.length || crowded.length ? <Pil kind="warn">To look at</Pil> : <Pil kind="ok">All met</Pil>}>
           <PBody>
-            <p className="sub2">{`Every course at least three hours a week (${rules.courses} courses), every practical at least two hours (${rules.practicals} subject${rules.practicals === 1 ? "" : "s"} with practicals), every slot with its room. Two lectures in one room at the same hour are refused when entered.`}</p>
+            <p className="sub2">{`Every course at least three hours a week (${rules.courses} courses), every practical at least two hours (${rules.practicals} subject${rules.practicals === 1 ? "" : "s"} with practicals), every slot with its room.`}</p>
             {rules.short.length ? <Note kind="bad" title="Under three hours a week">{rules.short.map((x) => `${x.course}: ${x.hours} h`).join(" · ")}</Note> : null}
             {rules.shortPractical.length ? <Note kind="bad" title="Practicals under two hours a week">{rules.shortPractical.map((x) => `${x.subject}: ${x.hours} h`).join(" · ")}</Note> : null}
             {untaught.length ? <Note kind="info" title="Courses of the semester not on the timetable">{untaught.map((u) => `${u.code} ${u.title}`).join(" · ")}{untaught.some((u) => u.code.startsWith("MAT 004") || u.prefix === "ISS" || u.prefix === "YOR") ? " — an alternative (MAT 004A/B) or an option (ISS, YOR) needs a slot only if students take it." : ""}</Note> : null}
@@ -187,7 +187,7 @@ export function JupebTimetable({ canWrite }: { canWrite: boolean }) {
       ) : null}
       <Panel title={`Rooms (${rooms.filter((r) => r.active).length})`} right={canWrite ? <Btn kind="secondary" onClick={() => setRoomForm({ id: null, code: "", name: "", kind: "LECTURE", capacity: "", active: true })}>Add a room</Btn> : null}>
         <PBody>
-          <p className="sub2">The rooms and laboratories JUPEB lectures are held in. A lecture names one of these, so one room is never written two ways; a room&rsquo;s seats, when given, are weighed against the students of each lecture in it.</p>
+          <p className="sub2">Seats, when given, are weighed against each lecture&rsquo;s students.</p>
           <DTable pageSize={0} cols={["Room", "Name", "Kind", "Seats|num", "Lectures this session|num", "State", ...(canWrite ? ["|mid"] : [])]}
             rows={rooms.map((r) => [<b key="c">{r.code}</b>, r.name ?? "—", r.kind === "LAB" ? "Laboratory" : r.kind === "HALL" ? "Hall" : r.kind === "OTHER" ? "Other" : "Lecture room",
               r.capacity ?? "—", r.lectures ?? 0, r.active ? <Pil key="s" kind="ok">In use</Pil> : <Pil key="s" kind="grey">Closed</Pil>,
@@ -211,7 +211,7 @@ export function JupebTimetable({ canWrite }: { canWrite: boolean }) {
       {copy ? (
         <Modal title={`Copy the ${semester === "1" ? "first" : "second"} semester of ${session}`} onClose={() => setCopy(null)}
           foot={<><Btn kind="ghost" onClick={() => setCopy(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || (copy.toSession === session && copy.toSemester === semester)} onClick={() => void runCopy()}>{busy ? "Copying…" : "Copy"}</Btn></>}>
-          <p>Every lecture is copied into a timetable that has none yet — its day, hours, room and class. Into the other semester each course moves on to the course in the same place there (GRY 001 → GRY 003, GRY 002 → GRY 004; MAT 002 → MAT 004A, with MAT 004B noted). Look over the copy, then tell the students.</p>
+          <p>Every lecture is copied into a timetable that has none yet — its day, hours, room and class. Into the other semester each course moves on to the course in the same place there (GRY 001 → GRY 003, GRY 002 → GRY 004; MAT 002 → MAT 004A, with MAT 004B noted).</p>
           <div className="grid grid--2">
             <Field id="cp-ses" label="Into the session"><select id="cp-ses" className="ctl" value={copy.toSession} onChange={(e) => setCopy({ ...copy, toSession: e.target.value })}>
               {[session, ...laterSessions(session)].map((x) => <option key={x}>{x}</option>)}</select></Field>

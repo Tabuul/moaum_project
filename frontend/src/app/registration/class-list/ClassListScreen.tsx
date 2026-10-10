@@ -34,7 +34,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!roll ? (
         <Note kind="info" title="Choose a course in the scope bar">
-          The class list is the roll of an offering: every approved registration for one course in one session and semester. Pick the department, then the course, and the list is generated from the register as it stands now.
+          Pick the department, then the course.
         </Note>
       ) : (
         <>
@@ -45,7 +45,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
             ["Cleared to sit", String(roll.all - notCleared.length), notCleared.length ? "var(--red-ink)" : "var(--green-ink)", notCleared.length ? `${notCleared.length} blocked at the Bursary` : "Everyone"],
           ]} />
           <Note kind="info" title="This list is generated now, from approved registrations — all of them" action={<><Btn kind="primary" onClick={() => sheet("classlist")}>Download class list</Btn> <Btn kind="ghost" onClick={() => sheet("attreg")}>Attendance register</Btn> <Btn kind="ghost" onClick={() => sheet("examroll")}>Examination roll</Btn></>}>
-            It is not a file somebody exported in September. Add or drop a registration and this list changes. It is also not filtered to this department: {roll.courseCode} is registered by {roll.fromProgrammes.length ? `${roll.fromProgrammes.join(", ")} as well as the owning programmes, and they` : "the owning programmes, and its students"} appear here and on every roll drawn from it.
+            {roll.fromProgrammes.length ? `Includes ${roll.fromProgrammes.join(", ")} as well as the owning programmes.` : null}
           </Note>
           <Panel title={head} right={`${roll.all} registered · ${roll.borrowed} from other programmes${roll.lecturer ? ` · ${roll.lecturer}` : ""}`}>
             <DTable
@@ -65,7 +65,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
           </Panel>
           {notCleared.length ? (
             <Note kind="bad" title={`${notCleared.length} registered student${notCleared.length === 1 ? " is" : "s are"} not cleared to sit the examination`}>
-              {notCleared.slice(0, 3).map((r) => r.number).join(", ")}{notCleared.length > 3 ? ` and ${notCleared.length - 3} more` : ""} appear on the class list because they are registered, and they will appear on the examination roll marked as not cleared. The invigilator does not adjudicate that at the door — the Bursary does, before the day.
+              {notCleared.slice(0, 3).map((r) => r.number).join(", ")}{notCleared.length > 3 ? ` and ${notCleared.length - 3} more` : ""} will appear on the examination roll marked as not cleared.
             </Note>
           ) : null}
         </>

@@ -66,7 +66,7 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
     return (
       <>
         <Note kind="ok" title={`Your ticket number is ${done.number}`} action={<LinkBtn kind="primary" href={`/tickets/${done.id}`}>Open the Ticket</LinkBtn>}>
-          Keep the number: quote it in any follow-up and use it, with your email address, on the public tracking page. The desk has been told, and you will be told when it is opened, when work begins and when it is resolved. An email confirming this has been sent to {email.trim()}.
+          Quote it in any follow-up and use it, with your email, on the tracking page. A confirmation was sent to {email.trim()}.
           {done.attached ? ` ${done.attached} file${done.attached === 1 ? "" : "s"} attached.` : ""}
           {done.skipped.length ? ` Not attached (a PDF, JPEG or PNG of at most 5 MB is accepted): ${done.skipped.join(", ")}.` : ""}
         </Note>
@@ -90,7 +90,7 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
                 ["Faculty", profile.faculty ?? "—"],
               ]} />
               <div className="row">
-                <Field id="tk-email" label="Email" required hint={emailFixed ? `The address on your account; the desk writes here and the tracking page asks for it. Change it under ${profile.kind === "STUDENT" ? "Profile" : "your staff record"}.` : "Where the desk writes to you, and what the tracking page asks for"} style={{ flex: "1 1 220px" }}>
+                <Field id="tk-email" label="Email" required hint={emailFixed ? `The address on your account. Change it under ${profile.kind === "STUDENT" ? "Profile" : "your staff record"}.` : "Where the desk writes to you"} style={{ flex: "1 1 220px" }}>
                   <input id="tk-email" className="ctl" type="email" value={email} readOnly={emailFixed} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
                 </Field>
                 <Field id="tk-phone" label="Phone" style={{ flex: "1 1 160px" }}>

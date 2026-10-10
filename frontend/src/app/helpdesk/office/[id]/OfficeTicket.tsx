@@ -51,13 +51,13 @@ export function OfficeTicket({ t }: { t: Ticket }) {
         <Panel title="Your answer" right="Goes to the agent on the ticket; the ticket returns to them">
           <PBody>
             <Field id="of-answer" label="What your office decides, and what the agent should do" required>
-              <textarea id="of-answer" className="ctl" rows={5} value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={8000} placeholder="The decision, the reason, and the instruction to the agent — e.g. the payment is confirmed on the bank statement; post it and tell the student the receipt is reissued." />
+              <textarea id="of-answer" className="ctl" rows={5} value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={8000} placeholder="The decision, the reason, and the instruction to the agent" />
             </Field>
             <div className="row row--base mt-2">
               <Btn kind="primary" disabled={busy || answer.trim().length < 5} onClick={() => void send()}>{busy ? "Sending…" : "Answer the Desk"}</Btn>
               <label className="row row--tight"><input type="checkbox" className="chk" checked={toRequester} onChange={(e) => setToRequester(e.target.checked)} /> <span className="sub2">Show this answer to the requester as well (otherwise the agent relays it)</span></label>
             </div>
-            <div className="sub2 mt-2">Your answer is recorded in your name with your office; it changes nothing by itself. The act your office takes — a fee, a result, a registration — is taken on the office&rsquo;s own desk as always.</div>
+            <div className="sub2 mt-2">Your answer changes nothing by itself; the act is taken on your office&rsquo;s own desk.</div>
           </PBody>
         </Panel>
       ) : null}

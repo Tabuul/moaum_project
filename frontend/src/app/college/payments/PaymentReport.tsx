@@ -90,7 +90,7 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
 
   return (
     <>
-      <PageHead title="Student payment report" description={`${role}, College of Health Sciences · ${report.session} · ${period}. Each student's amount payable, paid and outstanding, read from the fee schedule and the confirmed payments; the totals are of the set shown.`}
+      <PageHead title="Student payment report" description={`${role}, College of Health Sciences · ${report.session} · ${period}`}
         actions={<><Btn kind="primary" onClick={() => void toExcel()}>Download Excel</Btn><Btn kind="secondary" onClick={toPdf}>Download PDF</Btn><Btn kind="ghost" onClick={summaryPdf}>Summary PDF</Btn><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></>} />
 
       <div className="scope">
@@ -182,10 +182,10 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
             })}
             texts={shown.map((r) => `${r.surname} ${r.other_names} ${r.number} ${r.programme} ${STATUS[r.status]?.[0] ?? ""} ${r.last_reference ?? ""}`)} />
         ) : <PBody><div className="sub2">No College student matches these filters.</div></PBody>}
-        <PBody><div className="sub2">Amount outstanding is amount payable less amount paid. In a semester view the session&rsquo;s payments cover the first semester&rsquo;s charge before the second&rsquo;s, which is how registration reads them; a student who paid the session at once is fully paid in both. <Link className="lnk" href="/finance/payments">Every confirmed payment</Link> is on the Bursary&rsquo;s payments query.</div></PBody>
+        <PBody><div className="sub2">In a semester view, session payments cover the first semester before the second. <Link className="lnk" href="/finance/payments">Every confirmed payment</Link> is on the Bursary&rsquo;s payments query.</div></PBody>
       </Panel>
 
-      {t.students === 0 ? <Note kind="info" title="No College student is on the register for these filters">Students appear here once they are on the register with a College programme; a charge appears once the fee schedule for the session names their level or programme.</Note> : null}
+      {t.students === 0 ? <Note kind="info" title="No College student is on the register for these filters" /> : null}
     </>
   );
 }

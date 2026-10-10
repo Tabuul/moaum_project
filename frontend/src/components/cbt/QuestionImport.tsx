@@ -120,7 +120,7 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
   return (
     <Panel title="Import questions from a spreadsheet" right={<span className="row row--inline row--tight"><Btn kind="ghost" disabled={busy} onClick={template}>Download template</Btn><Btn kind="primary" disabled={busy} onClick={() => file.current?.click()}>Upload Excel / CSV</Btn><input ref={file} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></span>}>
       <PBody>
-        <div className="sub2">One row per question into <b>{course}</b>{courseTitle ? ` — ${courseTitle}` : ""}: the question, the options (Option A … H, or one Options column), the correct answer as a letter, a number, several letters, or the option&rsquo;s text; the kind, difficulty, marks, topic and explanation are optional. Every row is judged before anything is written; a question already in the bank is not added twice.</div>
+        <div className="sub2">One row per question into <b>{course}</b>{courseTitle ? ` — ${courseTitle}` : ""}: the question, the options (Option A … H, or one Options column), the correct answer as a letter, a number, several letters, or the option&rsquo;s text; the kind, difficulty, marks, topic and explanation are optional. A question already in the bank is not added twice.</div>
         {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
         {grid ? (
           <div className="mt-2">
@@ -145,7 +145,7 @@ export function QuestionImport({ course, courseTitle }: { course: string; course
             {result.blocked ? (
               <Note kind="bad" title={`Nothing was imported: ${s.errors} row${s.errors === 1 ? " has an error" : "s have errors"}`}
                 action={s.valid ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void send(false, true)}>Import the {s.valid} valid row{s.valid === 1 ? "" : "s"} only</Btn> : undefined}>
-                The whole file is imported in one go once every row is right. Fix the rows below (the error report lists them) and upload again, or import only the valid rows now.
+                Fix the rows below and upload again, or import only the valid rows.
               </Note>
             ) : null}
             <Tiles cls="grid--5" items={[

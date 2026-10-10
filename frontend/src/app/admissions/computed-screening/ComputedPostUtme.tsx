@@ -72,13 +72,9 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
   return (
     <>
       <Note kind="info" title="Computed Post-UTME for candidates who did not sit it">
-        Direct Entry entrants and candidates in programmes not screened by examination never sit the Post-UTME. This is a
-        <b> computed</b> screening figure for them, for the Academic Office: the UTME scaled to 100 and the O&rsquo;Level
-        aggregate scaled to 100 (under the session&rsquo;s grading), combined on the session&rsquo;s admission weights —
-        UTME 70%, O&rsquo;Level 30% by default; a Direct Entry candidate with no UTME shows the O&rsquo;Level figure alone.
-        It lists the non-index programmes only, for applicants who applied and paid. Use <b>Enter O&rsquo;Level as Post-UTME
-        score</b> to record the O&rsquo;Level figure (scaled to 100) as their screening score, then release the scores — so
-        these applicants enter the merit list. A real Post-UTME score is never overwritten.
+        UTME and O&rsquo;Level each scaled to 100, combined on the session&rsquo;s admission weights (UTME 70%, O&rsquo;Level 30%
+        by default); Direct Entry with no UTME shows the O&rsquo;Level alone. Non-index programmes only, applied and paid.
+        A real Post-UTME score is never overwritten.
       </Note>
       <div className="card"><div className="card__body row row--end">
         <div style={{ minWidth: 160 }}><Field id="pu-s" label="Session">
@@ -95,8 +91,8 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
       ]} />
       {entered ? (
         <Note kind="ok" title={`${entered.entered.toLocaleString()} O'Level figure${entered.entered === 1 ? "" : "s"} entered as the Post-UTME score`}>
-          These non-index applicants now carry their O&rsquo;Level (scaled to 100) as the screening score. <b>Release the scores</b> (Upload PUTME Score → Release, or the Applicants desk) for them to enter the merit list.
-          {entered.noOlevel ? <> {entered.noOlevel.toLocaleString()} still have no O&rsquo;Level on record, so nothing could be computed for them — upload their O&rsquo;Level, or score them zero.</> : null}
+          <b>Release the scores</b> for them to enter the merit list.
+          {entered.noOlevel ? <> {entered.noOlevel.toLocaleString()} have no O&rsquo;Level on record.</> : null}
         </Note>
       ) : null}
       <Panel title="Computed Post-UTME" right={<span className="row row--inline">
@@ -120,16 +116,14 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
             ])}
             texts={rows.map((r) => `${r.name} ${r.jamb_reg_no} ${r.programme}`)}
           />
-        ) : <PBody><div className="sub2">No candidate in {session} is a non-sitter yet — everyone recorded either sat the Post-UTME or has no submitted application.</div></PBody>}
+        ) : <PBody><div className="sub2">No non-sitter in {session} yet.</div></PBody>}
       </Panel>
 
       {audit.length ? (
         <Panel title="Why a programme appears here — or does not" right={`${audit.length} programme${audit.length === 1 ? "" : "s"} with applications`}>
           <PBody>
             <div className="sub2 mb-2">
-              A programme is on the computed list above when it is <b>not</b> exam-screened (non-index) <b>and</b> has applicants who applied and paid.
-              An <b>index</b> programme is screened by the Post-UTME examination — its scores are uploaded, not computed (remove it from the exam list in Admission settings to make it non-index).
-              A non-index programme with <b>0 applied &amp; paid</b> has no completed applications to compute yet.
+              An <b>index</b> programme is screened by the Post-UTME examination; its scores are uploaded, not computed (Admission settings sets the exam list).
             </div>
             <DTable
               cols={["Programme", "Screening|mid", "Applications|num", "Submitted|num", "Applied & paid|num", "On computed list|mid"]}

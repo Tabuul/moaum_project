@@ -21,12 +21,12 @@ export function CbtPaperChecks({ examId, reload }: { examId: string; reload: str
     return () => { gone = true; };
   }, [examId, reload]);
   if (failed || !checks) return null;
-  if (!checks.length) return <Note kind="ok" title="Paper checks">Nothing to look at: no question appears twice, no two options read the same, and nothing points at an option&rsquo;s place.</Note>;
+  if (!checks.length) return <Note kind="ok" title="Paper checks">Nothing to look at.</Note>;
   const high = checks.filter((c) => c.severity === "HIGH").length;
   return (
     <Panel title="Paper checks" right={<span className="sub2">{checks.length} to look at{high ? ` · ${high} to fix before publishing` : ""}</span>}>
       <PBody>
-        <div className="sub2 mb-2">What a candidate could find unfair or confusing. The bank already refuses a key outside the options; these are warnings, and nothing is refused for them. Preview the paper as a candidate to see a question as they will.</div>
+        <div className="sub2 mb-2">Warnings only; nothing is refused for them.</div>
         <div style={{ display: "grid", gap: 8 }}>
           {checks.map((c, i) => (
             <div key={i} className="row row--inline row--tight" style={{ alignItems: "flex-start", gap: 10 }}>

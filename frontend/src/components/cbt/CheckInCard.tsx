@@ -77,7 +77,7 @@ export function CheckInCard({ initial }: { initial: CheckIn }) {
       </div>
 
       {!initial.seated ? <Note kind="bad" title="Not seated in any sitting">The candidate has no seat in this examination&rsquo;s sittings. Send them to the examination office.</Note> : null}
-      {initial.seated && !initial.canCheckIn ? <Note kind="info" title={`Seated in ${s?.label ?? "another sitting"}`}>You invigilate another sitting of this examination; this candidate belongs to {s?.label} at {s?.venue}. Send them there.</Note> : null}
+      {initial.seated && !initial.canCheckIn ? <Note kind="info" title={`Seated in ${s?.label ?? "another sitting"}`}>This candidate belongs to {s?.label} at {s?.venue}. Send them there.</Note> : null}
       {state === "ABSENT" ? <Note kind="bad" title="Marked absent">The candidate was marked absent from this sitting. If that was wrong, undo the mark on the board; if they came late, admit them there.</Note> : null}
 
       <div className="row row--inline row--tight mt-3" style={{ flexWrap: "wrap" }}>

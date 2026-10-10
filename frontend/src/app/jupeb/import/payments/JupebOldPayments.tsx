@@ -109,7 +109,7 @@ export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
   return (
     <>
       <PageHead eyebrow={<Link href="/jupeb/import">← Old-portal students</Link>}
-        description="The old JUPEB portal's payment export, put on each student's record: matched by the old App No only, each successful payment posted once as a confirmed fee with its old reference kept. Upload the students first." />
+        description="Matched by the old App No only; each successful payment posted once with its old reference. Upload the students first." />
       {done ? <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} payment${done.applied === 1 ? "" : "s"} put on the record`}>{done.refs.length ? `Upload ${done.refs.join(", ")}. The students' fee reminders now follow what is still owed.` : "Nothing new was posted."}</Note> : null}
       {canWrite ? (
         <Panel title="1 · The file">
@@ -128,7 +128,7 @@ export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
             </div>
             <p className="sub2 mt-2">Columns read: App No, Reference, Purpose (application, status checking, acceptance, school fees first / second instalment or full), Semester where the file has it, Amount, Date and Status.
               &ldquo;School fees&rdquo; that names no instalment is posted as the full fee only when it covers it; otherwise it is listed for you to say which.
-              A row the old portal marks as failed or pending is never posted. The amount posted is the old portal&rsquo;s receipt; the Bursary&rsquo;s fee settings are not changed.</p>
+              Failed or pending rows are never posted.</p>
           </PBody>
         </Panel>
       ) : <Note kind="info" title="The JUPEB Office uploads the old portal's payments">You may read what has been put on the record below.</Note>}
@@ -139,7 +139,7 @@ export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
             <Btn kind="primary" disabled={!!busy || preview.valid === 0 || !!done} onClick={() => void post()}>{`Put ${preview.valid} payment${preview.valid === 1 ? "" : "s"} on the record`}</Btn>
           </span>}>
           <PBody>
-            {preview.review ? <Note kind="info" title="Purpose unclear">Write what each was for in the Purpose column (application, acceptance, school fees first or second instalment) and upload the file again.</Note> : null}
+            {preview.review ? <Note kind="info" title="Purpose unclear">Fill the Purpose column and upload again.</Note> : null}
             <DTable pageSize={50} cols={["Row|num", "App No", "Student", "Reference", "Fee", "Amount|num", "Date", "Status", "Why"]}
               texts={preview.rows.map((r) => `${r.appNo} ${r.name ?? ""} ${r.reference} ${r.reason ?? ""}`)}
               rows={preview.rows.map((r) => [r.row, r.appNo || "—", r.name ?? "—", r.reference || "—", r.kind ? FEE_KIND[r.kind] ?? r.kind : "—", r.amount == null ? "—" : naira(r.amount),

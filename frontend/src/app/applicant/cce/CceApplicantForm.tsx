@@ -153,7 +153,7 @@ export function CceApplicantForm() {
       {section(1, "Application fee", "PAYMENT", paid ? (
         <div>Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span> · confirmed {when(paid.confirmedAt)}</div>
       ) : !v.fees.stated ? (
-        <div className="sub2">The Bursary has not yet stated the CCE application fee for {l.session}. Complete the rest of the form; you pay before you submit.</div>
+        <div className="sub2">The Bursary has not yet stated the CCE application fee for {l.session}. You pay before you submit.</div>
       ) : total === 0 ? <div className="sub2">No application fee is charged.</div> : (
         <>
           <div className="mb-2">CCE application fee <b>{naira(v.fees.applicationFee)}</b>{Number(v.fees.portalCharge) ? <> + portal charge {naira(v.fees.portalCharge)}</> : null} = <b>{naira(total)}</b>. No admission checking fee is charged to a CCE applicant.</div>
@@ -186,7 +186,7 @@ export function CceApplicantForm() {
 
       {section(3, "O'Level", "OLEVEL", (
         <>
-          <div className="sub2 mb-2">One sitting or two. A second sitting is complete — its body, number, year and subjects — or not given. Credits in English Language and Mathematics are required.</div>
+          <div className="sub2 mb-2">One sitting or two; a second sitting must be complete. Credits in English Language and Mathematics are required.</div>
           <div className={`grid grid--${twoSittings ? "2" : "3"}`}>
             {sittings.map((s, i) => (
               <div key={i} className="card" style={{ padding: 10 }}>

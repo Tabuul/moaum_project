@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import type { ExamSummary } from "../examinations/Examinations";
 import { PaymentReport, type PayReport } from "../payments/PaymentReport";
@@ -70,7 +70,7 @@ export default async function CollegeDashboardPage({ searchParams }: { searchPar
     <Shell route="r/college" me={me.ok ? me.data : null}>
       <PageHead
         title={`Welcome${me.ok && me.data.name ? `, ${me.data.name}` : ""}`}
-        description={`${role}, College of Health Sciences · ${d.session}. ${finance ? "The fees position of the College's students by level, and what waits on the College." : "What waits on the College, the figures, and the decisions confirmed most recently."}`}
+        description={`${role}, College of Health Sciences · ${d.session}`}
         actions={<>
           <LinkBtn kind="primary" href="/college/examinations">Professional Examinations</LinkBtn>
           <LinkBtn href="/college/postings">Postings</LinkBtn>
@@ -88,7 +88,7 @@ export default async function CollegeDashboardPage({ searchParams }: { searchPar
       ]} />
 
       <Panel title="What waits on the College" right={d.waiting.length ? `${d.waiting.length} item${d.waiting.length === 1 ? "" : "s"}` : "Nothing outstanding"}>
-        {d.waiting.length === 0 ? <PBody><div className="sub2">Every decision is confirmed, every cohort at its end has its results, every year open is registered, every level with years open is dated, and every level has its coordinator.</div></PBody> : (
+        {d.waiting.length === 0 ? <PBody><div className="sub2">Nothing waits.</div></PBody> : (
           <DTable cols={["", "What", ""]} rows={d.waiting.map((w) => [
             <Pil key="k" kind={KIND[w.kind][1]}>{KIND[w.kind][0]}</Pil>,
             <span key="t">{w.text}</span>,
@@ -139,12 +139,12 @@ export default async function CollegeDashboardPage({ searchParams }: { searchPar
               <span key="r"><span className="tnum">{f.registered}</span> <span className="sub2">{pc(f.registered, f.students)}</span></span>,
             ])} />
           )}
-          <PBody><div className="row"><span className="sub2">A student registers the first semester of a College year on its fees, and the second on the second&rsquo;s; the whole session paid at once clears both.</span><span className="grow" /><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></div></PBody>
+          <PBody><div className="row"><span className="sub2">Each semester registers on its own fees; the whole session paid clears both.</span><span className="grow" /><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></div></PBody>
         </Panel>
       ) : null}
 
       <Panel title="Decisions confirmed most recently" right="By the College Academic Board, on its minute">
-        {d.recent.length === 0 ? <PBody><div className="sub2">No decision has been confirmed yet. The rule applies a provisional decision as each candidate&rsquo;s last subject is resulted; the Board confirms the set on the examinations desk.</div></PBody> : (
+        {d.recent.length === 0 ? <PBody><div className="sub2">No decision has been confirmed yet.</div></PBody> : (
           <DTable cols={["Matriculation number", "Name", "Level|mid", "Cohort|mid", "Decision", "Confirmed|mid", "Minute"]} rows={d.recent.map((r) => [
             <span className="tnum" key="n">{r.number}</span>,
             <strong key="nm">{r.surname}, {r.other_names}</strong>,
@@ -174,14 +174,12 @@ export default async function CollegeDashboardPage({ searchParams }: { searchPar
                 <span key={"b" + i}><strong>{x.by}</strong><div className="sub2">{x.actor_office}</div></span>,
                 <span key={"r" + i}>{x.reason}{n(x.n_rows) > 1 ? <span className="sub2"> · {n(x.n_rows)} rows</span> : null}</span>,
               ])} />
-            ) : <PBody><div className="sub2">Every act on the College&rsquo;s desks is on the audit spine with who did it and why; the latest are listed here.</div></PBody>}
+            ) : <PBody><div className="sub2">The latest acts on the College&rsquo;s desks.</div></PBody>}
           </Panel>
         </div>
       ) : null}
 
-      <Note kind="info" title="The College's doors">
-        The examinations desk holds each cohort&rsquo;s results, the rule&rsquo;s provisional decisions and the Board&rsquo;s confirmation; the postings desk allocates students to a block&rsquo;s postings and the supervisors keep the logbooks; the calendar dates each level&rsquo;s year; the score sheets go down to and come up from the MBBS Coordinators, one per level.
-      </Note>
+
     </Shell>
   );
 }

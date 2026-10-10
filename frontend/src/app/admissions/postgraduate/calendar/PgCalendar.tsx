@@ -65,7 +65,7 @@ export function PgCalendar({ initial }: { initial: CalData }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Note kind="info" title="The Postgraduate School's own calendar">
-        These sessions and semesters are the School&rsquo;s own, kept apart from the undergraduate calendar. The one you mark <b>Current</b> is the session new applications open under and the School&rsquo;s desks default to.
+        Kept apart from the undergraduate calendar. New applications open under the <b>Current</b> session.
       </Note>
 
       <Tiles items={[

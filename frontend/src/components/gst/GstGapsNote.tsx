@@ -31,7 +31,7 @@ export function GstGapsNote({ gaps, session, office, may }: { gaps: GstGap[] | u
     <Note kind="bad" title={`${gaps.length} ${word} course${gaps.length === 1 ? " is" : "s are"} bound to programmes but not opened for ${session}`}
       action={may && office ? <Btn kind="primary" disabled={busy} onClick={() => void openAll()}>{busy ? "Opening…" : `Open them for ${session}`}</Btn> : null}>
       Until a course is opened for the session its students owe nothing for it and see no GST fee: {list}.
-      {may && office ? " Opening them puts each in its own semester; a course that should not run is deactivated on the courses page instead." : ` The ${office ? `${office} office opens them` : "GST and EPS offices open them"} on their courses page.`}
+      {may && office ? " A course that should not run is deactivated instead." : ` The ${office ? `${office} office opens them` : "GST and EPS offices open them"}.`}
     </Note>
   );
 }

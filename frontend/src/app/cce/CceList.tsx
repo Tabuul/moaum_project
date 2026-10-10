@@ -92,7 +92,7 @@ export function CceUpload({ session, powers, pick, refresh, mapping }: TabProps 
 
   return (
     <>
-      <PageHead title="CCE candidate list upload" description="The list of CCE candidates JAMB supplied: read, previewed row by row, then committed whole or discarded. Only a committed list lets anybody apply." actions={pick} />
+      <PageHead title="CCE candidate list upload" description="Only a committed list lets anybody apply." actions={pick} />
       <Panel title="The session this list is for">
         <PBody>
           <KvGrid cls="grid--4" pairs={[
@@ -102,18 +102,18 @@ export function CceUpload({ session, powers, pick, refresh, mapping }: TabProps 
             ["Current CCE session", <span key="c" className="tnum">{mapping.route_session ?? "—"}{mapping.overridden ? " (named by the Academic Office)" : ""}</span>],
           ]} />
           {session !== mapping.route_session ? (
-            <Note kind="info" title={`${session} is not the current CCE session`}>The list is filed under the session chosen above. The current CCE session is {mapping.route_session}; a list for another session is loaded only on purpose.</Note>
+            <Note kind="info" title={`${session} is not the current CCE session`}>The current CCE session is {mapping.route_session}.</Note>
           ) : null}
         </PBody>
       </Panel>
       {!powers.academic ? (
-        <Note kind="info" title="The list is the Academic Office's">The Academic Office receives the list from the JAMB office and loads it here. You can read the import history and the list.</Note>
+        <Note kind="info" title="The Academic Office loads the list" />
       ) : batch ? (
         <BatchView id={batch.id} powers={powers} refresh={refresh} onDone={() => { setBatch(null); setRead(null); }} />
       ) : (
         <Panel title="1 · The file" right={<Btn kind="ghost" onClick={template}>Download the template</Btn>}>
           <PBody>
-            <Field id="cce-file" label="The CCE list (Excel .xlsx or .csv)" hint="The first row of headings is found by itself; the headings are matched to the list's fields below, and you can correct any match.">
+            <Field id="cce-file" label="The CCE list (Excel .xlsx or .csv)" hint="Headings are found and matched below; correct any match.">
               <input id="cce-file" type="file" className="ctl" accept=".xlsx,.csv" onChange={(e) => void choose(e.target.files?.[0] ?? null)} />
             </Field>
             {problem ? <Note kind="bad" title="The file was not read">{problem}</Note> : null}
@@ -198,7 +198,7 @@ export function BatchView({ id, powers, refresh, onDone }: { id: string; powers:
               <Btn kind="go" size="md" disabled={busy || loads === 0} onClick={() => void commit()}>Commit: load {loads.toLocaleString()} row{loads === 1 ? "" : "s"}</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => setDiscarding(true)}>Discard</Btn>
               {onDone ? <Btn kind="ghost" onClick={onDone}>Another file</Btn> : null}
-              <span className="sub2">Matched by JAMB number within the session, never by name. Rows not loaded stay out until corrected and loaded again.</span>
+              <span className="sub2">Matched by JAMB number, never by name.</span>
             </div>
           ) : onDone ? <div className="row row--inline mt-2"><Btn kind="secondary" onClick={onDone}>Load another file</Btn></div> : null}
         </PBody>
@@ -239,7 +239,7 @@ export function CceImports({ session, powers, pick, refresh }: TabProps) {
   if (open) return <><PageHead title="Import history" actions={<Btn kind="ghost" onClick={() => setOpen(null)}>← Every list</Btn>} /><BatchView id={open} powers={powers} refresh={refresh} /></>;
   return (
     <>
-      <PageHead title="Import history" description={`Every CCE list loaded for ${session}: previewed, committed or discarded, with who did it and what it did.`} actions={pick} />
+      <PageHead title="Import history" description={session} actions={pick} />
       <Panel title="The lists" right={powers.academic ? <LinkBtn kind="secondary" href="/cce/upload">Upload a list</LinkBtn> : null}>
         {rows === null ? <PBody><div className="sub2">Reading…</div></PBody> : rows.length ? (
           <DTable cols={["Read", "File", "Rows|num", "New|num", "Updated|num", "Not loaded|num", "State", ""]} rows={rows.map((b) => [
@@ -283,7 +283,7 @@ export function CceCandidates({ session, powers, pick, initialStatus }: TabProps
 
   return (
     <>
-      <PageHead title="CCE candidate list" description={`The people on the committed CCE list for ${session} and where each stands. Search by JAMB number, application or matriculation number, name, phone or email.`} actions={pick} />
+      <PageHead title="CCE candidate list" description={session} actions={pick} />
       <Panel title="Listed candidates" right={<span className="row row--inline row--tight">
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); setPage(0); }}><input className="ctl" style={{ width: 230 }} placeholder="Search" aria-label="Search the CCE list" value={q} onChange={(e) => setQ(e.target.value)} /></form>
         <select className="ctl" aria-label="Where they stand" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}>

@@ -47,12 +47,12 @@ export function Activate({ token }: { token: string }) {
   }
 
   return (
-    <AuthLayout eyebrow="External examiners" lead={<>The University&rsquo;s invitation to examine. Choose a password here &mdash; it is never sent by email &mdash; and sign in with your email address to reach the projects assigned to you.</>}>
+    <AuthLayout eyebrow="External examiners" lead={<>The University&rsquo;s invitation to examine. Choose a password and sign in with your email address.</>}>
       <div className="login-card">
           <PageHead title="External examiner appointment" />
           {done ? (
             <>
-              <Note kind="ok" title="Your examiner account is active">Sign in with your email address, <b>{done}</b>, and the password you chose. The projects assigned to you, their documents and the assessment form are in your workspace.</Note>
+              <Note kind="ok" title="Your examiner account is active">Sign in with your email address, <b>{done}</b>, and the password you chose.</Note>
               <div><Link className="btn btn--primary" href="/login">Sign in</Link></div>
             </>
           ) : !token ? (

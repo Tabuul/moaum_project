@@ -20,7 +20,7 @@ export function AuditAssets({ rows }: { rows: Asset[] }) {
   return (
     <>
       <Note kind={never + stale ? "bad" : "ok"} title={never + stale ? `${never + stale} asset(s) not verified within the last year` : "Every live asset has been verified within the year"}>
-        The register is the Bursary&rsquo;s; audit reads it. What audit checks is not the value but the <b>verification date</b>: an asset carried on the books that no one has physically seen in a year is where a register and reality drift apart.
+        Audit checks the <b>verification date</b> on the Bursary&rsquo;s register.
       </Note>
       <Tiles items={[
         ["Assets on the register", String(live.length), null, `${rows.length - live.length} disposed`],
@@ -41,7 +41,7 @@ export function AuditAssets({ rows }: { rows: Asset[] }) {
               <span className={`tnum${overdue ? " ink-red b600" : ""}`} key="v">{a.last_verified_on ? day(a.last_verified_on) : "Never"}</span>,
             ];
           })} texts={rows.map((a) => `${a.tag} ${a.name} ${a.location ?? ""} ${a.condition}`)} />
-        ) : <PBody><div className="sub2">No asset is on the register yet. Assets appear here once the Bursary records them in Stores &amp; assets.</div></PBody>}
+        ) : <PBody><div className="sub2">No asset is on the register yet.</div></PBody>}
       </Panel>
     </>
   );

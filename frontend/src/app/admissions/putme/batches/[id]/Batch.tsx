@@ -80,7 +80,7 @@ export function BatchPage({ b, session: s, batches, office }: { b: BatchFull; se
           <LinkBtn kind="ghost" href={`/admissions/putme/checkin${q}`}>Check-in desk</LinkBtn>
         </>} />
       {b.state === "DRAFT" ? <Note kind="info" title="This batch is a draft">Candidates are not told and see no slip until the schedule is published from the desk.</Note> : null}
-      {!live ? <Note kind="bad" title={`This batch was ${b.state.toLowerCase()}`}>{b.note ?? ""} Its candidates were returned to scheduling and told; generate again or move them one by one.</Note> : null}
+      {!live ? <Note kind="bad" title={`This batch was ${b.state.toLowerCase()}`}>{b.note ?? ""} Its candidates were returned to scheduling and told.</Note> : null}
 
       <div ref={sheet}>
         <div className="hall-mast">
@@ -115,7 +115,7 @@ export function BatchPage({ b, session: s, batches, office }: { b: BatchFull; se
 
       {ask === "POSTPONED" || ask === "CANCELLED" ? (
         <Modal title={ask === "POSTPONED" ? `Postpone batch ${b.label}` : `Cancel batch ${b.label}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not now</Btn><Btn kind="urgent" onClick={() => void state()} disabled={busy}>{busy ? "Working…" : ask === "POSTPONED" ? "Postpone and tell them" : "Cancel and tell them"}</Btn></>}>
-          <p>Every candidate in the batch loses this seat, returns to “reschedule required”, and is told by email and SMS. Their seating stays on the record as superseded. {ask === "POSTPONED" ? "Generate again once a new day or slot is named, or move them one by one." : ""}</p>
+          <p>Every candidate loses this seat, returns to “reschedule required”, and is told by email and SMS.</p>
           <Field id="bs-reason" label="Reason" required full><textarea id="bs-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
         </Modal>
       ) : ask === "move" ? (

@@ -113,7 +113,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
     return (
       <>
         {switcher}
-        <Note kind="bad" title="You cannot register yet">One of the requirements below is outstanding. Clear it and registration opens immediately.</Note>
+        <Note kind="bad" title="You cannot register yet">Clear the outstanding requirement below to register.</Note>
         <div className="card"><div className="card__body" style={{ gap: 0, padding: 0 }}>
           <Gates>
             <Gate state={["ADMITTED", "ACTIVE", "PROBATION"].includes(s.status) ? "done" : "todo"} title="Student status" sub={`${s.status.charAt(0) + s.status.slice(1).toLowerCase()} · ${s.level} Level`} />
@@ -133,7 +133,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                 </div>
               ) : null}
               <div><LinkBtn kind="urgent" size="md" href="/student/fees">{fees.due > 0 ? `Pay ${naira(fees.balance)}` : "See fees & payments"}</LinkBtn></div>
-              <div className="sub2">Responsible office: <strong style={{ color: "var(--ink)" }}>Bursary Department</strong>. Payments are confirmed against the bank&rsquo;s record, not by this page.</div>
+              <div className="sub2">Responsible office: <strong style={{ color: "var(--ink)" }}>Bursary Department</strong>.</div>
             </div>
           </div>
           <Gates><Gate state="todo" title="Registration window" sub={`${v.session} · ${semesterText(v.semester)}`} last /></Gates>
@@ -162,7 +162,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {switcher}
       {v.siwes ? (
         <Note kind="info" title="Industrial training (SIWES) semester">
-          The whole of this semester is your industrial training. Register only the SIWES / industrial training course ({max} units) — nothing else, and no carryover. A carryover is registered when the course is next offered.
+          Register only the SIWES / industrial training course ({max} units) this semester — no other course and no carryover.
         </Note>
       ) : null}
       {locked ? (
@@ -185,7 +185,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <Panel title="Add or drop courses" right="the add/drop window is open">
             <PBody>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <div className="sub2">You can still add a course or drop one (not a carryover, and not one you already have a mark in). The change is on the record at once; your total stays within {min}–{max} units.</div>
+              <div className="sub2">You can still add or drop a course (not a carryover or a course with a mark). Total: {min}–{max} units.</div>
               {droppable.length ? (<>
                 <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
@@ -227,7 +227,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {deferredCourses.length ? (
         <Panel title="Deferred / catch-up courses" right="from your approved deferment · added automatically, cannot be removed">
           <PBody>
-            <div className="sub2 mb-1">Courses of the period you deferred, now due. They were never failed: no grade, no units attempted and no quality points were recorded for them; their actual grades enter your GPA and CGPA only when you take them.</div>
+            <div className="sub2 mb-1">Courses of your deferred period, now due. They count in your GPA only when taken.</div>
             {deferredCourses.map((m) => pick(m, true, true))}
           </PBody></Panel>
       ) : null}
@@ -237,15 +237,15 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       ) : null}
       {v.gst && !locked && v.gst.stated && !v.gst.entitled && Number(v.gst.fee) > 0 && v.menu.some((m) => m.gstLocked) ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
-          You are required to pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} before you can register GST/EPS courses. GST payment covers both GST and EPS requirements. Please complete your GST payment to continue with course registration.
-          {v.gst.state === "PENDING" ? " A reference is already open: pay against it and the courses unlock the moment the payment is confirmed." : ""}
+          Pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} to register GST/EPS courses. One payment covers GST and EPS.
+          {v.gst.state === "PENDING" ? " A reference is open; the courses unlock when it is confirmed." : ""}
         </Note>
       ) : null}
       <Panel title={`${v.level} Level Core Courses`}>
-        <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</PBody></Panel>
+        <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet.</div>}</PBody></Panel>
       <Panel title="Electives" right={<>choose to reach {min}–{max} units</>}>
         <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
-          <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></PBody></Panel>
+          </PBody></Panel>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (
         <div className="row">

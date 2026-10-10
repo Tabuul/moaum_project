@@ -205,7 +205,7 @@ export function DeScreening({ session, programme, programmes, view, problem, act
       <RoleLine allowed={["academic", "registrar"]} actingOffice={actingOffice}
         action="Recording Direct Entry subjects" />
       <Note kind="info" title="Direct Entry is screened on its own, not on UTME subjects">
-        A Direct Entry candidate offers a prior qualification — an <b>&rsquo;A&rsquo; Level</b> (IJMB, JUPEB), an <b>NCE</b>, an <b>ND</b> or an <b>HND</b> — and carries no UTME aggregate or CAPS subjects. This screen checks each DE applicant against the programme&rsquo;s <b>Direct Entry subject set</b> (set in Admission settings), reading the subjects an officer records off the certificate below. It reports — it does not gate the Board&rsquo;s decision.
+        Checked against the programme&rsquo;s <b>Direct Entry subject set</b> from the certificate subjects recorded below. It reports; it does not gate the Board&rsquo;s decision.
       </Note>
 
       <Panel title="Choose a programme" right={`${session}`}>
@@ -242,7 +242,7 @@ export function DeScreening({ session, programme, programmes, view, problem, act
                 })}
                 texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.jamb_reg_no} ${r.status}`)}
               />
-            ) : <PBody><div className="sub2">No Direct Entry applicant has registered for this programme yet. DE candidates appear here once they are on a committed list and have applied.</div></PBody>}
+            ) : <PBody><div className="sub2">No Direct Entry applicant for this programme yet.</div></PBody>}
           </Panel>
 
           {openRow ? (() => {
@@ -256,7 +256,7 @@ export function DeScreening({ session, programme, programmes, view, problem, act
           })() : null}
         </>
       ) : (
-        <Note kind="info" title="Choose a programme to screen its Direct Entry applicants">Pick a programme above. The list is its Direct Entry applicants, each checked against the programme&rsquo;s DE subject set.</Note>
+        <Note kind="info" title="Choose a programme to screen its Direct Entry applicants" />
       )}
     </>
   );

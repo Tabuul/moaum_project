@@ -56,7 +56,7 @@ export function Reports({ report, examiners, sessions, faculties, filters }: { r
 
   return (
     <>
-      <PageHead description="Real figures from the assignments and assessments on record, in the scope you choose."
+      <PageHead 
         actions={<><Btn kind="primary" onClick={downloadIt} disabled={!rows.length}>Download</Btn><LinkBtn href="/examiners">The Register</LinkBtn></>} />
       <div className="row mb-3">{KINDS.map(([k, l]) => <Btn key={k} kind={filters.kind === k ? "primary" : "ghost"} size="sm" onClick={() => nav({ kind: k })}>{l.replace(" Report", "")}</Btn>)}</div>
       <div className="filterbar">

@@ -84,11 +84,10 @@ export function InstitutionProfile({ initial, actingOffice, actorName }: { initi
   return (
     <>
       <Note kind="info" title="One identity, every document">
-        What is saved here heads every PDF, print and workbook the portal issues: receipts, course forms, result statements, broadsheets, letters, reports and lists. No screen types the University&rsquo;s name itself any more.
-        A document already issued keeps the identity it was issued under; a change here reaches only what is issued from now on. Every change is on the audit trail.
+        Heads every PDF, print and workbook the portal issues. A change reaches only documents issued from now on.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {missing.length ? <Note kind="bad" title={`The header is missing ${missing.join(", ")}`}>A document prints without them, with the lines left out; a reader separated from the portal has less to go on. Fill them in below.</Note> : null}
+      {missing.length ? <Note kind="bad" title={`The header is missing ${missing.join(", ")}`}>Documents print without them.</Note> : null}
 
       <div className="grid grid--2">
         <Panel title="The University" right={<Pil kind={may ? "ok" : "grey"}>{may ? "You may change this" : "Read only"}</Pil>}>
@@ -130,7 +129,7 @@ export function InstitutionProfile({ initial, actingOffice, actorName }: { initi
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={logoSrc} alt="Logo" style={{ width: 96, height: 96, objectFit: "contain", border: "1px solid var(--line)", borderRadius: 8, padding: 6, background: "#fff" }} />
               <div className="grow t-sm" style={{ lineHeight: 1.6 }}>
-                A PNG (with transparency) or JPEG, at most 2 MB; 600 pixels on the longest side prints sharply. The upload is kept as given for screens and browser printing, and a JPEG on white is made for the PDF engine. The file lives in the portal&rsquo;s file store; the documents reference it, never a fixed address.
+                A PNG (with transparency) or JPEG, at most 2 MB; 600 pixels on the longest side prints sharply.
                 <div className="row mt-2">
                   <label className="btn btn--primary btn--sm" style={{ cursor: may ? "pointer" : "default", opacity: may ? 1 : 0.5 }}>
                     {inst.logoUrl ? "Replace the logo" : "Upload a logo"}
@@ -166,7 +165,7 @@ export function InstitutionProfile({ initial, actingOffice, actorName }: { initi
               <Btn kind="primary" onClick={sampleReport}>Preview a sample report (print)</Btn>
               <a className="btn btn--ghost btn--sm" href="/platform/institution/sample/pdf" target="_blank" rel="noopener">Sample report · PDF</a>
             </div>
-            <div className="sub2 mt-2">The print preview and the PDF use the same profile; the PDF numbers every page, repeats the table header and runs the serial numbers on.</div>
+            
           </PBody>
         </Panel>
       </div>

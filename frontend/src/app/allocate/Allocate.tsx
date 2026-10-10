@@ -196,7 +196,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
         </div>
       </div>
 
-      {said ? <Note kind="ok" title={said}>The score sheet opens in the lead lecturer&rsquo;s name once the examination session is open; co-lecturers enter scores on the same sheet, and the second examiner verifies.</Note> : null}
+      {said ? <Note kind="ok" title={said} /> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Tiles items={[
@@ -226,7 +226,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             o.second_examiner ? <Pil kind="ok" key="s">{o.second_examiner}</Pil> : o.lecturer_id ? <Pil kind="bad" key="s">Not set</Pil> : <span className="sub2" key="s">&mdash;</span>,
             <Btn key="a" kind={o.lecturer_id ? "ghost" : "urgent"} onClick={() => openAssign(o)}>{o.lecturer_id ? "Manage" : "Assign"}</Btn>,
           ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
-        ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semName(semester).toLowerCase()} semester{level ? `, ${level} level` : ""}. A course appears here once it is offered to the programme for the session and its registration is opened.</div></PBody>}
+        ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semName(semester).toLowerCase()} semester{level ? `, ${level} level` : ""}.</div></PBody>}
       </Panel>
 
       <div className="row mt-1">
@@ -238,9 +238,6 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
       <BulkUpload dept={dept} deptName={deptName} session={session} semester={semester} imports={imports} canImport={canImport} />
 
-      <Note kind="info" title="Assigning the lead lecturer does four things at once">
-        It opens the course space and enrols the registered students, creates the score sheet in the lead lecturer&rsquo;s name, opens the attendance register, and releases the course to the timetable. A co-lecturer teaches the same course and enters scores on that sheet. The second examiner is set now, not at examination time, because the person who enters the marks may not be the one who verifies them.
-      </Note>
 
       {open ? (
         <Modal title={`${open.lecturer_id ? "Manage" : "Assign"} teaching for ${open.course_code}`} sub={`${open.title} · ${open.level} level · ${open.units} units · ${open.registered} registered`} wide onClose={() => setOpen(null)}
@@ -255,7 +252,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
           <div className="eyebrow mt-1">Lead lecturer</div>
           <div className="row row--between mt-1 mb-2">
-            <div className="sub2">The lead owns the score sheet and submits it up the chain. Ordered by remaining capacity against the {MAX_UNITS}-unit maximum; a full lecturer can still be assigned as an overload.</div>
+            <div className="sub2">Ordered by remaining capacity against the {MAX_UNITS}-unit maximum; a full lecturer can still be assigned as an overload.</div>
             <label className="row row--inline row--tight" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={pool !== null} disabled={loadingPool} onChange={(e) => void toggleAllDepartments(e.target.checked)} />
               {loadingPool ? "Loading…" : "Lecturers from other departments"}
@@ -281,7 +278,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               ];
             })} />
             ) : <div className="sub2" style={{ padding: "var(--s-2) 0" }}>No lecturer matches &ldquo;{lecQ}&rdquo;{pool === null ? " in this department — tick “Lecturers from other departments” to look further" : ""}.</div>}
-          </>) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department. Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
+          </>) : <Note kind="bad" title="No lecturer is on record for this department">Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
 
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lead. Set now so verification is not blocked later.">
             <SearchSelect id="al-second" value={second} allLabel="Not set yet" placeholder="Search a lecturer…"
@@ -290,7 +287,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
           {/* co-teaching: additional lecturers who teach the course and enter scores on the same sheet */}
           <div className="eyebrow mt-4">Co-lecturers</div>
-          <div className="sub2 mb-2">A course can be taught by more than one lecturer. A co-lecturer sees the course on their dashboard and enters scores on the shared sheet; the lead still submits it.</div>
+          <div className="sub2 mb-2">Co-lecturers enter scores on the shared sheet; the lead submits it.</div>
           {co.length ? (
             <div className="row mb-2">
               {co.map((c) => (

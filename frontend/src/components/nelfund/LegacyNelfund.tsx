@@ -128,7 +128,7 @@ function RowModal({ id, canAct, onClose, onChanged }: { id: string; canAct: bool
                   {picked ? <Btn kind="primary" disabled={busy || !reason.trim()} onClick={() => void act("match")}>Match to the selected student</Btn> : null}
                   <Btn kind="urgent" disabled={busy || !reason.trim()} onClick={() => void act("reject")}>Reject</Btn>
                 </div>
-                <div className="sub2 mt-1">A matched row is posted to the wallet when the import is applied. A name is never a match on its own; the identifiers on the row must not name another student.</div>
+                <div className="sub2 mt-1">A name is never a match on its own.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -245,7 +245,7 @@ export function LegacyNelfund({ data, canAct, session }: { data: NelfundLegacyPa
         <>
           <Panel title="Old-portal NELFUND payment export" right={canAct ? <label className={`btn btn--primary btn--sm${busy ? " is-disabled" : ""}`} style={{ cursor: busy ? "default" : "pointer" }}>Upload Excel / CSV<input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></label> : null}>
             <PBody>
-              <div className="sub2">Columns read by name: transaction id, payment reference, the old portal&rsquo;s student id, matriculation number, JAMB number, application number, name, amount, payment date, session and status. A row is matched to a current student by those identifiers in that order — never by name alone. Only a successful payment of an amount for a known session is posted; it goes onto the wallet as NELFUND funding of <b>that</b> session, dated when it was paid, with the old reference kept. The same reference is never staged or posted twice.</div>
+              <div className="sub2">Columns: transaction id, payment reference, old student id, matriculation number, JAMB number, application number, name, amount, payment date, session and status. Matched by identifiers, never by name alone. A successful payment is posted as NELFUND funding of <b>that</b> session, with the old reference kept; no reference is posted twice.</div>
               <div className="row row--inline row--tight mt-2"><Field id="nl-ses" label="Session for rows that name none" hint="YYYY/YYYY; a row's own session wins, then the session its date falls in"><input id="nl-ses" className="ctl" style={{ maxWidth: 140 }} value={fallbackSession} onChange={(e) => setFallbackSession(e.target.value)} /></Field></div>
             </PBody>
           </Panel>
@@ -263,7 +263,7 @@ export function LegacyNelfund({ data, canAct, session }: { data: NelfundLegacyPa
                     </Field>
                   ))}
                 </div>
-                <div className="sub2 mt-2">A dry run matches and judges without writing anything; staging keeps the rows and their judgements so the queue can be worked, and still credits no wallet. Posting is the Bursary&rsquo;s word, below.</div>
+                <div className="sub2 mt-2">A dry run writes nothing; staging credits no wallet. Posting is the Bursary&rsquo;s, below.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -284,8 +284,8 @@ export function LegacyNelfund({ data, canAct, session }: { data: NelfundLegacyPa
                 ["DUPLICATE", num(imp.summary.duplicates), null, "Already on a wallet"],
                 ["REJECTED", num(imp.summary.rejected), null, "Failed, reversed, no amount, no session"],
               ]} cls="grid--6" />
-              {imp.dryRun ? <PBody><Note kind="info" title="Nothing was written">This was a dry run: the counts above are what staging would produce; no row, no judgement and no wallet credit was kept.</Note></PBody> : null}
-              {imp.applied ? <PBody><Note kind="ok" title={`${num(imp.applied.posted)} payment${imp.applied.posted === 1 ? "" : "s"} posted · ${naira(imp.applied.amount)}`}>Each is a NELFUND credit on its student&rsquo;s wallet for the session the row names, dated when it was paid, carrying the old reference. The student is told.</Note></PBody> : null}
+              {imp.dryRun ? <PBody><Note kind="info" title="Nothing was written">Dry run: the counts are what staging would produce.</Note></PBody> : null}
+              {imp.applied ? <PBody><Note kind="ok" title={`${num(imp.applied.posted)} payment${imp.applied.posted === 1 ? "" : "s"} posted · ${naira(imp.applied.amount)}`}>Each student is told.</Note></PBody> : null}
               <RowsTable rows={importRows} onOpen={(r) => { if (!imp.dryRun) setOpen(r.id); }} />
             </Panel>
           ) : null}

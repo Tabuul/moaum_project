@@ -52,9 +52,9 @@ export function Setup({ view, office }: { view: Overview; office: string | null 
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/admissions/putme?session=${encodeURIComponent(s)}`}>Post-UTME CBT</Link><span>›</span><strong>Setup</strong></div>
-      <PageHead title="Examination setup" description={`${s}. The examination, its centres and rooms, its days and slots, and the programmes it screens. Rooms, days and slots multiply into the places the batches fill.`}
+      <PageHead title="Examination setup" description={s}
         actions={<>{x ? <Pil kind={EXAM_STATE[x.state]?.[1] ?? "grey"}>{EXAM_STATE[x.state]?.[0] ?? x.state}</Pil> : null}<LinkBtn kind="secondary" href={`/admissions/putme?session=${encodeURIComponent(s)}`}>Back to the desk</LinkBtn></>} />
-      {locked ? <Note kind="info" title="The schedule is published">Places cannot be changed under a published schedule. Reopen the examination for scheduling from the desk to change its days, slots or centres; a single batch is postponed from its own page.</Note> : null}
+      {locked ? <Note kind="info" title="The schedule is published">Reopen it for scheduling to change days, slots or centres.</Note> : null}
       {!may ? <Note kind="info" title="You are reading this setup">The Academic Office and the Registry change it.</Note> : null}
 
       <Panel title="The examination" right={x ? `Created for ${s}` : "Not yet created"}>
@@ -91,7 +91,7 @@ export function Setup({ view, office }: { view: Overview; office: string | null 
               </div>
               {c.rooms.length ? <DTable cols={["Room", "Code|mid", "Capacity|num", "Workstations|num", "Operational|num", "State|mid", "|num"]} rows={c.rooms.map((r) => [r.name, <span key="c" className="tnum sub2">{r.code}</span>, <span key="k" className="tnum">{r.capacity}</span>, <span key="w" className="tnum">{r.workstations}</span>, <span key="o" className="tnum" style={{ color: r.workstations && r.operational_workstations < r.workstations ? "var(--red-ink)" : undefined }}>{r.operational_workstations}</span>, <Pil key="s" kind={r.state === "ACTIVE" ? "ok" : "grey"}>{r.state === "ACTIVE" ? "Active" : "Inactive"}</Pil>, <span key="a" className="row row--inline row--tight"><Btn kind="ghost" onClick={() => void openWs(r)}>Workstations</Btn>{may ? <Btn kind="ghost" onClick={() => setRoomForm({ centreId: c.id, code: r.code, name: r.name, capacity: r.capacity, workstations: r.workstations, state: r.state })}>Edit</Btn> : null}</span>])} /> : <PBody><div className="sub2">No room yet.</div></PBody>}
             </div>
-          )) : <div className="sub2">No CBT centre is registered. A centre has rooms; a room has a capacity and numbered workstations.</div>}
+          )) : <div className="sub2">No CBT centre is registered.</div>}
         </PBody>
       </Panel>
 

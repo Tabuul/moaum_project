@@ -68,7 +68,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
 
   return (
     <>
-      <PageHead title="Student cohorts" description={`Who is in study, who has graduated, who is beyond their programme's length, and what the Registry must still decide — computed from the register for ${t.current_session ?? "the current session"}, nobody's history rewritten.`}
+      <PageHead title="Student cohorts" description={t.current_session ?? "The current session"}
         actions={<>
           {canSet ? <Btn kind="ghost" disabled={busy} onClick={() => void call("POST", "/refresh", {}, "Every student's position recomputed")}>Recompute</Btn> : null}
           <LinkBtn href="/students">Student Records</LinkBtn>
@@ -153,9 +153,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               <DTable pageSize={0} noPrint cols={["State", "Students|mid"]} rows={summary.bySpillover.map((s, i) => [<span key={"s" + i}>{SPILL[s.key] ?? s.key}</span>, <span key={"n" + i} className="tnum">{n(s.n)}</span>])} />
             </Panel>
           </div>
-          <Note kind="info" title="What the figures rest on">
-            A student is graduated by the Senate&rsquo;s approval of the award and nothing else. A student at the end of their programme with the record incomplete is a spillover student, still active, carried within the policy&rsquo;s limit. The cohort is the admission session, or the session it was merged into; the matriculation number, the JAMB year and the entry session are read, never changed. Computed {when(t.computed_to)}.
-          </Note>
+          <div className="sub2">Graduated only on Senate&rsquo;s approval of the award. Computed {when(t.computed_to)}.</div>
         </>
       ) : null}
 
@@ -174,7 +172,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
           {tab === "review" && canDecide ? (
             <PBody>
               <div className="row row--base">
-                <span className="sub2">The Senate&rsquo;s approved awards whose students are still active on the record can be reconciled in one act (rule R1). Everything else is decided one student at a time, on evidence.</span>
+                <span className="sub2">Senate-approved awards of students still active can be reconciled in one act (rule R1).</span>
                 <span className="grow" />
                 <Btn kind="ghost" size="sm" disabled={busy} onClick={async () => { const j = await call("POST", "/apply", { rule: "R1", dryRun: true }, "Counted the approved awards awaiting reconciliation"); if (j) setApplyCount(Number(j.considered ?? 0)); }}>Count approved awards</Btn>
                 {applyCount != null ? <Btn kind="primary" size="sm" disabled={busy || !applyCount} onClick={() => { if (window.confirm(`Reconcile ${applyCount} student${applyCount === 1 ? "" : "s"} whose award Senate approved to GRADUATED? Each change goes on the status history in your name.`)) void call("POST", "/apply", { rule: "R1", dryRun: false, batch: docSerial("REC") }, `${applyCount} approved award${applyCount === 1 ? "" : "s"} reconciled`).then(() => setApplyCount(null)); }}>Apply to {applyCount}</Btn> : null}
@@ -220,7 +218,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               <LinkBtn key={"o" + i} size="sm" href={`/cohorts?tab=all&issue=${x.key}`}>Open the list</LinkBtn>,
             ])} />
           ) : <PBody><div className="sub2">Nothing to report: every record carries what the reconciliation needs.</div></PBody>}
-          <PBody><div className="sub2">A finding is not a change. The Registry resolves each on the student&rsquo;s record — the Students screen for identifiers and level, the Graduation screen for awards, the Deferment desk for deferments — and the position recomputes by itself.</div></PBody>
+          <PBody><div className="sub2">Resolve each on the student&rsquo;s record; the position recomputes.</div></PBody>
         </Panel>
       ) : null}
 
@@ -233,7 +231,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
                   <select id="co-years" className="ctl" value={years} onChange={(e) => setYears(e.target.value)} disabled={!canSet}>{[0, 1, 2, 3, 4, 5, 6].map((y) => <option key={y} value={String(y)}>{y}</option>)}</select>
                 </Field>
                 {canSet ? <Btn kind="primary" disabled={busy || years === String(settings.policy.max_spillover_years)} onClick={() => void call("PUT", "/settings", { maxSpilloverYears: Number(years) }, `Spillover limit set to ${years} sessions`)}>Save</Btn> : null}
-                <span className="sub2">Beyond it a student is flagged Spillover limit reached for the Registry&rsquo;s review; nobody is removed by the calendar.</span>
+                <span className="sub2">Beyond it a student is flagged for the Registry&rsquo;s review.</span>
               </div>
             </PBody>
           </Panel>
@@ -277,7 +275,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
       {open ? <CohortStudentModal id={open} canDecide={canDecide} onClose={() => setOpen(null)} call={call} busy={busy} /> : null}
 
       {merge ? (
-        <Modal title={`Cancel ${merge.session} and merge it into another session`} sub="The students admitted in it keep their entry session and matriculation numbers; the merged-into session becomes the cohort that carries them" onClose={() => setMerge(null)}
+        <Modal title={`Cancel ${merge.session} and merge it into another session`} sub="Students keep their entry session and matriculation numbers" onClose={() => setMerge(null)}
           foot={<><Btn kind="ghost" onClick={() => setMerge(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || !merge.into || merge.reason.trim().length < 5} onClick={async () => { if (await call("POST", `/sessions/${merge.session}/merge`, { into: merge.into, reason: merge.reason.trim(), minute: merge.minute.trim() || null }, `${merge.session} cancelled and merged into ${merge.into}`)) setMerge(null); }}>Cancel and Merge</Btn></>}>
           <div className="stack">
             <Field id="mg-into" label="Merged into" required>
@@ -292,7 +290,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
         </Modal>
       ) : null}
       {length ? (
-        <Modal title={`Length of ${length.name}`} sub={length.pg ? "A postgraduate programme runs a number of sessions; its level does not advance. Expected completion and spillover recompute at once." : "The last level, and the length follows from each student's entry level; or a fixed number of sessions. Expected completion and spillover recompute at once."} onClose={() => setLength(null)}
+        <Modal title={`Length of ${length.name}`} sub={length.pg ? "A postgraduate programme runs a number of sessions" : "The last level, or a fixed number of sessions"} onClose={() => setLength(null)}
           foot={<><Btn kind="ghost" onClick={() => setLength(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || (!length.level && !length.years)} onClick={async () => { if (await call("PUT", `/programmes/${encodeURIComponent(length.code)}`, { finalLevel: length.level ? Number(length.level) : null, years: length.years ? Number(length.years) : null, note: length.note.trim() || null }, `${length.name}: ${length.years ? `${length.years} sessions` : `last level ${length.level}`}`)) setLength(null); }}>Save</Btn></>}>
           <div className="stack">
             <Field id="ln-level" label="Last level" hint="For a programme whose level advances each session">
@@ -306,7 +304,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
         </Modal>
       ) : null}
       {award ? (
-        <Modal title={`Length of every ${award.award} programme`} sub="Every active programme of the award takes this length in sessions; a programme's own setting can be changed afterwards" onClose={() => setAward(null)}
+        <Modal title={`Length of every ${award.award} programme`} sub="Every active programme of the award takes this length" onClose={() => setAward(null)}
           foot={<><Btn kind="ghost" onClick={() => setAward(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !award.years} onClick={async () => { if (await call("POST", "/programmes/by-award", { award: award.award, years: Number(award.years), note: award.note.trim() || null }, `${award.award}: ${award.years} sessions`)) setAward(null); }}>Set the Length</Btn></>}>
           <div className="stack">
             <Field id="aw-years" label="Length in sessions" required>

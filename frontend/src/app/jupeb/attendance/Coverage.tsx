@@ -40,7 +40,7 @@ export function RegisterTopics({ registerId, heldOn, editable }: { registerId: s
     <Panel title="Topics covered in this lecture" right={<span className="row"><Pil kind="info">{`${ticked.size} ticked`}</Pil>
       {editable ? <Btn kind="primary" disabled={busy || !dirty} onClick={() => void save()}>{busy ? "Saving…" : "Save the topics"}</Btn> : null}</span>}>
       <PBody>
-        <p className="sub2">Tick what this lecture covered of the course&rsquo;s syllabus. It counts to the course&rsquo;s coverage, which the JUPEB Office follows before the Board&rsquo;s monitoring of lectures.</p>
+        <p className="sub2">Tick what this lecture covered of the syllabus.</p>
         <DTable noPrint pageSize={0} cols={["|mid", "Course", "Topic", "Sub-topic", "Earlier"]} rows={rows.map((x, i) => {
           const topic = x.topic ?? "";
           /* a topic's name heads only its first sub-topic */
@@ -83,7 +83,7 @@ export function CoveragePanel({ session }: { session: string }) {
       <select className="ctl" style={{ width: 170 }} aria-label="Semester" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option></select>
       <Btn kind="ghost" disabled={!d.rows.length} onClick={() => void excel()}>Excel</Btn></span>}>
       <PBody>
-        {d.monitoring ? <Note kind="info" title={`The Board's monitoring of lectures: ${day(d.monitoring.starts_on)}${d.monitoring.ends_on ? ` – ${day(d.monitoring.ends_on)}` : ""}`}>The coverage below is what the lectures recorded so far have ticked of each course&rsquo;s syllabus.</Note> : null}
+        {d.monitoring ? <Note kind="info" title={`The Board's monitoring of lectures: ${day(d.monitoring.starts_on)}${d.monitoring.ends_on ? ` – ${day(d.monitoring.ends_on)}` : ""}`} /> : null}
         {!d.rows.length ? <p className="sub2">No course with its syllabus on the record for this semester.</p> : (
           <DTable pageSize={50} cols={["Course", "Subject", "Covered", "Coverage|num", "Lectures|num", "Last covered", "Lecturers"]} texts={d.rows.map((r) => `${r.code} ${r.title} ${r.subject_title}`)}
             rows={d.rows.map((r) => [<span key="c"><b>{r.code}</b> {r.title}</span>, r.subject_title, `${r.covered} of ${r.topics}`,

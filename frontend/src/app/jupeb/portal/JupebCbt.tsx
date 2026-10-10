@@ -29,7 +29,7 @@ export function JupebCbt({ who }: { who: { name: string; number: string } }) {
   return (
     <>
       {!data.rows.length ? (
-        <Note kind="info" title="No CBT examination on your subjects yet">A JUPEB CBT examination appears here once the JUPEB Office publishes it for a subject you are registered for.</Note>
+        <Note kind="info" title="No CBT examination on your subjects yet" />
       ) : null}
       {data.rows.length ? <CbtMyExams data={data} who={who} apiBase={API} roomBase="/jupeb/portal/cbt/room" feesHref="/jupeb/portal?tab=payments" /> : null}
     </>

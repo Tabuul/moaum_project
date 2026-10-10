@@ -73,8 +73,8 @@ export function Review({ d }: { d: DefermentFull }) {
       {Object.entries(may).some(([k, v]) => v && k !== "download") ? (
         <Panel title="This desk's act" right={<span>{OFFICE_OF[d.state] ? `Waiting: ${OFFICE_OF[d.state]}` : d.stage_label}</span>}>
           <PBody>
-            {may.bursaryApprove ? <Note kind="info" title="Financial verification">The last school-fee payment and the outstanding balance below are read from the finance record and recorded with your approval; nothing is typed. {fin && !fin.found ? <b>No qualifying school-fee payment found.</b> : null}</Note> : null}
-            {may.dvcApprove ? <Note kind="info" title="Final approval">Your approval is the final approval and carries your comment. It applies the academic effect at once: the period is marked deferred, the courses of the period are set aside as DEFERRED (never failed), the CGPA is untouched, the completion timeline moves by the period deferred, the approval letter is issued and the student is told. The comment is required.</Note> : null}
+            {may.bursaryApprove ? <Note kind="info" title="Financial verification">Read from the finance record and recorded with your approval. {fin && !fin.found ? <b>No qualifying school-fee payment found.</b> : null}</Note> : null}
+            {may.dvcApprove ? <Note kind="info" title="Final approval">Applied at once: courses of the period become DEFERRED (never failed), CGPA untouched, timeline extended, letter issued. The comment is required.</Note> : null}
             <Field id="rv-note" label={may.dvcApprove ? "DVC comment" : "Comment"} hint={may.dvcApprove ? "Required for the DVC's decision." : "Required for a rejection, a correction or a cancellation; optional for an approval."}><textarea id="rv-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
             <div className="row mt-2">
               {Object.entries(ACTS).filter(([k]) => may[k]).map(([k, [, label, kind]]) => <Btn key={k} kind={kind} disabled={busy} onClick={() => (confirmKeys.has(k) ? setAsk(k) : doAct(k))}>{label}</Btn>)}
@@ -101,7 +101,6 @@ export function Review({ d }: { d: DefermentFull }) {
           {d.documents.length ? (
             <ul className="plain">{d.documents.map((x) => <li key={x.id} className="row row--between" style={{ padding: "8px var(--s-4)", borderBottom: "1px solid var(--line)" }}><span><b>{DOC_KIND[x.kind] ?? x.kind}</b><div className="sub2">{x.filename} · {(x.size_bytes / 1024).toFixed(0)} KB · {dayOf(x.uploaded_at)}</div></span><Btn kind="secondary" size="sm" onClick={() => setViewing({ url: `/api/bff/api/v1/deferments/${d.id}/documents/${x.id}/content`, title: x.filename, image: x.content_type.startsWith("image/") })}>View</Btn></li>)}</ul>
           ) : <PBody><div className="sub2">{d.needs_document ? "None uploaded; the reason requires one — return the request for correction." : "None uploaded."}</div></PBody>}
-          <PBody><div className="sub2">A document opens here, in a viewer on this page; it is served through the authorised door and never by a public link.</div></PBody>
         </Panel>
       </div>
 
@@ -167,9 +166,9 @@ export function Review({ d }: { d: DefermentFull }) {
           foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Back</Btn>
             {ask === "return" ? <Btn kind="go" disabled={busy} onClick={() => void act("/return", { note: note.trim() || null }, `Return confirmed: ${d.reference}`)}>Confirm Return</Btn>
               : <Btn kind={ask === "reject" ? "urgent" : "go"} disabled={busy} onClick={() => doAct(ask)}>{ask === "reject" ? "Reject" : "Approve"}</Btn>}</>}>
-          {ask === "return" ? <p>The student&rsquo;s status is restored and normal academic activity resumes for {returnOf(d)}. The courses of the deferred period become due on their registration form as deferred courses. Add a note if you wish.</p>
-            : ask === "bursaryApprove" ? <p>Your approval records the last school-fee payment ({fin?.found ? `${naira(fin.last_fee_amount)} on ${dayOf(fin.last_fee_at)}, ${fin.last_fee_ref}` : "none found"}) and the outstanding balance ({naira(fin?.balance)}) as read from the finance record, and sends the application to the Head of Department.</p>
-            : ask === "dvcApprove" ? <p>Your approval is final. Your comment goes on the record with it; the deferred period is held on every register, the courses of the period are marked DEFERRED (never failed), the CGPA is untouched, the programme timeline is extended by {d.kind === "SESSION" ? "one academic session" : "one semester"}, the approval letter is issued and the student is told. This cannot be undone.</p>
+          {ask === "return" ? <p>The student&rsquo;s status is restored and normal academic activity resumes for {returnOf(d)}. The deferred courses become due on their registration form.</p>
+            : ask === "bursaryApprove" ? <p>Your approval records the last school-fee payment ({fin?.found ? `${naira(fin.last_fee_amount)} on ${dayOf(fin.last_fee_at)}, ${fin.last_fee_ref}` : "none found"}) and the outstanding balance ({naira(fin?.balance)}), and sends the application to the Head of Department.</p>
+            : ask === "dvcApprove" ? <p>Your approval is final: the courses of the period are marked DEFERRED (never failed), the CGPA is untouched, the timeline is extended by {d.kind === "SESSION" ? "one academic session" : "one semester"} and the letter is issued. This cannot be undone.</p>
             : ask === "reject" ? <p>The student is told the reason you have written above. This cannot be undone.</p>
             : <p>The application moves to the next desk and the student is told.</p>}
           {note.trim() ? <div className="sub2 mt-2">Comment: {note.trim()}</div> : null}

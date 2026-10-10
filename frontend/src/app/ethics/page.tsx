@@ -10,7 +10,7 @@ export default async function EthicsPage() {
   return (
     <Shell route="t/ethics" me={me.ok ? me.data : null}>
       <Note kind="info" title="Ethical review before the work, open access after it">
-        Two obligations that bracket a piece of research: it is reviewed for ethics before it begins, and its output is deposited for open access when it is done. This page states the University&rsquo;s framework for both. A live application queue and a populated repository arrive with the research-administration module (Projects &amp; grants); until then this describes the process rather than showing counts it does not yet hold.
+        The University&rsquo;s framework for ethical review before research begins and open-access deposit when it is done.
       </Note>
       <Panel title="Research ethics review">
         <PBody>

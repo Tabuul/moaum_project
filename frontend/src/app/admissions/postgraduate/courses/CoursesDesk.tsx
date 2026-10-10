@@ -154,7 +154,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
         <Panel title="Upload the course catalogue" right="Every programme, from one spreadsheet">
           <PBody>
             <div className="sub2 mb-2">
-              Bulk-load courses for any postgraduate programme. Columns: <b>Programme</b> (its name or old-portal code), <b>Course Code</b>, <b>Title</b>, <b>Units</b> (0&ndash;12), <b>Kind</b> (Core / Elective / Deficiency / Research) and <b>Semester</b> (First / Second). Column names are matched flexibly. It upserts on programme + code, so re-uploading updates rather than duplicates.
+              Bulk-load courses for any postgraduate programme. Columns: <b>Programme</b> (its name or old-portal code), <b>Course Code</b>, <b>Title</b>, <b>Units</b> (0&ndash;12), <b>Kind</b> (Core / Elective / Deficiency / Research) and <b>Semester</b> (First / Second). Re-uploading updates rather than duplicates.
             </div>
             <div className="row">
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
@@ -180,7 +180,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
                 <span key="s" className="sub2">{c.semester === 2 ? "Second" : "First"}</span>,
               ])}
               texts={allCourses.map((c) => `${c.programme_name} ${c.code} ${c.title} ${c.kind}`)} />
-          ) : <PBody><div className="sub2">No postgraduate course has been uploaded yet. Choose a programme to add courses, or upload the catalogue above.</div></PBody>}
+          ) : <PBody><div className="sub2">No postgraduate course has been uploaded yet.</div></PBody>}
         </Panel>
       ) : null}
 

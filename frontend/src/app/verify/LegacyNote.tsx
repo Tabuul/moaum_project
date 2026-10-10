@@ -8,7 +8,7 @@ export function LegacyNote({ document, number, session, semester }: { document: 
   const what = [number, session, sem ? `${sem} semester` : null].filter(Boolean).join(" · ");
   return (
     <Note kind="info" title={`Genuine ${document}, printed before its code was made secure`}>
-      {`The University issued this ${document}${what ? ` (${what})` : ""}, but it carries an older check code, so the details are not shown here. Ask the holder to print it again from the portal, then scan the new one to see the full record.`}
+      {`The University issued this ${document}${what ? ` (${what})` : ""}, but it carries an older check code. Ask the holder to print it again from the portal and scan the new one.`}
     </Note>
   );
 }

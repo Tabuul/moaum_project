@@ -73,7 +73,7 @@ export function ProgrammeEditor({ programme, departments, onClose }: { programme
       </>}
     >
       <Note kind="info" title="The code never changes; the words around it may">
-        A retired programme keeps its code for every graduate who holds it and simply stops admitting. What JAMB calls the programme is set from the alias list, not here.
+        A retired programme keeps its code and stops admitting. JAMB&rsquo;s name is set from the alias list.
       </Note>
       <div className="grid grid--2 rfgrid">
         <Field id="pg-name" label="The University calls it" full>

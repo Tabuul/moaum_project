@@ -81,7 +81,7 @@ export function Approvals({
             <thead><tr><th>Course</th><th>Department</th><th className="mid">Students</th><th className="mid">Fail rate</th><th>Stage</th><th className="num">Action</th></tr></thead>
             <tbody>
               {listing.sheets.length === 0 ? (
-                <tr><td colSpan={6} className="sub2">No score sheet exists in this scope. Sheets are generated when an examination session is opened over the allocated offerings.</td></tr>
+                <tr><td colSpan={6} className="sub2">No score sheet exists in this scope.</td></tr>
               ) : listing.sheets.map((s) => {
                 const [stageText, who] = STAGE_LABEL[s.stage] ?? [s.stage, ""];
                 const high = s.failRate !== null && s.failRate > 50;
@@ -124,7 +124,7 @@ export function Approvals({
       {returning ? (
         <Modal title="Return the sheet to the lecturer" sub="The reason goes on the record" onClose={() => setReturning(null)}
           foot={<><Btn kind="ghost" onClick={() => setReturning(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={!comment.trim() || busy !== null} onClick={async () => { if (await post(`/api/bff/api/v1/results/sheets/${returning}/return`, { comment }, "Sheet returned", returning)) setReturning(null); }}>Return it</Btn></>}>
-          <Field id="ret-why" label="Why it is returned" hint="The lecturer sees this, and so does the audit trail. It re-enters the chain at verification, not at the stage it left.">
+          <Field id="ret-why" label="Why it is returned" hint="The lecturer sees this. It re-enters the chain at verification.">
             <input id="ret-why" className="ctl" value={comment} onChange={(e) => setComment(e.target.value)} autoComplete="off" />
           </Field>
         </Modal>

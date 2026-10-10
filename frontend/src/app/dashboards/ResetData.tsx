@@ -110,14 +110,13 @@ export function ResetData({ office }: { office: string | null }) {
         <Note kind="info" title="Just clearing the demo? Use the targeted removal">
           <b>Remove demo data only</b> deletes the walkthrough seed — the demo students (surname DEMO), the
           &ldquo;DMO&rdquo; courses and the demo JAMB candidates — and <b>keeps</b> the demo staff sign-ins
-          (demo.bursar, demo.hod &hellip;) and every real record you have uploaded. Use this instead of the full reset
-          when your real data should stay.
+          (demo.bursar, demo.hod &hellip;) and every real record you have uploaded.
         </Note>
         <Note kind="info" title="Only stray demo courses left? Remove just those">
           <b>Remove demo courses only</b> deletes the walkthrough courses in the catalogue — those coded
           &ldquo;DMO&rdquo; or &ldquo;DMC&rdquo;, or titled &ldquo;Demo &hellip;&rdquo; — with their offerings,
           materials, score sheets and any registration entries on them. It touches <b>no</b> student, candidate or real
-          course. Use this when the only demo left over is courses like <b>DMC 301 — Demo DMC 301</b>.
+          course.
         </Note>
         <div className="row mt-2">
           <Btn kind="primary" onClick={() => { setCourseOpen(true); setCourseConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo courses only…</Btn>

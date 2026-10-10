@@ -72,10 +72,8 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
         canAct={mayRecord || o === "hod"}
         action="Approving inter-departmental transfers" />
       <Note kind="info" title="One application, four approvals — each a single Approve">
-        A matriculated student applies to move to another department. It goes to the <b>current department</b>, then the
-        <b> new department</b>, then the <b>Registrar</b>, then the <b>Academic office</b> — each simply approves (or
-        declines). Once all four have approved, the student pays the non-refundable processing fee set by the Bursary and
-        the registry effects the change: the programme and level move, the matriculation number does not.
+        <b>Current department</b> → <b>new department</b> → <b>Registrar</b> → <b>Academic office</b>. Then the student pays
+        the non-refundable processing fee and the change is effected; the matriculation number does not change.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

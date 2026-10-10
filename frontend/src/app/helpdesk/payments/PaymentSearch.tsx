@@ -26,7 +26,7 @@ export function PaymentSearch({ q, state, ticket, page, list }: { q: string; sta
   return (
     <>
       <PageHead title="Payment support" eyebrow="ICT Support Desk"
-        description="Find a student's payment by any number they hold and read what the gateway, the Bursary's ledger and the portal say about it. ICT Support verifies through the existing payment service and refreshes what a confirmed payment entitles — it never marks a payment paid, changes an amount or refunds."
+        description="ICT Support never marks a payment paid, changes an amount or refunds."
         actions={<><LinkBtn href="/helpdesk/students">Student Support</LinkBtn><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
       <Panel title="Search">
         <PBody>
@@ -42,7 +42,7 @@ export function PaymentSearch({ q, state, ticket, page, list }: { q: string; sta
         </PBody>
       </Panel>
       {!list ? (
-        <Note kind="info" title="Start with any number the student holds">The portal&rsquo;s payment reference is the invoice it issues. A payment hanging at the gateway, a receipt that will not print, a payment the portal shows as unpaid — each starts here, and every act is written on the support ledger and the student&rsquo;s ticket.</Note>
+        <Note kind="info" title="Start with any number the student holds" />
       ) : (
         <Panel title={`${list.total.toLocaleString()} payment${list.total === 1 ? "" : "s"}`} right={list.total > list.size ? `Page ${page} of ${pages}` : undefined}>
           {list.rows.length ? (
@@ -56,7 +56,7 @@ export function PaymentSearch({ q, state, ticket, page, list }: { q: string; sta
               <span key="rc" className="tnum">{r.receipt_no ?? "—"}</span>,
               <LinkBtn key="o" size="sm" kind="primary" href={open(r.reference)}>Investigate</LinkBtn>,
             ])} />
-          ) : <PBody><div className="sub2">No payment within your reach carries that number. A payment made to an account the portal did not generate a reference for did not reach the University&rsquo;s ledger; ask the student for the bank evidence and escalate the ticket to the Bursary.</div></PBody>}
+          ) : <PBody><div className="sub2">No payment within your reach carries that number. For a payment without a portal reference, get the bank evidence and escalate to the Bursary.</div></PBody>}
           {pages > 1 ? (
             <PBody><div className="row row--inline" style={{ gap: "var(--s-2)" }}>
               {page > 1 ? <button className="btn btn--ghost btn--sm" onClick={() => nav({ page: String(page - 1) })}>Previous</button> : null}

@@ -34,7 +34,7 @@ export function GraduationScreen({ g }: { g: Graduation }) {
     <>
       {!g.finalist && !g.audited ? (
         <Note kind="info" title={`Graduation is ${g.final_level - (g.level ?? 0) >= 100 ? `${(g.final_level - (g.level ?? 0)) / 100} year${g.final_level - (g.level ?? 0) > 100 ? "s" : ""} away` : "ahead"}`}>
-          You are at {g.level} Level of a programme that ends at {g.final_level} Level. The degree audit is computed in the final year from the published record; nothing here is typed. Until then this screen shows the road, not a result.
+          You are at {g.level} Level of a programme that ends at {g.final_level} Level. The degree audit runs in the final year.
         </Note>
       ) : graduated ? (
         <Note kind="ok" title={`Senate approved your award under ${g.senate_minute}`}>
@@ -42,15 +42,15 @@ export function GraduationScreen({ g }: { g: Graduation }) {
         </Note>
       ) : g.audited && g.unmet ? (
         <Note kind="bad" title="The degree audit found a requirement unmet">
-          {g.unmet}. The Academic Office cannot present you to Senate until it is closed; the department chases it, and the audit is run again.
+          {g.unmet}. You cannot be presented to Senate until it is cleared.
         </Note>
       ) : g.audited ? (
         <Note kind="info" title="The audit passed; the list is with Senate">
-          Every requirement is met with a CGPA of {g.cgpa}. Senate approves the list as a body, on the Registrar&rsquo;s minute. Nothing here changes until it does.
+          Every requirement is met with a CGPA of {g.cgpa}. Awaiting Senate approval.
         </Note>
       ) : (
         <Note kind="info" title="Your final year">
-          The degree audit is computed at the end of the session from the published record: every core course, the credit minima, every Senate-approved mark. Use the year to clear what the eight units below will ask for.
+          The degree audit runs at the end of the session from the published record.
         </Note>
       )}
 
@@ -103,13 +103,13 @@ export function GraduationScreen({ g }: { g: Graduation }) {
               ["Verification code", g.verification_code ?? "Issued with the signed record"],
               ["Held", g.held_reason ?? "No"],
             ]} />
-            <div className="sub2">An employer or an institution verifies the certificate by its code, without an account, and gets the same answer the University holds: issued, revoked, or not found.</div>
+            <div className="sub2">Employers and institutions verify the certificate by its code.</div>
           </PBody>
         </Panel>
       ) : null}
 
-      <Note kind="info" title="A transcript is requested separately, and paid for" action={<LinkBtn kind="ghost" href="/student/transcript">Request a transcript</LinkBtn>}>
-        The certificate names the award; the transcript lists every result behind it. Both are cleared by the same units, and neither is produced while any unit holds you.
+      <Note kind="info" title="The transcript is requested and paid for separately" action={<LinkBtn kind="ghost" href="/student/transcript">Request a transcript</LinkBtn>}>
+        Neither the certificate nor the transcript is produced while any clearance unit holds you.
       </Note>
     </>
   );

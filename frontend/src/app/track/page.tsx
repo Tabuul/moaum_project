@@ -32,9 +32,9 @@ export default function TrackPage() {
   }
 
   return (
-    <AuthLayout eyebrow="ICT support" wide lead={<>Follow a support ticket you raised with the Directorate of ICT: its standing, and what has been done on it. The ticket number and the email it was raised with open it &mdash; nothing else does.</>}>
+    <AuthLayout eyebrow="ICT support" wide lead={<>Follow a support ticket you raised with the Directorate of ICT.</>}>
       <div className="login-card">
-        <PageHead title="Track an ICT support ticket" description="Enter the ticket number you were given and the email address the ticket was raised with. Only the two together open it." />
+        <PageHead title="Track an ICT support ticket" description="The ticket number and the email it was raised with." />
         <form onSubmit={go} className="stack">
           <Field id="tr-number" label="Ticket number"><input id="tr-number" className="ctl tnum" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="TICK-2026-00000" autoComplete="off" autoCapitalize="characters" /></Field>
           <Field id="tr-email" label="Email address"><input id="tr-email" className="ctl" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
@@ -54,7 +54,7 @@ export default function TrackPage() {
                 <div className="kv"><span className="k">Resolution</span><span className="v">{t.resolution_summary ? <>{t.resolution_summary}<div className="sub2 tnum">{when(t.resolved_at)}</div></> : t.status === "CLOSED" ? "Closed without a resolution recorded" : "Not yet resolved"}</span></div>
                 <div className="kv"><span className="k">Closed</span><span className="v tnum">{t.closed_at ? when(t.closed_at) : "—"}</span></div>
               </div>
-              {t.status === "RESOLVED" ? <Note kind="ok" title="Your issue has been marked as resolved">Sign in to the portal to confirm the resolution, or to reopen the ticket if it is not settled.</Note> : null}
+              {t.status === "RESOLVED" ? <Note kind="ok" title="Your issue has been marked as resolved">Sign in to confirm or reopen it.</Note> : null}
               <div className="hr" />
               <div className="eyebrow mb-2">History</div>
               <Timeline events={t.timeline} showInternal={false} />

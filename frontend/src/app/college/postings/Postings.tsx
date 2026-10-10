@@ -149,7 +149,7 @@ export function Postings({ structure, sessions, session, level, posting, student
       {!chosen ? (
         <>
           <Note kind="info" title="The rotation this session">
-            Postings are the College&rsquo;s way of enrolling a clinical student: not a course registered, but a Block&rsquo;s posting allocated for a stretch of weeks, with a supervisor and, where the department names them, a rotation group. Below, every posting at {level} Level with who is on it in {session}, and every student with how far round the rotation they are. Pick a posting above, or from its row, to allocate.
+            Every posting at {level} Level in {session}, and each student&rsquo;s progress round the rotation. Pick a posting to allocate.
           </Note>
           <Panel title={`Postings at ${level} Level · ${session}`} right={`${postingsAtLevel.length} postings in ${new Set(postingsAtLevel.map((p) => p.block_id)).size} block${new Set(postingsAtLevel.map((p) => p.block_id)).size === 1 ? "" : "s"}`}>
             {postingsAtLevel.length === 0 ? <PBody><div className="sub2">The prospectus names no posting at {level} Level.</div></PBody> : (
@@ -172,7 +172,7 @@ export function Postings({ structure, sessions, session, level, posting, student
             )}
           </Panel>
           <Panel title={`Students at ${level} Level · where each is on the rotation`} right={`${students.length} on the register`}>
-            {students.length === 0 ? <PBody><div className="sub2">No student of the College is at {level} Level. The register puts them there; a student promoted by the Board arrives here the day the decision is confirmed.</div></PBody> : (
+            {students.length === 0 ? <PBody><div className="sub2">No student of the College is at {level} Level.</div></PBody> : (
               <DTable cols={["Matriculation number", "Name", "Programme", "Allocated|mid", "Completed|mid", "Now on", "Not yet allocated"]} rows={students.map((s) => {
                 const mine = briefs(s.allocations);
                 const ids = new Set(mine.map((a) => a.posting_id));
@@ -244,7 +244,7 @@ export function Postings({ structure, sessions, session, level, posting, student
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-from">Starts</label><input id="po-from" className="ctl" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-to">Ends</label><input id="po-to" className="ctl" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
                   </div>
-                  <div className="sub2">The prospectus gives durations, never dates: {chosen.duration_weeks ? `this posting runs ${chosen.duration_weeks} weeks; ` : ""}the College dates it. A student already on the posting keeps their group, supervisor and dates unless these are filled.</div>
+                  <div className="sub2">{chosen.duration_weeks ? `This posting runs ${chosen.duration_weeks} weeks. ` : ""}A student already on it keeps their group, supervisor and dates unless these are filled.</div>
                   <Btn kind="primary" disabled={busy || !picked.size} onClick={() => void allocate()}>{busy ? "Allocating…" : `Allocate ${picked.size || ""} student${picked.size === 1 ? "" : "s"}`}</Btn>
                 </div>
               </PBody>
@@ -297,7 +297,7 @@ export function Postings({ structure, sessions, session, level, posting, student
                 {allocations.length > 1 ? (
                   <label className="row row--tight"><input type="checkbox" checked={editing.all} onChange={(e) => setEditing({ ...editing, all: e.target.checked })} /> <span>Apply what is filled to everyone on {chosen.code} this session ({allocations.length})</span></label>
                 ) : null}
-                <div className="sub2">Only what is filled changes; a blank leaves the allocation as it is. An allocation that has begun keeps its standing.</div>
+                <div className="sub2">Only what is filled changes.</div>
               </div>
             </Modal>
           ) : null}

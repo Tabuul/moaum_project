@@ -122,7 +122,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
       <Panel title="Course registration" right={`${pickedUnits} units selected`}>
         <PBody>
           {endorsed ? (
-            <Note kind="ok" title="Your registration is endorsed">The Head of Department has endorsed this semester&rsquo;s registration. Write to the department to change it.</Note>
+            <Note kind="ok" title="Your registration is endorsed">Write to the department to change it.</Note>
           ) : v.courses.length ? (
             <>
               <div className="stack">
@@ -151,7 +151,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
               </div>
             </>
           ) : (
-            <Note kind="info" title="No courses listed for this semester yet">Your department sets the courses the programme carries. Check back, or ask the department.</Note>
+            <Note kind="info" title="No courses listed for this semester yet" />
           )}
         </PBody>
       </Panel>

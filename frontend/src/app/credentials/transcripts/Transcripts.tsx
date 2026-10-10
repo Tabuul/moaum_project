@@ -39,7 +39,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
       ]} />
 
       <Note kind="info" title="Production is never manual re-typing">
-        Every transcript is generated from the approved academic record. Exams &amp; Records verifies it, the Registrar signs it — no one keys a grade at this stage.
+        Generated from the approved record; Exams &amp; Records verifies, the Registrar signs.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
@@ -48,7 +48,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
           <table className="tbl--data" style={{ minWidth: 940 }}>
             <thead><tr><th>Request</th><th>Student</th><th>Destination</th><th className="mid">Clearance</th><th className="mid">SLA</th><th>Stage</th><th className="num">Action</th></tr></thead>
             <tbody>
-              {queue.requests.length === 0 ? <tr><td colSpan={7} className="sub2">No transcript request is open. Requests arrive from students and alumni; the Academic Office can raise one on a student&rsquo;s behalf through the API.</td></tr> : null}
+              {queue.requests.length === 0 ? <tr><td colSpan={7} className="sub2">No transcript request is open.</td></tr> : null}
               {queue.requests.map(({ row: r, slaDay, breaching, actionStage }) => {
                 const stage = actionStage === "NOT_PAYABLE" ? ["Awaiting payment", "pill--bad"]
                   : actionStage === "BLOCKED" ? ["Held at clearance", "pill--bad"]

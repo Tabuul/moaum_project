@@ -54,7 +54,7 @@ export function Alumni({ d }: { d: AlumniData }) {
         ) : <PBody><div className="sub2">{d.rows.length ? "No alumnus matches these filters." : "No graduand has been approved by Senate yet. The register fills as cohorts graduate."}</div></PBody>}
       </Panel>
       <Note kind="info" title="The register is the record, not a mailing list">
-        This is the University&rsquo;s record of who it has graduated. Contact details and alumni-relations activity are kept separately, under the data-protection rules that govern personal data after graduation.
+        Contact details and alumni relations are kept separately, under data-protection rules.
       </Note>
     </>
   );

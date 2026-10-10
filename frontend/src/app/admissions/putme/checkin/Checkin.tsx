@@ -58,7 +58,7 @@ export function Checkin({ session: s, batches, office }: { session: string; batc
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/admissions/putme?session=${encodeURIComponent(s)}`}>Post-UTME CBT</Link><span>›</span><strong>Check-in desk</strong></div>
-      <PageHead title="Check-in desk" description={`${s}. Scan the slip's QR, or type the application or JAMB number. The portal shows the record; compare the face, then check the candidate in.`}
+      <PageHead title="Check-in desk" description={`${s}. Scan the slip's QR or type the number; compare the face, then check in.`}
         actions={<><LinkBtn kind="ghost" href={`/admissions/putme?session=${encodeURIComponent(s)}`}>Back to the desk</LinkBtn></>} />
       {!door ? <Note kind="info" title="You are reading this desk">The Academic Office, the Registry, Records and ICT check candidates in.</Note> : null}
       <Panel title="Find the candidate" right={todays.length ? `${todays.length} batch(es) sit today` : "No batch sits today"}>

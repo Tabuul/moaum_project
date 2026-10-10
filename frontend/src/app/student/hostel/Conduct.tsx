@@ -53,7 +53,7 @@ export function Conduct({ data, canSwap }: { data: ConductData; canSwap: boolean
       {data.bar ? <Note kind="bad" title="You may not be given a hostel bed at present">{data.bar}. {data.bar.startsWith("An unpaid") ? "Pay the fine below; the bar lifts when the Bursary confirms it." : "A sanction may be appealed once, within 14 days of the decision."}</Note> : null}
       {paid ? (
         <Note kind="info" title={`Pay ${naira(paid.amount)} against ${paid.reference}`} action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>
-          The reference is on your Fees page with the card option and the bank details. The fine is settled when the Bursary confirms the payment.
+          The reference is on your Fees page.
         </Note>
       ) : null}
 
@@ -104,7 +104,7 @@ export function Conduct({ data, canSwap }: { data: ConductData; canSwap: boolean
                 {(w.state === "PROPOSED" && proposer) || w.state === "AGREED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void withdraw(w.id)}>Withdraw</Btn> : null}
               </span>,
             ];
-          })} /> : <PBody><div className="sub2">To exchange beds with another student of this session, propose a swap naming them by their number. The two beds must carry the same hostel fee; nothing moves until they agree and the Dean of Student Affairs approves.</div></PBody>}
+          })} /> : <PBody><div className="sub2">Propose a swap by the other student&rsquo;s number. Both beds must carry the same hostel fee; the Dean of Student Affairs approves.</div></PBody>}
         </Panel>
       ) : null}
 

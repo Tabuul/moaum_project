@@ -227,15 +227,9 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
   return (
     <>
       <Note kind="info" title="Migrate the applicants who already applied and paid on the old portal">
-        The <b>JAMB CAPS list is the source of the applicant&rsquo;s data</b> — name, programme, sex, state, LGA, UTME and
-        subjects all come from it, so <b>upload and commit the CAPS list first</b>. This migration <b>confirms the payment,
-        creates the login and records the applicant&rsquo;s email and phone number</b>: for each row it finds the applicant on
-        the CAPS list by <b>JAMB number</b>, creates their account (initial password = their JAMB number) with the email and
-        phone in the file, and writes a confirmed application-fee receipt marked paid and submitted. So the file carries the
-        <b> JAMB number, the email and the phone number</b> — download the template; any name or programme column is ignored,
-        CAPS is used. An applicant <b>already migrated takes the email and phone in the file</b>, so the same upload fills in
-        the contacts of the applicants brought over earlier without them. A JAMB number <b>not on the CAPS list is skipped and
-        reported</b>. It is safe to run the same file more than once — nobody is duplicated.
+        <b>Upload and commit the JAMB CAPS list first</b>: the applicant&rsquo;s data comes from it. Each row (<b>JAMB number, email,
+        phone</b> — see the template) confirms the payment, creates the login (initial password = the JAMB number) and records the
+        contacts. A JAMB number <b>not on the CAPS list is skipped and reported</b>. Safe to re-run.
       </Note>
 
       {fee.stated ? (
@@ -245,8 +239,7 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
       ) : (
         <Note kind="bad" title={`The applicant fee is not set for ${session}`}
           action={<LinkBtn kind="urgent" href="/finance/fees">Set the fee</LinkBtn>}>
-          The application fee, portal charge and acceptance fee are not stated for {session}, so imported receipts would use
-          the portal’s <b>fallback</b> amounts. Set the applicant fee first, then import, so every receipt shows the right money.
+          Imported receipts would use the portal’s <b>fallback</b> amounts. Set the applicant fee first.
         </Note>
       )}
 
@@ -261,7 +254,7 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
             ]} />
             <div className="row mt-2">
               <Btn kind="secondary" disabled={fetching || !(Number(contacts.without_email) + Number(contacts.without_phone))} onClick={() => void downloadMissing()}>{fetching ? "Preparing…" : "Download the applicants still without an email or phone"}</Btn>
-              <span className="sub2">The list comes in the template&rsquo;s shape: fill the Email and Phone Number columns and upload it here. A password reset by email and every notice by email or SMS reach an applicant only once their real contacts are on the account.</span>
+              <span className="sub2">Fill the Email and Phone Number columns and upload it here.</span>
             </div>
           </PBody>
         </Panel>
@@ -270,10 +263,8 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
       <Panel title="Re-run the migration from scratch" right="Clears only the migrated applicants">
         <PBody>
           <div className="sub2 mb-2">
-            If applicants were migrated before the CAPS list was uploaded, clear the migration and import the file again so
-            every applicant is rebuilt from CAPS. This removes only the migrated <b>candidate / account / application</b>
-            records — the CAPS list, O&rsquo;Level results and passports are kept (passports re-link by JAMB number).
-            It is not needed to add emails and phone numbers: uploading them updates the applicants already migrated.
+            If applicants were migrated before the CAPS list was uploaded, clear the migration and import again. This removes
+            only the migrated <b>candidate / account / application</b> records.
           </div>
           <div className="row">
             <Btn kind="urgent" disabled={resetting || !may} onClick={() => void resetMigrated()}>{resetting ? "Clearing…" : "Reset migrated applicants"}</Btn>
@@ -303,16 +294,16 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
           ]} />
           {!cols.email || !cols.phone ? (
             <Note kind="bad" title={`The file has no ${!cols.email && !cols.phone ? "Email or Phone Number columns" : !cols.email ? "Email column" : "Phone Number column"}`}>
-              The applicants will come over on a placeholder where the file gives no contact. Add the column (download the template for its shape) and upload again; an applicant already migrated takes the contacts then.
+              Add the column (see the template) and upload again.
             </Note>
           ) : null}
           {shared ? (
             <Note kind="info" title={`${shared.toLocaleString()} email address${shared === 1 ? " appears" : "es appear"} on more than one row`}>
-              An email is a way to sign in and to reset the password, so it goes on one applicant&rsquo;s account only: the first row imported takes it, and the others are listed after the import (with their phone numbers still recorded) for the office to give each applicant an address of their own.
+              An email goes on one applicant&rsquo;s account only; the others are listed after the import.
             </Note>
           ) : null}
           <Panel title="First rows, as read" right={`${rows.length.toLocaleString()} to verify & confirm`}>
-            <PBody><div className="sub2 mb-2">Each JAMB number is verified against the CAPS list; the name, programme, sex, state, LGA and UTME come from CAPS. The email and phone number go on the applicant&rsquo;s login and contact: the first usable email in a cell, and the first Nigerian mobile number (0803…, 803…, +234 803…), as shown here. A cell with neither leaves a placeholder, reported after the import.</div></PBody>
+            <PBody><div className="sub2 mb-2">Each JAMB number is verified against the CAPS list. The first usable email and Nigerian mobile number in each cell are used; a cell with neither leaves a placeholder.</div></PBody>
             <DTable
               cols={["JAMB no|mid", "Email in the file", "Read as", "Phone in the file|mid", "Read as|mid"]}
               rows={rows.slice(0, 8).map((r) => {
@@ -338,10 +329,7 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
                 {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may import.</span> : null}
               </div>
               <div className="sub2 mt-2">
-                The initial password is not hashed at import — the JAMB number is the initial password, and the applicant&rsquo;s
-                real password is hashed when they set it on first sign-in — so the import is fast. <b>Parallel uploads</b> can
-                be raised to finish sooner; lower it only if you see timeouts. It is safe to leave running, and safe to re-run:
-                rows already imported are not duplicated, and take the email and phone in the file.
+                Raise <b>Parallel uploads</b> to finish sooner; lower it if you see timeouts. Safe to re-run.
               </div>
               {progress ? <div className="sub2 mt-2">Done {Math.min(progress.done, progress.of).toLocaleString()} of {progress.of.toLocaleString()}…</div> : null}
             </PBody>
@@ -362,25 +350,24 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
             {result.skipped > 0 && result.problems.some((p) => (p.status ?? "").includes("not on the JAMB CAPS list")) ? (
               result.capsRows === 0 ? (
                 <Note kind="bad" title={`No JAMB CAPS rows exist for ${session}`}>
-                  The importer verifies each JAMB number against the CAPS list for <b>{session}</b>, and there are <b>0</b> CAPS rows under that session — so every row is skipped. The CAPS list was uploaded under a <b>different session</b>, or not committed. Upload/commit the CAPS list for {session}, then re-run.
+                  Upload and commit the CAPS list for <b>{session}</b>, then re-run.
                 </Note>
               ) : (
                 <Note kind="bad" title={`${result.capsRows?.toLocaleString()} CAPS rows on file, but the JAMB numbers are not matching`}>
-                  CAPS rows exist for <b>{session}</b>, so this is a <b>number-format mismatch</b> — the JAMB numbers in your file do not equal the CAPS registration numbers. Compare the format:
-                  {result.capsSample?.length ? <> the CAPS numbers look like <b className="tnum">{result.capsSample.join(", ")}</b>.</> : null} Make the file&rsquo;s JAMB column match that exactly (no extra characters, not the application number), then re-run.
+                  The JAMB numbers in your file do not match the CAPS numbers{result.capsSample?.length ? <> (for example <b className="tnum">{result.capsSample.join(", ")}</b>)</> : null}. Make the file&rsquo;s JAMB column match exactly, then re-run.
                 </Note>
               )
             ) : null}
             {result.passportsLinked ? (
               <Note kind="ok" title={`${result.passportsLinked} held passport${result.passportsLinked === 1 ? "" : "s"} linked to the imported applicants`}>
-                Passports uploaded earlier that had no candidate to attach to have now snapped onto the applicants this import created, matched on the JAMB number.
+                Matched on the JAMB number.
               </Note>
             ) : null}
             {result.notes.length ? (
               <>
                 <Note kind="info" title={`${result.notes.length.toLocaleString()} row${result.notes.length === 1 ? "" : "s"}: an email or phone in the file was not used`}
                   action={<Btn kind="secondary" onClick={downloadNotes}>Download them</Btn>}>
-                  Not an email address, not a Nigerian mobile number, missing from the file, or an email already on another applicant&rsquo;s account (an email signs in one applicant only). Correct them in the file and upload it again; the applicants take the corrected contacts.
+                  Not an email address, not a Nigerian mobile number, missing, or already on another account. Correct them and upload again.
                 </Note>
                 <DTable cols={["JAMB no|mid", "Email", "Phone"]} rows={result.notes.slice(0, 20).map((n) => [
                   <span className="tnum sub2" key="j">{n.jambKey}</span>,

@@ -26,7 +26,7 @@ export function Health({ h }: { h: StudentHealth }) {
   return (
     <>
       <Note kind="info" title="Only the clinic sees your medical notes">
-        Registry and your department see a fitness status and nothing else. Every access to your record is logged and is shown to you below.
+        Registry and your department see only a fitness status. Every access to your record is logged and shown below.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
@@ -35,7 +35,7 @@ export function Health({ h }: { h: StudentHealth }) {
           <PBody>
             {booked ? (
               <Note kind="ok" title={`Booked for ${when(booked.preferred_at)}`} action={<Btn kind="ghost" disabled={busy !== null} onClick={async () => { if (await act("cancel", "POST", `/me/health/appointments/${booked.id}/cancel`, {}, "Appointment cancelled by the student")) setSaid("Appointment cancelled"); }}>Cancel</Btn>}>
-                {booked.reason}. Walk-in triage runs 8am–4pm for urgent cases; come to the clinic behind the Sports Complex.
+                {booked.reason}.
               </Note>
             ) : (
               <>
@@ -64,7 +64,7 @@ export function Health({ h }: { h: StudentHealth }) {
               <Btn kind="ghost" disabled={busy !== null} onClick={async () => { if (await act("consent", "PUT", "/me/health/consent", { bloodGroup: blood || null, genotype: geno || null, allergies: allergies || null }, "Health record consented by the student")) setSaid("Recorded with your consent"); }}>{consented ? "Update with my consent" : "Record with my consent"}</Btn>
               {consented ? <Btn kind="ghost" disabled={busy !== null} onClick={async () => { if (await act("restrict", "POST", "/me/health/restrict", {}, "Health record restricted by the student")) setSaid("Restricted — not deleted"); }}>Withdraw consent</Btn> : null}
             </div>
-            <div className="sub2">Blood group and genotype are recorded with your consent. You can withdraw that consent at any time, and the record is then restricted rather than deleted.</div>
+            <div className="sub2">Blood group and genotype are recorded with your consent, which you may withdraw at any time.</div>
           </PBody>
         </Panel>
       </div>

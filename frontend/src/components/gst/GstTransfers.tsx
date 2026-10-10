@@ -81,14 +81,14 @@ export function GstTransfers({ office, actingOffice, transfers, settings }: { of
               <Btn kind="secondary" size="sm" type="submit" disabled={busy}>Save</Btn>
             </form>
           ) : null}
-          <div className="sub2">An unanswered request is reminded to the office that holds the course after {settings.remind_after_days} day{settings.remind_after_days === 1 ? "" : "s"}, and goes to the Academic Office after {settings.escalate_after_days}. Each office is told by email, or by text message when it has no email on record.</div>
+          <div className="sub2">An unanswered request is reminded to the office that holds the course after {settings.remind_after_days} day{settings.remind_after_days === 1 ? "" : "s"}, and goes to the Academic Office after {settings.escalate_after_days}.</div>
         </PBody>
       ) : null}
       {toAnswer.length ? (
         <PBody>
           <Note kind="info" title={office ? `The other office asks for ${toAnswer.length === 1 ? "a course" : "courses"} this office holds` : "Requests the two offices have not settled"}>
             {office
-              ? <>Accept to pass the course, with its offerings, score sheets and CBT examinations, or decline and say why. If the offices disagree, the Academic Office decides.</>
+              ? <>Accept to pass the course, or decline and say why. If the offices disagree, the Academic Office decides.</>
               : <>The office that holds the course answers first; the Academic Office may decide a request the two offices cannot settle.</>}
           </Note>
         </PBody>

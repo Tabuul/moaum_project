@@ -40,7 +40,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
   return (
     <>
       <Note kind="info" title="A payment that succeeded at the gateway has succeeded">
-        The portal&rsquo;s record is a copy; the gateway&rsquo;s is the fact. When the two disagree the portal is wrong, and the student is not the party who should have to prove it. <b>There is no upload-your-evidence form on this page, and that is the design.</b> The portal asks the gateway.
+        The gateway&rsquo;s record is the fact. The portal asks the gateway.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record; the student is told when a settlement posts.</Note> : null}
@@ -61,7 +61,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
             <span className="sub2 tnum" key="c">{h.checks ? `${h.checks}× · last ${when(h.checked_at)}` : "not yet"}</span>,
             may ? <Btn key="v" kind="primary" disabled={busy !== null} onClick={() => void verify(h.reference)}>{busy === h.reference ? "Asking…" : "Ask the gateway"}</Btn> : <span className="sub2" key="v">—</span>,
           ])} texts={d.hanging.map((h) => `${h.reference} ${h.payer ?? ""} ${h.number ?? ""}`)} />
-        ) : <PBody><div className="sub2">Nothing is hanging: every checkout opened in the last three days is confirmed, or was never paid.</div></PBody>}
+        ) : <PBody><div className="sub2">Nothing is hanging in the last three days.</div></PBody>}
       </Panel>
       <Panel title="Needs a person" right="What the sweep could not resolve on its own">
         {needsPerson.length ? (
@@ -75,7 +75,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
           ])} />
         ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>}
       </Panel>
-      <Note kind="ok" title="The student is told, not left to notice">Every settlement — by webhook, by the sweep, or on request — sends the receipt by email and SMS on the spot, and the student&rsquo;s fees page shows it.</Note>
+      <Note kind="ok" title="The student is told">Every settlement sends the receipt by email and SMS.</Note>
     </>
   );
 }

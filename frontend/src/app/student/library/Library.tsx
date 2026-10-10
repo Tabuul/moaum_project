@@ -37,7 +37,7 @@ export function Library({ l, q }: { l: StudentLibrary; q: string }) {
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {overdue.length ? (
         <Note kind="bad" title={`${overdue.length} item${overdue.length === 1 ? " is" : "s are"} overdue`}>
-          A fine of {naira(l.setting.fine_per_day)} per day is posted to your account when the item is returned. Library clearance is required before a transcript or certificate is released, and nothing is issued to you while an overdue item is out.
+          A fine of {naira(l.setting.fine_per_day)} per day is charged on return. Nothing is issued to you while an item is overdue; transcripts and certificates need library clearance.
         </Note>
       ) : null}
       {fines.length ? (

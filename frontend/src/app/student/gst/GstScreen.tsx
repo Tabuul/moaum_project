@@ -75,29 +75,29 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {back && back.confirmed_at ? <Note kind="ok" title="GST fee payment confirmed">Reference {back.reference} is confirmed. It covers both GST and EPS: register your GST/EPS courses on Course registration.</Note> : null}
+      {back && back.confirmed_at ? <Note kind="ok" title="GST fee payment confirmed">Reference {back.reference} confirmed. It covers GST and EPS; register your GST/EPS courses on Course registration.</Note> : null}
       {back && !back.confirmed_at ? (
         <Note kind="info" title="Confirming your GST payment" action={<Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>}>
-          The gateway tells the University directly when the money lands, and the portal re-checks the reference every ten minutes. Reference {back.reference}. If you were not debited, pay again below.
+          Reference {back.reference}. If you were not debited, pay again below.
         </Note>
       ) : null}
       {unpaid ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={e.open_reference ? null : <Btn kind="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Generating…" : "PAY GST FEE"}</Btn>}>
-          You are required to pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} before you can register GST/EPS courses: {reasonWord(e.reason)}
-          {owes(gst.courses).length ? ` (${owes(gst.courses).map((c) => c.code).join(", ")})` : ""}. GST payment covers both GST and EPS requirements. Please complete your GST payment to continue with course registration.
+          Pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} to register GST/EPS courses: {reasonWord(e.reason)}
+          {owes(gst.courses).length ? ` (${owes(gst.courses).map((c) => c.code).join(", ")})` : ""}. One payment covers GST and EPS.
         </Note>
       ) : null}
-      {e.required && e.state === "NOT_STATED" ? <Note kind="info" title={`No GST fee is stated for ${gst.session} yet`}>The Bursar states the GST fee for the session; nothing is owed until then, and your GST/EPS courses register as usual.</Note> : null}
-      {e.state === "EXEMPT" ? <Note kind="info" title={`No GST fee for you in ${gst.session}`}>The GST fee the Bursar stated for students of your category is nothing. Your GST/EPS courses register as usual.</Note> : null}
+      {e.required && e.state === "NOT_STATED" ? <Note kind="info" title={`No GST fee is stated for ${gst.session} yet`}>Your GST/EPS courses register as usual.</Note> : null}
+      {e.state === "EXEMPT" ? <Note kind="info" title={`No GST fee for you in ${gst.session}`}>Your GST/EPS courses register as usual.</Note> : null}
       {e.state === "NOT_REQUIRED" ? (
         <Note kind="info" title={`No GST or EPS payment is required of you in ${gst.session}`}>
           {el ? <>GST: {reasonWord(el.gst_reason)}. EPS: {reasonWord(el.eps_reason)}.</> : "No GST or EPS course is offered to your programme at your level, and none is carried over."}
-          {" "}Nothing is owed and nothing holds your course registration. If you believe a course is missing, ask ICT Support to check your eligibility.
+          {" "}Nothing is owed. If you believe a course is missing, contact ICT Support.
         </Note>
       ) : null}
       {e.review ? (
         <Note kind="info" title="Paid, though no course requires it this session">
-          No GST or EPS course requires the fee of you in {gst.session}. Your payment stands as paid; the Bursary reviews it. Nothing is deleted or refunded without them.
+          No GST or EPS course requires the fee in {gst.session}. The Bursary will review your payment.
         </Note>
       ) : null}
       {concerned ? (
@@ -116,7 +116,7 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
           <PBody>
             <KvGrid cls="grid--3" pairs={[["Reference", <b key="r" className="tnum">{e.open_reference}</b>], ["Amount", <b key="a" className="tnum">{naira(Number(e.open_amount))}</b>], ["Expires", when(e.open_expires_at)]]} />
             <div className="row mt-2"><PayByCard reference={e.open_reference} amount={Number(e.open_amount)} /></div>
-            <div className="sub2 mt-1">Pay by card or USSD above, or quote this reference and nothing else at a bank branch or by transfer. The gateway or the Bursary confirms it; your GST and EPS courses unlock the moment it is confirmed, and you are told by email and SMS.</div>
+            <div className="sub2 mt-1">Pay by card or USSD above, or quote this reference at a bank branch or by transfer. Your GST and EPS courses unlock once it is confirmed.</div>
             <div className="row row--inline row--tight mt-2"><LinkBtn kind="ghost" href="/student/register">Course registration</LinkBtn></div>
           </PBody>
         </Panel>
@@ -129,16 +129,16 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
             ["Receipt", <span key="x" className="row row--inline row--tight"><a className="btn btn--primary btn--sm" href={`/student/receipt/${encodeURIComponent(e.reference)}/pdf`} target="_blank" rel="noopener">View receipt</a><LinkBtn kind="ghost" size="sm" href="/student/register">Register courses</LinkBtn></span>],
             ["Academic session", gst.session], ["GST registration", gstReg ? "Registered" : e.gst_required === false ? "Not required" : "Available"], ["EPS registration", epsReg ? "Registered" : !e.eps_required ? "Not required" : e.covers_eps ? "Available" : "—"],
           ]} />
-          {e.source === "LEGACY_PORTAL" ? <div className="sub2 mt-1">Your GST payment on the old portal{e.legacy_reference ? ` (${e.legacy_reference})` : ""} was verified and reconciled by the Bursary; it covers both GST and EPS for {gst.session}. You will not be asked to pay again.</div> : null}
+          {e.source === "LEGACY_PORTAL" ? <div className="sub2 mt-1">Your old-portal GST payment{e.legacy_reference ? ` (${e.legacy_reference})` : ""} was verified by the Bursary; it covers GST and EPS for {gst.session}.</div> : null}
           </PBody>
         </Panel>
       ) : null}
 
       <Panel title="GST courses" right={<span className="sub2">{s.programme} · {s.level} Level</span>}>
-        {gstCourses.length ? <DTable cols={cols} rows={courseRows(gstCourses)} /> : <PBody><div className="sub2">No GST course concerns you this session: none is offered to your programme at {s.level} level, and you carry none over.</div></PBody>}
+        {gstCourses.length ? <DTable cols={cols} rows={courseRows(gstCourses)} /> : <PBody><div className="sub2">No GST course this session: none offered at {s.level} level, none carried over.</div></PBody>}
       </Panel>
       <Panel title="EPS courses" right={<span className="sub2">{e.covers_eps ? "Covered by the GST payment" : "Not covered by GST"}</span>}>
-        {epsCourses.length ? <DTable cols={cols} rows={courseRows(epsCourses)} /> : <PBody><div className="sub2">No EPS course concerns you this session: none is offered to your programme at {s.level} level, and you carry none over.</div></PBody>}
+        {epsCourses.length ? <DTable cols={cols} rows={courseRows(epsCourses)} /> : <PBody><div className="sub2">No EPS course this session: none offered at {s.level} level, none carried over.</div></PBody>}
       </Panel>
       <Panel title="GST payment history">
         {gst.references.length ? <DTable cols={["S/N|num", "Reference", "Session|mid", "Amount|num", "Generated|mid", "Status|mid", "Receipt|mid"]} rows={gst.references.map((r, i) => [

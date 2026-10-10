@@ -310,7 +310,7 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
             </Panel>
           ))}
           <Panel title="What the desk does not change" right="Routed to the office that owns it">
-            <PBody><div className="sub2">Name, date of birth, gender and nationality beyond a Registry request; the matriculation and JAMB numbers; the admission decision; the programme, department and faculty; the student&rsquo;s status and graduation; results, grades, CGPA and transcripts; any payment, amount, fee or refund. Escalate the ticket to the office that owns it — the Registry, Examinations and Records, the Academic Office or the Bursary.</div></PBody>
+            <PBody><div className="sub2">Name, date of birth, gender and nationality (beyond a Registry request); matriculation and JAMB numbers; the admission decision; programme, department and faculty; status and graduation; results and transcripts; any payment, fee or refund. Escalate to the owning office.</div></PBody>
           </Panel>
         </>
       ) : null}
@@ -335,7 +335,7 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
                   {reg.override ? <Pil kind="warn">Your postings carry the support override</Pil> : null}
                 </div>
                 {reg.issues.length ? <Note kind="bad" title="Outstanding registration issues">{reg.issues.map((x, i) => <span key={i} style={{ display: "block" }}>{x}</span>)}</Note> : <Note kind="ok" title="No outstanding registration issue">The engine raises nothing against this registration.</Note>}
-                {!reg.manage ? <Note kind="info" title="Read only">Your postings do not carry course registration management for this student; the Head of the Support Desk grants it on the posting.</Note> : null}
+                {!reg.manage ? <Note kind="info" title="Read only">Your postings do not carry course registration management; the Head of the Support Desk grants it.</Note> : null}
               </PBody>
               <PBody>
                 <div className="eyebrow">Current course registration</div>
@@ -364,12 +364,12 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
                     <span key="n" className="sub2">{on ? "Already registered" : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : "Eligible"}</span>,
                     reg.manage && !on ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
                   ];
-                })} /> : <div className="sub2">The engine offers no course for this student in this semester — no offering is open, or the structure has nothing at this level.</div>}
+                })} /> : <div className="sub2">No course is offered for this student this semester.</div>}
               </PBody>
               {reg.manage ? (
                 <PBody>
                   <div className="eyebrow">A course missing from the menu</div>
-                  <div className="sub2 mb-1">When a valid course is missing from the student&rsquo;s list — a course mapped wrongly, a portal fault — find it here. Its rules are shown before anything is done; the menu is set aside only by a support override on the student&rsquo;s ticket.</div>
+                  <div className="sub2 mb-1">Find a valid course missing from the student&rsquo;s list. Its rules are shown first; the menu is set aside only by a support override on the ticket.</div>
                   <input className="ctl" type="search" placeholder="Course code or title offered this semester" value={find?.q ?? ""} onChange={(e) => void searchOfferings(e.target.value)} style={{ maxWidth: 420 }} />
                   {find?.rows.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "Level|mid", "Kind|mid", "Department", "|num"]} rows={find.rows.map((o) => [
                     <b key="c" className="tnum">{o.course_code}</b>, <span key="t">{o.title}</span>, <span key="u" className="tnum">{o.units}</span>, <span key="l" className="tnum">{o.level}</span>,
@@ -499,11 +499,11 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
             {course.checks === null ? <div className="sub2">Reading the engine&rsquo;s rules…</div> : (
               <>
                 <RulesTable rules={course.checks.rules} />
-                {course.checks.allowed ? <Note kind="ok" title="The engine's rules allow it">Nothing is set aside; the act goes through the same functions the student&rsquo;s own form uses.</Note>
+                {course.checks.allowed ? <Note kind="ok" title="The engine's rules allow it" />
                   : course.checks.overridable ? (course.checks.mayOverride
-                    ? <Note kind="bad" title={`NORMAL RULE: Registration blocked because ${course.checks.rules.filter((r) => !r.passed && r.overridable).map((r) => r.message).join(" ")}`}>Only a genuine portal problem justifies a support override — a portal error, a course missing or wrongly mapped, a registration interrupted. It is made on the student&rsquo;s ticket, written with the rule it sets aside, and the student is told.</Note>
+                    ? <Note kind="bad" title={`NORMAL RULE: Registration blocked because ${course.checks.rules.filter((r) => !r.passed && r.overridable).map((r) => r.message).join(" ")}`}>Only a genuine portal problem justifies a support override. It is made on the student&rsquo;s ticket, recorded with the rule it sets aside, and the student is told.</Note>
                     : <Note kind="bad" title="Blocked by the registration window or the engine's menu">Your postings do not carry the support override. Document the problem on the ticket and escalate it, or ask an agent who carries the override.</Note>)
-                  : <Note kind="bad" title="The engine's rule stands">A rule a support override never sets aside blocks this — fees, units, GST, a lock, a mark, a closed semester or a course that is not offered this semester. Escalate the ticket to the office that owns it.</Note>}
+                  : <Note kind="bad" title="The engine's rule stands">An override never sets aside fees, units, GST, a lock, a mark, a closed semester or a course not offered. Escalate to the owning office.</Note>}
               </>
             )}
             {course.checks && (course.checks.allowed || (course.checks.overridable && course.checks.mayOverride)) ? (

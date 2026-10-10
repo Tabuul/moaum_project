@@ -64,9 +64,9 @@ export function JupebAttendance() {
     ...(o.reader ? [{ id: "instructors" as Tab, label: "Instructors" }] : []), ...(o.office ? [{ id: "policy" as Tab, label: "Minimum attendance" }] : [])];
   return (
     <>
-      <PageHead title="JUPEB attendance" description={o.reader ? "Every JUPEB register of the session: take, correct, lock and report attendance; assign who takes each subject." : "The JUPEB subjects you are assigned to: take each class's attendance and read its reports."}
+      <PageHead title="JUPEB attendance" description={o.reader ? "Every JUPEB register of the session" : "Your assigned JUPEB subjects"}
         actions={<select className="ctl" aria-label="Session" value={o.session} onChange={(e) => { setSession(e.target.value); setOpen(null); }}>{o.sessions.map((s) => <option key={s}>{s}</option>)}</select>} />
-      {!o.reader && !o.assignments.length ? <Note kind="info" title="No JUPEB subject is assigned to you">The JUPEB Office assigns lecturers to subjects and classes. Once assigned, the subject appears here.</Note> : null}
+      {!o.reader && !o.assignments.length ? <Note kind="info" title="No JUPEB subject is assigned to you" /> : null}
       {!o.reader && o.assignments.length ? <Note kind="info" title="You take attendance for">{o.assignments.map((a) => `${a.title}${a.class_name ? ` (${a.class_name})` : " (every class)"}`).join(" · ")}</Note> : null}
       {open ? <RegisterView id={open} onBack={() => setOpen(null)} /> : (
         <>
@@ -125,7 +125,7 @@ function Registers({ o, onOpen }: { o: Options; onOpen: (id: string) => void }) 
               <Field id="n-topic" label="Topic (optional)"><input id="n-topic" className="ctl" maxLength={300} value={n.topic} onChange={(e) => setN({ ...n, topic: e.target.value })} /></Field>
               <div className="field"><label>&nbsp;</label><Btn kind="primary" disabled={busy || !n.subjectId || !n.heldOn} onClick={() => void create()}>{busy ? "Opening…" : "Open the register"}</Btn></div>
             </div>
-            <p className="sub2">A subject&rsquo;s register for a class on a day is opened once; opening it again finds the same register.</p>
+            <p className="sub2">Opening it again finds the same register.</p>
           </PBody>
         </Panel>
       ) : null}
@@ -309,7 +309,7 @@ function Reports({ o }: { o: Options }) {
             <Field id="r-abs" label="Absent at least" hint="Times"><input id="r-abs" className="ctl tnum" inputMode="numeric" value={f.absences} onChange={(e) => setF({ ...f, absences: e.target.value.replace(/\D/g, "") })} /></Field>
           </> : null}
         </div>
-        {d?.minPercent == null ? <p className="sub2">No minimum attendance is set for {o.session}; standings are not judged until the JUPEB Office sets one.</p> : null}
+        {d?.minPercent == null ? <p className="sub2">No minimum attendance is set for {o.session}.</p> : null}
         {d ? <DTable pageSize={50} cols={shape.cols} rows={d.rows.map(shape.cells)} /> : <p className="sub2">Loading…</p>}
       </PBody>
     </Panel>
@@ -348,7 +348,7 @@ function Instructors({ o }: { o: Options }) {
               <Field id="i-staff" label="Staff number or email"><input id="i-staff" className="ctl" maxLength={160} value={f.staff} onChange={(e) => setF({ ...f, staff: e.target.value })} /></Field>
               <div className="field"><label>&nbsp;</label><Btn kind="primary" disabled={busy || !f.subjectId || !f.staff.trim()} onClick={() => void assign()}>Assign</Btn></div>
             </div>
-            <p className="sub2">An assigned lecturer sees only the students registered for that subject (in that class), and only while the assignment stands. They need the Lecturer role.</p>
+            <p className="sub2">An assigned lecturer sees only that subject&rsquo;s students while assigned. They need the Lecturer role.</p>
           </PBody>
         </Panel>
       ) : null}
@@ -383,7 +383,7 @@ function Policy({ o, onSaved }: { o: Options; onSaved: (x: Partial<Options>) => 
   return (
     <Panel title="Minimum attendance">
       <PBody>
-        <p>The share of a subject&rsquo;s classes (excused ones left out; late counts as attended) a student must attend. While none is set, the portal judges no one and warns no one.</p>
+        <p>The share of a subject&rsquo;s classes a student must attend (excused left out; late counts as attended).</p>
         <div className="grid grid--3">
           <Field id="p-scope" label="For"><select id="p-scope" className="ctl" value={scope} onChange={(e) => setScope(e.target.value as "session" | "*")}><option value="session">{o.session} only</option><option value="*">Every session without its own</option></select></Field>
           <Field id="p-min" label="Minimum (%)" hint="Blank for none"><input id="p-min" className="ctl tnum" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} /></Field>
@@ -392,7 +392,7 @@ function Policy({ o, onSaved }: { o: Options; onSaved: (x: Partial<Options>) => 
           <div className="field"><label>&nbsp;</label><Btn kind="primary" disabled={busy} onClick={() => void save()}>Save</Btn></div>
         </div>
         <p className="sub2">Now: {o.policy == null ? "no minimum set" : `${o.policy}%`}{o.warnBand != null && o.policy != null ? `; at risk below ${Number(o.policy) + Number(o.warnBand)}%` : ""}; warnings after {o.minClasses ?? 3} classes counted.
-          Students below the minimum are warned by email on the &ldquo;Attendance below the minimum&rdquo; reminder (JUPEB settings → Reminders); what a shortfall means for the examination is the University&rsquo;s decision.</p>
+          Students below the minimum are warned by email (JUPEB settings → Reminders).</p>
       </PBody>
     </Panel>
   );
@@ -424,7 +424,7 @@ function Standing({ o }: { o: Options }) {
     try {
       const r = await jcall<{ result: { sent: number } }>(`${BASE}/warn`, "POST", {}, "JUPEB attendance warnings sent");
       if (!r.ok) { notifyProblem(r.problem); return; }
-      notify(`${r.data.result.sent} student${r.data.result.sent === 1 ? "" : "s"} warned. A student warned in the last day, or as often as the rule allows, is not warned again.`);
+      notify(`${r.data.result.sent} student${r.data.result.sent === 1 ? "" : "s"} warned`);
       setTick((t) => t + 1);
     } finally { setBusy(false); }
   }

@@ -48,21 +48,21 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
 
       {sheets.length === 0 ? (
         <Note kind="info" title={`No course is allocated to you in ${session}`}>
-          A course appears here when your Head of Department allocates it to you and the Academic Office opens the examination session. Until then there is nothing to enter, and nothing is shown as if there were.
+          A course appears here when your Head of Department allocates it to you.
           {pastSessions ? <span className="blk">Your courses from earlier sessions are under <Link className="lnk" href="/me/courses">Course History</Link>.</span> : null}
         </Note>
       ) : t.notStarted.length ? (
         <Note kind="bad" title={t.notStarted.length === 1 ? "One score sheet has no marks yet" : `${t.notStarted.length} score sheets have no marks yet`}
           action={<>{first ? <LinkBtn kind="urgent" href={`/results/sheets/${first.id}`}>Enter {first.courseCode} Marks</LinkBtn> : null} <LinkBtn href="/results/sheets">All Score Sheets</LinkBtn></>}>
-          {t.notStarted.map((c) => `${c.courseCode} (${c.candidates} registered)`).join(", ")}. A sheet that misses Senate waits for the next sitting, and those students carry an incomplete result into the next semester.
+          {t.notStarted.map((c) => `${c.courseCode} (${c.candidates} registered)`).join(", ")}. A sheet that misses Senate waits for the next sitting.
         </Note>
       ) : t.inProgress.length ? (
         <Note kind="info" title={`${t.inProgress.length} sheet${t.inProgress.length === 1 ? " is" : "s are"} still with you`} action={<LinkBtn kind="primary" href="/results/sheets">All Score Sheets</LinkBtn>}>
-          Marks are entered but not yet submitted. A sheet leaves your desk when every registered candidate carries a mark or an outcome and you submit and attest it.
+          Marks are entered but not yet submitted.
         </Note>
       ) : (
         <Note kind="ok" title="Every sheet you owe has been submitted" action={<LinkBtn href="/results/sheets">All Score Sheets</LinkBtn>}>
-          All {sheets.length} of your sheets carry a mark or an outcome against every registered candidate. Nothing is waiting on you for this Senate.
+          Nothing is waiting on you for this Senate.
         </Note>
       )}
 
@@ -116,7 +116,7 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
                 <Pil key="l" kind={late ? "bad" : soon ? "warn" : "grey"}>{dueWords(s)}</Pil>,
               ];
             })} texts={t.open.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
-          <PBody><div className="sub2">A sheet still at entry after its due date is overdue. A sheet that misses Senate waits for the next sitting, and its candidates carry an incomplete result.</div></PBody>
+          <PBody><div className="sub2">A sheet still at entry after its due date is overdue.</div></PBody>
         </Panel>
       ) : null}
 
@@ -134,7 +134,7 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
               <LinkBtn href="/me/courses">Course History</LinkBtn>
               <LinkBtn href="/me/profile">My Profile</LinkBtn>
             </div>
-            <div className="sub2 mt-2">The score sheet is a workbook with every registered candidate already on it, in alphabetical order. Fill CA and Exam, then upload it on the sheet: it is checked before anything is written and accepted whole or not at all.</div>
+            <div className="sub2 mt-2">Fill CA and Exam in the workbook, then upload it on the sheet; it is accepted whole or not at all.</div>
           </PBody>
         </Panel>
         <Panel title="Notifications" right={notices.length ? <Link className="lnk" href="/me/notices">All notifications</Link> : "Nothing yet"}>
@@ -147,28 +147,26 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
                 </li>
               ))}
             </ul>
-          ) : <PBody><div className="sub2">A notice is filed here when a sheet is returned to you, a deadline approaches, a result is published or the desk writes to you. It is the same notice your email carries.</div></PBody>}
+          ) : <PBody><div className="sub2">No notices yet.</div></PBody>}
         </Panel>
       </div>
 
       <div className="grid grid--2">
         <Panel title="Course history" right={history.length ? `${new Set(history.map((h) => h.session)).size} session${new Set(history.map((h) => h.session)).size === 1 ? "" : "s"} on record` : "Nothing before this session"}>
           <PBody>
-            <div className="sub2">Every course allocated to you, this session and before: the class you taught, the second examiner and where each sheet reached. A past course opens its registered students as they stood that session.</div>
+            
             <div className="mt-2"><LinkBtn kind="ghost" href="/me/courses">Open Course History{pastSessions ? ` · ${history.length} courses` : ""}</LinkBtn></div>
           </PBody>
         </Panel>
         <Panel title="Your staff profile" right="Your record as the University holds it">
           <PBody>
-            <div className="sub2">Keep your own record current: a recent photograph, your phone and email, your qualifications, and the lists that grow over a career. Your name, staff number, department and rank are the establishment&rsquo;s to change.</div>
+            <div className="sub2">Your name, staff number, department and rank are changed by the establishment.</div>
             <div className="mt-2"><LinkBtn kind="ghost" href="/me/profile">View and Update Profile</LinkBtn></div>
           </PBody>
         </Panel>
       </div>
 
-      <Note kind="info" title="You cannot see a student who is not registered for your course">
-        The class list, the score sheet and the attendance register are all built from approved registrations, and only for the courses allocated to you. It is why a mark can never be entered for a student who never registered.
-      </Note>
+
     </>
   );
 }

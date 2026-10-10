@@ -73,9 +73,9 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
   return (
     <>
       <Note kind="info" title="A secret key is written once and never read back">
-        Set a key below on this screen, or as a service variable (MOAUM_PAYSTACK_SECRET, MOAUM_FLUTTERWAVE_SECRET, MOAUM_FLUTTERWAVE_HASH). A key set here is encrypted at rest and used in preference to the variable; either way, no screen and no member of staff can display it again. This panel says only whether a key is set and whether it is test or live.
+        Set a key here or as a service variable (MOAUM_PAYSTACK_SECRET, MOAUM_FLUTTERWAVE_SECRET, MOAUM_FLUTTERWAVE_HASH). A key set here is encrypted and used first; no screen displays it again.
       </Note>
-      {paid ? <Note kind="ok" title={`Back from the gateway with ${paid}`} action={<Btn kind="primary" disabled={busy} onClick={async () => { const j = await send("/verify", { reference: paid }, `Verified ${paid} with the gateway`); if (j) setSaid(`The gateway says: ${j.outcome}`); }}>Ask the gateway now</Btn>}>The webhook confirms it on its own; the log below shows the event when it lands. Or ask the gateway directly.</Note> : null}
+      {paid ? <Note kind="ok" title={`Back from the gateway with ${paid}`} action={<Btn kind="primary" disabled={busy} onClick={async () => { const j = await send("/verify", { reference: paid }, `Verified ${paid} with the gateway`); if (j) setSaid(`The gateway says: ${j.outcome}`); }}>Ask the gateway now</Btn>}>The webhook confirms it; or ask the gateway directly.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       <Tiles items={[
@@ -106,7 +106,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
       {may ? (
         <Panel title="Can the gateways take a payment now?" right={<Btn kind="primary" size="sm" disabled={busy} onClick={async () => { const j = await send("/gateways/health", {}, "Gateways asked whether they can take a payment"); if (j) setHealth(j as unknown as { checkedAt: string; online: boolean; rows: HealthRow[] }); }}>{busy ? "Asking…" : "Test the gateways"}</Btn>}>
           <PBody>
-            <div className="sub2">Each wired gateway is asked about a reference that cannot exist — nothing is charged and nothing is written against a student — and its answer is read: whether the key is accepted, whether Interswitch knows the merchant, whether it answers at all. Run it after a key is set or changed, and whenever a payer says the gateway does not open.</div>
+            <div className="sub2">Asks each gateway about a reference that cannot exist (nothing is charged) and reads whether the key is accepted. Run it after a key changes or when a payer says the gateway does not open.</div>
             {health ? (
               <>
                 <Note kind={health.online ? "ok" : "bad"} title={health.online ? "Payments can be taken online" : "No gateway can take a payment online now"}>
@@ -127,7 +127,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
         <Panel title="Configure the keys" right="Directorate of ICT and Super Administrator only">
           <PBody>
             <Note kind="info" title="A key set here is encrypted at rest and read back never">
-              You can set a gateway secret here instead of as a service variable. It is encrypted with the portal&rsquo;s own passphrase, decrypted only inside the API to call the gateway, and no screen ever shows it again &mdash; the same rule as a password. A service variable still works and is used when no key is set here. Setting a key is recorded against your name.
+              Encrypted with the portal&rsquo;s passphrase and never shown again. Setting a key is recorded against your name.
             </Note>
             <div className="grid grid--2">
               {config.map((c) => (
@@ -140,7 +140,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                   {c.configured ? <div className="sub2">Set {c.set_at ? when(c.set_at) : ""}{c.set_by_name ? " by " + c.set_by_name : ""}{c.gateway === "flutterwave" ? (c.has_hash ? " \u00b7 hash set" : " \u00b7 no hash yet") : ""}</div> : null}
                   {c.gateway === "paydirect" ? (
                     <>
-                      <div className="sub2">Pay on Quickteller: the service username and password Interswitch sends with each payment notification, agreed with Interswitch for the biller. A notification that does not carry them is kept on the log and not believed; nothing is credited on it. The password is stored encrypted and shown never.{quickteller && !quickteller.credentials && c.configured ? " The value stored here is not a username and password (it may be the query credentials kept from before): set the two again." : ""}</div>
+                      <div className="sub2">The service username and password Interswitch sends with each payment notification; a notification without them is logged and not believed. The password is stored encrypted.{quickteller && !quickteller.credentials && c.configured ? " The value stored here is not a username and password (it may be the query credentials kept from before): set the two again." : ""}</div>
                       <div className="grid grid--2">
                         <Field id="pd-user" label="Service username"><input id="pd-user" className="ctl tnum" autoComplete="off" value={pd.user} onChange={(e) => setPd({ ...pd, user: e.target.value })} /></Field>
                         <Field id="pd-pass" label="Service password" hint="At least eight characters; pasted once, never displayed after this."><input id="pd-pass" className="ctl tnum" type="password" autoComplete="new-password" value={pd.pass} onChange={(e) => setPd({ ...pd, pass: e.target.value })} /></Field>
@@ -152,7 +152,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                     </>
                   ) : c.gateway === "quickteller" ? (
                     <>
-                      <div className="sub2">Quickteller on Interswitch WebPAY: the University&rsquo;s merchant and, for payers in the College of Health Sciences, the College&rsquo;s own. Interswitch identifies a merchant today by a <b>merchant code</b> (MX&hellip;) and a pay item; an older profile is identified by a <b>product id</b> and signs the form with a MAC key. Give the merchant code if the profile shows one, else the product id and the MAC key. The keys are stored encrypted and shown never. A payer&rsquo;s merchant is chosen by the College their programme is in.</div>
+                      <div className="sub2">Interswitch WebPAY merchants: the University&rsquo;s and the College of Health Sciences&rsquo;. Give the <b>merchant code</b> (MX&hellip;) if the profile shows one, else the <b>product id</b> and MAC key. Keys are stored encrypted.</div>
                       {qtMain.length ? <div className="sub2">Wired now: {qtMain.map((m) => `${m.scope} \u00b7 ${m.merchantCode ? `merchant ${m.merchantCode}` : `product ${m.productId}`} \u00b7 pay item ${m.payItemId}`).join(" \u00b7 ")}</div> : null}
                       <div className="grid grid--2">
                         <Field id="qt-mc" label="Merchant code (University)" hint="MX… from the Interswitch merchant profile; leave blank to use the product id below."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX…" /></Field>
@@ -204,7 +204,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
             </div>
             <div className="row">
               <Btn kind="primary" disabled={busy || !on.length || !test.number.trim()} onClick={async () => { const j = await send("/test-checkout", { number: test.number, amount: Number(test.amount) || 100, gateway: test.gateway }, `Gateway test checkout for ${test.number}`); if (j?.url) window.location.href = String(j.url); }}>Open a test checkout</Btn>
-              <span className="sub2">Pay with the gateway&rsquo;s test card; the webhook lands in the log below, and the reference shows as settled. The purpose is &ldquo;Gateway test&rdquo;, which counts for nothing against the student&rsquo;s fees.</span>
+              <span className="sub2">Pay with the gateway&rsquo;s test card. A &ldquo;Gateway test&rdquo; payment counts nothing against the student&rsquo;s fees.</span>
             </div>
             <div className="grid grid--2">
               <Field id="tg-ref" label="Ask about a reference" hint="Any reference this portal generated."><input id="tg-ref" className="ctl tnum" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="MOAUM-FEE-…" /></Field>
@@ -227,9 +227,9 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
             e.signature_ok ? <Pil kind="ok" key="s">Valid</Pil> : <Pil kind="bad" key="s">Invalid</Pil>,
             <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil>{e.resolved_at ? <div className="sub2">Resolved: {e.resolution} · {e.resolved_by_name ?? ""}</div> : EXCEPTIONS.includes(e.outcome) && may ? <div><Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (why && await send(`/events/${e.id}/resolve`, { resolution: why }, `Gateway event resolved: ${why}`)) setSaid("Resolved"); }}>Resolve</Btn></div> : null}</span>,
           ])} texts={d.events.map((e) => `${e.gateway} ${e.reference ?? ""} ${e.outcome}`)} />
-        ) : <PBody><div className="sub2">No event has reached the portal yet. Open a test checkout above and pay with the gateway&rsquo;s test card.</div></PBody>}
+        ) : <PBody><div className="sub2">No event yet.</div></PBody>}
       </Panel>
-      <Note kind="info" title="A callback is a hint, not an instruction">The portal never credits a student because a gateway said so without keeping what it said. A forged callback is discarded at the signature and logged; a short payment is logged and left open; and on the student&rsquo;s &ldquo;check again&rdquo; the portal asks the gateway itself what the reference settled for.</Note>
+      <Note kind="info" title="Callbacks are verified">A forged callback is discarded; a short payment is left open.</Note>
     </>
   );
 }

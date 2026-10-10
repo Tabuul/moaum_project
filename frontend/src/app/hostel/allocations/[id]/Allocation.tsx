@@ -111,9 +111,9 @@ export function Allocation({ a, session: s, office }: { a: AllocationFull; sessi
       {a.clearance_id ? (
         <Panel title={`Hostel clearance ${a.clearance_ref}`} right={<span className="row row--inline row--tight"><Pil kind={CLEAR_STATE[a.clearance_state ?? "PENDING"]?.[1] ?? "grey"}>{CLEAR_STATE[a.clearance_state ?? "PENDING"]?.[0] ?? a.clearance_state}</Pil>{may && a.clearance_state === "PENDING" ? <Btn kind="primary" onClick={() => void complete()} disabled={busy || !allDecided} title={allDecided ? undefined : "Every requirement must be decided first"}>Complete clearance</Btn> : null}{may && a.clearance_state === "NOT_CLEARED" ? <Btn kind="secondary" onClick={() => void reopen()} disabled={busy}>Reopen</Btn> : null}</span>}>
           <DTable cols={["Requirement", "Status|mid", "Officer", "Decided|mid", "Remarks", "|num"]} rows={a.clearanceItems.map((i) => [i.label, <Pil key="s" kind={CLEAR_STATE[i.state]?.[1] ?? "grey"}>{CLEAR_STATE[i.state]?.[0] ?? i.state}</Pil>, <span key="o" className="sub2">{i.officer ?? "—"}</span>, <span key="d" className="tnum sub2">{i.decided_at ? dayOf(i.decided_at) : "—"}</span>, <span key="r" className="sub2">{i.remarks ?? ""}</span>, may && a.clearance_state !== "CLEARED" ? <span key="a" className="row row--inline row--tight"><Btn kind="ghost" onClick={() => { setItem({ id: i.id, label: i.label, state: "CLEARED" }); setNote(""); setAsk("item"); }}>Clear</Btn><Btn kind="ghost" onClick={() => { setItem({ id: i.id, label: i.label, state: "NOT_CLEARED" }); setNote(""); setAsk("item"); }}>Hold</Btn><Btn kind="ghost" onClick={() => { setItem({ id: i.id, label: i.label, state: "WAIVED" }); setNote(""); setAsk("item"); }}>Waive</Btn><Btn kind="ghost" onClick={() => { setItem({ id: i.id, label: i.label, state: "NOT_APPLICABLE" }); setNote(""); setAsk("item"); }}>N/A</Btn></span> : <span key="a" />])} />
-          {a.clearance_state === "CLEARED" ? <PBody><div className="sub2">Completed {whenAt(a.clearance_completed_at)}; the bed was released and the hostel unit of the graduation clearance signed.</div></PBody> : null}
+          {a.clearance_state === "CLEARED" ? <PBody><div className="sub2">Completed {whenAt(a.clearance_completed_at)}; the bed was released.</div></PBody> : null}
         </Panel>
-      ) : a.state === "CHECKED_IN" && may ? <Note kind="info" title="No clearance yet" action={<Btn kind="ghost" onClick={() => void startClearance()} disabled={busy}>Start clearance without inspection</Btn>}>The checkout inspection opens the clearance with the requirements it answers; the rest are cleared one by one.</Note> : null}
+      ) : a.state === "CHECKED_IN" && may ? <Note kind="info" title="No clearance yet" action={<Btn kind="ghost" onClick={() => void startClearance()} disabled={busy}>Start clearance without inspection</Btn>}>The checkout inspection opens the clearance.</Note> : null}
 
       {a.transfers.length ? (
         <Panel title="Transfer requests">
@@ -127,7 +127,7 @@ export function Allocation({ a, session: s, office }: { a: AllocationFull; sessi
 
       {ask === "checkin" ? (
         <Modal title={`Check in ${a.student_name}`} sub={`${a.hall_name} · Block ${a.block} · Room ${a.room_no} · ${a.bed_label ?? `bed ${a.bed}`}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void checkin()} disabled={busy}>Confirm check-in</Btn></>}>
-          <p>Confirm the student&rsquo;s identity against the photograph and the allocation letter, then record the condition of the room and its assets as handed over.</p>
+          <p>Confirm the student&rsquo;s identity against the photograph and allocation letter, then record the room&rsquo;s condition.</p>
           <div className="grid grid--2">
             <Field id="ci-cond" label="Condition of room and assets"><select id="ci-cond" className="ctl" value={cond} onChange={(e) => setCond(e.target.value)}><option value="GOOD">Good</option><option value="FAIR">Fair</option><option value="DAMAGED">Damaged (note what)</option></select></Field>
             <Field id="ci-note" label="Remarks"><input id="ci-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
@@ -140,7 +140,7 @@ export function Allocation({ a, session: s, office }: { a: AllocationFull; sessi
         </Modal>
       ) : ask === "cancel" ? (
         <Modal title={`Cancel allocation ${a.reference_no}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Keep it</Btn><Btn kind="urgent" onClick={() => void cancel()} disabled={busy || !note.trim()}>Cancel the allocation</Btn></>}>
-          <p>The bed is released and the student told. A student checked in leaves through inspection and clearance instead.</p>
+          <p>The bed is released and the student told.</p>
           <Field id="cn-note" label="Reason" required full><textarea id="cn-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </Modal>
       ) : ask === "inspect" ? (
@@ -156,7 +156,7 @@ export function Allocation({ a, session: s, office }: { a: AllocationFull; sessi
         </Modal>
       ) : ask === "charge" ? (
         <Modal title="Damage assessment and charge" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void raiseCharge()} disabled={busy}>Raise the charge</Btn></>}>
-          <p>A charge above zero becomes a payment reference on the student&rsquo;s fees page; clearance completes when it is settled or waived. Zero records the damage without a charge.</p>
+          <p>A charge above zero becomes a payment reference on the student&rsquo;s fees page. Zero records the damage without a charge.</p>
           <div className="grid grid--2">
             <Field id="ch-asset" label="Asset"><select id="ch-asset" className="ctl" value={charge.assetId} onChange={(e) => setCharge({ ...charge, assetId: e.target.value })}><option value="">Not a tagged asset</option>{a.assets.map((x) => <option key={x.id} value={x.id}>{x.tag} · {x.kind} ({x.condition.toLowerCase()})</option>)}</select></Field>
             <Field id="ch-desc" label="Damage" required><input id="ch-desc" className="ctl" value={charge.description} onChange={(e) => setCharge({ ...charge, description: e.target.value })} /></Field>

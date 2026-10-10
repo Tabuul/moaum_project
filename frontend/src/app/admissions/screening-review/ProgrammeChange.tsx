@@ -114,12 +114,12 @@ export function ProgrammeChange({ base, appId, may, mayOverride, current, onChan
             <span className="sub2">Policy {d.run.session}{d.run.rules_version ? ` · V${d.run.rules_version}` : ""} ({(d.run.policy_state ?? "").toLowerCase()}) · evaluated {whenAt(d.run.evaluated_at)}{d.run.stale ? " · stale: settings changed since" : ""}</span>
           </div>
           {failed.length ? <Note kind="bad" title="Configured requirements not met">{failed.map((c, i) => <div key={i}>✕ <b>{c.label || KIND_WORD[c.kind] || c.kind}</b> — required: {c.requirement || "—"} · candidate: {c.candidate || "—"}</div>)}</Note>
-            : d.run.applied_result === "NOT_ELIGIBLE" ? <Note kind="bad" title="Not eligible">{(applied?.reasons ?? []).join("; ")}</Note> : <Note kind="ok" title="The candidate meets the programme's requirements">A change of programme is not called for by eligibility; it may still be recommended on the screening decision or programme suitability.</Note>}
+            : d.run.applied_result === "NOT_ELIGIBLE" ? <Note kind="bad" title="Not eligible">{(applied?.reasons ?? []).join("; ")}</Note> : <Note kind="ok" title="The candidate meets the programme's requirements">A change may still be recommended on suitability.</Note>}
 
           {may && !open && current.screeningState === "SUCCESSFUL" ? (
             <Note kind="info" title="The screening is successful: the programme is no longer changed here"
               action={<LinkBtn kind="secondary" href={`/admissions/programme-changes?session=${encodeURIComponent(current.session)}&app=${appId}`}>Correct the admission on Programme Changes</LinkBtn>}>
-              An error found in the admission since — even after school fees — is corrected as an admission correction: recommended with the error described and approved by the Registrar&rsquo;s office, the fees paid kept against the new programme.
+              An error found since is corrected as an admission correction, approved by the Registrar&rsquo;s office; fees paid are kept.
             </Note>
           ) : null}
           {approvedAfter.length ? approvedAfter.map((c) => <Note key={c.id} kind="ok" title={`Programme change approved · ${c.from_programme} → ${c.to_programme}`}>{whenAt(c.decided_at)}{c.decided_officer ? ` · ${c.decided_officer}` : ""}{c.reason_code ? ` · ${reasons.find((x) => x.code === c.reason_code)?.label ?? c.reason_code}` : ""}{c.override ? ` · OVERRIDE (engine: ${c.original_eligibility}) — ${c.override_reason}` : ""}{c.decision_note ? ` · ${c.decision_note}` : ""}</Note>) : null}
@@ -130,7 +130,7 @@ export function ProgrammeChange({ base, appId, may, mayOverride, current, onChan
                 <div className="mt-2 stack" style={{ gap: 8 }}>
                   <Field id="pc-dn" label="Note for the decision" hint="Required for a rejection"><input id="pc-dn" className="ctl" value={decidingNote} onChange={(e) => setDecidingNote(e.target.value)} /></Field>
                   <div className="row row--inline row--tight"><Btn kind="go" disabled={busy !== null} onClick={() => void decide(open, "approve")}>Approve: change the programme and screen successful</Btn><Btn kind="urgent" disabled={busy !== null} onClick={() => void decide(open, "reject")}>Reject</Btn></div>
-                  <div className="sub2">Approval re-reads eligibility on the server, changes the candidate&rsquo;s and the student&rsquo;s programme (the original stays on the request and the trail), records the screening as successful on the new programme, generates the screening forms for it, keeps the acceptance fee paid once and opens school fees.</div>
+                  <div className="sub2">Approval re-reads eligibility, changes the programme, records the screening successful on it and opens school fees. The acceptance fee is kept.</div>
                 </div>
               ) : null}
             </Note>
@@ -177,11 +177,11 @@ export function ProgrammeChange({ base, appId, may, mayOverride, current, onChan
             ["Current department", current.department ?? "—"], ["New department", choosing.department ?? "—"],
           ]} />
           {(() => { const h = headline(parseChecks(choosing)); return <div className="mt-2 row row--tight" style={{ gap: 14 }}><span>{tick(h.olevel)} O&rsquo;Level requirements</span><span>{tick(h.combination)} JAMB combination</span><span>{tick(h.score)} JAMB score</span><span>{tick(eligible(choosing) ? "MET" : "NOT_MET")} Admission policy</span></div>; })()}
-          {!eligible(choosing) ? <Note kind="bad" title="The engine finds the candidate not eligible for this programme">{choosing.reasons.join("; ")} — recommending it is an override reserved to the Registrar&rsquo;s offices; the verdict, your reason and your name stay on the request and the trail.</Note> : null}
+          {!eligible(choosing) ? <Note kind="bad" title="The engine finds the candidate not eligible for this programme">{choosing.reasons.join("; ")} — recommending it is an override reserved to the Registrar&rsquo;s offices.</Note> : null}
           <Field id="pc-reason" label="Reason for change" required><select id="pc-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)}>{reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</select></Field>
           <Field id="pc-note" label={reasons.find((x) => x.code === reason)?.requires_note ? "Description (required)" : "Note"} required={!!reasons.find((x) => x.code === reason)?.requires_note}><textarea id="pc-note" className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           {!eligible(choosing) ? <Field id="pc-ovr" label="Override reason" required><textarea id="pc-ovr" className="ctl" rows={2} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} /></Field> : null}
-          <p className="sub2">The programme is re-validated on the server now and again at approval; nothing changes until an authorised officer approves. The acceptance fee is never charged again.</p>
+          <p className="sub2">Nothing changes until an authorised officer approves. The acceptance fee is never charged again.</p>
         </Modal>
       ) : null}
     </div>

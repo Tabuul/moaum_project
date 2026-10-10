@@ -102,7 +102,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
 
   return (
     <>
-      <PageHead title="Support agents, queues and routing" description="Who works which queue within what scope; the queues and the office each answers to; where each category of problem goes."
+      <PageHead title="Support agents, queues and routing" 
         actions={<>
           {tab === "agents" ? <Btn kind="primary" onClick={newPost}>Post an Agent</Btn> : tab === "queues" ? <Btn kind="primary" onClick={newQueue}>New Queue</Btn> : <Btn kind="primary" onClick={newRule}>New Routing Rule</Btn>}
           <LinkBtn href="/helpdesk">The Desk</LinkBtn>
@@ -119,13 +119,13 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
             ["Queues without an agent", String(starved.length), starved.length ? "var(--red-ink)" : null, starved.length ? starved.map((q) => q.name).join(", ") : "Every queue with open tickets has an available agent"],
             ["Not yet posted", String(unposted.length), unposted.length ? "var(--amber-ink)" : null, "Hold the agent office; work the whole desk until posted"],
           ]} />
-          {starved.length ? <Note kind="bad" title="A queue with open tickets and no available agent">New tickets on {starved.map((q) => q.name).join(", ")} are queued for you to assign by hand. Post an agent to {starved.length === 1 ? "it" : "them"}, or make one available.</Note> : null}
+          {starved.length ? <Note kind="bad" title="A queue with open tickets and no available agent">New tickets on {starved.map((q) => q.name).join(", ")} wait for you to assign by hand.</Note> : null}
           <Panel title="Postings" right={<label className="row row--tight"><input type="checkbox" className="chk" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} /> <span className="sub2">Show ended postings ({ended.length})</span></label>}>
             {live.length || (showEnded && ended.length) ? (
               <DTable pageSize={0} cols={["Agent", "Queue", "Scope", "Availability|mid", "From – to|mid", "Open|mid", "Placed by", "|num"]}
                 rows={[...live, ...(showEnded ? ended : [])].map(postingRow)}
                 texts={[...live, ...(showEnded ? ended : [])].map((p) => `${p.name} ${p.staff_number ?? ""} ${p.queue} ${scopeName(p)} ${p.availability}`)} />
-            ) : <PBody><div className="sub2">Nobody is posted yet. Every agent who holds the ICT Support Agent office works the whole desk as before; post them to a queue within a scope to bound what they see and to let the routing choose them.</div></PBody>}
+            ) : <PBody><div className="sub2">Nobody is posted yet; every ICT Support Agent works the whole desk.</div></PBody>}
           </Panel>
           <div className="grid grid--2">
             <Panel title="Workload" right="Open tickets with each agent, the overdue among them, and the pace">
@@ -154,7 +154,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
                 <span key="p" className={`tnum${n(c.postings) ? "" : " ink-amber"}`}>{n(c.postings)}</span>,
                 <Btn key="x" kind="ghost" size="sm" disabled={busy} onClick={() => { newPost(); setPost((d) => (d ? { ...d, personId: c.id } : d)); }}>Post</Btn>,
               ])} />
-              <PBody><div className="sub2">Support access is the office&rsquo;s; a posting only says where and within what scope it is exercised. Someone who does not hold the office cannot be posted — grant the office first.</div></PBody>
+              <PBody><div className="sub2">Only a holder of the ICT Support Agent office can be posted.</div></PBody>
             </Panel>
           </div>
         </>
@@ -195,7 +195,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
       ) : null}
 
       {post ? (
-        <Modal title="Post an agent on a queue" sub="Within a scope: the University, a faculty, a college, a department or an office. The routing then chooses them for the tickets their posting covers." onClose={() => setPost(null)}
+        <Modal title="Post an agent on a queue" sub="Within a scope: the University, a faculty, a college, a department or an office" onClose={() => setPost(null)}
           foot={<><Btn kind="ghost" onClick={() => setPost(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !post.personId || !post.queueCode || (post.scopeKind !== "GLOBAL" && !post.scopeRef.trim())} onClick={() => void savePost()}>Post the Agent</Btn></>}>
           <div className="stack">
             <Field id="ag-person" label="Agent" required hint="Only people who hold the ICT Support Agent office are listed">
@@ -235,7 +235,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
             </div>
             <div>
               <div className="eyebrow">Student records this posting may work on</div>
-              <div className="sub2 mb-1">Nothing by default. Each capability is granted here, counts only for the students this posting&rsquo;s scope covers, and is enforced by the server on every call; results, grades, refunds, fees, amounts, matriculation and admission decisions are never among them.</div>
+              <div className="sub2 mb-1">Nothing by default; each counts only within this posting&rsquo;s scope. Results, grades, refunds, fees, matriculation and admission decisions are never among them.</div>
               {Object.entries(CAPABILITIES).map(([code, [label, hint]]) => (
                 <label key={code} className="row row--tight" style={{ cursor: "pointer", alignItems: "flex-start", marginBottom: 4 }}>
                   <input type="checkbox" className="chk" checked={post.capabilities.includes(code)} onChange={(e) => setPost({ ...post, capabilities: e.target.checked ? [...post.capabilities, code] : post.capabilities.filter((c) => c !== code) })} />
@@ -257,7 +257,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
       ) : null}
 
       {off ? (
-        <Modal title={`Take ${off.name} off the desk`} sub="Every posting ends today; every open ticket they hold returns to its queue with no agent, on the record; you are told" onClose={() => setOff(null)}
+        <Modal title={`Take ${off.name} off the desk`} sub="Every posting ends today; their open tickets return to the queue" onClose={() => setOff(null)}
           foot={<><Btn kind="ghost" onClick={() => setOff(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || reason.trim().length < 5} onClick={async () => { if (await call("POST", `/agents/${off.personId}/deactivate`, { reason: reason.trim() }, `${off.name} taken off the desk`)) setOff(null); }}>Take Off the Desk</Btn></>}>
           <Field id="ag-off-reason" label="Why" required><textarea id="ag-off-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></Field>
         </Modal>
@@ -278,7 +278,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
       ) : null}
 
       {qd ? (
-        <Modal title={qd.isNew ? "New support queue" : `Edit ${qd.name}`} sub="The office that decides is where a ticket of this queue is escalated when support cannot settle it" onClose={() => setQd(null)}
+        <Modal title={qd.isNew ? "New support queue" : `Edit ${qd.name}`} sub="Where this queue's tickets are escalated" onClose={() => setQd(null)}
           foot={<><Btn kind="ghost" onClick={() => setQd(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || qd.name.trim().length < 3} onClick={() => void saveQueue()}>{qd.isNew ? "Create the Queue" : "Save"}</Btn></>}>
           <div className="stack">
             <div className="row">
@@ -298,7 +298,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
       ) : null}
 
       {rd ? (
-        <Modal title={rd.id ? "Edit the routing rule" : "New routing rule"} sub="A category to a queue, for the University or for one faculty or department; the strategy picks the agent" onClose={() => setRd(null)}
+        <Modal title={rd.id ? "Edit the routing rule" : "New routing rule"} sub="A category to a queue, for the University or one faculty or department" onClose={() => setRd(null)}
           foot={<><Btn kind="ghost" onClick={() => setRd(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !rd.categoryCode || !rd.queueCode} onClick={() => void saveRule()}>{rd.id ? "Save" : "Create the Rule"}</Btn></>}>
           <div className="stack">
             <div className="row">

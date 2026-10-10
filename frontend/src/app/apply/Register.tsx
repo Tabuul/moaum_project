@@ -121,27 +121,27 @@ export function Register({ session }: { session: string }) {
   );
 
   return (
-    <AuthLayout eyebrow={`Admissions ${session}`} lead={<>Create your application account. One account carries you from application through screening and admission, and becomes your student account on the day you matriculate.</>} stats={[[session.slice(0, 4), "admission year"], ["1", "account, to graduation"], ["0", "fees paid anywhere but here"]]}>
+    <AuthLayout eyebrow={`Admissions ${session}`} lead={<>Create your application account. It becomes your student account when you matriculate.</>} stats={[[session.slice(0, 4), "admission year"], ["1", "account, to graduation"], ["0", "fees paid anywhere but here"]]}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
-          <PageHead title="Post-UTME registration" description="Your JAMB registration number first. Everything else follows from it." />
+          <PageHead title="Post-UTME registration" description="Start with your JAMB registration number." />
           <div className="field">
             <label htmlFor="rj">JAMB registration number</label>
             <input id="rj" className="tnum" value={num} onChange={(e) => setNum(e.target.value)} placeholder="202699176777GF" maxLength={15} autoComplete="off" spellCheck={false} />
             <div className="hint">{found.state === "idle" && num ? "Twelve digits and then two or three letters, exactly as JAMB issued it." : "Checked against the list JAMB sent the University. Nothing else is asked for until it is found."}</div>
           </div>
           {found.state === "nolist" ? (
-            <Note kind="bad" title="Nobody can be verified yet, and so nobody is let through">
-              The Academic Office has not uploaded the list of candidates JAMB sent for this session. Until it does, this screen cannot tell a real candidate from anybody who wandered onto it, and it will not guess. A Post-UTME roll that anyone may join is not a roll.
+            <Note kind="bad" title="JAMB's list for this session is not loaded yet">
+              Registration opens when the Academic Office uploads the list of candidates JAMB sent.
             </Note>
           ) : null}
           {found.state === "none" ? (
             <Note kind="bad" title="That number is not on the list JAMB sent the University">
-              This is not a decision about you, and it is usually one of three things. <b>One:</b> a digit is wrong &mdash; the number is twelve digits and then two or three letters, and it is on your JAMB slip. <b>Two:</b> you did not choose this University on CAPS, in which case change your institution with JAMB first. <b>Three:</b> JAMB sends the list in tranches and yours has not reached us yet, in which case try again after forty-eight hours. <b>Do not travel to the campus to resolve this</b> &mdash; nobody at the gate can add you to a list that comes from JAMB.
+              <b>One:</b> a digit is wrong &mdash; the number is twelve digits then two or three letters, as on your JAMB slip. <b>Two:</b> you did not choose this University on CAPS &mdash; change your institution with JAMB. <b>Three:</b> your tranche has not reached the University &mdash; try again after 48 hours. <b>Do not travel to the campus to resolve this.</b>
             </Note>
           ) : null}
           {found.state === "closed" ? (
             <Note kind="bad" title={`The University is not admitting into ${found.programme ?? "that programme"} this session`}>
-              Your number is on the list JAMB sent, and the name it carries is <b>{found.name}</b>. But the programme you chose is closed for this session, so no application can be opened into it. Change your programme with JAMB to one the University admits into this session, and this screen will find you again.
+              Your number is on JAMB&rsquo;s list as <b>{found.name}</b>, but the programme you chose is closed this session. Change your programme with JAMB to one the University admits into.
             </Note>
           ) : null}
           {found.state === "registered" ? (
@@ -152,7 +152,7 @@ export function Register({ session }: { session: string }) {
           {found.state === "found" ? (
             <>
               <Note kind="ok" title={`Found on the ${found.list === "de" ? "Direct Entry" : "UTME"} list JAMB sent the University`}>
-                Your name below is read from that list. It is <b>not</b> a field you fill in, because a name typed here would differ from the name JAMB holds and the two would be found to disagree at clearance, months from now. If it is wrong, it is wrong at JAMB: correct it there and it corrects itself here.
+                Your name is read from that list. If it is wrong, correct it with JAMB.
               </Note>
               <div className="field">
                 <label>Surname and other names</label>
@@ -171,7 +171,7 @@ export function Register({ session }: { session: string }) {
                 "Every notice about your application is sent here — including the offer, which lapses if it is not answered. Use an address you will still have in four years.")}
               {mailTypo(email) ? (
                 <Note kind="info" title={`Did you mean ${mailTypo(email)}?`}>
-                  One letter out in a provider&rsquo;s name is not a mistake anybody can see reading it back, and the address is still perfectly valid &mdash; it simply belongs to nobody. Nothing is refused here: if <span className="tnum">{email.split("@")[1]}</span> is right, carry on.
+                  If <span className="tnum">{email.split("@")[1]}</span> is right, carry on.
                 </Note>
               ) : null}
               {field("rp", "Phone number", "phone",

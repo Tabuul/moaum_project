@@ -33,10 +33,10 @@ export function Rubrics({ rubrics, mayEdit }: { rubrics: Rubric[]; mayEdit: bool
 
   return (
     <>
-      <PageHead title="Assessment criteria" description="The forms external examiners score on: the lines, their sections and their maximum marks. The total is computed from the lines; the grade comes from the University's grading scheme in force."
+      <PageHead title="Assessment criteria" description="The forms external examiners score on. The grade comes from the University's grading scheme in force."
         actions={<>{mayEdit ? <Btn kind="primary" onClick={() => setNewForm({ name: "", kind: "UNDERGRADUATE", hasDefence: true, note: "" })}>New Form</Btn> : null}<LinkBtn href="/examiners/projects">Project Assignments</LinkBtn></>} />
       {problem && !draft && !newForm ? <ProblemNotice problem={problem} /> : null}
-      {!mayEdit ? <Note kind="info" title="Read-only">The Academic Office, the Deputy Registrar (Academic) and the School of Postgraduate Studies keep these forms.</Note> : null}
+      {!mayEdit ? <Note kind="info" title="Read-only" /> : null}
       {rubrics.map((r) => (
         <Panel key={r.id} title={r.name} right={<span className="row row--inline row--tight"><Pil kind={r.kind === "POSTGRADUATE" ? "info" : "grey"}>{r.kind === "POSTGRADUATE" ? "Postgraduate" : "Undergraduate"}</Pil>{r.active ? <Pil kind="ok">Active</Pil> : <Pil kind="grey">Inactive</Pil>}<span className="sub2">{r.used} assignment{Number(r.used) === 1 ? "" : "s"} · total {total(r)}</span>{mayEdit ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void call(`/rubrics/${r.id}`, "PUT", { name: r.name, active: !r.active, hasDefence: r.has_defence, note: r.note }, r.active ? `${r.name} set inactive` : `${r.name} set active`)}>{r.active ? "Set Inactive" : "Set Active"}</Btn> : null}</span>}>
           {r.note ? <PBody><div className="sub2">{r.note}</div></PBody> : null}

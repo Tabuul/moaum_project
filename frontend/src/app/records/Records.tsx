@@ -44,9 +44,7 @@ export function Records({
   return (
     <>
       <Note kind="info" title="One scope, every query">
-        Set the faculty, department, programme, level, course and semester once. It holds as you move between students,
-        registration, fees, results, examinations, assignment, clearance and attendance &mdash; and it is carried into
-        whatever you export, so a spreadsheet that reaches somebody else says what it is a list of.
+        The scope holds as you move between views and is carried into every export.
       </Note>
 
       <div className="rectabs">

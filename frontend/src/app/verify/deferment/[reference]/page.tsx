@@ -33,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ reference: st
               ))}
             </div>
           ) : null}
-          <div className="sub2 mt-3">Only what the University discloses publicly is shown. The paper is verified against the register, not by its appearance.</div>
+          <div className="sub2 mt-3">Only publicly disclosed details are shown.</div>
         </div>
       </div>
     </div>

@@ -46,7 +46,7 @@ export function DisasterRecovery({ drills, actingOffice }: { drills: Drill[]; ac
   return (
     <>
       <Note kind="info" title="A backup that has never been restored is not a backup">
-        These are the recovery objectives the University holds itself to, and the log of drills actually run against them. The objectives are targets; the log is the record. Continuous backup telemetry is not wired into the portal yet — where a live figure would go, this screen names the target and the last drill rather than a number it cannot verify.
+        The University&rsquo;s recovery objectives and the log of drills run against them.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

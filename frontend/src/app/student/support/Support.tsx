@@ -88,7 +88,7 @@ export function Support({ requests }: { requests: ServiceRequest[] }) {
             notify(`Request ${r.ref} submitted`);
             setSubject(""); setDetail(""); setFiles([]);
           }}>{uploading ? "Attaching…" : "Submit request"}</Btn></div>
-          <div className="sub2">Each office answers on the record; the answer appears against the reference above. A document you attach is visible only to you and the office you asked.</div>
+          <div className="sub2">Answers appear against the reference above. Attachments are visible only to you and the office you asked.</div>
         </PBody>
       </Panel>
     </>

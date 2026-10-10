@@ -32,16 +32,16 @@ export function ResultsScreen({ r }: { r: Results }) {
   return (
     <>
       {r.clearsResults === false ? (
-        <Note kind="bad" title="Your results are withheld until your fees are settled">Under the scheme in force, a semester result is released on payment in full. Your grades stand on the record; they are shown the moment the Bursary&rsquo;s position releases them.</Note>
+        <Note kind="bad" title="Your results are withheld until your fees are settled">Semester results are released on payment in full.</Note>
       ) : !latest ? (
-        <Note kind="info" title="Nothing is registered against you yet">Results follow an approved course registration. Register your courses, sit the papers, and the sheets appear here on the desk they are on.</Note>
+        <Note kind="info" title="Nothing is registered against you yet">Results follow an approved course registration.</Note>
       ) : live.length === 0 ? (
         <Note kind="info" title={`Your ${latest.session} ${semesterName(latest.semester).toLowerCase()}-semester results are not published yet`}>
-          Nothing here is missing or lost. Each course below shows the desk it is on and the office holding it, and a grade appears the moment Senate approves that set &mdash; not before, because a result without a Senate minute is not a result.
+          Each course below shows the desk holding it. Grades appear once Senate approves the set.
         </Note>
       ) : waiting.length ? (
         <Note kind="info" title={`${live.length} of your ${latest.rows.length} courses are published`}>
-          The rest are still in the approval chain. Each one below says where it is and who is holding it. Your GPA is calculated on the {sem?.units ?? 0} units released so far and will change as the others arrive.
+          The rest are still being approved. Your GPA covers the {sem?.units ?? 0} units released so far.
         </Note>
       ) : (
         <Note kind="ok" title={`All ${latest.rows.length} courses are published${live[0]?.senate_minute ? ` under minute ${live[0].senate_minute}` : ""}`}>
@@ -81,7 +81,7 @@ export function ResultsScreen({ r }: { r: Results }) {
               h.published_count ? <LinkBtn key="a" kind="ghost" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`}>Open</LinkBtn> : <span className="sub2" key="a">—</span>,
             ])} />
             {!r.semesters.length ? <PBody><div className="sub2">No semester has a published result yet.</div></PBody> : (
-              <PBody><div className="sub2">CUR credit units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA. A full semester-by-semester broadsheet is on <Link href="/student/broadsheet">Result broadsheet</Link>.</div></PBody>
+              <PBody><div className="sub2">CUR units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP running totals · LCGPA previous CGPA. Full broadsheet: <Link href="/student/broadsheet">Result broadsheet</Link>.</div></PBody>
             )}
           </Panel>
           {r.carryovers.length ? (
@@ -128,7 +128,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
         <a href={`/student/results/${encodeURIComponent(session)}/${semester}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download result slip</a>
         <LinkBtn kind="ghost" size="md" href="/student/results">All results</LinkBtn>
       </div>
-      <div className="sub2">Published {onDay(rows[0]?.published_at)} after Senate approval{rows[0]?.senate_minute ? ` · minute ${rows[0].senate_minute}` : ""}. The register is the thing; this slip is a view of it.</div>
+      <div className="sub2">Published {onDay(rows[0]?.published_at)} after Senate approval{rows[0]?.senate_minute ? ` · minute ${rows[0].senate_minute}` : ""}.</div>
     </>
   );
 }
@@ -184,8 +184,8 @@ export function Broadsheet({ r }: { r: Results }) {
             ) : null}
           </Panel>
         );
-      }) : <Panel title="No published results yet"><PBody><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></PBody></Panel>}
-      <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average. This is a view of the published record.</p>
+      }) : <Panel title="No published results yet"><PBody><div className="sub2">A semester appears here once Senate approves its results.</div></PBody></Panel>}
+      <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average.</p>
       {groups.length ? (
         <div className="row">
           <a href="/student/broadsheet/pdf" target="_blank" rel="noopener" className="btn btn--primary">Print broadsheet</a>

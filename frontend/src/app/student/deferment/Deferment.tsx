@@ -99,17 +99,17 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
 
   return (
     <>
-      <PageHead title="Deferment" description="Defer a semester or a whole academic session on the record. The application fee is paid first; the Bursary, your Head of Department, your faculty, the Academic Office and the Deputy Vice-Chancellor decide in turn, the DVC's approval being final; approved, the period is held, your courses for it are marked deferred (never failed) and your completion timeline moves by exactly the period deferred."
+      <PageHead title="Deferment"
         actions={live && ["ACTIVE", "APPROVED"].includes(live.state) ? <a className="btn btn--primary btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Download Approval Letter</a> : undefined} />
 
       {live ? (
         live.state === "ACTIVE" || live.state === "APPROVED" ? (
           <Note kind="ok" title={`DEFERMENT ${live.state === "ACTIVE" ? "IN FORCE" : "APPROVED"} · ${periodOf(live)}`} action={<a className="btn btn--ghost btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Approval Letter</a>}>
-            Application number <b className="tnum">{live.reference}</b>. Expected return: <b>{returnOf(live)}</b>{live.return_on ? ` (${dayOf(live.return_on)})` : ""}. You cannot register courses for the deferred period; your department confirms your return when you present yourself, and your deferred courses then appear on your registration form. <ReturnPil status={live.return_status} />
+            Application number <b className="tnum">{live.reference}</b>. Expected return: <b>{returnOf(live)}</b>{live.return_on ? ` (${dayOf(live.return_on)})` : ""}. You cannot register courses for the deferred period. <ReturnPil status={live.return_status} />
           </Note>
         ) : OPEN.has(live.state) ? (
           <Note kind={live.state === "CORRECTION_REQUIRED" ? "bad" : "info"} title={live.state === "CORRECTION_REQUIRED" ? "Your deferment application requires correction" : "You have a draft deferment application"} action={<Btn kind="primary" onClick={() => startEditing(live)}>Continue the Application</Btn>}>
-            {live.state === "CORRECTION_REQUIRED" ? <>Returned by the <b>{live.returned_by_office ? (OFFICE_OF[live.returned_from_state ?? ""] ?? live.returned_by_office) : "desk"}</b> on {dayOf(live.updated_at)}: {live.correction_note ?? ""} Correct it and submit it again; it goes back to the same desk.</> : `${live.reference} for ${periodOf(live)} is not yet submitted.`}
+            {live.state === "CORRECTION_REQUIRED" ? <>Returned by the <b>{live.returned_by_office ? (OFFICE_OF[live.returned_from_state ?? ""] ?? live.returned_by_office) : "desk"}</b> on {dayOf(live.updated_at)}: {live.correction_note ?? ""} Correct it and submit it again.</> : `${live.reference} for ${periodOf(live)} is not yet submitted.`}
           </Note>
         ) : (
           <Note kind="info" title={`DEFERMENT APPLICATION · ${STATE[live.state]?.[0] ?? live.state}`} action={IN_REVIEW.has(live.state) ? <Btn kind="ghost" disabled={busy} onClick={() => void cancel(live.id)}>Withdraw Application</Btn> : undefined}>
@@ -119,7 +119,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
       ) : !data.eligibility.eligible ? (
         <Note kind="bad" title="DEFERMENT APPLICATION NOT AVAILABLE">{data.eligibility.reason}</Note>
       ) : (
-        <Note kind="info" title="No active deferment">You may apply to defer a semester or a session. You have used {data.eligibility.used} of the {data.eligibility.allowed} session(s) the University allows. The application fee is {naira(feeAmount)}; the form opens once it is confirmed.</Note>
+        <Note kind="info" title="No active deferment">Sessions used: {data.eligibility.used} of {data.eligibility.allowed} allowed. Application fee: {naira(feeAmount)}; the form opens once it is confirmed.</Note>
       )}
 
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -150,13 +150,13 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
               <>
                 <KvGrid cls="grid--3" pairs={[["Amount", naira(fee.amount)], ["Payment status", "NOT PAID"], ["Payment reference", <span key="r" className="tnum">{fee.reference}</span>], ["Reference expires", whenAt(fee.expires_at)]]} />
                 <div className="mt-2"><PayByCard reference={fee.reference} amount={Number(fee.amount)} /></div>
-                <div className="sub2 mt-2">Pay by card or USSD here, or at any bank branch quoting the reference; the Bursary confirms a bank payment. The form opens the moment the payment is confirmed. The fee is not refunded if the application is refused.</div>
+                <div className="sub2 mt-2">Pay by card or USSD, or at a bank branch quoting the reference. The fee is not refundable.</div>
               </>
             ) : (
               <>
                 <KvGrid cls="grid--3" pairs={[["Application fee", naira(feeAmount)], ["Payment status", "NOT PAID"], ["Session", data.current.session ?? s.session]]} />
                 {fee && fee.state === "EXPIRED" ? <div className="sub2 mt-1">Your earlier reference {fee.reference} expired unpaid; generate a new one.</div> : null}
-                <div className="row mt-2"><Btn kind="primary" disabled={busy} onClick={() => void startFee()}>Pay {naira(feeAmount)} Deferment Fee</Btn><span className="sub2">A payment reference is generated; the application form opens when the payment is confirmed.</span></div>
+                <div className="row mt-2"><Btn kind="primary" disabled={busy} onClick={() => void startFee()}>Pay {naira(feeAmount)} Deferment Fee</Btn></div>
               </>
             )}
           </PBody>
@@ -190,7 +190,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                     <select id="df-reason" className="ctl" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}><option value="">Choose…</option>{data.reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</select>
                   </Field>
                 </div>
-                <Field id="df-words" label="Additional explanation" required={needsWords} hint={needsWords ? `A ${reason!.label.toLowerCase()} deferment is explained in a few sentences — at least twenty characters (${form.explanation.trim().length} so far).${reason!.needs_document ? " A supporting document is uploaded at the next step." : ""}` : reason?.needs_document ? `A ${reason.label.toLowerCase()} deferment is supported by a document, uploaded at the next step. A few words here are optional.` : "A few sentences on your circumstances (optional for this reason)."}>
+                <Field id="df-words" label="Additional explanation" required={needsWords} hint={needsWords ? `At least 20 characters (${form.explanation.trim().length} so far).${reason!.needs_document ? " A supporting document is uploaded next." : ""}` : reason?.needs_document ? "A supporting document is uploaded next. Optional here." : "Optional."}>
                   <textarea id="df-words" className="ctl" rows={4} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
                 </Field>
                 {wordsShort && form.explanation.trim().length > 0 ? <div className="sub2 ink-red">Write at least twenty characters; the desks read this explanation.</div> : null}
@@ -283,8 +283,8 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
 
       {viewing ? <DocViewer url={viewing.url} title={viewing.title} image={viewing.image} onClose={() => setViewing(null)} /> : null}
 
-      <Note kind="info" title="What an approved deferment does and does not do">
-        It holds the period on every register: you cannot register courses for it, and your status reads Deferred while it runs. The courses of that period are marked <b>DEFERRED</b> — not failed, no F, no zero, no carry-over — and your GPA and CGPA are not touched. Your expected completion moves by exactly the period deferred (one semester, or one session); your entry session and matriculation number never change. When you return, the deferred courses appear on your registration form under their own heading and count only when you take them and a result is published.
+      <Note kind="info" title="Approved deferment">
+        Deferred courses are not failed and do not affect your GPA; your expected completion moves by the period deferred.
       </Note>
     </>
   );

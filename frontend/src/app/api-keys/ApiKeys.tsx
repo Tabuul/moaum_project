@@ -47,7 +47,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
   return (
     <>
       <Note kind="info" title="Every client is named, scoped and rate-limited, and no key lives longer than a year">
-        The public website is a consumer of this API, not a second copy of the data: one approved record produces the administrative view and the public page, which is what stops the two drifting apart. A key is shown once, at issue, and only its hash is kept — the same rule as a password. Rotation is overlapping: issue the new key, let both work while the consumer switches, then revoke the old one.
+        A key is shown once, at issue; only its hash is kept. To rotate, issue the new key, then revoke the old one once the consumer has switched.
       </Note>
 
       {said ? <Note kind="ok" title={said} /> : null}

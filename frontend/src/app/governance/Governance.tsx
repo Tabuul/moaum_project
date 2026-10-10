@@ -52,7 +52,7 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
       <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
         action="Keeping the processing register and DPIAs" />
       <Note kind={outstanding ? "bad" : "info"} title={outstanding ? `${outstanding} data-protection impact assessment${outstanding === 1 ? "" : "s"} outstanding` : "The processing register is the University's own record"}>
-        The Nigeria Data Protection Act requires a record of processing activities and a data-protection impact assessment for high-risk processing. The register below is the University&rsquo;s own; the DPO keeps it current. Figures shown are counts from the register and the request log — nothing is inferred.
+        The Nigeria Data Protection Act requires a record of processing activities and a data-protection impact assessment for high-risk processing. The DPO keeps the register current.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}
@@ -92,7 +92,7 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
               {may && ["RECEIVED", "IN_PROGRESS"].includes(d.state) ? <Btn kind="go" disabled={busy} onClick={() => void send(`/dsr/${d.id}/advance`, { state: "COMPLETED" }, `Complete ${d.reference}`)}>Complete</Btn> : null}
             </span>,
           ])} texts={dsr.map((d) => `${d.reference} ${d.requester} ${d.state}`)} />
-        ) : <PBody><div className="sub2">No data-subject request has been logged. A request appears here when a person exercises a right under the Act.</div></PBody>}
+        ) : <PBody><div className="sub2">No data-subject request has been logged.</div></PBody>}
       </Panel>
 
       {may ? (

@@ -138,7 +138,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
                   <div className="sub2">Made current {whenAt(current.madeCurrentAt)}{current.senateMinute ? ` · ${current.senateMinute}` : ""}</div>
                 </>
               ) : (
-                <div className="sub2">No session is current. The Director of ICT or the Registrar makes a planned session current by the transition below.</div>
+                <div className="sub2">No session is current.</div>
               )}
             </div>
             <div className="card card--state">
@@ -150,7 +150,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
                   <div className="sub2">Transition: <b>{next.transitionMode === "AUTOMATIC" ? "automatic" : "by hand"}</b>{next.transitionsOn ? ` on ${d(next.transitionsOn)}` : next.transitionMode === "AUTOMATIC" ? " — no date set, so the clock will not act" : ""}</div>
                 </>
               ) : (
-                <div className="sub2">No planned session follows{current ? ` ${current.name}` : ""}. Set the next one up below; it is a real academic context from the day it is planned.</div>
+                <div className="sub2">No planned session follows{current ? ` ${current.name}` : ""}.</div>
               )}
             </div>
           </div>
@@ -162,7 +162,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
         <Panel title={`Transition into ${next.name}`} right={canTransition ? <Btn kind="primary" disabled={busy} onClick={() => setModal(next.name)}>Transition now</Btn> : <span className="sub2">The Director of ICT or the Registrar transitions</span>}>
           <PBody>
             <div className="sub2">
-              At the transition {current ? <><b>{current.name}</b> becomes <b>Completed</b> and </> : null}<b>{next.name}</b> becomes <b>Current</b>, in one transaction or not at all. No student is moved: entrants of {next.name} continue under the same accounts, and returning students progress only by the results, promotion and roll-over rules that exist.
+              At the transition {current ? <><b>{current.name}</b> becomes <b>Completed</b> and </> : null}<b>{next.name}</b> becomes <b>Current</b>. No student is moved.
             </div>
             {readiness ? (
               <>
@@ -201,7 +201,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
           foot={<><Btn kind="ghost" onClick={() => { setModal(null); setRefusal(null); }}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy || confirm.trim().toUpperCase() !== "TRANSITION" || !reason.trim()} onClick={() => void transition()}>{busy ? "Transitioning…" : "Complete the transition"}</Btn></>}>
           {refusal ? <ProblemNotice problem={refusal} /> : null}
           <Note kind="info" title="This is the University's official session change">
-            It is validated, made in one transaction and logged with your name and reason. Historical records stay where they are; no student account is created, moved or duplicated.
+            Logged with your name and reason. Historical records and student accounts are untouched.
           </Note>
           {readiness && readiness.session === modal ? <Checks checks={readiness.checks} /> : null}
           <div className="grid grid--2 rfgrid">

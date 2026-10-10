@@ -100,7 +100,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
       <RoleLine allowed={["academic", "registrar"]} actingOffice={actingOffice}
         action="Recording the merit list against a programme" />
       <Note kind="info" title="A proposed merit list — the Board still decides">
-        The eligible pool for a programme, ranked by the session&rsquo;s aggregate (UTME scaled and weighted with the Post-UTME score). The proposed offers fill the programme&rsquo;s quota, split UTME to Direct-Entry by the ratio in force for the faculty, and spill flexibly so an approved seat is never left empty. Nobody is admitted here: the Board enters and releases each decision on the applicant&rsquo;s desk.
+        Ranked by the session&rsquo;s aggregate; offers fill the quota, split UTME to Direct Entry by the faculty&rsquo;s ratio. Nobody is admitted here.
       </Note>
 
       <Panel title="Choose a programme" right={`${session}`}>
@@ -121,7 +121,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
             ["Not eligible", String(view.counts.pool - view.counts.eligible), view.counts.pool - view.counts.eligible ? "var(--chrome)" : null, "Below cut-off, missing a credit, or unscored"],
           ]} />
           {recProblem ? <ProblemNotice problem={recProblem} /> : null}
-          {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.notOffered} not offered (ineligible), {recorded.skipped} left untouched (already released). Every candidate now carries a decision, so the JAMB template reconciles. Release the decisions from the Applicants desk when the Board is ready.</Note> : null}
+          {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.notOffered} not offered (ineligible), {recorded.skipped} left untouched (already released). Release the decisions from the Applicants desk.</Note> : null}
           <Panel title="The merit list" right={<span className="row row--inline"><span className="sub2">{view.counts.pool} in the pool</span>{mayRecord && view.counts.proposed > 0 ? <Btn kind="primary" disabled={busy} onClick={() => void record()}>{busy ? "Recording…" : `Record ${view.counts.proposed} offer${view.counts.proposed === 1 ? "" : "s"}`}</Btn> : null}</span>}>
             {view.rows.length ? (
               <DTable
@@ -140,11 +140,11 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
                 ])}
                 texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.jamb_reg_no} ${r.basis}`)}
               />
-            ) : <PBody><div className="sub2">No applicant has registered and been scored for this programme yet. The list fills as applicants register for post-UTME, sit the screening, and their scores are released.</div></PBody>}
+            ) : <PBody><div className="sub2">No scored applicant for this programme yet.</div></PBody>}
           </Panel>
         </>
       ) : (
-        <Note kind="info" title="Choose a programme to see its merit list">Pick a programme above. The list is drawn from the applicants who registered for it, sat the screening and had their scores released.</Note>
+        <Note kind="info" title="Choose a programme to see its merit list" />
       )}
     </>
   );

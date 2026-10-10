@@ -75,8 +75,7 @@ export default async function Page({ params, searchParams }: {
           ) : null}
 
           <p className="sub2 ink-faint m-0 mt-1">
-            This page reads the University&rsquo;s payment ledger directly; it is the record, and the printed receipt is only a view of it.
-            Verified {day(new Date().toISOString())}.
+            Where the printed receipt differs, this record prevails. Verified {day(new Date().toISOString())}.
           </p>
         </div>
       </div>

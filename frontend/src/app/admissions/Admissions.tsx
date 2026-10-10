@@ -77,7 +77,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       {cycle.notYetOnRegister ? (
         <Note kind="bad" title={`${cycle.notYetOnRegister.toLocaleString()} admitted candidate${cycle.notYetOnRegister === 1 ? " is" : "s are"} not yet on the register`}
           action={<Btn kind="urgent" disabled={busy || !may} onClick={() => void intake()}>{busy ? "Bringing them on…" : `Bring ${cycle.notYetOnRegister.toLocaleString()} candidate${cycle.notYetOnRegister === 1 ? "" : "s"} onto the register`}</Btn>}>
-          JAMB admitted them and the University has confirmed the list. Until they are brought onto the student register nobody can screen, clear or register them: the admission number is issued at that moment, and the matriculation number much later, over the confirmed faculty lists. Nothing is typed — the register is generated from the committed CAPS list.
+          Until they are on the student register nobody can screen, clear or register them. Each gets an admission number from the committed CAPS list.
         </Note>
       ) : (
         <Note kind="ok" title={cycle.offers ? "Every admitted candidate is on the register" : "No admitted candidate yet"}>

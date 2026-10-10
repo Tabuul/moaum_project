@@ -2,7 +2,7 @@
 
 /** one course space from the roll's side: the material, counted when read; the assignments, submitted once (V035). */
 import { useState } from "react";
-import Link from "next/link";
+
 import { KINDS, fileBase64, size, type Assignment, type Space } from "@/lib/lms";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -51,7 +51,7 @@ export function SpaceScreen({ s }: { s: Space }) {
             m.filename ? <a key="d" className="btn btn--ghost btn--sm" href={`/api/bff/api/v1/me/courses/materials/${m.id}/content`} target="_blank" rel="noreferrer">{m.read_by_me ? "Open again" : "Open"}</a>
               : <a key="d" className="btn btn--ghost btn--sm" href={m.link ?? "#"} target="_blank" rel="noreferrer noopener" onClick={() => void act(`read-${m.id}`, "POST", `/me/courses/materials/${m.id}/read`, {}, "Material opened")}>{m.read_by_me ? "Open again" : "Open link"}</a>,
           ])} />
-        ) : <PBody><div className="sub2">The lecturer has published nothing yet. Material appears here the moment it is published, and only to the students on the roll.</div></PBody>}
+        ) : <PBody><div className="sub2">The lecturer has published nothing yet.</div></PBody>}
       </Panel>
       <div id="assignments" />
       <Panel title="Assignments" right={s.assignments.length ? `${s.assignments.length}` : "none set"}>
@@ -70,7 +70,7 @@ export function SpaceScreen({ s }: { s: Space }) {
           })} />
         ) : <PBody><div className="sub2">No assignment set.</div></PBody>}
       </Panel>
-      <Note kind="info" title="A course space is built from the approved registrations">You see this space because your registration for {s.course_code} was approved. Every read of the material is counted, and what you submit goes to the lecturer under your name. <Link href="/student/courses">All courses</Link>.</Note>
+      
       {open ? (
         <Modal title={open.title} sub={`${s.course_code} · closes ${when(open.closes_at)} · ${open.weight}% of continuous assessment`} onClose={() => setOpen(null)}
           foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy !== null || (!text.trim() && !file)} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit"}</Btn></>}>

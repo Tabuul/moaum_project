@@ -69,7 +69,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
   return (
     <>
       <Note kind="info" title="A SIWES course is supervised, not taught to a class">
-        Each student is assigned a supervisor, who records that student&rsquo;s assessment out of 40 on their own dashboard. You record the report of the practicals out of 60 here. A student&rsquo;s mark is complete only when both parts are in; the sheet then goes through the results chain like any other.
+        The supervisor records the assessment out of 40; you record the practicals report out of 60 here.
       </Note>
 
       <div className="card"><div className="card__body row row--end">
@@ -90,7 +90,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
 
       {!offering ? (
         <Note kind="info" title="No SIWES course this session and semester">
-          A SIWES course appears here once the department offers an industrial-training course for the session. Mark the course as industrial training in the catalogue and open its registration.
+          Mark the course as industrial training in the catalogue and open its registration.
         </Note>
       ) : (
         <>

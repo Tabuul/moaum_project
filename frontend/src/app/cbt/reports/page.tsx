@@ -27,7 +27,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <div className="mb-3"><LinkBtn kind="ghost" href={`${base}/cbt`}>← CBT examinations</LinkBtn></div>
       {!rows.ok ? <ProblemNotice problem={rows.problem} /> : (
         <>
-          {due ? <Note kind="bad" title={`${due} sitting${due === 1 ? " has" : "s have"} ended without a report`}>The chief invigilator of each files it from the sitting&rsquo;s board; the office may file it if they cannot.</Note> : null}
+          {due ? <Note kind="bad" title={`${due} sitting${due === 1 ? " has" : "s have"} ended without a report`}>The chief invigilator files it from the sitting&rsquo;s board.</Note> : null}
           <Panel title="Sitting reports" right={<span className="sub2">{rows.data.length} sittings{session ? ` · ${session}` : ""}</span>}>
             {rows.data.length ? (
               <DTable pageSize={50} cols={["When", "Examination", "Sitting", "Seated|num", "Absent|num", "Incidents|num", "Report|mid", "|mid"]} rows={rows.data.map((r) => [

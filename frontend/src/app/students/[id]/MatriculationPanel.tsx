@@ -38,7 +38,7 @@ export function MatriculationPanel({ studentId }: { studentId: string }) {
           <>
             <KvGrid cls="grid--3" pairs={[["Portal sign-in username", <span key="u" className="tnum">{rec.username ?? "—"}</span>], ["Status", "Admitted — not yet matriculated"], ["Proposed number", open ? <span key="p"><b className="tnum">{open.proposed_no}</b> <span className="sub2">on batch {open.batch_ref} ({open.batch_state.replace(/_/g, " ").toLowerCase()})</span></span> : "None yet"]]} />
             {open?.problems?.length ? <Note kind="bad" title="The proposed number is in conflict">{open.problems.join("; ")}</Note> : null}
-            <div className="sub2 mt-2">A proposed number is preparation only; the matriculation number and the sign-in username change when the batch is issued on Matriculation Management.</div>
+            <div className="sub2 mt-2">The number and sign-in username change only when the batch is issued.</div>
           </>
         )}
       </PBody>

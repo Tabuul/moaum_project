@@ -35,10 +35,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
       </div></div>
 
       {data.offerings.length === 0 ? (
-        <Note kind="info" title={`Nothing is allocated to you for ${data.session}`}>
-          A course appears here once your Head of Department allocates it to you for the session. Until then there is
-          nothing to teach and nothing on your timetable.
-        </Note>
+        <Note kind="info" title={`Nothing is allocated to you for ${data.session}`} />
       ) : (
         <>
           <Tiles items={[
@@ -63,7 +60,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
               ])}
               texts={data.offerings.map((o) => `${o.code} ${o.title} ${o.role}`)}
             />
-            <PBody><div className="sub2">Class slots are set on the class-list screen for each course. A course code links to its course space.</div></PBody>
+            <PBody><div className="sub2">Class slots are set on each course&rsquo;s class-list screen.</div></PBody>
           </Panel>
         </>
       )}

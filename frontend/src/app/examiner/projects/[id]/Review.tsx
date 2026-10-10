@@ -88,7 +88,7 @@ export function Review({ d }: { d: ReviewData }) {
         <Note kind="bad" title={`Reopened by the University on ${dayOf(a.reopened_at)}`}>{a.reopen_reason}<span className="blk sub2 mt-2">Your earlier scores and comments are kept. Revise what is needed and submit again.</span></Note>
       ) : (
         <Note kind="info" title={`Review deadline ${dayOf(d.deadline)} · ${daysWords(d.days_left, d.status)}`}>
-          Score each line out of its maximum, add a comment where it helps, write your general comments and give a recommendation. Save the draft as often as you like; submit once when it is complete.
+          Save the draft as often as you like; submit once when it is complete.
         </Note>
       )}
 

@@ -44,9 +44,9 @@ export function StudentSearch({ list, filters, page, generatedBy }: { list: Supp
 
   return (
     <>
-      <PageHead title="Student support" description={`Find a student within your reach${list.scope ? ` — ${list.scope}` : ""} and open their record in support mode. A student outside your postings' scope is not found here.`}
+      <PageHead title="Student support" description={`Find a student within your reach${list.scope ? ` — ${list.scope}` : ""}`}
         actions={<><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
-      {!caps.has("VIEW_STUDENT") ? <Note kind="bad" title="Your posting does not carry student records">Ask the Head of the ICT Support Desk to grant the capability on your posting. Until then, document the issue on the ticket and escalate it.</Note> : null}
+      {!caps.has("VIEW_STUDENT") ? <Note kind="bad" title="Your posting does not carry student records">Ask the Head of the ICT Support Desk to grant it.</Note> : null}
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ q: String(f.get("q") ?? "") }); }}>
         <div className="row">
           <Field id="ss-q" label="Search" style={{ flex: "2 1 260px" }}><input id="ss-q" name="q" className="ctl" type="search" defaultValue={filters.q} placeholder="Name, matriculation, JAMB, application or admission number, student ID, phone, email" /></Field>

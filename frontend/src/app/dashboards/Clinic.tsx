@@ -1,6 +1,6 @@
 import type { Me } from "@/components/proto/Shell";
 import type { ClinicDesk } from "@/lib/health";
-import { LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const at = (iso: string) => { try { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
@@ -16,10 +16,7 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
   const concluded = desk?.concluded ?? [];
   return (
     <>
-      <Note kind="info" title="University Health Services">
-        Your home is the clinic. Patients arrive as walk-ins or from a booking, wait here for triage, and leave with an
-        outcome on the record. The figures below are the clinic&rsquo;s own; the clinical note stays inside the module.
-      </Note>
+
 
       <Tiles items={[
         ["Waiting now", String(t?.waiting ?? 0), (t?.waiting ?? 0) ? "var(--red-ink)" : "var(--green-ink)",
@@ -39,7 +36,7 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
               <Pil kind={w.triage === "URGENT" ? "bad" : w.triage === "PRIORITY" ? "info" : "grey"} key="g">{w.triage}</Pil>,
             ])} />
         ) : (
-          <PBody><div className="sub2">Nobody is waiting. New arrivals appear here the moment they are added to the list on the clinic desk.</div></PBody>
+          <PBody><div className="sub2">Nobody is waiting.</div></PBody>
         )}
       </Panel>
 
@@ -53,7 +50,7 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
               <Pil kind="grey" key="s">{b.state}</Pil>,
             ])} />
         ) : (
-          <PBody><div className="sub2">No appointment is booked. A student books from their health page, and it appears here to be marked arrived.</div></PBody>
+          <PBody><div className="sub2">No appointment is booked.</div></PBody>
         )}
       </Panel>
 

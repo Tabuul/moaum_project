@@ -96,7 +96,7 @@ export function Candidates({ view, batches, filters, office }: { view: Candidate
         </form>
       </div>
 
-      {rows.some((r) => r.schedule_review) ? <Note kind="info" title="Some seatings need a look">A candidate&rsquo;s programme changed after they were seated. Confirm the seating, or move them to the right batch.</Note> : null}
+      {rows.some((r) => r.schedule_review) ? <Note kind="info" title="Some seatings need a look">A programme changed after seating. Confirm, or move them.</Note> : null}
 
       <Panel title={`${view.total.toLocaleString()} candidate(s)`} right={pages > 1 ? <span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => go({ page: String(view.page - 1) })} disabled={view.page <= 0}>Previous</Btn><span className="sub2">Page {view.page + 1} of {pages}</span><Btn kind="ghost" onClick={() => go({ page: String(view.page + 1) })} disabled={view.page + 1 >= pages}>Next</Btn></span> : "Names A–Z"}>
         {rows.length ? (

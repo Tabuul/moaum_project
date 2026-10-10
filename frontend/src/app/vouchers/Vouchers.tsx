@@ -60,7 +60,7 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
   return (
     <>
       <Note kind={blocked ? "bad" : "info"} title={blocked ? `${blocked} voucher${blocked === 1 ? "" : "s"} cannot move while a query stands` : "Every University payment passes Internal Audit before money moves"}>
-        A voucher advances one desk at a time: the Bursary raises it, the Director signs, the Deputy signs, an auditor attests, and it returns to the Bursary to pay. A query is a finding sent to a named office, and the voucher waits where it is until it is answered. No person may act twice in its chain, however many offices they hold.
+        Bursary raises → Director signs → Deputy signs → auditor attests → Bursary pays. A query holds the voucher until answered. No person acts twice in its chain.
       </Note>
 
       {said ? <Note kind="ok" title={said} /> : null}
@@ -91,7 +91,7 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
               {v.i_acted && AUDIT_STAGES.includes(v.stage) ? <span className="sub2">You have acted on this one</span> : null}
             </span>,
           ])} texts={vouchers.map((v) => `${v.reference} ${v.title} ${v.payee}`)} />
-        ) : <PBody><div className="sub2">No voucher has been raised. The Bursary raises one for a payment, and it passes Internal Audit before any money moves.</div></PBody>}
+        ) : <PBody><div className="sub2">No voucher has been raised.</div></PBody>}
       </Panel>
 
       {add ? (

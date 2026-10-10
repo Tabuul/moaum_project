@@ -32,12 +32,12 @@ export function Forgot() {
   }
 
   return (
-    <AuthLayout eyebrow="Account recovery" lead={<>A reset link is sent to the email (and phone) on your account &mdash; staff, student or applicant. It is good for an hour and works once.</>}>
+    <AuthLayout eyebrow="Account recovery" lead={<>A reset link is sent to the email (and phone) on your account. It is valid for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
           <PageHead title="Reset your password" description="Staff, students and applicants." />
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
-              Check the email (and phone) on your account. The link is good for an hour. If nothing arrives, the address on your account may differ from the one you expect &mdash; <Link href="/login/help">ask ICT Support for help</Link>. (A staff account can only be emailed when its username is an email address.)
+              Check the email (and phone) on your account. The link is valid for an hour. If nothing arrives, <Link href="/login/help">ask ICT Support</Link>. (A staff account is emailed only when its username is an email address.)
             </Note>
           ) : (
             <>

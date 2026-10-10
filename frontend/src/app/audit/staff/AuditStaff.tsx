@@ -24,7 +24,7 @@ export function AuditStaff({ staff, runs }: { staff: StaffRow[]; runs: Run[] }) 
   return (
     <>
       <Note kind="info" title="The roll and the payroll, read together">
-        Audit reads the establishment and the pay runs from the same records the Human Resource office and the Bursary act on. Each run is built by one officer and approved by another; a run whose total moves without a matching change on the roll is the thing to ask about.
+        Each run is built by one officer and approved by another.
       </Note>
       <Tiles items={[
         ["On the establishment", String(active.length), null, `${staff.length} on the roll`],

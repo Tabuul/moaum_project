@@ -18,11 +18,11 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
     <>
       {off ? (
         <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<LinkBtn kind="urgent" href="/audit">Open the audit trail</LinkBtn>}>
-          A table off the spine can be changed without a record. Everything else here rests on the spine being complete.
+          A table off the spine can be changed without a record.
         </Note>
       ) : (
         <Note kind="ok" title="The record is complete and hash-chained" action={<LinkBtn kind="primary" href="/audit">Open the audit trail</LinkBtn>}>
-          Every state table is on the spine and each entry is chained to the one before it, so a tampered row is detectable.
+          Every state table is on the spine; a tampered row is detectable.
         </Note>
       )}
 
@@ -42,7 +42,7 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
               <span className="tnum" key="c">{e.action}</span>,
               <span className="sub2" key="s">{e.subject_type}{e.reason ? ` · ${e.reason}` : ""}</span>,
             ])} texts={feed.map((e) => `${e.actor_name ?? ""} ${e.action} ${e.subject_type}`)} />
-        ) : <PBody><div className="sub2">No recent activity to show. Every attributed change and sign-in appears on the audit trail.</div></PBody>}
+        ) : <PBody><div className="sub2">No recent activity.</div></PBody>}
       </Panel>
 
       <Panel title="Oversight desks" right={me?.name ? `Signed in as ${me.name}` : "Internal Audit"}>

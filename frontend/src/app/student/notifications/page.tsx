@@ -30,7 +30,7 @@ export default async function Page() {
                   </div>
                 ))}
               </div>
-            ) : <PBody><div className="sub2">Nothing sent to you yet. Every notice the portal sends is listed here as well, so nothing depends on a message reaching your phone.</div></PBody>}
+            ) : <PBody><div className="sub2">Nothing sent to you yet.</div></PBody>}
           </Panel>
           <Panel title="How we reach you">
             <DTable cols={["Channel", "Transactional|mid", "Announcements|mid"]} rows={[
@@ -38,7 +38,7 @@ export default async function Page() {
               [<span key="s">SMS · {s.contact.phone ?? s.contact.reach_phone ?? "none on file"}</span>, <Pil kind="ok" key="t">Always on</Pil>, <Pil kind={s.contact.phone || s.contact.reach_phone ? "ok" : "bad"} key="a">{s.contact.phone || s.contact.reach_phone ? "On" : "No number"}</Pil>],
               [<span key="i">In-app</span>, <Pil kind="ok" key="t">Always on</Pil>, <Pil kind="ok" key="a">On</Pil>],
             ]} />
-            <PBody><div className="sub2">Change the address and number on your profile. Results, payments and admission decisions are always sent — you cannot switch those off, because the University must be able to reach you about them.</div></PBody>
+            <PBody><div className="sub2">Change the address and number on your profile. Results, payments and admission decisions are always sent.</div></PBody>
           </Panel>
         </>
       )}

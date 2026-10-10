@@ -97,9 +97,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
     <>
       <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing departments" />
       <Note kind="info" title="Create a department, or upload the list">
-        A department carries a code, a name and a faculty. Create one below, or upload a spreadsheet of them. The faculty
-        is matched by code or name and must exist first (add it on the Faculty upload screen). Uploading again updates
-        rather than duplicates; programmes and courses hang off the department.
+        Code, name and faculty; the faculty must exist first. Uploading again updates rather than duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Academic Office">Your office may not manage departments.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}

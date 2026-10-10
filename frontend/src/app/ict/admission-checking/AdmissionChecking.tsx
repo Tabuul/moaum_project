@@ -117,11 +117,11 @@ export function AdmissionChecking({ page, report, filters, actingOffice }: { pag
 
   return (
     <>
-      <PageHead title="Admission status checking" description="Whether every applicant with a valid Post-UTME application — the application fee confirmed and the application submitted — may pay the admission checking fee and check their admission status, admitted, not admitted or not yet decided alike. The Director of ICT opens and closes it for the admission exercise of a session; the Bursary states the fee; the decision is the Admissions Board's. Every act is confirmed with its reason, told to the applicants and kept in the history."
+      <PageHead title="Admission status checking" description="Whether applicants with a submitted, paid Post-UTME application may pay the admission checking fee and check their status. Opened and closed by the Director of ICT; the fee is the Bursary's."
         actions={<span className="row row--inline row--tight"><label htmlFor="asc-session" className="sub2">Session</label><select id="asc-session" className="ctl" value={session} onChange={(e) => go(withFilter("session", e.target.value))}>{page.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}{Number(x.applicants) ? ` — ${Number(x.applicants).toLocaleString()} applications` : ""}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
-      {!may ? <Note kind="info" title="Read only">Admission Status Checking is opened and closed by the Director of ICT alone; this report is yours to read and export.</Note> : null}
-      {!w.configured ? <Note kind="bad" title={`Admission status checking has not been opened for ${session}`}>Until the Director of ICT opens it, no applicant of the session can pay the admission checking fee or check their status; they see that checking is closed.</Note> : null}
+      {!may ? <Note kind="info" title="Read only">Opened and closed by the Director of ICT alone.</Note> : null}
+      {!w.configured ? <Note kind="bad" title={`Admission status checking has not been opened for ${session}`}>No applicant of the session can pay the checking fee or check their status.</Note> : null}
       <Tiles items={[
         ["STATUS", word, w.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", w.state === "OPEN" ? (w.closes_at ? `Closes ${when(w.closes_at)}` : "No closing date") : w.state === "SCHEDULED" ? `Opens ${when(w.opens_at)}` : w.configured ? "Closed by the Director" : "Closed until first opened"],
         ["CHECKING FEE", fee ? money(fee) : "—", null, page.fee?.stated ? "As the Bursary stated it for the session" : fee ? "The standing amount" : "No fee stated: checking is free"],
@@ -135,7 +135,7 @@ export function AdmissionChecking({ page, report, filters, actingOffice }: { pag
 
       <Panel title={`ADMISSION STATUS CHECKING · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>
-          <div className="sub2">The whole admission exercise of the session: no semester and no late period. Closing stops new checking-fee payments and checks; a fee already paid stands and is never charged again, and an applicant who has read an offer continues to acceptance whatever the window.</div>
+          <div className="sub2">Closing stops new checking-fee payments and checks; a fee already paid stands, and an applicant who has read an offer continues to acceptance.</div>
           <KvGrid cls="grid--3" pairs={[
             ["Opens", w.opens_at ? when(w.opens_at) : w.configured ? "Immediately" : "—"], ["Closes", w.closes_at ? `${when(w.closes_at)} · ${remaining(w.closes_at, page.now)}` : w.configured ? "No closing date" : "—"],
             ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : "Not configured: closed"], ["Reason", w.reason ?? "—"],
@@ -193,7 +193,7 @@ export function AdmissionChecking({ page, report, filters, actingOffice }: { pag
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
           <span key="r" className="sub2">{e.reason ?? ""}</span>, <span key="w" className="sub2">{e.officer ?? ""}{e.office ? ` (${e.office})` : ""}</span>, <span key="t" className="tnum sub2">{when(e.at)}</span>,
-        ])} /> : <PBody><div className="sub2">No act on this session&rsquo;s admission status checking yet; it is closed until the Director of ICT opens it.</div></PBody>}
+        ])} /> : <PBody><div className="sub2">No act yet; closed until the Director of ICT opens it.</div></PBody>}
       </Panel>
 
       {act ? (
@@ -202,7 +202,7 @@ export function AdmissionChecking({ page, report, filters, actingOffice }: { pag
           {problem ? <ProblemNotice problem={problem} /> : null}
           {act === "CLOSE" ? (
             <Note kind="bad" title={`Are you sure you want to close admission status checking for ${session}?`}>
-              It takes effect the moment you confirm. No applicant can pay the admission checking fee or check their status until it is reopened; a fee already paid stands and is not charged again, and an applicant who has read an offer continues to acceptance. The session&rsquo;s applicants are told.
+              It takes effect at once. No applicant can pay the checking fee or check their status until it is reopened; a fee already paid stands. The applicants are told.
             </Note>
           ) : (
             <>

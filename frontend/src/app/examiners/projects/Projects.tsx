@@ -60,7 +60,7 @@ export function Projects({ rows, session, current, sessions, examiners, rubrics,
 
   return (
     <>
-      <PageHead title="Project assignments" description="Final-year projects registered for external examination, the examiners each is with, and where every review stands."
+      <PageHead title="Project assignments" 
         actions={<><Btn kind="primary" onClick={() => { setProblem(null); setStudent(null); setSupervisor(null); setOpen(true); }}>Register a Project</Btn><LinkBtn href="/examiners/assignments">Every Assignment</LinkBtn><LinkBtn href="/examiners/rubrics">Assessment Criteria</LinkBtn></>} />
       {assignFor ? <Note kind="info" title={`Assigning to ${examiners.find((e) => e.id === assignFor)?.name ?? "the chosen examiner"}`}>Choose a project below and click Assign; the examiner is already picked.</Note> : null}
       {problem && !open && !assign ? <ProblemNotice problem={problem} /> : null}
@@ -135,7 +135,7 @@ export function Projects({ rows, session, current, sessions, examiners, rubrics,
               <Field id="as-deadline" label="Review deadline" required style={{ flex: "1 1 160px" }}><input id="as-deadline" className="ctl" type="date" value={a.deadline} onChange={(e) => setA({ ...a, deadline: e.target.value })} /></Field>
               <Field id="as-exam" label="Examination date" hint="Where a defence is held" style={{ flex: "1 1 160px" }}><input id="as-exam" className="ctl" type="date" value={a.examDate} onChange={(e) => setA({ ...a, examDate: e.target.value })} /></Field>
             </div>
-            {!Number(assign.documents) ? <Note kind="bad" title="No document released yet">The examiner can be assigned now, but will find nothing to read until the report is released on the project&rsquo;s page.</Note> : null}
+            {!Number(assign.documents) ? <Note kind="bad" title="No document released yet">The examiner finds nothing to read until the report is released.</Note> : null}
           </div>
         </Modal>
       ) : null}

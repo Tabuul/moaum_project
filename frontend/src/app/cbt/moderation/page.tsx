@@ -32,7 +32,7 @@ export default async function Page() {
             ["RETURNED TO YOU", num(returnedToMe), returnedToMe ? "var(--red-ink)" : null, "Read the note, correct, and it goes back for moderation"],
             ["YOURS WAITING", num(list.reduce((n, r) => n + Number(r.mine_waiting), 0)), null, "Set by you, awaiting someone else"],
           ]} />
-          {moderator ? <Note kind="info" title="Moderating">Open a bank to approve or return its questions one by one, or by sample: a random sample you choose the size of — once every question in it is approved, the rest are approved with it. A question goes on a paper only once someone other than its setter has approved it.</Note> : null}
+          {moderator ? <Note kind="info" title="Moderating">Approve or return questions one by one, or by sample. A question goes on a paper only once someone other than its setter has approved it.</Note> : null}
           <Panel title="Banks with questions waiting" right={<span className="sub2">Within your office&rsquo;s scope</span>}>
             {list.length ? (
               <DTable cols={["Bank", "Title", "Waiting|num", "For you|num", "Returned|num", "Waiting since", "|mid"]} rows={list.map((r) => [

@@ -95,16 +95,14 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
             </Panel>
           </div>
           <Note kind="info" title="Course-structure upload">
-            A programme counts as uploaded once its CCMAS structure has been loaded and its courses offered to it. Load a structure on <a href="/catalogue/upload">Course structure upload</a>; browse a department&rsquo;s courses on <a href="/catalogue">Dept courses</a>.
+            Load a structure on <a href="/catalogue/upload">Course structure upload</a>; browse a department&rsquo;s courses on <a href="/catalogue">Dept courses</a>.
           </Note>
         </>
       ) : null}
       {canManagePeople ? (
         <Panel title="People and access" right={persons.ok ? `${people.length} people · ${withAccount} with an account` : "not answering"}>
           <PBody>
-            <Note kind="info" title="Create a person, give them an account, grant the office they hold">
-              A person is created once, however many offices they come to hold. Creating the account sets a first password the holder must change. Granting an office is bounded, dated and carries the authority that made it &mdash; every act here is recorded against your name.
-            </Note>
+
             <div className="row mt-1">
               <LinkBtn kind="primary" href="/people?new=person">+ New person</LinkBtn>
               <LinkBtn kind="primary" href="/people?new=grant">+ Grant an office</LinkBtn>
@@ -155,7 +153,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
           ]} />
         </PBody>
         {ob && !ob.emailProvider && !ob.smsProvider ? (
-          <PBody><div className="sub2">Every notice the portal would send is queued here, on the record, and shown to the applicant on their own dashboard. None leaves until a provider is named: an endpoint that takes a POST of to, subject and body with a bearer token, one for email and one for SMS.</div></PBody>
+          <PBody><div className="sub2">Notices stay queued until an email or SMS provider is set.</div></PBody>
         ) : null}
         {ob && ob.recent.length ? (
           <DTable cols={["When|mid", "To", "Notice", "Channel|mid", "State|num"]} rows={ob.recent.map((n) => [
@@ -168,12 +166,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
         ) : null}
       </Panel>
       <ResetData office={office} />
-      <Note kind="info" title="How attribution works">
-        Every request carries a token naming a person and the offices they hold, and the office chosen at the top
-        left says which one is acting. The API places that on the transaction; the database records every changed
-        row against it, and refuses a change that carries none. There is no unattributed state change &mdash; and
-        that is checked, not assumed.
-      </Note>
+
     </>
   );
 }

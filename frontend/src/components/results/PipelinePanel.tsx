@@ -56,7 +56,7 @@ export function PipelinePanel({ view, title, programmes = true, summary = true }
         {cv.withoutLecturer ? (
           <PBody>
             <Note kind="bad" title={`${cv.withoutLecturer} offering${cv.withoutLecturer === 1 ? " has" : "s have"} no lecturer, so no sheet can open`} action={<LinkBtn kind="urgent" href="/allocate">Allocate teaching</LinkBtn>}>
-              A result starts on a score sheet, and a sheet opens only over an offering with a lecturer. Until these are allocated their candidates have nowhere to be graded.
+              Their candidates cannot be graded until a lecturer is allocated.
             </Note>
           </PBody>
         ) : null}

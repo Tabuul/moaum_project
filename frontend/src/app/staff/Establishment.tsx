@@ -42,7 +42,7 @@ export function Establishment({ rows }: { rows: StaffRow[] }) {
         ) : <PBody><div className="sub2">No staff on the establishment yet.</div></PBody>}
       </Panel>
       <Note kind="info" title="The payroll is built over this roll">
-        A pay run pays everyone shown as active here, on the grade and step recorded against them. Appointments, promotions and endings are the Human Resource office&rsquo;s to record; the payroll reads what they set.
+        A pay run pays everyone active here, on their recorded grade and step.
       </Note>
     </>
   );

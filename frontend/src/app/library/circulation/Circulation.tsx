@@ -147,7 +147,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
               <Field id="ls-ren" label="Renewals"><input id="ls-ren" className="ctl tnum" value={setting.maxRenewals} onChange={(e) => setSetting({ ...setting, maxRenewals: e.target.value })} disabled={!librarian} /></Field>
             </div>
             <div><Btn kind="ghost" disabled={!librarian || busy} onClick={async () => { if (await send("/api/bff/api/v1/library/setting", "PUT", { loanDays: Number(setting.loanDays), finePerDay: Number(setting.finePerDay), maxLoans: Number(setting.maxLoans), maxRenewals: Number(setting.maxRenewals) }, "Library rule restated")) setSaid("The rule is restated"); }}>Restate the rule</Btn></div>
-            <div className="sub2">A fine is computed from the days overdue at the rate in force when the item is returned; it is settled against a payment reference the student generates, or waived by the Librarian with the reason on the record.</div>
+            <div className="sub2">Fines run on days overdue at the rate in force; paid by reference or waived by the Librarian.</div>
           </PBody>
         </Panel>
       </div>

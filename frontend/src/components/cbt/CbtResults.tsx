@@ -100,7 +100,7 @@ export function CbtResults({ exam, canManage, stronger }: { exam: CbtExam; base:
       ]} />
       <Panel title="Result workflow" right={<Pil kind={(RESULTS_WORD[rs] ?? ["", "grey"])[1]}>{(RESULTS_WORD[rs] ?? [rs])[0]}</Pil>}>
         <PBody>
-          <div className="sub2 mb-2">Scores are computed the moment an attempt ends and the office sees them at once. A student sees a result only once it is published. Auto-scored → under review → approved → published; approval needs the examination completed. Once published, a score changes, or the publication is withdrawn, only with the Registrar or the Super Administrator.</div>
+          <div className="sub2 mb-2">Auto-scored → under review → approved → published. A student sees a result only once it is published; after that, only the Registrar or the Super Administrator changes it.</div>
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
             {canManage && (rs === "PENDING" || rs === "AUTO_SCORED") ? <Btn kind="secondary" disabled={busy} onClick={() => void workflow("review")}>Start the review</Btn> : null}
             {canManage && (rs === "AUTO_SCORED" || rs === "UNDER_REVIEW") ? <Btn kind="primary" disabled={busy || exam.state !== "COMPLETED"} onClick={() => setAsk({ action: "approve", title: "Approve the results", text: "The scores as they stand are approved. Publication follows as a separate act." })}>Approve</Btn> : null}

@@ -36,7 +36,7 @@ export function StatsPanel({ session, title = "Student statistics" }: { session?
   if (!d) {
     return (
       <Panel title={title} right={<span className="sub2">Counting from the register…</span>}>
-        <PBody><div className="sub2">Students in study, paid, registered, paid not registered and not paid are being counted for the current session.</div></PBody>
+        <PBody><div className="sub2">Counting…</div></PBody>
       </Panel>
     );
   }
@@ -47,7 +47,7 @@ export function StatsPanel({ session, title = "Student statistics" }: { session?
       <PBody>
         <StatTiles t={t} f={f} compact />
         {t.total === 0 ? (
-          <div className="sub2 mt-3">No students found. No students match the current academic session and semester within this scope.</div>
+          <div className="sub2 mt-3">No students in this scope for the current session and semester.</div>
         ) : (
           <>
             <div className="mt-3"><StatsDonuts t={t} f={f} /></div>

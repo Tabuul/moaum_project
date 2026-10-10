@@ -41,8 +41,8 @@ export function JupebTeaching() {
   const sem = w.semester === 2 ? "second" : "first";
   return (
     <>
-      <PageHead title="JUPEB teaching" description={`Your JUPEB subjects for ${w.session}, ${sem} semester: today's lectures and their attendance, your week, your students, the courses and their syllabus, and notices to your students.`} />
-      {!w.assignments.length ? <Note kind="info" title="No JUPEB subject is assigned to you this session">The JUPEB Office assigns lecturers to subjects (and classes) on its Attendance page. Once you are assigned, your subjects appear here.</Note> : (
+      <PageHead title="JUPEB teaching" description={`${w.session}, ${sem} semester`} />
+      {!w.assignments.length ? <Note kind="info" title="No JUPEB subject is assigned to you this session" /> : (
         <>
           <KvGrid cls="grid--4" pairs={[["You teach", w.assignments.map((a) => `${a.title}${a.class_name ? ` (${a.class_name})` : ""}`).join(" · ")],
             ["Students", w.assignments.reduce((n, a) => n + Number(a.students), 0)], ["Today's lectures", w.lectures.length], ["Not yet recorded", w.missed.filter((x) => x.state === "MISSED").length]]} />
@@ -56,7 +56,7 @@ export function JupebTeaching() {
                   {w.missed.length ? (
                     <Panel title="Earlier lectures not yet recorded">
                       <PBody>
-                        <p className="sub2">Your lectures of the semester gone with no register saved. Take the attendance (a past day may be taken), or record that the lecture was not held, with the reason.</p>
+                        <p className="sub2">Past lectures with no register saved. Take the attendance, or record that the lecture was not held.</p>
                         <DTable pageSize={10} cols={["Day", "Time", "Lecture", "Class", "State"]} rows={w.missed.map((x) => [day(x.held_on), `${x.starts_at}–${x.ends_at}`, lectureName(x), x.class_name ?? "Every class",
                           <Pil key="s" kind={STATE_WORD[x.state]?.[1] ?? "grey"}>{STATE_WORD[x.state]?.[0] ?? x.state}</Pil>])} />
                         <p className="sub2 mt-2">Find each under &ldquo;The week&rdquo; or &ldquo;The semester so far&rdquo; above to take it.</p>
@@ -102,7 +102,7 @@ function MyStudents({ w }: { w: Workspace }) {
     <Panel title="Your students" right={<select className="ctl" style={{ width: 260 }} aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)}>
       {subjects.map((a) => <option key={a.subject_id} value={a.subject_id}>{`${a.title} (${a.code})`}</option>)}</select>}>
       <PBody>
-        <p className="sub2">Attendance in the subject (present or late, over the classes not excused) and practice tests in it — so a student falling behind can be seen early. Practice is never part of a result.</p>
+        <p className="sub2">Attendance and practice tests in the subject. Practice is never part of a result.</p>
         {!rows ? <p className="sub2">Loading…</p> : (
           <DTable pageSize={50} cols={["Application No", "Name", "Class", "Classes|num", "Attendance|num", "Practice tests|num", "Practice average|num", "Best|num"]} texts={rows.map((r) => `${r.application_no} ${r.name}`)}
             rows={rows.map((r) => [r.application_no, r.name, r.class_name ?? "—", r.classes ?? 0,
@@ -123,7 +123,7 @@ function Assessment({ w }: { w: Workspace }) {
     <Panel title="Continuous assessment" right={<select className="ctl" style={{ width: 260 }} aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)}>
       {subjects.map((a) => <option key={a.subject_id} value={a.subject_id}>{`${a.title} (${a.code})`}</option>)}</select>}>
       <PBody>
-        <p className="sub2">Enter each student&rsquo;s score in each part of the assessment, within its maximum. Once the JUPEB Office locks the subject, the scores are final for the Board.</p>
+        <p className="sub2">Each score within its maximum. Once the JUPEB Office locks the subject, the scores are final.</p>
         {subject ? <CaSheetEditor key={subject} url={`/api/v1/jupeb/teaching/ca?subject=${subject}`} saveUrl="/api/v1/jupeb/teaching/ca" canEdit /> : null}
       </PBody>
     </Panel>
@@ -138,7 +138,7 @@ function WeakTopics({ subject }: { subject: string }) {
     void jcall<{ topic_id: string; label: string; students: number; answered: number; percentage: number }[]>(`/api/v1/jupeb/teaching/topics?subject=${subject}`).then((r) => { if (live && r.ok) setRows(r.data); });
     return () => { live = false; };
   }, [subject]);
-  if (!rows || !rows.length) return <p className="sub2 mt-2">No practice questions tagged to the syllabus have been answered yet, so there is no topic to show.</p>;
+  if (!rows || !rows.length) return <p className="sub2 mt-2">No tagged practice question answered yet.</p>;
   return (
     <>
       <div className="eyebrow mt-3">The class&rsquo;s weakest topics in practice</div>
@@ -158,7 +158,7 @@ function Courses({ w }: { w: Workspace }) {
     <Panel title="Courses and syllabus" right={<select className="ctl" style={{ width: 260 }} aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)}>
       {subjects.map((a) => <option key={a.subject_id} value={a.subject_id}>{`${a.title} (${a.code})`}</option>)}</select>}>
       <PBody>
-        <p className="sub2">The subject&rsquo;s course units, two in each semester, as the Board&rsquo;s syllabus lists them. Open one for its objectives and topics.</p>
+        <p className="sub2">As the Board&rsquo;s syllabus lists them.</p>
         <UnitsBySemester units={units} showSubject={new Set(units.map((u) => u.board_title)).size > 1} onOpen={(u) => setOpen(unitId(u))} />
       </PBody>
       {open ? <SyllabusModal url={`/api/v1/jupeb/teaching/units/${open}/syllabus`} onClose={() => setOpen(null)} /> : null}
@@ -209,7 +209,7 @@ function Notices({ w }: { w: Workspace }) {
             <label className="row row--inline row--tight"><input type="checkbox" checked={form.email} onChange={(e) => setForm({ ...form, email: e.target.checked })} /> also by email</label>
             <Btn kind="primary" disabled={busy || !to || form.title.trim().length < 3 || form.body.trim().length < 3} onClick={() => void post()}>{busy ? "Publishing…" : "Publish"}</Btn>
           </div>
-          <p className="sub2 mt-2">It appears on the students&rsquo; JUPEB dashboard at once; the JUPEB Office sees every notice. Text messages are the Office&rsquo;s to send.</p>
+          <p className="sub2 mt-2">Shown on the students&rsquo; JUPEB dashboard at once.</p>
         </PBody>
       </Panel>
       <Panel title="Your notices">

@@ -384,7 +384,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </Note>
       ) : (
         <Note kind="bad" title="No clearance scheme is in force, so no payment releases anything" action={<Btn kind="urgent" disabled={!may} onClick={() => { setScheming(true); setEdits({}); }}>Put the recommended scheme in force</Btn>}>
-          The portal refuses rather than assumes what a payment releases. The recommended scheme: the first instalment, half the charge, opens registration, the identity card and the library; payment in full opens the examination, results, the transcript and convocation; arrears block everything. It is put in force under a minute, from a date.
+          Recommended: the first instalment (half the charge) opens registration, the identity card and the library; payment in full opens the examination, results, the transcript and convocation; arrears block everything. It is put in force under a minute, from a date.
         </Note>
       )}
       <Panel title={`The charges for ${session}`} right={<span className="row">
@@ -426,7 +426,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
             <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
           </div>
-          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line naming no entry mode is the full-time students&rsquo;; a CCE student is charged only the lines for entry mode CCE.</div>
+          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines.</div>
         </PBody>
         <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
           <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,
@@ -437,7 +437,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
           </span>,
         ])} />
-        {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no student owes anything, no reference can be generated, and registration waits.</div></PBody>
+        {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no reference can be generated and registration waits.</div></PBody>
           : !filteredItems.length ? <PBody><div className="sub2">No fee line matches the filters.</div></PBody> : null}
         {pageSize > 0 && filteredItems.length > pageSize ? (
           <PBody>
@@ -452,7 +452,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2 mb-2">Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the {cceUpload ? "CCE" : "full-time"} structure for {session}</b> — a CCE (part-time) structure and the full-time structure of the same session never replace each other. Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>. Two shapes work: this faculty×level cross-tab, or a plain <b>one-row-per-fee</b> table with columns <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> (the clearer format — one line, charged once).</div>
+            <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv): a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i>. <b>Uploading replaces the {cceUpload ? "CCE" : "full-time"} structure for {session}</b>; the CCE and full-time structures never replace each other.</div>
             <div className="row">
               <label className={`btn btn--primary m-0${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer" }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
@@ -461,7 +461,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`}</Btn>
             </div>
             <label className="sub2 row row--tight mt-2" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={cceUpload} onChange={(e) => setCceUpload(e.target.checked)} /> This is the fee structure of the Centre for Continuing Education (CCE, part-time): every line is loaded for entry mode CCE</label>
-            <div className="sub2 mt-2">An upload already replaces this session&rsquo;s schedule. Use <b>Clear</b> only to empty a session whose fees were stated by mistake (for example the wrong session) — then switch to the right session above and upload.</div>
+            <div className="sub2 mt-2">Use <b>Clear</b> only to empty a session whose fees were stated by mistake.</div>
             {feeMsg ? <Note kind="ok" title="Approved fees loaded">{feeMsg}</Note> : null}
           </PBody>
         </Panel>
@@ -474,7 +474,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <span className="sub2 tnum" key="g">{new Date(r.generated_at).toLocaleString("en-GB")}</span>,
           <Btn kind="primary" key="c" disabled={!may} onClick={() => { setConfirming(r); setEdits({}); }}>Confirm</Btn>,
         ])} texts={open.map((r) => `${r.reference} ${r.surname} ${r.other_names} ${r.matric_no} ${r.admission_no}`)} />
-        {!open.length ? <PBody><div className="sub2">Nothing waits. A reference a student generates appears here until the bank&rsquo;s record is matched to it, by the Bursary or by a gateway&rsquo;s webhook.</div></PBody> : null}
+        {!open.length ? <PBody><div className="sub2">Nothing waits.</div></PBody> : null}
       </Panel>
       {adding ? (() => {
         const addSession = val("addSession", session);
@@ -518,7 +518,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="fs" label="Session" hint="Which session this charge is for"><select id="fs" className="ctl" value={addSession} onChange={(e) => setEdits({ ...edits, addSession: e.target.value })}>{(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
             <Field id="fsem" label="Semester" hint="Blank for the whole session"><select id="fsem" className="ctl" value={val("semester")} onChange={(e) => setEdits({ ...edits, semester: e.target.value })}><option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option></select></Field>
           </div>
-          <Field id="fk" label="Kind" hint="A fee is charged as stated; a late payment or late registration fee is charged only while the Directorate of ICT's window is in its late period and the obligation was not met in time (V288)">
+          <Field id="fk" label="Kind" hint="A late fee is charged only during the window's late period, when the obligation was not met in time">
             <select id="fk" className="ctl" value={val("kind") || "FEE"} onChange={(e) => setEdits({ ...edits, kind: e.target.value })}>
               <option value="FEE">Fee (charged as stated)</option>
               <option value="LATE_PAYMENT">Late school fees payment fee</option>
@@ -576,14 +576,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {clearing ? (
         <Modal title={`Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`} sub={`${(filterRoute ? schedule.items.filter((i) => (filterRoute === "CCE") === (i.entry_mode === "CCE")) : schedule.items).length} line(s) will be removed`} onClose={() => setClearing(false)}
           foot={<><Btn kind="ghost" onClick={() => setClearing(false)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy !== null} onClick={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear${filterRoute ? `?kind=${filterRoute}` : ""}`, {}, `Fee schedule cleared for ${session}${filterRoute === "CCE" ? " (CCE lines)" : filterRoute === "FULL_TIME" ? " (full-time lines)" : ""}`); if (ok) setClearing(false); }}>{busy === "clear" ? "Clearing…" : "Clear the schedule"}</Btn></>}>
-          <Note kind="bad" title={`Every ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
+          <Note kind="bad" title={`Every ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Payments already made are untouched.</Note>
         </Modal>
       ) : null}
       <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>
         <PBody>
           <div className="sub2 mb-3">
-            The charges an applicant pays before they are a student &mdash; the Post-UTME screening fee (with the portal and payment charge) and the acceptance fee an offer carries. They are a payment item of their own, under <b>Applicant</b>, kept apart from the student charges above because an applicant is not yet on the register.
+            The Post-UTME screening fee (with the portal charge) and the acceptance fee, charged to applicants under <b>Applicant</b>.
           </div>
           <div className="grid grid--3">
             <Field id="af-app" label="Post-UTME screening fee" hint="What the applicant pays to apply and be screened"><input id="af-app" className="ctl tnum" inputMode="numeric" value={af.applicationFee} onChange={(e) => setAf({ ...af, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="2000" disabled={!may} /></Field>
@@ -600,7 +600,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <Panel title="Postgraduate · application &amp; acceptance fees" right={pgfStated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>
         <PBody>
           <div className="sub2 mb-3">
-            The fees a postgraduate applicant pays &mdash; the application fee to apply through the School of Postgraduate Studies, and the acceptance fee an offer carries. Read by the postgraduate apply page (<b>/pg/apply</b>). Until stated, a sensible default applies.
+            The postgraduate application and acceptance fees. Until stated, a default applies.
           </div>
           <div className="grid grid--2">
             <Field id="pgf-app" label="PG application fee" hint="What a postgraduate applicant pays to apply"><input id="pgf-app" className="ctl tnum" inputMode="numeric" value={pgf.applicationFee} onChange={(e) => setPgf({ ...pgf, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="20000" disabled={!may} /></Field>
@@ -616,7 +616,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <Panel title="Deferment · application fee" right={dfMeta?.fee_updated_at ? `Stated by the Bursary · ${new Date(dfMeta.fee_updated_at).toLocaleDateString("en-GB")}` : "Default ₦10,000 until the Bursary states it"}>
         <PBody>
           <div className="sub2 mb-3">
-            The fee a student pays before the deferment application form opens. It is generated as a payment reference on the student&rsquo;s Deferment screen, paid by card or at the bank, and confirmed like every other payment; only a confirmed payment opens the form. The fee is not refunded when an application is refused. Stated here by the Bursary; never hard-coded in the application.
+            Paid before the deferment form opens; not refunded if the application is refused.
           </div>
           <div className="grid grid--2">
             <Field id="df-fee" label="Deferment application fee" hint="Zero waives the fee"><input id="df-fee" className="ctl tnum" inputMode="numeric" value={df} onChange={(e) => setDf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
@@ -630,9 +630,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <Panel title="Inter-departmental transfer · processing fee" right={tfStated ? "Set by the Bursary" : "Not set yet — required before any transfer"}>
         <PBody>
           <div className="sub2 mb-3">
-            The non-refundable fee a student pays to process an inter-departmental transfer. It is set here by the
-            Bursary and read by the transfer desk and the student&rsquo;s page. There is no default: until you set it, a
-            student can apply but cannot pay, so no transfer can proceed.
+            The non-refundable inter-departmental transfer fee. There is no default: until it is set, no transfer can proceed.
           </div>
           <div className="row row--end">
             <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>

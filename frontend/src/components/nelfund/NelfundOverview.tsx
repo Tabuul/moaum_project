@@ -78,7 +78,7 @@ export function NelfundOverview({ figures, policy, session, canSet, onStudents }
         <Panel title="Wallet policy" right={policy.updated_at ? <span className="sub2">Set {new Date(policy.updated_at).toLocaleDateString("en-GB")} by {policy.updated_office ?? "the Bursary"}</span> : <Pil kind="grey">Default</Pil>}>
           <PBody>
             {problem ? <Note kind="bad" title={problem.title}>{problem.detail}</Note> : null}
-            <div className="sub2 mb-1">The order the wallet&rsquo;s sources settle a charge in. The loan first means the Fund&rsquo;s money is used before a grant or the student&rsquo;s own.</div>
+            <div className="sub2 mb-1">The order the wallet&rsquo;s sources settle a charge in.</div>
             {order.map((k, i) => (
               <div key={k} className="row row--inline row--tight mb-1"><b style={{ minWidth: 24 }}>{i + 1}.</b><span style={{ minWidth: 220 }}>{NAT[k] ?? k}</span>
                 {canSet ? <><Btn kind="ghost" size="sm" disabled={i === 0} onClick={() => move(i, -1)}>Up</Btn><Btn kind="ghost" size="sm" disabled={i === order.length - 1} onClick={() => move(i, 1)}>Down</Btn></> : null}</div>

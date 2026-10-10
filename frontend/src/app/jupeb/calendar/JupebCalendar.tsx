@@ -83,9 +83,9 @@ export function JupebCalendar({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB calendar" description="The session's dates: the JUPEB Board's calendar and the University's own JUPEB events. The portal works from the marked ones — teaching starts, the second semester starts, the Board's registration, the examinations and the results. The marked deadlines are reminded by the daily job: the students a week and a day before theirs, the JUPEB Office 14, 7 and 1 days before each, the lecturers before the continuous assessment is due."
+      <PageHead title="JUPEB calendar" description="The JUPEB Board's calendar and the University's own JUPEB events. Marked deadlines are reminded daily."
         actions={<select className="ctl" aria-label="Session" value={d.session} onChange={(e) => setSession(e.target.value)}>{d.sessions.map((x) => <option key={x}>{x}</option>)}</select>} />
-      {planned ? <Note kind="info" title="A planned calendar">{`These dates were carried forward a year from the session before. Check them against the Board's calendar for ${d.session} when it is published, correct any that differ, and confirm.`}</Note> : null}
+      {planned ? <Note kind="info" title="A planned calendar">{`Carried forward a year. Check them against the Board's calendar for ${d.session}, then confirm.`}</Note> : null}
       <KvGrid cls="grid--4" pairs={[["Session", `${d.session}${d.session === d.currentSession ? " (current)" : ""}`], ["Semester now", d.session === d.currentSession ? (d.semester === 2 ? "Second" : "First") : "—"],
         ["Next", next ? `${next.title} · ${eventDates(next)}` : "Nothing ahead"], ["Events", d.events.length]]} />
       {deadlines.length ? (
@@ -118,7 +118,7 @@ export function JupebCalendar({ canWrite }: { canWrite: boolean }) {
                     <Btn kind="ghost" onClick={() => void remove(e)}>Remove</Btn></span>] : [])];
               })} />
           )}
-          {!d.events.some((e) => e.marker === "SEMESTER_2_STARTS") && d.events.length ? <p className="sub2 mt-2">The second semester&rsquo;s start is the University&rsquo;s own date (the Board leaves it to each Foundation School). Add it, marked &ldquo;Second semester starts&rdquo;, and the timetable and the lectures due turn to the second semester that day.</p> : null}
+          {!d.events.some((e) => e.marker === "SEMESTER_2_STARTS") && d.events.length ? <p className="sub2 mt-2">Add the University&rsquo;s second-semester start, marked &ldquo;Second semester starts&rdquo;.</p> : null}
         </PBody>
       </Panel>
       {form ? (
@@ -143,7 +143,7 @@ export function JupebCalendar({ canWrite }: { canWrite: boolean }) {
       {copyTo ? (
         <Modal title={`Plan ${copyTo} from ${d.session}`} onClose={() => setCopyTo(null)}
           foot={<><Btn kind="ghost" onClick={() => setCopyTo(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void copy()}>{busy ? "Copying…" : "Plan it"}</Btn></>}>
-          <p>{`Every event of ${d.session} is copied into ${copyTo} a year on — its dates, and the years its title names (the 2027 examinations become the 2028 examinations) — marked planned. Correct the dates when the Board publishes its calendar for ${copyTo}, then confirm.`}</p>
+          <p>{`Every event of ${d.session} is copied into ${copyTo} a year on, marked planned.`}</p>
           <Field id="cp-to" label="Into"><select id="cp-to" className="ctl" value={copyTo} onChange={(e) => setCopyTo(e.target.value)}>{later.map((x) => <option key={x}>{x}</option>)}</select></Field>
         </Modal>
       ) : null}

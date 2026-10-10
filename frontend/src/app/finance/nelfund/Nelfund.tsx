@@ -139,8 +139,8 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
             ["Reversed to the Fund", money(Number(t.reversed)), null, "Withdrawn, or not on the register"],
           ]} />
           {t.unmatched_rows ? (
-            <Note kind="bad" title={`${t.unmatched_rows} row${t.unmatched_rows === 1 ? " is" : "s are"} money the University is holding that a student cannot see`} action={<Btn kind="primary" onClick={() => go("match")}>Match the {t.unmatched_rows} outstanding</Btn>}>
-              A remittance is received in bulk and must be split across named students. Until it is, a student whose loan was approved and paid still shows as owing. Every naira either sits on a student&rsquo;s wallet or sits here, and this figure is the queue.
+            <Note kind="bad" title={`${t.unmatched_rows} row${t.unmatched_rows === 1 ? "" : "s"} of money held that no student can see`} action={<Btn kind="primary" onClick={() => go("match")}>Match the {t.unmatched_rows} outstanding</Btn>}>
+              Until a remittance is matched to named students, a student whose loan was paid still shows as owing.
             </Note>
           ) : <Note kind="ok" title="Every naira received is on a named wallet">There is nothing in suspense.</Note>}
           <Panel title="Remittance batches" right="From the Fund, newest first">
@@ -191,7 +191,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
                   <Field id="cw-why" label="Reason" hint="The student sees this on their wallet statement."><input id="cw-why" className="ctl" value={credit.reason} onChange={(e) => setCredit({ ...credit, reason: e.target.value })} placeholder="TETFund scholarship 2026/2027" /></Field>
                 </div>
                 <div><Btn kind="primary" disabled={busy || !credit.number.trim() || !Number(credit.amount) || !credit.reason.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/nelfund/credit", { number: credit.number.trim(), session: d.session, amount: Number(credit.amount), reason: credit.reason.trim(), source: credit.source || null }, `Wallet credited: ${credit.number.trim()}`); if (j) { setSaid(`${money(Number(credit.amount))} credited to ${credit.number.trim()} — wallet balance ${money(Number(j.balance))}`); setCredit({ number: "", amount: "", reason: "", source: "" }); } }}>Credit the wallet</Btn></div>
-                <div className="sub2 mt-2">This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the source and reason travel on the statement.</div>
+                <div className="sub2 mt-2">The source and reason appear on the student&rsquo;s statement.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -235,13 +235,13 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
               ) : null}
             </PBody>
           </Panel>
-          <Note kind="info" title="The reconciliation runs against the register, not against a spreadsheet">A number that is not on the register is refused rather than created — which is why an unmatched row is the Registry&rsquo;s to answer, not this office&rsquo;s to force.</Note>
+          <Note kind="info" title="Matched against the register">A number not on the register is refused; unmatched rows are the Registry&rsquo;s to answer.</Note>
         </>
       ) : tab === "match" ? (
         <>
           {d.unmatched.length ? (
             <Note kind="bad" title={`${d.unmatched.length} remittance${d.unmatched.length === 1 ? " is" : "s are"} held in suspense`}>
-              Each row is money the Fund has paid and the University is holding. None of it may be credited on a guess: a wallet credited to the wrong student is money the Fund will later reclaim from someone who never received it. {d.unmatched.filter((r) => r.owner === "Registry").length} are the Registry&rsquo;s to resolve, {d.unmatched.filter((r) => r.owner === "Bursary").length} this office&rsquo;s.
+              None is credited on a guess. {d.unmatched.filter((r) => r.owner === "Registry").length} are the Registry&rsquo;s to resolve, {d.unmatched.filter((r) => r.owner === "Bursary").length} this office&rsquo;s.
             </Note>
           ) : <Note kind="ok" title="Suspense is empty">Every row of every remittance for {d.session} is on a named wallet or reversed to the Fund.</Note>}
           <Panel title="Unmatched remittances" right="Suspense is owned, not parked">
@@ -257,20 +257,18 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
               ])} texts={d.unmatched.map((r) => `${r.matric_no} ${r.name_on_remit ?? ""} ${r.why ?? ""}`)} />
             ) : null}
           </Panel>
-          <Note kind="info" title="Suspense is owned, not parked">Every row carries an office. A suspense account nobody owns is how money sits for a session and a student carries a debt they were never told about.</Note>
+          
         </>
       ) : tab === "status" ? (
         <>
-          <Note kind="info" title="The Fund decides, the University records, and the student must be able to see which">
-            Nothing on this screen is the University&rsquo;s decision. What is the University&rsquo;s responsibility is that a student knows where they stand <b>before</b> registration rather than at it — and that the ones refused for a reason they can fix are told which field to fix, by name.
-          </Note>
+
           <Tiles items={[
             ["Applied", s.applied.toLocaleString(), null, `${d.session} session`],
             ["Approved", s.approved.toLocaleString(), "var(--green-ink)", `${money(Number(t.received))} received`],
             ["Not approved", s.not_approved.toLocaleString(), s.not_approved ? "var(--red-ink)" : null, "Each told, by name"],
             ["Still with the Fund", s.pending.toLocaleString(), null, "No decision yet — and told that too"],
           ]} />
-          {s.correctable ? <Note kind="bad" title={`${s.correctable} of the ${s.not_approved} refusals can be fixed by the student`}>A refusal for a wrong institution code or a name that does not match a BVN is a typing error, and the Fund reissues on correction. Each student concerned sees the field to fix on their wallet screen.</Note> : null}
+          {s.correctable ? <Note kind="bad" title={`${s.correctable} of the ${s.not_approved} refusals can be fixed by the student`}>Each student concerned sees the field to fix (institution code, or a name that does not match the BVN) on their wallet screen.</Note> : null}
           <Panel title={`Why the ${s.not_approved} were refused`} right="And which of them is the University's to help with">
             {d.refusals.length ? (
               <DTable cols={["Reason", "Students|mid", "Correctable|num"]} rows={d.refusals.map((r) => [<strong key="r">{r.reason}</strong>, <b className="tnum" key="n">{r.students}</b>, r.correctable ? <Pil kind="ok" key="c">Yes</Pil> : <Pil kind="info" key="c">No</Pil>])} />
@@ -288,7 +286,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
       ) : tab === "withdrawals" ? (
         <>
           <Note kind="info" title="Money leaving the wallet to a student's bank account">
-            A student may withdraw a wallet balance only once the session&rsquo;s fees are cleared and nothing is owed — a student who paid ahead before their loan landed has genuinely paid twice. It is requested by the student, approved here, and <b>paid by a second officer</b>; the portal records the payout, it does not move the money itself.
+            A wallet balance is withdrawn only once the session&rsquo;s fees are cleared: requested by the student, approved here, and <b>paid by a second officer</b>. The portal records the payout; it does not move money.
           </Note>
           <Panel title="Withdrawal requests" right={`${waiting} awaiting a decision`}>
             {d.withdrawals.length ? (
@@ -312,11 +310,11 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
               ])} texts={d.withdrawals.map((x) => `${x.student_name} ${x.matric_no ?? ""} ${x.state}`)} />
             ) : <PBody><div className="sub2">No withdrawal request for {d.session}.</div></PBody>}
           </Panel>
-          <Note kind="info" title="The officer who approves is not the one who pays">The database refuses a payout recorded by the same person who approved it — two people stand behind money leaving the University.</Note>
+          <Note kind="info" title="The officer who approves is not the one who pays" />
         </>
       ) : tab === "sources" ? (
         <>
-          <Note kind="info" title="The sources funding is credited from">Each source is a <b>loan</b> the student repays (NELFUND), a <b>grant</b> that is never repaid (a scholarship or bursary), or the student&rsquo;s own money (a top-up). Every wallet credit names its source, so the ledger and the report can say what is repayable and what is not.</Note>
+          <Note kind="info" title="Funding sources">A <b>loan</b> the student repays (NELFUND), a <b>grant</b> never repaid (a scholarship or bursary), or the student&rsquo;s own money (a top-up).</Note>
           <Panel title="Funding sources" right={`${d.sources.length} on the list`}>
             <DTable cols={["Code|mid", "Name", "Nature|mid", "Sponsor", "Holding account", "Active|mid"]} rows={d.sources.map((x) => [
               <span className="tnum" key="c">{x.code}</span>,
@@ -367,7 +365,6 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
                 </Panel>
                 <Panel title="By nature" right="Repayable or not">
                   <DTable cols={["Nature", "In|num"]} rows={([["Loans (repayable)", report.cashflow.loans_in], ["Grants (never repaid)", report.cashflow.grants_in], ["Own money (top-ups)", report.cashflow.self_in]] as [string, number][]).map(([l, v]) => [<span key="l">{l}</span>, <span className="tnum" key="v">{money(Number(v))}</span>])} />
-                  <PBody><div className="sub2">A loan is a liability the student repays the Fund; a grant is not repaid; own money is the student&rsquo;s.</div></PBody>
                 </Panel>
               </div>
               <Panel title="Cash-flow reconciliation" right="The wallet against the Bursary and school payments">
@@ -382,7 +379,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
                 ] as [string, number, string][]).map((r) => [<span key="m">{r[0]}</span>, <span className="tnum" key="a">{money(Number(r[1]))}</span>, <span className="sub2" key="n">{r[2]}</span>])} />
               </Panel>
               <Note kind={report.cashflow.applied_matches ? "ok" : "bad"} title={report.cashflow.applied_matches ? "The wallet reconciles with school payments" : "The wallet does not reconcile — investigate"}>
-                Every naira a wallet applied to fees is a confirmed payment on the main account with the wallet as its channel. {money(Number(report.cashflow.applied))} applied against {money(Number(report.cashflow.settled_to_fees))} confirmed.
+                {money(Number(report.cashflow.applied))} applied against {money(Number(report.cashflow.settled_to_fees))} confirmed.
               </Note>
             </>
           ) : <Note kind="info" title="No report yet">Nothing has moved through the wallet for {d.session}.</Note>}

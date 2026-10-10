@@ -82,9 +82,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           ) : null}
 
           <p className="sub2 ink-faint m-0 mt-1">
-            This page reads the University&rsquo;s register directly. The statement is a view of the register, not the register
-            itself; where the printed grades, GPA or approval date differ from what is shown here, the record here is the
-            truth. A grade that is not on a published sheet is not shown. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
+            Where the printed statement differs, this record prevails. Unpublished grades are not shown. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
           </p>
         </div>
       </div>

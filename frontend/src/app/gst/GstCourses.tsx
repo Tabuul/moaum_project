@@ -91,7 +91,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
 
   return (
     <>
-      <PageHead title={`${word} courses`} description={`The ${word === "GST" ? "General Studies" : "Entrepreneurship Studies"} courses on the catalogue, the programmes they are offered to, the session's offerings with their lecturers, registrations and score sheets. ${may ? "Create, edit, activate and deactivate the office's own courses; assign lecturers; open an offering for a session." : "Read only: the " + word + " office manages these."}`}
+      <PageHead title={`${word} courses`} description={`${word === "GST" ? "General Studies" : "Entrepreneurship Studies"} courses${may ? "" : " · read only: the " + word + " office manages these"}`}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="gc-session" className="sub2">Session</label>
           <select id="gc-session" className="ctl" value={data.session} onChange={(e) => go(`${base}/courses?session=${encodeURIComponent(e.target.value)}`)}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
@@ -124,7 +124,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
             <div className="sub2">A student owes a {word} course — and so the GST fee — only where their programme is offered it at their level and it runs in the session, or where they carry it over. {word === "GST" ? "GST is normally taken at 100 and 200 level; a binding at 300 level or above is marked so it can be checked." : "EPS may be offered at 300 level to selected programmes; only those programmes owe it."}</div>
             {word === "GST" && data.offers.some((x) => x.upper_level) ? (
               <Note kind="bad" title={`${num(data.offers.filter((x) => x.upper_level).length)} GST binding${data.offers.filter((x) => x.upper_level).length === 1 ? "" : "s"} at 300 level or above`}>
-                The students of these programmes at that level owe the GST course and the fee while it runs. If a binding came from an upload and is not intended, take the programme off the course.
+                These students owe the GST course and fee while it runs. Take off any binding not intended.
               </Note>
             ) : null}
           </PBody>
@@ -186,7 +186,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
           {act.kind === "offers" ? (
             <>
               <Field id="gc-olevel" label="At level"><select id="gc-olevel" className="ctl" value={form.level} onChange={(e) => { setForm({ ...form, level: e.target.value }); setPicked(new Set((act.course.offers ?? "").split(",").filter(Boolean).filter((x) => x.endsWith(`:${e.target.value}`)).map((x) => x.split(":")[0]))); }}>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l} Level</option>)}</select></Field>
-              <div className="sub2 mb-1">The students of the programmes ticked owe {act.course.code} at {form.level} level when it runs. A programme taken off is ended through the catalogue and kept on its history; it is refused while a student of it is registered on the course this session.</div>
+              <div className="sub2 mb-1">Ticked programmes owe {act.course.code} at {form.level} level when it runs. Taking one off is refused while its student is registered on the course this session.</div>
               <Field id="gc-oreason" label="Reason for any programme taken off"><input id="gc-oreason" className="ctl" value={form.reason ?? ""} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
               <div className="row row--inline row--tight mb-1"><Btn kind="ghost" size="sm" onClick={() => setPicked(new Set(data.programmes.map((p) => p.code)))}>Every programme</Btn><Btn kind="ghost" size="sm" onClick={() => setPicked(new Set())}>None</Btn><span className="sub2">{picked.size} chosen</span></div>
               <div style={{ maxHeight: 320, overflow: "auto" }}>

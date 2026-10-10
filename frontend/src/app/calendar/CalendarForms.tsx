@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { Problem } from "@/lib/api";
 import type { LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
 import { semesterName } from "@/lib/calendar";
-import { Btn, Note } from "@/components/proto/ui";
+import { Btn } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -159,10 +159,7 @@ export function SessionModal({
       foot={<Foot onClose={onClose} onEnd={isNew ? undefined : () => setEnding(true)} endLabel="End this session" save={() => onSave(draft)} busy={busy} />}
     >
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <Note kind="info" title="The session is the spine everything else hangs on">
-        Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo
-        are all bounded by a session and a semester.
-      </Note>
+
       <div className="grid grid--3 rfgrid">
         <Field id="rf_n" label={isNew ? "Session" : <>Session {LOCKED}</>}>
           <Txt k="n" draft={draft} set={set} num ph="2027/2028" ro={!isNew} />
@@ -179,10 +176,10 @@ export function SessionModal({
         <Field id="rf_minute" label="Senate minute">
           <Txt k="minute" draft={draft} set={set} num ph="SEN/2027/…" />
         </Field>
-        <Field id="rf_state" label="State" hint="Draft while it is set up; Planned once agreed (its entrants stand in it from then); Current only by the transition; Completed at the end; Archived as history.">
+        <Field id="rf_state" label="State" hint="Draft → Planned → Current (by the transition) → Completed → Archived">
           <Sel k="state" draft={draft} set={set} options={STATES} />
         </Field>
-        <Field id="rf_mode" label="Transition" hint="Who makes this session current: the Director of ICT or the Registrar by hand, or the session clock on the transition date once the readiness checks pass.">
+        <Field id="rf_mode" label="Transition" hint="By hand (Director of ICT or Registrar), or the session clock once the readiness checks pass">
           <Sel k="mode" draft={draft} set={set} options={MODES} />
         </Field>
         <Field id="rf_on" label="Transition date" hint="The official transition point; the clock acts on it when the transition is automatic.">

@@ -105,9 +105,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
     <>
       <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
       <Note kind="info" title="Create a programme, or upload the list">
-        A programme carries a code (<b>C</b> then five digits, e.g. C00101), a name and a faculty; a department is
-        optional (it defaults to the faculty, and is created under it if new). Create one below or upload a spreadsheet.
-        Faculties must exist first — add them on the Faculty upload/create screen. Uploading again updates, never duplicates.
+        Code: <b>C</b> then five digits (e.g. C00101). Department optional. Faculties must exist first. Uploading again updates, never duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Academic Office">Your office may not manage programmes.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}

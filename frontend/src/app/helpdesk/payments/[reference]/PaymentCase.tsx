@@ -118,7 +118,7 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
             <Btn kind="secondary" disabled={!!busy || !ticket} onClick={() => setEscalate({ office: "bursar", reason: "" })}>Escalate to Bursary</Btn>
             <Btn kind="ghost" disabled={!!busy || !ticket} onClick={() => setEscalate({ office: "ict", reason: "" })}>Escalate to ICT Director</Btn>
           </div>
-          <div className="sub2 mt-2">There is no &ldquo;mark as paid&rdquo;: a payment counts only when the gateway or the Bursary confirms the original reference. Refunds, amounts and fees stay with the Bursary.</div>
+          <div className="sub2 mt-2">No &ldquo;mark as paid&rdquo;: only the gateway or the Bursary confirms the original reference.</div>
         </PBody>
       </Panel>
 

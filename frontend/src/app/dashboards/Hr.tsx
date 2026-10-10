@@ -16,7 +16,7 @@ export interface HrHome {
 /** The Director of HR's home: the establishment and what is waiting on the directorate — from the HR module. */
 export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }) {
   if (!home) {
-    return <Note kind="bad" title="The HR figures could not be read">The directorate&rsquo;s dashboard reads the HR module; it did not answer. Try again, or open a desk from the menu.</Note>;
+    return <Note kind="bad" title="The HR figures could not be read">Try again, or open a desk from the menu.</Note>;
   }
   const leave = home.leave ?? [];
   const movements = home.movements ?? [];
@@ -24,11 +24,11 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
     <>
       {home.leavePending ? (
         <Note kind="bad" title={`${home.leavePending} leave request${home.leavePending === 1 ? "" : "s"} awaiting a decision`} action={<LinkBtn kind="urgent" href="/hr/leave">Open leave</LinkBtn>}>
-          A request draws down the staff member&rsquo;s annual balance on approval; a second officer decides it, on the record.
+          Approval draws down the staff member&rsquo;s annual balance.
         </Note>
       ) : home.movementsAwaiting ? (
         <Note kind="info" title={`${home.movementsAwaiting} movement${home.movementsAwaiting === 1 ? " is" : "s are"} approved, awaiting an instrument`} action={<LinkBtn kind="primary" href="/hr/movements">Issue instruments</LinkBtn>}>
-          A promotion or transfer changes the record only when the instrument is issued. Issue the outstanding ones so the change takes effect from its date.
+          The change takes effect when the instrument is issued.
         </Note>
       ) : (
         <Note kind="ok" title="Nothing is waiting on the directorate" action={<LinkBtn kind="ghost" href="/hr/movements">Movements</LinkBtn>}>
@@ -53,7 +53,7 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
                 <span className="tnum" key="d">{l.days}</span>,
                 <span className="tnum sub2" key="f">{d0(l.from_date)}</span>,
               ])} />
-          ) : <PBody><div className="sub2">No leave request is waiting. Staff apply from their own page; the request appears here to decide.</div></PBody>}
+          ) : <PBody><div className="sub2">No leave request is waiting.</div></PBody>}
         </Panel>
 
         <Panel title="Movements awaiting an instrument" right={movements.length ? `${movements.length} to issue` : "None"}>

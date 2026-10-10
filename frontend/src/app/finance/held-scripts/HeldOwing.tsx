@@ -27,7 +27,7 @@ export function HeldOwing({ rows }: { rows: HeldOwingRow[] }) {
         ["Closing within 14 days", String(soon), soon ? "var(--red-ink)" : null, "Late registration closes; the script lapses"],
       ]} />
       <Note kind="info" title="What this list is">
-        Each of these students sat a paper they had not registered for, usually because fees were owing at registration. The lecturer held the script. The mark is released into the score sheet the moment the student pays, registers the course and the Head of Department approves the registration — nothing else is needed. After the semester&rsquo;s late-registration date the held script lapses and the result is lost. This is the most persuasive fees reminder the University can send.
+        Students who sat a paper without registering for it. The mark is released once they pay and the registration is approved; after the late-registration date the script lapses and the result is lost.
       </Note>
       <Panel title="Students a held script is waiting on" right={`${rows.length} student${rows.length === 1 ? "" : "s"}`}>
         {rows.length ? (
@@ -42,7 +42,7 @@ export function HeldOwing({ rows }: { rows: HeldOwingRow[] }) {
             <span className="tnum" key="paid">{money(r.paid)}</span>,
             <span className="tnum" key="bal" style={Number(r.balance ?? 0) > 0 ? { color: "var(--red-ink)", fontWeight: 700 } : { color: "var(--green-ink)" }}>{money(r.balance)}</span>,
           ])} texts={rows.map((r) => `${r.number} ${r.surname} ${r.other_names} ${r.programme_name} ${r.courses}`)} />
-        ) : <PBody><div className="sub2">No script is held anywhere. When a lecturer holds one, the student appears here with what they owe. <Link href="/finance/fees">Fee setup</Link>.</div></PBody>}
+        ) : <PBody><div className="sub2">No script is held anywhere. <Link href="/finance/fees">Fee setup</Link>.</div></PBody>}
       </Panel>
     </>
   );

@@ -87,10 +87,10 @@ export function CceRegister({ session }: { session: string }) {
 
   return (
     <AuthLayout eyebrow={`Centre for Continuing Education · ${session}`}
-      lead={<>Apply to the Centre for Continuing Education: a regular University degree, studied part-time with lectures in the evening. Only candidates whose names JAMB sent the University on the CCE list may apply.</>}
+      lead={<>The Centre for Continuing Education: a part-time degree with evening lectures. Only candidates on JAMB&rsquo;s CCE list may apply.</>}
       stats={[["CCE", "part-time"], ["6", "years, typically"], ["0", "fees paid anywhere but here"]]}>
       <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
-        <PageHead title="The CCE application" description="Your JAMB number and your date of birth, as on the CCE list. Everything else follows from them." />
+        <PageHead title="The CCE application" description="Your JAMB number and date of birth, as on the CCE list." />
         <div className="field">
           <label htmlFor="cj">JAMB number</label>
           <input id="cj" className="tnum" value={num} onChange={(e) => setNum(e.target.value)} placeholder="202512345678CC" maxLength={30} autoComplete="off" spellCheck={false} />
@@ -98,11 +98,11 @@ export function CceRegister({ session }: { session: string }) {
         <div className="field">
           <label htmlFor="cd">Date of birth</label>
           <input id="cd" type="date" className="tnum" value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
-          <div className="hint">Checked together with the number against the list JAMB sent. Nothing else is asked until both match.</div>
+          <div className="hint">Checked with the number against JAMB&rsquo;s CCE list.</div>
         </div>
         {found.state === "nomatch" ? (
           <Note kind="bad" title="That JAMB number and date of birth are not together on the CCE list">
-            Check both against your JAMB slip. If both are right, your name may not have reached the University yet, or the list may carry a different date: the Centre for Continuing Education can tell you. <b>Nobody can add you to the list here</b> &mdash; it comes from JAMB through the Academic Office.
+            Check both against your JAMB slip. If both are right, contact the Centre for Continuing Education. <b>Nobody can add you to the list here.</b>
           </Note>
         ) : null}
         {found.state === "closed" ? (
@@ -117,7 +117,7 @@ export function CceRegister({ session }: { session: string }) {
         ) : null}
         {found.state === "found" ? (
           <>
-            <Note kind="ok" title={`Found on the CCE list for ${found.session}`}>Your name and programme are read from the list, not typed: if either is wrong, the Centre corrects it with the Academic Office.</Note>
+            <Note kind="ok" title={`Found on the CCE list for ${found.session}`}>Your name and programme are from the list; if either is wrong, contact the Centre.</Note>
             <div className="field"><label>Name</label><div className="readout">{found.name}</div></div>
             <div className="field"><label>Programme (part-time, Centre for Continuing Education)</label><div className="readout">{found.programme}</div></div>
             {input("ce", "Email address", "email", <input id="ce" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="off" spellCheck={false} required />,

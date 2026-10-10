@@ -49,7 +49,7 @@ export function Projects({ rows, actingOffice }: { rows: Grant[]; actingOffice: 
   return (
     <>
       <Note kind="info" title="Grants are administered, not owned">
-        Research grant money is held for a sponsor against a named principal investigator, spent to the award&rsquo;s terms and accounted for separately from the University&rsquo;s own funds.
+        Held for the sponsor against a named principal investigator, accounted for separately from the University&rsquo;s own funds.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

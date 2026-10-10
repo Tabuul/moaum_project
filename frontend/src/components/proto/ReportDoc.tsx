@@ -95,8 +95,7 @@ export function ReportDoc({
             </div>
           ) : null}
           <div className="rpt__issued">
-            {kept ? "Printed" : "Issued"} by the portal on {day(new Date().toISOString())}{issuedFor ? ` · ${issuedFor}` : ""}. A return is a view of the
-            register, verified against it — not by its appearance.
+            {kept ? "Printed" : "Issued"} by the portal on {day(new Date().toISOString())}{issuedFor ? ` · ${issuedFor}` : ""}.
           </div>
         </footer>
       </div>

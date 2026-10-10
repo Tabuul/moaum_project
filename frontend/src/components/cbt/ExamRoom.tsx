@@ -543,12 +543,12 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
 
   if (phase === "loading") return <Screen><p className="sub2">Opening your examination…</p></Screen>;
   if (phase === "noToken") return <Screen title="This screen does not hold your attempt"><p>Open the examination again from your CBT examinations page; your attempt continues where it was.</p><a className="btn btn--primary" href={backHref}>{backLabel}</a></Screen>;
-  if (phase === "replaced") return <Screen title="Your examination was opened elsewhere"><p>The attempt continues on the browser or device where it was opened last. This screen no longer holds it, and the second sign-in is on the record.</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
+  if (phase === "replaced") return <Screen title="Your examination was opened elsewhere"><p>The attempt continues on the device where it was opened last. The second sign-in is on the record.</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
   if (phase === "error") return <Screen title="The examination could not be opened"><p>{problem?.detail ?? problem?.title}</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
   if (phase === "noCamera") return (
     <Screen title="This examination is sat with the camera on">
       <p>The examination&rsquo;s rules ask for the camera, with your consent, while you write. Without it no answer can be saved. Your choice is recorded; nothing else is.</p>
-      <p className="sub2">If you did not consent, or your camera could not be used, speak to the examination office: they decide how you may sit it. You may also try again.</p>
+      <p className="sub2">If you did not consent or the camera failed, speak to the examination office, or try again.</p>
       <span className="row row--inline row--tight"><button type="button" className="btn btn--primary" onClick={() => setPhase("camera")}>Try again</button><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></span>
     </Screen>
   );
@@ -631,7 +631,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
       {/* on a phone the header has no room for the whole of it: name, number and level in full, beneath it */}
       {room.candidate && !preview ? <div className={css.idStrip}><CandidateId c={room.candidate} labelled /></div> : null}
       {preview ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><PreviewNote notes={previewNotes} /><a className="btn btn--ghost btn--sm" href={backHref}>Close the preview</a></div> : null}
-      {offline ? <div role="status" className={`${css.banner} ${css.bannerWarn}`}>Connection interrupted. Your exam session is being preserved. Please reconnect. Your answers are kept on this screen and saved when the connection returns; the clock continues.</div> : null}
+      {offline ? <div role="status" className={`${css.banner} ${css.bannerWarn}`}>Connection interrupted. Your answers are kept on this screen and saved when the connection returns; the clock continues.</div> : null}
       {fullscreenLost ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>You have exited fullscreen mode. This has been recorded.</span><button type="button" className="btn btn--primary btn--sm" onClick={() => void returnToFullscreen()}>Return to fullscreen</button></div> : null}
       {refused ? <div role="status" className={`${css.banner} ${css.bannerBad}`}><span>{refused}</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setRefused(null)}>Dismiss</button></div> : null}
       {cameraNote ? <div role="status" className={`${css.banner} ${css.bannerInfo}`}><span>{cameraNote}</span><button type="button" className="btn btn--ghost btn--sm" onClick={() => setCameraNote(null)}>Dismiss</button></div> : null}

@@ -109,7 +109,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
 
   return (
     <>
-      <PageHead title="Programme eligibility" description={`${filters.session} · every submitted applicant read against the session's admission settings — the applied programme first, then every other active, open programme when it is refused. Rule-based, explained check by check, kept under the policy version it was read under. Nothing here admits anybody or changes a programme by itself.`}
+      <PageHead title="Programme eligibility" description={`${filters.session} · the applied programme first, then every other open programme when it is refused. Nothing here admits anybody.`}
         actions={<><LinkBtn kind="ghost" href={`/admissions?session=${encodeURIComponent(filters.session)}`}>Admissions</LinkBtn><LinkBtn kind="ghost" href={`/admissions/settings?session=${encodeURIComponent(filters.session)}`}>Admission Settings</LinkBtn>
           {may ? <><Btn kind="secondary" disabled={busy !== null} onClick={() => void recalcAll(true)}>{busy === "all" && progress ? `Evaluating… ${progress.done.toLocaleString()} done · ${progress.remaining.toLocaleString()} to go` : `Evaluate the unevaluated${t.not_evaluated ? ` (${t.not_evaluated.toLocaleString()})` : ""}`}</Btn><Btn kind="ghost" disabled={busy !== null} onClick={() => void recalcAll(false)}>Recalculate all</Btn></> : null}
           <Btn kind="secondary" onClick={() => void excel("Programme Eligibility Register", HEAD1, body1(), "eligibility-register.xlsx")} disabled={!rows.length}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Programme Eligibility Register", `${filters.session} · ${sub}`, HEAD1, body1(), docSerial("ELG"))} disabled={!rows.length}>PDF</Btn></>} />
@@ -214,7 +214,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
       {requesting && open ? (
         <Modal title={`Request a change to ${requesting.programme} on the applicant's behalf`} sub={`${open.application.surname}, ${open.application.other_names}`} onClose={() => setRequesting(null)}
           foot={<><Btn kind="ghost" onClick={() => setRequesting(null)}>Back</Btn><Btn kind="primary" disabled={busy !== null} onClick={() => void officeRequest()}>Record the request</Btn></>}>
-          <p>The request goes on the queue like the applicant&rsquo;s own and is decided separately; the programme does not change here.</p>
+          <p>The request is decided separately; the programme does not change here.</p>
           <Field id="rq-reason" label="Reason for change" required><select id="rq-reason" className="ctl" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
             <option value="OLEVEL_NOT_MET">O&rsquo;Level requirement not satisfied</option><option value="UTME_COMBINATION">UTME combination mismatch</option><option value="SCREENING_DECISION">Screening decision</option>
             <option value="ADMISSION_POLICY">University admission policy</option><option value="SUITABILITY">Programme suitability</option><option value="OTHER">Other (describe in the note)</option></select></Field>

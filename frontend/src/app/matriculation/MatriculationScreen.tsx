@@ -50,7 +50,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Note kind="info" title="The number follows the configured rule">
-        <span className="blk">MOAU / faculty / programme / year of entry / sequence — the programme segment only where the programme is configured to carry one (Medicine and Surgery, Pharmacy and Law carry none), the sequence from the series the faculty belongs to, running on across years. A number once issued never changes.</span>
+        <span className="blk">MOAU / faculty / programme / year of entry / sequence (Medicine and Surgery, Pharmacy and Law carry no programme segment). A number once issued never changes.</span>
         <span className="blk"><LinkBtn href="/matriculation/config" kind="secondary">Matriculation number format</LinkBtn></span>
       </Note>
       <Tiles items={[
@@ -60,7 +60,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
         ["Numbers issued", done ? o.runs.reduce((n, r) => n + r.issued, 0).toLocaleString() : "—", done ? "var(--green-ink)" : "var(--faint)", done ? `Run ${last.ref}, ${day(last.runAt)}` : "No run has been made"],
       ]} />
       <Note kind="info" title="The faculty list is generated, not typed">
-        A Faculty Officer opens the list of students with an approved course registration for the session and confirms it. He does not key names, and he cannot add one: a student who did not register does not appear, and a student who registered cannot be left off. It is the same rule as the score sheet, for the same reason — a list somebody typed is a list somebody can leave a name off, and the omission is invisible because the list still looks complete.
+        Students with an approved course registration for the session; the Faculty Officer confirms it and cannot add or leave off a name.
       </Note>
       <Panel title="Faculty lists" right={`Generated from approved registrations for ${o.session}`}>
         <DTable
@@ -101,7 +101,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
           <DTable cols={["Admission number", "Matriculation number", "Name", "Department|num"]} rows={o.sample.map((s) => [<span className="tnum sub2" key="a">{s.admissionNo}</span>, <b className="tnum" key="m">{s.matricNo}</b>, <strong key="n">{s.surname}, {s.otherNames}</strong>, <span className="sub2" key="d">{s.deptName}</span>])} />
           <PBody>
             <Note kind="info" title="The admission number is retired, not deleted">
-              It stays on the record. A receipt, a screening slip or a clearance note issued under it is still that student’s document, and must still resolve to her years later.
+              Documents issued under it still resolve to the student.
             </Note>
           </PBody>
         </Panel>

@@ -20,9 +20,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
   }
   return (
     <>
-      <Note kind="info" title="This list is generated from the rolls, not typed beside them">
-        Every figure below is counted from the same roll the score sheet is generated from — so the count here, the count on the dashboard and the number of rows on the sheet are one number read three times, and cannot drift apart. The stage is derived the same way: a sheet with nothing entered cannot show as approved.
-      </Note>
+
       <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160 }}>
           <label htmlFor="sh-session">Session</label>
@@ -60,7 +58,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
         )}
       </Panel>
       <Note kind="ok" title="A sheet that has left this desk is readable, not editable">
-        Once a set is verified it belongs to the chain, not to the lecturer who entered it, and the button on its row reads <b>View</b> rather than Continue. Changing a mark in a verified set is a <b>result query</b> — raised, minuted and re-approved through the same chain that approved it — and not an edit. That is the difference between an amended result and an altered one.
+        Changing a mark in a verified set is a <b>result query</b> through the same chain, not an edit.
       </Note>
     </>
   );

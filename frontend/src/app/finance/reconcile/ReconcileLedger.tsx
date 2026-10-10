@@ -114,7 +114,7 @@ export function ReconcileLedger({ canCheck }: { canCheck: boolean }) {
         ) : <PBody><div className="sub2">No confirmed payment between {from} and {to}.</div></PBody>}
       </Panel>
       <Note kind="info" title="Reconciliation validates the ledger against the bank; it does not move money">
-        A transaction the portal marks confirmed was confirmed by a gateway callback or by the Bursary against a bank record. This step is the independent check that the money actually landed in the University&rsquo;s account. A discrepancy - a settled callback with no matching credit, or an amount that differs - is flagged with a note for the Bursary to resolve. Both the audit directorate and the Bursary may reconcile.
+        The check that the money landed in the University&rsquo;s account. A discrepancy is flagged for the Bursary to resolve.
       </Note>
     </>
   );

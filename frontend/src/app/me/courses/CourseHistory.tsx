@@ -30,7 +30,7 @@ export function CourseHistory({ rows, current }: { rows: AllocationRow[]; curren
 
   return (
     <>
-      <PageHead title="Course history" description="Every course allocated to you, this session and before, with the class each one had and where its results reached. Read from the register of allocation; nothing here is kept apart."
+      <PageHead title="Course history" 
         actions={<><LinkBtn kind="primary" href="/me/teaching">This Session&rsquo;s Timetable</LinkBtn><LinkBtn href="/results/sheets/history">Score Sheet History</LinkBtn></>} />
       <Tiles items={[
         ["Courses taught", String(rows.length), null, `${distinct} distinct course${distinct === 1 ? "" : "s"} over ${sessions.length} session${sessions.length === 1 ? "" : "s"}`],
@@ -63,7 +63,7 @@ export function CourseHistory({ rows, current }: { rows: AllocationRow[]; curren
 
       <Panel title="Courses" right={`${shown.length} of ${rows.length}`}>
         {rows.length === 0 ? (
-          <PBody><Note kind="info" title="Nothing has been allocated to you yet">A course appears here once your Head of Department allocates it to you for a session, and stays on your record after the session ends.</Note></PBody>
+          <PBody><Note kind="info" title="Nothing has been allocated to you yet" /></PBody>
         ) : shown.length === 0 ? (
           <PBody><div className="sub2">Nothing matches these filters.</div></PBody>
         ) : (
@@ -90,8 +90,7 @@ export function CourseHistory({ rows, current }: { rows: AllocationRow[]; curren
         )}
       </Panel>
       <Note kind="info" title="A past class is read as it stood">
-        <span className="blk">Students opens the class list of that course in that session and semester, built from the registrations approved at the time. Sheets opens the score sheets of that session, each with every version of every mark.</span>
-        <span className="blk">Your allocation is the Head of Department&rsquo;s to make and change on the <Link className="lnk" href="/me/teaching">teaching and timetable</Link> record; nothing on this page is edited here.</span>
+        <span className="blk">Your allocation is the Head of Department&rsquo;s to change on the <Link className="lnk" href="/me/teaching">teaching and timetable</Link> record.</span>
       </Note>
     </>
   );

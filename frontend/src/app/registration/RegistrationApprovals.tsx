@@ -74,7 +74,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
           <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${r.id}`, `${r.id}/return`, { comment }, `Registration of ${r.matric_no ?? r.admission_no} returned: ${comment}`); }}>Return</Btn>
         </span>,
       ])} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no} ${r.admission_no} ${r.programme} ${r.courses ?? ""}`)} />
-      {!rows.length ? <PBody><div className="sub2">Nothing submitted is waiting. A student&rsquo;s registration appears here the moment they submit it; approving it puts them on every class list it carries. <Pil kind="grey">Approved ones are on the class lists</Pil></div></PBody> : null}
+      {!rows.length ? <PBody><div className="sub2">Nothing submitted is waiting. <Pil kind="grey">Approved ones are on the class lists</Pil></div></PBody> : null}
     </Panel>
 
     {open ? (

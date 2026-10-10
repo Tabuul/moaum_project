@@ -22,7 +22,7 @@ export function AuditRevenue({ session, bursary, revenue }: { session: string; b
   return (
     <>
       <Note kind="info" title="One answer, from the transactions themselves">
-        Audit reads the same figures the Academic Office and the Bursary act on — collection is counted only when the gateway or the bank has confirmed it. Where the two offices would disagree, this screen shows the exception rather than a reconciled guess.
+        Collection counts only when the gateway or the bank has confirmed it.
       </Note>
       <Tiles items={[
         ["Fees collected", money(Number(t.fees_collected)), "var(--green-ink)", `School fees · ${session}`],

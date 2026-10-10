@@ -123,7 +123,7 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
 
   return (
     <>
-      <PageHead title={analyticsHeading(data.scope)} description={`${words}. Revenue is every confirmed payment of a category that counts as revenue, within your scope; transactions and unique payers are counted apart.`}
+      <PageHead title={analyticsHeading(data.scope)} description={`${words}`}
         actions={<>{canOpen ? <LinkBtn kind="primary" href={txHref()}>All transactions</LinkBtn> : null}<LinkBtn href="/stats">Student Statistics</LinkBtn><Btn kind="ghost" onClick={() => queryNav("/finance/analytics")}>Reset filters</Btn></>} />
 
       <div className="scope">

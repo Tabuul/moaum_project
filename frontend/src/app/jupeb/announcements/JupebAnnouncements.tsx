@@ -84,7 +84,7 @@ export function JupebAnnouncements({ canWrite }: { canWrite: boolean }) {
 
   return (
     <>
-      <PageHead title="JUPEB announcements" description="A notice to the session's candidates and students: on their dashboards at once, and by email or text when you ask. Withdrawn with a reason, never deleted."
+      <PageHead title="JUPEB announcements" description="Withdrawn with a reason, never deleted."
         actions={<select className="ctl" aria-label="Session" value={session} onChange={(e) => setSession(e.target.value)}>
           {(data?.sessions ?? []).map((x) => <option key={x.session} value={x.session}>{x.session} ({x.applications})</option>)}</select>} />
       {canWrite ? (

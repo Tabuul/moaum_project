@@ -51,7 +51,7 @@ export function Special({ data, session: s, sessions, office, beds }: { data: Sp
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel?session=${encodeURIComponent(s)}`}>Accommodation</Link><span>›</span><strong>Special allocations</strong></div>
-      <PageHead title="Special allocations" description={`${s}. Rooms that are never chosen by students: reserved for particular people, the Student Union, Security. Free does not mean untracked — every occupant is here.`}
+      <PageHead title="Special allocations" description={`${s} · reserved, Student Union and Security rooms`}
         actions={<>
           <Field id="sp-session" label="Session"><select id="sp-session" className="ctl" value={s} onChange={(e) => queryNav(`/hostel/special?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
           <Btn kind="ghost" onClick={() => void excel()} disabled={!data.rows.length}>Excel</Btn><Btn kind="ghost" onClick={pdf} disabled={!data.rows.length}>PDF</Btn>
@@ -60,7 +60,7 @@ export function Special({ data, session: s, sessions, office, beds }: { data: Sp
       <Tiles items={[["SPECIAL / RESERVED", byCat("SPECIAL"), null, "Payable at the Bursar's rule"], ["STUDENT UNION", byCat("STUDENT_UNION"), "var(--green-ink)", "No charge, on the record"], ["SECURITY", byCat("SECURITY"), "var(--green-ink)", "No charge, on the record"], ["PROTECTED ROOMS", data.rooms.length, "var(--chrome)", `${data.rooms.reduce((a, r) => a + r.available, 0)} beds free for the Dean to allocate`]]} />
 
       <Panel title="Occupants of the protected rooms" right="Sorted by name">
-        {data.rows.length === 0 ? <PBody><Note kind="info" title="No special allocation this session">Allocate a bed of a special, Student Union or Security room above; the room must carry that category on the inventory first.</Note></PBody> : (
+        {data.rows.length === 0 ? <PBody><Note kind="info" title="No special allocation this session" /></PBody> : (
           <DTable cols={["S/N|mid", "Occupant", "Room", "Category", "Fee|num", "Payment|mid", "Stay|mid", "Status|mid", "Allocated by", "Reason"]}
             texts={sorted.map((r) => `${r.occupant} ${r.occupant_number ?? ""} ${r.room_no} ${r.category_label}`)}
             rows={sorted.map((r, i) => [i + 1, <span key="o"><b>{r.occupant}</b><span className="sub2 blk tnum">{r.occupant_number ?? r.occupant_kind}</span></span>, <span key="r">{r.hall_name} · {r.block}-{r.room_no} {r.bed_label ?? ""}</span>, <Pil kind="info" key="c">{r.category_label}</Pil>,

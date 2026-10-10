@@ -55,7 +55,7 @@ export function HostelFinance({ data, fees, session: s, sessions, office }: { da
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/finance">Finance</Link><span>›</span><strong>Hostel fees</strong></div>
-      <PageHead title="Hostel finance" description={`${s}. Charges, paid, outstanding and exempt; the fee rules; every occupant's fee line. Exempt allocations are recorded and are never revenue.`}
+      <PageHead title="Hostel finance" description={`${s}. Exempt allocations are never revenue.`}
         actions={<>
           <Field id="hf-session" label="Session"><select id="hf-session" className="ctl" value={s} onChange={(e) => queryNav(`/hostel/finance?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
           <Btn kind="ghost" onClick={() => void excel()} disabled={!rows.length}>Excel</Btn><Btn kind="ghost" onClick={pdf} disabled={!rows.length}>PDF</Btn>

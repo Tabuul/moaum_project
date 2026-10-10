@@ -76,7 +76,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
               <Btn key={f.code} kind={scope === f.code ? "primary" : "ghost"} onClick={() => setScope(f.code)}>{f.name}</Btn>
             ))}
           </div>
-          <div className="sub2 mt-2">Every figure below is the same measure at a different level. An administrator who can only see the institution cannot tell a Dean why her faculty is behind.</div>
+          
         </PBody>
       </Panel>
 
@@ -88,7 +88,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
       ]} />
 
       <Note kind="info" title="This account can see everything and approve almost nothing">
-        The administrator reads every module because somebody has to be able to answer &ldquo;where is it stuck.&rdquo; It cannot approve a result at any stage, post a payment, clear a candidate or sign a credential &mdash; those belong to the offices that own them. Every figure here is the same record those desks work on, read once and counted; it keeps no second copy, so it cannot drift from what they see.
+        It cannot approve a result, post a payment, clear a candidate or sign a credential.
       </Note>
 
       <div className="grid grid--2">
@@ -107,7 +107,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
                   <LinkBtn kind="ghost" href="/results/sheets">Unraised sheets</LinkBtn>
                 </div>
               </>
-            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester in this scope yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
+            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester in this scope yet.</div>}
           </PBody>
         </Panel>
         <Panel title="Money" right={`${sel ? agg.name : "The University"} · from the register`}>
@@ -144,7 +144,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
       </Panel>
 
       <Note kind="info" title="Where to go from a figure">
-        This desk is for finding where a thing is stuck, not for moving it. The institutional charts and their tables are on the <Link href="/overview">Institutional overview</Link>; the printable returns are on <Link href="/reports">Reports &amp; returns</Link>; and every action link above opens the desk that owns the number, where the office that owns it can act.
+        Charts on the <Link href="/overview">Institutional overview</Link>; printable returns on <Link href="/reports">Reports &amp; returns</Link>.
       </Note>
     </>
   );

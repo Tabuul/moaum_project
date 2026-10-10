@@ -71,7 +71,7 @@ export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) 
   return (
     <>
       <Note kind="info" title="Payments, queried from the record">
-        Confirmed student payments, newest first. Choose any combination of session, faculty, department, programme, level, payment category and channel; the count and the total below are the whole matching set. Payments are charged per session, so there is no semester to choose. Applicant application and acceptance fees are on the day-book ledger.
+        Confirmed student payments, newest first; the totals are for the whole matching set. Applicant fees are on the day-book ledger.
       </Note>
 
       <Panel title="Query" right={active ? <Btn kind="ghost" onClick={() => router.push("/finance/payments")}>Clear filters</Btn> : undefined}>
@@ -159,7 +159,7 @@ export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) 
               <b className="tnum" key="a">{money(Number(r.amount))}</b>,
               <span className="tnum sub2" key="r">{r.receipt_no ?? r.reference}</span>,
             ])} />
-        ) : <PBody><div className="sub2">No confirmed payment matches this query. Widen the filters, or clear them to see every payment.</div></PBody>}
+        ) : <PBody><div className="sub2">No confirmed payment matches this query.</div></PBody>}
       </Panel>
     </>
   );

@@ -74,9 +74,7 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
           {view.desk ? `${view.desk}: ` : ""}{view.attention.slice(0, 6).map((s) => s.courseCode).join(", ")}{view.attention.length > 6 ? ` and ${view.attention.length - 6} more` : ""}. Each is listed under Needs your desk below with what it waits for.
         </Note>
       ) : (
-        <Note kind="ok" title="Nothing is waiting on your desk in this scope">
-          The counts below are read from the record as it stands: every set, every roll, every decision. Press a stage to list what sits there; press a programme to open its live broadsheet.
-        </Note>
+        <Note kind="ok" title="Nothing is waiting on your desk in this scope" />
       )}
       <Tiles items={[
         ["Offerings in scope", String(cv.offerings), null, cv.withoutLecturer ? `${cv.withLecturer} with a lecturer · ${cv.withoutLecturer} without` : "Every one has a lecturer"],

@@ -19,7 +19,7 @@ export default async function LmsPage({ searchParams }: { searchParams: Promise<
     <Shell route={upload ? "r/upload" : "t/lms"} me={me.ok ? me.data : null}>
       {!t.ok ? <ProblemNotice problem={t.problem} /> : (
         <>
-          <Note kind="info" title="A course space is built from the approved registrations">Students are enrolled in a space automatically when their registration is approved, and nobody else can read it. Material published here reaches only them, and every read is counted.</Note>
+          <Note kind="info" title="A course space is built from the approved registrations">Material reaches only those students.</Note>
           <Panel title={`Your course spaces — ${t.data.session}`} right={`${t.data.spaces.length}`}>
             {t.data.spaces.length ? (
               <DTable cols={["Course", "Enrolled|mid", "Materials|mid", "Assignments|mid", "|num"]} rows={t.data.spaces.map((s) => [
@@ -27,7 +27,7 @@ export default async function LmsPage({ searchParams }: { searchParams: Promise<
                 <span className="tnum" key="e">{s.enrolled}</span>, <span className="tnum" key="m">{s.materials}</span>, <span className="tnum" key="a">{s.assignments}</span>,
                 <LinkBtn key="o" href={`/lms/${s.offering_id}${upload ? "?tab=upload" : ""}`} kind="primary">{upload ? "Upload material" : "Open the space"}</LinkBtn>,
               ])} />
-            ) : <PBody><div className="sub2">No course is allocated to you in {t.data.session}. The Head of Department allocates courses; a space follows the allocation.</div></PBody>}
+            ) : <PBody><div className="sub2">No course is allocated to you in {t.data.session}.</div></PBody>}
           </Panel>
         </>
       )}

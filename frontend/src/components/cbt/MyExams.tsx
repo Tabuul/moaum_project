@@ -67,7 +67,7 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
         ["RESULTS PUBLISHED", num(published), published ? "var(--green-ink)" : null, "Visible once the office publishes"],
       ]} />
       {rows.some((r) => codeOf(r.eligibility) === "GST_PAYMENT_REQUIRED") ? (
-        <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href="/student/gst">GST &amp; EPS</LinkBtn>}>You cannot start a GST CBT examination until your GST fee for the session is paid and confirmed. One payment covers both GST and EPS.</Note>
+        <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href="/student/gst">GST &amp; EPS</LinkBtn>}>A GST CBT examination opens once your GST fee for the session is paid and confirmed. One payment covers GST and EPS.</Note>
       ) : null}
       {rows.some((r) => codeOf(r.eligibility) === "CBT_FEES_NOT_CLEARED") ? (
         <Note kind="bad" title="SCHOOL FEES NOT CLEARED" action={<LinkBtn kind="primary" href={feesHref}>Fees &amp; payments</LinkBtn>}>A CBT examination of a University course is sat once the session&rsquo;s school fees are cleared for examinations.</Note>
@@ -75,7 +75,7 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
       {rows.some((r) => codeOf(r.eligibility) === "CBT_JUPEB_FEES") ? (
         <Note kind="bad" title="JUPEB SCHOOL FEE NOT PAID" action={<LinkBtn kind="primary" href={feesHref}>Payments</LinkBtn>}>A JUPEB CBT examination is sat once the semester&rsquo;s share of your JUPEB school fee is paid.</Note>
       ) : null}
-      {!rows.length ? <Note kind="info" title="No CBT examination on your courses yet">An examination appears here once the examining office publishes it for a course on your submitted registration.</Note> : null}
+      {!rows.length ? <Note kind="info" title="No CBT examination on your courses yet">An examination appears here once published for a course on your submitted registration.</Note> : null}
       {rows.map((x) => {
         const live = x.live_state;
         const word = EXAM_WORD[live] ?? [live, "grey"];
@@ -94,10 +94,10 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
                   {x.sitting_venue} · {whenAt(x.sitting_starts_at)}{x.sitting_ends_at ? ` to ${new Date(x.sitting_ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}. The examination opens to you only in your sitting; come to the venue in good time.
                   {/* V374: the office's late-entry limit, when it set one */}
                   {x.late_entry_until && x.attendance !== "LATE" ? <> You may start on your own until <b>{new Date(x.late_entry_until).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>; after that, only once the invigilator admits you.</> : null}
-                  <div className="mt-1"><Btn kind="secondary" size="sm" onClick={() => void printSlip(x)}>Print your CBT slip</Btn> <span className="sub2">Bring it to the door: the invigilator scans it and checks your face against your photograph.</span></div>
+                  <div className="mt-1"><Btn kind="secondary" size="sm" onClick={() => void printSlip(x)}>Print your CBT slip</Btn> <span className="sub2">Bring it to the door; the invigilator checks it against your photograph.</span></div>
                 </Note>
               ) : null}
-              {x.attendance === "ABSENT" ? <Note kind="bad" title="Marked absent">The invigilator marked you absent from your sitting, so the examination does not open to you. If you are in the hall, ask the invigilator to admit you.</Note> : null}
+              {x.attendance === "ABSENT" ? <Note kind="bad" title="Marked absent">The examination does not open to you. If you are in the hall, ask the invigilator to admit you.</Note> : null}
               {x.attendance === "LATE" ? <div className="sub2 mt-1">The invigilator admitted you late{x.late_minutes_given ? <>, with <b>{x.late_minutes_given} minutes</b> given back</> : null}.</div> : null}
               {x.extra_minutes ? <div className="sub2 mt-1">You have <b>{x.extra_minutes} minutes&rsquo; extra time</b> on this paper; your clock includes it.</div> : null}
               {x.security_mode === "SECURE" ? <div className="sub2 mt-1">This examination is sat in the University&rsquo;s secure examination environment{x.venue === "LAB" ? " at the CBT laboratory" : ""}; it does not open in an ordinary browser.</div> : null}
@@ -107,7 +107,7 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
                   {x.score} of {x.max_marks} marks · pass mark {pct1(x.pass_mark)} · submitted {whenAt(x.submitted_at)}.
                 </Note>
               ) : x.attempt_id && x.attempt_status !== "IN_PROGRESS" && x.score != null ? (
-                <Note kind={x.outcome === "VOID" ? "bad" : "info"} title={`Score: ${x.score} of ${x.max_marks} · ${pct1(x.percentage)}`}>Released on submission by this examination&rsquo;s rules. The result is final once the office publishes it.</Note>
+                <Note kind={x.outcome === "VOID" ? "bad" : "info"} title={`Score: ${x.score} of ${x.max_marks} · ${pct1(x.percentage)}`}>The result is final once the office publishes it.</Note>
               ) : x.attempt_id && x.attempt_status !== "IN_PROGRESS" ? <div className="sub2 mt-1">Submitted {whenAt(x.submitted_at)}. Your result has been recorded and will be released according to University examination policy.</div> : null}
               <div className="row row--inline row--tight mt-2">
                 {canStart || canContinue ? <Btn kind="primary" disabled={busy} onClick={() => { setAgreed(false); setOpen(x); }}>{canContinue ? "CONTINUE EXAMINATION" : "VIEW INSTRUCTIONS & START"}</Btn> : <Btn kind="ghost" onClick={() => { setAgreed(false); setOpen(x); }}>View instructions</Btn>}

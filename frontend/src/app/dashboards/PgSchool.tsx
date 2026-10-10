@@ -64,7 +64,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
         </Note>
       ) : toAdmit ? (
         <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<LinkBtn kind="primary" href={desk}>Admit them</LinkBtn>}>
-          Admitting puts each on the register as a postgraduate student, to matriculate on fees and registration.
+          Admitting puts each on the register as a postgraduate student.
         </Note>
       ) : (
         <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<LinkBtn kind="ghost" href={desk}>Postgraduate admissions</LinkBtn>}>
@@ -129,7 +129,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
  *  Secretary this session, each figure opening the desk that clears it. */
 export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome | null }) {
   if (!home) {
-    return <Note kind="bad" title="The Secretary's figures could not be read">This dashboard reads the postgraduate registration, fee and research registers; it did not answer.</Note>;
+    return <Note kind="bad" title="The Secretary's figures could not be read">Try again.</Note>;
   }
   const c = home.counts;
   const registrations = "/admissions/postgraduate/results";                 // where a registration is endorsed
@@ -151,9 +151,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
           .
         </Note>
       ) : (
-        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<LinkBtn kind="ghost" href={registrationDesk}>Registration desk</LinkBtn>}>
-          Submitted registrations, fee references and theses awaiting clearance appear here to be acted on.
-        </Note>
+        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<LinkBtn kind="ghost" href={registrationDesk}>Registration desk</LinkBtn>} />
       )}
 
       <StatsPanel session={home.session} title="Postgraduate student statistics" />

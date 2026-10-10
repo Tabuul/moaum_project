@@ -187,7 +187,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
       {lb ? (
         <>
           <Panel title={`${who} · ${lb.allocation.posting}`} right={<span className="row row--inline"><Pil kind={STATE[lb.allocation.state]?.[0] ?? "grey"}>{STATE[lb.allocation.state]?.[1] ?? lb.allocation.state}</Pil><Btn kind="ghost" onClick={() => nav({ allocation: "" })}>Back to the list</Btn></span>}>
-            <PBody><div className="sub2">Everything recorded here is on the audit spine against you. A procedure you record is verified at once unless you untick it; one the student logged waits for your verification. The logbook standing the student sees is what is verified.</div></PBody>
+            <PBody><div className="sub2">A procedure you record is verified at once unless you untick it; one the student logged waits for your verification.</div></PBody>
           </Panel>
 
           <div className="grid grid--2">
@@ -259,7 +259,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                     <select id="at-pres" className="ctl" value={att.present ? "1" : "0"} onChange={(e) => setAtt({ ...att, present: e.target.value === "1" })}><option value="1">Present</option><option value="0">Absent</option></select></div>
                   <Btn kind="primary" disabled={busy || !att.heldOn} onClick={() => void call("POST", `/allocations/${lb.allocation.id}/attendance`, { ...att, slotId: att.slotId || null }, `${lb.allocation.number}: ${att.present ? "present" : "absent"} at ${word(att.activityType)} on ${att.heldOn}`).then((ok) => { if (ok) setAtt({ ...att, heldOn: "" }); })}>Record</Btn>
                 </div>
-                <div className="sub2 mt-2">The prospectus requires 75% attendance pre-clinical, 70% clinical and 80% in Surgery to sit the examination; the record here is what that is judged on.</div>
+                <div className="sub2 mt-2">The prospectus requires 75% attendance pre-clinical, 70% clinical and 80% in Surgery to sit the examination.</div>
               </PBody>
               {lb.attendance.length ? <DTable cols={["Date|mid", "Activity", "Slot", "Present|mid"]} rows={lb.attendance.map((a) => [<span className="tnum" key="d">{day(a.held_on)}</span>, <span key="t">{word(a.activity_type)}</span>, <span className="sub2" key="s">{a.starts_at ? `${String(a.starts_at).slice(0, 5)}–${String(a.ends_at).slice(0, 5)} · ${word(a.slot_type ?? "")}${a.topic ? ` · ${a.topic}` : ""}` : "—"}</span>, <span key="p" className={`b600 ${a.present ? "ink-green" : "ink-red"}`}>{a.present ? "Present" : "Absent"}</span>])} /> : null}
             </Panel>

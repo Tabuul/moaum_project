@@ -180,7 +180,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
   return (
     <>
       <Note kind="info" title="Upload the Post-UTME scores and reconcile them against the applicants">
-        The scores collected from the CBT exam, uploaded here by the Directorate of ICT, the Super Administrator or the Academic Office. Each row is keyed by the candidate&rsquo;s <b>JAMB registration number</b> or <b>application number</b> and reconciled against the session&rsquo;s applicants: a matched candidate whose score is not yet released has it entered; the rest are reported and nothing is invented. Releasing the scores is done from the Applicants desk.
+        Each row is keyed by <b>JAMB registration number</b> or <b>application number</b>; unmatched rows are reported. Scores are released from the Applicants desk.
       </Note>
 
       {postUtme ? (
@@ -192,7 +192,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
           </> : null}
         </span>}>
           <PBody style={{ paddingBottom: 0 }}>
-            <div className="sub2">These are the programmes whose applicants have registered for Post-UTME for {session}. Every one must have its screening scores uploaded and released before the admission process (merit list, offers) proceeds for it. A programme still awaiting scores is highlighted.</div>
+            <div className="sub2">Each programme needs its scores uploaded and released before its merit list and offers. Highlighted: still awaiting scores.</div>
           </PBody>
           {postUtme.programmes.length ? (
             <DTable
@@ -208,7 +208,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
               ])}
               texts={postUtme.programmes.map((r) => `${r.faculty ?? ""} ${r.programme}`)}
             />
-          ) : <PBody><div className="sub2">No applicant has registered for Post-UTME this session yet. Programmes appear here as applicants register.</div></PBody>}
+          ) : <PBody><div className="sub2">No applicant has registered for Post-UTME this session yet.</div></PBody>}
         </Panel>
       ) : null}
 
@@ -218,7 +218,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         </select>
       }>
         <PBody>
-          <div className="sub2 mb-2">One candidate per line: the JAMB number or application number, then the score (0&ndash;100), separated by a comma, tab or spaces. A header line is ignored. Paste from a spreadsheet, or load a CSV.</div>
+          <div className="sub2 mb-2">One per line: JAMB or application number, then the score (0&ndash;100), separated by a comma, tab or spaces.</div>
           <textarea className="ctl" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"20261234AB, 68.5\n20265678CD, 72\nAPP/26/000002, 55"} style={{ fontFamily: "var(--mono, monospace)", width: "100%" }} />
           <input ref={file} type="file" accept=".csv,text/csv,text/plain" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = ""; }} />
           {problem ? <ProblemNotice problem={problem} /> : null}
@@ -254,19 +254,18 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
 
       <Panel title="Release the scores" right="Held until released; the Board decides on released scores">
         <PBody>
-          <div className="sub2 mb-2">An uploaded score is entered but <b>held</b> until it is released — a candidate&rsquo;s aggregate and the Board&rsquo;s decision both wait on it. Releasing publishes every entered score for {session} (seated or uploaded) and notifies each applicant.</div>
+          <div className="sub2 mb-2">Uploaded scores are <b>held</b> until released. Releasing publishes every entered score for {session} and notifies each applicant.</div>
           {released !== null ? <Note kind="ok" title={`${released} score${released === 1 ? "" : "s"} released for ${session}`}>They are no longer held; the Board can now decide, and each applicant has been notified.</Note> : null}
           <Btn kind="primary" disabled={!mayRelease || busy} onClick={() => void release()}>{busy ? "Releasing…" : "Release scores"}</Btn>
-          {!mayRelease ? <div className="sub2 mt-2">Releasing is the Academic Office&rsquo;s act; ask them to release, or release from the Applicants desk.</div> : null}
+          {!mayRelease ? <div className="sub2 mt-2">Releasing is the Academic Office&rsquo;s act.</div> : null}
         </PBody>
       </Panel>
 
       <Panel title="Clear uploaded Post-UTME scores" right="For scores uploaded in error">
         <PBody>
           <Note kind="bad" title="Remove uploaded Post-UTME scores">
-            Use this only when Post-UTME scores were uploaded in error — for a programme that is not exam-screened, or a
-            wrong file. It removes the score, its entry and its release for {session}, so the register falls back to the
-            O&rsquo;Level + UTME computation. It <b>cannot be undone</b>; re-upload the correct scores if needed.
+            Only for scores uploaded in error. Removes the scores and their release for {session}; the register falls back to
+            O&rsquo;Level + UTME. It <b>cannot be undone</b>.
           </Note>
           {cleared !== null ? <Note kind="ok" title={`${cleared} score${cleared === 1 ? "" : "s"} cleared`}>Those candidates no longer carry a Post-UTME score for {session}.</Note> : null}
           <div className="row row--end">

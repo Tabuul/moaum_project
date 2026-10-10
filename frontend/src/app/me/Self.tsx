@@ -91,9 +91,7 @@ export function Self({
             />
             {person ? null : (
               <Note kind="info" title="You are signed in, but the Registry has no record of you yet">
-                Your token names an office, which is why this screen opens; the person behind it is created by the Registry,
-                with the letter that appointed you. Until that is recorded, the name, the staff number and the offices below
-                are empty rather than assumed.
+                The Registry records you with your appointment letter.
               </Note>
             )}
           </PBody>
@@ -112,7 +110,7 @@ export function Self({
           ) : (
             <PBody>
               <Note kind="info" title="No payslip yet">
-                A payslip appears here once the Human Resource office has built and approved the month&rsquo;s payroll and you were on the establishment for it. A draft run is not shown — only an approved or paid one.
+                Shown once the month&rsquo;s payroll is approved.
               </Note>
             </PBody>
           )}
@@ -123,8 +121,7 @@ export function Self({
         {offices.length === 0 ? (
           <PBody>
             <Note kind="info" title="No office assignment is recorded against you">
-              An office is held under a letter or a minute, and the portal holds none for you. It is granted by the
-              Registrar, recorded with that instrument, and an acting one carries the date it lapses on.
+              Offices are granted by the Registrar.
             </Note>
           </PBody>
         ) : (
@@ -147,8 +144,7 @@ export function Self({
       {leave ? <LeaveSelf d={leave} /> : null}
 
       <Note kind="info" title="Leave that overlaps a teaching commitment needs a named replacement">
-        Name who will take your duties in the Cover field. A Head of Department approving leave is therefore approving a
-        specific arrangement, not a date range.
+        Name who will take your duties in the Cover field.
       </Note>
     </>
   );

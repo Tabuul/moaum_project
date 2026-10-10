@@ -60,7 +60,7 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
       <Steps list={[[st(0), "Payment", r.paid_at ? whenAt(r.paid_at) : r.fee ? naira(r.fee) : "No fee"], [st(1), "Ready", r.stage === "HELD_AT_CLEARANCE" ? "Held at clearance" : ""], [st(2), "Validation", r.validated_at ? whenAt(r.validated_at) : ""], [st(3), "Generated", r.produced_at ? whenAt(r.produced_at) : ""], [st(4), "Quality check", r.qc_at ? whenAt(r.qc_at) : ""], [st(5), "Released", r.released_at ? whenAt(r.released_at) : ""], [st(6), "Delivered", r.delivered_at ? whenAt(r.delivered_at) : ""], [st(7), "Completed", r.completed_at ? whenAt(r.completed_at) : ""]]} />
 
       {r.stage === "AWAITING_PAYMENT" ? <Note kind="info" title={`Awaiting payment of ${naira(r.fee)}`}>Reference {r.reference ?? "—"}; processing begins when the Bursary or the gateway confirms it.</Note> : null}
-      {r.stage === "HELD_AT_CLEARANCE" ? <Note kind="bad" title="Held at clearance">A unit holds the student; the transcript is generated once every unit clears. The student&rsquo;s clearance screen names the unit.</Note> : null}
+      {r.stage === "HELD_AT_CLEARANCE" ? <Note kind="bad" title="Held at clearance">The transcript is generated once every unit clears.</Note> : null}
       {r.stage === "CORRECTION" ? <Note kind="bad" title="Correction asked at the quality check">{r.qc_note}. Put the record right, validate again, and generate a new version.</Note> : null}
       {r.stage === "REJECTED" || r.stage === "CANCELLED" ? <Note kind="bad" title={`${STAGE[r.stage]?.[0]}${r.closed_at ? ` on ${dayOf(r.closed_at)}` : ""}`}>{r.closed_reason ?? r.qc_note ?? ""}</Note> : null}
       {validation ? (
@@ -78,7 +78,7 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
         </Panel>
         <Panel title="The document" right={r.document_number ? <span className="tnum">{r.document_number}{r.document_version && r.document_version > 1 ? ` v${r.document_version}` : ""}</span> : "Not yet generated"}>
           <PBody>
-            {r.document ? <KvGrid cls="grid--2" pairs={[["Number", r.document_number ?? ""], ["Status", r.document_status ?? ""], ["Verification code", <Link key="v" className="lnk tnum" href={verifyPathFor(r.verification_code ?? "")}>{r.verification_code}</Link>], ["Issued", dayOf(r.document.issued_on)], ["Template", `version ${r.document.template_version ?? "—"}`], ["Versions", r.versions.map((v) => `v${v.version} ${v.status.toLowerCase()}`).join(", ")]]} /> : <div className="sub2">The statement below is what the document will carry once generated; it is read from the record at generation.</div>}
+            {r.document ? <KvGrid cls="grid--2" pairs={[["Number", r.document_number ?? ""], ["Status", r.document_status ?? ""], ["Verification code", <Link key="v" className="lnk tnum" href={verifyPathFor(r.verification_code ?? "")}>{r.verification_code}</Link>], ["Issued", dayOf(r.document.issued_on)], ["Template", `version ${r.document.template_version ?? "—"}`], ["Versions", r.versions.map((v) => `v${v.version} ${v.status.toLowerCase()}`).join(", ")]]} /> : <div className="sub2">The document will carry this statement.</div>}
           </PBody>
         </Panel>
       </div>

@@ -102,7 +102,7 @@ export function Discipline({ data, swaps, session: s, sessions, state, tab, offi
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel?session=${encodeURIComponent(s)}`}>Accommodation</Link><span>›</span><strong>Discipline &amp; room swaps</strong></div>
-      <PageHead title="Discipline and room swaps" description={`${s}. An incident is reported, the student answers it, the Dean decides; a sanction is appealed once. A swap moves only when both students agree and the Dean approves.`}
+      <PageHead title="Discipline and room swaps" description={`${s} · a sanction is appealed once; a swap needs both students and the Dean`}
         actions={<>
           <Field id="dc-session" label="Session"><select id="dc-session" className="ctl" value={s} onChange={(e) => queryNav(`/hostel/discipline?session=${encodeURIComponent(e.target.value)}&tab=${tab}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
           {tab === "incidents" ? <><Btn kind="ghost" onClick={() => void excel()} disabled={!sorted.length}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Hostel Discipline Register", s, HEAD, body(), docSerial("HST"))} disabled={!sorted.length}>PDF</Btn></> : null}
@@ -147,7 +147,7 @@ export function Discipline({ data, swaps, session: s, sessions, state, tab, offi
               <span key="why" className="sub2">{w.reason}{w.partner_note ? ` · reply: ${w.partner_note}` : ""}{w.decision_note ? ` · decision: ${w.decision_note}` : ""}</span>,
               <Pil key="st" kind={SWAP_STATE[w.state]?.[1] ?? "grey"}>{SWAP_STATE[w.state]?.[0] ?? w.state}</Pil>,
               w.state === "AGREED" && mayReport ? <span key="act" className="row row--inline row--tight"><Btn kind="primary" onClick={() => setSwapAct({ id: w.id, reference: w.reference, decision: "APPROVED", note: "" })}>Approve</Btn><Btn kind="ghost" onClick={() => setSwapAct({ id: w.id, reference: w.reference, decision: "REJECTED", note: "" })}>Refuse</Btn></span> : <span key="act" />,
-            ])} /> : <PBody><div className="sub2">No swap has been proposed for {s}. A student proposes one from their Hostel page, naming the other student; the other agrees; it then waits here.</div></PBody>}
+            ])} /> : <PBody><div className="sub2">No swap has been proposed for {s}.</div></PBody>}
         </Panel>
       )}
 
@@ -229,7 +229,7 @@ export function Discipline({ data, swaps, session: s, sessions, state, tab, offi
       ) : null}
 
       {swapAct ? (
-        <Modal title={`${swapAct.decision === "APPROVED" ? "Approve" : "Refuse"} swap ${swapAct.reference}`} sub={swapAct.decision === "APPROVED" ? "Every rule is checked again; both beds move at once and both students are told." : "Both students are told why."} onClose={() => setSwapAct(null)}
+        <Modal title={`${swapAct.decision === "APPROVED" ? "Approve" : "Refuse"} swap ${swapAct.reference}`} sub={swapAct.decision === "APPROVED" ? "Both beds move at once; both students are told." : "Both students are told why."} onClose={() => setSwapAct(null)}
           foot={<><Btn kind="ghost" onClick={() => setSwapAct(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || (swapAct.decision === "REJECTED" && !swapAct.note.trim())} onClick={() => void decideSwap()}>{swapAct.decision === "APPROVED" ? "Approve the swap" : "Refuse the swap"}</Btn></>}>
           <Field id="sw-note" label={swapAct.decision === "APPROVED" ? "Note (optional)" : "Reason"} full><input id="sw-note" className="ctl" value={swapAct.note} onChange={(e) => setSwapAct({ ...swapAct, note: e.target.value })} /></Field>
         </Modal>

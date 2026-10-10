@@ -84,7 +84,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
         action="Clearing students through the units" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={listing.candidates.length} of={listing.total} />
       <Note kind="info" title="Clearance is a set of independent sign-offs, not a form that travels">
-        Each unit clears against its own record, in any order, and none of them holds a piece of paper for the student to carry. The candidate is cleared when the last unit signs, and the certificate is released by that fact rather than by anyone assembling the evidence.
+        Each unit clears in any order; the candidate is cleared when the last unit signs.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="info" title="Nothing was sent">{said}</Note> : null}
@@ -118,7 +118,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
           ])}
           texts={listing.candidates.map((c) => `${c.number} ${c.surname} ${c.otherNames} ${c.programmeName}`)}
         />
-        {!listing.candidates.length ? <PBody><div className="sub2">Nobody is on the register in this scope yet. Candidates arrive here from the student register.</div></PBody> : null}
+        {!listing.candidates.length ? <PBody><div className="sub2">Nobody is on the register in this scope yet.</div></PBody> : null}
       </Panel>
 
       <TwoCol>
@@ -128,7 +128,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
               {position.map((p, i) => (
                 <Gate key={p.unit} state={p.state === "CLEARED" ? "done" : "todo"} last={i === position.length - 1}
                   title={`${p.label} — ${p.state === "CLEARED" ? "cleared" : "not cleared"}`}
-                  sub={p.state === "CLEARED" ? `${p.officer ?? "Signed"} · ${day(p.decidedAt)}${p.note ? ` · ${p.note}` : ""}` : p.item ? `${p.item}${p.decidedAt ? ` · raised ${day(p.decidedAt)}` : ""}` : "Nothing signed yet; the unit has not cleared against its record"} />
+                  sub={p.state === "CLEARED" ? `${p.officer ?? "Signed"} · ${day(p.decidedAt)}${p.note ? ` · ${p.note}` : ""}` : p.item ? `${p.item}${p.decidedAt ? ` · raised ${day(p.decidedAt)}` : ""}` : "Nothing signed yet"} />
               ))}
               {!position.length ? <Gate state="todo" title="No candidate chosen" sub="Choose a matriculation number in the table." last /> : null}
             </Gates>
@@ -152,7 +152,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
               <Gate state={me?.cleared ? "done" : "todo"} title="Transcript to a third party" sub="Blocked while any unit holds the candidate." />
               <Gate state={me?.cleared ? "done" : "todo"} title="Convocation" sub="Gown and seat allocated on clearance." last />
             </Gates>
-            <div className="sub2 mt-3">Each of these checks clearance at the moment it is attempted, inside the transaction. None of them reads a report that a clerk ran last week.</div>
+            <div className="sub2 mt-3">Each checks clearance at the moment it is attempted.</div>
           </PBody>
         </Panel>
       </TwoCol>

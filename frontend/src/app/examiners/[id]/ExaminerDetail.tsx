@@ -131,7 +131,7 @@ export function ExaminerDetail({ e, faculties, sessions }: { e: ExaminerFull; fa
               </select>
             </Field>
             {status !== "ACTIVE" ? <Field id="st-reason" label="Reason" required><textarea id="st-reason" className="ctl" rows={3} value={reason} onChange={(ev) => setReason(ev.target.value)} /></Field> : <div className="sub2">The examiner regains the workspace at once.</div>}
-            {!e.activated_at ? <Note kind="info" title="Not yet activated">An examiner becomes active by choosing a password through the invitation link; send or resend it instead.</Note> : null}
+            {!e.activated_at ? <Note kind="info" title="Not yet activated">Active once a password is chosen through the invitation link.</Note> : null}
           </div>
         </Modal>
       ) : null}

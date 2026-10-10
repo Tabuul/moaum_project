@@ -26,7 +26,7 @@ export function Security({ p }: { p: Posture }) {
   return (
     <>
       <Note kind={Number(a.unattached_tables) === 0 ? "ok" : "bad"} title={Number(a.unattached_tables) === 0 ? "Every state table is on the audit spine" : `${a.unattached_tables} state table(s) not attached to the audit spine`}>
-        Security here is what the system can prove from its own record: the tamper-evident audit chain, and the sign-in defence. Infrastructure controls that live below the application — network, host hardening, the WAF — are governed separately and are not asserted on this screen.
+        The audit chain and the sign-in defence. Network, host and WAF controls are governed separately.
       </Note>
       <Tiles items={[
         ["Audit entries", Number(a.entries).toLocaleString(), null, `${a.shards} chain shard${Number(a.shards) === 1 ? "" : "s"}`],
@@ -40,8 +40,8 @@ export function Security({ p }: { p: Posture }) {
         <PBody>
           <div className="sub2">
             The audit chain holds <b>{Number(a.entries).toLocaleString()}</b> entries across <b>{a.shards}</b> shard{Number(a.shards) === 1 ? "" : "s"};
-            {Number(a.unattached_tables) === 0 ? " every table that holds state is attached to it, so no state change escapes the record." : ` ${a.unattached_tables} table(s) are not yet attached.`}
-            {" "}A nightly job recomputes the chain and reports any break to the Registrar and the Directorate of ICT — not to ICT alone. No application role can write to, forge or amend an audit row.
+            {Number(a.unattached_tables) === 0 ? " every state table is attached." : ` ${a.unattached_tables} table(s) are not yet attached.`}
+            {" "}Recomputed nightly; a break is reported to the Registrar and the Directorate of ICT.
           </div>
         </PBody>
       </Panel>

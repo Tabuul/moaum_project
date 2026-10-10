@@ -81,9 +81,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
            right={<span className="sub2">{candidates == null ? "…" : `${candidates.length} candidate${candidates.length === 1 ? "" : "s"}`}</span>}>
       <PBody>
         <div className="sub2 mb-2">
-          Not offered their own programme, but hold O&rsquo;Level credits in English, Mathematics and three other subjects, and
-          qualify for an open programme (its cut-off met, its compulsory subjects credited, a seat free). Choose a programme
-          from each candidate&rsquo;s qualified options and suggest it; the candidate is emailed that programme.
+          Not offered their own programme, but qualified for an open one. The candidate is emailed the programme you suggest.
         </div>
         {problem ? <ProblemNotice problem={problem} /> : null}
         {sent ? <Note kind="ok" title="Suggested">{sent}</Note> : null}

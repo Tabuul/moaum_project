@@ -49,7 +49,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
   return (
     <>
       <Note kind="info" title="The admitted list — everyone on the committed admission list">
-        Everyone JAMB admitted to the University for {session}, from the committed CAPS lists. Filter by faculty, programme or entry mode to see the admitted list for any part of the University, with how many have registered for post-UTME. Each applicant proceeds to the admission process by registering on the applicant portal with their JAMB number.
+        Everyone JAMB admitted for {session}, from the committed CAPS lists, with how many have registered for post-UTME.
       </Note>
 
       <Tiles items={[
@@ -102,7 +102,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
             ])}
             texts={d.breakdown.map((b) => `${b.faculty ?? ""} ${b.programme ?? b.programme_code}`)}
           />
-        ) : <PBody><div className="sub2">No committed admission list for this session yet. Commit a CAPS list on the JAMB admission lists screen, and the admitted appear here.</div></PBody>}
+        ) : <PBody><div className="sub2">No committed admission list for this session yet.</div></PBody>}
       </Panel>
 
       <Panel title="Applicants" right={`${d.applicants.length} shown${filtered ? " · filtered" : ""}`}>
@@ -118,7 +118,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
         ) : <PBody><div className="sub2">{filtered ? "No applicant matches this filter on the committed list." : "No committed admission list for this session yet."}</div></PBody>}
       </Panel>
 
-      {d.applicants.length >= 200 ? <Note kind="info" title="Only the first 200 are shown">Narrow the list with the faculty, programme or entry-mode filters, or search by name or JAMB number; the counts and the breakdown above are for the whole filtered list.</Note> : null}
+      {d.applicants.length >= 200 ? <Note kind="info" title="Only the first 200 are shown">The counts above are for the whole filtered list.</Note> : null}
     </>
   );
 }

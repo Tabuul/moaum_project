@@ -49,7 +49,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
   return (
     <>
       <Note kind="info" title="Clinical notes never leave this module">
-        Registry sees a fitness status; the student 360 view shows an alert flag and nothing more. Every read of a patient record is logged against the clinician who opened it, and the patient can see the log.
+        Registry sees a fitness status; Student 360 shows an alert flag only. Every read is logged and the patient can see the log.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
@@ -96,7 +96,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
           <DTable cols={["Time|mid", "Patient", "Presenting", "Outcome", "Clinician|num"]} rows={d.concluded.map((c) => [<span className="tnum" key="t">{when(c.concluded_at)}</span>, <Two key="p" a={c.patient} b={c.number} />, <span key="c">{c.presenting}</span>, <span key="o">{c.outcome}{c.referred_to ? <div className="sub2">Referred to {c.referred_to}</div> : null}</span>, <span className="sub2" key="w">{c.clinician ?? "—"}</span>])} />
         ) : <PBody><div className="sub2">Nothing concluded yet today.</div></PBody>}
       </Panel>
-      <Note kind="info" title="Pharmacy stock is not on the portal">The prototype drew a stock alert table; no dispensing record exists in this module yet, so nothing is shown as if it did.</Note>
+      <Note kind="info" title="Pharmacy stock is not on the portal" />
 
       {open ? (
         <Modal title={`${open.patient} · ${open.number}`} sub={`${open.programme}${open.sex ? ` · ${open.sex === "F" ? "female" : "male"}` : ""}${open.date_of_birth ? ` · born ${day(open.date_of_birth)}` : ""} · opened in your name, on the log`} onClose={() => setOpen(null)}

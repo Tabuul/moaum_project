@@ -134,7 +134,7 @@ export function PgApply() {
     return (
       <Wrap>
         <Note kind="ok" title={`Account created — ${applied.application_no}`}>
-          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose. After payment you complete your application in the portal: your <b>first degree</b>, any <b>other qualifications</b>, your <b>referees</b> (who are then emailed a reference request), and your <b>documents and passport</b>. You can also track it with your application number and email below.
+          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b>, then complete your first degree, other qualifications, referees, documents and passport.
         </Note>
         <div className="card"><div className="card__body">
           <Row k="Application number" v={applied.application_no} />
@@ -152,7 +152,7 @@ export function PgApply() {
   return (
     <Wrap>
       <Note kind="info" title="Apply for a postgraduate programme">
-        Choose a programme and create your account in the steps below. The application fee is stated once you submit; after you pay, you complete your application in the portal — your first degree, other qualifications, referees, documents and passport. You may apply for only one programme at a time.
+        You may apply for only one programme at a time. The application fee is stated once you submit.
       </Note>
 
       <Stepper steps={STEPS} current={step} onGo={(n) => { if (n < step) { setProblem(null); setStep(n); } }} />
@@ -223,7 +223,7 @@ export function PgApply() {
                 <Field id="proposalText" label="Summary of the proposed research"><textarea id="proposalText" className="ctl" rows={4} value={f.proposalText ?? ""} onChange={set("proposalText")} /></Field>
               </>
             ) : null}
-            <div className="hint">After you submit, sign in to pay the application fee. You then complete your first degree, other qualifications, referees, documents and passport in the portal.</div>
+            <div className="hint">After you submit, sign in to pay the application fee.</div>
           </>
         ) : null}
 
@@ -298,7 +298,7 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
-    <AuthLayout eyebrow="School of Postgraduate Studies" lead={<>Apply directly for a Postgraduate Diploma, Master&rsquo;s or PhD &mdash; no JAMB number. One account carries you from application to admission, and becomes your student account on the day you are admitted.</>} stats={[["PGD", <>Master&rsquo;s · PhD</>], ["1", "programme at a time"], ["0", "JAMB number needed"]]} wide>
+    <AuthLayout eyebrow="School of Postgraduate Studies" lead={<>Apply for a Postgraduate Diploma, Master&rsquo;s or PhD &mdash; no JAMB number needed.</>} stats={[["PGD", <>Master&rsquo;s · PhD</>], ["1", "programme at a time"], ["0", "JAMB number needed"]]} wide>
         <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: "var(--s-4)" }}>
           {children}
         </div>

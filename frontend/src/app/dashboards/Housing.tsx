@@ -6,7 +6,7 @@ import { DTable } from "@/components/proto/DTable";
 /** The Deputy Registrar (Housing, Welfare and Passages) home: the accommodation draw at a glance —
  *  beds, allocations, reserves and the maintenance still open — from the hostel module (V038). */
 export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDeskData | null }) {
-  if (!desk) return <Note kind="bad" title="The accommodation figures could not be read">The dashboard reads the hostel module; it did not answer. Open the hostel desk from the menu.</Note>;
+  if (!desk) return <Note kind="bad" title="The accommodation figures could not be read">Open the hostel desk from the menu.</Note>;
   const c = desk.counts;
   const drawn = !!desk.setting?.drawn_at;
   const openMaint = (desk.maintenance ?? []).filter((m) => m.state !== "FIXED");
@@ -17,9 +17,7 @@ export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDesk
           Set the fee and the application close date before students can apply and the draw can run.
         </Note>
       ) : !drawn ? (
-        <Note kind="info" title={`${c.applications} application${Number(c.applications) === 1 ? "" : "s"} in, draw not yet run`} action={<LinkBtn kind="primary" href="/hostel">Run the draw</LinkBtn>}>
-          The draw allocates beds from a published seed, priority names first. Reserves fill the holds that lapse.
-        </Note>
+        <Note kind="info" title={`${c.applications} application${Number(c.applications) === 1 ? "" : "s"} in, draw not yet run`} action={<LinkBtn kind="primary" href="/hostel">Run the draw</LinkBtn>} />
       ) : (
         <Note kind="ok" title={`Draw run for ${desk.session}`} action={<LinkBtn kind="ghost" href="/hostel">Open the hostel desk</LinkBtn>}>
           {c.allocated} allocated, {c.confirmed} confirmed, {c.reserves} on the reserve list. Lapse expired holds to pass beds to the next name.

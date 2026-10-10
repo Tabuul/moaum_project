@@ -65,10 +65,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
 
   return (
     <>
-      <Note kind="info" title="Every report shows the moment its data was taken">
-        A return is read off the register for the session you choose — the crest, the figures, and the footing that says it is verified
-        against the record. Run one to read it on screen, print it or save it as a PDF, or take the same rows as a CSV.
-      </Note>
+      <Note kind="info" title="Every report shows the moment its data was taken" />
 
       {due ? (
         <>
@@ -92,7 +89,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
                   : <span key="run" className="sub2">—</span>,
               ])}
               texts={due.rows.map((r) => `${r.title} ${r.owner_label} ${r.state}`)} />
-            <PBody><div className="sub2">Run a return and press <b>Keep a copy</b> to answer its due date; then mark the kept copy <b>filed</b> once it has gone to the body it is for. A fortnight&rsquo;s grace runs after each due date before a return shows as overdue.</div></PBody>
+            <PBody><div className="sub2"><b>Keep a copy</b> answers the due date; mark it <b>filed</b> once sent. Overdue a fortnight after the due date.</div></PBody>
           </Panel>
         </>
       ) : null}
@@ -172,7 +169,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
           ) : <PBody><div className="sub2">No student was admitted for {session} yet, so there is no enrolment to show.</div></PBody>}
           {byFaculty.length ? (
             <PBody>
-              <div className="sub2">{grand.toLocaleString()} students in the {session} cohort across {byFaculty.length} facult{byFaculty.length === 1 ? "y" : "ies"}. Run the <b>Enrolment by programme, level and sex</b> return above for the full NUC table.</div>
+              <div className="sub2">{grand.toLocaleString()} students in the {session} cohort across {byFaculty.length} facult{byFaculty.length === 1 ? "y" : "ies"}. The full NUC table: <b>Enrolment by programme, level and sex</b>.</div>
             </PBody>
           ) : null}
         </Panel>

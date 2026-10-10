@@ -78,7 +78,7 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   return (
     <Panel title="Amendments of the published result" right={mayRaise ? <Btn kind="primary" onClick={() => setRaise({ studentId: "", outcome: "GRADED", ca: "", exam: "", reason: "" })}>Raise an amendment</Btn> : null}>
       <PBody>
-        <p className="sub2">A published mark changes only by an amendment: raised with its reason, approved by each desk in turn, applied by the Registrar on the Senate minute as a new version of the mark — the original kept, the student told.</p>
+        <p className="sub2">A published mark changes only by an amendment, approved by each desk and applied on the Senate minute; the original is kept.</p>
         {!rows ? <p className="sub2">Loading…</p> : !rows.length ? <p className="sub2">No amendment of this sheet.</p> : (
           <DTable noPrint pageSize={0} cols={["Amendment", "Student", "Published", "Corrected to", "Reason", "Stands", "|mid"]} rows={rows.map((a) => {
             const open = !["APPLIED", "REFUSED", "WITHDRAWN"].includes(a.stage);
@@ -121,7 +121,7 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
               <Field id="am-ex" label={`Examination (0–${examMax})`}><input id="am-ex" className="ctl tnum" inputMode="numeric" value={r.exam} onChange={(e) => setRaise({ ...r, exam: e.target.value })} /></Field>
             </> : null}
           </div>
-          <Field id="am-why" label="Why" required hint="In words Senate can read — the query it answers, what was found. A result query answered “corrected” for this student is linked on its own.">
+          <Field id="am-why" label="Why" required hint="In words Senate can read: the query and what was found">
             <textarea id="am-why" className="ctl" rows={3} maxLength={2000} value={r.reason} onChange={(e) => setRaise({ ...r, reason: e.target.value })} /></Field>
           {wrong ? <Note kind="bad" title="Marks outside the course's split">{`This course assesses ${caMax} and examines ${examMax}.`}</Note> : null}
         </Modal>

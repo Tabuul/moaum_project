@@ -147,9 +147,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
   if (!course) {
     return (
       <>
-        <Note kind="info" title="A paper is assembled to a blueprint, not picked by hand">
-          Each course has a bank of questions tagged by topic and difficulty, so an examination can be drawn to a specification — so many easy, so many hard, spread across the topics — and be comparable from one sitting to the next. The correct options never leave the server.
-        </Note>
+
         <Panel title="Courses" right="Pick one to open its question bank">
           {courses.length ? (
             <DTable cols={["Code", "Title", "Office|mid", "Active questions|num", "Awaiting moderation|num", "|num"]} rows={courses.map((c) => [
@@ -193,10 +191,9 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
       ]} cls="grid--5" />
       {waiting.length ? (
         <Note kind="info" title={`${waiting.length} question${waiting.length === 1 ? " waits" : "s wait"} for moderation`}>
-          A question goes on a paper once someone other than the person who set it — a Head of Department, an Examinations Officer, a Dean, or the course&rsquo;s own office — approves it.
-          A returned question carries the moderator&rsquo;s note; correcting it sends it back for moderation. Every change of wording, options, key or marks waits again.
-          {mayModerate ? (decidable.length ? <> You may decide {decidable.length} of them.</> : <> None of them is yours to decide: you set them (another moderator approves those), or they were returned to their setter.</>)
-            : <> Your office ({actingOffice ?? "none"}) does not approve questions; switch to a moderating office in the bar if you hold one.</>}
+          A question is approved by someone other than its setter; every change waits again.
+          {mayModerate ? (decidable.length ? <> You may decide {decidable.length} of them.</> : <> None is yours to decide.</>)
+            : <> Your office ({actingOffice ?? "none"}) does not approve questions.</>}
         </Note>
       ) : null}
 
@@ -267,7 +264,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
         <Modal title="Edit the question" sub={editing.sat ? `Sat ${editing.sat} time${editing.sat === 1 ? "" : "s"} · version ${editing.version ?? 1}` : course} wide onClose={() => setEditing(null)}
           foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setEditing(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !valid(e)} onClick={async () => { const j = await send(`/questions/${editing.id}`, "PUT", body(e), `Edit a question in ${course}`); if (j) setEditing(null); }}>Save</Btn></span>}>
           {form(e, setE, "e")}
-          {editing.sat ? <div className="sub2">This question has been sat. Saving makes version {(editing.version ?? 1) + 1}; every candidate who sat version {editing.version ?? 1} keeps it — their paper, their answers and their marks do not change. A change that should alter results already given is made by amending those results with a reason. The edit is refused while an examination drawing the question is open.</div> : null}
+          {editing.sat ? <div className="sub2">Saving makes version {(editing.version ?? 1) + 1}; candidates who sat version {editing.version ?? 1} keep their marks. Refused while an examination drawing the question is open.</div> : null}
         </Modal>
       ) : null}
       {history ? (

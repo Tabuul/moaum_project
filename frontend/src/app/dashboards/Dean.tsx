@@ -24,8 +24,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", 
     /* V325: the scope state says exactly why — what the grant holds and what is wrong with it */
     return scope && !scope.resolved ? <ScopeNotice scope={scope} /> : (
       <Note kind="bad" title={`Your ${role} office is not tied to a ${scopeNoun} yet`}>
-        This dashboard is scoped to your {scopeNoun}, and the portal cannot tell which one this office holds. Ask the
-        Registry to set the {scopeNoun} on your {role} assignment, then this fills in.
+        Ask the Registry to set the {scopeNoun} on your {role} assignment.
       </Note>
     );
   }
@@ -40,7 +39,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", 
       <ScopeNotice scope={scope} />
       {needLect ? (
         <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<LinkBtn kind="primary" href="/allocate">Teaching allocation</LinkBtn>}>
-          A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
+          A score sheet opens only once a lecturer is allocated.
         </Note>
       ) : (
         <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={<LinkBtn kind="ghost" href="/results/broadsheet">{Scope} broadsheet</LinkBtn>}>

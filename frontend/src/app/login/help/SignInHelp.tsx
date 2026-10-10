@@ -15,7 +15,7 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export interface HelpField { key: string; type?: string; label: string; options?: string[]; required?: boolean; hint?: string }
 
-const LEAD = <>Cannot sign in? Tell the Directorate of ICT. The desk confirms who you are &mdash; it may call you &mdash; before it changes anything on an account, and it never asks for your password.</>;
+const LEAD = <>Cannot sign in? Tell the Directorate of ICT. The desk never asks for your password.</>;
 
 export function SignInHelp({ reachable, open, fields }: { reachable: boolean; open: boolean; fields: HelpField[] }) {
   const [f, setF] = useState<Record<string, string>>({});
@@ -56,11 +56,11 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
   return (
     <AuthLayout eyebrow="ICT support" wide lead={LEAD}>
       <div className="login-card">
-        <PageHead title="Ask for help signing in" description={<>Try <Link href="/login/forgot">Forgot password</Link> first: a reset link reaches the email on your account within minutes. If it does not arrive, your account is locked, or the portal does not know your number, tell the desk here.</>} />
+        <PageHead title="Ask for help signing in" description={<>Try <Link href="/login/forgot">Forgot password</Link> first. If the link does not arrive or your account is locked, tell the desk here.</>} />
         {number ? (
           <>
             <Note kind="ok" title={`Your request is with ICT Support — ${number}`}>
-              Keep this number. Track the request with it and the email address you gave; an acknowledgement is on its way to that address. The desk confirms who you are before it changes anything, and never asks for your password.
+              Keep this number to track the request; an acknowledgement is on its way to your email. The desk never asks for your password.
             </Note>
             <div><LinkBtn kind="primary" size="md" href="/track">Track the request</LinkBtn></div>
           </>

@@ -61,7 +61,7 @@ export function GstEligibilityView({ data }: { data: GstEpsExplain }) {
             <span key="r">{yes(c.registered)}</span>,
           ];
         })} />
-      ) : <div className="sub2 mt-1">No GST or EPS course concerns this student in {data.session}: none is offered to their programme at their level, none is carried over, none is on their registration.</div>}
+      ) : <div className="sub2 mt-1">No GST or EPS course concerns this student in {data.session}.</div>}
     </>
   );
 }

@@ -158,11 +158,7 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
     return (
       <>
         {head}
-        <Note kind="info" title="Search finds one record; the scope bar narrows a list">
-          Use search when you already know what you are looking for &mdash; a matriculation number a student has quoted
-          on the phone, a verification code on a document an employer has sent in. Use Records &amp; queries when you
-          want everyone who matches a description.
-        </Note>
+        <Note kind="info" title="Search finds one record; the scope bar narrows a list" />
         <TwoCol>
           <Panel title="What you can search for">
             <DTable
@@ -194,8 +190,7 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
           </Panel>
         </TwoCol>
         <Note kind="bad" title="Every search for a person is recorded against your account">
-          Looking a student up is processing their personal data whether or not you change anything, so the search term,
-          the time and your office go to the audit trail. The Registrar reviews that log quarterly. Search for people you
+          The term, the time and your office go to the audit trail, reviewed by the Registrar quarterly. Search only for people you
           have business with.
         </Note>
       </>
@@ -232,9 +227,7 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
             </LinkBtn>
           }
         >
-          Check the spelling, or try part of the name rather than all of it. A record that exists but has not yet been
-          brought onto the register will not appear here &mdash; if you have business with it, the Registry can act on it,
-          recorded either way.
+          Check the spelling, or try part of the name.
         </Note>
       ) : (
         KINDS.slice(1).map((k) => {

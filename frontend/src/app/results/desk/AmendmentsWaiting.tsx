@@ -25,7 +25,7 @@ export function AmendmentsWaiting() {
   return (
     <Panel title="Amendments waiting on this desk" right={<Pil kind="warn">{`${rows.length} to decide`}</Pil>}>
       <PBody>
-        <p className="sub2">Corrections of published results at your stage. Open each on its sheet&rsquo;s chain to approve or refuse it.</p>
+        <p className="sub2">Corrections of published results at your stage.</p>
         <DTable noPrint pageSize={20} cols={["Amendment", "Course", "Student", "Published → corrected", "Reason", "|mid"]} rows={rows.map((a) => [
           <b key="r" className="tnum">{a.ref}</b>, `${a.course_code} · ${a.session}, semester ${a.semester}`, <span key="s">{a.name}<span className="sub2 tnum" style={{ display: "block" }}>{a.number}</span></span>,
           <span key="m" className="tnum">{`${markOf(a.was_outcome, a.was_ca, a.was_exam)} → ${markOf(a.outcome, a.ca, a.exam)}`}</span>, <span key="w" className="sub2">{a.reason}</span>,

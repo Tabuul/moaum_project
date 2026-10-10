@@ -26,7 +26,7 @@ export async function BursarDashboard({ session }: { session: string }) {
           {Number(t.credits_open) ? `${t.credits_open} bank credit${Number(t.credits_open) === 1 ? "" : "s"} (${money(Number(t.credits_open_amount))}) with no reference quoted. ` : ""}{Number(t.gateway_exceptions) ? `${t.gateway_exceptions} gateway event${Number(t.gateway_exceptions) === 1 ? "" : "s"} the portal could not post. ` : ""}Until each is attributed, a student who has paid may be blocked from registering.
         </Note>
       ) : !t.scheme_in_force ? (
-        <Note kind="bad" title="No clearance scheme is in force" action={<LinkBtn kind="urgent" href="/finance/fees">State the scheme</LinkBtn>}>Nothing a payment releases is stated for today, so registration refuses rather than assumes. The recommended scheme is put in force from the fee setup screen.</Note>
+        <Note kind="bad" title="No clearance scheme is in force" action={<LinkBtn kind="urgent" href="/finance/fees">State the scheme</LinkBtn>}>Registration is refused until a scheme is in force.</Note>
       ) : (
         <Note kind="ok" title="No settlement exception is open">Every gateway event posted or was resolved, and no bank credit waits to be attributed.</Note>
       )}
@@ -58,7 +58,7 @@ export async function BursarDashboard({ session }: { session: string }) {
           ]} />
         </Panel>
       </div>
-      <Note kind="info" title="No academic transaction completes while money is owed">The clearance gate is checked inside the transaction, at the moment a student tries to register, sit, graduate or order a transcript. That is why a payment that cannot be attributed is an urgent matter rather than an accounting one.</Note>
+      
       <Panel title="Recent confirmations" right={<LinkBtn kind="ghost" href="/finance/payments">Query all payments</LinkBtn>}>
         {v.data.recent.length ? (
           <DTable cols={["When", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num"]} rows={v.data.recent.map((r) => [<span className="tnum sub2" key="w">{when(r.confirmed_at)}</span>, <Two key="p" a={r.payer} b={r.number} />, <span className="sub2" key="u">{r.purpose}</span>, <span className="sub2" key="c">{r.channel}</span>, <b className="tnum" key="a">{money(Number(r.amount))}</b>, <span className="tnum sub2" key="r">{r.receipt_no ?? r.reference}</span>])} />

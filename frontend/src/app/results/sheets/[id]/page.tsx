@@ -37,7 +37,7 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
   return (
     <Shell route="t/sheet" me={me.ok ? me.data : null}
       title={s ? `${s.courseCode} — ${s.courseTitle}` : undefined}
-      sub={s ? `${s.units} credit unit${s.units === 1 ? "" : "s"} · ${s.session} ${semesterName(s.semester).toLowerCase()} semester · ${s.deptName} · every registered candidate, all programmes` : undefined}>
+      sub={s ? `${s.units} credit unit${s.units === 1 ? "" : "s"} · ${s.session} ${semesterName(s.semester).toLowerCase()} semester · ${s.deptName}` : undefined}>
       {detail.ok && roll.ok ? (
         <>
           <ScoreEntry detail={detail.data} roll={roll.data.map(normalise)} actingOffice={office} />

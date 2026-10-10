@@ -115,8 +115,8 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       {exam.paper_problem && exam.state !== "COMPLETED" && exam.state !== "CANCELLED" ? <Note kind="bad" title="The paper is not ready">{textOf(exam.paper_problem)}. Set the paper before publishing.</Note> : null}
       {exam.state === "CANCELLED" ? <Note kind="bad" title={`Cancelled ${whenAt(exam.cancelled_at)}`}>{exam.cancel_reason}</Note> : null}
       {exam.archived_at ? <Note kind="info" title={`Archived ${whenAt(exam.archived_at)}`}>Out of the working lists; everything about it is kept.</Note> : null}
-      {exam.proctoring === "CAMERA" ? <Note kind="info" title="Camera proctoring, by consent">Each candidate is asked for consent before the camera is used. The screen reports face signals (no face, more than one face, a face at the edge of view) where the candidate&rsquo;s browser can see faces; no video or picture is kept, no microphone is used, and nobody is identified by their face. A signal is evidence for review, never a finding on its own.</Note> : null}
-      {exam.security_mode === "SECURE" ? <Note kind="info" title="Secure / kiosk mode">Candidates sit this examination in the approved secure examination environment (a secure exam browser, a kiosk, a managed CBT laboratory). A standard browser cannot guarantee that a candidate does not switch to another application or device; the secure environment does.</Note> : null}
+      {exam.proctoring === "CAMERA" ? <Note kind="info" title="Camera proctoring, by consent">Face signals only (no face, more than one, at the edge); no video or picture kept, no microphone, no face identification. A signal is evidence for review, never a finding.</Note> : null}
+      {exam.security_mode === "SECURE" ? <Note kind="info" title="Secure / kiosk mode">Candidates sit this examination in the approved secure environment (secure exam browser, kiosk or managed CBT laboratory).</Note> : null}
       <Tiles items={[
         ["CANDIDATES", num(counts.candidates), null, `${num(counts.eligible)} eligible now`],
         ["WRITING", num(counts.in_progress), counts.in_progress ? "var(--green-ink)" : null, `${num(counts.disconnected)} disconnected`],
@@ -137,7 +137,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
         <>
           <Panel title="Configuration" right={editable ? <Btn kind="primary" disabled={busy || !f.title.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save changes"}</Btn> : exam.state === "PUBLISHED" && canManage ? <Btn kind="secondary" disabled={busy} onClick={() => void save()}>Save closing time & instructions</Btn> : <span className="sub2">Read only</span>}>
             <PBody>
-              {exam.state === "PUBLISHED" ? <div className="sub2 mb-2">The examination is published: its paper and rules are fixed. The title, the instructions and the closing time may still change.</div> : null}
+              {exam.state === "PUBLISHED" ? <div className="sub2 mb-2">Published: the paper and rules are fixed; the title, instructions and closing time may still change.</div> : null}
               <ExamFields f={f} set={(p) => setF({ ...f, ...p })} locked={!editable} jupeb={exam.office === "JUPEB" ? { components: exam.caComponents ?? [] } : undefined} />
             </PBody>
           </Panel>
@@ -149,7 +149,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
                   {actions.filter((a) => a.when).map((a) => <Btn key={a.action} kind={a.kind} disabled={busy} onClick={() => { setReason(""); setAsk({ action: a.action, title: a.label, text: a.confirm, reason: !!a.reason }); }}>{a.label}</Btn>)}
                 </div>
               ) : null}
-              <div className="sub2 mt-2">Draft → scheduled → published (candidates told) → open by the clock → closed → completed (results auto-scored, then reviewed, approved and published). The clock opens and ends the window; the office closes early and completes.</div>
+              <div className="sub2 mt-2">Draft → scheduled → published → open → closed → completed.</div>
             </PBody>
           </Panel>
         </>
@@ -174,15 +174,15 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
                   ))}
                   {editable ? <Btn kind="secondary" disabled={busy || (!!bpDim && bpTotal !== exam.total_questions)} onClick={() => void saveBlueprint()}>Save the blueprint</Btn> : null}
                 </div>
-                {bpDim ? <div className={`sub2 mt-1${bpTotal !== exam.total_questions ? " ink-red" : ""}`}>{bpTotal} of the {exam.total_questions} questions the paper draws{bpTotal !== exam.total_questions ? " — the blueprint must add up to the paper" : ""}. The server refuses a blueprint the pool cannot satisfy and says what is short.</div> : null}
+                {bpDim ? <div className={`sub2 mt-1${bpTotal !== exam.total_questions ? " ink-red" : ""}`}>{bpTotal} of the {exam.total_questions} questions the paper draws{bpTotal !== exam.total_questions ? " — the blueprint must add up to the paper" : ""}.</div> : null}
                 {bpDim === "TOPIC" && !bpValues.length ? <div className="sub2 mt-1">No question in the pool names a topic yet.</div> : null}
               </div>
             ) : null}
             <div className="sub2 mb-2">
               {exam.selection === "RANDOM"
-                ? `Each candidate draws ${exam.total_questions} questions from the pool by their own seed. Leave the pool empty to draw from the course's whole active bank, or pick the questions it draws from. `
-                : "The questions in the order listed; shuffled per candidate when the question order says so. "}
-              Marks come from the bank unless overridden on the paper. Only a question a moderator has approved goes on a paper; a whole-bank draw takes approved questions only. The correct options never leave the server. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(bankName)}`}>Open the {exam.course_code} bank</LinkBtn>
+                ? `Each candidate draws ${exam.total_questions} questions from the pool. An empty pool draws from the whole active bank. `
+                : "In the order listed, shuffled per candidate if the question order says so. "}
+              Only moderator-approved questions go on a paper. <LinkBtn kind="ghost" size="sm" href={`${base}/question-bank?course=${encodeURIComponent(bankName)}`}>Open the {exam.course_code} bank</LinkBtn>
             </div>
             {!bank ? <div className="sub2">Loading the bank…</div> : (
               <DTable pageSize={50} cols={["On paper|mid", "#|mid", "Question", "Topic|mid", "Kind|mid", "Difficulty|mid", "Marks|num", "Order|mid"]} rows={[...bank].sort((a, b) => (picked.indexOf(a.id) === -1 ? 1e9 : picked.indexOf(a.id)) - (picked.indexOf(b.id) === -1 ? 1e9 : picked.indexOf(b.id))).map((q) => {
@@ -208,7 +208,7 @@ export function CbtExam({ exam, base, canManage, stronger, initialTab }: { exam:
       {tab === "results" && analysis.data && analysis.data.flagged > 0 ? (
         <Note kind="bad" title={`${analysis.data.flagged} question${analysis.data.flagged === 1 ? "" : "s"} may carry a wrong key`}
           action={<Btn kind="secondary" onClick={() => setTab("items")}>Open the question analysis</Btn>}>
-          More of the strongest candidates chose another option than the one marked correct. Look at the key before approving the results.
+          The strongest candidates mostly chose another option. Check the key before approving results.
         </Note>
       ) : null}
       {tab === "results" ? <CbtResults exam={exam} base={base} canManage={canManage} stronger={stronger} /> : null}

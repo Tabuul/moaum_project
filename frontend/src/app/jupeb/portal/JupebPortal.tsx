@@ -181,7 +181,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
       {me.state === "WITHDRAWN" ? <Note kind="bad" title="Your application is withdrawn"
         action={me.refundClaim && tab !== "payments" ? <Btn kind="ghost" onClick={() => setTab("payments")}>{me.refundClaim.state.status === "AWAITING_DETAILS" ? "Give your account" : "See your refund"}</Btn> : undefined}>
-        {`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Your record is kept; any refund is the Bursary's decision under its own rules.${me.refundClaim ? " Your refund claim is with the Bursary." : ""}`}</Note> : null}
+        {`Withdrawn${me.withdrawn_at ? ` on ${day(me.withdrawn_at)}` : ""}. Any refund is the Bursary's decision.${me.refundClaim ? " Your refund claim is with the Bursary." : ""}`}</Note> : null}
       {tab !== "attendance" ? <AttendanceWarning me={me} onOpen={() => setTab("attendance")} /> : null}
       {tab !== "documents" && !guided && me.documents.some((d) => d.status === "REPLACEMENT_REQUIRED" || d.status === "REJECTED") ? (
         <Note kind="bad" title="A document must be uploaded again" action={<Btn kind="ghost" onClick={() => setTab("documents")}>Open Documents</Btn>}>
@@ -379,7 +379,7 @@ function CorrectionRequest({ me, act, onRequests }: { me: Candidate; act: Act; o
   if (pending) {
     return (
       <Note kind="info" title="A request of yours is with the JUPEB Office" action={<Btn kind="ghost" onClick={onRequests}>See your requests</Btn>}>
-        {`You asked to ${pending.words}, on ${day(pending.requested_at)}. One request is open at a time; a correction of your details can be asked once it is decided.`}
+        {`You asked to ${pending.words} on ${day(pending.requested_at)}. One request is open at a time.`}
       </Note>
     );
   }
@@ -399,8 +399,7 @@ function CorrectionRequest({ me, act, onRequests }: { me: Candidate; act: Act; o
   return (
     <Panel title="Ask for a correction of your personal details">
       <PBody>
-        <p className="sub2">Your name, sex, date of birth, NIN, nationality, state of origin and LGA are corrected only by the JUPEB Office, on evidence (birth certificate, NIN slip, sworn affidavit or
-          marriage certificate). Tick what is wrong and say what it should read; nothing changes until the Office approves.</p>
+        <p className="sub2">Name, sex, date of birth, NIN, nationality, state of origin and LGA are corrected only by the JUPEB Office, on evidence. Tick what is wrong and say what it should read.</p>
         <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", margin: "var(--s-2) 0" }}>
           {CORRECTION_FIELDS.map(([k, label]) => (
             <label key={k} className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={k in to} onChange={(e) => toggle(k, e.target.checked)} /> {label}</label>
@@ -607,7 +606,7 @@ function OlevelStep({ me, act, errors, onSaved, onBack }: { me: Candidate; act: 
     <div className="stack">
       <Panel title="Step 2 · O’Level results">
         <PBody>
-          <p className="sub2">At least five credits including English Language and Mathematics, in no more than two sittings. With two sittings, enter each sitting&rsquo;s results separately; you upload each result in the next step.</p>
+          <p className="sub2">At least five credits including English Language and Mathematics, in no more than two sittings. Enter each sitting separately.</p>
           <Field id="o-count" label="Number of sittings" required error={errors.olevelSittings}>
             <select id="o-count" className="ctl" style={{ maxWidth: 220 }} value={count} onChange={(e) => setCount(Number(e.target.value))}>
               <option value={1}>One sitting</option><option value={2}>Two sittings</option>
@@ -721,7 +720,7 @@ function CombinationPicker({ list, value, onChange, id, error }: { list: Combina
   const chosen = list.find((c) => c.id === value) ?? null;
   return (
     <>
-      <Field id={id} label="Subject combination" required error={error} hint={list.length ? "The three subjects you will study and be examined in by the Board." : "No combination is offered for this programme yet."}>
+      <Field id={id} label="Subject combination" required error={error} hint={list.length ? "The three subjects you will be examined in." : "No combination is offered for this programme yet."}>
         <select id={id} className="ctl" value={value} onChange={(e) => onChange(e.target.value)} disabled={!list.length}>
           <option value="">— Choose a combination —</option>
           {areas.map((a) => (
@@ -788,7 +787,7 @@ function ReviewStep({ me, act, onBack, onGo }: { me: Candidate; act: Act; onBack
         <PBody>
           {incomplete.length ? <Note kind="bad" title="Not ready to submit">{incomplete.map((s) => (
             <span key={s.step}><a href="#" onClick={(e) => { e.preventDefault(); onGo(STEP_ORDER.indexOf(s.step)); }}>{STEP_TITLE[s.step]}</a>: {s.problems.map((p) => p.message).join("; ")}. </span>
-          ))}</Note> : <Note kind="ok" title="Everything is in">Check the details below, then submit. Once submitted, the application cannot be changed unless the JUPEB Office returns it.</Note>}
+          ))}</Note> : <Note kind="ok" title="Everything is in">Check the details below, then submit. A submitted application changes only if the JUPEB Office returns it.</Note>}
           <div className="eyebrow mt-2">Personal information</div>
           <KvGrid pairs={[["Name", fullName(me)], ["Sex", me.sex === "F" ? "Female" : me.sex === "M" ? "Male" : "—"], ["Date of birth", day(me.date_of_birth)], ["NIN", me.nin ?? "—"],
             ["Phone", me.phone ?? "—"], ["State / LGA", `${me.state_of_origin ?? "—"} / ${me.lga ?? "—"}`], ["Contact address", me.contact_address ?? "—"], ["Next of kin", me.next_of_kin_name ? `${me.next_of_kin_name} (${me.next_of_kin_phone ?? ""})` : "—"]]} />
@@ -900,7 +899,7 @@ function Admission({ me, reload }: { me: Candidate; reload: () => Promise<void> 
               </div>
             </>
           ) : !sc.valid ? <p className="sub2">Status checking is for a submitted application whose fee is paid.</p>
-            : !sc.window_open ? <Note kind="info" title="Admission status checking is not open yet">The Directorate of ICT opens it when admissions are ready. You will pay a status checking fee of {naira(me.feeRule.checking_fee)} once, then check your status as often as you like.</Note>
+            : !sc.window_open ? <Note kind="info" title="Admission status checking is not open yet">The status checking fee of {naira(me.feeRule.checking_fee)} is paid once.</Note>
             : (
               <>
                 <p>Pay the admission status checking fee once ({naira(me.feeRule.checking_fee)}) to see your admission status. You will not pay it again.</p>
@@ -954,7 +953,7 @@ function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Cand
   return (
     <Panel title={forced ? "Choose your own password" : "Change your password"}>
       <PBody>
-        {forced ? <Note kind="info" title="You signed in with a temporary password">The JUPEB Office set up your account from the old portal&rsquo;s register. Choose your own password to continue; the temporary one stops working.</Note> : null}
+        {forced ? <Note kind="info" title="You signed in with a temporary password">Choose your own password to continue.</Note> : null}
         <div className="grid grid--3">
           <Field id="pw-cur" label={forced ? "Temporary password" : "Current password"} required><input id="pw-cur" className="ctl" type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
           <Field id="pw-new" label="New password" required hint="At least eight characters" error={short ? "At least eight characters" : undefined}><input id="pw-new" className="ctl" type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
@@ -995,7 +994,7 @@ function RefundClaimPanel({ claim, act }: { claim: RefundClaim; act: Act }) {
   return (
     <Panel title="Refund of your JUPEB fees" right={<Pil kind={w[1]}>{w[0]}</Pil>}>
       <PBody>
-        <p className="sub2">{w[2]} Any refund is the Bursary&rsquo;s decision under its own rules; you are told of it by email and here.</p>
+        <p className="sub2">{w[2]} Any refund is the Bursary&rsquo;s decision.</p>
         {claim.declined_reason ? <Note kind="bad" title="The Bursary's reason">{claim.declined_reason}</Note> : null}
         <DTable noPrint pageSize={0} cols={["Fee paid", "Reference", "Amount|num", "Paid on"]} rows={claim.payments.map((p) => [FEE_KIND[p.kind] ?? p.kind, p.reference, naira(p.amount), day(p.paidOn)])} />
         {claim.refunds.length ? (
@@ -1035,7 +1034,7 @@ function Payments({ me, reload, act }: { me: Candidate; reload: () => Promise<vo
     return (
       <div className="stack">
         {claim}
-        <Note kind="info" title="Your fees were handled on the old portal">{`You were registered on the old portal (${me.legacy_ref ?? me.application_no}). Fees you paid there are kept by the Bursary; if you are told a balance is owed here, the JUPEB Office will guide you.`}</Note>
+        <Note kind="info" title="Your fees were handled on the old portal">{`Old-portal registration ${me.legacy_ref ?? me.application_no}. Ask the JUPEB Office about any balance shown here.`}</Note>
         {me.references.length ? (
           <Panel title="Payments made here">
             <PBody><DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Confirmed", "Receipt|mid"]} rows={me.references.map((x: FeeRef) => [
@@ -1115,7 +1114,7 @@ function Subjects({ me, act }: { me: Candidate; act: Act }) {
         <KvGrid pairs={[["Programme", streamLabel(me.stream)], ["Combination", me.combination_code ?? "Not yet chosen"], ["Class", me.class_name ?? "Not yet placed"], ["JUPEB examination number", me.exam_no ?? "Not yet assigned"]]} />
         {heldButGone ? <Note kind="bad" title={`${me.combination_code} is no longer offered`}>The University no longer offers the combination you chose on your application. Choose another to register.</Note> : null}
         {open ? (
-          <Field id="s-comb" label={`Your subject combination (${streamLabel(me.stream)})`} hint={offered.length ? "The combination you chose on your application is selected; you may choose another until you register." : "No combination is offered for your programme yet; the JUPEB Office will add them."}>
+          <Field id="s-comb" label={`Your subject combination (${streamLabel(me.stream)})`} hint={offered.length ? "You may change it until you register." : "No combination is offered for your programme yet."}>
             <select id="s-comb" className="ctl" value={choice} onChange={(e) => setChoice(e.target.value)} disabled={!offered.length}>
               <option value="">— Choose a combination —</option>
               {offered.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.subject1}, {c.subject2}, {c.subject3}</option>)}
@@ -1156,7 +1155,7 @@ function YourCourses({ me, act }: { me: Candidate; act: Act }) {
   return (
     <Panel title={`Your courses${d.syllabus ? ` — ${d.syllabus}` : ""}`}>
       <PBody>
-        <p className="sub2">The course units of your three subjects, two in each semester, as the Board&rsquo;s syllabus lists them. Open a course to read what it covers.</p>
+        <p className="sub2">The course units of your subjects, two in each semester.</p>
         {either.map((r) => (
           <Field key={r.code} id={`opt-${r.code}`} label={`${r.title}: which do you take?`}
             hint={me.exam_no ? "Your examination number is assigned, so the JUPEB Office changes this now." : "Choose the one you will be examined in. You may change it until your examination number is assigned."}>
@@ -1207,7 +1206,7 @@ function MyClearance() {
   return (
     <Panel title="Your clearance for the examination" right={d.cleared ? <Pil kind="ok">Cleared</Pil> : <Pil kind="warn">Not yet</Pil>}>
       <PBody>
-        <p className="sub2">To sit the JUPEB examination your record must be complete. Where something is outstanding, see to it, or ask the JUPEB Office.</p>
+        <p className="sub2">Your record must be complete to sit the JUPEB examination.</p>
         <DTable noPrint pageSize={0} cols={["", "Item", "Note"]} rows={d.checks.map((c) => [<Pil key="p" kind={c.ok ? "ok" : "warn"}>{c.ok ? "Done" : "Outstanding"}</Pil>, c.label, c.ok ? (c.note ?? "—") : c.note ?? "—"])} />
       </PBody>
     </Panel>
@@ -1223,7 +1222,7 @@ function AttendanceWarning({ me, onOpen }: { me: Candidate; onOpen: () => void }
   const list = (rows: typeof below) => rows.map((r) => `${r.title} ${r.rate == null ? "—" : `${Number(r.rate)}%`}`).join(", ");
   if (below.length) {
     return <Note kind="bad" title={`Your attendance is below the minimum of ${Number(below[0].min_percent)}%`} action={<Btn kind="ghost" onClick={onOpen}>See your attendance</Btn>}>
-      {`In ${list(below)}. Attend every class from now on; if you were absent for a good reason, see the JUPEB Office (an excused absence does not count against you).`}</Note>;
+      {`In ${list(below)}. An excused absence does not count against you; see the JUPEB Office.`}</Note>;
   }
   if (risk.length) {
     return <Note kind="info" title="Your attendance is close to the minimum" action={<Btn kind="ghost" onClick={onOpen}>See your attendance</Btn>}>
@@ -1298,7 +1297,7 @@ function Timetable({ me }: { me: Candidate }) {
       <PBody>
         {!rows.length ? <Note kind="info" title="No lectures on the timetable yet">The JUPEB Office publishes the timetable of your subjects here{me.class_name ? ` for ${me.class_name}` : ""}.</Note> : (
           <>
-            <p className="sub2">The lectures and practicals of your subjects. Hover a lecture for the Office&rsquo;s note.</p>
+            <p className="sub2">Hover a lecture for the Office&rsquo;s note.</p>
             <TimetableGrid slots={rows} frame={frame} />
           </>
         )}
@@ -1340,8 +1339,7 @@ function Practice() {
   const past = (t: PracticeTest): PastAttempt[] => { try { return JSON.parse(t.attempts) as PastAttempt[]; } catch { return []; } };
   return (
     <div className="stack">
-      <Note kind="info" title="Practice, not examination">Practice tests prepare you for the JUPEB examination. They are timed and marked at once, and never count towards your result.
-        A mock examination is sat once, within its window, and its result is shown when the JUPEB Office releases it.</Note>
+      <Note kind="info" title="Practice, not examination">Practice tests never count towards your result. A mock examination is sat once, within its window.</Note>
       <Panel title="Practice tests of your subjects">
         <PBody>
           {!tests.length ? <p className="sub2">No practice test is open for your subjects yet. The JUPEB Office adds them here.</p> : (
@@ -1365,7 +1363,7 @@ function Practice() {
       {topics.length ? (
         <Panel title="Your topics, weakest first">
           <PBody>
-            <p className="sub2">How you have answered the questions of each topic of the syllabus in your practice — the topics to read again come first.</p>
+            <p className="sub2">Your practice by topic, weakest first.</p>
             <DTable noPrint pageSize={10} cols={["Subject", "Topic", "Answered|num", "Right|num", "Score|num"]} rows={topics.map((x) => [x.subject_code, x.label, x.answered, x.correct,
               <Pil key="p" kind={Number(x.percentage) >= 70 ? "ok" : Number(x.percentage) >= 50 ? "info" : "warn"}>{`${Number(x.percentage)}%`}</Pil>])} />
           </PBody>
@@ -1503,7 +1501,7 @@ function Announcements({ onRead }: { onRead: () => void }) {
   return (
     <Panel title="Announcements from the JUPEB Office" right={unread.length ? <Btn kind="ghost" disabled={busy} onClick={() => void read(unread.map((a) => a.id))}>Mark all as read</Btn> : null}>
       <PBody>
-        {!list.length ? <p className="sub2">No announcement for you yet. Notices from the JUPEB Office appear here, and by email or text when the Office sends them.</p> : (
+        {!list.length ? <p className="sub2">No announcement yet.</p> : (
           <div className="stack">
             {list.map((a) => (
               <div key={a.id} className="card" style={{ borderLeft: `3px solid ${a.read ? "var(--line)" : "var(--primary)"}` }}><div className="card__body">
@@ -1552,7 +1550,7 @@ function IdCardSection({ me }: { me: Candidate }) {
   };
   return (
     <>
-      <Note kind="info" title="This is a picture of your card">The JUPEB Office prints and issues the card itself. Its QR code opens the University&rsquo;s record, so a card that is altered or lost and replaced does not verify.</Note>
+      <Note kind="info" title="This is a picture of your card">The JUPEB Office prints and issues the card.</Note>
       <Panel title="Your JUPEB identity card" right={<span className="sub2 tnum">{card.code}</span>}>
         <PBody><IdCardPair c={data} big /></PBody>
       </Panel>
@@ -1561,7 +1559,7 @@ function IdCardSection({ me }: { me: Candidate }) {
 }
 
 function Results({ me }: { me: Candidate }) {
-  if (!me.resultsPublished) return <Note kind="info" title="Results not yet published">Your JUPEB results appear here once the JUPEB Office publishes them. You will be told by email.</Note>;
+  if (!me.resultsPublished) return <Note kind="info" title="Results not yet published">You will be told by email when they are published.</Note>;
   const gp = me.gradePoint;
   return (
     <Panel title="JUPEB results" right={<LinkBtn kind="ghost" href="/jupeb/pdf/result">Statement of result</LinkBtn>}>
@@ -1588,7 +1586,7 @@ function MyAssessment() {
   return (
     <Panel title="Continuous assessment">
       <PBody>
-        <p className="sub2">Your continuous assessment in each subject, as the JUPEB Office has made it final for the Board. A subject not yet final shows nothing.</p>
+        <p className="sub2">Your final continuous assessment in each subject.</p>
         <DTable noPrint pageSize={0} cols={["Subject", ...d.components.map((c) => `${c.title} /${Number(c.max_score)}|num`), `Total /${outOf}|num`]}
           rows={d.subjects.map((s) => [s.title, ...d.components.map((c) => (s.locked_at ? fmt(s.scores?.[c.id]) : "")), s.locked_at ? fmt(s.total) : <span key="n" className="sub2">Not yet final</span>])} />
       </PBody>
@@ -1611,7 +1609,7 @@ function Exams() {
         {`${d.examinations.title}. Your examination number: ${d.examNo ?? "not yet assigned"}.`}</Note> : null}
       <Panel title={`Your examination timetable · ${d.session}`} right={d.admitCard ? <LinkBtn kind="primary" href="/jupeb/pdf/admit">Admit card</LinkBtn> : null}>
         <PBody>
-          {!d.published ? <p className="sub2">The JUPEB Office publishes the timetable of the examination here once the Board releases it. You are told when it is published.</p>
+          {!d.published ? <p className="sub2">The timetable appears here once the Board releases it.</p>
             : !d.papers.length ? <p className="sub2">No paper of your subjects is on the published timetable. Ask the JUPEB Office.</p> : (
               <DTable noPrint pageSize={0} cols={["Day", "Time", "Subject", "Paper", "Centre"]} rows={d.papers.map((x) => [day(x.day), `${x.starts_at}${x.ends_at ? ` – ${x.ends_at}` : ""}`,
                 `${x.subject_title}${x.option_title ? ` (${x.option_title})` : ""}`, `${x.title} · ${EXAM_KIND[x.kind] ?? x.kind}`, x.centre ?? "—"])} />
@@ -1696,7 +1694,7 @@ function Requests({ me, act }: { me: Candidate; act: Act }) {
       ) : kinds.length ? (
         <Panel title="Ask the JUPEB Office for a change">
           <PBody>
-            <p className="sub2">Your submitted application is changed only by the JUPEB Office. Say what you need and why; you will be told of the decision by email and here.</p>
+            <p className="sub2">A submitted application is changed only by the JUPEB Office. Say what you need and why.</p>
             <Field id="rq-kind" label="What do you need?">
               <select id="rq-kind" className="ctl" style={{ maxWidth: 420 }} value={kind} onChange={(e) => { setKind(e.target.value); setComb(""); setSure(false); }}>
                 {kinds.map((k) => <option key={k} value={k}>{CHANGE_KIND[k]}</option>)}
@@ -1718,7 +1716,7 @@ function Requests({ me, act }: { me: Candidate; act: Act }) {
               </Field>
             ) : null}
             {kind === "WITHDRAW" ? (
-              <Note kind="bad" title="Withdrawing ends your application">Your record is kept, but you will not continue in the JUPEB programme. Any refund is the Bursary&rsquo;s decision under its own rules.</Note>
+              <Note kind="bad" title="Withdrawing ends your application">You will not continue in the JUPEB programme. Any refund is the Bursary&rsquo;s decision.</Note>
             ) : null}
             <Field id="rq-reason" label="Why?" required hint="At least ten characters"><textarea id="rq-reason" className="ctl" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             {kind === "WITHDRAW" ? <label className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> I understand and want to withdraw</label> : null}
@@ -1727,7 +1725,7 @@ function Requests({ me, act }: { me: Candidate; act: Act }) {
           </PBody>
         </Panel>
       ) : <Note kind="info" title="No change can be asked for now">Your record as it stands takes no change request.</Note>}
-      {!open && me.state !== "WITHDRAWN" ? <p className="sub2">To correct your name, sex, date of birth, NIN, nationality, state or LGA, ask from My Profile; your phone, addresses, guardian and next of kin you update there yourself.</p> : null}
+      {!open && me.state !== "WITHDRAWN" ? <p className="sub2">Ask from My Profile to correct your name, sex, date of birth, NIN, nationality, state or LGA.</p> : null}
       <Panel title="Your requests">
         <PBody>
           <DTable noPrint pageSize={0} cols={["Asked", "Request", "Why", "Decision", "Note"]} rows={me.requests.map((r) => [

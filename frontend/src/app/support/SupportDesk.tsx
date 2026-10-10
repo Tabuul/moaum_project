@@ -67,7 +67,7 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
         ["All", String(requests.length), null, "Newest 300"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <Note kind="info" title="A request that sits unanswered is the failure this queue exists to prevent">The oldest open request is at the top. An answer is recorded in your name, the student is told by email and SMS, and the request is resolved or left open for a reply.</Note>
+      <Note kind="info" title="The oldest open request is at the top">The student is told by email and SMS.</Note>
       <Panel title="Requests to this office" right={`${requests.length}`}>
         {requests.length ? (
           <DTable cols={["Reference", "Student", "Subject", "Raised", "Documents|mid", "State", "|num"]} rows={requests.map((r) => [

@@ -253,7 +253,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         </Note>
       ) : s.returnedTimes > 0 ? (
         <Note kind="bad" title={`Returned to you ${s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}`}>
-          {detail.chain.filter((d) => d.kind === "RETURN").map((d) => `${d.actorOffice}: “${d.comment}”`).join(" · ")}. Correct the marks concerned — each correction is a new version with its reason — and submit again.
+          {detail.chain.filter((d) => d.kind === "RETURN").map((d) => `${d.actorOffice}: “${d.comment}”`).join(" · ")}. Correct the marks concerned, each with its reason, and submit again.
         </Note>
       ) : null}
 
@@ -275,7 +275,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       {atEntry && onBehalf ? (
         <Note kind="info" title={`You are entering marks on behalf of ${s.lecturer ?? "the lecturer"}`}>
           <div className="t-sm" style={{ lineHeight: 1.6 }}>
-            {s.lecturer ?? "The lecturer"} remains the academic owner of this sheet. Every mark you write is recorded in your name as entered on their behalf, with the reason below beside it, and the sheet enters the chain at entry like any other: it still passes verification, the Departmental Board, the Faculty and Senate. If you submit it yourself, another person must verify it.
+            {s.lecturer ?? "The lecturer"} remains the academic owner. Every mark you enter is recorded as entered on their behalf, with the reason below; the sheet passes the full chain. If you submit it yourself, another person must verify it.
           </div>
           <div className="field mt-2" style={{ maxWidth: 640 }}>
             <label htmlFor="behalf-reason">Why the lecturer is not entering the marks themselves <span className="ink-red">*</span></label>
@@ -296,12 +296,12 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
           action={atEntry && own ? <span className="row row--inline row--tight"><Btn kind="primary" disabled={holding} onClick={() => void holdOffRoll()}>{holding ? "Holding…" : `Hold ${offRoll.length === 1 ? "this script" : `these ${offRoll.length} scripts`}`}</Btn><Btn kind="ghost" disabled={holding} onClick={() => setOffRoll([])}>Leave them</Btn></span> : undefined}>
           {offRoll.slice(0, 12).map((x) => <div key={x.line} className="tnum">Line {x.line}: {x.number}{x.outcome === "GRADED" ? ` · CA ${x.ca || "—"} · Exam ${x.exam || "—"}` : ` · ${x.outcome}`}</div>)}
           {offRoll.length > 12 ? <div className="sub2">… and {offRoll.length - 12} more</div> : null}
-          <div className="sub2 mt-1">A candidate not on the roll did not register the course. If they sat the paper, hold the scripts: each waits on the candidate&rsquo;s registration and the register releases it into this sheet when that is approved. A number the register does not know is refused by name and nothing is held.</div>
+          <div className="sub2 mt-1">A candidate not on the roll did not register the course. If they sat the paper, hold the scripts until their registration is approved.</div>
         </Note>
       ) : null}
       {atEntry && own && lockedCount > 0 ? (
         <Note kind="info" title={`${lockedCount} mark${lockedCount === 1 ? " is" : "s are"} on the record and locked`}>
-          A mark once saved is not changed by the lecturer. Enter the candidates still without one and submit. If a saved mark is wrong, submit the sheet and ask the Examination Officer or the Head of Department to return it with the reason; every mark then opens for amendment, each change carrying its reason.
+          A saved mark is not changed by the lecturer. Enter the remaining candidates and submit. To correct a saved mark, ask the Examination Officer or Head of Department to return the sheet.
         </Note>
       ) : null}
       {atEntry && own && returned ? (
@@ -309,7 +309,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
           Change what the return asks for, say why on each row, and submit again.
         </Note>
       ) : null}
-      {needReason.length ? <Note kind="bad" title="A changed mark carries its reason">{needReason.length} row{needReason.length === 1 ? " is" : "s are"} amendments of a mark already on the record. Say why in the reason box on the row; the old value stays beside the new one.</Note> : null}
+      {needReason.length ? <Note kind="bad" title="A changed mark carries its reason">{needReason.length} row{needReason.length === 1 ? " amends" : "s amend"} a mark on the record. Give the reason on the row.</Note> : null}
       {invalid.length ? <Note kind="bad" title={`${invalid.length} row${invalid.length === 1 ? " is" : "s are"} outside the marks — nothing saves until they are within`}>{s.courseCode} assesses CA out of {CA_MAX} and examines out of {EXAM_MAX}, both entered or neither. A part over its share is marked red on the row.</Note> : null}
 
       <Tiles items={[
@@ -320,12 +320,12 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       ]} />
 
       <Note kind="info" title={borrowed ? "This roll is every registered candidate, not this department’s students" : "This roll is every registered candidate"}>
-        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} {semesterName(s.semester).toLowerCase()} semester. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== ownCode).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}. They registered the course the ordinary way and they sat the same paper. Mark them the same way.
+        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} {semesterName(s.semester).toLowerCase()} semester. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== ownCode).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}.
       </Note>
 
       <Panel title={`${s.deptName} · ${ownProgramme?.programmeName ?? "Programme not on the roll yet"} · ${s.courseCode} — ${s.courseTitle} · ${s.lecturer ?? "No lecturer allocated"}`} right={`${entered} of ${roll.length} entered · Enter or ↓ moves down the column`}>
         {roll.length === 0 ? (
-          <div className="card__body sub2">Nobody is registered and approved for this offering, so the sheet has no rows. A student who is not on the roll is not registered, whatever they tell you.</div>
+          <div className="card__body sub2">Nobody is registered and approved for this offering.</div>
         ) : (
           <div className="tablewrap">
             <table style={{ minWidth: 1020 }}>
@@ -376,8 +376,8 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         )}
       </Panel>
 
-      <Note kind="info" title="You type two numbers; the system does the rest">
-        CA plus examination gives a total; a total one short of the pass mark is raised to it by the University&rsquo;s grace mark (39 reads 40) and graded as a pass; the total meets the grading scheme in force for this session; the scheme gives a grade and a point. <b>Nobody types a grade</b>, so nobody can type the wrong one, and a change to the scheme cannot leave behind a grade that no longer follows from the mark. The same three columns are computed identically whether the marks were typed on this screen or read from the template.
+      <Note kind="info" title="Grades are computed">
+        CA plus examination gives the total; a total one short of the pass mark is raised by the grace mark (39 reads 40); the grade follows the session&rsquo;s grading scheme.
       </Note>
 
       <Panel title="What happens when you attest">

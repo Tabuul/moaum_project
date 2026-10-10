@@ -139,7 +139,7 @@ function RowModal({ id, canAct, onClose, onChanged }: { id: string; canAct: bool
                   {row.student_id && row.reason_code === "POSSIBLE_RELABEL" ? <Btn kind="secondary" disabled={busy || !reason.trim()} onClick={() => void act("relabel")}>Relabel the school-fees row as the GST fee</Btn> : null}
                   <Btn kind="urgent" disabled={busy || !reason.trim()} onClick={() => void act("reject")}>Reject</Btn>
                 </div>
-                <div className="sub2 mt-1">Match: the student the old payment belongs to, verified. Reconcile: the payment goes onto the ledger as a confirmed GST reference for that student and session, dated when it was paid; a review finding (amount, fee not stated) needs your override reason. Relabel: the same money already sits on the ledger as school fees from the old portal — it becomes the GST fee instead. Reject: it establishes nothing.</div>
+                <div className="sub2 mt-1">Match: the verified student. Reconcile: written to the ledger as a confirmed GST reference (a review finding needs an override reason). Relabel: old-portal money already on the ledger as school fees becomes the GST fee. Reject: establishes nothing.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -244,15 +244,15 @@ export function LegacyGst({ data, canAct, initialTab }: { data: LegacySummaryPag
 
   return (
     <>
-      <PageHead description="A verified GST payment made on the old portal is a real payment. It is staged here as the old portal recorded it, matched to the current student by strong identifiers only, validated against the GST fee the Bursar stated for that session and against the ledger, and — on your word — written to the same ledger as a confirmed GST reference carrying the old reference and date. The entitlement, the registration gate, the CBT eligibility and every dashboard then read it; nobody is asked to pay again, and nothing is flipped by hand."
+      <PageHead description="Old-portal GST payments, matched to current students by strong identifiers, validated against the session's GST fee, and written to the ledger as confirmed GST references with the old reference and date."
         actions={<span className="row row--inline row--tight">
           <label htmlFor="lg-session" className="sub2">Session</label>
           <select id="lg-session" className="ctl" value={data.session ?? ""} onChange={(e) => go(sessionsHref(e.target.value))}><option value="">Every session</option>{data.sessions.filter((x) => x.session).map((x) => <option key={x.session as string} value={x.session as string}>{x.session}</option>)}{data.fees.filter((f) => !data.sessions.some((x) => x.session === f.session)).map((f) => <option key={f.session} value={f.session}>{f.session}</option>)}</select>
         </span>} />
       {variance !== 0 && Number(s.gst_rows) > 0 ? (
-        <Note kind="bad" title={`RECONCILIATION REQUIRED · variance ${naira(variance)}`}>Successful old-portal GST payments total {naira(s.legacy_successful_amount)}; {naira(s.reconciled_amount)} is on the ledger. The difference is in the queue: {num(s.requires_review)} requiring review, {num(s.unmatched)} unmatched, {num(s.duplicates)} duplicates, {num(s.rejected)} rejected, {num(s.matched)} matched but not yet applied. The migration is not complete until every one is accounted for.</Note>
+        <Note kind="bad" title={`RECONCILIATION REQUIRED · variance ${naira(variance)}`}>Successful old-portal GST payments total {naira(s.legacy_successful_amount)}; {naira(s.reconciled_amount)} is on the ledger. The difference is in the queue: {num(s.requires_review)} requiring review, {num(s.unmatched)} unmatched, {num(s.duplicates)} duplicates, {num(s.rejected)} rejected, {num(s.matched)} matched but not yet applied.</Note>
       ) : Number(s.gst_rows) > 0 ? <Note kind="ok" title="Totals agree">Every successful old-portal GST payment staged for {data.session ?? "every session"} is either on the ledger or accounted for as a duplicate or a rejection.</Note> : null}
-      {!data.fees.length ? <Note kind="bad" title="No GST fee is stated for any session">A payment&rsquo;s amount is judged against the fee the Bursar stated for the session it was paid in. State the fee of each session on Fee Setup → GST fee before applying; until then every row waits with &ldquo;no fee stated for the session&rdquo;.</Note> : null}
+      {!data.fees.length ? <Note kind="bad" title="No GST fee is stated for any session">State each session&rsquo;s fee on Fee Setup → GST fee before applying.</Note> : null}
       <Tiles items={[
         ["LEGACY RECORDS", num(s.legacy_rows), null, `${num(s.gst_rows)} of a GST type · ${num(s.successful)} successful · ${num(s.failed)} not`],
         ["RECONCILED", num(s.reconciled), "var(--green-ink)", `${num(s.reconciled_students)} students entitled from the old portal`],
@@ -286,7 +286,7 @@ export function LegacyGst({ data, canAct, initialTab }: { data: LegacySummaryPag
                 ["Legacy successful amount", naira(s.legacy_successful_amount)], ["Reconciled amount", naira(s.reconciled_amount)],
                 ["Variance", <b key="v" className={variance ? "ink-red" : "ink-green"}>{naira(variance)}</b>], ["Students entitled in all (any source)", num(s.entitled_students)],
               ]} />
-              <div className="sub2 mt-1">A record counts as reconciled only when a confirmed GST reference carries it on the ledger. Duplicates, rejections and the queue explain every naira of the variance.</div></PBody>
+              <div className="sub2 mt-1">Reconciled means a confirmed GST reference carries it on the ledger.</div></PBody>
             </Panel>
           </div>
           <div className="grid grid--2">
@@ -300,7 +300,7 @@ export function LegacyGst({ data, canAct, initialTab }: { data: LegacySummaryPag
             </Panel>
           </div>
           <Panel title="Reports" right={<span className="row row--inline row--tight"><Btn kind="secondary" size="sm" disabled={busy} onClick={() => void exportReport("xlsx", { title: "GST/EPS Legacy Payment Reconciliation Report", file: "gst-legacy-reconciliation.xlsx" })}>Reconciliation report (Excel)</Btn><Btn kind="ghost" size="sm" disabled={busy} onClick={() => void exportReport("pdf", { title: "GST/EPS Legacy Payment Reconciliation Report", file: "" })}>PDF</Btn></span>}>
-            <PBody><div className="sub2">The reconciliation report lists every staged payment with its legacy reference, the student it was matched to and how, its validation, the ledger reference it became, who reconciled it and when. The exception report lists what still waits, by category.</div></PBody>
+            <PBody><div className="sub2">The reconciliation report lists every staged payment; the exception report what still waits.</div></PBody>
           </Panel>
         </>
       ) : null}
@@ -327,7 +327,7 @@ export function LegacyGst({ data, canAct, initialTab }: { data: LegacySummaryPag
                     </Field>
                   ))}
                 </div>
-                <div className="sub2 mt-2">A dry run matches and validates without writing anything and shows the counts you would get; staging keeps the rows and their judgements on the record so the queue can be worked, and still writes nothing to the ledger until you apply.</div>
+                <div className="sub2 mt-2">A dry run writes nothing. Staging keeps the rows for the queue; nothing reaches the ledger until you apply.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -348,8 +348,8 @@ export function LegacyGst({ data, canAct, initialTab }: { data: LegacySummaryPag
                 ["DUPLICATE", num(imp.summary.duplicates), null, "Entitlement already held"],
                 ["REJECTED / INVALID", num(imp.summary.rejected), null, "Failed, reversed, wrong type, no session"],
               ]} cls="grid--6" />
-              {imp.dryRun ? <PBody><Note kind="info" title="Nothing was written">This was a dry run: the counts above are what staging would produce; no row, no judgement and no ledger entry was kept.</Note></PBody> : null}
-              {imp.applied ? <PBody><Note kind="ok" title={`${num(imp.applied.reconciled)} payment${imp.applied.reconciled === 1 ? "" : "s"} on the ledger · ${naira(imp.applied.amount)}`}>Each is a confirmed GST reference for its student and session, channel Legacy, carrying the old-portal reference and the original payment date. The students&rsquo; GST &amp; EPS screens, the registration gate, the CBT eligibility and the dashboards read it at once.{imp.applied.duplicates ? ` ${num(imp.applied.duplicates)} became duplicates at the moment of writing.` : ""}</Note></PBody> : null}
+              {imp.dryRun ? <PBody><Note kind="info" title="Nothing was written">This was a dry run.</Note></PBody> : null}
+              {imp.applied ? <PBody><Note kind="ok" title={`${num(imp.applied.reconciled)} payment${imp.applied.reconciled === 1 ? "" : "s"} on the ledger · ${naira(imp.applied.amount)}`}>Each is a confirmed GST reference (channel Legacy) with the old-portal reference and payment date.{imp.applied.duplicates ? ` ${num(imp.applied.duplicates)} became duplicates at the moment of writing.` : ""}</Note></PBody> : null}
               <RowsTable rows={importRows} onOpen={(r) => { if (!imp.dryRun) setOpen(r.id); }} />
             </Panel>
           ) : null}

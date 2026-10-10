@@ -65,14 +65,14 @@ export function ModerationSample({ course }: { course: string }) {
         ) : null}
         {!s && !Number(d.waitingForMe) ? (
           <Note kind="info" title="Nothing here waits for you to moderate">
-            {Number(d.waitingMine) ? <>{d.waitingMine} question{Number(d.waitingMine) === 1 ? " waiting was" : "s waiting were"} set (written or imported) by you, and a question is approved by someone other than the person who set it — another member of the office, the Head of Department, an Examinations Officer, the Dean or the Super Administrator signs in and approves {Number(d.waitingMine) === 1 ? "it" : "them"}. </> : null}
+            {Number(d.waitingMine) ? <>{d.waitingMine} question{Number(d.waitingMine) === 1 ? " waiting was" : "s waiting were"} set by you; someone else approves {Number(d.waitingMine) === 1 ? "it" : "them"}. </> : null}
             {Number(d.approved) ? <>{d.approved} question{Number(d.approved) === 1 ? " is" : "s are"} approved already (those in the bank before moderation began count as approved). </> : null}
             {Number(d.returned) ? <>{d.returned} {Number(d.returned) === 1 ? "was" : "were"} returned and wait{Number(d.returned) === 1 ? "s" : ""} for the setter to correct. </> : null}
             A sample is drawn from the questions waiting that you did not set.
           </Note>
         ) : !s ? (
           <>
-            <div className="sub2 mb-2">Read a random sample of the questions waiting that you did not set. When every question in the sample is approved, the rest are approved with it, each decision naming the sample; if you return one, the sample fails and the rest wait to be moderated one by one. You choose how many to read.</div>
+            <div className="sub2 mb-2">A random sample of waiting questions you did not set. If every one is approved, the rest are approved with it; if you return one, the rest wait to be moderated one by one.</div>
             <div className="row row--inline row--tight" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
               <Field id="smp-size" label="Questions to read" hint={`1 to ${d.waitingForMe}`}><input id="smp-size" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 120 }} value={size} onChange={(e) => setSize(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
               <Btn kind="primary" disabled={busy || !d.waitingForMe || !Number(size) || Number(size) > d.waitingForMe} onClick={() => void draw()}>Draw the sample</Btn>

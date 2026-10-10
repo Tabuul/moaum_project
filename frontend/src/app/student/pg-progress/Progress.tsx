@@ -23,7 +23,7 @@ export function Progress({ s, pg }: { s: Me; pg: PgSummary }) {
 
   return (
     <>
-      <PageHead title="Academic progress" description={`${s.programme} · ${awardWord(s.entryLevel)} · entered ${s.entrySession}. Your coursework, research and each graduation requirement as the record answers it today.`}
+      <PageHead title="Academic progress" description={`${s.programme} · ${awardWord(s.entryLevel)} · entered ${s.entrySession}`}
         actions={<><LinkBtn kind="primary" href="/student/pg-courses">Registration &amp; Results</LinkBtn><LinkBtn href="/student/research">Research &amp; Thesis</LinkBtn><LinkBtn href="/student/graduation">Graduation</LinkBtn></>} />
 
       <Tiles items={[
@@ -37,7 +37,7 @@ export function Progress({ s, pg }: { s: Me; pg: PgSummary }) {
         <div className="card"><div className="card__body">
           <div className="row row--between"><span className="b600">Units earned</span><span className="tnum sub2">{cw.units_passed} of {cw.units_registered} registered</span></div>
           <div className="meter mt-2"><div className="meter__bar"><div className="meter__fill" style={{ width: `${pct}%` }} /></div></div>
-          <div className="sub2 mt-1">Your programme&rsquo;s required units are on its handbook; the register counts the units you have passed against those you have registered. Deficiency courses earn no credit (Policy 11.3.3).</div>
+          <div className="sub2 mt-1">Deficiency courses earn no credit (Policy 11.3.3).</div>
         </div></div>
       ) : null}
 
@@ -53,7 +53,6 @@ export function Progress({ s, pg }: { s: Me; pg: PgSummary }) {
             );
           })}
         </ul>
-        <PBody><div className="sub2">Each line is read from the module that owns it: coursework and results from the School&rsquo;s register, research from your research record, fees from the Bursary, clearance from each unit. Nothing here is decided on this page.</div></PBody>
       </Panel>
 
       <div className="grid grid--2">

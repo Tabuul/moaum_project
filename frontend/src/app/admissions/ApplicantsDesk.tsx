@@ -289,11 +289,11 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Note kind="info" title="Applicant fees are set by the Bursary and paid on the gateway">
-        The Post-UTME screening fee and the acceptance fee are stated on the Bursary&rsquo;s fee-setup screen, under &ldquo;Applicant · Post-UTME fees&rdquo;. An applicant generates a reference and pays it on the payment gateway; the payment confirms itself and the Bursary sees it &mdash; there is no confirmation step here.
+        Stated on the Bursary&rsquo;s fee setup, under &ldquo;Applicant · Post-UTME fees&rdquo;; gateway payments confirm themselves.
       </Note>
       {feeUnset ? (
         <Note kind="bad" title="The acceptance fee is not set for this session" action={<LinkBtn kind="urgent" href="/finance/fees">Set the fee</LinkBtn>}>
-          An applicant you admit will see the offer but cannot pay the acceptance fee until the Bursary states it for {desk.session} &mdash; the Accept page opens with nothing to pay, and clearance and matriculation cannot follow. Set the acceptance fee before you release decisions.
+          Admitted applicants cannot pay the acceptance fee until the Bursary states it for {desk.session}. Set it before you release decisions.
         </Note>
       ) : null}
 
@@ -309,7 +309,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <Btn kind="ghost" disabled={!office || busy !== null || Number(b.seated) >= b.capacity} onClick={() => void send(`seat-${b.id}`, "POST", `/screening-batches/${b.id}/assign`, {}, `Seats assigned in batch ${b.label}`)}>{busy === `seat-${b.id}` ? "Seating…" : "Seat the submitted"}</Btn>
             </span>,
           ])} />
-        ) : <PBody><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></PBody>}
+        ) : <PBody><div className="sub2">No batch yet. Make one, then seat the submitted applications.</div></PBody>}
       </Panel>
 
       <Panel title="Applicants" right={<span className="row row--inline">{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
@@ -337,12 +337,12 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
               r.id ? <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id as string)} /> : <IcoBtn key="v" icon="eye" label="View this candidate’s details" onClick={() => void viewCandidate(r.jamb_key)} />,
             ])} />
-        ) : <PBody><div className="sub2">No applicant on a committed admission list for {desk.session} yet. Upload and commit the CAPS admission list on the JAMB admission lists screen.</div></PBody>}
+        ) : <PBody><div className="sub2">No applicant on a committed admission list for {desk.session} yet.</div></PBody>}
       </Panel>
 
       <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, five sheets">
         <PBody>
-          <div className="sub2">Admission summary, merit list, other qualified cases and non-qualified cases, per programme, with the UTME subjects as CAPS sent them, the O&rsquo;Level grades and points under this session&rsquo;s grading, the sittings and their bonus, both ratios under the session&rsquo;s weighting, and the Board&rsquo;s decision as the remark. Built from the record, never typed.</div>
+          <div className="sub2">Admission summary, merit list, other qualified and non-qualified cases, per programme.</div>
           <div className="row mt-2">
             <select className="ws__select" style={{ maxWidth: 420 }} value={val("export", "")} onChange={(e) => setEdits({ ...edits, export: e.target.value })} aria-label="Programme to export">
               <option value="">Every programme in one workbook</option>
@@ -356,7 +356,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       {office ? (
         <Panel title="Admission status from JAMB" right="The list of candidates who accepted, uploaded back">
           <PBody>
-            <div className="sub2">After JAMB offers admission and the candidates accept on JAMB&rsquo;s portal, download the admission-status list from JAMB and upload it here. Each row is matched to the candidate the University screened, by registration number. A candidate JAMB records as <b>Accepted</b> is offered admission here and the offer released &mdash; so the applicant can pay the acceptance fee, pay school fees, register and be matriculated. A number not on the register is held, not admitted on a guess.</div>
+            <div className="sub2">Upload JAMB&rsquo;s admission-status list after candidates accept on JAMB&rsquo;s portal. Rows match by registration number; a candidate JAMB records as <b>Accepted</b> is offered admission and the offer released. A number not on the register is held.</div>
             <div className="row mt-2">
               <label className="btn btn--primary" style={{ cursor: "pointer", margin: 0 }}>
                 {jambBusy
@@ -503,7 +503,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <div className="mt-1">
                 <Btn kind="primary" disabled={!office || busy !== null || !!open.decisionReleasedAt || !val("decision", open.decision ?? "") || (val("decision", open.decision ?? "") === "OFFERED" && !val("dbasis", open.decisionBasis ?? ""))} onClick={async () => { await send("decide", "PUT", `/applications/${open.id}/decision`, { decision: val("decision", open.decision ?? ""), note: val("dnote", open.decisionNote ?? "") || undefined, basis: val("dbasis", open.decisionBasis ?? "") || undefined }, `Board decision entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "decide" ? "Saving…" : "Enter the decision"}</Btn>
               </div>
-              <div className="sub2 mt-2">Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
+              <div className="sub2 mt-2">Decisions are released together, from the Applicants panel.</div>
             </PBody>
           </Panel>
         </Modal>
@@ -581,7 +581,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               })() : null}
             </PBody>
           </Panel>
-          <Note kind="info" title="Not yet registered for Post-UTME">On the committed admission list but has not created an application. Seat, screening score and decision appear once they register.</Note>
+          <Note kind="info" title="Not yet registered for Post-UTME">Seat, screening score and decision appear once they register.</Note>
         </Modal>
       ) : null}
     </>

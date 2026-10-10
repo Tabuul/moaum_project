@@ -80,12 +80,12 @@ export function Transfer({ d }: { d: MyTransfer }) {
           <PBody>
             {!live.fee_confirmed_at ? (!feeSet ? (
               <Note kind="bad" title="The transfer fee has not been set yet">
-                Your application is submitted, but the Bursary has not set the transfer processing fee. You will be able to pay once it is set — the approvals begin after payment.
+                Your application is submitted. You can pay once the Bursary sets the fee; approvals begin after payment.
               </Note>
             ) : (
               <>
                 <Note kind="info" title="Pay the non-refundable processing fee to start your transfer">
-                  Your application to move to {live.to_programme} is submitted. Pay the {naira(fee)} fee online now; once it is confirmed, your current department begins the approvals.
+                  Your application to move to {live.to_programme} is submitted. Pay the {naira(fee)} fee; approvals begin once it is confirmed.
                 </Note>
                 {!paidRef ? (
                   <div className="mt-3"><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it below.`); } }}>Pay the fee online</Btn></div>
@@ -98,7 +98,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
               </>
             )) : (
               <Note kind="info" title={`In progress — ${STAGES[stageOf(live.state, true)]?.[0] ?? "under review"}`}>
-                Your fee is paid. Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state, true)]?.[0]?.toLowerCase()}. Each office approves in turn; watch it advance above.
+                Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state, true)]?.[0]?.toLowerCase()}.
               </Note>
             )}
           </PBody>
@@ -121,14 +121,14 @@ export function Transfer({ d }: { d: MyTransfer }) {
             <Field id="ap-reason" label="Reason for seeking transfer" hint="Each approving office reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the offices weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>
-            <div className="sub2 mt-2">After you apply, you pay the non-refundable {naira(fee ?? 0)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
+            <div className="sub2 mt-2">After you apply, you pay the non-refundable {naira(fee ?? 0)} fee online; your department and the offices after it then approve in turn.</div>
           </PBody>
         </Panel>
       ) : !live ? (
         !feeSet ? (
           <Note kind="info" title="Transfers are not open yet">The Bursary has not set the transfer processing fee. Once it is set, you can apply to transfer here.</Note>
         ) : (
-          <Note kind="info" title="You cannot apply to transfer right now">Only a matriculated student in good standing may apply. If you have just matriculated, check back after your first results are published.</Note>
+          <Note kind="info" title="You cannot apply to transfer right now">Only a matriculated student in good standing may apply.</Note>
         )
       ) : null}
     </>

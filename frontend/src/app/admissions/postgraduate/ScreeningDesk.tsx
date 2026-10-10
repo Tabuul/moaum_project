@@ -108,13 +108,13 @@ export function ScreeningDesk({ session, mayWritePolicy, onOpen }: { session: st
           {!editing ? (
             policy && policy.required ? (
               <div className="stack">
-                <div className="sub2">Accepted applicants of {session} are screened in person{policy.venue ? <> at <b>{policy.venue}</b></> : null}{policy.starts_on ? <> from <b>{day(policy.starts_on)}</b></> : null}{policy.ends_on ? <> to <b>{day(policy.ends_on)}</b></> : null}. A cleared applicant is admitted to the register at once and pays school fees on the student portal.</div>
+                <div className="sub2">Accepted applicants of {session} are screened in person{policy.venue ? <> at <b>{policy.venue}</b></> : null}{policy.starts_on ? <> from <b>{day(policy.starts_on)}</b></> : null}{policy.ends_on ? <> to <b>{day(policy.ends_on)}</b></> : null}. A cleared applicant is admitted to the register at once.</div>
                 {policy.instructions ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{policy.instructions}</div> : null}
                 {policy.required_documents?.length ? <div className="sub2"><b>Documents to bring:</b> {policy.required_documents.join(" · ")}</div> : null}
               </div>
             ) : (
               <Note kind="info" title={stated ? "Screening is switched off for this session" : "No screening policy for this session"}>
-                Accepted applicants are admitted to the register by the School without a physical screening. Set the policy to screen them; applicants who accepted before it was first set are not held.
+                Accepted applicants are admitted without a physical screening.
               </Note>
             )
           ) : (

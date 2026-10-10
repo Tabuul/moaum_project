@@ -16,7 +16,7 @@ export default async function ReleasePage() {
   return (
     <Shell route="t/release" me={me.ok ? me.data : null}>
       <Note kind="info" title="Nothing reaches production that has not passed the gate">
-        Every change goes through the same pipeline, and a deployment happens only after the checks are green. This page describes that pipeline; the portal does not surface its own live build or deploy status, so no run is shown here that it cannot observe from inside itself.
+        A deployment happens only after the checks are green.
       </Note>
       <Panel title="The pipeline" right="Build · test · approve · deploy · roll back">
         <PBody>
@@ -27,9 +27,7 @@ export default async function ReleasePage() {
           {step(5, "Roll back", "A deployment is a forward change to a known-good artefact; recovery is redeploying the previous commit, and the database migrations are additive so a roll-back does not strand data.")}
         </PBody>
       </Panel>
-      <Note kind="ok" title="The check is the contract">
-        The same suite that must pass before a change merges is the suite that gates deployment. That is why a feature is not &lsquo;done&rsquo; here until it is green — the pipeline, not a person&rsquo;s assurance, is what admits it.
-      </Note>
+
     </Shell>
   );
 }

@@ -23,7 +23,7 @@ export default async function HostelStudentPage({ params, searchParams }: { para
       {view.ok ? (
         <>
           <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel${q}`}>Accommodation</Link><span>›</span><strong>{view.data.student.name}</strong></div>
-          <PageHead title={view.data.student.name} description={`${view.data.student.number} · ${view.data.student.programme ?? "—"} · ${view.data.student.current_level} Level · ${view.data.student.status.toLowerCase()}. Accommodation history: every session, hostel, room and bed, with the outcome.`}
+          <PageHead title={view.data.student.name} description={`${view.data.student.number} · ${view.data.student.programme ?? "—"} · ${view.data.student.current_level} Level · ${view.data.student.status.toLowerCase()}`}
             actions={<LinkBtn kind="ghost" href={`/students/${view.data.student.id}`}>Student record</LinkBtn>} />
           <Panel title="Accommodation history" right={`${view.data.history.length} record(s)`}>
             {view.data.history.length ? <DTable cols={["Session|mid", "Application|mid", "Hostel", "Room|mid", "Bed|mid", "Allocated|mid", "Checked in|mid", "Checked out|mid", "Status|mid", "Clearance|mid", "|num"]} rows={view.data.history.map((h, i) => [

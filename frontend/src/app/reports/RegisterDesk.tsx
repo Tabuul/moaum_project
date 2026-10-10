@@ -150,7 +150,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
                   <Btn kind="ghost" disabled={page <= 1} onClick={() => goPage(page - 1)}>← Previous</Btn>
                   <span className="sub2 tnum">Page {page} of {pages}</span>
                   <Btn kind="ghost" disabled={page >= pages} onClick={() => goPage(page + 1)}>Next →</Btn>
-                  <span className="sub2">The Excel download and the printable return carry every matched row, not only this page.</span>
+                  <span className="sub2">Downloads carry every matched row.</span>
                 </div>
               </PBody>
             ) : null}

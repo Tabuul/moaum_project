@@ -35,7 +35,7 @@ export default function VerifyLanding() {
         <form onSubmit={go} className="card__body">
           <p className="m-0 ink-muted">
             A receipt is genuine only if it appears here. Enter the <b>reference</b> (or receipt number) and the
-            <b> check code</b> printed on the receipt to confirm the payer, amount and date against the Bursary&rsquo;s ledger.
+            <b> check code</b> printed on the receipt.
           </p>
           <Field id="v-ref" label="Reference or receipt number">
             <input id="v-ref" className="ctl" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. MOAUM-FEE-370000-6912 or RCT-2025-00001" autoComplete="off" autoCapitalize="characters" />
@@ -48,7 +48,7 @@ export default function VerifyLanding() {
           </Btn>
           <Scanner onResult={(path) => router.push(path)} />
           <p className="sub2 ink-faint m-0">
-            Scan the QR on the receipt with the camera above, or open it with your phone&rsquo;s camera app &mdash; either way it opens this check with the details filled in.
+            Scan the QR on the receipt with the camera above or your phone&rsquo;s camera.
           </p>
           <p className="sub2 m-0">Verifying a JUPEB statement of result, letter or slip? <Link href="/verify/jupeb">Enter its code</Link>.</p>
         </form>

@@ -48,7 +48,7 @@ export function SupportAudit({ list, filters, page, generatedBy }: { list: Audit
   return (
     <>
       <PageHead title="Support action history" eyebrow="ICT Support Desk"
-        description="Every act ICT Support did on a student's record, registration, password or payment — who, for which ticket, why, and what came of it. Overrides are marked with the rule they set aside."
+        description="Overrides are marked with the rule they set aside."
         actions={<><LinkBtn href="/helpdesk">Support Desk</LinkBtn><Btn kind="secondary" onClick={() => void exportAll()}>Excel</Btn></>} />
       {sum.length ? (
         <Tiles cls="grid--5" items={[

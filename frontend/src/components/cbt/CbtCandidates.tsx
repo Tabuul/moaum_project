@@ -129,7 +129,7 @@ export function CandidateModal({ examId, student, canManage, onClose, onChanged,
           {canManage && running ? (
             <Panel title="Terminate the running attempt" right={<Pil kind="bad">Irreversible</Pil>}>
               <PBody>
-                <div className="sub2 mb-2">The attempt ends now and is scored from the answers saved so far, marked terminated with your reason. The candidate&rsquo;s screen is told at its next heartbeat.</div>
+                <div className="sub2 mb-2">The attempt ends now and is scored from the answers saved so far.</div>
                 <Field id="cd-reason" label="Reason" required><textarea id="cd-reason" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
                 <Btn kind="urgent" disabled={busy || !reason.trim()} onClick={() => void terminate()}>{busy ? "Terminating…" : "Terminate the attempt"}</Btn>
               </PBody>
@@ -197,7 +197,7 @@ export function CbtCandidates({ exam, canManage }: { exam: CbtExam; base: string
         <PBody><CandidateFilterBar f={f} set={set} options={data?.options ?? null} exam={exam} /></PBody>
       </Panel>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {data && !data.total ? <Note kind="info" title="No candidate for these filters">A candidate is a student registered on the offering with a submitted registration. Widen the filters.</Note> : null}
+      {data && !data.total ? <Note kind="info" title="No candidate for these filters" /> : null}
       <Panel title={`Candidates · ${data ? num(data.total) : "…"}`} right={data && pages > 1 ? <span className="row row--inline row--tight sub2"><Btn kind="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Btn>Page {page} of {pages}<Btn kind="ghost" size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</Btn></span> : null}>
         {data ? <DTable noPrint cols={["S/N|num", "Student", "Programme", "Level|mid", "GST|mid", "Eligible|mid", "Status|mid", "Time left|mid", "Answered|num", "Violations|num", "Score|num", "Grade|mid", "|num"]} rows={data.rows.map((c, i) => {
           const st = liveStatus(c.attempt_status, c.last_activity_at, serverNow);
@@ -224,7 +224,7 @@ export function CbtCandidates({ exam, canManage }: { exam: CbtExam; base: string
         <Modal title={`Extra time · ${extraFor.surname}, ${extraFor.other_names}`} sub={`${extraFor.number} · ${extraFor.programme} · ${extraFor.level} Level`} onClose={() => setExtraFor(null)}
           foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setExtraFor(null)}>Back</Btn>
             <Btn kind="primary" disabled={busy || extraMin === "" || !extraWhy.trim() || Number(extraMin) < 0 || Number(extraMin) > 600} onClick={() => void saveExtra()}>{Number(extraMin) === 0 && extraFor.extra_minutes ? "Withdraw the extra time" : "Give the extra time"}</Btn></span>}>
-          <p className="sub2">Minutes beyond the paper&rsquo;s {exam.duration_minutes}, for this candidate alone — a disability, a sitting delayed by power. If the candidate is already writing, their clock moves at the next heartbeat. Enter 0 to withdraw it. Every change is on the record.</p>
+          <p className="sub2">Minutes beyond the paper&rsquo;s {exam.duration_minutes}, for this candidate alone. Enter 0 to withdraw it.</p>
           <Field id="xt-min" label="Extra minutes" required><input id="xt-min" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 120 }} value={extraMin} onChange={(e) => setExtraMin(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
           <Field id="xt-why" label="Reason" required><textarea id="xt-why" className="ctl" rows={2} value={extraWhy} onChange={(e) => setExtraWhy(e.target.value)} /></Field>
         </Modal>

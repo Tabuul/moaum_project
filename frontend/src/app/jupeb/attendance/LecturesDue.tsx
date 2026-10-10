@@ -96,7 +96,7 @@ export function LecturesDue({ session, office, onOpen }: { session: string; offi
           {Object.entries(STATE_WORD).filter(([k]) => c[k]).map(([k, [w, kind]]) => <Pil key={k} kind={kind}>{`${w}: ${c[k]}`}</Pil>)}
           <label className="row row--inline row--tight"><input type="checkbox" checked={onlyMissed} onChange={(e) => setOnlyMissed(e.target.checked)} /> only those not recorded</label>
         </div>
-        {!d.teachingStarts ? <Note kind="info" title="Teaching's start is not on the calendar">The lectures are counted from the day the JUPEB calendar says teaching starts. Mark that event on the calendar.</Note> : null}
+        {!d.teachingStarts ? <Note kind="info" title="Teaching's start is not on the calendar">Mark it on the JUPEB calendar.</Note> : null}
         {!rows.length ? <p className="sub2">{d.rows.length ? "Every lecture here is recorded." : `No lecture is on the timetable ${range === "day" ? `on ${day(d.from)}` : "in these days"}${d.teachingStarts && d.from < d.teachingStarts ? " (teaching starts " + day(d.teachingStarts) + ")" : ""}.`}</p> : (
           <DTable pageSize={50} cols={["Day", "Time", "Lecture", "Class", "Room", "State", "|mid"]} texts={rows.map((x) => `${x.subject_code} ${x.subject_title} ${x.course_code ?? ""}`)}
             rows={rows.map((x) => [`${WEEKDAYS[x.weekday]} ${day(x.held_on)}`, `${x.starts_at}–${x.ends_at}`, lectureName(x), x.class_name ?? "Every class", x.venue ?? "to confirm",

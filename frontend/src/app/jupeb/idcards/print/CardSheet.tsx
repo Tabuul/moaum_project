@@ -58,7 +58,7 @@ export function CardSheet({ session, ids, autoPrint }: { session: string; ids: s
       <div className="jcards__bar">
         <b>{cards.length} JUPEB identity card{cards.length === 1 ? "" : "s"} · {session}</b>
         <button type="button" className="btn btn--primary btn--sm" onClick={() => window.print()}>Print</button>
-        <span style={{ color: "#5b6670" }}>Front and back side by side, at the card&rsquo;s own size; print at 100% (no fit to page), cut along the edges and laminate.</span>
+        <span style={{ color: "#5b6670" }}>Print at 100% (no fit to page).</span>
       </div>
       {cards.map((c) => (
         <div key={c.serial} className="jcards__row"><IdCardFront c={c} /><IdCardBack c={c} /></div>

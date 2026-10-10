@@ -36,10 +36,10 @@ export function JupebSearch() {
   }, [asked, page]);
   return (
     <>
-      <PageHead title="JUPEB student support" description="Find a JUPEB candidate or student and open their record in support mode: contact details, password, payments and activation — each through the JUPEB services, every act on the support ledger."
+      <PageHead title="JUPEB student support" description="Every act is on the support ledger."
         actions={<LinkBtn href="/helpdesk">Support Desk</LinkBtn>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {problem?.status === 422 ? <Note kind="info" title="JUPEB records are reached through a posting">The Head of the ICT Support Desk posts agents on the JUPEB Support queue (or University-wide) with the acts they may do.</Note> : null}
+      {problem?.status === 422 ? <Note kind="info" title="JUPEB records are reached through a posting">The Head of the ICT Support Desk posts agents on the JUPEB Support queue.</Note> : null}
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); setPage(1); setAsked({ ...f }); }}>
         <div className="row">
           <Field id="js-q" label="Search" style={{ flex: "2 1 300px" }}><input id="js-q" className="ctl" type="search" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })}

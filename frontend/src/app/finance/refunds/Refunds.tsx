@@ -107,7 +107,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
   return (
     <>
       <Note kind="info" title="Maker and checker are always different people">
-        The officer who raises a refund cannot approve it. The system refuses the second click rather than relying on anyone to remember the rule. A refund is paid only after a second officer has approved it, into the account snapshotted when it was raised.
+        The officer who raises a refund cannot approve it. It is paid only after a second officer approves, into the account recorded when it was raised.
       </Note>
 
       {said ? <Note kind="ok" title={said}>It waits for a second officer to approve it before any money leaves the University.</Note> : null}
@@ -137,7 +137,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
               {!may || (r.state !== "PROPOSED" && r.state !== "APPROVED") ? <span className="sub2">{r.paid_at ? "Disbursed" : r.approved_by_name ? `Approved by ${r.approved_by_name}` : ""}</span> : null}
             </span>,
           ])} texts={refunds.map((r) => `${r.reference} ${r.payer} ${r.reason}`)} />
-        ) : <PBody><div className="sub2">No refund has been raised. A refund appears here when an overpayment, a duplicate payment or a withdrawal is owed back.</div></PBody>}
+        ) : <PBody><div className="sub2">No refund has been raised.</div></PBody>}
       </Panel>
 
       {may ? (
@@ -149,7 +149,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !f.payer.trim() || !f.reason.trim() || !(Number(f.amount) > 0)} onClick={async () => { const j = await send("", { student, payer: f.payer, reason: f.reason, amount: Number(f.amount), bank: f.bank || null, accountName: f.accountName || null, accountLast4: f.accountLast4 || null, source: source.trim() || null }, `Raise refund for ${f.payer}`); if (j) { setSaid(`Refund ${j.reference} raised for ${f.payer}`); setAdd(false); } }}>Raise it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
-          <Field id="rf-src" label="From a payment reference" hint="Optional — name the transaction being refunded and the payer and amount are filled in and checked against it.">
+          <Field id="rf-src" label="From a payment reference" hint="Optional; fills and checks the payer and amount.">
             <div className="row">
               <input id="rf-src" className="ctl tnum" value={source} onChange={(e) => setSource(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void fetchTxn(source); } }} placeholder="e.g. a receipt or reference" autoComplete="off" />
               <Btn kind="ghost" disabled={busy || !source.trim()} onClick={() => void fetchTxn(source)}>Fetch</Btn>

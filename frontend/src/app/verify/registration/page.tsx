@@ -89,9 +89,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           ) : null}
 
           <p className="sub2 ink-faint m-0 mt-1">
-            This page reads the University&rsquo;s register directly. The form is a view of the register, not the register
-            itself; where the printed courses, units or approval date differ from what is shown here, the record here is the
-            truth. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
+            Where the printed form differs, this record prevails. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
           </p>
         </div>
       </div>

@@ -15,16 +15,14 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
     <>
       {!offerings.length ? (
         <Note kind="info" title={`No SIWES course in your department this semester`} action={<LinkBtn kind="primary" href="/siwes">SIWES desk</LinkBtn>}>
-          Industrial-training courses appear here once they are offered for the semester. This dashboard shows the second-semester sitting.
+          This dashboard shows the second-semester sitting.
         </Note>
       ) : unsupervised ? (
         <Note kind="bad" title={`${unsupervised} SIWES student${unsupervised === 1 ? " has" : "s have"} no supervisor`} action={<LinkBtn kind="urgent" href="/siwes">Assign supervisors</LinkBtn>}>
-          A student is assessed by their assigned supervisor; until one is assigned they cannot be scored. Assign the remaining supervisors on the SIWES desk.
+          A student without a supervisor cannot be scored.
         </Note>
       ) : (
-        <Note kind="ok" title="Every SIWES student has a supervisor" action={<LinkBtn kind="ghost" href="/siwes">SIWES desk</LinkBtn>}>
-          All industrial-training students are assigned. The supervisors&rsquo; and the visit marks combine into the result.
-        </Note>
+        <Note kind="ok" title="Every SIWES student has a supervisor" action={<LinkBtn kind="ghost" href="/siwes">SIWES desk</LinkBtn>} />
       )}
 
       <Tiles items={[

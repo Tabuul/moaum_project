@@ -67,7 +67,7 @@ export function Register({ list, filters, verifications, office }: { list: RegLi
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/credentials/documents">Documents office</Link><span>›</span><strong>Issued documents</strong></div>
-      <PageHead title="Issued documents" description={`${list.total.toLocaleString()} document(s), names A–Z. Each opens with its versions, its trail, its downloads and its verifications.`}
+      <PageHead title="Issued documents" description={`${list.total.toLocaleString()} document(s), names A–Z`}
         actions={<>{tab === "documents" ? <><Btn kind="secondary" onClick={() => void excel()} disabled={!rows.length}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Issued Documents", "", HEAD, body(), docSerial("DOC"))} disabled={!rows.length}>PDF</Btn></> : <Btn kind="secondary" onClick={() => brandedPrint("Document Verifications", "Last 100", VHEAD, vbody(), docSerial("DOC"))} disabled={!verifications.length}>PDF</Btn>}<LinkBtn kind="ghost" href="/credentials/documents">Back to the office</LinkBtn></>} />
       <Tabs value={tab} onChange={setTab} items={[{ id: "documents", label: `Documents (${list.total})` }, { id: "verifications", label: `Verification log (${verifications.length})` }]} />
       {tab === "documents" ? (

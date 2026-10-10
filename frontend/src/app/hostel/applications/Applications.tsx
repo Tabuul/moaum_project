@@ -90,7 +90,7 @@ export function Applications({ list, filters, session: s, office }: { list: AppL
           <Btn kind="ghost" onClick={() => brandedPrint("Hostel Applications", `${s} · ${scope}`, HEAD, body(), docSerial("HST"))} disabled={!rows.length}>Download PDF</Btn>
           <LinkBtn kind="ghost" href={`/hostel?session=${encodeURIComponent(s)}`}>Back to the desk</LinkBtn>
         </>} />
-      {list.setting?.requires_review ? <Note kind="info" title="This session reviews each application">Only approved applications are seated by the allocation run; approve, waitlist, reject or ask for a correction below.</Note> : null}
+      {list.setting?.requires_review ? <Note kind="info" title="This session reviews each application">Only approved applications are seated by the allocation run.</Note> : null}
 
       <div className="scope">
         <div className="scope__f"><Field id="af-state" label="Standing"><select id="af-state" className="ctl" value={filters.state} onChange={(e) => go({ state: e.target.value })}>
@@ -139,13 +139,13 @@ export function Applications({ list, filters, session: s, office }: { list: AppL
         </Modal>
       ) : ask?.kind === "seat" ? (
         <Modal title={`Allocate ${ask.row.student_name}`} sub={`${ask.row.student_number} · ${ask.row.sex === "F" ? "Female" : ask.row.sex === "M" ? "Male" : "Gender not on record"} · prefers ${ask.row.hall_pref_name ?? "any hall"}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void seat()} disabled={busy || !bed || !note.trim()}>{busy ? "Working…" : "Allocate the bed"}</Btn></>}>
-          <p>Every check the allocation run makes is made here: gender, capacity, the bed and room in service, eligibility, no second bed in the session. The student is told and a hold starts for payment.</p>
+          <p>Gender, capacity, eligibility and one bed a session are checked. The student is told and a hold starts for payment.</p>
           <Field id="st-bed" label="Free bed" required full><select id="st-bed" className="ctl" value={bed} onChange={(e) => setBed(e.target.value)}><option value="">{beds.length ? "Choose a bed" : "Reading free beds…"}</option>{beds.map((b) => <option key={b.bed_id} value={b.bed_id}>{b.hall_name} · {b.block}-{b.room_no} · bed {b.bed}{b.room_type_label ? ` · ${b.room_type_label}` : ""}{b.hall_code === ask.row.hall_pref ? " · preferred hall" : ""}</option>)}</select></Field>
           <Field id="st-note" label="Reason" required full><textarea id="st-note" className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </Modal>
       ) : ask?.kind === "withdraw" ? (
         <Modal title={`Withdraw ${ask.row.reference}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="urgent" onClick={() => void withdraw()} disabled={busy}>Withdraw</Btn></>}>
-          <p>The application leaves the list; a held bed is released. The student may apply again while the window is open.</p>
+          <p>A held bed is released. The student may apply again while the window is open.</p>
           <Field id="wd-note" label="Reason" full><textarea id="wd-note" className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </Modal>
       ) : null}

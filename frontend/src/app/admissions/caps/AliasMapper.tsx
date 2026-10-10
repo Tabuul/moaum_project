@@ -124,9 +124,7 @@ export function AliasMapper({
       ) : null}
       <PBody>
         <div className="sub2">
-          A suggestion is offered where the University&rsquo;s own name matches once the award prefix is set aside; it
-          is still your act, recorded against your office, because it decides what degree these candidates are
-          admitted to. Once mapped, the file is read again here without re-uploading.
+          A suggestion is still your act, recorded against your office. Once mapped, the file is read again without re-uploading.
         </div>
       </PBody>
     </Panel>

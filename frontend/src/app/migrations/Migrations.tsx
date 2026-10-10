@@ -17,7 +17,7 @@ export function Migrations({ d }: { d: Ledger }) {
   return (
     <>
       <Note kind="info" title="The migration ledger is what has actually been applied, not what was intended">
-        Each migration records the checksum of the file that was applied, so a migration edited after the fact is caught here as a mismatch rather than discovered later as a column that does not exist. The database is the record; this screen reads it.
+        A migration edited after it was applied shows as a checksum mismatch.
       </Note>
 
       <Tiles items={[
@@ -35,12 +35,10 @@ export function Migrations({ d }: { d: Ledger }) {
             <span className="sub2" key="b">{m.applied_by}</span>,
             <span className="tnum sub2" key="s">{m.sha256.slice(0, 12)}</span>,
           ])} texts={d.migrations.map((m) => m.filename)} />
-        ) : <PBody><div className="sub2">No migration is recorded. An empty ledger means the schema has not been built on this database.</div></PBody>}
+        ) : <PBody><div className="sub2">No migration is recorded.</div></PBody>}
       </Panel>
 
-      <Note kind="info" title="Loading the old portal's data is a separate, rehearsed process">
-        Bringing legacy records into this system is a data migration run against a staging database as often as it takes to get a clean run, with a validate-only pass that writes nothing and returns every rejected row with its reason. It is not shown here because none has been run against this database, and a screen that showed a rehearsal that never happened would be inventing one.
-      </Note>
+
     </>
   );
 }

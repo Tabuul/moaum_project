@@ -62,7 +62,7 @@ export function OlevelDuplicates({ session, initial, may }: { session: string; i
     <Panel title="Duplicate O’Level uploads" right={open.length ? <Pil kind="bad">{open.length} to decide</Pil> : `${rows.length} finding${rows.length === 1 ? "" : "s"}`}>
       <PBody>
         <div className="stack">
-          <div className="sub2">Every sitting an upload carries is checked before it is recorded. <b>The same result again</b> — the same examining body and exam number (however it is written), or the same examination with the same grades — is not recorded twice. <b>The same exam number with other grades</b> is held, not recorded, until the Office decides which is the candidate&rsquo;s. Another exam number of the same body — the same year and series or not — is another sitting and is recorded: results are combined across sittings. <b>An exam number already on another applicant&rsquo;s record</b> is recorded and stays open until its verification is recorded.</div>
+          <div className="sub2"><b>The same result again</b> is not recorded twice. <b>The same exam number with other grades</b> is held until the Office decides. <b>An exam number on another applicant&rsquo;s record</b> stays open until verified.</div>
           {problem && !acting ? <ProblemNotice problem={problem} /> : null}
           <Tiles items={[
             ["Held — same number, other grades", String(rows.filter((r) => r.state === "HELD").length), rows.some((r) => r.state === "HELD") ? "var(--red-ink)" : null, `${count("SAME_SITTING")} found in all`],

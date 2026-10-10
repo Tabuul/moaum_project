@@ -23,9 +23,7 @@ export function Score({ a }: { a: Application }) {
   if (!at(a, 4) || !r) {
     return (
       <>
-        <Note kind="info" title="Scores are released when every batch has been screened">
-          Releasing one batch before the others would let later candidates learn the questions, so all scores are released together.
-        </Note>
+        <Note kind="info" title="Scores are released when every batch has been screened" />
         <Rail a={a} />
       </>
     );
@@ -43,9 +41,7 @@ export function Score({ a }: { a: Application }) {
         ["Departmental cut-off", r.cutoff == null ? "—" : String(r.cutoff), null, r.cutoff == null ? "Not stated in the settings yet" : `${a.programme ?? ""} · this session`],
       ]} />
       {above === null ? (
-        <Note kind="info" title="No cut-off is stated for your programme yet">
-          The cut-off comes from the session&rsquo;s admission settings. Your aggregate stands; where you stand against the line is shown the moment the settings state it.
-        </Note>
+        <Note kind="info" title="No cut-off is stated for your programme yet" />
       ) : (
         <Note kind={above ? "ok" : "bad"} title={above ? `Your aggregate is above the cut-off for ${a.programme}` : `Your aggregate is below the cut-off for ${a.programme}`}>
           {above ? "Being above the cut-off does not by itself give you a place. Places are filled from the merit list downwards until the approved quota is full, and the cut-off can rise as the list is worked through." : "You may still be considered for a related programme in the same faculty if places remain after the merit list is exhausted."}
@@ -72,7 +68,7 @@ export function Score({ a }: { a: Application }) {
         </Panel>
       ) : null}
       <Note kind="info" title="If you think this score is wrong">
-        A remark is requested in writing at the Registry within seven days of release, quoting your application number. What was entered, and by whom, is on the record.
+        Request a remark in writing at the Registry within seven days of release, quoting your application number.
       </Note>
     </>
   );
@@ -104,7 +100,7 @@ export function Status({ a }: { a: Application }) {
     return (
       <>
         <Note kind="info" title="Your application is with the Admissions Board">
-          Your admission status appears here the moment the University uploads JAMB&rsquo;s admission list, or when the Admissions Board releases its decision after the screening scores and the O&rsquo;Level verification. It is published here and by email on the same day &mdash; there is no earlier list circulating anywhere. Once offered: accept and pay the acceptance fee, take your acceptance letter, then complete the online screening.
+          Your admission status appears here and by email when released; no list circulates before it. Once offered: accept and pay the acceptance fee, then complete the online screening.
         </Note>
         {at(a, 2) ? <Eligibility /> : null}
         <Rail a={a} />
@@ -160,8 +156,8 @@ export function Status({ a }: { a: Application }) {
           An offer that lapses cannot be reinstated, and the place goes to the next candidate on the waiting list.
         </Note>
       )}
-      <Note kind="info" title="Provisional means exactly that">
-        This offer stands on the results JAMB sent. The Registry verifies every one of them with WAEC, NECO and JAMB before clearance. A result that does not verify voids the admission at any point afterwards &mdash; including after you have graduated.
+      <Note kind="info" title="Provisional admission">
+        A result that fails verification with WAEC, NECO or JAMB voids the admission at any point, including after graduation.
       </Note>
       {at(a, 6) ? (
         <div className="row">

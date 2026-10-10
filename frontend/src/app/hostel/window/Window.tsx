@@ -46,11 +46,11 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel?session=${encodeURIComponent(s)}`}>Accommodation</Link><span>›</span><strong>Window &amp; rules</strong></div>
-      <PageHead title="Application window" description={`${s}. What the student sees, what makes them eligible, how beds are allocated, and the rules they acknowledge.`}
+      <PageHead title="Application window" description={s}
         actions={<>{w ? <Pil kind={WINDOW_STATE[w.state]?.[1] ?? "grey"}>{WINDOW_STATE[w.state]?.[0] ?? w.state}</Pil> : null}<LinkBtn kind="ghost" href={`/hostel?session=${encodeURIComponent(s)}`}>Back to the desk</LinkBtn></>} />
       {!may ? <Note kind="info" title="You are reading this window">The Dean of Student Affairs and the housing desk change it.</Note> : null}
-      {w ? <Note kind={w.state === "OPEN" ? "ok" : "info"} title={`Hostel application · ${s} · ${semesterWord(f.semester)} · ${WINDOW_STATE[w.state]?.[0] ?? w.state}`}>Opening {w.applications_open ?? "not dated"} · closing {w.applications_close ?? "not dated"}. {w.state === "OPEN" ? "Students who have paid school fees and submitted course registration may apply" : "Students see why they cannot apply and the dates"}; opening, closing, reopening and extending are on the record.</Note> : null}
-      {w?.drawn_at ? <Note kind="info" title="The allocation has been made">The method and the seed are on the record; the dates and the rules may still be changed for late seating and check-in.</Note> : null}
+      {w ? <Note kind={w.state === "OPEN" ? "ok" : "info"} title={`Hostel application · ${s} · ${semesterWord(f.semester)} · ${WINDOW_STATE[w.state]?.[0] ?? w.state}`}>Opening {w.applications_open ?? "not dated"} · closing {w.applications_close ?? "not dated"}. {w.state === "OPEN" ? "Students who have paid school fees and submitted course registration may apply" : "Students see why they cannot apply and the dates"}.</Note> : null}
+      {w?.drawn_at ? <Note kind="info" title="The allocation has been made">The dates and rules may still change for late seating and check-in.</Note> : null}
 
       <Panel title="Fee, dates and stay">
         <PBody>
@@ -97,7 +97,7 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
               <label className="row row--tight" style={{ gap: 6 }}><input type="checkbox" checked={f.refuseHostelDebt} onChange={(e) => setF({ ...f, refuseHostelDebt: e.target.checked })} disabled={!may} /> No unsettled hostel damage charge or uncleared stay</label>
             </div>
           </div>
-          <div className="sub2 mt-1">Gender follows the hall: a hall stated for one sex only takes students of that sex, whatever the preference. A student holds one bed a session.</div>
+          <div className="sub2 mt-1">A single-sex hall takes only that sex. One bed a session.</div>
         </PBody>
       </Panel>
 

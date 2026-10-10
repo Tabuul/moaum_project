@@ -183,11 +183,10 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   return (
     <>
       <Note kind="info" title="Clear old students' school-fees history from the old portal">
-        A returning student brought over from the old portal owes every past session the University has a fee schedule
-        for, because the new portal knows only its own confirmed payments. Upload what each student already paid, by
-        session and (optionally) semester. Give the <b>amount paid</b>, or leave it blank to mean <b>cleared in full</b> —
-        the past session then settles and the arrears clear. The <b>Purpose / Payment Item</b> column (as the old portal exports it) says what each payment was for: <b>GST FEES</b> is recorded as the GST fee for that session, which clears the student&rsquo;s GST gate and shows as paid on the GST desk; SCHOOL FEES is school fees; any other item (admission checking, acceptance, hostel…) is recorded under that item and does not clear school-fee arrears. Without that column, the <b>Note</b> is read the same way, but only when it names another purpose. A blank amount is priced at the level the student was at <i>in that session</i> (or the Level column, if given). The <b>Paid On</b> date is kept as the payment&rsquo;s date (13/03/2023, 2023-03-13, 13-Mar-2023 and Excel dates are read). A row already on record (same student, session, semester and purpose) is skipped and reported, never overwritten,
-        its amount is never changed (a record loaded before from an export that could not say its semester or its item is corrected in place, and counted), and every record is on the audit spine in your name. Loading the same export again is safe: nothing doubles.
+        Upload what each student already paid, by session and (optionally) semester. A blank <b>amount</b> means <b>cleared in full</b>.
+        The <b>Purpose / Payment Item</b> column sets what each payment was for: <b>GST FEES</b> is the GST fee, SCHOOL FEES is
+        school fees, any other item does not clear school-fee arrears. A row already on record is skipped, never overwritten;
+        loading the same export again is safe.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
 
@@ -200,7 +199,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
           </div>
-          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (First/Second/1/2, or Session for the whole session; optional), Level (optional; otherwise worked out for that session), Amount (blank = cleared in full), Purpose / Payment Item (SCHOOL FEES, GST FEES, …), Paid On / Payment Date, Reference / Receipt No, Channel and Note (optional). Columns are matched by name, so the old portal&rsquo;s payment export can be uploaded as-is.</div>
+          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (First/Second/1/2, or Session for the whole session; optional), Level (optional; otherwise worked out for that session), Amount (blank = cleared in full), Purpose / Payment Item (SCHOOL FEES, GST FEES, …), Paid On / Payment Date, Reference / Receipt No, Channel and Note (optional). Matched by name; the old portal&rsquo;s export uploads as-is.</div>
         </PBody>
       </Panel>
 
@@ -209,7 +208,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       {resumeAt !== null && preview ? (
         <Note kind="info" title={`Stopped at row ${resumeAt.toLocaleString()} of ${preview.length.toLocaleString()}`}
               action={<Btn kind="primary" disabled={busy} onClick={() => void run()}>Resume from the failed batch</Btn>}>
-          The file is still held in this page, so Resume continues from that batch. If you reload the page, choose the file again; re-uploading is safe.
+          If you reload the page, choose the file again; re-uploading is safe.
         </Note>
       ) : null}
       {result ? (
@@ -225,10 +224,10 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           ]} />
           {(result.duplicates ?? 0) > 0 ? (
             <Note kind="bad" title="Rows already on record were skipped">
-              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} matched a payment already recorded for the same student, session and semester, so nothing was changed. First references: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
+              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} already recorded; nothing changed. First references: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
             </Note>
           ) : null}
-          <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded. The students&rsquo; positions and arrears update at once.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number are counted above — migrate those students first, then re-upload." : ""}</Note>
+          <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
         </>
       ) : null}
 
@@ -257,8 +256,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <Panel title="Start over" right="Delete what this import has loaded, then load it again">
         <PBody>
           <div className="sub2">
-            Deletes only the payments this screen imported (channel &ldquo;Legacy&rdquo;, reference starting MOAUM-LEG-). Payments made through the gateway, the bank or the Bursary desk are never touched.
-            Leave the session blank for everything, or give one (2022/2023) to reset just that session. Each deleted record stays on the audit spine in your name.
+            Deletes only payments this screen imported (channel &ldquo;Legacy&rdquo;, reference MOAUM-LEG-…); gateway, bank and Bursary payments are never touched.
+            Leave the session blank for everything, or give one (2022/2023).
           </div>
           <div className="row mt-3">
             <input className="ctl" style={{ maxWidth: 160 }} placeholder="All sessions" value={resetSession} onChange={(e) => { setResetSession(e.target.value); setLoaded(null); }} disabled={!may || busy} />
@@ -267,7 +266,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           {loaded ? (
             <div className="mt-3">
               <Note kind={loaded.payments ? "bad" : "info"} title={loaded.payments ? `${Number(loaded.payments).toLocaleString()} imported payments for ${Number(loaded.students).toLocaleString()} students` : "Nothing imported to delete"}>
-                {loaded.payments ? <>Totalling ₦{Number(loaded.total).toLocaleString()}{loaded.sessions ? ` across ${loaded.sessions}` : ""}. This cannot be undone from the portal; the audit spine keeps a record of each one.</> : "No old-portal payments are loaded for that selection."}
+                {loaded.payments ? <>Totalling ₦{Number(loaded.total).toLocaleString()}{loaded.sessions ? ` across ${loaded.sessions}` : ""}. This cannot be undone from the portal.</> : "No old-portal payments are loaded for that selection."}
               </Note>
               {loaded.payments ? (
                 <div className="row mt-3">

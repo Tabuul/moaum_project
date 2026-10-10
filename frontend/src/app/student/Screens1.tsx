@@ -107,10 +107,7 @@ function StudentDetails({ s }: { s: Me }) {
             </div>
           </div>
         ))}
-        <div className="sub2 mt-4">
-          Names, programme and JAMB details are held by the Registry and JAMB. You can update your contact and other open
-          details on the <Link href="/student/biodata">bio-data page</Link>.
-        </div>
+        <div className="sub2 mt-4">Update your contact details on the <Link href="/student/biodata">bio-data page</Link>.</div>
       </PBody>
     </Panel>
   );
@@ -145,7 +142,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
     <>
       {preMatric ? (
         <Note kind="info" title={feesPaidStage ? "Matriculation number pending" : "Admitted · school fees pending"}>
-          {feesPaidStage ? <>Your school fees payment has been confirmed and your student portal access is active. Your official matriculation number is currently being processed by the Academic Office; you will be notified when it is issued, and it then becomes your username. Your password does not change.</> : <>You are on the register. Your student portal opens fully once your school fees are paid; your official matriculation number is issued by the Academic Office after that.</>}
+          {feesPaidStage ? <>School fees confirmed. Your matriculation number is being processed; once issued it becomes your username. Your password stays the same.</> : <>Pay your school fees to open the full student portal. Your matriculation number is issued after payment.</>}
           <div className="mt-2"><KvGrid cls="grid--3" pairs={[
             ["Student status", feesPaidStage ? "Matriculation pending" : "School fees pending"], ["Admission session", s.entrySession], ["Faculty", s.faculty],
             ["Department", s.department], ["Programme", s.programme], ["Login ID", <span key="l" className="tnum">{s.loginId ?? s.jambRegNo ?? s.admissionNo ?? "—"}</span>],
@@ -179,29 +176,29 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
               {owed.length ? (
                 <div className="sub2 mt-1">Required for {owed.map((c) => `${c.code}${c.source === "CARRYOVER" ? " (carryover)" : ""}`).join(", ")} in {gst.session}.</div>
               ) : null}
-              {unpaid ? <div className="sub2 mt-1">GST payment covers both GST and EPS requirements; your GST/EPS courses are locked on the registration form until it is confirmed.</div> : null}
-              {e.review ? <div className="sub2 mt-1">No GST or EPS course requires this payment of you in {gst.session}. It stands as paid; the Bursary reviews it, and nothing is deleted or refunded without them.</div> : null}
+              {unpaid ? <div className="sub2 mt-1">One GST payment covers GST and EPS. Your GST/EPS courses stay locked until it is confirmed.</div> : null}
+              {e.review ? <div className="sub2 mt-1">No GST or EPS course requires this payment in {gst.session}. The Bursary will review it.</div> : null}
             </PBody>
           </Panel>
         );
       })() : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
-          Your CGPA stood at <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester at {adv.pronounced_level} level, still under 1.0 after the level&rsquo;s probation list. Senate&rsquo;s rule advises withdrawal from the programme. The decision is Senate&rsquo;s; your Head of Department will tell you of it. Until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
+          CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester ({adv.pronounced_level} level), still under 1.0 after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
         </Note>
       ) : null}
       {prob ? (
         <Note kind="bad" title="You are on probation" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
-          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Until the next semester&rsquo;s results pronounce again, your course registration is held to <strong>{prob.probation_max_units} units</strong>; the courses you owe stay on the form, so choose fewer new ones.</> : <>The courses you owe stay on your registration form; see your Head of Department about the load you should carry.</>}
+          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Course registration is limited to <strong>{prob.probation_max_units} units</strong> until the next results; your outstanding courses stay on the form.</> : <>Your outstanding courses stay on your registration form.</>}
         </Note>
       ) : null}
       {noScheme ? (
-        <Note kind="info" title="What a payment releases is not yet stated for this session">
-          {f.schemeProblem} Your charges and payments are shown on Fees &amp; payments; registration opens the moment the Bursar states the scheme.
+        <Note kind="info" title="Payment scheme not yet stated">
+          {f.schemeProblem} Registration opens when the Bursar states the scheme.
         </Note>
       ) : !cleared ? (
         <Note kind="bad" title="Action required" action={<div className="row"><LinkBtn kind="urgent" href="/student/fees">Pay now</LinkBtn><LinkBtn kind="ghost" href="/student/fees">See breakdown</LinkBtn></div>}>
-          {f.balance > 0 ? <>Your balance of <strong className="tnum">{naira(f.balance)}</strong> for {f.session} is outstanding. Course registration waits on the Bursary&rsquo;s clearance.</> : f.hasArrears ? <>Arrears from an earlier session stand against you, and the scheme blocks everything while they do.</> : <>The Bursary has not cleared you for registration.</>}
+          {f.balance > 0 ? <>Your balance of <strong className="tnum">{naira(f.balance)}</strong> for {f.session} is outstanding. Course registration waits on the Bursary&rsquo;s clearance.</> : f.hasArrears ? <>Arrears from an earlier session block registration until cleared.</> : <>The Bursary has not cleared you for registration.</>}
         </Note>
       ) : (
         <Note kind="ok" title="You are cleared to register" action={<LinkBtn kind="go" href="/student/register">Register courses</LinkBtn>}>
@@ -229,13 +226,13 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
         {s.academic?.route === "CCE" ? (
           <Note kind="info" title={`${s.academic.centre ?? "Centre for Continuing Education"} · part-time`}>
             You study in the CCE session <b className="tnum">{s.academic.cceSession ?? s.academic.session}</b>{s.academic.undergraduateSession ? <> (undergraduate students are in {s.academic.undergraduateSession})</> : null}.
-            Admitted for {s.entrySession}{s.academic.durationYears ? <>; the programme runs {s.academic.durationYears} years part-time, and you are expected to complete in <b className="tnum">{s.academic.expectedCompletion ?? "—"}</b> — completion is by the courses passed, not the years alone</> : null}.
+            Admitted for {s.entrySession}{s.academic.durationYears ? <>; {s.academic.durationYears} years part-time, expected completion <b className="tnum">{s.academic.expectedCompletion ?? "—"}</b></> : null}.
           </Note>
         ) : null}
         {s.academic && s.academic.context === "PREPARING" ? (
           <Panel title="Admission session" right={<span className="row row--inline row--tight"><b className="tnum">{s.academic.session}</b><Pil kind={s.academic.ready ? "ok" : "info"}>{s.academic.ready ? "READY FOR RESUMPTION" : "PREPARING FOR RESUMPTION"}</Pil></span>}>
             <PBody>
-              <div className="sub2">You belong to <b>{s.academic.session}</b>, which the University is preparing while {s.academic.current_session ? <><b>{s.academic.current_session}</b> runs for returning students</> : <>no session is current</>}. Complete the steps below before resumption{s.academic.transitions_on ? <>; the session becomes current on <b>{onDay(s.academic.transitions_on)}</b></> : null}. Your account and everything on it continue unchanged when it does.</div>
+              <div className="sub2">Your session is <b>{s.academic.session}</b>, being prepared{s.academic.current_session ? <> (<b>{s.academic.current_session}</b> is current for returning students)</> : null}. Complete the steps below before resumption{s.academic.transitions_on ? <>; it becomes current on <b>{onDay(s.academic.transitions_on)}</b></> : null}.</div>
               <div className="steps mt-2">
                 {([
                   ["Admission", s.academic.steps.admission],
@@ -248,7 +245,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
                 ] as [string, boolean][]).map(([t, ok], i, all) => (
                   <Step key={t} state={ok ? "done" : all.slice(0, i).every((x) => x[1]) ? "now" : "todo"} title={t} sub={ok ? "Complete" : "Pending"} />
                 ))}
-                <Step state={s.academic.ready ? "now" : "todo"} title="Resumption" sub={s.academic.ready ? "Every requirement is met; you are ready for resumption" : "After the steps above"} />
+                <Step state={s.academic.ready ? "now" : "todo"} title="Resumption" sub={s.academic.ready ? "Ready for resumption" : "After the steps above"} />
               </div>
             </PBody>
           </Panel>
@@ -287,7 +284,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
 
       {s.carryovers.length ? (
         <Note kind="bad" title={`${s.carryovers.length} carryover${s.carryovers.length === 1 ? "" : "s"}`}>
-          {s.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} will be added to your next registration automatically. You do not need to request them.
+          {s.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} — added to your next registration automatically.
         </Note>
       ) : null}
 
@@ -299,7 +296,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
             <span className="sub2" key="c">{n.channel === "SMS" ? `SMS · ${n.recipient}` : `Email · ${n.recipient}`}</span>,
             n.state === "SENT" ? <Pil kind="ok" key="s">Sent</Pil> : n.state === "FAILED" ? <Pil kind="bad" key="s">Not delivered</Pil> : <Pil kind="info" key="s">Waiting to be sent</Pil>,
           ])} />
-        ) : <PBody><div className="sub2">Every notice the portal sends you is listed here as well, so nothing depends on a message reaching your phone.</div></PBody>}
+        ) : <PBody><div className="sub2">No notices yet.</div></PBody>}
       </Panel>
     </>
   );
@@ -331,7 +328,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
             <Pil kind={s.hasPhoto ? "info" : "grey"}>{s.hasPhoto ? "Photograph on file" : "No photograph on file"}</Pil>
           </div>
           <div className="sub2" style={{ maxWidth: "52ch", lineHeight: 1.55 }}>{s.hasPhoto ? "This is the photograph on your record. It is the one printed on your identity card and shown to the invigilator, so it must remain a true likeness." : "No photograph reached the register with you. The Registry captures one at matriculation."}</div>
-          <div className="sub2">A change needs Registry approval &mdash; students cannot replace it themselves after matriculation.</div>
+          <div className="sub2">Changes need Registry approval after matriculation.</div>
         </div>
       </div></div>
       <div className="grid grid--2">
@@ -370,7 +367,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
             ["Curriculum version", <span className="tnum" key="c">{s.curriculumVersion ?? "—"}</span>],
             ["On the register since", onDay(s.entrySession ? undefined : null)],
           ]} />
-          <div className="sub2 mt-1">Your curriculum version was fixed when you were admitted, so you are always assessed against the rules that applied then. To change a name or programme, apply through Registry with supporting documents.</div>
+          <div className="sub2 mt-1">To change a name or programme, apply to the Registry with supporting documents.</div>
         </PBody></Panel>
       </div>
     </>

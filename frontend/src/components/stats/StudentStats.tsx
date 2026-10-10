@@ -112,7 +112,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
 
   return (
     <>
-      <PageHead title={title ?? "Student statistics"} description={`${scopeWords}. Every figure is counted from the register as it stands; click a figure, an arc, a bar or a row to open the students behind it.`}
+      <PageHead title={title ?? "Student statistics"} description={`${scopeWords}. Click any figure to open the students behind it.`}
         actions={<><LinkBtn kind="primary" href={detailHref(f, "PAID_NOT_REGISTERED")}>Paid Not Registered</LinkBtn><LinkBtn href={detailHref(f, "NOT_PAID")}>Not Paid</LinkBtn><LinkBtn href={detailHref(f, "ALL")}>All Students</LinkBtn></>} />
 
       <div className="scope">
@@ -191,14 +191,14 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
               <PBody>
                 <Donut capLabel="Students" capValue={vzNum(t.total)} onPick={(i) => queryNav(detailHref(f, i.l === "Paid" ? "PAID" : i.l === "Not paid" ? "NOT_PAID" : "NO_CHARGE"))}
                   items={[{ l: "Paid", v: t.paid, c: VZ.s3 }, { l: "Not paid", v: t.not_paid, c: VZ.crit }, ...(t.no_charge ? [{ l: "No charge stated", v: t.no_charge, c: VZ.axis }] : [])]} />
-                <div className="sub2 mt-2">Paid means the charge for the period is covered in full by confirmed school-fee payments; a student with no fee row for their level and programme is counted apart, not as unpaid.</div>
+                <div className="sub2 mt-2">Paid: the period&rsquo;s charge covered in full by confirmed payments. No fee row is counted apart, not as unpaid.</div>
               </PBody>
             </Panel>
             <Panel title="Registration status" right={`${pct(t.registered, t.total)} registered`}>
               <PBody>
                 <Donut capLabel="Students" capValue={vzNum(t.total)} onPick={(i) => queryNav(detailHref(f, i.l === "Registered" ? "REGISTERED" : i.l === "Paid not registered" ? "PAID_NOT_REGISTERED" : i.l === "Not paid" ? "NOT_PAID" : "NOT_REGISTERED"))}
                   items={[{ l: "Registered", v: t.registered, c: VZ.s1 }, { l: "Paid not registered", v: t.paid_not_registered, c: VZ.s4 }, { l: "Not paid", v: Math.max(0, t.total - t.registered - t.paid_not_registered), c: VZ.crit }]} />
-                <div className="sub2 mt-2">Registered means a course registration submitted, approved or locked for the period on the student&rsquo;s own register: the University form, the Postgraduate School&rsquo;s form or the College&rsquo;s enrolment.</div>
+                <div className="sub2 mt-2">Registered: a course registration submitted, approved or locked for the period.</div>
               </PBody>
             </Panel>
           </div>
@@ -254,7 +254,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
                 <LinkBtn href={detailHref(f, "REGISTERED")}>View Registered Students</LinkBtn>
                 <LinkBtn href={detailHref(f, "ALL")}>Export Report</LinkBtn>
               </div>
-              <div className="sub2 mt-2">The detail list carries these filters, searches on the server, pages the rows, and downloads them as a branded Excel workbook or PDF with S/N first and names A–Z.</div>
+              
             </PBody>
           </Panel>
         </>

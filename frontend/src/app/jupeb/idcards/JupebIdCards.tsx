@@ -71,7 +71,7 @@ export function JupebIdCards({ canWrite }: { canWrite: boolean }) {
   const all = eligible.length > 0 && eligible.every((r) => picked.has(r.id));
   return (
     <>
-      <PageHead title="JUPEB identity cards" description="Cards for the session's active students, printed at the card's own size, each with a QR that opens the University's record. A lost card is replaced and its code stops verifying."
+      <PageHead title="JUPEB identity cards" description="A replaced card's code stops verifying."
         actions={<span className="row">
           <select className="ctl" aria-label="Session" value={session} onChange={(e) => { setSession(e.target.value); setKlass(""); setPicked(new Set()); }}>
             {(data?.sessions ?? []).map((x) => <option key={x.session} value={x.session}>{x.session}</option>)}</select>

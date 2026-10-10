@@ -131,7 +131,7 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
         </PBody>
       </Panel>
       <Note kind="info" title="The gradebook total becomes the continuous assessment mark" action={<Btn kind="primary" disabled={busy || d.sheet_stage !== "ENTRY"} onClick={async () => { const j = await send("/promote", {}, `${d.course_code}: gradebook promoted to the score sheet`); if (j) setSaid(`${j.written} CA mark${Number(j.written) === 1 ? "" : "s"} written to the score sheet`); }}>Promote CA total to the score sheet</Btn>}>
-        When you promote it, the weighted total (capped at 40) lands in the CA column of the score sheet as a new version with its reason — where it still goes through verification, departmental, faculty and Senate approval like any other mark. {d.sheet_stage ? (d.sheet_stage === "ENTRY" ? "The sheet is with you." : `The sheet has left the lecturer (${d.sheet_stage.toLowerCase().replace("_", " ")}); nothing is promoted into it now.`) : "No score sheet exists yet: it is generated when the examination session is opened."}
+        The weighted total (capped at 40) goes to the CA column as a new version. {d.sheet_stage ? (d.sheet_stage === "ENTRY" ? "The sheet is with you." : `The sheet has left the lecturer (${d.sheet_stage.toLowerCase().replace("_", " ")}).`) : "No score sheet exists yet."}
       </Note>
       <Panel title="Engagement — students at risk" right="Counted from the record, feeds the early-warning report">
         {d.engagement.length ? (

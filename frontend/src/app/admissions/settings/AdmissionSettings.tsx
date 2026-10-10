@@ -106,22 +106,22 @@ const FAC_GUIDE: Record<string, string> = {
    Directorate of ICT does not get to choose which reading of an admission rule is correct. */
 const ADM_QUESTIONS: [string, string, ReactNode, string][] = [
   ["decided", "English and Mathematics: compulsory everywhere, or not?",
-    <>Decided by the Academic Office: a <b>credit</b> in English and Mathematics is compulsory for every programme, and a pass (D7/E8) is not a credit &mdash; it is ignored. The few programmes whose own rows differ (B.Sc. Political Science and Sociology accept a pass in Mathematics; B.A. Linguistics does not require Mathematics; B.Ed. Guidance and Counselling accepts a pass) are handled as <b>per-programme exceptions</b> set on the Programme requirements tab. The portal refuses an offer to a candidate whose recorded O&rsquo;Level lacks a compulsory credit, naming the subject.</>,
+    <>Decided by the Academic Office: a <b>credit</b> in English and Mathematics is compulsory for every programme; a pass (D7/E8) is not a credit. Programmes that differ (B.Sc. Political Science and Sociology accept a pass in Mathematics; B.A. Linguistics does not require Mathematics; B.Ed. Guidance and Counselling accepts a pass) are <b>per-programme exceptions</b> on the Programme requirements tab.</>,
     "Central Admissions Committee"],
   ["decided", "Equality of Local Government: 30% or not more than 50%?",
-    <>Decided: ELG is a <b>share the Committee sets</b> (30% at 2.4) up to the <b>ceiling of 50%</b> (2.11), never above it. Set the share in &ldquo;The four selection criteria&rdquo; and the ceiling in &ldquo;The ratios and the caps&rdquo;; a policy whose ELG share exceeds its ceiling now shows a finding and cannot be put in force.</>,
+    <>Decided: ELG is a <b>share the Committee sets</b> (30% at 2.4) up to the <b>ceiling of 50%</b> (2.11). Set the share in &ldquo;The four selection criteria&rdquo; and the ceiling in &ldquo;The ratios and the caps&rdquo;.</>,
     "Central Admissions Committee"],
   ["decided", "The Education exception: which ratio does 60:40 belong to?",
-    <>Decided: 60:40 is the <b>UTME:Direct-Entry</b> ratio, held per faculty. Every faculty is 80:20 except <b>Education</b>, which is 60:40. It is a per-faculty override on the faculty quota (Faculty quotas tab), and the merit engine splits UTME and Direct-Entry places by the ratio in force for each faculty. The Science&ndash;Arts 60:40 is a separate rule and stays as it is.</>,
+    <>Decided: 60:40 is the <b>UTME:Direct-Entry</b> ratio, per faculty: every faculty is 80:20 except <b>Education</b> (60:40), set on the Faculty quotas tab. The Science&ndash;Arts 60:40 is a separate rule.</>,
     "Central Admissions Committee"],
   ["answer", "Two names for four faculties",
-    <>The quota table names <i>Administration and Management</i>, <i>College of Health Sciences</i>, <i>Pharmacy</i> and <i>Technology education</i>. The University&rsquo;s programme table names <i>Management Sciences</i>, <i>Basic and Applied Medical Sciences</i>, <i>Pharmaceutical Sciences</i> and <i>Technology and Industrial Studies</i> &mdash; and the guidelines themselves use <i>Faculty of Pharmaceutical Sciences</i> four pages later. A quota is distributed against one name while the programmes hang off the other, which is exactly how a faculty ends up counted twice or not at all.</>,
+    <>The quota table names <i>Administration and Management</i>, <i>College of Health Sciences</i>, <i>Pharmacy</i> and <i>Technology education</i>; the programme table names <i>Management Sciences</i>, <i>Basic and Applied Medical Sciences</i>, <i>Pharmaceutical Sciences</i> and <i>Technology and Industrial Studies</i>.</>,
     "Academic Office"],
   ["answer", "Biochemistry sits in two faculties",
-    <>The subject combinations place <b>B.Sc. Biochemistry</b> under the Faculty of Science. The University&rsquo;s programme table places it under Basic and Applied Medical Sciences. Its candidates count against one faculty&rsquo;s quota and its cut-off comes from the other.</>,
+    <>The subject combinations place <b>B.Sc. Biochemistry</b> under the Faculty of Science; the programme table places it under Basic and Applied Medical Sciences.</>,
     "Academic Office"],
   ["answer", "Mass Communication has no stated requirement",
-    <>Six programmes of the Faculty of Communication and Media Studies are given subject combinations &mdash; Advertising, Broadcasting, Development Communication, Journalism, Public Relations and Strategic Communication. <b>Mass Communication</b>, the faculty&rsquo;s oldest programme, is not among them.</>,
+    <>Six Communication and Media Studies programmes have subject combinations (Advertising, Broadcasting, Development Communication, Journalism, Public Relations, Strategic Communication); <b>Mass Communication</b> is not among them.</>,
     "Dean, Communication and Media Studies"],
 ];
 
@@ -227,9 +227,7 @@ export function AdmissionSettings({
       <>
         {policyProblem ? <ProblemNotice problem={policyProblem} /> : null}
         <Note kind="info" title={`No admission settings exist for ${session}`}>
-          These will be the Central Admissions Committee&rsquo;s guidelines, made into settings the portal can actually
-          apply. Until they are put in force by the Committee&rsquo;s minute, <b>no candidate can be ranked, cut off or
-          admitted</b> for {session} &mdash; the portal refuses rather than falling back on last year&rsquo;s numbers.
+          Until the Committee puts them in force, <b>no candidate can be ranked, cut off or admitted</b> for {session}.
         </Note>
         <div className="card">
           <div className="card__body">
@@ -237,9 +235,7 @@ export function AdmissionSettings({
             {previous ? (
               <>
                 <div className="sub2 mb-3">
-                  Start from <b>{previousSession}</b> ({previous.inForce ? `in force under ${previous.instrument}` : "a draft"}): the
-                  quota, weighting, criteria, every faculty&rsquo;s quota and cut-off and every programme&rsquo;s rule, as a new
-                  draft to amend.
+                  Start from <b>{previousSession}</b> ({previous.inForce ? `in force under ${previous.instrument}` : "a draft"}) as a new draft to amend.
                 </div>
                 <Btn
                   kind="primary"
@@ -268,7 +264,7 @@ export function AdmissionSettings({
             </div>
             {!may ? (
               <div className="sub2 mt-3">
-                The settings are made by the Committee&rsquo;s secretariat &mdash; the Academic Office or the Registrar. You are acting as{" "}
+                Settings are made by the Academic Office or the Registrar. You are acting as{" "}
                 <b>{officeLabel(actingOffice)}</b>.
               </div>
             ) : null}
@@ -332,8 +328,7 @@ export function AdmissionSettings({
       <Panel title="The aggregate score" right="Paragraph 2.6 · NUC/JAMB approved weighting">
         <PBody>
           <div className="sub2 mb-3">
-            UTME is marked out of 400 and the Post-UTME screening out of 100, so the UTME mark is <b>scaled to 100 before it is weighted</b>.
-            Adding 247 to 68.5 is not an aggregate, and a system that does it ranks the whole University by UTME alone.
+            UTME (out of 400) is <b>scaled to 100 before it is weighted</b> against the Post-UTME score (out of 100).
           </div>
           <DTable
             cols={["Component", "Weight|mid", "Worked example|num"]}
@@ -388,7 +383,7 @@ export function AdmissionSettings({
       </Panel>
       <Panel title="Catchment local governments" right="For the Locality basis">
         <PBody>
-          <div className="sub2 mb-2">The local governments in the University&rsquo;s immediate catchment. A candidate from one of these carries the <b>Locality</b> basis when the merit engine proposes offers. One per line, or comma-separated.</div>
+          <div className="sub2 mb-2">LGAs in the University&rsquo;s catchment; their candidates carry the <b>Locality</b> basis. One per line, or comma-separated.</div>
           <textarea id="catchment" className="ctl" rows={4} value={"catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, catchment: e.target.value })} placeholder="Makurdi, Guma, Gwer East, Gwer West, Tarka" disabled={!may} />
           <div className="mt-2">
             <Btn kind="primary" disabled={!may || busy !== null} onClick={() => void send("PUT", `${base}/catchment`, { lgas: ("catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean) }, `Catchment local governments stated for ${session}`, "catch")}>{busy === "catch" ? "Saving…" : "Save the catchment"}</Btn>
@@ -397,7 +392,7 @@ export function AdmissionSettings({
       </Panel>
       <Panel title="Subject equivalencies" right="For the eligibility engine">
         <PBody>
-          <div className="sub2 mb-2">Where Senate accepts one subject in place of another, it is stated here and nowhere else: the engine never invents an equivalence. One per line as <b>Required subject = Accepted subject</b>, optionally followed by <b>@OLEVEL</b> or <b>@UTME</b> to limit it to one examination (the default holds for both). Saving moves the policy&rsquo;s rules version and every evaluation is re-read against the new list.</div>
+          <div className="sub2 mb-2">Senate-approved subject equivalences, one per line as <b>Required subject = Accepted subject</b>, optionally followed by <b>@OLEVEL</b> or <b>@UTME</b> (default: both).</div>
           <textarea id="equiv" className="ctl tnum" rows={5} value={"equiv" in edits ? edits["equiv"] : equivText} onChange={(e) => setEdits({ ...edits, equiv: e.target.value })} placeholder={"Biology = Agricultural Science\nMathematics = Further Mathematics @OLEVEL"} disabled={!may} />
           <div className="mt-2 row row--inline row--tight">
             <Btn kind="primary" disabled={!may || busy !== null} onClick={() => {
@@ -420,14 +415,11 @@ export function AdmissionSettings({
   const facultyTab = (
     <>
       <Note kind="info" title="Quotas and cut-offs are set per programme">
-        A quota and a cut-off belong to each programme now — set them on the <b>Programme requirements</b> tab, where the
-        merit engine reads them. The faculty no longer carries a quota or a cut-off. What stays a faculty setting is the
-        NUC-approved ceiling for the whole session and the UTME:Direct-Entry split the merit engine uses to divide a
-        programme&rsquo;s places.
+        Set them on the <b>Programme requirements</b> tab. This tab holds the NUC ceiling and the UTME:Direct-Entry split.
       </Note>
       <Panel title="NUC approved quota" right="The ceiling for the session">
         <PBody>
-          <div className="sub2">The total number of places the NUC approved for {session}: {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", `${base}/nuc-quota`, { quota: v ?? policy.nucQuota }, `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"), undefined, true)} <span className="sub2">— a setting; it can be raised even after the policy is in force. The programmes&rsquo; own quotas are distributed under it on the Programme requirements tab.</span></div>
+          <div className="sub2">The total number of places the NUC approved for {session}: {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", `${base}/nuc-quota`, { quota: v ?? policy.nucQuota }, `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"), undefined, true)} <span className="sub2">— can be raised after the policy is in force.</span></div>
         </PBody>
       </Panel>
       <Panel title="Faculty UTME:Direct-Entry split" right="Paragraph 2.3">
@@ -439,7 +431,7 @@ export function AdmissionSettings({
             <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
           ])}
         />
-        <PBody><div className="sub2">Type the UTME share; Direct Entry is the rest. Blank inherits the session default of {policy.ratioUtme}:{policy.ratioDe}. Education is 60:40. The merit engine fills each programme&rsquo;s places by the split in force here.</div></PBody>
+        <PBody><div className="sub2">Type the UTME share; Direct Entry is the rest. Blank inherits the session default of {policy.ratioUtme}:{policy.ratioDe}. Education is 60:40.</div></PBody>
       </Panel>
     </>
   );
@@ -461,16 +453,11 @@ export function AdmissionSettings({
   const progTab = (
     <>
       <Note kind="info" title="Quotas and cut-offs are set here, per programme">
-        Each programme carries its own <b>quota</b> (Places) and <b>UTME cut-off</b>, edited inline in the table below and
-        editable even while the policy is in force. A programme with no cut-off of its own inherits its faculty&rsquo;s as a
-        fallback; the Faculty quotas tab holds the NUC ceiling, the UTME:Direct-Entry split and that fallback. The merit
-        engine fills each programme&rsquo;s quota and ranks against its own cut-off.
+        Edit each programme&rsquo;s <b>quota</b> (Places) and <b>UTME cut-off</b> inline below, even while in force. A programme without a cut-off inherits its faculty&rsquo;s.
       </Note>
       {withoutRule.length ? (
         <Note kind="bad" title={`${withoutRule.length} of ${policy.programmes.length} programmes have no rule for this session`}>
-          Nobody may be admitted into them. That is the correct behaviour and not a gap to be papered over: a candidate
-          admitted into a programme whose requirements nobody stated is a candidate nobody can defend at accreditation.
-          The Deans and Heads of Department below have to state one.
+          Nobody may be admitted into them until a rule is stated.
         </Note>
       ) : null}
       <Panel title="Every programme the University runs" right={<span className="row row--inline">{`${withRule.length} of ${policy.programmes.length} carry a requirement${closedThisSession.length ? ` · ${closedThisSession.length} closed this session` : ""}`}<Btn kind="primary" disabled={locked || !withoutRule.length} onClick={() => { setChoosing(true); setChosen(""); }}>New rule</Btn></span>}>
@@ -578,19 +565,19 @@ export function AdmissionSettings({
           </>}
         >
           {policy.inForce ? (
-            <Note kind="bad" title="These settings are in force — only the subject sets and the eligibility rules may be corrected">
-              The cut-off, the requirement text and the UTME/Direct-Entry rules a candidate is ranked against are frozen once the policy is in force. You may still correct the <b>relevant O&rsquo;Level subjects</b> the screening counts, because that names which subjects the score reads — a data correction, not a change to the standard.
+            <Note kind="bad" title="In force — only the subject sets and eligibility rules may be corrected">
+              The cut-off, requirement text and UTME/Direct Entry rules are frozen; the <b>relevant O&rsquo;Level subjects</b> may still be corrected.
             </Note>
           ) : (
             <Note kind="info" title="A rule is what a candidate is admitted against">
-              The O&rsquo;Level requirement, the UTME subject combination and the Direct Entry rule are Senate&rsquo;s to state; a programme with none cannot admit anybody, and that is the correct behaviour.
+              A programme with no rule cannot admit anybody.
             </Note>
           )}
           <div className="grid grid--2 rfgrid">
             <Field id="pr-cut" label="Cut-off of its own" hint={policy.inForce ? "Frozen while in force · edit inline in the table" : "Leave blank for the faculty’s"}>
               <input id="pr-cut" className="ctl tnum" disabled={policy.inForce} value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} autoComplete="off" />
             </Field>
-            <Field id="pr-quota" label="Programme quota" hint={policy.inForce ? "Frozen here while in force · edit inline in the table" : "Places it carries; blank means none — the merit engine then offers everyone eligible"}>
+            <Field id="pr-quota" label="Programme quota" hint={policy.inForce ? "Frozen here while in force · edit inline in the table" : "Blank: no quota (everyone eligible is offered)"}>
               <input id="pr-quota" className="ctl tnum" disabled={policy.inForce} value={"pr-quota" in edits ? edits["pr-quota"] : editingProgramme.quota ?? ""} onChange={(e) => setEdits({ ...edits, "pr-quota": e.target.value })} autoComplete="off" />
             </Field>
             {([["pr-ol", "O’Level requirement", editingProgramme.olevelText], ["pr-ut", "UTME subjects", editingProgramme.utmeText], ["pr-de", "Direct Entry", editingProgramme.deText]] as [string, string, string | null][]).map(([k, label, current]) => (
@@ -645,8 +632,7 @@ export function AdmissionSettings({
     <>
       {f.length ? (
         <Note kind="bad" title={`${f.length} finding${f.length === 1 ? " stands" : "s stand"} between these settings and a live session`}>
-          Each names what is missing, by how much, and whose it is to answer. The session cannot be put in force while any
-          of them stands &mdash; not as a warning that can be clicked past.
+          The session cannot be put in force while any stands.
         </Note>
       ) : (
         <Note kind="ok" title="Nothing outstanding">
@@ -675,9 +661,8 @@ export function AdmissionSettings({
             <>
               <Field id="as-reaffirm" label="Central Admissions Committee minute (re-affirmation)" hint={<>
                   In force under <b>{policy.instrument}</b>
-                  {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A placement or cut-off
-                  adjusted here takes effect at once. Leave this blank to re-affirm under <b>{policy.instrument}</b>, or type a fresh minute
-                  for a new decision. The earlier citation stays readable either way.
+                  {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. Changes take effect at once.
+                  Leave blank to re-affirm under <b>{policy.instrument}</b>, or type a new minute.
                 </>}>
                 <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder={policy.instrument ?? "CAC/2026/08"} autoComplete="off" disabled={!may} />
               </Field>
@@ -699,8 +684,7 @@ export function AdmissionSettings({
           ) : (
             <>
               <Field id="as-instr" label="Central Admissions Committee minute" hint={<>
-                  Settings without an instrument are somebody&rsquo;s opinion about a cut-off. Every candidate admitted this session is
-                  admitted under this minute, and it is what the University produces when one of them is queried in four years&rsquo; time.
+                  Every candidate admitted this session is admitted under this minute.
                 </>}>
                 <input id="as-instr" value={instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="CAC/2026/07" autoComplete="off" disabled={locked} />
               </Field>
@@ -730,9 +714,9 @@ export function AdmissionSettings({
         action="Setting the admission policy and putting a session in force" />
       <Note kind={policy.inForce ? "ok" : "info"} title={policy.inForce ? `The ${session} admission settings are in force` : `The ${session} admission settings are a DRAFT, and nothing may be admitted under them`}>
         {policy.inForce ? (
-          <>Every cut-off and subject combination the portal applies this session comes from here, and carries the minute that approved it &mdash; those are frozen now. The <b>quotas</b> stay adjustable, because places are not a rule of qualification: the NUC can raise the approved quota mid-cycle and the Deans redistribute it. Every change is recorded against whoever made it.</>
+          <>Cut-offs and subject combinations are frozen. <b>Quotas</b> stay adjustable.</>
         ) : (
-          <>These are the Central Admissions Committee&rsquo;s guidelines, made into settings the portal can actually apply. Until they are put in force by the Committee&rsquo;s minute, <b>no candidate can be ranked, cut off or admitted</b> &mdash; the portal refuses rather than falling back on last year&rsquo;s numbers. Last year&rsquo;s quota applied to this year&rsquo;s candidates is how a university over-admits by nine hundred and learns of it at accreditation.</>
+          <>Until the Committee&rsquo;s minute puts them in force, <b>no candidate can be ranked, cut off or admitted</b>.</>
         )}
         {!may ? <> You are acting as <b>{officeLabel(actingOffice)}</b>; the settings are read here and made by the Academic Office or the Registrar.</> : null}
       </Note>

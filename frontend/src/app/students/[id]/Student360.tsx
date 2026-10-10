@@ -185,9 +185,6 @@ export function Student360({
         </div>
       </div>
 
-      <div className="sub2">
-        Assembled live from the modules that own each part of it. No data is copied into the student record.
-      </div>
 
       <MatriculationPanel studentId={s.id} />
 
@@ -204,7 +201,7 @@ export function Student360({
                   <strong className={`tnum ${fees.balance > 0 ? "ink-red" : "ink-green"}`}>{money(fees.balance)}</strong>
                 </div>
                 <div className="sub2">
-                  {fees.hasArrears ? "Arrears are carried from an earlier session. " : ""}The Bursary&rsquo;s figures for the session: the fee schedule&rsquo;s charge and the confirmed school-fee payments.
+                  {fees.hasArrears ? "Arrears are carried from an earlier session. " : ""}The Bursary&rsquo;s charge and confirmed payments for the session.
                 </div>
               </>
             ) : (
@@ -271,7 +268,7 @@ export function Student360({
               {record.statusHistory.length === 0 && record.decidedChanges.length === 0 ? (
                 <tr>
                   <td className="sub2">
-                    Nothing has changed on this record since it was created. Every change is kept, with who made it.
+                    No change since it was created.
                   </td>
                 </tr>
               ) : null}
@@ -327,9 +324,7 @@ export function Student360({
           }
         >
           <Note kind="info" title="This sets the student's current level">
-            Use this to fix a wrong level — for example an over-promotion by a session roll-over. It changes only the
-            current level; the reason is recorded on the audit trail in your name. It does not change registrations or
-            enrolments already made.
+            Only the current level changes; registrations and enrolments already made do not. The reason is recorded in your name.
           </Note>
           <Field id="lvl" label="Current level" full>
             <select id="lvl" className="ctl" value={newLevel} onChange={(e) => setNewLevel(e.target.value)}>
@@ -361,8 +356,7 @@ export function Student360({
           }
         >
           <Note kind="info" title="A change of status is made on an instrument">
-            The Senate minute, the letter, the Registrar&rsquo;s decision. The database refuses a change that cites none,
-            and the citation stays on the record.
+            The Senate minute, the letter or the Registrar&rsquo;s decision; a change citing none is refused.
           </Note>
           <Field id="to" label="To" full>
             <select id="to" className="ctl" value={to} onChange={(e) => setTo(e.target.value)}>
@@ -383,8 +377,7 @@ export function Student360({
             <div className="row row--top mt-2">
               <WarnIcon size={17} />
               <span className="sub2">
-                A student becomes ACTIVE at matriculation, in one run over the confirmed faculty lists. Doing it here
-                leaves them without a matriculation number, which the database will refuse.
+                A student becomes ACTIVE at matriculation; without a matriculation number this is refused.
               </span>
             </div>
           ) : null}

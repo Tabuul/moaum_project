@@ -107,12 +107,12 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
 
   return (
     <>
-      <PageHead title="Payment & registration windows" description="Whether the portal's school fees payment and course registration are open, closed, scheduled or in their late period, for a session and each semester. The Director of ICT controls availability; the Bursary and the Academic Office keep every financial and academic rule. Every act is confirmed with its reason and kept in the history."
+      <PageHead title="Payment & registration windows" description="School fees payment and course registration, per session and semester. The Bursary and the Academic Office keep every financial and academic rule."
         actions={<span className="row row--inline row--tight"><label htmlFor="pw-session" className="sub2">Session</label><select id="pw-session" className="ctl" value={session} onChange={(e) => go(`/ict/windows?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((s) => <option key={s.name} value={s.name}>{s.name} — {s.state === "CLOSED" ? "COMPLETED" : s.state === "NOT_YET_OPEN" ? "PLANNED" : s.state}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">The portal&rsquo;s windows are opened and closed by the Director of ICT alone.</Note> : null}
       <Note kind="info" title="Admission status checking has its own page" action={<LinkBtn kind="secondary" href={`/ict/admission-checking?session=${encodeURIComponent(session)}`}>Admission Status Checking</LinkBtn>}>
-        The window in which applicants pay the admission checking fee and check their admission status runs over the admission exercise, with its own report; its acts appear in the history below as well.
+        Its acts also appear in the history below.
       </Note>
       <Tiles items={[
         ["SCHOOL FEES PAYMENT", (STATE[fees.state] ?? [fees.state])[0], fees.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", fees.closes_at ? `Closes ${when(fees.closes_at)}` : fees.configured ? "No closing date" : "Open by default"],
@@ -128,7 +128,7 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
       </div>
       <Panel title="CCE STUDENTS&rsquo; WINDOWS" right={page.cce?.session ? `CCE session ${page.cce.session} · ${page.cce.students} CCE student${page.cce.students === 1 ? "" : "s"}` : null}>
         <PBody>
-          <div className="sub2">The Centre for Continuing Education&rsquo;s students study in the CCE session on the CCE calendar; these two windows govern them, and the full-time windows above never do (nor do these reach a full-time student). Unset, each is open and the CCE calendar decides.
+          <div className="sub2">These govern CCE students only; the full-time windows above never do. Unset, the CCE calendar decides.
             {page.cce?.session && page.cce.session !== session ? <> CCE students are in <b>{page.cce.session}</b>: <a href={`/ict/windows?session=${encodeURIComponent(page.cce.session)}`}>choose it</a> to set their windows.</> : null}</div>
         </PBody>
       </Panel>

@@ -35,9 +35,9 @@ export function Reset({ token }: { token: string }) {
   }
 
   return (
-    <AuthLayout eyebrow="Account recovery" lead={<>Choose the password that carries you through the portal. The link you followed is good for an hour and works once.</>}>
+    <AuthLayout eyebrow="Account recovery" lead={<>Choose your password. The link is valid for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (token && pw.length >= 8 && !mismatch) void reset(); }}>
-          <PageHead title="New password" description="Eight characters at the very least. This one account carries you to graduation." />
+          <PageHead title="New password" description="At least eight characters." />
           {done ? (
             <Note kind="ok" title="Your password has been changed">Sign in with your new password. <Link href="/login">Go to sign in</Link>.</Note>
           ) : !token ? (

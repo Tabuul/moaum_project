@@ -61,7 +61,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
       {problem ? <ProblemNotice problem={problem} /> : null}
       {data && !data.sittings.length ? (
         <Note kind="info" title="No O’Level result has been recorded for this candidate">
-          The results arrive in JAMB&rsquo;s O&rsquo;Level download, one row per subject; upload it above and it attaches on the registration number.
+          Upload JAMB&rsquo;s O&rsquo;Level download above.
         </Note>
       ) : null}
       {data?.sittings.map((st, i) => (
@@ -109,13 +109,13 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
             />
             {!s.relevantKnown ? (
               <Note kind="info" title="Provisional: the programme’s relevant subjects are not stated">
-                Until the admission settings name the O&rsquo;Level subjects relevant to {data.programme ?? "this programme"}, the best subjects of all those sat are counted. State them on the programme&rsquo;s rule under Admission settings.
+                Until the admission settings name the O&rsquo;Level subjects relevant to {data.programme ?? "this programme"}, the best subjects of all those sat are counted.
               </Note>
             ) : null}
           </>
         ) : (
           <Note kind="info" title={`The screening score is the ${data.screeningIs}’s`}>
-            The results are shown as JAMB sent them. The score they carry is computed for the {data.screeningIs} and shown to nobody else &mdash; not to other offices, and not to the applicant.
+            Shown to nobody else, including the applicant.
           </Note>
         )
       ) : null}

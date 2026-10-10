@@ -59,7 +59,7 @@ export function Reports({ stats, categories, agents, faculties, departments, fil
 
   return (
     <>
-      <PageHead title="ICT support reports" description="Real figures from the tickets, in the scope you choose. Nothing here is estimated."
+      <PageHead title="ICT support reports" 
         actions={<><Btn kind="primary" onClick={downloadAll}>Download the Report</Btn><LinkBtn href="/helpdesk">The Queue</LinkBtn></>} />
       <div className="filterbar">
         <div className="row">

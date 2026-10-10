@@ -79,7 +79,7 @@ export function SittingReport({ initial }: { initial: ReportView }) {
     <>
       <Note kind={r ? "ok" : "info"} title={`${v.exam.course_code} · ${s.label} · ${s.venue}`}>
         {v.exam.title} ({v.exam.reference}) · scheduled {whenAt(s.starts_at)} to {hhmm(s.ends_at)}.
-        {r ? <> Report filed {whenAt(r.filed_at)} by {r.filed_by ?? "—"}.</> : <> The report is filed once the candidates have finished or the sitting&rsquo;s time is over; after that it is not changed.</>}
+        {r ? <> Report filed {whenAt(r.filed_at)} by {r.filed_by ?? "—"}.</> : <> Filed once the sitting is over; then it is not changed.</>}
       </Note>
       <Tiles cls="grid--5" items={[
         ["SEATED", num(c.seated), null, `${num(c.checked_in)} checked in`],

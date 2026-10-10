@@ -19,7 +19,7 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
       {(t?.overdue ?? 0) || finesUnpaid ? (
         <Note kind="bad" title={`${t?.overdue ?? 0} loan${(t?.overdue ?? 0) === 1 ? "" : "s"} overdue · ${money(finesUnpaid)} in unpaid fines`}
           action={<LinkBtn kind="urgent" href="/library/circulation">Open circulation</LinkBtn>}>
-          A fine is posted on return at the rate in force, settled against a reference the student generates or waived with a reason. A patron with a fine outstanding does not clear.
+          A patron with a fine outstanding does not clear.
         </Note>
       ) : (
         <Note kind="ok" title="Nothing overdue, and no fine outstanding" action={<LinkBtn kind="primary" href="/library/circulation">Open circulation</LinkBtn>}>
@@ -44,7 +44,7 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
               <b className="tnum ink-red" key="n">{x.days_overdue}</b>,
               <span className="tnum" key="f">{money(x.days_overdue * perDay)}</span>,
             ])} texts={overdue.map((x) => `${x.patron} ${x.number ?? ""} ${x.title}`)} />
-        ) : <PBody><div className="sub2">Nothing is overdue. An item shows here the day after its due date, and its fine grows until it is returned.</div></PBody>}
+        ) : <PBody><div className="sub2">Nothing is overdue.</div></PBody>}
       </Panel>
 
       <Panel title="Fines unpaid" right={fines.length ? `${fines.length} to settle` : "None"}>
@@ -56,7 +56,7 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
               <span className="tnum sub2" key="r">{d0(x.returned_at)}</span>,
               <b className="tnum ink-red" key="f">{money(Number(x.fine ?? 0))}</b>,
             ])} texts={fines.map((x) => `${x.patron} ${x.number ?? ""} ${x.title}`)} />
-        ) : <PBody><div className="sub2">No fine is waiting. A fine is settled against the student&rsquo;s payment reference, or waived by you with the reason on the record.</div></PBody>}
+        ) : <PBody><div className="sub2">No fine is waiting.</div></PBody>}
       </Panel>
 
       <Panel title="Library desks" right={me?.name ? `Signed in as ${me.name}` : "University Library"}>

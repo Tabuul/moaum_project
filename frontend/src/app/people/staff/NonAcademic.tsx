@@ -117,12 +117,8 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
     <>
       <RoleLine allowed={["registrar", "dregistrar", "hrm", "ict"]} actingOffice={actingOffice} canAct={may} action="Loading non-academic staff" />
       <Note kind="info" title="Upload the nominal roll of non-academic staff">
-        The same sheet as the teaching staff, with <b>CONTISS</b> in place of CONUASS: PNO, full names, sex, date of first appointment, the
-        department or unit <b>as the roll spells it</b>, present rank and phone. Check the file first: every row is placed in its unit,
-        department or faculty and nothing is written; the spellings that cannot be placed are listed for you to correct or to add to the unit
-        register. Then load it. Each row becomes the person on record (the PNO becomes the staff id <b>P&lt;number&gt;</b>) and an establishment
-        record in its unit. <b>No sign-in and no office are issued</b>: a non-academic member of staff has no desk on the portal yet, and a
-        login with no office cannot act. Re-uploading never duplicates.
+        As the teaching-staff sheet, with <b>CONTISS</b> in place of CONUASS. Check the file first (nothing is written), then load it.
+        <b> No sign-in and no office are issued.</b> Re-uploading never duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Registry, Human Resources and the Directorate of ICT">Your office may not load staff.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -153,8 +149,8 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
           ]} />
           <Note kind={tally.unplaced || tally.skipped || tally.failedRows ? "bad" : "ok"} title={tally.dry ? (tally.unplaced ? "Checked: some spellings could not be placed" : "Checked: every row can be placed") : (tally.unplaced || tally.skipped || tally.failedRows ? "Loaded, with rows to follow up" : "Non-academic staff loaded")}>
             {tally.rows} row(s) read · {tally.created} {tally.dry ? "new" : "added"} · {tally.existing} already on record{tally.unplaced ? ` · ${tally.unplaced} not placed` : ""}{tally.skipped ? ` · ${tally.skipped} skipped` : ""}.
-            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send.</b> The upload is idempotent: load the same file again to fill the gap.</> : null}
-            {tally.missing.length ? <><br /><b>Not placed, as spelt in the sheet:</b> {tally.missing.join(" · ")}. Correct the spelling to one the register knows, or ask ICT to add the unit or the alias.</> : null}
+            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send.</b> Load the same file again to fill the gap.</> : null}
+            {tally.missing.length ? <><br /><b>Not placed, as spelt in the sheet:</b> {tally.missing.join(" · ")}. Correct the spelling, or ask ICT to add the unit or alias.</> : null}
             {tally.firstError ? <><br />First problem: {tally.firstError}</> : null}
             {tally.dry && !tally.unplaced ? <><br />Nothing has been written yet. Load the rows to keep them.</> : null}
           </Note>

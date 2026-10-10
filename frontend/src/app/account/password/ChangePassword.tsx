@@ -33,7 +33,7 @@ export function ChangePassword({ next }: { next: string }) {
   return (
     <>
       <Note kind="info" title="Choose a password of your own">
-        The Registry set the one you signed in with, so it changes now. At least ten characters, and not your username; a sentence you will remember is better than a word you will not.
+        At least ten characters, and not your username.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Change your password">

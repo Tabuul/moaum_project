@@ -100,7 +100,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
 
       {published ? (
         <Note kind="ok" title="Senate has approved this result set and it is published" >
-          {s.candidates} students can now see their marks. Nothing on this sheet can be changed by anyone; a correction from this point is an amendment, which opens its own record and is reported to Senate at its next sitting. Minute <b>{detail.senateMinute}</b>.
+          {s.candidates} students can see their marks. A correction from now is an amendment, reported to Senate. Minute <b>{detail.senateMinute}</b>.
         </Note>
       ) : mine && !s.blockedForYou ? (
         <Note kind="info" title={onBehalf ? `This sheet is at entry: you may submit it on ${s.lecturer ?? "the lecturer"}'s behalf` : `This stage is yours: ${RS_STAGES[st][2] || "Approve"}`} action={<>
@@ -108,21 +108,21 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
           <Btn kind="go" disabled={busy} onClick={() => (s.stage === "SENATE" ? setAsk("minute") : onBehalf ? (setAsk("behalf"), setText("")) : void post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, {}, `${s.courseCode}: ${RS_STAGES[st][2]}`))}>{onBehalf ? "Submit on their behalf" : RS_STAGES[st][2] || "Approve"}</Btn>{" "}
           {s.stage !== "ENTRY" ? <Btn kind="urgent" disabled={busy} onClick={() => { setAsk("return"); setText(""); }}>Return to the lecturer</Btn> : null}
         </>}>
-          Approving is a signature. Your name, the time and the exact figures you approved are written to the audit trail and cannot afterwards be edited or deleted by anyone, including the Directorate of ICT.
+          Approving is a signature: your name, the time and the figures go on the audit trail and cannot be edited.
         </Note>
       ) : s.blockedForYou ? (
         <Note kind="bad" title="You performed the previous stage, so this one is not open to you">
-          You recorded the last approval on this sheet. The rule is not a matter of trust — it is that a single person must never be able to move a result from entry to publication alone. Another holder of the {roleLabel(need)} office must act.
+          No one moves a result through two stages alone. Another holder of the {roleLabel(need)} office must act.
         </Note>
       ) : (
         <Note kind="info" title={`This sheet is with ${holder || roleLabel(need)}`}>
-          You are signed in as {roleLabel(actingOffice)}. You can read the sheet and the chain, but the action at this stage belongs to another desk.
+          You are signed in as {roleLabel(actingOffice)}; this stage belongs to another desk.
         </Note>
       )}
 
       {s.returnedTimes > 0 && lastReturn ? (
         <Note kind="info" title={`This sheet was returned ${s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`} and corrected`}>
-          {roleLabel(lastReturn.actorOffice)} sent it back on {when(lastReturn.decidedAt)}: “{lastReturn.comment}”. Every amendment is on the record with the reason, and the sheet re-entered the chain at verification — not at the stage it was returned from.
+          {roleLabel(lastReturn.actorOffice)} sent it back on {when(lastReturn.decidedAt)}: “{lastReturn.comment}”. It re-entered the chain at verification.
         </Note>
       ) : null}
 
@@ -143,7 +143,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
               <Gate state="done" title="No two consecutive stages by one person" sub="The system refuses it even where one person holds both offices." />
               <Gate state="done" title="A mark is never overwritten" sub="An amendment writes a new value and keeps the old one, with the reason and the author." />
               <Gate state="done" title="Nothing reaches a student before Senate" sub="There is no preview, no provisional release and no departmental leak path." />
-              <Gate state={published ? "done" : "todo"} title="The engine version is stored with the result" sub={`Grades were computed by ${detail.engineVersion ?? "GpaCalculator 2.1"}. If the grading scheme changes, this result still recomputes to what Senate approved.`} last />
+              <Gate state={published ? "done" : "todo"} title="The engine version is stored with the result" sub={`Grades computed by ${detail.engineVersion ?? "GpaCalculator 2.1"}`} last />
             </Gates>
           </PBody>
         </Panel>
@@ -169,10 +169,8 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
       {/* V358: a published mark is corrected only by an amendment through the chain */}
       <Amendments sheetId={s.id} courseCode={s.courseCode} caMax={typeof s.caMax === "number" ? s.caMax : 40} published={published} actingOffice={actingOffice} marks={detail.marks} />
 
-      <Note kind={published ? "ok" : "bad"} title={published ? "What the student sees: their mark, their grade and the date Senate approved it" : "What the student sees right now: nothing at all"}>
-        {published
-          ? "Along with the engine version that produced the grade, so a query years later can be answered exactly."
-          : `The result page shows “awaiting Senate approval” for this course. ${s.candidates} students will ask their lecturer, and the honest answer is that it is at stage ${s.spineStage} of 6 — which this chain lets the lecturer say precisely.`}
+      <Note kind={published ? "ok" : "bad"} title={published ? "Students see their mark, grade and Senate approval date" : "Students see nothing yet"}>
+        {published ? null : `Their result page shows “awaiting Senate approval”; the sheet is at stage ${s.spineStage} of 6.`}
       </Note>
 
       {ask ? (

@@ -203,7 +203,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
 
       {view === "postings" ? (
         <>
-          {myPostings.length === 0 ? <Note kind="info" title="No posting yet">From 400 Level the College allocates you to a block&rsquo;s postings for a session, each with a supervisor, dates and a logbook. They appear here as the College allocates them.</Note> : null}
+          {myPostings.length === 0 ? <Note kind="info" title="No posting yet">From 400 Level the College allocates you to a block&rsquo;s postings.</Note> : null}
           {myPostings.map((a) => {
             const rows = logbooks.filter((l) => l.allocation_id === a.id && l.requirement);
             const head = logbooks.find((l) => l.allocation_id === a.id);
@@ -248,7 +248,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
               <span key="k">{e.kind === "REPEAT" ? `Repeat · attempt ${e.attempt_no}` : e.kind === "APPEAL" ? "Senate appeal" : "First attempt"}</span>,
               <Pil key="f" kind={e.first_cleared ? "ok" : "bad"}>{e.first_cleared ? "Paid" : "Due"}</Pil>, <Pil key="g" kind={e.second_cleared ? "ok" : "warn"}>{e.second_cleared ? "Paid" : "Due"}</Pil>,
             ])} />
-            <PBody><div className="sub2">The level&rsquo;s fees are set by the Bursary and paid on the University&rsquo;s Fees &amp; payments page; the position here updates the moment a payment is confirmed. The whole session may be paid at once, or by semester as on the main portal.</div>
+            <PBody><div className="sub2">Paid on Fees &amp; payments, for the whole session or by semester.</div>
               <div className="mt-2"><LinkBtn href="/student/fees" kind="primary">Fees &amp; payments</LinkBtn></div></PBody>
           </Panel>
         </>

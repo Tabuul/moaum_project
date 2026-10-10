@@ -85,7 +85,7 @@ export function Login({ next, sso, ssoProblem = null }: {
   const who = whoIs(uid);
 
   return (
-    <AuthLayout bare lead={<>The one sign-in for the University&rsquo;s students, staff and applicants, and every office&rsquo;s desk.</>}>
+    <AuthLayout bare lead={<>Sign-in for students, staff and applicants.</>}>
         <div className={css.formWrap}>
           <p className={css.eyebrow}><Icon name="shield" className={css.eyebrowIcon} />Secure sign-in</p>
           <h2 className={css.heading}>Portal Login</h2>

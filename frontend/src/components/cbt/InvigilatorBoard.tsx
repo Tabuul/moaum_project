@@ -128,7 +128,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
         {board.exam.require_check_in ? <> <b>Check-in is required</b>: a candidate starts only once checked in here or admitted late.</> : null}
       </Note>
       {stale ? <Note kind="bad" title="The board could not be read again">It shows the seats as they were last read; it tries again every fifteen seconds.</Note> : null}
-      {board.role === "READER" ? <Note kind="info" title="Read only">Your office reads the board; the invigilators and the office running the examination mark it.</Note> : null}
+      {board.role === "READER" ? <Note kind="info" title="Read only" /> : null}
       <Tiles cls="grid--5" items={[
         ["SEATED", num(board.rows.length), null, `of ${num(s.capacity)} seats`],
         ["NOT COME", num(count(["NOT_COME"])), null, `${num(board.rows.filter((r) => r.checked_in_at).length)} checked in · ${num(count(["CHECKED_IN", "ADMITTED"]))} in, not started`],
@@ -184,7 +184,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
               })}
             </div>
           ) : <div className="sub2">{board.rows.length ? "No seat matches." : "Nobody is seated in this sitting."}</div>}
-          <div className="sub2 mt-2">A seat is &ldquo;not heard from&rdquo; when the candidate&rsquo;s screen has been silent for a minute: walk to the seat. The board is read again every fifteen seconds. Answers and scores are never shown here.</div>
+          <div className="sub2 mt-2">&ldquo;Not heard from&rdquo;: silent for a minute. Refreshed every fifteen seconds. Answers and scores are never shown here.</div>
         </PBody>
       </Panel>
 
@@ -243,7 +243,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
                 {begun && current.mark !== "ABSENT" ? <Btn kind="urgent" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/absent`, { note: note.trim() || null }, `${nameOf(current)} marked absent`)}>Mark absent</Btn> : null}
                 {current.mark ? <Btn kind="ghost" disabled={busy} onClick={() => void act(`/candidates/${current.candidate_id}/clear`, {}, `The mark on ${nameOf(current)} undone`)}>{current.mark === "PRESENT" ? "Undo the check-in" : "Undo the mark"}</Btn> : null}
               </div>
-              <div className="sub2 mt-2">A candidate marked absent cannot start. Admitting a late candidate lets them start past the late-entry limit; the minutes given back are added to their clock, never more than the time they lost — more than that is extra time, given by the examination office with its reason.</div>
+              <div className="sub2 mt-2">A candidate marked absent cannot start. A late candidate admitted gets back at most the time they lost; more is extra time, given by the examination office.</div>
             </>
           ) : null}
           {board.canMark && current.attempt_id ? <div className="sub2">The candidate has started: they are present, and the mark{current.mark ? " stays on the record" : " is not needed"}.</div> : null}

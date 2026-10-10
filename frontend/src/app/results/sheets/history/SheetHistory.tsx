@@ -23,7 +23,7 @@ export function SheetHistory({ sheets, current, initial }: { sheets: MySheet[]; 
 
   return (
     <>
-      <PageHead title="Score sheet history" description="Every score sheet you have carried, across sessions: its standing, its deadline, how many times it was returned, and the marked sheet to take away."
+      <PageHead title="Score sheet history" 
         actions={<><LinkBtn kind="primary" href="/results/sheets">Current Score Sheets</LinkBtn><LinkBtn href="/me/courses">Course History</LinkBtn></>} />
       <Tiles items={[
         ["Sheets on record", String(sheets.length), null, `${sessions.length} session${sessions.length === 1 ? "" : "s"}${past ? ` · ${past} before ${current ?? "this session"}` : ""}`],
@@ -51,7 +51,7 @@ export function SheetHistory({ sheets, current, initial }: { sheets: MySheet[]; 
 
       <Panel title="Score sheets" right={`${shown.length} of ${sheets.length}`}>
         {sheets.length === 0 ? (
-          <PBody><Note kind="info" title="No score sheet is on your record yet">A sheet is generated over each course allocated to you when the Academic Office opens the examination session, and stays here for good.</Note></PBody>
+          <PBody><Note kind="info" title="No score sheet is on your record yet" /></PBody>
         ) : shown.length === 0 ? (
           <PBody><div className="sub2">Nothing matches these filters.</div></PBody>
         ) : (
@@ -75,9 +75,7 @@ export function SheetHistory({ sheets, current, initial }: { sheets: MySheet[]; 
             texts={shown.map((s) => `${s.session} ${s.courseCode} ${s.courseTitle} ${STANDING[standingOf(s)][0]}`)} />
         )}
       </Panel>
-      <Note kind="info" title="A sheet keeps every version of every mark">
-        Open a sheet to read its record: each mark with the versions it went through and the reason for each change, the desks it passed and what each one said, and every return. Nothing on a sheet is ever overwritten.
-      </Note>
+      <Note kind="info" title="A sheet keeps every version of every mark" />
     </>
   );
 }

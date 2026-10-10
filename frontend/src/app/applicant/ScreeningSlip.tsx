@@ -31,7 +31,7 @@ export function Screening({ a }: { a: Application }) {
     return (
       <>
         <Note kind="info" title="Your examination schedule has not been published yet">
-          Batches are published once applications close and every eligible candidate is placed. You will be notified by email and SMS, and the slip will appear here.
+          You will be notified by email and SMS when it is published.
         </Note>
         <Rail a={a} />
       </>

@@ -49,7 +49,7 @@ export function Appraisal({ cycle, rows, actingOffice }: { cycle: string; rows: 
   return (
     <>
       <Note kind="info" title="Promotion eligibility is computed, not argued">
-        Years on the current grade are derived from the last promotion the record holds, or from the appointment — the committee sees the same figure every candidate sees. The APER grade and publications are recorded beside it; the minimum three years on grade is checked from the record.
+        The minimum three years on grade is checked from the record.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

@@ -58,7 +58,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
   if (!f) {
     return (
       <Note kind="info" title="The University's screening opens once your acceptance is settled" action={<LinkBtn kind="primary" href="/applicant/admission">Admission progress</LinkBtn>}>
-        Accept the offer and pay the acceptance fee; from then on the screening is done by the University on the information it already holds. There is nothing for you to fill.
+        Accept the offer and pay the acceptance fee; the University then screens your record.
       </Note>
     );
   }
@@ -118,7 +118,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
     <>
       <Panel title={`Screening · ${f.screening_no}`} right={<Pil kind={STATE_WORD[f.state][1]}>{STATE_WORD[f.state][0]}</Pil>}>
         <PBody>
-          <div className="sub2">The University screens your admission on the information JAMB and your application already gave. The only thing asked of you is the schools you attended, with their dates. You are told the outcome here and by email.</div>
+          <div className="sub2">Enter the schools you attended, with their dates. You are told the outcome here and by email.</div>
           {adm ? <div className="mt-2"><Tracker steps={parseTracker(adm.tracker)} compact /></div> : null}
         </PBody>
       </Panel>
@@ -138,7 +138,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
         </PBody>
       </Panel>
 
-      {f.state === "PENDING" ? <Note kind="info" title="Your admission is awaiting screening">Your information has been received. Please wait for the University&rsquo;s screening process to be completed. Meanwhile, enter the schools you attended below; nothing else is asked of you.</Note> : null}
+      {f.state === "PENDING" ? <Note kind="info" title="Your admission is awaiting screening">Enter the schools you attended below.</Note> : null}
       {f.state === "IN_REVIEW" ? <Note kind="info" title="Screening in progress">A screening officer has opened your record{f.review_started_at ? ` on ${dayOf(f.review_started_at)}` : ""}. You are told the outcome here and by email.</Note> : null}
       {f.state === "CORRECTION_REQUIRED" ? (
         <>
@@ -156,10 +156,10 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
       ) : null}
       {f.state === "SUCCESSFUL" ? (
         <>
-          <Note kind="ok" title="Screening successful" action={<LinkBtn kind="primary" href={stepHref("/student/fees")}>Pay school fees</LinkBtn>}>Congratulations. Your admission screening has been successfully completed{f.decided_at ? ` on ${dayOf(f.decided_at)}` : ""}. The next step is school fees, then course registration.</Note>
+          <Note kind="ok" title="Screening successful" action={<LinkBtn kind="primary" href={stepHref("/student/fees")}>Pay school fees</LinkBtn>}>Screening completed{f.decided_at ? ` on ${dayOf(f.decided_at)}` : ""}. Next: school fees, then course registration.</Note>
           <Panel title="Screening forms" right={forms?.number ? <span className="sub2 tnum">{forms.number} · version {forms.version}{forms.state === "DOWNLOADED" ? ` · opened ${forms.downloads} time${forms.downloads === 1 ? "" : "s"}` : ""}</span> : <span className="sub2">Generated from your record</span>}>
             <PBody>
-              <div className="sub2">Your screening forms have been generated from the information the University holds: Form A, the Screening of Fresh Undergraduate Students, Section C, the Supplementary Biodata Form and the Student Data Capture Form. Fields the University does not hold are left blank for you to fill by hand. Each print carries the document number and a verification code.</div>
+              <div className="sub2">Fill any blank fields by hand. Each print carries a document number and verification code.</div>
               <div className="row mt-2">
                 <a className="btn btn--primary" href="/applicant/clearance/print" target="_blank" rel="noopener">View</a>
                 <a className="btn btn--secondary" href="/applicant/clearance/print?download=1">Download PDF</a>
@@ -174,7 +174,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
         <>
           <Note kind="bad" title={`Screening outcome: your screening for ${p.programme} was unsuccessful`}>
             <span className="blk"><b>Reason:</b> {f.decision_reason}</span>{f.remarks ? <span className="blk"><b>Officer&rsquo;s remarks:</b> {f.remarks}</span> : null}
-            <span className="blk">You may apply for a change of programme where you are eligible. Your acceptance fee, already paid, remains valid and is not paid again; an approved change takes you straight to school fees.</span>
+            <span className="blk">You may apply for a change of programme where eligible; your acceptance fee remains valid.</span>
           </Note>
           {v.changes.some((c) => c.state === "APPROVED") ? (
             <Note kind="ok" title="Programme change approved" action={<LinkBtn kind="primary" href={stepHref("/student/fees")}>Next step: school fees</LinkBtn>}>

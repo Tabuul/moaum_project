@@ -160,7 +160,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
             {caps.has("CREATE_TICKET") ? <Btn kind="secondary" disabled={busy || !category} onClick={() => setRaise({ subject: "", description: "", details: {} })}>Raise a ticket for the candidate</Btn> : null}
             <Btn kind="ghost" onClick={() => openTab("history")}>Support action history</Btn>
           </div>
-          <p className="sub2 mt-2">Name, sex, date of birth, NIN, nationality, state and LGA are corrected only by the JUPEB Office: the candidate asks from My Profile on their portal, or escalate the ticket to the JUPEB Office.</p>
+          <p className="sub2 mt-2">Name, sex, date of birth, NIN, nationality, state and LGA are corrected only by the JUPEB Office.</p>
         </PBody>
       </Panel>
 
@@ -189,7 +189,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
             ["Locked", data.account.locked ? <Pil key="l" kind="bad">Locked after failed sign-ins</Pil> : "No"],
             ["Password", data.account.temporary ? <Pil key="t" kind="warn">Temporary — to be changed at sign-in</Pil> : data.account.must_change_password ? <Pil key="t" kind="warn">To be changed at sign-in</Pil> : "Set by the candidate"],
           ]} />
-            <p className="sub2 mt-2">The password itself is never shown or recorded. A reset is the JUPEB portal&rsquo;s own link, or a temporary password on the candidate&rsquo;s ticket.</p>
+            <p className="sub2 mt-2">The password is never shown or recorded.</p>
           </PBody></Panel>
         </div>
       ) : tabNow === "payments" ? (
@@ -201,7 +201,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
           ) : null}
           {c.state === "ADMITTED" && sfPaid && caps.has("SYNC_ENTITLEMENT") ? (
             <Note kind="info" title="A school fee is confirmed but the record is still Admitted" action={<Btn kind="primary" disabled={busy} onClick={() => setRefresh({ reason: "" })}>Refresh activation</Btn>}>
-              The activation is re-applied by the JUPEB rule the payment applies; nothing is created or marked paid.</Note>
+              Nothing is created or marked paid.</Note>
           ) : null}
           <Panel title="JUPEB payments">
             <PBody>
@@ -217,7 +217,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
                 ])} />
               )}
               {pending.length && !caps.has("VERIFY_PAYMENT") ? <p className="sub2 mt-2">Your postings do not carry verifying payments; escalate the ticket to the Bursary.</p> : null}
-              <p className="sub2 mt-2">A payment is confirmed only by the gateway or the Bursary. Support never marks one paid, changes an amount or refunds.</p>
+              <p className="sub2 mt-2">Only the gateway or the Bursary confirms a payment. Support never marks one paid, changes an amount or refunds.</p>
             </PBody>
           </Panel>
         </>
@@ -270,7 +270,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
                 <Note kind="info" title="Give this to the candidate now — it is shown once and kept nowhere">It works for one sign-in, until {when(String(reset.result.expiresAt))}; the candidate chooses their own at once.</Note>
                 <div className="tnum b700" style={{ fontSize: 24, letterSpacing: 2, textAlign: "center", padding: "var(--s-3)", border: "1px dashed var(--line-2)", borderRadius: "var(--r-sm)" }}>{String(reset.result.temporaryPassword)}</div>
               </div>
-            ) : <Note kind="ok" title="The reset link is sent">{`A one-hour link went to ${String(reset.result.sentTo ?? "the candidate's email")}. The candidate chooses the new password; the desk never sees it.`}</Note>
+            ) : <Note kind="ok" title="The reset link is sent">{`A one-hour link went to ${String(reset.result.sentTo ?? "the candidate's email")}.`}</Note>
           ) : (
             <>
               <Field id="jr-m" label="How">
@@ -289,11 +289,11 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
         <Modal title={`Verify ${verify.reference} with the gateway`} onClose={() => setVerify(null)}
           foot={verify.result ? <Btn kind="primary" onClick={() => setVerify(null)}>Done</Btn> : <><Btn kind="ghost" onClick={() => setVerify(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void confirmVerify()}>{busy ? "Asking the gateway…" : "Ask the gateway"}</Btn></>}>
           {verify.result ? (
-            verify.result.changed ? <Note kind="ok" title="Confirmed">The gateway confirmed the payment; the original reference now stands paid and the candidate is told.</Note>
+            verify.result.changed ? <Note kind="ok" title="Confirmed">The original reference now stands paid; the candidate is told.</Note>
               : <Note kind="info" title="Nothing changed">{`The gateway answered: ${String((verify.result.gateway as Record<string, unknown> | undefined)?.outcome ?? "no confirmation")}. If the candidate holds a bank debit, escalate the ticket to the Bursary with the evidence.`}</Note>
           ) : (
             <>
-              <p className="sub2">The payment service asks the gateway about this reference. Only the original reference can be settled; no payment is created and none is marked paid by hand.</p>
+              <p className="sub2">Asks the gateway about this reference. No payment is created or marked paid by hand.</p>
               <Field id="jv-r" label="Reason"><textarea id="jv-r" className="ctl" rows={2} maxLength={2000} value={verify.reason} placeholder="The candidate reported the payment as not reflected" onChange={(e) => setVerify({ ...verify, reason: e.target.value })} /></Field>
             </>
           )}
@@ -303,7 +303,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
       {refresh ? (
         <Modal title="Refresh the activation" onClose={() => setRefresh(null)}
           foot={<><Btn kind="ghost" onClick={() => setRefresh(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void confirmRefresh()}>Re-apply the rule</Btn></>}>
-          <p className="sub2">The JUPEB rule that activates a student on a confirmed school fee is applied again. It does nothing when no school fee is confirmed.</p>
+          <p className="sub2">Does nothing when no school fee is confirmed.</p>
           <Field id="jf-r" label="Reason"><textarea id="jf-r" className="ctl" rows={2} maxLength={2000} value={refresh.reason} placeholder="The school fee is paid but the studentship did not follow" onChange={(e) => setRefresh({ reason: e.target.value })} /></Field>
         </Modal>
       ) : null}

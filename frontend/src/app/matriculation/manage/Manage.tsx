@@ -157,7 +157,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
 
   return (
     <>
-      <PageHead title="Matriculation management" description="Faculty by faculty: the eligible students grouped by programme, matriculation numbers proposed from the configured rule and reserved, every one reviewed and validated, corrections with a reason, the batch marked ready, the final review across faculties — and only then the confirmed act that issues the numbers, marks the students matriculated, makes the number their sign-in and tells them. Generating is preparation; issuing is the official act."
+      <PageHead title="Matriculation management" description="Numbers are proposed, reviewed and validated by faculty; issuing them is the official act."
         actions={<><LinkBtn kind="ghost" href={`/matriculation?session=${encodeURIComponent(filters.session)}`}>Matriculation run</LinkBtn><LinkBtn kind="ghost" href="/matriculation/config">Number format</LinkBtn>
           {fv ? <><Btn kind="secondary" onClick={() => void excel(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody(), "faculty-matriculation.xlsx")} disabled={!students.length}>Excel</Btn><Btn kind="ghost" onClick={() => pdf(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody())} disabled={!students.length}>PDF</Btn></> : null}</>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -176,7 +176,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
         { id: "batches", label: "Batches", count: page.batches.length }, { id: "issued", label: "Issued", count: issued.length }, { id: "pending", label: "Pending", count: pending.length }, { id: "conflicts", label: "Conflicts", count: rowsWithProblems.length || undefined },
       ]} />
 
-      {tab === "faculty" && !fv ? <Note kind="info" title="Select a faculty">Choose the academic session and a faculty, then press Load Students. The eligible students appear grouped by programme; a faculty officer sees their own faculty only.</Note> : null}
+      {tab === "faculty" && !fv ? <Note kind="info" title="Select a faculty">Choose the session and a faculty, then press Load Students.</Note> : null}
 
       {tab === "faculty" && fv && kp ? (
         <>
@@ -206,12 +206,12 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
                     <Btn kind="ghost" onClick={() => void openBatch(batch.id)}>Batch record</Btn>
                   </div>
                   {batch.conflicts > 0 ? <Note kind="bad" title={`Cannot issue matriculation numbers — ${batch.conflicts} record${batch.conflicts === 1 ? "" : "s"} require attention`}>Resolve every conflict (Fix or Drop on the row) before final issuance. Nothing is issued while a conflict stands.</Note>
-                    : batch.state === "READY_FOR_ISSUANCE" ? <Note kind="info" title="Ready for issuance">Every proposed number is valid. The numbers are not on any student record yet; an authorised officer issues them from the final review.</Note>
-                    : <Note kind="info" title="Proposed, not issued">The numbers below are proposals held in the series for this batch. They reach the student record only when the batch is marked ready and an authorised officer confirms the issue.</Note>}
+                    : batch.state === "READY_FOR_ISSUANCE" ? <Note kind="info" title="Ready for issuance">Every proposed number is valid; an authorised officer issues them from the final review.</Note>
+                    : <Note kind="info" title="Proposed, not issued">They reach student records only when the batch is issued.</Note>}
                 </div>
               ) : (
                 <div className="row row--between">
-                  <span className="sub2">Generating proposes a number for every eligible student of the faculty{filters.prog ? " (this programme only)" : ""} from the configured rule and reserves the sequences. Nothing is written to any student record until the batch is issued.</span>
+                  <span className="sub2">Proposes a number for every eligible student{filters.prog ? " of this programme" : ""}. Nothing reaches a student record until the batch is issued.</span>
                   {mayPrepare ? <Btn kind="primary" disabled={busy !== null || kp.eligible === 0} onClick={() => void generate(filters.prog || undefined)}>{busy === "gen" ? "Generating…" : `Generate Matriculation Numbers${filters.prog ? " for this programme" : ""}`}</Btn> : null}
                 </div>
               )}
@@ -302,7 +302,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
       {editing ? (
         <Modal title="Correct the proposed matriculation number" sub={`${editing.surname}, ${editing.other_names} · currently ${("proposed_no" in editing ? editing.proposed_no : null) ?? "—"}`} onClose={() => setEditing(null)}
           foot={<><Btn kind="ghost" onClick={() => setEditing(null)}>Back</Btn><Btn kind="primary" disabled={busy !== null || !newNo.trim() || !reason.trim()} onClick={() => void saveEdit()}>Save the correction</Btn></>}>
-          <p className="sub2">The number is validated like any other: the configured shape, the student&rsquo;s own segments, a sequence nobody holds. Who changed it, from what, to what and why goes on the batch&rsquo;s edit history. A correction never bypasses validation.</p>
+          <p className="sub2">A correction is validated like any other number and recorded on the batch&rsquo;s edit history.</p>
           <Field id="ed-no" label="Proposed matriculation number" required><input id="ed-no" className="ctl tnum" value={newNo} onChange={(e) => setNewNo(e.target.value.toUpperCase())} autoComplete="off" /></Field>
           <Field id="ed-why" label="Reason" required hint="Required · goes on the record"><textarea id="ed-why" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {"problems" in editing && (editing.problems ?? []).length ? <Note kind="bad" title="Why this row is in conflict">{(editing.problems ?? []).map((x, i) => <div key={i}>⚠ {x}</div>)}</Note> : null}
@@ -324,7 +324,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
         <Modal title="Final matriculation review" sub={`Batch ${reviewing.ref} · ${reviewing.faculty} · ${filters.session}`} onClose={() => setReviewing(null)}
           foot={<><Btn kind="ghost" onClick={() => setReviewing(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy !== null || reviewing.conflicts > 0} onClick={() => setConfirming(reviewing)}>Confirm &amp; Issue Matriculation Numbers</Btn></>}>
           <KvGrid cls="grid--3" pairs={[["Academic session", filters.session], ["Faculty", reviewing.faculty], ["Students", <b key="v" className="tnum">{reviewing.students}</b>], ["Valid", <b key="v" className="tnum ink-green">{reviewing.valid}</b>], ["Conflicts", <b key="v" className={`tnum${reviewing.conflicts ? " ink-red" : ""}`}>{reviewing.conflicts}</b>], ["Ready for issuance", <b key="v" className="tnum">{reviewing.conflicts ? 0 : reviewing.students}</b>]]} />
-          <p className="sub2 mt-2">Every record was validated again a moment ago; it is validated once more, row by row, inside the issuing transaction. A single failure issues nothing.</p>
+          <p className="sub2 mt-2">A single failure issues nothing.</p>
         </Modal>
       ) : null}
       {confirming ? (

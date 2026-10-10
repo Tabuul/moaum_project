@@ -107,7 +107,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
   return (
     <>
       <PageHead eyebrow={e ? <span className="tnum">{e.reference} · {e.course_code}</span> : null} title={e ? `${e.title} — LIVE` : "Live CBT monitor"}
-        description={e ? `Window ${whenAt(e.starts_at)} to ${whenAt(e.ends_at)} · ${e.duration_minutes} minutes per candidate · ${e.violation_limit} violation${e.violation_limit === 1 ? "" : "s"} allowed, then ${e.violation_action === "TERMINATE" ? "the attempt is terminated" : e.violation_action === "SUBMIT" ? "the attempt is submitted" : "a final warning"}. Refreshes every ${POLL_MS / 1000} seconds with only what changed.` : "Loading…"}
+        description={e ? `Window ${whenAt(e.starts_at)} to ${whenAt(e.ends_at)} · ${e.duration_minutes} minutes per candidate · ${e.violation_limit} violation${e.violation_limit === 1 ? "" : "s"} allowed, then ${e.violation_action === "TERMINATE" ? "the attempt is terminated" : e.violation_action === "SUBMIT" ? "the attempt is submitted" : "a final warning"}. Refreshes every ${POLL_MS / 1000} seconds.` : "Loading…"}
         actions={<span className="row row--inline row--tight">
           {e ? <Pil kind={(EXAM_WORD[e.live_state] ?? ["", "grey"])[1]}>{(EXAM_WORD[e.live_state] ?? [e.live_state])[0]}</Pil> : null}
           <Btn kind="ghost" size="sm" onClick={() => setPaused(!paused)}>{paused ? "Resume refresh" : "Pause refresh"}</Btn>
@@ -124,7 +124,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
         ["CRITICAL", num(c?.critical), c?.critical ? "var(--red-ink)" : null, `At or over the limit of ${limit}`],
         ["TERMINATED", num(c?.terminated), c?.terminated ? "var(--red-ink)" : null, "By policy or the office"],
       ]} />
-      <Note kind="info" title="What the browser can and cannot report">The portal records what happens inside the examination page — the tab hidden, the window losing focus, fullscreen exited, the connection lost, a second sign-in — and warns, holds or ends the attempt by the examination&rsquo;s policy. A standard browser cannot tell that a candidate switched to another application or device; for that, the examination is run in the secure/kiosk environment or the CBT laboratory.</Note>
+      <Note kind="info" title="What the browser can and cannot report">Tab hidden, focus lost, fullscreen exited, connection lost and a second sign-in are recorded. A standard browser cannot tell that a candidate switched to another application or device.</Note>
       <div className="grid grid--3">
         <div style={{ gridColumn: "span 2" }}>
           <Panel title="Candidate monitor" right={<span className="sub2">{list.length} shown · server time {new Date(serverNow).toLocaleTimeString("en-GB")}</span>}>

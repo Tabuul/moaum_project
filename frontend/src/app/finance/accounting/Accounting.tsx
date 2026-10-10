@@ -113,10 +113,10 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       {unposted > 0 ? (
         <Note kind="info" title={`${unposted} transaction${unposted === 1 ? "" : "s"} not yet on the books`}
           action={<Btn kind="primary" disabled={!may || busy !== null} onClick={() => void call("sync", "/sync", {}, "Ledger sync: posted confirmed payments, paid refunds and paid vouchers")}>{busy === "sync" ? "Posting…" : "Post them now"}</Btn>}>
-          {overview.unposted.payments} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers} voucher{overview.unposted.vouchers === 1 ? "" : "s"} are confirmed or paid but not yet posted. Posting is safe to run any time — each transaction posts once.
+          {overview.unposted.payments} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers} voucher{overview.unposted.vouchers === 1 ? "" : "s"} not yet posted. Each transaction posts once.
         </Note>
       ) : (
-        <Note kind="ok" title="The books are up to date">Every confirmed payment, paid refund and paid voucher is on the ledger. Run Sync again whenever new ones are confirmed.</Note>
+        <Note kind="ok" title="The books are up to date" />
       )}
 
       <div className="row row--tight" style={{ margin: "var(--s-3) 0" }}>
@@ -129,7 +129,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       {tab === "overview" ? (
         <Panel title="The books at a glance">
           <PBody>
-            <div className="sub2">The accounting module keeps a proper set of double-entry books over the money the finance desk records. Money enters the ledger automatically when a payment is confirmed, a refund is paid, or a voucher is paid; the Bursar posts opening balances and adjustments by hand. Use the tabs above for the trial balance and the financial statements. Everything is cash-basis: income is recognised when received, expenditure when paid.</div>
+            <div className="sub2">Double-entry, cash-basis. Confirmed payments, paid refunds and paid vouchers post automatically; the Bursar posts opening balances and adjustments.</div>
           </PBody>
           <DTable cols={["Account", "Type", "|num"]} rows={chart.map((a) => [
             <span key="n" style={{ paddingLeft: a.parent_code ? "var(--s-4)" : 0 }}>{a.postable ? a.name : <strong>{a.name}</strong>} <span className="sub2">{a.code}</span></span>,
@@ -266,7 +266,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
               const ok = await call("reverse", `/journals/${reversing.id}/reverse`, { reason: reason.trim() }, `Journal #${reversing.journal_no} reversed`);
               if (ok) setReversing(null);
             }}>{busy === "reverse" ? "Reversing…" : "Post the reversal"}</Btn></>}>
-          <Note kind="bad" title="A reversal, not a delete">A mirror journal is posted that cancels this one; both stay on the record. The original is marked reversed.</Note>
+          <Note kind="bad" title="A reversal, not a delete">A mirror journal cancels this one; both stay on the record.</Note>
           <Field id="rev-why" label="Reason" hint="Why this entry is being reversed"><input id="rev-why" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
         </Modal>
       ) : null}

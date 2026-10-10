@@ -177,7 +177,7 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
   return (
     <>
       <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">
-        The Directorate of ICT operates this console; it does not decide who holds an office. Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case in a Nigerian university and an acting appointment that never ends is how a person keeps a power they no longer hold.
+        Every grant carries the authority that made it, a start date and an end date.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Tiles items={[
@@ -267,13 +267,13 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
       {modal === "grant" && !grant ? (
         <Modal title={person ? `Grant an office to ${person.surname}, ${person.givenNames}` : "Grant an office"} sub="Bounded, dated, on an instrument" wide onClose={() => setModal(null)}
           foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !person || !f.office || !f.instrument.trim() || (NEEDS_ID.has(f.scopeKind) && !f.scopeId)} onClick={() => { if (person) void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted to ${person.surname} under ${f.instrument}`); }}>Grant</Btn></>}>
-          <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case and an acting appointment that never ends is how a person keeps a power they no longer hold.</Note>
+          <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">Every grant carries the authority that made it, a start date and an end date.</Note>
           <Field id="gr-who" label="Person" hint={person ? `${person.username ? `Signs in as ${person.username}` : "No account yet: create one too, or the office cannot be used"} · ${person.liveOffices} office${person.liveOffices === 1 ? "" : "s"} held now` : "Type a name or a staff number and choose from the list"}>
             <input id="gr-who" className="ctl" list="gr-people" value={pick} onChange={(e) => choose(e.target.value)} placeholder="Surname, or staff number" autoComplete="off" />
             <datalist id="gr-people">{persons.filter((x) => !x.endedOn).map((x) => <option key={x.id} value={labelOf(x)} />)}</datalist>
           </Field>
           {grantFields}
-          <Note kind="bad" title="Two offices in one approval chain is allowed; approving twice in it is not">A Dean who taught the course may hold both offices. BR-006 blocks the second approval by the same person, at the database — so the chain waits for somebody else.</Note>
+          <Note kind="bad" title="Two offices in one approval chain is allowed; approving twice in it is not" />
         </Modal>
       ) : null}
 
@@ -281,7 +281,7 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
         <Modal title={`Amend ${grant.label} for ${grant.surname}, ${grant.givenNames}`} sub="The grant is corrected in place; the old values and your reason stay in the audit trail" wide onClose={() => setModal(null)}
           foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.office || !f.instrument.trim() || !f.reason.trim() || (NEEDS_ID.has(f.scopeKind) && !f.scopeId)} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${grant.personId}/office-assignments/${grant.id}`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null, reason: f.reason }, `${offices.find((o) => o.code === f.office)?.label ?? f.office} for ${grant.surname} amended: ${f.reason}`)}>Save the amendment</Btn></>}>
           <Note kind="info" title="A mistake on a grant is corrected here, not ended and made again">
-            Change the office, what it is bounded to, the instrument or the dates. The person stays: a grant to the wrong person is <b>ended</b> and a new one made. An ended grant is never amended. Every amendment keeps the values it replaced and your reason in the audit trail.
+            A grant to the wrong person is <b>ended</b> and a new one made. An ended grant is never amended.
           </Note>
           {grantFields}
           <Field id="am-why" label="Why the grant is amended" required hint="As it will read in the audit trail, beside the old and the new values">
@@ -303,14 +303,14 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
               </span>
             </Field>
           </div>
-          {person.liveOffices === 0 ? <Note kind="info" title="Grant an office as well">An account signs a person in to the offices they hold. With none, they reach nothing: grant the office of their unit (Bursary, Registry, Library, Security, Support Services…) with Grant an office.</Note> : null}
+          {person.liveOffices === 0 ? <Note kind="info" title="Grant an office as well">Without an office the account reaches nothing.</Note> : null}
         </Modal>
       ) : null}
 
       {modal === "end" && grant ? (
         <Modal title={`End ${grant.label} for ${grant.surname}, ${grant.givenNames}`} sub="It stays on the record" onClose={() => setModal(null)}
           foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy || !f.reason.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${grant.personId}/office-assignments/${grant.id}/end`, { on: f.on || null, reason: f.reason }, `Office ended: ${f.reason}`)}>End it</Btn></>}>
-          <Note kind="bad" title="Ending is not deleting, and the difference is the whole point">Revoking an office takes the permissions away from the date you give and leaves the grant on the record, with who made it and who ended it. Everything the holder approved while they held it stands, because it was validly approved at the time.</Note>
+          <Note kind="bad" title="Ending is not deleting">Permissions end from the date you give; the grant stays on the record, and everything approved while it was held stands.</Note>
           <div className="grid grid--2 rfgrid">
             <Field id="en-on" label="Ended with effect from" hint="Today, when blank"><input id="en-on" className="ctl" type="date" value={f.on} onChange={(e) => setF({ ...f, on: e.target.value })} /></Field>
             <Field id="en-why" label="Reason, as it will read in the log"><input id="en-why" className="ctl" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} autoComplete="off" /></Field>

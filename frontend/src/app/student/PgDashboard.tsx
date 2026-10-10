@@ -80,7 +80,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
 
       {graduated ? (
         <Note kind="ok" title={`Your award of ${pg?.graduand?.award ?? awardWord(s.entryLevel)} is recorded`} action={<LinkBtn kind="primary" href="/student/graduation">Graduation and Certificate</LinkBtn>}>
-          Senate approved the award{pg?.graduand?.senate_minute ? ` under minute ${pg.graduand.senate_minute}` : ""}. The Graduation screen shows convocation clearance and your certificate.
+          Senate approved the award{pg?.graduand?.senate_minute ? ` under minute ${pg.graduand.senate_minute}` : ""}.
         </Note>
       ) : pg?.standing === "PROBATION" ? (
         <Note kind="bad" title="On academic probation" action={<LinkBtn kind="primary" href="/student/pg-courses">My Results</LinkBtn>}>
@@ -88,7 +88,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         </Note>
       ) : !registered && sem ? (
         <Note kind="info" title={reg ? `Complete your registration for ${pg?.session ?? s.session}` : `Register your courses for ${SEM[Number(sem.number)]?.toLowerCase() ?? "this semester"}`} action={<LinkBtn kind="primary" href="/student/pg-courses">Course Registration</LinkBtn>}>
-          Register the courses your programme carries this semester; the department endorses the form.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
+          The department endorses the form.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
         </Note>
       ) : step ? (
         <Note kind={step[2]} title={step[0]} action={<LinkBtn kind="ghost" href="/student/research">Research &amp; Thesis</LinkBtn>}>
@@ -100,7 +100,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         </Note>
       ) : (
         <Note kind="info" title="No semester is open for registration yet">
-          The School opens the semester on its calendar; you are told by email when registration opens. {feeLine}
+          You are told by email when registration opens. {feeLine}
         </Note>
       )}
 
@@ -114,14 +114,14 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
                 </li>
               ))}
             </ul>
-          ) : <PBody><div className="sub2">Registration windows, examination dates and corrections due appear here from the School&rsquo;s calendar and your research record.</div></PBody>}
+          ) : <PBody><div className="sub2">No dates yet.</div></PBody>}
         </Panel>
         <Panel title="Supervision" right={supervisors.length ? `${supervisors.length} assigned` : "Awaiting assignment"}>
           <PBody>
             {supervisors.length ? (
               <KvGrid cls="grid--1" pairs={supervisors.map((x) => [x.role === "FIRST" ? "Main supervisor" : x.role === "SECOND" ? "Second supervisor" : "Co-supervisor",
                 <span key={x.name}><strong>{x.name}</strong>{x.is_external ? " (external)" : ""}<div className="sub2">{[x.department, x.email].filter(Boolean).join(" · ") || `Assigned ${fmtDay(x.assigned_at)}`}</div></span>])} />
-            ) : <div className="sub2">The department assigns a supervisor after registration (Policy 14). Their name appears here and on your research desk once assigned.</div>}
+            ) : <div className="sub2">The department assigns a supervisor after registration (Policy 14).</div>}
             {research?.topic ? <div className="sub2 mt-3">Topic: {research.topic}</div> : null}
           </PBody>
         </Panel>

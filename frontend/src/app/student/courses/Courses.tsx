@@ -8,9 +8,9 @@ export function Courses({ session, spaces }: { session: string; spaces: SpaceRow
   return (
     <>
       {spaces.length === 0 ? (
-        <Note kind="info" title={`No course space for ${session} yet`}>A course space opens for every course on your approved registration. Register, have it approved, and the spaces appear here with whatever the lecturer has published.</Note>
+        <Note kind="info" title={`No course space for ${session} yet`}>A course space opens for every course on your approved registration.</Note>
       ) : due ? (
-        <Note kind="bad" title={`${due} assignment${due === 1 ? "" : "s"} open and not yet submitted`}>Late submission is accepted within the window each assignment states, at the penalty it states. A marked submission is not replaced.</Note>
+        <Note kind="bad" title={`${due} assignment${due === 1 ? "" : "s"} open and not yet submitted`}>Late submission is accepted within each assignment&rsquo;s window, at its penalty. A marked submission is not replaced.</Note>
       ) : (
         <Note kind="ok" title="Nothing due">Every open assignment has your submission on it.</Note>
       )}

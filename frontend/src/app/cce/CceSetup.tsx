@@ -55,7 +55,7 @@ export function CceProgrammes({ session, powers, pick }: TabProps) {
 
   return (
     <>
-      <PageHead title="CCE programmes" description={`The University's programmes the Centre for Continuing Education admits into, part-time. Nothing is duplicated: the programme is the same; CCE offers it on its route — ${data.defaultDurationYears} years unless a programme states otherwise.`} actions={pick} />
+      <PageHead title="CCE programmes" description={`Part-time, ${data.defaultDurationYears} years unless a programme states otherwise.`} actions={pick} />
       <Panel title={onlyOffered ? `Offered on CCE · ${rows.length}` : `Every undergraduate programme · ${rows.length}`} right={<label className="row row--inline row--tight"><input type="checkbox" checked={!onlyOffered} onChange={(e) => setOnlyOffered(!e.target.checked)} /> show every programme</label>}>
         {rows.length ? (
           <DTable cols={["Programme", "Faculty", "On CCE", "Duration", "Final level|num", "Listed|num", "Students|num", ""]} texts={rows.map((p) => `${p.name} ${p.code} ${p.faculty ?? ""} ${p.department ?? ""}`)} rows={rows.map((p) => [
@@ -76,7 +76,7 @@ export function CceProgrammes({ session, powers, pick }: TabProps) {
             <Field id="cp-final" label="Final level" hint="Blank: entry level plus a level a year"><input id="cp-final" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 120 }} value={form.final} onChange={(e) => setForm({ ...form, final: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
           </div>
           <Field id="cp-note" label="Note"><input id="cp-note" className="ctl" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-          <div className="sub2">The duration sets the expected completion; it never graduates anyone by itself. A programme that stops admitting keeps its students.</div>
+          <div className="sub2">A programme that stops admitting keeps its students.</div>
         </Modal>
       ) : null}
     </>
@@ -115,7 +115,7 @@ export function CceSession({ powers, refresh }: { powers: Powers; refresh: () =>
   }
   return (
     <>
-      <PageHead title="CCE session mapping" description="CCE runs one academic session behind undergraduate by default. The CCE session follows the undergraduate session by the offset — when undergraduate moves on, CCE moves with it — unless the Academic Office names a session instead. Nothing already filed moves." />
+      <PageHead title="CCE session mapping" description="CCE runs one session behind undergraduate by default, unless the Academic Office names a session." />
       <Panel title="The relationship" right={powers.academic ? <Btn kind="primary" onClick={() => setForm({ offset: String(m.session_offset), override: m.overridden ? m.route_session ?? "" : "", reason: "", effective: "" })}>Change it</Btn> : null}>
         <PBody>
           <KvGrid cls="grid--4" pairs={[
@@ -155,7 +155,7 @@ export function CceSession({ powers, refresh }: { powers: Powers; refresh: () =>
           </Field>
           <Field id="cs-eff" label="Effective from"><input id="cs-eff" type="date" className="ctl" value={form.effective} onChange={(e) => setForm({ ...form, effective: e.target.value })} /></Field>
           <Field id="cs-reason" label="The reason" required hint="Kept with the change"><textarea id="cs-reason" className="ctl" rows={3} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
-          <div className="sub2">Applications already filed, students already admitted and every registration and result keep their sessions; only what the CCE session is today changes.</div>
+          <div className="sub2">Records already filed keep their sessions.</div>
         </Modal>
       ) : null}
     </>
@@ -185,7 +185,7 @@ export function CceFees({ powers, session: given }: { powers: Powers; session?: 
   const r = v.rule;
   return (
     <>
-      <PageHead title="CCE applicant fees" description="The CCE application fee, portal charge and acceptance fee for a session — the Bursary's to state, read by the ordinary fee references. CCE applicants pay no admission checking fee. A CCE student is charged only the school-fee lines the Bursary states for entry mode CCE — never the full-time lines."
+      <PageHead title="CCE applicant fees" description="Stated by the Bursary. CCE applicants pay no admission checking fee; CCE students pay only the CCE school-fee lines."
         actions={<select className="ctl" style={{ width: 160 }} aria-label="Session" value={v.session} onChange={(e) => setSession(e.target.value)}>{v.sessions.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}</select>} />
       <Panel title={`${v.session}`} right={powers.bursar ? <Btn kind="primary" onClick={() => setForm({ app: r ? String(r.application_fee) : "", portal: r ? String(r.portal_charge) : "0", acc: r ? String(r.acceptance_fee) : "" })}>{r?.stated ? "Change them" : "State them"}</Btn> : null}>
         <PBody>
@@ -230,7 +230,7 @@ export function CceHistory({ session, pick }: TabProps) {
   }, [session]);
   return (
     <>
-      <PageHead title="CCE audit history" description={`Every step of CCE ${session}: the lists loaded, committed or discarded, each application's review and publication, and every change to the CCE session and programmes — who, from which office, and why.`} actions={pick} />
+      <PageHead title="CCE audit history" description={`CCE ${session}`} actions={pick} />
       <Panel title="What happened">
         {rows === null ? <PBody><div className="sub2">Reading…</div></PBody> : rows.length ? (
           <DTable cols={["When", "Of", "What", "Note", "Who"]} texts={rows.map((h) => `${h.subject} ${h.action} ${h.note ?? ""} ${h.actor_name ?? ""}`)} rows={rows.map((h) => [
@@ -277,7 +277,7 @@ export function CceReports({ session, pick, overview }: TabProps & { overview: O
   const tile = (label: string, n: number | undefined, sub?: ReactNode): [string, number, null, ReactNode] => [label, n ?? 0, null, sub ?? ""];
   return (
     <>
-      <PageHead title="CCE reports" description={`CCE ${session} beside undergraduate ${overview.mapping.undergraduate_session ?? "—"}: candidates, applications, admission and the students it produced. Every figure counts the CCE session only.`} actions={pick} />
+      <PageHead title="CCE reports" description={`CCE ${session} · undergraduate ${overview.mapping.undergraduate_session ?? "—"}`} actions={pick} />
       <Tiles cls="grid--5" items={[
         tile("IMPORTED", c.imported, `${c.eligible ?? 0} eligible`), tile("APPLICATIONS STARTED", c.started), tile("SUBMITTED", c.submitted, `${c.pending ?? 0} pending`),
         tile("UNDER REVIEW", c.under_review, `${c.with_applicant ?? 0} with the applicant`), tile("ADMITTED", c.admitted, `${c.not_admitted ?? 0} not admitted`),
@@ -291,7 +291,7 @@ export function CceReports({ session, pick, overview }: TabProps & { overview: O
             <Btn kind="secondary" disabled={!!busy} onClick={() => void exportOf("applications")}>{busy === "applications" ? "Preparing…" : "Applications (Excel)"}</Btn>
             <Btn kind="secondary" disabled={!!busy} onClick={() => void exportOf("students")}>{busy === "students" ? "Preparing…" : "CCE students (Excel)"}</Btn>
           </div>
-          <div className="sub2 mt-1">Course registration, fees, attendance, results, graduation and spillover reports for CCE follow with the CCE academic session in operation (docs/cce.md, phase 2).</div>
+
         </PBody>
       </Panel>
       <Panel title="By programme">

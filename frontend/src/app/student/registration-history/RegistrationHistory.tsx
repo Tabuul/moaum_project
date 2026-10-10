@@ -4,7 +4,7 @@
  *  reveals every earlier session. Each course carries its code, title, lecturer, unit and type
  *  (GST / Elective / Core), with carryovers listed first. Read from the record; nothing is entered here. */
 import { useMemo, useState } from "react";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 interface Entry { courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
@@ -96,11 +96,7 @@ export function RegistrationHistory({ d }: { d: RegHistory }) {
 
   return (
     <>
-      <Note kind="info" title="Your course registration">
-        The current session shows here. A course carries its code, title, lecturer, unit and type — GST, Elective or Core —
-        and any <b>carryover</b> is listed first. This is the record the Faculty Officer approved and the score sheets were
-        built from; it is read here, never entered. Open <b>History</b> for earlier sessions.
-      </Note>
+
 
       <Tiles items={[
         ["Registrations", String(h.length), null, `${sessions} session${sessions === 1 ? "" : "s"}`],
@@ -111,7 +107,7 @@ export function RegistrationHistory({ d }: { d: RegHistory }) {
 
       {current.length ? current.map((r) => <RegPanel key={r.id} r={r} />) : (
         <Panel title="No registration yet">
-          <PBody><div className="sub2">You have not registered courses in any session yet. Your registrations will appear here once you register and your Faculty Officer approves them.</div></PBody>
+          <PBody><div className="sub2">You have not registered courses in any session yet.</div></PBody>
         </Panel>
       )}
 

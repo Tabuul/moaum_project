@@ -28,8 +28,7 @@ export default function VerifyJupeb() {
         </div>
         <form onSubmit={go} className="card__body">
           <p className="m-0 ink-muted">
-            A JUPEB statement of result, admission or acceptance letter, slip or receipt is genuine only if its code opens the University&rsquo;s record here.
-            Enter the twelve-character <b>code</b> printed under the QR.
+            A JUPEB document is genuine only if its code opens the record here. Enter the twelve-character <b>code</b> printed under the QR.
           </p>
           <Field id="vj-code" label="Verification code">
             <input id="vj-code" className="ctl" style={{ letterSpacing: ".1em" }} value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. YUEM-AC86-WGKW"

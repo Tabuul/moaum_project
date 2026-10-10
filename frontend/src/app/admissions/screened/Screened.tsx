@@ -142,11 +142,9 @@ export function Screened({ session, summary }: { session: string; summary: Scree
                right={<span className="sub2">{open.faculty_name} · {open.code}{cutoff != null ? ` · cut-off ${cutoff}` : ""}</span>}>
           <PBody>
             <div className="sub2 mb-3">
-              Every screened candidate for this programme — those on the committed CAPS list who carry a UTME aggregate —
-              with the criteria known at screening: the UTME aggregate {belowNote ? "against the cut-off" : ""}, origin, and
-              whether an O&rsquo;Level result has been uploaded. The full O&rsquo;Level, Post-UTME and decision criteria appear
+              UTME aggregate {belowNote ? "against the cut-off" : ""}, origin and O&rsquo;Level upload. Full criteria are
               on the <Link href={`/admissions/applicants?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(open.code)}`}>Applicants</Link> and
-              {" "}<Link href={`/admissions/merit?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(open.code)}`}>Merit</Link> desks once a candidate registers for post-UTME.
+              {" "}<Link href={`/admissions/merit?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(open.code)}`}>Merit</Link> desks once a candidate registers.
             </div>
             {err ? <Note kind="bad" title="Could not load">{err}</Note> : null}
             {loading ? <div className="sub2">Loading…</div> : null}
@@ -214,10 +212,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
         ["Departments", String(faculties.length), null, "Faculties with applicants"],
       ]} />
 
-      <Note kind="info" title="Click a course to see its screened candidates">
-        The screened pool by department and course — candidates on the committed CAPS list who carry a UTME aggregate.
-        Open any course for the per-candidate criteria and export it to Excel or PDF.
-      </Note>
+      <Note kind="info" title="Click a course to see its screened candidates" />
 
       {byFaculty.map((g) => (
         <Panel key={g.code} title={g.name} right={`${g.rows.reduce((n, r) => n + Number(r.screened), 0).toLocaleString()} screened · ${g.rows.length} course${g.rows.length === 1 ? "" : "s"}`}>

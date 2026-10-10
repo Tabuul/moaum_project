@@ -129,20 +129,20 @@ export function Desk({ list, dash, filters, batches }: { list: DeskList; dash: D
 
   return (
     <>
-      <PageHead title="Deferments" description={`${dash?.scope.kind === "DEPARTMENT" ? "Your department's" : dash?.scope.kind === "FACULTY" ? "Your faculty's" : dash?.scope.kind === "PG_SCHOOL" ? "The Postgraduate School's" : dash?.scope.kind === "COLLEGE" ? "The College's" : "The University's"} deferment applications: what waits at ${STAGE_WORD[office] ?? "this desk"}, every application and where it stands on the chain — Bursary → HOD → Faculty → Academic Office → DVC (final) — and the students due to resume.`}
+      <PageHead title="Deferments" description={`${dash?.scope.kind === "DEPARTMENT" ? "Your department's" : dash?.scope.kind === "FACULTY" ? "Your faculty's" : dash?.scope.kind === "PG_SCHOOL" ? "The Postgraduate School's" : dash?.scope.kind === "COLLEGE" ? "The College's" : "The University's"} deferment applications · this desk: ${STAGE_WORD[office] ?? "—"} · Bursary → HOD → Faculty → Academic Office → DVC (final)`}
         actions={<><LinkBtn kind="primary" href="/deferments/returns">Students Due to Resume</LinkBtn>{isAcademic ? <LinkBtn kind="secondary" href="/deferments/batches">Batches</LinkBtn> : null}<Btn kind="secondary" onClick={() => void excel()} disabled={!exportable().length}>Download Excel</Btn><Btn kind="ghost" onClick={pdf} disabled={!exportable().length}>Download PDF</Btn></>} />
 
       {t ? <Tiles items={tiles.map(([l, v, c, s]) => { const st = tileState[l]; const qs = new URLSearchParams(); for (const [k, val] of Object.entries({ ...filters, state: st ?? "" })) if (val) qs.set(k, val); return [<Link key={l} className="lnk" href={`/deferments?${qs}`}>{l}</Link>, v, c, s]; })} /> : null}
 
       {mine.length ? (
         <Panel title={`Waiting at this desk · ${STATE[list.scope.stage]?.[0] ?? ""}`} right={`${mine.length} to decide`}>{table(mine)}</Panel>
-      ) : list.scope.stage !== "__none__" ? <Note kind="ok" title="Nothing waits at this desk">Applications arrive here when they reach this desk&rsquo;s stage; every application within your bound is listed below.</Note> : null}
+      ) : list.scope.stage !== "__none__" ? <Note kind="ok" title="Nothing waits at this desk" /> : null}
 
       {isAcademic ? (
         <Panel title="Forwarding to the Deputy Vice-Chancellor" right={t ? <span className="row row--inline row--tight"><Pil kind="ok">Faculty approved {t.faculty_approved}</Pil><Pil kind="grey">Already forwarded {t.forwarded}</Pil><Pil kind={t.waiting_academic ? "warn" : "grey"}>Pending forwarding {t.waiting_academic}</Pil></span> : null}>
           <PBody>
             <div className="row row--between" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
-              <span className="sub2">The Academic Office sees every stage and downloads an application once the faculty has approved it. Forward the whole faculty-approved list, or the ones ticked below, to the DVC in one numbered batch (DEF-DVC-YYYY-NNNNN); nothing is duplicated, every member is named on the batch.</span>
+              <span className="sub2">Forward the faculty-approved list, or the ones ticked below, to the DVC in one numbered batch.</span>
               <span className="row row--inline row--tight">
                 <Btn kind="secondary" disabled={busy || !picked.size} onClick={() => setForwardOpen(true)}>Forward {picked.size || ""} Selected</Btn>
                 <Btn kind="primary" disabled={busy || !facultyApproved.length} onClick={() => { setPicked(new Set()); setForwardOpen(true); }}>Forward Approved Applications to DVC</Btn>
@@ -188,7 +188,7 @@ export function Desk({ list, dash, filters, batches }: { list: DeskList; dash: D
       {forwardOpen ? (
         <Modal title={picked.size ? `Forward ${picked.size} application(s) to the DVC` : `Forward the faculty-approved list to the DVC`} sub={picked.size ? "The ticked applications only" : `${facultyApproved.length} application(s)${filters.session ? ` for ${filters.session}` : ""}${filters.semester ? ` · ${SEM(Number(filters.semester))}` : ""}`} onClose={() => setForwardOpen(false)}
           foot={<><Btn kind="ghost" onClick={() => setForwardOpen(false)}>Back</Btn><Btn kind="primary" disabled={busy} onClick={() => void forward(!picked.size)}>Forward to DVC</Btn></>}>
-          <p>A numbered batch (DEF-DVC-YYYY-NNNNN) is created naming every application in it, the date, the session and you; each application becomes <b>FORWARDED TO DVC</b>, the students are told, and the DVC is told the batch awaits. Applications already forwarded are never included again.</p>
+          <p>A numbered batch (DEF-DVC-YYYY-NNNNN) is created; each application becomes <b>FORWARDED TO DVC</b> and the students and the DVC are told.</p>
           <Field id="fw-note" label="Covering note" hint="Optional; goes on the batch and on every application's trail."><textarea id="fw-note" className="ctl" rows={3} value={forwardNote} onChange={(e) => setForwardNote(e.target.value)} /></Field>
           <ul className="plain sub2 mt-2" style={{ maxHeight: 220, overflowY: "auto" }}>{(picked.size ? facultyApproved.filter((r) => picked.has(r.id)) : facultyApproved).map((r) => <li key={r.id} className="tnum">{r.reference} · {r.surname}, {r.other_names} · {r.programme}</li>)}</ul>
         </Modal>

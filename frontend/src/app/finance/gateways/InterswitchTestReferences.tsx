@@ -39,7 +39,7 @@ export function InterswitchTestReferences({ refs, may, busy, send, say }: { refs
     <>
       <div className="b700">Interswitch test references</div>
       <div className="sub2">
-        A fee reference expires 24 hours after it is generated, and Quickteller is then answered Status 1 for it — so a test that Interswitch&rsquo;s testers run over several days fails on the second day. A test reference stays payable for the days chosen here. It is for a small amount against a student on the register, with the purpose &ldquo;Gateway test by the Bursary&rdquo;, which counts for nothing against the student&rsquo;s fees. Quickteller is answered Status 0, with the student&rsquo;s name and the amount, until it is paid, expires or is withdrawn; then Status 1.
+        A fee reference expires after 24 hours (Status 1). A test reference stays payable for the days chosen here and counts nothing against the student&rsquo;s fees; Quickteller is answered Status 0 until it is paid, expires or is withdrawn.
       </div>
       {may ? (
         <>

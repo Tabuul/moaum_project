@@ -47,7 +47,7 @@ export default async function StaffRegisterView({ searchParams }: { searchParams
       columns={columns}
       rows={shown as unknown as Record<string, string | number | null>[]}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
-      note={`${total.toLocaleString()} member${total === 1 ? "" : "s"} of staff matched${rows.length < total ? `; the first ${rows.length.toLocaleString()} are printed — narrow the filters or take the Excel download for the whole set` : ""}. Rank, department and first appointment come from the HR staff record; grade and category from the employment record where one exists.`}
+      note={`${total.toLocaleString()} member${total === 1 ? "" : "s"} of staff matched${rows.length < total ? `; the first ${rows.length.toLocaleString()} are printed — the Excel download carries the whole set` : ""}.`}
       toolbar={<ReportToolbar headers={STAFF_HEADERS} rows={rows.map(staffSheetRow)} filename={`staff-register-${new Date().toISOString().slice(0, 10)}`} title="Staff register" keep={{ report: "staff", period: `as at ${new Date().toISOString().slice(0, 10)}`, subtitle: rows.length < total ? `PARTIAL — the first ${rows.length.toLocaleString()} of ${total.toLocaleString()} rows; narrow the filters or take the Excel export for the whole set` : (filters || undefined) }} />}
     />
   );

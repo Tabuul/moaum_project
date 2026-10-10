@@ -45,7 +45,7 @@ export function CbtCourses({ data, query }: { data: CbtCoursePage; query: { q: s
 
   return (
     <>
-      <PageHead description="The courses the University examines by computer-based test. No course is a CBT course until it is allowed here; an examination is created, published and sat only on an allowed course, and a course is withdrawn only while none of its CBT examinations is still to be completed."
+      <PageHead description="A course is withdrawn only while none of its CBT examinations is still to be completed."
         actions={<form className="row row--inline row--tight" onSubmit={(e) => { e.preventDefault(); go(href({ q: text.trim(), page: "1" })); }}>
           <input className="ctl" aria-label="Search courses" placeholder="Code or title" value={text} onChange={(e) => setText(e.target.value)} />
           <select className="ctl" aria-label="CBT" value={query.enabled} onChange={(e) => go(href({ enabled: e.target.value, page: "1" }))}><option value="">Every course</option><option value="true">CBT courses</option><option value="false">Not CBT</option></select>

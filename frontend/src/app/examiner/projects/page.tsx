@@ -17,7 +17,7 @@ export default async function MyProjectsPage({ searchParams }: { searchParams: P
   const title = filter === "pending" ? "Pending Reviews" : filter === "submitted" ? "Submitted Reviews" : "My Assigned Projects";
   return (
     <Shell route={route} me={me.ok ? me.data : null}>
-      <PageHead eyebrow="External Examiner" title={title} description={filter === "pending" ? "Assessments not yet submitted, the soonest deadline first." : filter === "submitted" ? "Assessments you have submitted; read-only unless the University reopens one." : "Every project the University has sent you, with where each review stands."}
+      <PageHead eyebrow="External Examiner" title={title} description={filter === "pending" ? "Soonest deadline first" : filter === "submitted" ? "Read-only unless the University reopens one" : undefined}
         actions={<>
           <LinkBtn kind={!filter ? "primary" : "ghost"} href="/examiner/projects">All</LinkBtn>
           <LinkBtn kind={filter === "pending" ? "primary" : "ghost"} href="/examiner/projects?filter=pending">Pending</LinkBtn>

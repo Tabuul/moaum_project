@@ -47,7 +47,7 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
   return (
     <>
       <Note kind="info" title="SMS gateway — eBulkSMS">
-        The eBulkSMS account the portal sends text messages from. The API key is written once, encrypted at rest with the portal&rsquo;s own passphrase, and never shown again &mdash; the same rule as the mail password and a payment gateway key. When enabled, the portal&rsquo;s SMS notices go out through eBulkSMS instead of the generic relay.
+        The API key is encrypted and never shown again.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
@@ -57,7 +57,7 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
 
       <Panel title="eBulkSMS account" right={config.api_key_set ? <Pil kind="ok">API key set</Pil> : <Pil kind="grey">No API key</Pil>}>
         <PBody>
-          {config.api_key_set ? <div className="sub2 mb-2">An API key is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the API key blank to keep it; type a new one to replace it.</div> : null}
+          {config.api_key_set ? <div className="sub2 mb-2">An API key is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave it blank to keep it.</div> : null}
           <div className="grid grid--2">
             <Field id="username" label="Username" hint="Your eBulkSMS account username"><input id="username" className="ctl tnum" value={f.username} onChange={(e) => set("username", e.target.value)} disabled={!may} autoComplete="off" placeholder="ebulksms username" /></Field>
             <Field id="sender" label="Sender ID" hint="Shown on the handset; up to 11 characters"><input id="sender" className="ctl tnum" maxLength={11} value={f.sender} onChange={(e) => set("sender", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM" /></Field>
@@ -80,7 +80,7 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
       </Panel>
 
       <Note kind="info" title="How SMS is chosen">
-        When an API key is set and sending is enabled, SMS notices go through eBulkSMS. Otherwise the portal falls back to the generic relay if one is configured, and to the outbox if not. Nigerian numbers are normalised to the 234 form eBulkSMS expects.
+        eBulkSMS when a key is set and sending is enabled; otherwise the generic relay, else the outbox.
       </Note>
     </>
   );

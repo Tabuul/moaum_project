@@ -64,7 +64,7 @@ export default async function ExaminerDashboardPage() {
             <span key="s" className="tnum">{a.session}</span>, <span key="d">{a.department}<div className="sub2">{a.faculty}</div></span>, <span key="p" className="sub2">{a.programme ?? "Every programme of the department"}</span>,
             <span key="f" className="tnum">{dayOf(a.starts_on)}</span>, <span key="t" className="tnum">{dayOf(a.ends_on)}</span>,
           ])} />
-        ) : <PBody><div className="sub2">No appointment period is on record yet; the University records it when it issues the letter.</div></PBody>}
+        ) : <PBody><div className="sub2">No appointment period is on record yet.</div></PBody>}
       </Panel>
     </Shell>
   );

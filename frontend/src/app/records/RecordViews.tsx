@@ -36,7 +36,7 @@ function Mark({ ok }: { ok: boolean }) {
   );
 }
 
-function Empty({ title, children }: { title: string; children: ReactNode }) {
+function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <PBody>
       <Note kind="info" title={title}>
@@ -58,8 +58,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
             {result.notServed}
           </Note>
           <span className="sub2">
-            The scope still selects <b className="tnum">{result.total.toLocaleString()}</b> students; what is missing is
-            the ledger behind them, not the list.
+            The scope selects <b className="tnum">{result.total.toLocaleString()}</b> students.
           </span>
         </PBody>
       </Panel>
@@ -124,9 +123,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
         />
         <Panel title="Attendance" right={`${shown} shown`}>
           {shown === 0 ? (
-            <Empty title="No approved registration in this scope">
-              Attendance is marked against an approved registration; with none in this scope there is nothing to show.
-            </Empty>
+            <Empty title="No approved registration in this scope" />
           ) : (
             <DTable
               cols={["Matriculation number", "Name", "Level|mid", "Courses|mid", "Marked|mid", "Attended|mid", "Rate|mid", "Lowest course|num"]}
@@ -154,10 +151,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
     return (
       <Panel title="Students" right={`${shown} of ${result.total.toLocaleString()} shown`}>
         {shown === 0 ? (
-          <Empty title="Nobody is on the register in this scope">
-            The register fills when the Academic Office brings a session&rsquo;s admitted candidates onto it. Until then
-            this list is empty.
-          </Empty>
+          <Empty title="Nobody is on the register in this scope" />
         ) : (
           <DTable
             cols={["Matriculation number", "Name", "Level|mid", "Status|mid", "CGPA|mid", "Action|num"]}
@@ -197,9 +191,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
         />
         <Panel title="Registration" right={`${shown} shown`}>
           {shown === 0 ? (
-            <Empty title="No student in this scope is on the register">
-              Registration is recorded against a student; with nobody on the register there is nothing to register.
-            </Empty>
+            <Empty title="No student in this scope is on the register" />
           ) : (
             <DTable
               cols={["Matriculation number", "Name", "Level|mid", "Units|mid", "Submitted|mid", "Status|num"]}
@@ -232,9 +224,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
     return (
       <Panel title="Result sets in this scope" right="By stage">
         {shown === 0 ? (
-          <Empty title="No course is taught in this scope in this session">
-            A result set exists once a course is offered in the session and a score sheet is opened on it.
-          </Empty>
+          <Empty title="No course is taught in this scope in this session" />
         ) : (
           <DTable
             cols={["Course", "Candidates|mid", "Stage", "Fail rate|mid", "Action|num"]}
@@ -271,10 +261,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
         right={`${scope.session} · ${scope.sem ? (scope.sem === "1" ? "first semester" : "second semester") : "both semesters"}`}
       >
         {shown === 0 ? (
-          <Empty title="No examination session has been opened">
-            An examination session is the container every score sheet hangs in. Until one is opened for {scope.session},
-            there is nothing to sit.
-          </Empty>
+          <Empty title={`No examination session has been opened for ${scope.session}`} />
         ) : (
           <DTable
             cols={["Examination", "Window|mid", "Candidates|mid", "Cleared|mid", "State|num"]}
@@ -304,10 +291,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
     return (
       <Panel title="Course assignment in this scope" right="Who teaches what">
         {shown === 0 ? (
-          <Empty title="No course is offered in this scope in this session">
-            A course is offered when the department puts it up for the session; assigning the lecturer is what opens the
-            score sheet.
-          </Empty>
+          <Empty title="No course is offered in this scope in this session" />
         ) : (
           <DTable
             cols={["Course", "Units|mid", "Registered|mid", "Lecturer", "Second examiner", "Action|num"]}
@@ -349,10 +333,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
   return (
     <Panel title="Clearance in this scope" right="Convocation">
       {shown === 0 ? (
-        <Empty title="Nobody is on the register in this scope">
-          Clearance is a position on a candidate: eight units, each with its own latest word. With nobody on the register
-          there is no position to report.
-        </Empty>
+        <Empty title="Nobody is on the register in this scope" />
       ) : (
         <DTable
           cols={["Matriculation number", "Name", "Bursary|mid", "Dept|mid", "Library|mid", "Hostel|mid", "Status|num"]}

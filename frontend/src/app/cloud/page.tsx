@@ -10,7 +10,7 @@ export default async function CloudPage() {
   return (
     <Shell route="t/cloud" me={me.ok ? me.data : null}>
       <Note kind="info" title="Portability first, so residency is a choice and not a trap">
-        The portal runs on managed PostgreSQL and a container image with no proprietary service lock-in, so the University can move it — between providers, or on-premises — to satisfy the Nigeria Data Protection Act&rsquo;s residency expectations. This page states that posture; it is not wired to live infrastructure telemetry, so no availability figure is shown here that the portal cannot itself measure.
+        No proprietary lock-in: the University can move the portal between providers or on-premises to satisfy the Nigeria Data Protection Act&rsquo;s residency expectations.
       </Note>
       <Panel title="What keeps the system portable">
         <PBody>
@@ -25,7 +25,7 @@ export default async function CloudPage() {
       <Panel title="Data residency">
         <PBody>
           <div className="sub2">
-            Personal data can be pinned to a region that satisfies the Act. Because the deployment is portable, residency is a deployment decision the University makes and can change — moving the database and image to a compliant region does not require rebuilding the system. Cross-border processing by a sub-processor (a payment gateway, an SMS provider) is listed in the processing register on the Data governance screen, each under its lawful basis.
+            Personal data can be pinned to a region that satisfies the Act; residency is the University&rsquo;s deployment decision. Cross-border processing by a sub-processor (a payment gateway, an SMS provider) is listed in the processing register on the Data governance screen, each under its lawful basis.
           </div>
         </PBody>
       </Panel>

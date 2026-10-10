@@ -186,9 +186,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Note kind="info" title="This is your profile — yours to keep current">
-        Everything below is your own record. It is saved against your staff account and no other, and it feeds the
-        University&rsquo;s academic returns. Keep it accurate: the publications, grants and postgraduates you record here are
-        what the Faculty and the NUC see against your name.
+        It feeds the University&rsquo;s academic returns to the Faculty and the NUC.
       </Note>
 
       <div className="grid grid--2">

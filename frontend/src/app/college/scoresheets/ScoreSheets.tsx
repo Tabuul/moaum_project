@@ -197,7 +197,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
                 <label className="btn btn--ghost" style={{ cursor: "pointer" }}>Upload the filled sheet<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></label>
                 <Btn kind="ghost" disabled={!withResults} onClick={() => void downloadMarked()}>Download the marked sheet</Btn>
               </div>
-              <div className="sub2 mt-2">The sheet is a workbook with the cohort as it stands: a row per candidate, and per subject the CA out of {subjects[0]?.ca_weight ?? 30}, the examination out of {subjects[0]?.exam_weight ?? 70}{subjects.some((s) => s.clinical_component_min != null) ? ", the clinical mark out of 100" : ""} and the attendance percentage{exam.min_attendance_pct != null ? ` (minimum ${exam.min_attendance_pct}%, or the candidate is barred)` : ""}. Fill it and upload it; the preview names every problem before anything is saved. Each mark is judged by the rule as it goes in, and once a candidate&rsquo;s subjects are all resulted the rule&rsquo;s decision is applied provisionally for the Board to confirm.</div>
+              <div className="sub2 mt-2">The sheet is a workbook with the cohort as it stands: a row per candidate, and per subject the CA out of {subjects[0]?.ca_weight ?? 30}, the examination out of {subjects[0]?.exam_weight ?? 70}{subjects.some((s) => s.clinical_component_min != null) ? ", the clinical mark out of 100" : ""} and the attendance percentage{exam.min_attendance_pct != null ? ` (minimum ${exam.min_attendance_pct}%, or the candidate is barred)` : ""}. The preview names every problem before anything is saved.</div>
             </PBody>
           </Panel>
           {preview ? (
@@ -212,7 +212,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
                 <div className="row">
                   <Btn kind="go" disabled={busy || !preview.rows.some((r) => !r.flags.some((f) => /not in the|not a number|is over|missing|no marks/.test(f)))} onClick={() => void save()}>{busy ? "Saving…" : `Save ${preview.rows.filter((r) => !r.flags.some((f) => /not in the|not a number|is over|missing|no marks/.test(f))).length} rows`}</Btn>
                   <Btn kind="ghost" onClick={() => setPreview(null)}>Discard</Btn>
-                  <span className="sub2">Rows flagged as not in the cohort, over range, missing a required mark or empty are left out; a barred or unregistered candidate is saved and shown as such.</span>
+                  <span className="sub2">Flagged rows are left out; barred or unregistered candidates are saved as such.</span>
                 </div>
               </PBody>
             </Panel>
@@ -232,7 +232,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
                 <span className="sub2" key={"r" + i}>{u.reason}</span>,
                 <span className="tnum" key={"m" + i}>{u.marks}{u.changed ? <span className="sub2"> · {u.changed} changed</span> : null}</span>,
               ])} />
-            ) : <PBody><div className="sub2">Every mark saved on this sheet — by an upload or by hand on the examinations desk — is on the audit spine with who saved it and why, and is listed here.</div></PBody>}
+            ) : <PBody><div className="sub2">Every mark saved, with who saved it and why.</div></PBody>}
           </Panel>
           <Panel title="The cohort as it stands" right={`${rows.length} candidates`}>
             <DTable cols={["Matriculation number", "Name", "Registered|mid", ...subjects.map((s) => `${s.name}|mid`), "Decision|mid"]} rows={rows.map((c) => {

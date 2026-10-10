@@ -230,7 +230,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       }
       setUnregistered(notRegistered);
       const skippedRows = notRegistered.reduce((s, x) => s + x.rows, 0);
-      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} named another department's course and bound it to the programme as it is, without a second record` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
+      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} bound another department's course` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
       notify(`Course structure loaded · ${totals.courses} courses`);
       setPreview(null);
       setPlacements(null);
@@ -279,10 +279,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   return (
     <>
       <Note kind="info" title="Load a department's approved course structure">
-        Upload the CCMAS document for a programme. Each course — with its units, status and lecture/practical hours — is
-        created in the catalogue and offered to the programme at its level; the level and semester are read from the
-        document&rsquo;s own headings. Uploading again updates rather than duplicates. The Directorate of ICT and the
-        Super Administrator may load any department&rsquo;s; an HOD loads their own.
+        Upload the CCMAS document for a programme. Uploading again updates rather than duplicates. An HOD loads their own department&rsquo;s.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT, the Super Administrator and HODs">Your office may not upload a course structure.</Note> : null}
 
@@ -310,7 +307,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
-          <div className="sub2 mt-2">The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, G or GST for a General Studies course, EPS for an Entrepreneurship Studies course (a Classification column of GST or EPS works too). Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2 mt-2">Applies to <b>all sessions</b>. Status: C core, R required, E elective, G or GST for General Studies, EPS for Entrepreneurship Studies (a Classification column of GST or EPS works too).</div>
           <div className="row mt-3" style={{ paddingTop: "var(--s-3)", borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
@@ -324,7 +321,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       <Panel title="Open course registration for a session" right="After the structure is uploaded">
         <PBody>
-          <div className="sub2 mb-2">Registration shows a course only once it is <b>offered</b> for the session. Open the session here to offer every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
+          <div className="sub2 mb-2">Registration shows a course only once it is <b>offered</b> for the session. Offers every uploaded course of the semester; safe to run again.</div>
           <div className="row row--end">
             <Field id="or-ses" label="Session"><input id="or-ses" className="ctl tnum" style={{ maxWidth: 160 }} value={openSession} placeholder="2024/2025" onChange={(e) => setOpenSession(e.target.value)} /></Field>
             <Field id="or-sem" label="Semester"><select id="or-sem" className="ctl" value={openSem} onChange={(e) => setOpenSem(e.target.value)}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
@@ -336,7 +333,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       {unregistered.length ? (
         <Note kind="bad" title={`${unregistered.length} programme${unregistered.length === 1 ? "" : "s"} not on the register — their courses were held back`}>
-          <div className="sub2 mb-2">These programme codes are in the file but not yet registered (mostly postgraduate). Register them first, then upload again — the import is idempotent, so the courses already loaded stay put.</div>
+          <div className="sub2 mb-2">Register these programmes first, then upload again.</div>
           <div className="row row--tight" style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)", padding: "var(--s-2)" }}>
             {unregistered.map((u) => (
               <span key={u.programme} className="tnum t-sm" style={{ background: "var(--chip)", borderRadius: "var(--r)", padding: "2px 6px" }}>{u.programme} · {u.rows}</span>
@@ -398,7 +395,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                     placements.counts.keptWithOffice ? `${placements.counts.keptWithOffice} the file marks departmental but an office holds — left with the office` : null,
                     placements.counts.keptWithDepartment ? `${placements.counts.keptWithDepartment} the file marks G but an office gave back — left with the department` : null,
                     placements.counts.otherOffice ? `${placements.counts.otherOffice} the file says EPS but the GST office holds — left with the GST office` : null,
-                  ].filter(Boolean).join(" · ")}. The offices are told of every course that comes to them or leaves them, and confirm it on their courses page.
+                  ].filter(Boolean).join(" · ")}. The offices are told and confirm it.
                 </Note>
                 <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
                   <table className="tbl--data">

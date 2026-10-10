@@ -23,7 +23,7 @@ export function Office({ data }: { data: OfficeData }) {
   ];
   return (
     <>
-      <PageHead title="Support escalations" description={`Tickets the ICT Support Desk has referred to ${offices} for a decision support cannot take. Your answer goes to the agent on the ticket; the ticket waits until it comes.`}
+      <PageHead title="Support escalations" description={`Tickets referred to ${offices} for a decision`}
         actions={<LinkBtn href="/tickets">My Own Tickets</LinkBtn>} />
       <Tiles items={[
         ["Awaiting your decision", String(data.waiting.length), data.waiting.length ? "var(--amber-ink)" : null, "Referred by the support desk, oldest first"],
@@ -34,7 +34,7 @@ export function Office({ data }: { data: OfficeData }) {
       <Panel title="Awaiting your decision" right={data.waiting.length ? `${data.waiting.length} ticket${data.waiting.length === 1 ? "" : "s"}` : "Nothing waits on you"}>
         {data.waiting.length ? (
           <DTable pageSize={0} cols={["Ticket", "Requester", "Category", "Subject", "Priority|mid", "Status|mid", "Agent", "Waiting since|mid", "|num"]} rows={data.waiting.map((t) => row(t, true))} />
-        ) : <PBody><div className="sub2">When an agent cannot settle a ticket without your office&rsquo;s decision — a fee, a result, a registration, a refund — they escalate it here. It lists until you answer.</div></PBody>}
+        ) : <PBody><div className="sub2">Nothing has been referred.</div></PBody>}
       </Panel>
       <Panel title="Answered by you" right={data.answered.length ? "The last fifty" : "None yet"}>
         {data.answered.length ? (

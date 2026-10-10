@@ -45,7 +45,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
   const firstCome = rooms?.setting?.allocation_method === "FIRST_COME" && !rooms?.setting?.requires_review;
   const [roomFilter, setRoomFilter] = useState({ hall: "", type: "" });
   async function reserve(roomId: string, label: string) {
-    if (!window.confirm(`Reserve a bed in ${label}? It is held for ${rooms?.setting?.hold_hours ?? 48} hours for payment of the hostel fee.`)) return;
+    if (!window.confirm(`Reserve a bed in ${label}? It is held for ${rooms?.setting?.hold_hours ?? 48} hours for payment.`)) return;
     const r = await act("reserve", "POST", "/me/hostel/reserve", { session: h.session, roomId }, "Room reservation", "Room reserved. Pay the hostel fee within the hold window.");
     if (r) queryNav(`/student/hostel?session=${encodeURIComponent(h.session)}`);
   }
@@ -105,14 +105,14 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
       </div>
 
       {v.fee === null || v.fee === undefined ? (
-        <Note kind="info" title={`Accommodation for ${h.session} is not open yet`}>The housing desk states the accommodation fee, the window and the rules before applications open. You do not currently have a hostel allocation for this academic session.</Note>
+        <Note kind="info" title={`Accommodation for ${h.session} is not open yet`} />
       ) : inRoom ? (
         <Note kind="ok" title={`You are checked in — ${place}`} action={<span className="row row--inline row--tight"><a href={`/student/hostel/letter?session=${encodeURIComponent(h.session)}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Allocation letter (PDF)</a>{!v.checkout_requested_at ? <Btn kind="secondary" onClick={() => setAsk("checkout")}>Request checkout</Btn> : null}{!v.transfer_state || ["REJECTED", "COMPLETED", "CANCELLED"].includes(v.transfer_state) ? <Btn kind="ghost" onClick={() => setAsk("transfer")}>Request a transfer</Btn> : null}</span>}>
           Checked in {when(v.checked_in_at)}{v.end_on ? ` · stay to ${onDay(v.end_on)}` : ""}. {v.checkout_requested_at ? `Checkout requested for ${onDay(v.checkout_on)}; the desk inspects the room, then clears you.` : "Report a fault below; a transfer or a checkout is asked for from here."}
         </Note>
       ) : al === "ACCEPTED" ? (
         <Note kind="ok" title={`Allocation accepted — check in at the porter's lodge`} action={<a href={`/student/hostel/letter?session=${encodeURIComponent(h.session)}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Allocation letter (PDF)</a>}>
-          {place}. Bring the letter and your identity card; the porter records your check-in and the condition of the room.
+          {place}. Bring the letter and your identity card.
         </Note>
       ) : al === "CONFIRMED" ? (
         <Note kind="info" title="Fee confirmed — accept your allocation" action={<span className="row row--inline row--tight"><Btn kind="primary" onClick={() => (needsRules ? setAsk("rules") : void accept())} disabled={busy !== null}>Accept allocation</Btn><Btn kind="ghost" onClick={() => setAsk("decline")}>Decline</Btn></span>}>
@@ -120,14 +120,14 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         </Note>
       ) : al === "HELD" ? (
         <Note kind="bad" title={<>A bed is held for you — <Countdown until={v.held_until as string} /> to pay ({holdLeft} h)</>} action={<span className="row row--inline row--tight"><Btn kind="urgent" disabled={busy !== null} onClick={() => void pay()}>Pay {naira(v.fee)} now</Btn><Btn kind="ghost" onClick={() => setAsk("decline")}>Decline</Btn></span>}>
-          {place}. The hold runs to {when(v.held_until)} whether anybody is watching; unpaid, the bed goes to the next name on the list. Generate the reference and pay it at the bank or by card; the Bursary&rsquo;s confirmation makes the bed yours.
+          {place}. Unpaid by {when(v.held_until)}, the bed goes to the next name on the list. Pay at the bank or by card.
         </Note>
       ) : al === "CHECKED_OUT" || v.clearance_state === "CLEARED" ? (
         <Note kind="ok" title="Checked out and cleared" action={<a href={`/student/hostel/clearance?session=${encodeURIComponent(h.session)}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Clearance certificate (PDF)</a>}>Your stay for {h.session} is closed with clearance {v.clearance_ref}.</Note>
       ) : appState === "LAPSED" ? (
-        <Note kind="bad" title="Your hold lapsed">The bed held for you was not paid for within {v.hold_hours} hours and went to the next name on the list. Ask the housing desk whether a bed is free.</Note>
+        <Note kind="bad" title="Your hold lapsed">The bed was not paid for within {v.hold_hours} hours and was released. Ask the housing desk whether a bed is free.</Note>
       ) : appState === "UNSUCCESSFUL" ? (
-        <Note kind="info" title={`Waiting list${v.draw_position ? ` — position ${v.draw_position}` : ""}`}>Your hostel application is currently on the waiting list. Beds are offered in list order when one becomes free; you will see a bed appear here with its own hold window if one does.</Note>
+        <Note kind="info" title={`Waiting list${v.draw_position ? ` — position ${v.draw_position}` : ""}`}>Beds are offered in list order as they become free.</Note>
       ) : appState === "REJECTED" ? (
         <Note kind="bad" title="Your application was not approved">{v.review_note ?? "The housing desk did not approve the application."}</Note>
       ) : appState === "APPLIED" ? (
@@ -158,7 +158,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
       {reference ? (
         <Note kind="info" title={`Pay ${naira(reference.amount)} against ${reference.reference}`} action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>
-          The reference is on your Fees page with the card option and the bank details. Confirmed, it makes the bed yours; the hold clock keeps running until then.
+          The reference is on your Fees page. The hold keeps running until it is confirmed.
         </Note>
       ) : null}
       {v.damage_due ? <Note kind="bad" title={`A damage charge of ${naira(v.damage_due)} stands against you`}>Pay the reference on your Fees page; hostel clearance completes when it is settled or waived.</Note> : null}
@@ -179,7 +179,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
             </div>
           </PBody>
           {rooms.rooms.length === 0 ? (
-            <PBody><Note kind="info" title="NO ROOMS CURRENTLY AVAILABLE">All available hostel rooms are currently occupied or reserved. Applications remain open; a room becomes available again when a reservation expires unpaid, a bed is released or more rooms are opened. You may check again later.</Note></PBody>
+            <PBody><Note kind="info" title="NO ROOMS CURRENTLY AVAILABLE">All rooms are occupied or reserved. Applications remain open; check again later.</Note></PBody>
           ) : (
             <DTable cols={["Hostel", "Room|mid", "Capacity|mid", "Occupied|mid", "Reserved|mid", "Available|mid", "Fee|num", "Action|num"]}
               rows={rooms.rooms.filter((r) => (!roomFilter.hall || r.hall_code === roomFilter.hall) && (!roomFilter.type || r.room_type === roomFilter.type)).map((r) => [
@@ -194,7 +194,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         <Panel title="Apply for accommodation" right={h.session}>
           <PBody>
             <div className="grid grid--2">
-              <Field id="hs-hall" label="Hall preferred" hint="A preference, not a promise: the allocation fills it if a bed is free when your turn comes.">
+              <Field id="hs-hall" label="Hall preferred" hint="A preference, not a guarantee.">
                 <select id="hs-hall" className="ctl" value={form.hall} onChange={(e) => setForm({ ...form, hall: e.target.value })}>
                   <option value="">Any hall</option>
                   {h.halls.map((x) => <option key={x.code} value={x.code}>{x.name}{x.sex ? ` (${x.sex === "F" ? "female" : "male"})` : ""}{x.campus ? ` · ${x.campus}` : ""} · {x.free ?? 0} of {x.beds ?? 0} beds free</option>)}
@@ -214,7 +214,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
               <Field id="hs-rm" label="Preferred roommate (matriculation number)" hint="Both must be eligible and of the same hall restriction; not guaranteed"><input id="hs-rm" className="ctl" value={form.roommateNumber} onChange={(e) => setForm({ ...form, roommateNumber: e.target.value })} autoComplete="off" /></Field>
               <Field id="hs-rmn" label="Roommate note"><input id="hs-rmn" className="ctl" value={form.roommateNote} onChange={(e) => setForm({ ...form, roommateNote: e.target.value })} /></Field>
             </div>
-            <div className="sub2 mt-1">Your student information (name, faculty, department, programme, level and sex) is read from your record and cannot be edited here.</div>
+            
             <div className="mt-2"><Btn kind="primary" disabled={busy !== null || (form.category !== "NONE" && !form.note.trim())} onClick={() => void apply()}>Submit application</Btn></div>
           </PBody>
         </Panel>
@@ -272,7 +272,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
           <DTable cols={["Requirement", "Status|mid", "Decided|mid", "Remarks"]} rows={h.clearanceItems.map((i) => [i.label, <Pil key="s" kind={CLEAR_STATE[i.state]?.[1] ?? "grey"}>{CLEAR_STATE[i.state]?.[0] ?? i.state}</Pil>, <span key="d" className="tnum sub2">{i.decided_at ? dayOf(i.decided_at) : "—"}</span>, <span key="r" className="sub2">{i.remarks ?? ""}</span>])} />
           {h.charges.length ? <PBody><div className="sub2">Damage charges: {h.charges.map((c) => `${c.description} ${naira(c.charge)}${c.waived_at ? " (waived)" : c.settled_at ? " (settled)" : c.reference ? ` — pay ${c.reference}` : ""}`).join("; ")}</div></PBody> : null}
         </Panel>
-      ) : live && inRoom ? <Note kind="info" title="No clearance record">Your hostel checkout/clearance process has not yet started. Request a checkout when you are ready to leave.</Note> : null}
+      ) : live && inRoom ? <Note kind="info" title="No clearance record">Request a checkout when you are ready to leave.</Note> : null}
 
       {v.rules ? (
         <Panel title="Hostel rules and regulations" right={`Version ${v.rules_version}${v.rules_accepted ? ` · acknowledged` : ""}`}>
@@ -309,7 +309,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         </Modal>
       ) : ask === "transfer" ? (
         <Modal title="Request a room transfer" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void requestTransfer()} disabled={busy !== null || !reason.trim()}>Submit</Btn></>}>
-          <p>Your current allocation stands until the housing desk approves and moves you; nothing changes before then.</p>
+          <p>Your allocation stays until the housing desk approves the move.</p>
           <div className="grid grid--2">
             <Field id="tr-hall" label="Hall requested"><select id="tr-hall" className="ctl" value={transfer.hall} onChange={(e) => setTransfer({ ...transfer, hall: e.target.value })}><option value="">Any hall</option>{h.halls.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
             <Field id="tr-type" label="Room type requested"><select id="tr-type" className="ctl" value={transfer.roomType} onChange={(e) => setTransfer({ ...transfer, roomType: e.target.value })}><option value="">Any</option>{h.roomTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}</select></Field>
@@ -318,7 +318,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         </Modal>
       ) : ask === "checkout" ? (
         <Modal title="Request checkout" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void requestCheckout()} disabled={busy !== null}>Request checkout</Btn></>}>
-          <p>{place}. The housing desk inspects the room, the bed, the furniture and the keys, then completes your clearance; the bed is released when it is complete.</p>
+          <p>{place}. The bed is released when the housing desk completes your clearance.</p>
           <div className="grid grid--2">
             <Field id="co-on" label="Intended checkout date"><input id="co-on" type="date" className="ctl" value={checkoutOn} onChange={(e) => setCheckoutOn(e.target.value)} /></Field>
             <Field id="co-reason" label="Reason"><input id="co-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>

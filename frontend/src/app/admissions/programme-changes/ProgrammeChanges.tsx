@@ -176,7 +176,7 @@ export function ProgrammeChanges({ page, actingOffice, openApp }: { page: Regist
   return (
     <>
       <PageHead title="Programme changes"
-        description={`${session} · every applicant now on a programme other than the one applied for — the programme applied for, the programme held now, why, at what stage, and who recommended and approved it. An admission found in error after the Board's decision, even after school fees, is corrected here: recommended by the Academic Office with the error described, approved by the Registrar's office.`}
+        description={`${session} · applicants now on a programme other than the one applied for. An admission found in error after the Board's decision is corrected here: recommended by the Academic Office, approved by the Registrar's office.`}
         actions={<>
           <select className="ctl" aria-label="Session" style={{ width: 150 }} value={session} onChange={(e) => go(`/admissions/programme-changes?session=${encodeURIComponent(e.target.value)}`)}>
             {(page.sessions.some((s) => s.name === session) ? page.sessions : [{ name: session, applications: 0, changed: 0 }, ...page.sessions]).map((s) => <option key={s.name} value={s.name}>{s.name}{s.changed ? ` · ${s.changed} moved` : ""}</option>)}
@@ -349,7 +349,7 @@ export function ProgrammeChanges({ page, actingOffice, openApp }: { page: Regist
                         ) : null}
                         <div className="sub2">The correction takes effect only when the Registrar, the Deputy Registrar or the Vice-Chancellor&rsquo;s office approves it — never the officer who recommends it. The applicant is told when it is decided.</div>
                       </>
-                    ) : <div className="sub2">Choose the programme to see the engine&rsquo;s verdict and what the correction would do to the fees, the courses and the letter.</div>}
+                    ) : <div className="sub2">Choose the programme to see the verdict and what the correction would change.</div>}
                   </>
                 )}
                 <div><Btn kind="ghost" disabled={busy !== null} onClick={() => { setPv(null); setFound(null); setTo(""); setNote(""); setOverrideReason(""); setProblem(null); }}>Another applicant</Btn></div>
@@ -378,7 +378,7 @@ export function ProgrammeChanges({ page, actingOffice, openApp }: { page: Regist
                 <Impact pv={dPv} />
               </>
             ) : <div className="sub2">Reading what the correction would do…</div>) : (
-              <div className="sub2">The candidate&rsquo;s eligibility is read again at this moment; the programme changes on the record and the applicant is told. A change during the screening screens the record successful on the new programme.</div>
+              <div className="sub2">Eligibility is read again now; the programme changes on the record and the applicant is told.</div>
             )}
             <Field id="pc-dnote" label={deciding.kind === "approve" ? "Note (optional)" : "Reason (required)"} required={deciding.kind === "reject"}>
               <textarea id="pc-dnote" className="ctl" rows={3} value={dNote} onChange={(e) => setDNote(e.target.value)} />

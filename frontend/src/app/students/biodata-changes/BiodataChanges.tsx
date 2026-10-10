@@ -127,15 +127,10 @@ export function BiodataChanges({
           kind="bad"
           title={`${counts.pending} biodata ${counts.pending === 1 ? "change is" : "changes are"} waiting on evidence`}
         >
-          Each of these alters something the University asserts about a person &mdash; their name, their state of origin,
-          their photograph or their refund account. None of them is a typing correction, and none can be approved without
-          seeing the document behind it.
+          None can be approved without seeing the document behind it.
         </Note>
       ) : (
-        <Note kind="ok" title="Nothing is waiting on evidence">
-          Every request that has reached the Registry has been decided. A field that changes only on evidence raises a
-          request here the moment somebody asks for it.
-        </Note>
+        <Note kind="ok" title="Nothing is waiting on evidence" />
       )}
 
       <Tiles
@@ -153,10 +148,7 @@ export function BiodataChanges({
       >
         {queue.rows.length === 0 ? (
           <PBody>
-            <Note kind="info" title="No request has been made">
-              A request appears here when a field that changes only on evidence &mdash; nationality, state of origin, the
-              refund account &mdash; is asked to change. Until one is, there is nothing to decide.
-            </Note>
+            <Note kind="info" title="No request has been made" />
           </PBody>
         ) : (
           <DTable
@@ -169,9 +161,7 @@ export function BiodataChanges({
       </Panel>
 
       <Note kind="info" title="A refusal is as much a decision as an approval">
-        It is recorded with its reason, it appears in the student&rsquo;s own change history, and the student is notified.
-        A request that simply sits unanswered is the failure mode this queue exists to prevent, which is why the oldest
-        item is shown at the top of the screen.
+        It is recorded with its reason in the student&rsquo;s change history, and the student is notified.
       </Note>
 
       {deciding ? (
@@ -224,8 +214,7 @@ export function BiodataChanges({
 
       {!may ? (
         <Note kind="info" title="You are reading this queue, not deciding on it">
-          A biodata change is decided by the Academic Office or the Registry. Your office may see the queue so that it
-          knows where a record stands.
+          A biodata change is decided by the Academic Office or the Registry.
         </Note>
       ) : null}
     </>

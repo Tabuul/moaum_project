@@ -59,22 +59,21 @@ export function TicketView({ t }: { t: Ticket }) {
         </span>}>
           <b>{t.resolution_summary}</b>{t.resolved_by_name ? ` — ${t.resolved_by_name}, ${when(t.resolved_at)}` : ""}
           <span className="blk mt-2" style={{ whiteSpace: "pre-wrap" }}>{t.resolution_details}</span>
-          <span className="blk sub2 mt-2">If this settles it, confirm and the ticket closes. If not, reopen it and say what is still wrong; the desk picks it up again.</span>
+          <span className="blk sub2 mt-2">If not settled, reopen it and say what is still wrong.</span>
         </Note>
       ) : closed ? (
         <Note kind="info" title={`Closed ${when(t.closed_at)}${t.closed_by_name ? ` by ${t.closed_by_kind === "REQUESTER" ? "you" : t.closed_by_name}` : ""}`}>
           {t.closure_reason ?? "The ticket is closed."}{t.resolution_summary ? <span className="blk mt-2"><b>Resolution:</b> {t.resolution_summary}</span> : null}
-          <span className="blk sub2 mt-2">A closed ticket takes no more updates. If the problem returns, raise a new ticket and quote this number.</span>
+          <span className="blk sub2 mt-2">If the problem returns, raise a new ticket and quote this number.</span>
         </Note>
       ) : t.status === "WAITING_FOR_STUDENT" ? (
         <Note kind="bad" title="The support desk needs something from you">
           {(() => { const w = [...(t.timeline ?? [])].reverse().find((e) => e.action === "WAITING"); return w?.detail ? <span className="blk"><b>{w.detail}</b></span> : null; })()}
-          <span className="blk mt-2">Reply below, or attach what was asked for; work resumes the moment you do. Waiting since {when(t.waiting_since)}.</span>
+          <span className="blk mt-2">Reply below or attach what was asked for. Waiting since {when(t.waiting_since)}.</span>
         </Note>
       ) : t.status === "WAITING_FOR_OFFICE" ? (
         <Note kind="info" title={`Referred to ${t.office ?? "a University office"} for a decision`}>
-          The support desk has put your ticket to {t.office ?? "the responsible office"}, which decides what support cannot. You will be told when the answer comes back
-          {t.agent ? <> to <b>{t.agent}</b></> : null}. Add anything the office should know below.
+          You will be told when the answer comes back{t.agent ? <> to <b>{t.agent}</b></> : null}.
         </Note>
       ) : (
         <Note kind="info" title={t.status === "SUBMITTED" ? "Waiting for the support desk to open it" : t.status === "OPENED" ? "The support desk has opened your ticket" : t.status === "REOPENED" ? "Reopened; the desk will pick it up again" : "The support desk is working on it"}>

@@ -105,7 +105,7 @@ export async function DeskLater({ head, queues, counts }: { head: boolean; queue
 export function DeskLaterFallback() {
   return (
     <Panel title="Support operations and statistics" right="Loading…">
-      <PBody><div className="sub2">The queues&rsquo; load, the agents&rsquo; load, the last acts and the figures follow in a moment. The ticket queue above is ready.</div></PBody>
+      <PBody><div className="sub2">Loading…</div></PBody>
     </Panel>
   );
 }

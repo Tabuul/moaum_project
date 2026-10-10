@@ -57,7 +57,7 @@ export function Settings({ categories, settings }: { categories: Category[]; set
 
   return (
     <>
-      <PageHead title="ICT support settings" description="The categories a requester chooses from and what each asks for; the SLA by priority; whether resolved tickets close themselves."
+      <PageHead title="ICT support settings" 
         actions={<><Btn kind="primary" onClick={() => open(null)}>New Category</Btn><LinkBtn href="/helpdesk">The Queue</LinkBtn></>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 
@@ -74,7 +74,7 @@ export function Settings({ categories, settings }: { categories: Category[]; set
             <Btn key="e" kind="ghost" size="sm" onClick={() => open(c)}>Edit</Btn>,
           ];
         })} />
-        <PBody><div className="sub2">A category with tickets is deactivated rather than deleted: it leaves the requester&rsquo;s list, and its tickets keep their category.</div></PBody>
+        <PBody><div className="sub2">A category with tickets is deactivated, not deleted.</div></PBody>
       </Panel>
 
       <div className="grid grid--2">
@@ -88,18 +88,18 @@ export function Settings({ categories, settings }: { categories: Category[]; set
                   <div className="field" style={{ flex: "1 1 130px" }}><label htmlFor={`sla-r-${s.priority}`}>Resolution (h)</label><input id={`sla-r-${s.priority}`} className="ctl tnum" inputMode="numeric" value={s.res} onChange={(e) => { const next = sla.slice(); next[i] = { ...s, res: e.target.value.replace(/[^0-9]/g, "") }; setSla(next); }} /></div>
                 </div>
               ))}
-              <div className="sub2">A ticket past its resolution hours, and not yet resolved, shows as overdue on the desk and in the reports; one past its first-response hours with no word from the desk shows as awaiting a response.</div>
+              <div className="sub2">Past resolution hours: overdue. Past first-response hours with no reply: awaiting a response.</div>
             </div>
           </PBody>
         </Panel>
         <Panel title="Closing and notice" right="How the desk behaves">
           <PBody>
             <div className="stack">
-              <Field id="hd-days" label="Close a resolved ticket automatically after" hint="Days without a reply from the requester, 1 to 90. Leave blank and no ticket ever closes itself; the requester confirms, or the desk closes on a reason.">
+              <Field id="hd-days" label="Close a resolved ticket automatically after" hint="Days without a reply from the requester, 1 to 90. Blank: never closes itself.">
                 <div className="row row--base"><input id="hd-days" className="ctl tnum" inputMode="numeric" style={{ width: 100 }} value={days} onChange={(e) => setDays(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Off" /><span className="sub2">{days ? `day${days === "1" ? "" : "s"}` : "Off"}</span></div>
               </Field>
               <label className="row row--tight"><input type="checkbox" className="chk" checked={tell} onChange={(e) => setTell(e.target.checked)} /> <span>Email every agent and the Director when a new ticket arrives</span></label>
-              <Note kind="info" title="Notices go through the portal's outbox">Every email here is queued in the same transaction as the act it announces and sent by the mail server set under Platform → Mail Server.</Note>
+              <Note kind="info" title="Notices go through the portal's outbox">Sent by the mail server under Platform → Mail Server.</Note>
             </div>
           </PBody>
         </Panel>

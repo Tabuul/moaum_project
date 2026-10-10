@@ -31,7 +31,7 @@ export function Dashboard({ a }: { a: Application }) {
           <div className="b700 t-lg">{a.name}</div>
           <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
           <div className="sub2 tnum">JAMB {a.jambKey} · {a.applicationNo}</div>
-          {!photoSrc ? <div className="sub2 ink-chrome">Your passport is not on record yet — it appears here once JAMB’s photograph is uploaded or you add one.</div> : null}
+          {!photoSrc ? <div className="sub2 ink-chrome">Your passport is not on record yet.</div> : null}
         </div>
       </div></div>
       <Tiles items={[
@@ -68,7 +68,7 @@ export function Dashboard({ a }: { a: Application }) {
             n.state === "SENT" ? <Pil kind="ok" key="s">Sent</Pil> : n.state === "FAILED" ? <Pil kind="bad" key="s">Not delivered</Pil> : <Pil kind="info" key="s">Waiting to be sent</Pil>,
           ])} />
         ) : (
-          <PBody><div className="sub2">Every notice the portal sends you about this application is listed here as well, so nothing depends on a message reaching your phone.</div></PBody>
+          <PBody><div className="sub2">No notices yet.</div></PBody>
         )}
       </Panel>
     </>
@@ -87,7 +87,7 @@ export function Apply({ a }: { a: Application }) {
     return (
       <>
         <Note kind="ok" title={`Your application was submitted on ${when(a.submittedAt)}`}>
-          It can no longer be edited. If something on it is wrong, write to the Registry quoting your application number &mdash; do not create a second account, which will invalidate both.
+          It can no longer be edited. To correct it, write to the Registry quoting your application number. Do not create a second account; it invalidates both.
         </Note>
         <Panel title="What you submitted" right={<a href="/applicant/apply/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Print / Download (PDF)</a>}>
           <DTable cols={["Section", "Detail"]} rows={[
@@ -106,7 +106,7 @@ export function Apply({ a }: { a: Application }) {
     return (
       <>
         <Note kind="bad" title="The form opens when your application fee is confirmed" action={<LinkBtn kind="primary" href="/applicant/fee">Pay the application fee</LinkBtn>}>
-          This is not a delay you can avoid by paying at a bank counter into a personal account. The portal releases the form the moment the Bursary confirms your payment against the reference it generated for you.
+          Pay only against the reference the portal generates &mdash; never into a personal account.
         </Note>
         <Rail a={a} />
       </>
@@ -144,7 +144,7 @@ export function Apply({ a }: { a: Application }) {
             ["JAMB registration number", <span className="tnum" key="j">{a.jambKey}</span>],
             [a.entryMode === "UTME" ? "UTME score" : "Entry mode", <span className="tnum" key="u">{a.entryMode === "UTME" ? a.biodata.utme ?? "—" : "Direct Entry"}</span>],
           ]} />
-          <Field id="nok" label={<>Next of kin &mdash; name and phone</>} hint={busy === "nok" ? "Saving…" : "Saved when you leave the box. The person the University may call."}>
+          <Field id="nok" label={<>Next of kin &mdash; name and phone</>} hint={busy === "nok" ? "Saving…" : "Saved when you leave the box."}>
             <input id="nok" value={nok} onChange={(e) => setNok(e.target.value)} autoComplete="off" placeholder="SURNAME, Other names · 0806 552 1180"
               onBlur={() => { if (nok.trim() && nok.trim() !== (a.biodata.nextOfKin ?? "")) void act("nok", "PUT", "/me/next-of-kin", { nextOfKin: nok.trim() }, "Next of kin given by the applicant"); }} />
           </Field>
@@ -153,7 +153,7 @@ export function Apply({ a }: { a: Application }) {
 
       <Panel title={<>2 &nbsp;O&rsquo;Level results</>} right="As JAMB sent them · up to two sittings">
         <PBody>
-          <div className="sub2">These are the results JAMB uploaded for you, shown exactly as they arrived. They are not edited here. The Registry verifies every result directly with WAEC, NECO or NABTEB before clearance; a result that does not verify voids the admission at any point, including after matriculation.</div>
+          <div className="sub2">The results JAMB uploaded, as received. The Registry verifies each with WAEC, NECO or NABTEB; a result that does not verify voids the admission at any point.</div>
           {a.olevel.length ? a.olevel.map((s, i) => (
             <div key={i}>
               <div className="row" style={{ margin: "var(--s-2) 0 var(--s-1)" }}>
@@ -165,7 +165,7 @@ export function Apply({ a }: { a: Application }) {
             </div>
           )) : (
             <Note kind="info" title="No O’Level result has reached the University from JAMB yet">
-              JAMB sends the results in its own download; when the Academic Office records it, your sittings appear here. Nothing is typed by you.
+              Your sittings appear here when the Academic Office records JAMB&rsquo;s results.
             </Note>
           )}
         </PBody>
@@ -176,7 +176,7 @@ export function Apply({ a }: { a: Application }) {
           {gates.length ? (
             <>
               <Note kind="bad" title={`${gates.length} thing${gates.length === 1 ? "" : "s"} must be settled before you can submit`}>
-                Nothing is lost &mdash; everything you have entered is saved. Fix {gates.length === 1 ? "this" : "these"} and the submit button opens.
+                Everything you entered is saved. Fix {gates.length === 1 ? "this" : "these"} to submit.
               </Note>
               <Gates>{gates.map((g, i) => <Gate key={g[0]} state="todo" title={g[0]} sub={g[1]} last={i === gates.length - 1} />)}</Gates>
             </>
@@ -242,11 +242,11 @@ export function Fee({ a }: { a: Application }) {
               <div style={{ minWidth: 200 }}>
                 <div className="eyebrow">Reference</div>
                 <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
-                <div className="sub2 mt-2">Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}. You do not need a new one &mdash; pay this one now.</div>
+                <div className="sub2 mt-2">Quote this reference only. It expires {when(open.expiresAt)}.</div>
               </div>
             </div>
           ) : (
-            <div className="sub2">No reference is open. Generate one below; it is yours alone. Pay it on the gateway and it confirms at once, or pay it at a bank and the Bursary confirms it against the reference.</div>
+            <div className="sub2">No reference is open. Generate one below.</div>
           )}
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div className="row mt-2">
@@ -271,7 +271,7 @@ export function Fee({ a }: { a: Application }) {
         ]} />
       </Panel>
       <Note kind="info" title="A payment always carries your reference">
-        If your network drops after you pay, do not pay again. Every payment carries the reference this portal generated: a gateway payment confirms itself the moment you return, and a bank payment is confirmed against the same reference — so a successful payment always reaches your account, and the Bursary sees it.
+        If your network drops after you pay, do not pay again: the payment carries your reference and will reach your account.
       </Note>
     </>
   );

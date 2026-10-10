@@ -47,7 +47,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/credentials/documents">Documents office</Link><span>›</span><strong>Policies &amp; templates</strong></div>
-      <PageHead title="Document policies and templates" description="What each kind of document costs, how fast it is due, whether the student generates it alone, what a stranger sees when verifying it; and the template versions the documents are issued under." actions={<LinkBtn kind="ghost" href="/credentials/documents">Back to the office</LinkBtn>} />
+      <PageHead title="Document policies and templates"  actions={<LinkBtn kind="ghost" href="/credentials/documents">Back to the office</LinkBtn>} />
       {!may ? <Note kind="info" title="You are reading these settings">The Registry and the Academic Office change them.</Note> : null}
       <Panel title="Policies by document kind">
         <DTable cols={["Document", "Fee", "Extras", "SLA|mid", "Self-service|mid", "Scope|mid", "Public fields", "Active|mid", "|num"]} rows={policies.map((p) => [
@@ -64,7 +64,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
       </Panel>
       <Panel title="Templates" right={may ? <Btn kind="secondary" onClick={() => { const l = latest("TRANSCRIPT"); setTf({ kind: "TRANSCRIPT", title: l?.title ?? "", subtitle: l?.subtitle ?? "", signatoryName: l?.signatory_name ?? "", signatoryTitle: l?.signatory_title ?? "", secondName: l?.second_name ?? "", secondTitle: l?.second_title ?? "", footer: l?.footer ?? "", remarks: l?.remarks ?? "" }); }}>New template version</Btn> : `${templates.length} version(s)`}>
         <DTable cols={["Document|mid", "Version|mid", "Title", "Signatories", "Footer", "From|mid", "|mid"]} rows={templates.map((t) => [<span key="k" className="sub2">{t.kind.toLowerCase().replace("_", " ")}</span>, <span key="v" className="tnum">v{t.version}</span>, <strong key="t">{t.title}{t.subtitle ? <div className="sub2">{t.subtitle}</div> : null}</strong>, <span key="s" className="sub2">{t.signatory_name} ({t.signatory_title}){t.second_name ? `; ${t.second_name} (${t.second_title})` : ""}</span>, <span key="f" className="sub2">{t.footer ?? ""}</span>, <span key="d" className="tnum sub2">{dayOf(t.created_at)}</span>, <Pil key="a" kind={t.active ? "ok" : "grey"}>{t.active ? "In force" : "Kept"}</Pil>])} />
-        <PBody><div className="sub2">A new version is what documents issued from now on carry; every document already issued stays under the version it was issued with, and its PDF renders under that version.</div></PBody>
+        <PBody><div className="sub2">Documents already issued keep the version they were issued with.</div></PBody>
       </Panel>
 
       {pf ? (

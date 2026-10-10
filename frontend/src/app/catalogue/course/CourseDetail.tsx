@@ -98,7 +98,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
           </PBody>
         </Panel>
       ) : null}
-      {used ? <Note kind="info" title="What this course carries">{used}. An edit of the code, units, level or semester reaches all of it: the course stays one record, and every registration, result and offering stays on it.</Note> : null}
+      {used ? <Note kind="info" title="What this course carries">{used}. An edit reaches all of it.</Note> : null}
 
       <div className="grid grid--2">
         <Panel title="Departments offering this course" right="The owner first">
@@ -200,7 +200,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
       ) : null}
 
       {edit ? (
-        <Modal title={`Edit ${c.code}`} sub={used ? `This course carries ${used}; it stays the same course and all of it follows.` : "Nothing hangs on this course yet."} onClose={() => setEdit(null)}
+        <Modal title={`Edit ${c.code}`} sub={used ? `This course carries ${used}; all of it follows.` : "Nothing hangs on this course yet."} onClose={() => setEdit(null)}
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !edit.title.trim()} onClick={async () => {
             const changed = Number(edit.units) !== c.units || Number(edit.level) !== c.level || Number(edit.semester) !== c.semester;
             if (changed && used && !window.confirm(`The units, level or semester change on a course that carries ${used}. Past results keep the marks they carry; registration and fees from now on read the new values. Continue?`)) return;
@@ -229,7 +229,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
         </Panel>
       ) : null}
       {owning ? (
-        <Modal title={`Change the owner of ${c.code}`} sub="The same course moves to the department that is responsible for it: every programme offering, session offering, registration and result stays on it." onClose={() => setOwning(null)}
+        <Modal title={`Change the owner of ${c.code}`} sub="Every offering, registration and result stays on the course" onClose={() => setOwning(null)}
           foot={<><Btn kind="ghost" onClick={() => setOwning(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !owning.dept || owning.why.trim().length < 3 || (owning.dept === ownDept && owning.prog === (c.owner_programme ?? ""))} onClick={async () => {
             const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/owner`, { department: owning.dept, programme: owning.prog || null, reason: owning.why.trim() }, `${c.code} moved to ${owning.dept}`);
             if (j) setOwning(null);
@@ -247,7 +247,7 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
         </Modal>
       ) : null}
       {rename !== null ? (
-        <Modal title={`Rename ${c.code}`} sub="The same course under a new code: its bindings, offerings, registrations, results, questions and examinations follow it." onClose={() => setRename(null)}
+        <Modal title={`Rename ${c.code}`} sub="The same course under a new code; everything on it follows" onClose={() => setRename(null)}
           foot={<><Btn kind="ghost" onClick={() => setRename(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || !rename.trim() || rename.trim().toUpperCase() === c.code} onClick={async () => {
             if (used && !window.confirm(`${c.code} carries ${used}. Every one of them will read ${rename.trim().toUpperCase()} from now on. Continue?`)) return;
             const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/rename`, { code: rename.trim() }, `${c.code} renamed`);

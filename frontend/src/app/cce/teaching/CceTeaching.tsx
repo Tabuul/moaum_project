@@ -42,8 +42,8 @@ export function CceTeaching() {
   if (!mine) return <Note kind="info" title="Reading your CCE classes…">One moment.</Note>;
   return (
     <>
-      <PageHead title="CCE evening classes" description={`Your classes of the Centre for Continuing Education in the CCE session (${mine.session}) and the one after it: the evening lectures, the class list and the register of each lecture.`} />
-      {mine.all ? <Note kind="info" title="Every CCE class">The Centre and the Academic Office see every CCE class; a lecturer sees the classes they teach.</Note> : null}
+      <PageHead title="CCE evening classes" description={`CCE session ${mine.session} and the one after it`} />
+      {mine.all ? <Note kind="info" title="Every CCE class" /> : null}
       {mine.classes.length ? (
         <Panel title={`${mine.classes.length} class${mine.classes.length === 1 ? "" : "es"}`}>
           <DTable cols={["Course", "Session", "Lectures", "Students|num", "Registers|num", "Last register|mid", ""]} rows={mine.classes.map((c) => [
@@ -53,7 +53,7 @@ export function CceTeaching() {
             c.students, c.registers, day(c.last_held), <Btn key="o" kind="primary" onClick={() => setCls(c.id)}>Open</Btn>,
           ])} />
         </Panel>
-      ) : <Note kind="info" title="No CCE class is allocated to you">The Centre for Continuing Education allocates its classes; yours appear here once it does.</Note>}
+      ) : <Note kind="info" title="No CCE class is allocated to you" />}
     </>
   );
 }
@@ -92,7 +92,7 @@ function ClassPage({ id, back, open }: { id: string; back: () => void; open: (re
             <Field id="tr-t" label="Topic"><input id="tr-t" className="ctl" style={{ width: 280 }} value={topic} onChange={(e) => setTopic(e.target.value)} /></Field>
           </div>
           <Btn kind="primary" disabled={!v.students.length} onClick={() => void take()}>Open the register</Btn>
-          {!v.students.length ? <div className="sub2 mt-1">No student is registered on the class yet; the register lists the students whose registration is submitted or approved.</div> : null}
+          {!v.students.length ? <div className="sub2 mt-1">No student is registered on the class yet.</div> : null}
         </PBody>
       </Panel>
       <Panel title="Registers">
@@ -153,7 +153,7 @@ function RegisterSheet({ id, back }: { id: string; back: () => void }) {
   return (
     <>
       <PageHead title={`Register of ${day(v.held_on)}`} description={`${v.session} · ${semesterWord(v.semester).toLowerCase()}${v.starts_at ? ` · ${v.starts_at}–${v.ends_at}, ${v.venue}` : ""}${v.topic ? ` · ${v.topic}` : ""}`} actions={<Btn kind="ghost" onClick={back}>Back to the class</Btn>} />
-      {locked ? <Note kind="info" title={`Locked ${when(v.locked_at)}${v.locked_by ? ` by ${v.locked_by}` : ""}`}>A locked register is not changed here; the Centre for Continuing Education reopens it for a correction, with the reason.</Note> : null}
+      {locked ? <Note kind="info" title={`Locked ${when(v.locked_at)}${v.locked_by ? ` by ${v.locked_by}` : ""}`}>Only the Centre reopens it for a correction.</Note> : null}
       <Panel title={`${v.marks.length} student${v.marks.length === 1 ? "" : "s"}`} right={!locked ? <span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => all("PRESENT")}>Mark the rest present</Btn></span> : null}>
         <DTable pageSize={0} noPrint={!locked} cols={["Student", "Mark", "Remarks", "Time|mid"]} rows={v.marks.map((m) => {
           const cur = marks[m.student_id] ?? { status: "", remarks: "" };

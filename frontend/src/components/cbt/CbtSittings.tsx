@@ -167,10 +167,9 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
       <Panel title="Sittings" right={<span className="sub2">{num(data.candidates)} candidates · {num(data.candidates - data.unseated)} seated · {num(data.unseated)} without a seat</span>}>
         <PBody>
           <div className="sub2 mb-2">
-            A large paper is sat in turns: each sitting has its venue, its time and its seats. When an examination has sittings, a candidate starts only in their own sitting,
-            and their attempt ends with the sitting at the latest (extra time given by the office comes on top). Without sittings, the examination opens to every candidate in its window.
+            With sittings, a candidate starts only in their own and the attempt ends with it (plus any extra time). Without sittings, the examination opens to every candidate in its window.
           </div>
-          {data.unseated > 0 && data.sittings.length ? <Note kind="info" title={`${num(data.unseated)} candidate${data.unseated === 1 ? " has" : "s have"} no seat yet`}>Seat them below; if the sittings are full, add seats or another sitting. A candidate without a seat cannot start once the examination has sittings.</Note> : null}
+          {data.unseated > 0 && data.sittings.length ? <Note kind="info" title={`${num(data.unseated)} candidate${data.unseated === 1 ? " has" : "s have"} no seat yet`}>A candidate without a seat cannot start.</Note> : null}
           {editable ? (
             <div className="row row--inline row--tight" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
               <Btn kind="secondary" disabled={busy} onClick={() => setForm({ label: `Sitting ${data.sittings.length + 1}`, venue: data.sittings.at(-1)?.venue ?? "", startsAt: localInput(exam.starts_at), endsAt: "", capacity: String(data.sittings.at(-1)?.capacity ?? 100) })}>Add a sitting</Btn>
@@ -225,7 +224,7 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
 
       {clashes.length ? (
         <Panel title="Clashes" right={<span className="sub2">{clashes.length} candidate{clashes.length === 1 ? "" : "s"} seated here at the same time as in another examination</span>}>
-          <PBody><div className="sub2">A sitting moved after seating can put a candidate in two halls at once. Move each to a sitting that does not clash, here or in the other examination; the portal refuses a clashing seat.</div></PBody>
+          <PBody><div className="sub2">Move each to a sitting that does not clash.</div></PBody>
           <DTable cols={["Candidate", "Here", "Also, at the same time", "Move to"]} rows={clashes.map((c) => [
             <span key="c">{c.surname.toUpperCase()}, {c.other_names}<div className="sub2 tnum">{c.number}</div></span>,
             <span key="h">{c.sitting} · seat {c.seat_no}<div className="sub2">{whenAt(c.starts_at)} to {hhmm(c.ends_at)}</div></span>,
@@ -261,7 +260,7 @@ export function CbtSittings({ exam, canManage }: { exam: CbtExam; canManage: boo
 
       {naming ? (
         <Modal title={`Invigilators · ${naming.label}`} sub={subOf(naming)} wide onClose={() => setNaming(null)} foot={<Btn kind="ghost" onClick={() => setNaming(null)}>Close</Btn>}>
-          <p className="sub2">Each invigilator is told by email (or a text when their record has no email) and finds the sitting under Invigilation: seat by seat, who has not come, who is writing, who has submitted; they mark a candidate absent or admit one who came late. Nobody invigilates two sittings at the same time.</p>
+          <p className="sub2">Each invigilator is told and finds the sitting under Invigilation. Nobody invigilates two sittings at once.</p>
           {naming.invigilators?.length ? (
             <DTable cols={["Name", "Staff number", "|mid"]} rows={naming.invigilators.map((p) => [
               <span key="n">{p.name}{p.chief ? <Pil kind="info" className="ml-1">chief</Pil> : null}</span>,

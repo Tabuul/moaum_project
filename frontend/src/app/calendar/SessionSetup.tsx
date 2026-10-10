@@ -217,9 +217,8 @@ export function SessionSetup({
       {looking && canEdit ? (
         <Panel title="Roll the register into a new session" right={<Btn kind="primary" disabled={busy} onClick={() => void rollOver()}>{busy ? "Rolling over…" : `Roll into ${looking}`}</Btn>}>
           <PBody><div className="sub2">
-            Promotes every active, matriculated continuing student one level (up to their programme&rsquo;s final level) and enrols
-            them in <b>{looking}</b>. Fresh students still arrive through admission at 100 level; final-year, withdrawn and
-            graduated students are untouched, and unpaid fees from earlier sessions still follow the student. Safe to run again.
+            Promotes every active, matriculated continuing student one level and enrols them in <b>{looking}</b>. Fresh, final-year,
+            withdrawn and graduated students are untouched. Safe to run again.
           </div></PBody>
         </Panel>
       ) : null}
@@ -227,19 +226,14 @@ export function SessionSetup({
       {looking && canEdit ? (
         <Panel title="Match the loaded cohort to this session" right={<Btn kind="ghost" disabled={busy} onClick={() => void enrolAll()}>{busy ? "Enrolling…" : `Enrol all into ${looking}`}</Btn>}>
           <PBody><div className="sub2">
-            After a historical re-upload, this enrols every currently-studying student (ACTIVE or on probation) into <b>{looking}</b>
-            at their <b>current level</b> — no promotion. Use it to match an already-loaded cohort to the session they are in now;
-            for the yearly promotion use &ldquo;Roll the register&rdquo; above instead. Idempotent — a student already enrolled is left alone.
+            Enrols every studying student into <b>{looking}</b> at their <b>current level</b>, without promotion. Safe to run again.
           </div></PBody>
           {enrolled ? <PBody><Note kind="ok" title="Cohort enrolled">{enrolled}</Note></PBody> : null}
         </Panel>
       ) : null}
 
       <Note kind="info" title="The session is the spine everything else hangs on">
-        Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo
-        are all bounded by a session and a semester. Exactly one session is current at a time. The next session may begin
-        while the current one is still running &mdash; its entrants stand in it from the day it is planned &mdash; but no two
-        sessions begin on the same day; both are rules in the database, not checks on this form.
+        Exactly one session is current at a time. The next session may begin while the current one runs, but no two begin on the same day.
         {canEdit ? null : (
           <>
             {" "}
@@ -285,8 +279,7 @@ export function SessionSetup({
         {sessions.length === 0 ? (
           <PBody>
             <Note kind="info" title="No session has been recorded yet">
-              Nothing can be registered, examined or classified until a session exists and Senate&rsquo;s minute opening it is
-              recorded against it.
+              Nothing can be registered, examined or classified until a session exists with its Senate minute.
             </Note>
           </PBody>
         ) : (
@@ -318,7 +311,7 @@ export function SessionSetup({
             <Btn kind="primary" onClick={() => setOpen({ kind: "session", row: null })}>
               + New session
             </Btn>
-            <span className="sub2">A draft is set up in private; a planned session is a real academic context for its entrants; it is made current by the transition above, with its Senate minute.</span>
+            <span className="sub2">A planned session is made current by the transition above, with its Senate minute.</span>
           </div>
         ) : null}
       </Panel>
@@ -327,8 +320,7 @@ export function SessionSetup({
         {semesters.length === 0 ? (
           <PBody>
             <Note kind="info" title={`No semester windows are recorded for ${looking ?? "any session"}`}>
-              Registration, examinations and the results due date all read these dates, and each of them refuses while the
-              date it depends on is unset. Nothing is assumed on their behalf.
+              Registration, examinations and the results due date read these dates.
             </Note>
           </PBody>
         ) : (
@@ -364,19 +356,8 @@ export function SessionSetup({
         right={<LinkBtn href="/examinations/sessions" kind="primary">Examination Sessions</LinkBtn>}
       >
         <PBody><div className="sub2">
-          Setting the examination dates above releases nothing. The Director of ICT opens the examination session, then
-          releases the examination cards to students and the score sheets to lecturers, each by its own button.
-          To open it:
-          <ol className="m-0 mt-2" style={{ paddingLeft: "var(--s-4)" }}>
-            <li>Act as the <b>Director of ICT</b>.</li>
-            <li>Go to <b>Portal Management → Examination Sessions</b> (the button on the right, route <code>/examinations/sessions</code>).</li>
-            <li>
-              Under <b>Create an examination session</b>, pick the session and semester, fill the exam dates and the
-              score-sheets-due date, then click <b>Open the session</b> &mdash; or click <b>Open</b> next to one you saved as a
-              draft. Then, on the session&rsquo;s row, press <b>Release examination cards</b> when students should see their
-              papers and cards, and <b>Release score sheets</b> when lecturers should enter marks.
-            </li>
-          </ol>
+          Setting exam dates releases nothing. The Director of ICT opens the examination session (Portal Management → Examination
+          Sessions) and releases the examination cards and score sheets separately.
         </div></PBody>
       </Panel>
 
@@ -384,8 +365,7 @@ export function SessionSetup({
         {limits.length === 0 ? (
           <PBody>
             <Note kind="info" title="No unit limits are recorded">
-              Until they are, a registration has no ceiling to be measured against, and the course form refuses rather than
-              accepting whatever fits.
+              Until they are, the course form refuses registration.
             </Note>
           </PBody>
         ) : (

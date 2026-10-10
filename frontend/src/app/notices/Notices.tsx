@@ -45,7 +45,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
   return (
     <>
       <Note kind={noProvider ? "bad" : "info"} title={noProvider ? "No provider is wired, so nothing is being sent" : "A notice is marked sent only when the provider acknowledges it"}>
-        Everything with a consequence — a result, a fee deadline, a registration close, a summons — is queued here and also posted in the portal, which is the channel of record. Nothing leaves until a provider is named, and nothing is marked sent unless the gateway confirms it, so a student who says they were not told is answered from this log, not from memory.
+        Every notice is also posted in the portal, the channel of record.
       </Note>
 
       {said ? <Note kind="ok" title={said}>The dispatcher tries the queue again within the minute.</Note> : null}
@@ -64,7 +64,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
             ["Email provider", d.emailProvider ? <Pil kind="ok" key="e">Wired</Pil> : <span className="sub2" key="e">None — MOAUM_NOTICES_EMAIL_URL is not set</span>],
             ["SMS provider", d.smsProvider ? <Pil kind="ok" key="s">Wired</Pil> : <span className="sub2" key="s">None — MOAUM_NOTICES_SMS_URL is not set</span>],
           ]} />
-          <div className="sub2 mt-2">A provider is an endpoint that takes a POST of the recipient, subject and body with a bearer token, one for email and one for SMS. Until one is named the outbox holds everything, on the record and shown to the student in the portal, and drops nothing.</div>
+          <div className="sub2 mt-2">An endpoint taking a POST of recipient, subject and body with a bearer token, one for email and one for SMS.</div>
         </PBody>
       </Panel>
 
@@ -84,12 +84,10 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
               </span>
             ) : <Pil kind="info" key="x">Queued</Pil>,
           ])} texts={d.recent.map((n) => `${n.recipient} ${n.subject} ${n.state}`)} />
-        ) : <PBody><div className="sub2">The outbox is empty. A notice appears here when the portal has something with a consequence to send.</div></PBody>}
+        ) : <PBody><div className="sub2">The outbox is empty.</div></PBody>}
       </Panel>
 
-      <Note kind="info" title="Templates, quiet hours and per-channel routing are not invented here">
-        This screen shows what the outbox actually holds and whether a provider is wired. It does not display message templates, delivery costs or quiet-hour rules the University has not configured, because a screen that shows a figure nobody set is worse than one that shows none.
-      </Note>
+
     </>
   );
 }

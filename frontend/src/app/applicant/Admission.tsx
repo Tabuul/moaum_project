@@ -245,7 +245,7 @@ export function AdmissionPage() {
               ["Change of programme", o.changed_to ? <span key="c">{o.changed_from} → <b>{o.changed_to}</b><div className="sub2">Your acceptance payment remained valid; it was not charged again.</div></span> : <span key="c" className="sub2">None</span>],
               ["School fees", d.status === "SCHOOL_FEES_PENDING" ? <LinkBtn key="f" kind="primary" size="sm" href={stepHref("/student/fees")}>Pay school fees</LinkBtn> : ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING", "MATRICULATED"].includes(d.status) ? <Pil key="f" kind="ok">PAID</Pil> : <span key="f" className="sub2">After successful screening</span>],
             ]} />
-            {d.entitlement.paid ? <div className="sub2 mt-2">Whatever programme your admission ends on, the acceptance fee is never asked for a second time.</div> : null}
+            {d.entitlement.paid ? <div className="sub2 mt-2">The acceptance fee is never charged twice.</div> : null}
           </PBody>
         </Panel>
       </div>
@@ -296,7 +296,7 @@ function CheckingView({ d, again, busy }: { d: Admission; again: () => void; bus
     return (
       <>
         <Note kind="info" title="Admission Status Checking is currently closed">
-          {d.detail ?? "Please check back later."} You cannot pay the admission checking fee or check your status while it is closed; you are told by email and SMS when it opens.
+          {d.detail ?? "Please check back later."} You are told by email and SMS when it opens.
         </Note>
         <CheckingFacts d={d} c={c} />
         {checks.length ? <ChecksPanel d={d} /> : null}
@@ -354,8 +354,8 @@ function CheckResult({ d, c, again, busy }: { d: Admission; c: StatusChecking; a
         </PBody>
       </div>
       {!pending ? (
-        <Note kind="info" title="Keep watching the University's official admission updates">
-          Supplementary lists and changes are published through this portal first. A later decision on your application appears here when you check again.
+        <Note kind="info" title="Supplementary lists">
+          Later lists and changes are published here first.
         </Note>
       ) : null}
     </>
@@ -390,7 +390,7 @@ function CheckingFee({ d, c }: { d: Admission; c: StatusChecking }) {
   return (
     <>
       <Note kind="info" title="Admission Status Checking is open">
-        Pay the admission checking fee of <b className="tnum">{money(fee)}</b> to check your admission status. It is paid once: you can then check as often as you need while checking is open, and a status that is still pending is checked again later for nothing. The acceptance fee, if you are offered admission, is separate.
+        Pay the admission checking fee of <b className="tnum">{money(fee)}</b> once, then check your status as often as you need while checking is open. The acceptance fee is separate.
       </Note>
       <Panel title="Admission checking fee" right={reference ? <span className="tnum">{reference}</span> : "Get a payment reference"}>
         <PBody>
@@ -398,10 +398,10 @@ function CheckingFee({ d, c }: { d: Admission; c: StatusChecking }) {
             <>
               <KvGrid cls="grid--3" pairs={[["Reference", <b key="r" className="tnum">{reference}</b>], ["Amount", <b key="a" className="tnum">{money(fee)}</b>], ["Purpose", "Admission checking fee"]]} />
               <div className="mt-2"><PayByCard reference={reference} amount={fee} /></div>
-              <div className="sub2 mt-2">Paying at a bank: quote the reference exactly; the Bursary confirms it against the bank&rsquo;s record, you are told by email and SMS, and you then check your status here. A payment that fails or is not confirmed does not count, and you are never charged twice.</div>
+              <div className="sub2 mt-2">At a bank, quote the reference exactly. You are never charged twice.</div>
             </>
           ) : (
-            <div className="row row--between"><span className="sub2">A reference of the University&rsquo;s own is generated for you; it is good for 24 hours and is paid by card, USSD or at the bank.</span><Btn kind="primary" disabled={busy} onClick={() => void getReference()}>{busy ? "Generating…" : "Pay now"}</Btn></div>
+            <div className="row row--between"><span className="sub2">The reference is valid for 24 hours; pay by card, USSD or at the bank.</span><Btn kind="primary" disabled={busy} onClick={() => void getReference()}>{busy ? "Generating…" : "Pay now"}</Btn></div>
           )}
         </PBody>
       </Panel>

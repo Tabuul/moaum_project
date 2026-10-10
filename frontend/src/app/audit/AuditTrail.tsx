@@ -36,7 +36,7 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
   return (
     <>
       <Note kind="info" title="The audit trail cannot be edited through the application">
-        Every state change in the University is written here, against the person and office that made it, with the reason it was made. The application holds insert and select on this store and nothing else; the rows are hash-chained, so a change or deletion at database level is detectable. This screen only reads it.
+        Every state change, with the person, office and reason. The rows are hash-chained, so a change at database level is detectable.
       </Note>
 
       <Tiles items={[
@@ -73,7 +73,7 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
       </Panel>
 
       <Note kind="info" title="A refusal is as much a record as a success">
-        A write that the database refused — an unattributed change, a second approval by the same person, a mark for a candidate who never registered — is on the trail with its reason, because the attempt is itself a thing worth knowing about.
+        A write the database refused is on the trail with its reason.
       </Note>
     </>
   );

@@ -42,10 +42,10 @@ export function AssignmentDetail({ a }: { a: AssignmentFull }) {
 
       {s?.state === "SUBMITTED" ? (
         <Note kind="ok" title={`Submitted ${when(s.submitted_at)}${s.version > 1 ? ` (version ${s.version})` : ""}`} action={<span className="row row--tight"><Btn kind="go" disabled={busy} onClick={() => { if (window.confirm("Approve and lock this assessment? The examiner can no longer change it.")) void post(`/assessments/${s.id}/lock`, {}, "Assessment approved and locked"); }}>Approve and Lock</Btn><Btn kind="ghost" disabled={busy} onClick={() => setReopen("")}>Reopen</Btn></span>}>
-          The assessment is read-only to the examiner. Lock it once the department has read it; reopen it on a reason if the examiner must revise it.
+          Read-only to the examiner. Lock it once the department has read it.
         </Note>
       ) : s?.state === "LOCKED" ? (
-        <Note kind="ok" title={`Locked ${when(s.locked_at)}`} action={<Btn kind="ghost" disabled={busy} onClick={() => setReopen("")}>Reopen</Btn>}>Approved by the University. It feeds moderation under the results workflow; it does not itself change a result.</Note>
+        <Note kind="ok" title={`Locked ${when(s.locked_at)}`} action={<Btn kind="ghost" disabled={busy} onClick={() => setReopen("")}>Reopen</Btn>}>It does not itself change a result.</Note>
       ) : s?.state === "REOPENED" ? (
         <Note kind="bad" title={`Reopened ${when(s.reopened_at)} for revision`}>{s.reopen_reason}<span className="blk sub2 mt-2">The examiner has been told and can revise and resubmit.</span></Note>
       ) : (

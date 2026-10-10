@@ -95,7 +95,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
 
   return (
     <>
-      <PageHead title="Screening review" description={`${filters.session} · the accepted applicants screened on the record the University already holds — JAMB, the application, the documents — nothing filled by them; decided on the record. A successful screening opens school fees and registration; an unsuccessful one carries its reason, and the eligibility engine lists the programmes the candidate qualifies for; the acceptance fee is never charged again.`}
+      <PageHead title="Screening review" description={`${filters.session} · a successful screening opens school fees and registration; an unsuccessful one carries its reason. The acceptance fee is never charged again.`}
         actions={<><LinkBtn kind="ghost" href={`/admissions?session=${encodeURIComponent(filters.session)}`}>Admissions</LinkBtn><LinkBtn kind="ghost" href={`/admissions/eligibility?session=${encodeURIComponent(filters.session)}`}>Programme Eligibility</LinkBtn>
           {may ? <Btn kind="ghost" onClick={() => setPolicyOpen(true)}>Screening policy{list.policy ? (list.policy.enabled ? " · ON" : " · OFF") : ""}</Btn> : null}
           <Btn kind="secondary" disabled={!rows.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" disabled={!rows.length} onClick={() => brandedPrint("Screening Report", `${filters.session} · ${sub}`, HEAD, body(), docSerial("SCR"))}>PDF</Btn></>} />
@@ -166,7 +166,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
         </Modal>
       ) : null}
       {changing && open && a ? (
-        <Modal title={`Change course / programme · ${a.surname}, ${a.other_names}`} sub="The engine's verdict on the current programme, the alternatives it finds the candidate eligible for under the session's settings, the recommendation and the approval" wide onClose={() => setChanging(false)}
+        <Modal title={`Change course / programme · ${a.surname}, ${a.other_names}`} sub="The verdict, the eligible alternatives, the recommendation and the approval" wide onClose={() => setChanging(false)}
           foot={<Btn kind="ghost" onClick={() => setChanging(false)}>Close</Btn>}>
           <ProgrammeChange base={base} appId={a.id} may={may} mayOverride={mayOverride}
             current={{ name: `${a.surname}, ${a.other_names}`, programme: a.programme, faculty: a.faculty ?? null, department: a.department ?? null, session: filters.session, jamb: a.jamb_reg_no, utme: open.utme?.aggregate ?? null, screeningState: f?.state ?? null }}

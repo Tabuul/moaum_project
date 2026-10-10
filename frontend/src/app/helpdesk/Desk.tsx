@@ -116,7 +116,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
 
   return (
     <>
-      <PageHead title="ICT support desk" description={head ? "What needs attention now across the University's support queues, then the operations and the figures." : "What needs your attention now, within the queues you are posted on."}
+      <PageHead title="ICT support desk" 
         actions={<>
           {head ? <LinkBtn href="/helpdesk/agents">Agents, Queues and Routing</LinkBtn> : null}
           {head ? <LinkBtn href="/helpdesk/reports">Reports and Analytics</LinkBtn> : null}
@@ -267,7 +267,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
         <Modal title={assign.t.agent ? `Reassign ${assign.t.number}` : `Assign ${assign.t.number}`} sub={`${assign.t.category}${assign.t.queue ? ` · ${assign.t.queue} queue` : ""} · ${assign.t.subject}`} onClose={() => setAssign(null)}
           foot={<><Btn kind="ghost" onClick={() => setAssign(null)}>Cancel</Btn><Btn kind="primary" disabled={busy !== null || !assign.agent || assign.agent === assign.t.assigned_to} onClick={async () => { if (await post(`${assign.t.id}/assign`, { agentId: assign.agent, reason: assign.reason.trim() || null }, `${assign.t.number}: ${assign.t.agent ? "reassigned" : "assigned"} to ${assign.agents?.find((a) => a.id === assign.agent)?.name ?? "an agent"}`, assign.t.id)) setAssign(null); }}>{assign.t.agent ? "Reassign" : "Assign"}</Btn></>}>
           <div className="stack">
-            <Field id="hd-qa-agent" label="Agent" required hint={assign.agents === null ? "Reading who is eligible…" : assign.agents.some((a) => a.eligible) ? "The agents the routing would choose are first: posted on this queue, covering this faculty or department, available." : "No posted agent covers this ticket; any agent of the desk may take it."}>
+            <Field id="hd-qa-agent" label="Agent" required hint={assign.agents === null ? "Reading who is eligible…" : assign.agents.some((a) => a.eligible) ? "Agents the routing would choose are listed first." : "No posted agent covers this ticket; any agent may take it."}>
               <select id="hd-qa-agent" className="ctl" value={assign.agent} disabled={assign.agents === null} onChange={(e) => setAssign({ ...assign, agent: e.target.value })}>
                 <option value="">Choose…</option>
                 {(assign.agents ?? []).map((a) => <option key={a.id} value={a.id}>{describe(a)}</option>)}

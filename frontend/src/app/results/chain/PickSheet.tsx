@@ -11,7 +11,7 @@ export function PickSheet({ scope, structure, sessions, listing }: { scope: Scop
   return (
     <>
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
-      <Note kind="info" title="Choose a sheet to see its chain">Every score sheet passes the same desks in the same order. Open one to see who has acted on it, who holds it now, and the marks as they stand.</Note>
+      <Note kind="info" title="Choose a sheet to see its chain" />
       <Panel title="Score sheets in this scope" right={`${listing.sheets.length}`}>
         <DTable
           cols={["Course", "Department", "Candidates|mid", "Stage", "|num"]}

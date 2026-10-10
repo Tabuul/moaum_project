@@ -200,13 +200,13 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
         {saved ? <Note kind="ok" title={saved}>{may ? "Your changes are on the record." : ""}</Note> : null}
         {asked ? (
           <Note kind="info" title="A change of an evidence field has been sent to the Registry">
-            A field of this kind is not changed by the person it describes. The Registry will ask for the evidence, compare it with the record, and either make the change with the evidence attached or refuse it with a reason &mdash; both appear in the change history.
+            The Registry will check the evidence and make or refuse the change; both appear in the change history.
           </Note>
         ) : null}
 
         {section === "identity" ? (
           <Note kind="info" title="Three kinds of field, and the difference matters">
-            Most of this record is the student&rsquo;s own &mdash; contact details, next of kin, health, sponsorship &mdash; and changes here whenever it changes. A few fields are read from JAMB and are corrected with JAMB, not here. A few more change only on evidence the Registry has seen, because they decide fee status, quota or who a person is on a certificate.
+            Open fields change here; JAMB fields are corrected with JAMB; evidence fields change only on evidence the Registry has seen.
           </Note>
         ) : null}
         {note ? <Note kind={note[0]} title={note[1]}>{note[2]}</Note> : null}
@@ -227,7 +227,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
         ) : section === "history" ? (
           <Panel title="Change history" right={`${record.decidedChanges.length + record.pendingChanges.length} entries`}>
             {record.decidedChanges.length + record.pendingChanges.length === 0 ? (
-              <PBody><span className="sub2">No field of this record has been asked to change on evidence. Self-service changes to open fields are kept on the audit spine; requests on evidence appear here.</span></PBody>
+              <PBody><span className="sub2">No change on evidence requested.</span></PBody>
             ) : (
               <DTable cols={["When|mid", "Field", "From", "To", "Basis|num"]} rows={[...record.decidedChanges, ...record.pendingChanges].map((c) => [
                 <span className="sub2 tnum" key="w">{day("decidedAt" in c && c.decidedAt ? (c.decidedAt as string) : c.requestedAt)}</span>,
@@ -260,7 +260,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
               <div className="row row--top" style={{ gap: "var(--s-5)" }}>
                 <Passport w={104} h={128} src={`/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} />
                 <div className="grow" style={{ minWidth: 220 }}>
-                  <div className="sub2" style={{ lineHeight: 1.65 }}>This photograph is checked at the door of every examination hall, printed on the identity card, and the image on the certificate. Replacing it is a Registry decision, not a self-service change.</div>
+                  <div className="sub2" style={{ lineHeight: 1.65 }}>Used in examination halls, on the identity card and the certificate. Replacing it is a Registry decision.</div>
                 </div>
               </div>
             </PBody>
@@ -268,7 +268,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
         ) : null}
 
         {!may && section !== "identity" && section !== "docs" && section !== "history" ? (
-          <Note kind="info" title="You are reading this record, not editing it">The biodata is the student&rsquo;s own or the Registry&rsquo;s to write. Your office may read it so it knows what the University holds.</Note>
+          <Note kind="info" title="You are reading this record, not editing it" />
         ) : null}
       </div>
     </div>

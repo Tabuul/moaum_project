@@ -75,7 +75,7 @@ export function Detail({ data, filters, which, q: initialQ }: { data: StatPage; 
       <div className="row row--tight sub2" style={{ gap: 6 }}>
         <Link className="lnk" href="/">Dashboard</Link><span>›</span><Link className="lnk" href={`/stats?${statQuery(f)}`}>Student Statistics</Link><span>›</span><strong>{WHICH_WORD[which]}</strong>
       </div>
-      <PageHead title={WHICH_WORD[which]} description={`${scopeWords}. ${data.total.toLocaleString()} student${data.total === 1 ? "" : "s"}, names A–Z, the same rows the figure counted.`}
+      <PageHead title={WHICH_WORD[which]} description={`${scopeWords}. ${data.total.toLocaleString()} student${data.total === 1 ? "" : "s"}, names A–Z`}
         actions={<><Btn kind="primary" disabled={busy || !data.total} onClick={() => void exportAs("xlsx")}>{busy ? "Preparing…" : "Export Excel"}</Btn><Btn kind="secondary" disabled={busy || !data.total} onClick={() => void exportAs("pdf")}>Export PDF</Btn><LinkBtn href={`/stats?${statQuery(f)}`}>Back to Statistics</LinkBtn></>} />
 
       <div className="scope">

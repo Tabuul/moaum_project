@@ -44,7 +44,7 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
     <Panel title="Pay on Quickteller" right={on.length ? <Pil kind="ok">Sending payers to {on.map((b) => COLLEGE[b.scope] ?? b.scope).join(" and ")}</Pil> : <Pil kind="grey">Not switched on</Pil>}>
       <PBody>
         <Note kind="info" title="Interswitch's arrangement: the portal's own reference, filled in on the University's Quickteller page">
-          The payer presses Pay and chooses Quickteller; the biller&rsquo;s page opens at quickteller.com with the payment reference in <b>cid</b> (and the amount, when the biller carries it) &mdash; the reference exactly as the portal issued it. Quickteller asks the portal about the reference when the payer presses Continue, and reports each payment to the portal, which confirms it as it confirms every payment: for that reference, once, and only for the amount owed. A payer in the College of Health Sciences pays the College&rsquo;s biller while it is in use.
+          The biller&rsquo;s page opens with the reference in <b>cid</b>. Quickteller checks the reference with the portal and reports each payment; it is confirmed once, for the amount owed. College of Health Sciences payers use the College&rsquo;s biller while it is in use.
         </Note>
         <KvGrid cls="grid--2" pairs={[
           ["1 · Give Interswitch this one address", <span key="a">
@@ -120,12 +120,12 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
             <span className="tnum" key="a">{v.amount == null ? "—" : money(Number(v.amount))}</span>,
             <span className="sub2" key="y">{v.why ?? ""}</span>,
           ])} texts={q.validations.map((v) => `${v.reference ?? ""} ${v.outcome}`)} />
-        ) : <div className="sub2">No reference check has reached the portal yet. Once Interswitch points the biller&rsquo;s validation at the address above, each Continue on Quickteller&rsquo;s page shows here.</div>}
+        ) : <div className="sub2">No reference check has reached the portal yet.</div>}
       </PBody>
 
       {may ? (
         <PBody>
-          <Field id="qt-report" label="Import the collections report" hint="Paste the rows from Interswitch's collections report, with its header row (Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name) or without one — then the columns are reference, amount, settlement reference, date, channel, payer.">
+          <Field id="qt-report" label="Import the collections report" hint="Rows from Interswitch's collections report: Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name (header optional).">
             <textarea id="qt-report" className="ctl tnum" rows={5} value={text} onChange={(ev) => setText(ev.target.value)} />
           </Field>
           <div className="row">

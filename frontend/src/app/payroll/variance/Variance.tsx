@@ -36,7 +36,7 @@ export function Variance({ runs, period, rows, problem }: { runs: PayRun[]; peri
   return (
     <>
       <Note kind="info" title="Every move in the total is explained by a move in the establishment">
-        A month&rsquo;s net against the month before it: a staff member who joined, one who left, and one whose net changed — a promotion, a step, a suspension. A change in the payroll total that no row here explains is the thing to ask about.
+        A month&rsquo;s net against the month before: joiners, leavers and changes in net pay.
       </Note>
       <div className="card"><div className="card__body row row--end">
         <div style={{ minWidth: 200 }}><Field id="v-period" label="Month">

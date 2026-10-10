@@ -43,7 +43,7 @@ export function IncidentForm({ sittingId, candidate, onDone, onClose }: {
         <Field id="inc-at" label="When" hint="Empty for now"><input id="inc-at" type="time" className="ctl" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
         {outage ? <Field id="inc-min" label="Minutes lost" hint="For the whole hall"><input id="inc-min" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 110 }} value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/[^0-9]/g, ""))} /></Field> : null}
       </div>
-      {outage ? <div className="sub2">Recording an outage does not change anyone&rsquo;s clock. Time lost is given back by the examination office as extra time, with this incident as its reason.</div> : null}
+      {outage ? <div className="sub2">Recording an outage changes no clock; the examination office gives time back as extra time.</div> : null}
     </Modal>
   );
 }

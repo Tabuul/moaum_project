@@ -88,8 +88,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           ) : null}
 
           <p className="sub2 ink-faint m-0 mt-1">
-            This page reads the University&rsquo;s register directly. The photograph is the one captured at admission; the
-            invigilator admits a candidate only when the face matches it and this card verifies. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
+            The invigilator admits a candidate only when the face matches this photograph. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.
           </p>
         </div>
       </div>

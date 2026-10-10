@@ -68,7 +68,7 @@ export function QuestionImages({ q, course, onChanged, onClose }: { q: ImageQues
   return (
     <Modal title="Images of the question" sub={course} wide onClose={onClose} foot={<Btn kind="ghost" onClick={onClose}>Close</Btn>}>
       <p><MathText text={q.stem} /></p>
-      <div className="sub2 mb-2">A diagram, a graph or a structure: PNG or JPEG, at most 1 MB. Each change makes a new version of the question, which waits for moderation again; candidates who sat the earlier version keep it. Write formulas in the text between dollar signs instead of as pictures where you can.</div>
+      <div className="sub2 mb-2">PNG or JPEG, at most 1 MB. Each change makes a new version, which waits for moderation again.</div>
       {problem ? <Note kind="bad" title="Not uploaded">{problem}</Note> : null}
       {slot("The question's diagram", q.image_id, null)}
       {q.options.map((o, i) => <div key={i}>{slot(`Option ${String.fromCharCode(65 + i)}: ${o}`, q.option_images?.[i] ?? null, i)}</div>)}

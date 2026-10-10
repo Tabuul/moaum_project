@@ -58,7 +58,7 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
 
   return (
     <>
-      <PageHead title="Accommodation" description={`${s}. ${vzNum(t.occupied + t.reserved)} / ${vzNum(t.beds)} beds — ${occupancyRate}% occupancy. Every figure below is a door to the records it counts.`}
+      <PageHead title="Accommodation" description={`${s}. ${vzNum(t.occupied + t.reserved)} / ${vzNum(t.beds)} beds — ${occupancyRate}% occupancy`}
         actions={<>
           <Field id="ho-session" label="Session"><select id="ho-session" className="ctl" value={s} onChange={(e) => queryNav(`/hostel?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
           <LinkBtn kind="secondary" href={q("/hostel/window")}>Window &amp; Rules</LinkBtn>
@@ -78,10 +78,10 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
             <Btn kind="ghost" onClick={() => setAsk("lapse")}>Lapse expired holds</Btn>
           </span> : null}>
           <span className="blk">Fee ₦{Number(w.fee).toLocaleString()} · hold {w.hold_hours} h · {w.applications_open ? `opens ${dayOf(w.applications_open)}` : "open now"}{w.applications_close ? ` · closes ${dayOf(w.applications_close)}` : ""} · {w.allocation_method.toLowerCase().replace("_", " ")}{w.requires_review ? " · review required" : ""}{w.drawn_at ? ` · allocation made ${dayOf(w.drawn_at)}` : ""}</span>
-          <span className="blk">{vzNum(pv.approved)} ready to seat · {vzNum(pv.pending_review)} awaiting review · {vzNum(pv.free_beds)} free bed(s) in {pv.rooms} room(s) of {pv.halls} hall(s) — the run would seat {vzNum(pv.will_seat)} and waitlist {vzNum(pv.will_wait)}.</span>
+          <span className="blk">{vzNum(pv.approved)} ready to seat · {vzNum(pv.pending_review)} awaiting review · {vzNum(pv.free_beds)} free bed(s) — the run would seat {vzNum(pv.will_seat)} and waitlist {vzNum(pv.will_wait)}.</span>
         </Note>
       ) : (
-        <Note kind="info" title={`No window is stated for ${s}`} action={may ? <LinkBtn kind="primary" href={q("/hostel/window")}>State the window</LinkBtn> : null}>The fee, the dates, the rules and the allocation method are stated before students can apply.</Note>
+        <Note kind="info" title={`No window is stated for ${s}`} action={may ? <LinkBtn kind="primary" href={q("/hostel/window")}>State the window</LinkBtn> : null}>Students cannot apply until it is stated.</Note>
       )}
 
       <Tiles items={[
@@ -157,12 +157,12 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
 
       {ask === "draw" ? (
         <Modal title="Generate the allocation" sub={`${s} · ${w?.allocation_method.toLowerCase().replace("_", " ")}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not now</Btn><Btn kind="primary" onClick={() => void draw()} disabled={busy || (w?.allocation_method === "BALLOT" && seed.trim().length < 6)}>{busy ? "Working…" : "Confirm and allocate"}</Btn></>}>
-          <p>Before allocation: {vzNum(pv.eligible_applicants)} eligible applicant(s), {vzNum(pv.approved)} approved and ready, {vzNum(pv.pending_review)} still awaiting review, {vzNum(pv.free_beds)} free bed(s) in {pv.rooms} room(s) of {pv.halls} hall(s). The run seats {vzNum(pv.will_seat)} and waitlists {vzNum(pv.will_wait)}. Priority categories go first; every seating is validated for gender, capacity, eligibility and a double allocation, and each student is told.</p>
+          <p>Before allocation: {vzNum(pv.eligible_applicants)} eligible applicant(s), {vzNum(pv.approved)} approved and ready, {vzNum(pv.pending_review)} still awaiting review, {vzNum(pv.free_beds)} free bed(s) in {pv.rooms} room(s) of {pv.halls} hall(s). The run seats {vzNum(pv.will_seat)} and waitlists {vzNum(pv.will_wait)}; priority categories go first and each student is told.</p>
           {w?.allocation_method === "BALLOT" ? <Field id="ho-seed" label="Published seed" hint="At least six characters, published before the draw so anybody holding it can reproduce the order" required full><input id="ho-seed" className="ctl" value={seed} onChange={(e) => setSeed(e.target.value)} /></Field> : null}
         </Modal>
       ) : ask === "lapse" ? (
         <Modal title="Lapse expired holds" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not now</Btn><Btn kind="primary" onClick={() => void lapse()} disabled={busy}>Run now</Btn></>}>
-          <p>Every hold whose window has passed unpaid lapses, and its bed passes to the next name on the waiting list. The clock does this every hour on its own; running it now does the same.</p>
+          <p>Unpaid holds past their window lapse; each bed passes to the next on the waiting list. This also runs hourly.</p>
         </Modal>
       ) : null}
     </>

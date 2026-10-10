@@ -18,11 +18,11 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
     <>
       {off ? (
         <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<LinkBtn kind="urgent" href="/security">Security posture</LinkBtn>}>
-          Every state change must be attributable. A table off the spine can be changed without a record — the first thing to close.
+          A table off the spine can be changed without a record.
         </Note>
       ) : Number(s.locked) ? (
         <Note kind="info" title={`${s.locked} account${Number(s.locked) === 1 ? " is" : "s are"} locked out`} action={<LinkBtn kind="primary" href="/security">Security posture</LinkBtn>}>
-          Five failed attempts lock an account for fifteen minutes. The accounts drawing the most failed attempts are below.
+          Five failed attempts lock an account for fifteen minutes.
         </Note>
       ) : (
         <Note kind="ok" title="The record is whole and sign-ins are healthy" action={<LinkBtn kind="ghost" href="/security">Security posture</LinkBtn>}>
@@ -45,7 +45,7 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
               <b className="tnum ink-red" key="n">{f.attempts}</b>,
               <span className="tnum sub2" key="l">{when(f.last_at)}</span>,
             ])} texts={top.map((f) => f.username)} />
-        ) : <PBody><div className="sub2">No account is drawing failed sign-ins. A run of attempts on one account shows here to be watched.</div></PBody>}
+        ) : <PBody><div className="sub2">No account is drawing failed sign-ins.</div></PBody>}
       </Panel>
 
       <Panel title="Security desks" right={me?.name ? `Signed in as ${me.name}` : "Security"}>

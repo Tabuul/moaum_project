@@ -80,7 +80,7 @@ export function LeaveDesk({ rows, actingOffice }: { rows: LeaveRow[]; actingOffi
         ) : <PBody><div className="sub2">No request in this stage.</div></PBody>}
       </Panel>
       <Note kind="info" title="Annual leave draws down a yearly entitlement">
-        The balance is derived from what has been approved, never stored, so it cannot drift. Approving annual leave that would exceed the balance is refused by the database, not by anyone remembering to check.
+        Approving annual leave that would exceed the balance is refused.
       </Note>
     </>
   );

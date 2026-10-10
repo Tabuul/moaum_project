@@ -256,7 +256,7 @@ export function PgPortal() {
         {!paid ? " Pay the application fee below to have it screened." : ""}
       </Note>
 
-      {verifying ? <Note kind="info" title="Confirming your payment…">This can take a moment after the gateway&rsquo;s success page — the page updates on its own once the payment reaches the University.</Note> : null}
+      {verifying ? <Note kind="info" title="Confirming your payment…">The page updates once the payment reaches the University.</Note> : null}
 
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
@@ -271,7 +271,7 @@ export function PgPortal() {
         <Panel title="Your application was returned for correction">
           <PBody>
             <Note kind="bad" title="What the department asks you to correct">{me.returned.note}</Note>
-            <div className="sub2 mt-2">Make the correction in <b>Complete your application</b> below — your academic record, referees, documents or passport — then resubmit. The department considers it again once it is resubmitted.</div>
+            <div className="sub2 mt-2">Make the correction in <b>Complete your application</b> below, then resubmit.</div>
             <div className="row mt-2"><Btn kind="primary" disabled={checking} onClick={() => void resubmit()}>{checking ? "Resubmitting…" : "I have corrected it — resubmit my application"}</Btn></div>
           </PBody>
         </Panel>
@@ -286,7 +286,7 @@ export function PgPortal() {
               <>
                 <div className="sub2 mb-2">
                   {me.state === "DECISION_LOCKED" ? "The School of Postgraduate Studies has released your admission status. " : "Your application is still being considered. "}
-                  Pay the admission status checking fee of <b>{naira(me.checkingFee)}</b> once, and check your status here as often as you like while checking is open — whether you are admitted, not admitted, or still pending. If you are admitted, you then pay the acceptance fee to accept the offer.
+                  Pay the admission status checking fee of <b>{naira(me.checkingFee)}</b> once, then check your status as often as you like while checking is open. If admitted, you then pay the acceptance fee.
                 </div>
                 {reference ? (
                   <>
@@ -300,7 +300,7 @@ export function PgPortal() {
               </>
             ) : (
               <Note kind="info" title={`Admission status checking is ${sc.windowState.toLowerCase()}`}>
-                The Directorate of ICT opens admission status checking for the session. You will be able to pay the checking fee and check your status here when it opens.
+                You can pay the checking fee and check your status when it opens.
               </Note>
             )}
           </PBody>
@@ -308,13 +308,13 @@ export function PgPortal() {
       ) : null}
 
       {paid && sc && sc.paid && !sc.mayCheck ? (
-        <Note kind="info" title="Admission status checking is closed for now">Your checking fee stands: check your status here again, at no further cost, when checking reopens.</Note>
+        <Note kind="info" title="Admission status checking is closed for now">Your checking fee stands; check again at no cost when it reopens.</Note>
       ) : null}
 
       {paid && sc && sc.mayCheck && sc.status === "PENDING" ? (
         <Panel title="Admission status">
           <PBody>
-            <Note kind="info" title="PENDING">Your admission status is currently pending. Please check again later — there is nothing more to pay.</Note>
+            <Note kind="info" title="PENDING">Check again later; there is nothing more to pay.</Note>
             <div className="row mt-2"><Btn kind="secondary" onClick={() => void load()}>Check again</Btn></div>
           </PBody>
         </Panel>
@@ -350,7 +350,7 @@ export function PgPortal() {
       {paid && me.acceptanceConfirmedAt ? (
         <Panel title="Offer of admission">
           <PBody>
-            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission on {fmtDate(me.acceptanceConfirmedAt)} (acceptance fee paid). Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
+            <Note kind="ok" title="Your offer is accepted">Accepted on {fmtDate(me.acceptanceConfirmedAt)}. Print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
             <div className="mt-3">
               <a href="/pg/offer/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print offer of admission (PDF)</a>
             </div>
@@ -404,7 +404,7 @@ export function PgPortal() {
       {paid ? null : reference ? (
         <Panel title="Application fee">
           <PBody>
-            <div className="sub2 mb-2">Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
+            <div className="sub2 mb-2">Pay {naira(me.applicationFee)} by card, bank transfer or USSD. <b>Upload your credentials and passport after payment.</b></div>
             <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
             <div className="row mt-2">
               <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</Btn>
@@ -458,7 +458,7 @@ export function PgPortal() {
 
       {paid && !editable ? (
         <Note kind="info" title="Your application is with the University">
-          It cannot be changed while it is being considered{me.state === "ACCEPTED" ? ", except that documents and your passport may still be uploaded for screening" : ""}. If something must be corrected, the department returns the application to you and says what.
+          It cannot be changed while being considered{me.state === "ACCEPTED" ? ", except that documents and your passport may still be uploaded for screening" : ""}. If a correction is needed, the department returns it to you.
         </Note>
       ) : null}
       <CompleteSteps me={me} paid={paid} passport={passport} onDone={load} />
@@ -466,7 +466,7 @@ export function PgPortal() {
       {paid ? (
         <Panel title="Application summary">
           <PBody>
-            <div className="sub2 mb-3">Print your completed application, or download it as a PDF. You can also have the summary emailed to you.</div>
+            <div className="sub2 mb-3">Print, download or email your completed application.</div>
             <div className="row">
               <a href="/pg/summary/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print summary (PDF)</a>
               <Btn kind="ghost" disabled={emailing} onClick={() => void emailSummary()}>{emailing ? "Sending…" : "Email me the summary"}</Btn>
@@ -481,7 +481,7 @@ export function PgPortal() {
       {me.state === "ADMITTED" && me.student ? (
         <Note kind="ok" title="You are now a student of the University" action={<LinkBtn kind="primary" href="/login">Go to the Student Sign-in</LinkBtn>}>
           Your admission number is <b className="tnum">{me.student.admission_no}</b>{me.student.matric_no ? <>, and your matriculation number <b className="tnum">{me.student.matric_no}</b></> : null}.
-          Sign in to the student portal with the admission number and the password you chose here; there you pay your school fees, register your courses and follow your research. Your application, documents and payments stay on this record.
+          Sign in to the student portal with the admission number and the password you chose here.
         </Note>
       ) : null}
 
@@ -497,7 +497,7 @@ export function PgPortal() {
                 </li>
               ))}
             </ol>
-            <div className="sub2 mt-2">The department&rsquo;s and faculty&rsquo;s recommendations are internal; the School&rsquo;s decision is read by checking your admission status.</div>
+            <div className="sub2 mt-2">The School&rsquo;s decision is read by checking your admission status.</div>
           </PBody>
         </Panel>
       ) : null}
@@ -627,7 +627,7 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
     <Panel title="Passport photograph">
       <PBody>
         <div className="sub2 mb-3">
-          Upload a clear, recent <b>passport photograph</b> (JPEG or PNG) on a plain background. It appears on your record and, once you are admitted, on your identity and examination cards.
+          Upload a clear, recent <b>passport photograph</b> (JPEG or PNG) on a plain background.
         </div>
         {!paid ? (
           <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you can upload your passport here.</Note>
@@ -798,7 +798,7 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                 <span className="grow" />
                 {!editQuals && savedQuals.length ? <Btn kind="ghost" size="sm" onClick={() => { setQuals(savedQuals); setOk(null); setEditQuals(true); }}>Edit</Btn> : null}
               </div>
-              <div className="sub2 mb-2">Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
+              <div className="sub2 mb-2">Qualifications beyond the first degree: a Master’s, PGD, HND / ND or NCE. PhD applicants give their Master’s here.</div>
               {!editQuals ? (
                 savedQuals.length ? (
                   <div style={{ display: "grid", gap: "var(--s-3)" }}>
@@ -886,7 +886,7 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
           <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you name your referees here.</Note>
         ) : (
           <div style={{ display: "grid", gap: "var(--s-3)" }}>
-            <div className="sub2">Each referee with an email is sent a private link to complete a short, confidential reference for you. You can update referees who have not yet responded.</div>
+            <div className="sub2">Each referee with an email receives a private link for a confidential reference. Referees who have not responded can be updated.</div>
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>Thank you.</Note> : null}
             {!editing ? (

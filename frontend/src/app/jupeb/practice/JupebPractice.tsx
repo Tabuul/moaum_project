@@ -95,7 +95,7 @@ export function JupebPractice({ canWrite }: { canWrite: boolean }) {
 
   return (
     <>
-      <PageHead title="JUPEB practice tests" description="Timed practice in each subject, marked at once. Questions are drawn at random from the test's bank; the answer key reaches a student only after they submit. Never part of a result."
+      <PageHead title="JUPEB practice tests" description="Timed practice, marked at once; the key is shown only after submission. Never part of a result."
         actions={canWrite ? <span className="row"><Btn kind="secondary" disabled={!subjects.length} onClick={() => setForm({ ...EMPTY, kind: "MOCK", attemptsAllowed: "1", showAnswers: false })}>New mock examination</Btn>
           <Btn kind="primary" disabled={!subjects.length} onClick={() => setForm({ ...EMPTY })}>New practice test</Btn></span> : null} />
       <Panel title="Tests">
@@ -155,7 +155,7 @@ function TopicStanding({ subjects }: { subjects: { id: string; code: string; tit
     <Panel title="Topics, weakest first" right={<select className="ctl" style={{ width: 220 }} aria-label="Subject" value={subject} onChange={(e) => { setRows(null); setSubject(e.target.value); }}>
       <option value="">— Choose a subject —</option>{subjects.map((x) => <option key={x.id} value={x.id}>{`${x.code} — ${x.title}`}</option>)}</select>}>
       <PBody>
-        <p className="sub2">How the session&rsquo;s students answered the questions of each topic of the syllabus — the mocks included — so the topics to teach again are seen. A question not tagged to a topic is not counted.</p>
+        <p className="sub2">Answers by syllabus topic, mocks included. Untagged questions are not counted.</p>
         {!subject ? null : !rows ? <p className="sub2">Loading…</p> : !rows.length ? <p className="sub2">No question tagged to a topic has been answered in this subject yet.</p> : (
           <DTable pageSize={20} cols={["Topic", "Students|num", "Answers|num", "Right|num"]} rows={rows.map((x) => [x.label, x.students, x.answered,
             <Pil key="p" kind={Number(x.percentage) >= 70 ? "ok" : Number(x.percentage) >= 50 ? "info" : "warn"}>{`${Number(x.percentage)}%`}</Pil>])} />
@@ -270,7 +270,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
             {busy ? <span className="sub2">Working…</span> : null}
           </div>
         ) : null}
-        {canWrite ? <p className="sub2 mt-1">Tag a question to its course and syllabus topic (in the upload, the columns Course — such as PHY 001 — and Topic — the topic&rsquo;s S/N in the syllabus) and the students&rsquo; and classes&rsquo; weakest topics are seen.</p> : null}
+        {canWrite ? <p className="sub2 mt-1">Upload columns Course (such as PHY 001) and Topic (the topic&rsquo;s S/N in the syllabus) tag each question.</p> : null}
         {canWrite ? <p className="sub2 mt-1">Formulas go between dollar signs: <code>$x^2$</code>, <code>$H_2O$</code>, <code>$\frac{"{1}{2}"}mv^2$</code>, <code>$\sqrt{"{b^2-4ac}"}$</code>, <code>$\alpha$</code>, <code>$\to$</code>, <code>$30^\circ$</code>. A diagram is attached to a question as a PNG or JPEG of up to 1 MB.</p> : null}
         {refused.length ? <Note kind="bad" title={`${refused.length} row${refused.length === 1 ? "" : "s"} not added`}>{refused.map((x) => `Row ${x.row}: ${x.reason}`).join(" · ")}</Note> : null}
         {rows && rows.length ? (
@@ -332,7 +332,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
                 </div>
                 {edit.explanation ? <p className="sub2 mt-2">Explanation: <MathText text={edit.explanation} /></p> : null}
               </div></div>
-              {edit.id ? <p className="sub2 mt-2">A question someone has already answered is kept as it was for their attempt; saving makes a new version for the attempts to come.</p> : null}
+              {edit.id ? <p className="sub2 mt-2">Saving makes a new version; past attempts keep theirs.</p> : null}
             </div>
           </div>
         </Modal>

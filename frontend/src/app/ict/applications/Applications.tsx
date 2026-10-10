@@ -119,7 +119,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
             ["Rule", w.forced === "CLOSED" ? "Closed by the Director" : w.forced === "OPEN" ? "Opened by the Director" : w.configured ? "By the dates" : "Not configured: open"], ["Reason", w.reason ?? "—"],
             ["Scope", "Whole admission exercise of the session"], checking ? ["Who checks", w.type === JUPEB_CHECKING ? "JUPEB applicants of the session who submitted with the application fee confirmed" : "Applicants of the session whose application fee is confirmed"] : ["Applications today go to", live === session ? session : `${live} — this is the rule for ${session}`],
           ]} />
-          {live && live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>The rule shown here governs {session}. To open or close what applicants meet today, choose {live} above.</Note> : null}
+          {live && live !== session ? <Note kind="info" title={`New ${noun}s today are filed under ${live}, not ${session}`}>To change what applicants meet today, choose {live} above.</Note> : null}
           {may ? (
             <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
               {w.state === "OPEN" ? <Btn kind="urgent" size="sm" onClick={() => start(w, "CLOSE")}>Close now</Btn> : <Btn kind="go" size="sm" onClick={() => start(w, w.configured ? "REOPEN" : "OPEN")}>{w.configured ? "Reopen now" : "Open now"}</Btn>}
@@ -131,7 +131,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           ) : null}
         </PBody>
         {checking ? null : <PBody>
-          <Field id={`msg-${w.type}`} label="Closure message" hint={`Shown at ${w.path} and read by the University's website while ${WORD[w.type]} is closed, scheduled or expired. Plain text; blank lines make paragraphs.${w.message_updated_at ? ` Last changed ${when(w.message_updated_at)}${w.message_updated_by ? ` by ${w.message_updated_by}` : ""}.` : ""}`}>
+          <Field id={`msg-${w.type}`} label="Closure message" hint={`Shown at ${w.path} and on the University's website while closed. Blank lines make paragraphs.${w.message_updated_at ? ` Last changed ${when(w.message_updated_at)}${w.message_updated_by ? ` by ${w.message_updated_by}` : ""}.` : ""}`}>
             <textarea id={`msg-${w.type}`} className="ctl" rows={6} maxLength={2000} value={drafts[w.type] ?? ""} disabled={!may} onChange={(e) => setDrafts({ ...drafts, [w.type]: e.target.value })} />
           </Field>
           {may ? (
@@ -154,7 +154,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
 
   return (
     <>
-      <PageHead title="Application registration control" description="Whether a new Post UTME registration, postgraduate application or JUPEB application may be started. The Director of ICT opens, closes, schedules, extends and reopens each window for the admission exercise of a session and writes the message the public reads while it is closed. Closing stops new applications only: an applicant who registered before the closing signs in and continues as before. The backend refuses a new application while the window is closed whatever any page shows; the login page hides the button, the apply page shows the message, and the University's website reads the same state."
+      <PageHead title="Application registration control" description="Whether a new Post UTME registration, postgraduate application or JUPEB application may be started. Closing stops new applications only; applicants already registered continue."
         actions={<span className="row row--inline row--tight"><label htmlFor="arc-session" className="sub2">Session</label><select id="arc-session" className="ctl" value={session} onChange={(e) => go(`/ict/applications?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}{Number(x.registrations) || Number(x.applications) ? ` — ${Number(x.registrations).toLocaleString()} UG · ${Number(x.applications).toLocaleString()} PG` : ""}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">Application windows are opened and closed by the Director of ICT alone.</Note> : null}
@@ -162,7 +162,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
 
       <Panel title="FOR THE UNIVERSITY'S WEBSITE">
         <PBody>
-          <div className="sub2">The website reads the same state the portal enforces, with no sign-in, from <code>GET {page.publicPath}</code> on the portal&rsquo;s API. It answers <code>postUtme</code> and <code>postgraduate</code>, each with <code>status</code> (OPEN, CLOSED, SCHEDULED or EXPIRED), <code>open</code>, <code>session</code>, <code>opensAt</code>, <code>closesAt</code>, the closure <code>message</code> while not open, and <code>applicationUrl</code> to send an applicant to. Cached for one minute, so a change here reaches the website within one.</div>
+          <div className="sub2">The website reads the same state the portal enforces, with no sign-in, from <code>GET {page.publicPath}</code> on the portal&rsquo;s API. It answers <code>postUtme</code> and <code>postgraduate</code>, each with <code>status</code> (OPEN, CLOSED, SCHEDULED or EXPIRED), <code>open</code>, <code>session</code>, <code>opensAt</code>, <code>closesAt</code>, the closure <code>message</code> while not open, and <code>applicationUrl</code> to send an applicant to. Cached for one minute.</div>
         </PBody>
       </Panel>
 
@@ -180,8 +180,8 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           {act.action === "CLOSE" ? (
             <Note kind="bad" title={`Are you sure you want to close ${WORD[act.type]} for ${session}?`}>
               {CHECKING.has(act.type)
-                ? <>It takes effect the moment you confirm. No new checking fee is taken and no applicant reads an admission status until it is reopened; an applicant who has accepted an offer continues. A checking fee already paid stands. Nothing is deleted.</>
-                : <>It takes effect the moment you confirm. No new {NOUN[act.type]} can be started until it is reopened; the login page hides the button and {acting.path} shows your closure message. Applicants who already registered sign in and continue as before. Nothing is deleted.</>}
+                ? <>It takes effect at once. No checking fee is taken and no status read until it is reopened; a fee already paid stands. Nothing is deleted.</>
+                : <>It takes effect at once. No new {NOUN[act.type]} can be started until it is reopened; {acting.path} shows your closure message. Applicants already registered continue. Nothing is deleted.</>}
             </Note>
           ) : (
             <>

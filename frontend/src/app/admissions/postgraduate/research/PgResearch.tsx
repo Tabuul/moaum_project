@@ -299,7 +299,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                           <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const n = window.prompt("What must the candidate correct?"); if (n !== null) void post(`/documents/${d.id}/review`, { status: "RETURNED", note: n }, `${DOC_KIND[d.kind] ?? d.kind} v${d.version} returned`); }}>Return</Btn>
                         </span> : <span key="a" />,
                       ])} />
-                  ) : <div className="sub2">Nothing submitted yet. The candidate submits the proposal, seminar paper, plagiarism report, draft, corrected copy and final copy on their research desk; each is kept by version.</div>}
+                  ) : <div className="sub2">Nothing submitted yet.</div>}
                 </div>
 
                 <div>

@@ -73,14 +73,14 @@ export function JupebDashboard({ canWrite = false }: { canWrite?: boolean }) {
   const q = (state: string) => `/jupeb/applications?session=${encodeURIComponent(d.session)}&state=${state}`;
   return (
     <>
-      <PageHead title="JUPEB Office" description={`The JUPEB programme for ${d.session}: applications, admission, students, examination numbers and results.`}
+      <PageHead title="JUPEB Office"
         actions={<SessionPick sessions={d.sessions} value={d.session} onChange={setSession} />} />
       <div className="grid grid--2">
         <Note kind={d.window.state === "OPEN" ? "ok" : "info"} title={`JUPEB application window: ${d.window.state.toLowerCase()}`}>
           The Director of ICT opens and closes it on Portal Windows.{d.window.closes_at ? ` Closes ${when(d.window.closes_at)}.` : ""}
         </Note>
         <Note kind={d.checkingWindow.state === "OPEN" ? "ok" : "info"} title={`Admission status checking: ${d.checkingWindow.state.toLowerCase()}`}>
-          Candidates pay {naira(d.feeRule.checking_fee)} once to see their status while it is open; the Director of ICT opens it on Portal Windows.{d.checkingWindow.closes_at ? ` Closes ${when(d.checkingWindow.closes_at)}.` : ""}
+          Candidates pay {naira(d.feeRule.checking_fee)} once to see their status while it is open.{d.checkingWindow.closes_at ? ` Closes ${when(d.checkingWindow.closes_at)}.` : ""}
         </Note>
       </div>
       <Tiles items={[
@@ -210,7 +210,7 @@ export function JupebApplications({ canWrite, initial }: { canWrite: boolean; in
   const pages = list ? Math.max(1, Math.ceil(list.total / list.size)) : 1;
   return (
     <>
-      <PageHead title="JUPEB applications" description="Every JUPEB candidate of the session, from draft to result. Open one to review, decide or correct it."
+      <PageHead title="JUPEB applications"
         actions={<span className="row">{canWrite ? <LinkBtn kind="secondary" href="/jupeb/import">Upload students from the old portal</LinkBtn> : null}
           <LinkBtn kind="ghost" href="/jupeb/examination">List for exam numbers</LinkBtn><Btn kind="ghost" onClick={() => void exportAll()}>Export (Excel)</Btn></span>} />
       <Panel title="Filter">
@@ -561,7 +561,7 @@ function RequestsAndPapers({ c, canWrite, onChange }: { c: Candidate; canWrite: 
           {`Deferred from ${c.deferred_from ?? c.session}. Resuming admits the candidate again in ${c.deferred_to ?? "that session"}, with the acceptance and fees already paid.`}
         </Note>
       ) : null}
-      {c.state === "WITHDRAWN" ? <Note kind="bad" title="Withdrawn">{`Withdrawn${c.withdrawn_at ? ` on ${day(c.withdrawn_at)}` : ""}. The record is kept; a refund, if any, is the Bursary's decision.`}</Note> : null}
+      {c.state === "WITHDRAWN" ? <Note kind="bad" title="Withdrawn">{`Withdrawn${c.withdrawn_at ? ` on ${day(c.withdrawn_at)}` : ""}. Any refund is the Bursary's decision.`}</Note> : null}
       <Panel title={`Change requests (${c.requests.length})`} right={canWrite && !pending && !["DRAFT", "RETURNED", "COMPLETED", "WITHDRAWN"].includes(c.state)
         ? <Btn kind="ghost" onClick={() => setAsk({ kind: "raise" })}>Raise for the candidate…</Btn> : null}>
         <PBody>
@@ -577,7 +577,7 @@ function RequestsAndPapers({ c, canWrite, onChange }: { c: Candidate; canWrite: 
       </Panel>
       <Panel title={`Verifiable papers issued (${papers.length})`}>
         <PBody>
-          <p className="sub2">Each printed statement, letter, slip and receipt carries one of these codes; anyone can check it at /verify/jupeb. A paper printed again for an unchanged record keeps its code.</p>
+          <p className="sub2">Each printed paper carries a code, checked at /verify/jupeb.</p>
           <DTable noPrint pageSize={0} cols={["Code", "Paper", "Issued", "By", "Status", ...(canWrite ? ["|mid"] : [])]} rows={papers.map((p) => [
             <a key="c" className="tnum" href={`/verify/jupeb/${p.code}`} target="_blank" rel="noreferrer">{p.code}</a>,
             `${PAPER_KIND[p.kind] ?? p.kind}${p.subject_ref ? ` · ${p.subject_ref}` : ""}`, when(p.issued_at), p.issued_office ?? "—",
@@ -600,7 +600,7 @@ function RequestsAndPapers({ c, canWrite, onChange }: { c: Candidate; canWrite: 
             </>
           ) : ask.kind === "revoke" ? (
             <>
-              <p>The code stops verifying: anyone checking it is told the paper is not valid. The reason is kept on the candidate&rsquo;s trail.</p>
+              <p>The code stops verifying. The reason is kept on the candidate&rsquo;s trail.</p>
               <Field id="pp-reason" label="Reason" required><input id="pp-reason" className="ctl" maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
             </>
           ) : (
@@ -647,7 +647,7 @@ export function JupebRequests({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB change requests" description="After submission a candidate asks — never changes — to withdraw, defer an accepted admission, or change the combination or programme. Each is judged again when approved."
+      <PageHead title="JUPEB change requests" description="Withdrawals, deferments and changes of combination or programme asked for after submission."
         actions={<select className="ctl" aria-label="Show" value={state} onChange={(e) => setState(e.target.value)}>
           <option value="PENDING">Open</option><option value="APPROVED">Approved</option><option value="DECLINED">Declined</option><option value="CANCELLED">Cancelled</option><option value="ALL">All</option></select>} />
       <Panel title={`${rows?.length ?? 0} request(s)`}>
@@ -723,7 +723,7 @@ function ReminderRules({ canWrite }: { canWrite: boolean }) {
     <Panel title="Reminders" right={<span className="row"><Btn kind="ghost" onClick={() => void preview()}>Who is due now ({totalDue})</Btn>
       {canWrite ? <Btn kind="secondary" disabled={busy || totalDue === 0} onClick={() => void run()}>{busy ? "Sending…" : "Send due reminders now"}</Btn> : null}</span>}>
       <PBody>
-        <p className="sub2">Each morning at 10:00 the portal emails a candidate with an unfinished step — at most one reminder a day, on these rules. Turn one off to stop it.</p>
+        <p className="sub2">Reminders are emailed at 10:00, at most one a day per candidate.</p>
         <DTable noPrint pageSize={0} cols={["Reminder", "On|mid", "First after (days)|num", "Every (days)|num", "At most (times)|num", "Also SMS|mid", "Sent, 30 days|num", "Due now|num", ...(canWrite ? ["|mid"] : [])]}
           rows={d.rules.map((r) => {
             const e = edit[r.kind] ?? r;
@@ -898,7 +898,7 @@ function ClearancePanel({ canWrite }: { canWrite: boolean }) {
         <DTable pageSize={25} cols={["Application No", "Name", "Class", "Exam no", "Cleared|mid", "Outstanding"]} texts={rows.map((r) => `${r.application_no} ${r.name}`)}
           rows={rows.map((r) => [<Link key="a" href={`/jupeb/applications/${r.application_id}`}>{r.application_no}</Link>, r.name, r.class_name ?? "—", r.exam_no ?? "—",
             r.cleared ? <Pil key="c" kind="ok">Cleared</Pil> : <Pil key="c" kind="warn">Not yet</Pil>, r.outstanding.length ? r.outstanding.join(" · ") : "—"])} />
-        <p className="sub2 mt-2">Three subjects registered (and the option of an either/or subject chosen), a passport photograph, the required documents verified, the school fee paid in full, attendance at the minimum when one is set, and the examination number from the Board. None of it is changed here: each item is put right where it belongs.</p>
+        <p className="sub2 mt-2">Three subjects registered (and any either/or option chosen), a passport photograph, the required documents verified, the school fee paid in full, attendance at the minimum where one is set, and the Board&rsquo;s examination number.</p>
       </PBody>
     </Panel>
   );
@@ -942,7 +942,7 @@ function BoardListPanel() {
           <select className="ctl" style={{ width: 300 }} aria-label="Which students" value={which} onChange={(e) => setWhich(e.target.value as "pending" | "all")}>
             <option value="pending">Without an examination number</option><option value="all">Every student with registered subjects</option></select>
         </div>
-        <p className="sub2">The active JUPEB students of the session whose three subjects are registered. The Excel has the columns the upload above reads — Application Number, Surname and JUPEB Examination Number — so the list the Board returns with the numbers filled in can be uploaded as it is.</p>
+        <p className="sub2">Active students with three subjects registered. The Excel has the columns the upload reads (Application Number, Surname, JUPEB Examination Number), so the Board&rsquo;s returned list uploads as it is.</p>
         {d && d.notRegistered ? <Note kind="info" title={`${d.notRegistered} student${d.notRegistered === 1 ? " has" : "s have"} not registered subjects yet`}>They are not on the list until they register their three subjects.</Note> : null}
         {d ? <DTable pageSize={20} cols={["Application No", "Name", "Sex|mid", "Programme", "Combination", "Subjects", "Exam no"]} texts={d.rows.map((r) => `${r.application_no} ${r.surname} ${r.first_name}`)}
           rows={d.rows.map((r) => [r.application_no, `${r.surname.toUpperCase()}, ${r.first_name}${r.middle_name ? ` ${r.middle_name}` : ""}`, r.sex ?? "—", streamLabel(r.stream), r.combination_code ?? "—",
@@ -962,7 +962,7 @@ export function JupebExamNumbers({ canWrite }: { canWrite: boolean }) {
   }, []);
   return (
     <>
-      <PageHead title="JUPEB examination numbers" description="The official numbers the Board issues, imported by application number. A number is never invented here, never shared by two candidates, and never overwritten without a reason." />
+      <PageHead title="JUPEB examination numbers" description="The Board's official numbers, imported by application number." />
       <BoardPanel session={session} canWrite={canWrite} />
       <ClearancePanel canWrite={canWrite} />
       <ExamTimetablePanel session={session} canWrite={canWrite} />
@@ -1013,9 +1013,9 @@ export function JupebResults({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB results" description="The Board's grades, imported by examination number, one row per registered subject. Candidates see them only once published."
+      <PageHead title="JUPEB results" description="The Board's grades, imported by examination number. Candidates see them once published."
         actions={<span className="row"><SessionPick sessions={sessions} value={data?.session ?? session} onChange={setSession} /><Btn kind="ghost" onClick={() => void exportAll()}>Export (Excel)</Btn></span>} />
-      {data?.published ? <Note kind="ok" title={`Published ${when(data.published)}`}>Candidates of {data.session} see their results. A later correction still needs its reason and is recorded.</Note> : null}
+      {data?.published ? <Note kind="ok" title={`Published ${when(data.published)}`}>Candidates of {data.session} see their results. A later correction needs a reason.</Note> : null}
       {canWrite ? (
         <ImportBox title="Results" path="/api/v1/jupeb/office/results/import" onDone={() => setTick((t) => t + 1)}
           aliases={{ "examination number": "examNo", "exam number": "examNo", "exam no": "examNo", "jupeb exam no": "examNo", "jupeb examination number": "examNo", "application number": "applicationNo",
@@ -1108,7 +1108,7 @@ export function JupebCatalogue({ canWrite }: { canWrite: boolean }) {
   const pickedWhat = `${picked.size} combination${picked.size === 1 ? "" : "s"}`;
   return (
     <>
-      <PageHead title="JUPEB subjects and combinations" description="The approved combinations of three subjects, with the Board's SC codes. Disable a subject or a combination the University does not offer and reactivate it when it does — nothing is deleted, and applicants and students choose only from what is offered." />
+      <PageHead title="JUPEB subjects and combinations" description="Approved combinations of three subjects with the Board's SC codes. Disable what is not offered; nothing is deleted." />
       <KvGrid cls="grid--4" pairs={[["Combinations", combs.length], ["Offered", offeredCount], ["Not offered", combs.length - offeredCount], ["Subjects offered", `${subjects.filter((s) => s.active).length} of ${subjects.length}`]]} />
       <Panel title={`Combinations (${shown.length})`} right={<span className="row">
         <Btn kind="ghost" onClick={() => void exportCombs()}>Export (Excel)</Btn>
@@ -1281,7 +1281,7 @@ function CombinationCourses({ code, onClose }: { code: string; onClose: () => vo
     <Modal wide title={`${code}: its courses`} onClose={onClose} foot={<><Btn kind="ghost" onClick={onClose}>Close</Btn>{rows?.length ? <Btn kind="secondary" onClick={print}>Print / PDF</Btn> : null}</>}>
       {!rows ? <p className="sub2">Loading…</p> : (
         <>
-          <p className="sub2">{`The course units of the combination's three subjects, two a semester each, as the Board's syllabus lists them.${either.length ? ` ${either.join(" and ")}: the student takes one of the options shown, chosen on their Subjects page.` : ""}`}</p>
+          <p className="sub2">{`Course units of the combination's subjects, two a semester.${either.length ? ` ${either.join(" and ")}: the student takes one of the options shown, chosen on their Subjects page.` : ""}`}</p>
           <UnitsBySemester units={rows} showSubject onOpen={(u) => setOpen(unitId(u))} />
         </>
       )}
@@ -1310,7 +1310,7 @@ function CoursesPanel() {
     <Panel title={`Courses — ${ed?.title ?? "JUPEB syllabus"}`} right={<select className="ctl" style={{ width: 280 }} aria-label="Subject" value={pick} onChange={(e) => setSubject(e.target.value)}>
       {subjects.map((s) => <option key={s.id} value={s.id}>{s.title} ({s.code})</option>)}</select>}>
       <PBody>
-        <p className="sub2">{`The Board's course units of each subject, two in each semester, for the sessions ${ed?.first_session ?? ""} to ${ed?.last_session ?? ""}. Mathematics takes MAT 004A (Applied Mathematics) in Science and Engineering combinations and MAT 004B (Applied Business Mathematics) in the others. ${d.boardSubjects.length} Board subjects, ${d.units.length} course units.`}</p>
+        <p className="sub2">{`The Board's course units for ${ed?.first_session ?? ""}–${ed?.last_session ?? ""}. Mathematics: MAT 004A (Applied Mathematics) in Science and Engineering combinations, MAT 004B (Applied Business Mathematics) in the others. ${d.boardSubjects.length} Board subjects, ${d.units.length} course units.`}</p>
         {boards.map((b) => <p key={b.id} className="mt-1"><b>{b.title}</b>{` — the Board's ${b.code}, courses ${b.prefix}`}{boards.length > 1 ? " (a student takes one of these)" : ""}</p>)}
         <UnitsBySemester units={units} showSubject={boards.length > 1} onOpen={(u) => setOpen(unitId(u))} />
       </PBody>
@@ -1385,7 +1385,7 @@ export function JupebClasses({ canWrite }: { canWrite: boolean }) {
   }
   return (
     <>
-      <PageHead title="JUPEB classes" description="Sets of students for teaching. A student is placed in a class from their record." actions={<SessionPick sessions={sessions} value={session} onChange={setSession} />} />
+      <PageHead title="JUPEB classes" actions={<SessionPick sessions={sessions} value={session} onChange={setSession} />} />
       {canWrite ? (
         <Panel title="Add a class">
           <PBody><div className="grid grid--4">
@@ -1431,7 +1431,7 @@ function SessionCheck({ to }: { to: string }) {
   return (
     <div className="mt-3">
       <div className="eyebrow">{`Before ${d.to} becomes the current session`}</div>
-      <p className="sub2">Nothing moves on its own: applications and students stay in the session they were filed under. This is what still stands, to see to first.</p>
+      <p className="sub2">Applications and students stay in the session they were filed under.</p>
       {[d.from, d.to].map((x) => (
         <div key={x} className="mt-2">
           <b>{x === d.from ? `${x} — the session it leaves` : `${x} — the session it turns to`}</b>
@@ -1461,7 +1461,7 @@ function CurrentSession({ s, canWrite, onSaved }: { s: Settings; canWrite: boole
   return (
     <Panel title="Current JUPEB session" right={<Pil kind="info">{s.currentSession}</Pil>}>
       <PBody>
-        <p className="sub2">{`The JUPEB programme runs to its own calendar: new applications are filed under this session, with its windows and its fees, and every JUPEB screen opens on it. Students already filed under an earlier session stay there. The University's current session (${s.universitySession ?? "—"}) is not changed.`}</p>
+        <p className="sub2">{`New JUPEB applications are filed under this session; earlier students stay where they are. The University's current session (${s.universitySession ?? "—"}) is not changed.`}</p>
         <div className="row" style={{ flexWrap: "wrap" }}>
           <select className="ctl" style={{ width: 260 }} aria-label="Current JUPEB session" value={pick} onChange={(e) => setPick(e.target.value)} disabled={!canWrite}>
             <option value="">{`The University's (${s.universitySession ?? "—"})`}</option>
@@ -1517,7 +1517,7 @@ function NextSession({ current, canWrite }: { current: string; canWrite: boolean
         {[y + 1, y + 2].map((n) => <option key={n} value={`${n}/${n + 1}`}>{`${n}/${n + 1}`}</option>)}</select>
     </span>}>
       <PBody>
-        <p className="sub2">{`Set ${to} up from ${from}, one item at a time. Nothing is carried until you say so, nothing over what ${to} already has of its own, and every carry is on the record. Students and applications are never moved; the fees are the Bursary's to carry, and the application windows the Director of ICT's to open.`}</p>
+        <p className="sub2">{`Set ${to} up from ${from}, one item at a time. Students and applications are never moved; fees are the Bursary's and application windows the Director of ICT's.`}</p>
         {!d ? <p className="sub2">Loading…</p> : (
           <>
             <DTable noPrint pageSize={0} cols={["Item", `In ${d.from}|num`, `In ${d.to}|num`, "State", "What is carried", "|mid"]} rows={d.items.map((it) => [
@@ -1531,7 +1531,7 @@ function NextSession({ current, canWrite }: { current: string; canWrite: boolean
               {d.windows.map((w) => <Pil key={w.window_type} kind={w.state === "OPEN" ? "ok" : "grey"}>{`${w.label} for ${d.to}: ${w.state.toLowerCase().replace(/_/g, " ")}`}</Pil>)}
               <span className="sub2">The Director of ICT opens the windows; nothing here opens them.</span>
             </div>
-            {!d.onCalendar ? <Note kind="info" title={`${d.to} is not yet on the University's calendar of sessions`}>The JUPEB Office may plan it now; the Bursary can carry the fees once the session is on the calendar.</Note> : null}
+            {!d.onCalendar ? <Note kind="info" title={`${d.to} is not yet on the University's calendar of sessions`}>The Bursary can carry the fees once the session is on the calendar.</Note> : null}
             {d.history.length ? <p className="sub2 mt-2">{`Carried into ${d.to}: ${d.history.map((h) => `${ROLL_LABEL[h.item] ?? h.item} from ${h.from_session} (${h.carried}${h.skipped ? `, ${h.skipped} left` : ""}) ${when(h.at)}${h.actor_name ? ` by ${h.actor_name}` : ""}`).join("; ")}.`}</p> : null}
           </>
         )}
@@ -1587,7 +1587,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
   const ro = !canWrite;
   return (
     <>
-      <PageHead title="JUPEB settings" description="Numbering, screening and the documents asked for. The fees are the Bursary's." actions={<SessionPick sessions={s.sessions} value={s.session} onChange={setSession} />} />
+      <PageHead title="JUPEB settings" description="Fees are the Bursary's." actions={<SessionPick sessions={s.sessions} value={s.session} onChange={setSession} />} />
       <CurrentSession s={s} canWrite={canWrite} onSaved={(x) => { setS(x); setSession(x.currentSession ?? ""); }} />
       <NextSession key={s.currentSession ?? s.session} current={s.currentSession ?? s.session} canWrite={canWrite} />
       <Panel title="Numbering and screening" right={s.own ? <Pil kind="info">Own rule for {s.session}</Pil> : <Pil kind="grey">The default applies</Pil>}>
@@ -1614,7 +1614,7 @@ export function JupebSettings({ canWrite }: { canWrite: boolean }) {
         <PBody><KvGrid pairs={[["Application fee", naira(s.fees.application_fee)], ["Admission status checking fee", naira(s.fees.checking_fee)], ["Acceptance fee", naira(s.fees.acceptance_fee)],
           ["First semester share", `${Number(s.fees.first_percent)}%`], ["Full payment", s.fees.allow_full ? "Allowed" : "Not allowed"],
           ["Activation", s.fees.activation === "FULL" ? "Full payment" : "First instalment"], ["Indigene state", s.fees.indigene_state]]} />
-          <p className="sub2 mt-2">The JUPEB Office sees these amounts; only the Bursary changes them (Finance → JUPEB fees).</p></PBody>
+          <p className="sub2 mt-2">Only the Bursary changes these amounts (Finance → JUPEB fees).</p></PBody>
       </Panel>
       {doc ? (
         <Modal title="Document asked for" onClose={() => setDoc(null)} foot={<><Btn kind="ghost" onClick={() => setDoc(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void saveDoc()}>Save</Btn></>}>
@@ -1665,7 +1665,7 @@ export function JupebPayments({ canConfirm }: { canConfirm: boolean }) {
   const total = rows.filter((p) => p.confirmed_at).reduce((n, p) => n + Number(p.amount), 0);
   return (
     <>
-      <PageHead title="JUPEB payments" description="Application fees and school fees of the session, as the payment records stand. Amounts are the Bursary's; nothing here changes them."
+      <PageHead title="JUPEB payments" description="Amounts are the Bursary's."
         actions={<span className="row">
           <select className="ctl" aria-label="Session" style={{ width: 140 }} value={session} onChange={(e) => setSession(e.target.value)}>{sessions.map((s) => <option key={s}>{s}</option>)}</select>
           <select className="ctl" aria-label="Status" style={{ width: 140 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="CONFIRMED">Confirmed</option><option value="PENDING">Not confirmed</option><option value="">All</option></select>
@@ -1785,7 +1785,7 @@ export function JupebOldPortalImport() {
     <>
       <PageHead title="Upload students from the old portal" eyebrow={<Link href="/jupeb/applications">← JUPEB applications</Link>}
         actions={<LinkBtn kind="ghost" href="/jupeb/import/payments">Their old-portal payments →</LinkBtn>}
-        description="The JUPEB students already registered on the old portal, uploaded from its export: each becomes a JUPEB student here with a login — the old App No as the username and a temporary password the student changes at first sign-in." />
+        description="Students registered on the old portal, uploaded from its export. Each gets a login: the old App No as username and a temporary password changed at first sign-in." />
       {done ? (
         <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} student${done.applied === 1 ? "" : "s"} uploaded`}
           action={done.credentials.length ? <Btn kind="primary" onClick={() => void downloadLogins()}>Download login details (Excel)</Btn> : null}>
@@ -1810,7 +1810,7 @@ export function JupebOldPortalImport() {
             {busy ? <span className="sub2">{busy}</span> : null}
           </div>
           <p className="sub2 mt-2">Columns read: App No, First Name, Middle Name, Surname, Sex, LGA, Phone No, State, Date of Birth, NIN, Email (and Programme, Combination where the file has them).
-            Upload the file as the old portal gave it: re-saving it in Excel can turn 9/1/2004 into a different date. A student already on the portal is skipped, so the same file may be uploaded again.</p>
+            Upload the file as the old portal gave it (re-saving in Excel can change dates). Students already on the portal are skipped.</p>
         </PBody>
       </Panel>
       {preview ? (
@@ -1820,7 +1820,7 @@ export function JupebOldPortalImport() {
             <Btn kind="primary" disabled={!!busy || ready === 0 || !!done} onClick={() => void upload()}>{`Upload ${ready} student${ready === 1 ? "" : "s"} and create their logins`}</Btn>
           </span>}>
           <PBody>
-            {preview.invalid ? <Note kind="bad" title={`${preview.invalid} row${preview.invalid === 1 ? "" : "s"} to correct`}>These are skipped. Correct them in the file (the export lists what to correct) and upload it again; the students already uploaded are skipped then.</Note> : null}
+            {preview.invalid ? <Note kind="bad" title={`${preview.invalid} row${preview.invalid === 1 ? "" : "s"} to correct`}>These are skipped. Correct them in the file and upload it again.</Note> : null}
             <DTable pageSize={50} cols={["Row|num", "App No", "Name", "Email", "Sex", "Phone", "Date of birth", "State / LGA", "Status", "Note"]}
               texts={preview.rows.map((r) => `${r.appNo ?? ""} ${r.name} ${r.email ?? ""} ${r.message}`)}
               rows={preview.rows.map((r) => [r.row, r.appNo ?? "—", r.name, r.email ?? "—", r.sex ?? "—", r.phone ?? "—", r.dob ? day(r.dob) : "—",

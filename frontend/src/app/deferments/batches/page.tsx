@@ -14,7 +14,7 @@ export default async function BatchesPage() {
   const rows = r.ok ? r.data : [];
   return (
     <Shell route="t/deferments" me={me.ok ? me.data : null}>
-      <PageHead title="Forwarding batches" description="Every list of faculty-approved deferment applications the Academic Office forwarded to the Deputy Vice-Chancellor, numbered DEF-DVC-YYYY-NNNNN, with the applications it named and the DVC's progress on them." actions={<LinkBtn href="/deferments">Deferments Desk</LinkBtn>} />
+      <PageHead title="Forwarding batches" description="Faculty-approved lists forwarded to the Deputy Vice-Chancellor." actions={<LinkBtn href="/deferments">Deferments Desk</LinkBtn>} />
       {!r.ok ? <ProblemNotice problem={r.problem} /> : null}
       <Panel title="Batches" right={`${rows.length}`}>
         {rows.length ? (
@@ -30,7 +30,7 @@ export default async function BatchesPage() {
               <Pil key="st" kind={b.dvc_status === "OPEN" ? "warn" : "ok"}>{b.dvc_status === "OPEN" ? "With the DVC" : "Decided"}</Pil>,
               <Link key="v" className="btn btn--ghost btn--sm" href={`/deferments?batch=${encodeURIComponent(b.reference)}`}>Applications</Link>,
             ])} texts={rows.map((b) => `${b.reference} ${b.session ?? ""} ${b.forwarded_officer ?? ""}`)} />
-        ) : <PBody><Note kind="info" title="No batch has been forwarded">The Academic Office forwards faculty-approved applications to the DVC from the deferments desk; each forwarding is a batch here.</Note></PBody>}
+        ) : <PBody><Note kind="info" title="No batch has been forwarded" /></PBody>}
       </Panel>
     </Shell>
   );

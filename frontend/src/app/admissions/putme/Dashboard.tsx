@@ -56,7 +56,7 @@ export function Dashboard({ view, sessions, office }: { view: Overview; sessions
 
   return (
     <>
-      <PageHead title="Post-UTME CBT schedule" description={x ? `${x.name} · ${s}. Where every candidate stands, the places the examination can seat, and the schedule generated, validated and published.` : `No examination is set up for ${s} yet. Name it on the setup screen, with its centres, days and slots.`}
+      <PageHead title="Post-UTME CBT schedule" description={x ? `${x.name} · ${s}` : `No examination is set up for ${s} yet.`}
         actions={<>
           <Field id="pt-session" label="Session"><select id="pt-session" className="ctl" value={s} onChange={(e) => queryNav(`/admissions/putme?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
           <LinkBtn kind="secondary" href={q("/admissions/putme/setup")}>Setup</LinkBtn>
@@ -73,11 +73,11 @@ export function Dashboard({ view, sessions, office }: { view: Overview; sessions
             {["SCHEDULED", "ONGOING"].includes(x.state) ? <Btn kind="ghost" onClick={() => setAsk("complete")} disabled={!!busy}>Mark completed</Btn> : null}
           </span> : null}>
           <span className="blk">{x.starts_on ? `${dayOf(x.starts_on)}${x.ends_on && x.ends_on !== x.starts_on ? ` – ${dayOf(x.ends_on)}` : ""}` : "Dates not yet named"} · {x.duration_minutes} min sitting · report {x.checkin_minutes} min before · {pv?.days ?? 0} day(s) × {pv?.slots ?? 0} slot(s) × {pv?.rooms ?? 0} room(s) at {pv?.centres ?? 0} centre(s){x.published_at ? ` · published ${dayOf(x.published_at)}` : ""}</span>
-          {!view.examProgrammes.length ? <span className="blk">No programme is named as screened by examination this session, so nobody is eligible. Name them under <Link className="lnk" href="/admissions/settings">Admission Settings</Link>.</span> : null}
+          {!view.examProgrammes.length ? <span className="blk">No programme is screened by examination this session, so nobody is eligible. Name them under <Link className="lnk" href="/admissions/settings">Admission Settings</Link>.</span> : null}
         </Note>
       ) : (
         <Note kind="info" title="No examination yet" action={may ? <LinkBtn kind="primary" href={q("/admissions/putme/setup")}>Set up the examination</LinkBtn> : null}>
-          The examination is named once a session: its dates, check-in and sitting minutes, its centres with their rooms and workstations, its days and its slots. The candidates below stand as they are whether or not it exists.
+          Name its dates, sitting times, centres, days and slots.
         </Note>
       )}
 
@@ -149,8 +149,8 @@ export function Dashboard({ view, sessions, office }: { view: Overview; sessions
       {ask ? (
         <Modal title={ask === "generate" ? "Generate the batches" : ask === "publish" ? "Publish the schedule" : ask === "reopen" ? "Reopen for scheduling" : "Mark the examination completed"} onClose={() => setAsk(null)}
           foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not now</Btn><Btn kind="primary" onClick={() => void act(ask)} disabled={!!busy}>{busy ? "Working…" : ask === "generate" ? "Generate" : ask === "publish" ? "Publish and notify" : ask === "reopen" ? "Reopen" : "Complete"}</Btn></>}>
-          {ask === "generate" ? <p>Every candidate who is ready is seated in order of the {String(x?.strategy ?? "PROGRAMME").toLowerCase().replace("_", " ")} strategy, into the places still free. Candidates already seated keep their seats. {pv ? `${vzNum(pv.ready)} ready · ${vzNum(pv.capacity - pv.used)} seat(s) free.` : ""}</p>
-            : ask === "publish" ? <p>Every draft batch becomes published and every candidate in it is told their day, time, centre, room and seat by email and SMS, and their slip appears on the portal. {warnings.length ? `${warnings.length} warning(s) stand; publishing proceeds.` : ""}</p>
+          {ask === "generate" ? <p>Every candidate who is ready is seated in order of the {String(x?.strategy ?? "PROGRAMME").toLowerCase().replace("_", " ")} strategy. Candidates already seated keep their seats. {pv ? `${vzNum(pv.ready)} ready · ${vzNum(pv.capacity - pv.used)} seat(s) free.` : ""}</p>
+            : ask === "publish" ? <p>Every candidate is told their day, time, centre, room and seat by email and SMS. {warnings.length ? `${warnings.length} warning(s) stand; publishing proceeds.` : ""}</p>
             : <Field id="pt-note" label="Note for the record" full><textarea id="pt-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>}
         </Modal>
       ) : null}

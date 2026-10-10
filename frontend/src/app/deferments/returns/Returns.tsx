@@ -28,7 +28,7 @@ export function Returns({ list, filters }: { list: ReturnsList; filters: ReturnF
   async function excel() { const blob = await brandedXlsx("Students Due to Resume", HEAD, body(), { sheetName: "Resumption", serial: docSerial("DEF"), sub: filters.status || "All" }); downloadBlob(blob, "students-due-to-resume.xlsx"); }
   return (
     <>
-      <PageHead title="Students due to resume" description="Every deferment in force within your bound, by its return date: upcoming, due, or overdue. Confirm a return on the application when the student presents themselves; their deferred courses then become due on the registration form."
+      <PageHead title="Students due to resume" description="Confirm a return on the application when the student presents themselves."
         actions={<>{["", "DUE", "OVERDUE", "UPCOMING"].map((s) => <LinkBtn key={s || "all"} kind={filters.status === s ? "primary" : "ghost"} href={`/deferments/returns${s ? `?status=${s}` : ""}`}>{s ? s.charAt(0) + s.slice(1).toLowerCase() : "All"}</LinkBtn>)}<Btn kind="secondary" onClick={() => void excel()} disabled={!rows.length}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Students Due to Resume", filters.status || "All", HEAD, body(), docSerial("DEF"))} disabled={!rows.length}>PDF</Btn><LinkBtn href="/deferments">Deferments Desk</LinkBtn></>} />
       <div className="scope">
         {list.scope.kind !== "DEPARTMENT" && list.scope.kind !== "FACULTY" ? <div className="scope__f"><Field id="rt-fac" label="Faculty"><select id="rt-fac" className="ctl" value={filters.fac} onChange={(e) => go({ fac: e.target.value })}><option value="">All</option>{faculties.map(([c, n]) => <option key={c} value={c}>{n}</option>)}</select></Field></div> : null}

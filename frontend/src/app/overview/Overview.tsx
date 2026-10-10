@@ -6,7 +6,7 @@
  *  the chain stages, the collections are read once and counted, so this cannot drift from the desks. */
 import { Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { money } from "@/components/proto/blocks";
+
 import { Donut, HBars, Stack, Line, VBars, Legend, VZ, vzNum, type LegendKey } from "@/components/proto/vz";
 import { PeriodPicker } from "@/components/proto/PeriodPicker";
 
@@ -42,7 +42,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
   const pend = Math.max(0, subm - appr), miss = Math.max(0, expected - subm);
   const pastPct = expected ? Math.round((appr / expected) * 100) : 0;
   const uniStudents = N(d.uni?.students ?? d.students.total);
-  const collected = d.collection.reduce((a, c) => a + N(c.collected), 0);
+
 
   const statusKeys: LegendKey[] = [
     { l: "Approved", c: VZ.good, i: <Tick size={12} colour={VZ.good} /> },
@@ -66,9 +66,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
   return (
     <>
       <PeriodPicker base="/overview" sessions={sessions} session={session} semester={semester} />
-      <Note kind="info" title="The session so far, in figures">
-        Every chart on this screen is drawn from the same record the desks work on, and each carries its table beneath it &mdash; because a chart is for seeing the shape and a table is for quoting the number, and an institutional paper needs both.
-      </Note>
+
 
       <Tiles items={[
         ["Students on the register", vzNum(uniStudents), null, `${N(d.uni?.faculties ?? d.students.byFaculty.length)} faculties · ${N(d.uni?.departments)} departments`, "/reports/students"],
@@ -94,7 +92,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
                   { l: "Never submitted", v: miss, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
               </>
-            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
+            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet.</div>}
           </PBody>
         </Panel>
         <Panel title="Students by level" right="All modes, all faculties">
@@ -102,9 +100,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
             {d.students.byLevel.length ? (
               <>
                 <Donut capLabel="students" capValue={vzNum(uniStudents)} items={d.students.byLevel.map((r, i) => ({ l: `${N(r.level)} Level`, v: N(r.students), c: LEVEL_COLS[i % LEVEL_COLS.length] }))} />
-                <Note kind="info" title="Every student on the register sits in exactly one level">
-                  The shape is the intake history &mdash; four or five years of it &mdash; as admission, progression and graduation have left it. Only the programmes with a five-year run (MBBS, the LL.B, Pharm.D and Engineering) reach 500 Level.
-                </Note>
+
               </>
             ) : <div className="sub2">No enrolment recorded yet.</div>}
           </PBody>
@@ -118,7 +114,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
               <Stack keys={statusKeys} rows={res.map((f) => ({ l: f.name, parts: [f.approved, f.pending, f.never] }))} />
               {worst ? (
                 <Note kind="bad" title={`${worst.name} is furthest behind`}>
-                  {vzNum(worst.approved)} set{worst.approved === 1 ? "" : "s"} approved of {vzNum(worst.expected)} expected &mdash; {worst.pct} per cent, against a University average of {pastPct}. {worst.never ? <>{vzNum(worst.never)} have never been submitted, which is where a Vice-Chancellor&rsquo;s question belongs.</> : "The rest are pending on a named desk and can be chased there."}
+                  {vzNum(worst.approved)} set{worst.approved === 1 ? "" : "s"} approved of {vzNum(worst.expected)} expected &mdash; {worst.pct} per cent, against a University average of {pastPct}. {worst.never ? <>{vzNum(worst.never)} have never been submitted.</> : "The rest are pending."}
                 </Note>
               ) : null}
             </>
@@ -152,11 +148,9 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
                 { l: "Approved", v: weeks.map((w) => N(w.approved)), c: VZ.s2 },
               ]} />
               <Legend keys={[{ l: "Submitted by the lecturer", c: VZ.s1 }, { l: "Approved by Senate", c: VZ.s2 }]} />
-              <Note kind="info" title="The gap between the two lines is the workflow">
-                It is the width of the approval chain: work arriving and work clearing. A gap that stays roughly constant is a chain in good health; a widening gap means a desk has stopped, and it shows here before anybody reports it.
-              </Note>
+
             </>
-          ) : <div className="sub2">No sheet has been submitted for {d.session}, {semester === 1 ? "first" : "second"} semester yet, so there is no week-by-week line to draw.</div>}
+          ) : <div className="sub2">No sheet has been submitted for {d.session}, {semester === 1 ? "first" : "second"} semester yet.</div>}
         </PBody>
       </Panel>
 
@@ -172,17 +166,15 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
               <>
                 <VBars items={grades.map((g) => ({ l: g.grade, v: gradeTotal ? Math.round((g.count / gradeTotal) * 100) : 0, c: g.grade === "F" ? VZ.crit : VZ.seq }))} />
                 <Note kind={fPct >= 15 ? "bad" : "info"} title={`${fPct} per cent of every graded entry is an F`}>
-                  That is roughly one entry in {fPct ? Math.max(1, Math.round(100 / fPct)) : "—"} becoming a carryover, and a carryover consumes units in a later semester that a student then cannot spend on new courses. The portal can say which courses carry the failures, but not whether the cause is the examination, the teaching or the entry standard.
+                  Roughly one entry in {fPct ? Math.max(1, Math.round(100 / fPct)) : "—"} becomes a carryover.
                 </Note>
               </>
-            ) : <div className="sub2">No result has been published for {d.session}, {semester === 1 ? "first" : "second"} semester yet, so there is no grade spread to show.</div>}
+            ) : <div className="sub2">No result has been published for {d.session}, {semester === 1 ? "first" : "second"} semester yet.</div>}
           </PBody>
         </Panel>
       </div>
 
-      <Note kind="info" title="A number here and a number on a desk are one number read twice">
-        The students are the rows the Registry works; the result sets are the sheets the lecturers own and the chain approves; the grades are the marks the examiners entered; the {money(collected)} collected is the day book the Bursary confirms. This screen counts them, it does not keep a second copy.
-      </Note>
+
     </>
   );
 }

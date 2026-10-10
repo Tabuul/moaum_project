@@ -33,7 +33,7 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
   return (
     <>
       <Note kind="info" title="Who may offer a course is decided when the course is created">
-        The eligible set is part of the course, like its units and its semester. It is assigned at creation, goes to the Faculty Board with the course, and Senate approves it. Nothing here is an exception granted to a named student &mdash; an exception is how a course quietly acquires a cohort nobody accredited.
+        The eligible set goes to the Faculty Board with the course, and Senate approves it. No exception is granted to a named student.
       </Note>
 
       <div className="card"><div className="card__body row row--end">
@@ -67,19 +67,19 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
                 <span className="tnum" key="r">{o.registered}</span>,
                 <span key="rel">{relation(o)}</span>,
               ])} texts={view.offers.map((o) => `${o.programme} ${o.dept} ${o.faculty}`)} />
-            ) : <PBody><div className="sub2">No programme is on this course&rsquo;s eligible set. Until a programme and level are added at a curriculum change, no student can register it and it appears on no course form.</div></PBody>}
+            ) : <PBody><div className="sub2">No programme is on this course&rsquo;s eligible set, so no student can register it.</div></PBody>}
           </Panel>
 
           <div className="grid grid--2">
             <Panel title="What a student sees" right="On the course registration form">
               <PBody>
-                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>If a student&rsquo;s programme and level are on the set, the course is offered on their form, beside their own department&rsquo;s courses. If they are not, the course is not on the form at all. Nobody writes to a Head of Department and nobody carries a paper form between offices.</p>
-                <Note kind="ok" title="Eligibility is checked when the registration is made, not when the mark is entered">A registration outside the eligible set is refused at the form &mdash; the only place refusing it is cheap. Refusing it at the score sheet means a student has already sat an examination they were never registered for.</Note>
+                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>A student whose programme and level are on the set sees the course on their form; others do not.</p>
+                <Note kind="ok" title="Eligibility is checked when the registration is made, not when the mark is entered" />
               </PBody>
             </Panel>
             <Panel title="What the lecturer sees" right="On the score sheet">
               <PBody>
-                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>All {all} registered candidates in one list, ordered by matriculation number. The programme is a column, not a filter. {borrowed} of them are from other departments, and they are marked exactly like the rest, because they sat exactly the same paper.</p>
+                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>All {all} registered candidates in one list, ordered by matriculation number. {borrowed} of them are from other departments.</p>
               </PBody>
             </Panel>
           </div>

@@ -98,10 +98,8 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
     <>
       <RoleLine allowed={["bursar"]} actingOffice={actingOffice} canAct={may} action="Loading past payment history" />
       <Note kind="info" title="Load past students' payment history">
-        This carries confirmed school-fees payments over from the old portal, exactly as they were — the original
-        reference, receipt, amount, date and channel are kept. It is <b>not</b> for new payments (those are confirmed on
-        the reconciliation desk). A payment already on record is left alone, so a file may be uploaded again safely, and
-        no student is notified. Each payment is matched to a student by matriculation, admission or JAMB number.
+        Old-portal school-fees payments, with the original reference, receipt, amount, date and channel. <b>Not</b> for new
+        payments. Safe to upload again; no student is notified.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary and the Directorate of ICT">Your office may not load payment history.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -120,8 +118,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
           <div className="sub2 mt-2">
             <b>Amount</b> may carry a currency sign or commas — only the number is read. <b>Session</b> is like 2019/2020;
             a blank session is filed under <b>LEGACY</b>. <b>Payment Date</b> like 2019-11-05; a blank date defaults to
-            today. A row with no <b>Reference</b> is given a stable one derived from the row, so re-uploading the same
-            file never duplicates. Large files are loaded in batches of {CHUNK}.
+            today. Re-uploading the same file never duplicates.
           </div>
         </PBody>
       </Panel>

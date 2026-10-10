@@ -18,7 +18,7 @@ export default async function MyTicketsPage() {
   const resolved = rows.filter((t) => t.status === "RESOLVED");
   return (
     <Shell route={route} me={me}>
-      <PageHead title="My support tickets" description="What you have reported to the Directorate of ICT, where each stands, and what the desk said."
+      <PageHead title="My support tickets" 
         actions={<><LinkBtn kind="primary" href="/tickets/new">Submit a New Ticket</LinkBtn><LinkBtn href="/track">Track a Ticket</LinkBtn></>} />
       {!r.ok ? <ProblemNotice problem={r.problem} /> : null}
       <Tiles items={[
@@ -30,7 +30,7 @@ export default async function MyTicketsPage() {
       {resolved.length ? (
         <Note kind="ok" title={`${resolved.length} ticket${resolved.length === 1 ? " has" : "s have"} been marked as resolved`}
           action={<LinkBtn kind="primary" href={`/tickets/${resolved[0].id}`}>Review {resolved[0].number}</LinkBtn>}>
-          Open the ticket to read the resolution. Confirm it if the problem is settled, which closes the ticket; reopen it if it is not, and say what is still wrong.
+          Confirm it if settled, or reopen it.
         </Note>
       ) : null}
       <Panel title="Your tickets" right={rows.length ? `${open.length} open · ${rows.length} in all` : "None yet"}>
@@ -47,7 +47,7 @@ export default async function MyTicketsPage() {
           ])} texts={rows.map((t) => `${t.number} ${t.subject} ${t.category} ${statusWord(t.status)} ${PRIORITY[t.priority]?.[0] ?? ""}`)} />
         ) : !r.ok ? <PBody><div className="sub2">Your tickets could not be read just now.</div></PBody> : (
           <PBody>
-            <div className="sub2">You have not raised a ticket yet. Report a payment that did not register, a login that fails, a course that will not register, a result, the portal, your email, your account or the network; you receive a tracking number at once and are told at every turn.</div>
+            <div className="sub2">You have not raised a ticket yet.</div>
             <div className="mt-3"><LinkBtn kind="primary" href="/tickets/new">Submit a New Ticket</LinkBtn></div>
           </PBody>
         )}

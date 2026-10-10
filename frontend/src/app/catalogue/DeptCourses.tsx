@@ -143,7 +143,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
   return (
     <>
       <Note kind="info" title="The department owns its courses, and creates them">
-        A course belongs to exactly one department &mdash; the one that teaches it, sets its score sheet and answers a query about a mark in it. A course the department adds is live at once: it appears on this list and in the current session&rsquo;s registration for the programmes it is offered to.
+        A course added is live at once, on this list and in the current session&rsquo;s registration for the programmes it is offered to.
       </Note>
 
       <div className="scope">
@@ -227,7 +227,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       {codeFixes.length ? (
         <Panel title="Codes written without the hyphen" right={`${codeFixes.length} to correct · the old portal dropped the hyphen after the prefix`}>
           <PBody>
-            <div className="sub2 mb-2">A prefixed code reads <b>MOAU-CHM 101</b>, not MOAUCHM 101. Renaming corrects the code in place: the course keeps its identity, and every registration, result, offering and binding on it follows. Where the corrected code is <b>already another course</b>, the two are the same course under two codes: end or remove the wrong one on the duplicates desk below, or on its details page.</div>
+            <div className="sub2 mb-2">A prefixed code reads <b>MOAU-CHM 101</b>, not MOAUCHM 101. Renaming keeps the course and everything on it. Where the corrected code is <b>already another course</b>, resolve it on the duplicates desk below.</div>
             <DTable pageSize={0} noPrint cols={["Code|mid", "Should read|mid", "Title", "Carries", "|num"]} rows={codeFixes.map((x) => [
               <b key="c" className="tnum ink-red">{x.code}</b>,
               <b key="p" className="tnum">{x.proposed}</b>,
@@ -240,7 +240,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             ])} />
             {codeFixes.some((x) => !x.twin_exists) ? (
               <div className="row row--base mt-3">
-                <Btn kind="primary" disabled={busy} onClick={() => { const n = codeFixes.filter((x) => !x.twin_exists).length; if (window.confirm(`Correct ${n} code${n === 1 ? "" : "s"} in one act? Each course keeps its identity and everything on it; a code whose corrected form is already another course is left for the duplicates desk.`)) void send(`/code-fixes/apply?dept=${encodeURIComponent(dept)}`, {}, `Corrected the codes written without the hyphen in ${dept}`).then((j) => { if (j) setSaid(`${String(j.renamed ?? 0)} code(s) corrected${Number(j.twins ?? 0) ? ` · ${String(j.twins)} left as duplicates of a code that already exists` : ""}`); }); }}>{busy ? "Working…" : `Fix ${codeFixes.filter((x) => !x.twin_exists).length} code${codeFixes.filter((x) => !x.twin_exists).length === 1 ? "" : "s"}`}</Btn>
+                <Btn kind="primary" disabled={busy} onClick={() => { const n = codeFixes.filter((x) => !x.twin_exists).length; if (window.confirm(`Correct ${n} code${n === 1 ? "" : "s"}? A code that is already another course is left for the duplicates desk.`)) void send(`/code-fixes/apply?dept=${encodeURIComponent(dept)}`, {}, `Corrected the codes written without the hyphen in ${dept}`).then((j) => { if (j) setSaid(`${String(j.renamed ?? 0)} code(s) corrected${Number(j.twins ?? 0) ? ` · ${String(j.twins)} left as duplicates of a code that already exists` : ""}`); }); }}>{busy ? "Working…" : `Fix ${codeFixes.filter((x) => !x.twin_exists).length} code${codeFixes.filter((x) => !x.twin_exists).length === 1 ? "" : "s"}`}</Btn>
                 <span className="sub2">Renames where the corrected code is free; the rest stay listed with the reason.</span>
               </div>
             ) : null}
@@ -251,7 +251,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       {toEnd.length ? (
         <Panel title="Duplicate courses" right={`${toEnd.length} to end or remove · the same course under more than one code`}>
           <PBody>
-            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept. A <b>BSU-</b> code and its <b>MOAU-</b> twin are never duplicates: both are kept — students in 300 level and above carry the BSU- code, those in 100 and 200 level the MOAU- code — so they do not appear here. A duplicate code that nothing carries — no registration, result or timetable — can be <b>removed completely</b>; one that a record already carries is <b>ended</b> instead and stays on the transcripts that carry it.</div>
+            <div className="sub2 mb-2">The same course under more than one code; the cleanest code is kept. A <b>BSU-</b> code and its <b>MOAU-</b> twin are both kept (300 level and above carry BSU-, 100 and 200 level MOAU-) and are not listed. A code nothing carries can be <b>removed completely</b>; one a record carries is <b>ended</b> instead.</div>
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
@@ -290,7 +290,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             ))}
           </div>
           <div className="sub2 row mt-2">
-            <span>Assessment split — how a course&rsquo;s hundred marks divide between continuous assessment and the examination; the score sheet holds every mark to it. Set {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
+            <span>Assessment split (CA : examination). Set {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
             {SPLITS.map(([m, label]) => (
               <Btn key={m} kind="ghost" disabled={busy} onClick={() => {
                 if (!window.confirm(`Set ${fLevel ? `every ${fLevel} Level` : "every"} course in this department to ${label}? You can change any course individually afterwards.`)) return;
@@ -332,7 +332,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                   <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>
                 </>
               )}
-              <Btn kind="ghost" disabled={busy} title="Delete the course outright; only possible when no registration, result or timetable carries it" onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
+              <Btn kind="ghost" disabled={busy} title="Delete outright; only when no registration, result or timetable carries it" onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
             </div>,
           ])} texts={shown.map((c) => `${c.code} ${c.title} ${kindLabel(c.kind)}`)} />
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here, live, as soon as it is created."}</div></PBody>}
@@ -344,7 +344,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim() || Boolean(found?.byCode)} onClick={async () => {
               const offers = [...own.map((p) => ({ programme: p, level: Number(f.level) })), ...extra.map((x) => ({ programme: x.programme, level: Number(f.level), reason: why.trim() || null }))];
               const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind, offers }, `New course ${f.code}`);
-              if (j) { setSaid(`${String(j.code)} created and live · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""} · it is on the course list below`); setAdd(false); }
+              if (j) { setSaid(`${String(j.code)} created and live · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""}`); setAdd(false); }
             }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">
@@ -359,15 +359,15 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           </div>
           {found?.byCode ? (
             <Note kind="bad" title={`${found.byCode.code} already exists`} action={<span className="row row--inline row--tight"><LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(found.byCode.code)}`}>Open the course</LinkBtn>{own.length ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => void adoptExisting(found.byCode!.code)}>Offer it to my programme{own.length === 1 ? "" : "s"} instead</Btn> : null}</span>}>
-              {found.byCode.title} · {found.byCode.dept_name ?? found.byCode.dept_code} · {found.byCode.level} Level · {STATE[found.byCode.state]?.[1] ?? found.byCode.state} · offered to {found.byCode.programmes ?? 0} programme{found.byCode.programmes === 1 ? "" : "s"}. A code is one course across the University: use the existing course and add your programme as an offering rather than creating a second record.
+              {found.byCode.title} · {found.byCode.dept_name ?? found.byCode.dept_code} · {found.byCode.level} Level · {STATE[found.byCode.state]?.[1] ?? found.byCode.state} · offered to {found.byCode.programmes ?? 0} programme{found.byCode.programmes === 1 ? "" : "s"}. Add your programme as an offering instead of creating a second record.
             </Note>
           ) : found?.byTitle.length ? (
             <Note kind="info" title="A course with this title already exists">
-              {found.byTitle.map((c) => `${c.code} (${c.dept_name ?? c.dept_code}, ${c.level} Level)`).join("; ")}. If it is the same course, open it and add your programme as an offering instead of creating another; a different course with the same title is allowed.
+              {found.byTitle.map((c) => `${c.code} (${c.dept_name ?? c.dept_code}, ${c.level} Level)`).join("; ")}. If it is the same course, add your programme as an offering instead.
             </Note>
           ) : null}
           <div className="eyebrow mt-3">Course owner</div>
-          <div className="sub2 mb-2">{depts.find((d) => d.code === dept)?.name ?? dept} — sets the score sheet and answers a query on a mark. Another department offering the course does not change its owner.</div>
+          <div className="sub2 mb-2">{depts.find((d) => d.code === dept)?.name ?? dept} — owns the score sheet and answers queries on marks.</div>
           <div className="eyebrow">Programmes offering this course</div>
           {ownProgs.length ? ownProgs.map((p) => (
             <label key={p.code} className="row row--inline row--tight" style={{ marginRight: 16 }}>
@@ -385,7 +385,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             </div>
           ) : null}
           <div className="row row--end mt-2">
-            <Field id="nc-dept" label="+ Add Department / Programme" style={{ flex: "2 1 260px" }} hint={direct ? "Bound at once" : "Another department's programme: its Head, its Dean or the Academic Office approves before students see it"}>
+            <Field id="nc-dept" label="+ Add Department / Programme" style={{ flex: "2 1 260px" }} hint={direct ? "Bound at once" : "Another department's programme: its Head, Dean or the Academic Office approves it first"}>
               <SearchSelect id="nc-dept" value={pickDept} placeholder="Search a department…" options={otherDepts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => { setPickDept(v); setPickProgs([]); }} />
             </Field>
             {pickDept ? (

@@ -130,7 +130,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
         {previous.some((p) => p.starts_on) ? <Btn kind="secondary" disabled={busy !== null} onClick={copyPrevious}>Copy {prevSession}&rsquo;s dates, a year on</Btn> : null}
         <Btn kind="go" disabled={busy !== null || !pending} onClick={() => void saveAll()}>{busy === "all" ? "Saving…" : `Save all ${pending || ""}`.trim()}</Btn>
       </span> : undefined}>
-        A cohort&rsquo;s year at a level begins in the session named here and runs by these dates, whatever the University&rsquo;s semesters do. The 100 Level year is the University&rsquo;s and is shorter, so a cohort promoted from 100 opens its 200 Level year while the cohort before it is still in its second semester. The examinations desk enters results for a cohort once its final semester has begun; a level left undated blocks nothing.
+        Results are entered for a cohort once its final semester has begun; a level left undated blocks nothing.
       </Note>
 
       {span ? (
@@ -196,7 +196,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
               })}
             </tbody>
           </table></div>
-          <PBody><div className="sub2">Blank both dates and save to clear a semester. A dated span that differs from the prospectus&rsquo;s weeks is shown in amber, not refused; a semester that ends before it starts is. &ldquo;Date the rest from the first semester&rdquo; runs each semester on from the first&rsquo;s start by the prospectus&rsquo;s weeks, for you to adjust before saving.</div></PBody>
+          <PBody><div className="sub2">Blank both dates to clear a semester. Amber: differs from the prospectus&rsquo;s weeks.</div></PBody>
         </Panel>
       ))}
 

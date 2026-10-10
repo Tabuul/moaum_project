@@ -110,7 +110,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
       {problem ? <ProblemNotice problem={problem} /> : null}
       {err ? <ProblemNotice problem={err} /> : null}
       {!data ? (
-        <Note kind="info" title="Choose a programme">The structure is one programme&rsquo;s: every course it offers, at each level and semester, and what the structure says the course is to its students.</Note>
+        <Note kind="info" title="Choose a programme" />
       ) : (
         <>
           <Tiles items={[
@@ -120,7 +120,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
             ["Without a semester", String(unplaced), unplaced ? "var(--red-ink)" : null, unplaced ? "Fix the course's semester on its department's desk" : "Every course says which semester"],
           ]} />
           <Note kind="info" title="Registration reads this structure">
-            A student of {data.programme.code} at a level sees, at registration, the courses bound here at that level for their track (a course bound for every track is seen by all). A course missing here is a course no student of the programme can register; a course bound as Elective is an elective to them even where it is core in its own department, and a failed elective is not carried over.
+            A course missing here cannot be registered by students of {data.programme.code}.
           </Note>
           {may ? (
             <Panel title="Bind a course into the structure" right={`${data.programme.name} · ${data.programme.dept_name ?? ""}`}>
@@ -155,7 +155,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
             </Panel>
           ) : null}
           {levels.length === 0 ? (
-            <Note kind="bad" title="Nothing is bound to this programme">No student of {data.programme.code} sees any course at registration until courses are bound here — upload the structure on Department courses, or bind them one by one above.</Note>
+            <Note kind="bad" title="Nothing is bound to this programme">No student of {data.programme.code} sees any course at registration.</Note>
           ) : levels.map((level) => {
             const lim = limitOf(level);
             const sems = [1, 2, 3, null].filter((s) => rows.some((r) => r.level === level && (r.semester ?? null) === s));

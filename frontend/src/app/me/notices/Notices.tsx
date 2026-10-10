@@ -23,7 +23,7 @@ export function Notices({ items }: { items: StaffNotice[] }) {
 
   return (
     <>
-      <PageHead title="Notifications" description="Every notice the portal has sent you, newest first. Each one is the same message your email or phone received." />
+      <PageHead title="Notifications" description="Newest first" />
       <Tiles items={[
         ["All notices", String(items.length), null, "On your record"],
         ["This week", String(week), week ? "var(--chrome)" : null, "Sent in the last seven days"],
@@ -42,7 +42,7 @@ export function Notices({ items }: { items: StaffNotice[] }) {
       </div>
       <Panel title="Notices" right={`${shown.length} of ${items.length}`}>
         {items.length === 0 ? (
-          <PBody><Note kind="info" title="Nothing has been sent to you yet">A notice is filed here when a score sheet is returned to you, a deadline approaches, a result is published, a support ticket is answered or an office writes to you.</Note></PBody>
+          <PBody><Note kind="info" title="Nothing has been sent to you yet" /></PBody>
         ) : shown.length === 0 ? (
           <PBody><div className="sub2">Nothing matches.</div></PBody>
         ) : (

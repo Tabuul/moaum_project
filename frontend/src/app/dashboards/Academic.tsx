@@ -60,9 +60,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
           {tq && tq.tiles.heldAtClearance ? `${tq.tiles.heldAtClearance} of the transcripts ${tq.tiles.heldAtClearance === 1 ? "is" : "are"} held at clearance, and cannot be produced until the unit holding the candidate signs.` : "Nothing is held at clearance."}
         </Note>
       ) : (
-        <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<LinkBtn kind="primary" href="/admissions">Open admissions</LinkBtn>}>
-          Transcript requests and result sets arrive here as the session runs. The register fills when the admitted candidates are brought onto it.
-        </Note>
+        <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<LinkBtn kind="primary" href="/admissions">Open admissions</LinkBtn>} />
       )}
       <StatsPanel session={session} />
       <Tiles items={[
@@ -98,9 +96,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
         {!faculties.length ? <PBody><div className="sub2">Nobody is on the register yet. Bring the admitted candidates onto it from Admissions.</div></PBody> : null}
       </Panel>
       {short.length ? (
-        <Note kind="bad" title={`${short.map((f) => f.name).join(", ")} ${short.length === 1 ? "is" : "are"} under three-quarters registered`}>
-          Whether that is a registration problem or a fees problem showing up in the registration figures, the Bursary&rsquo;s ledger will say when it reaches the portal. Extending registration will not move a blocked student; a payment plan approved by Council would.
-        </Note>
+        <Note kind="bad" title={`${short.map((f) => f.name).join(", ")} ${short.length === 1 ? "is" : "are"} under three-quarters registered`} />
       ) : null}
       <Panel title="Credentials in hand">
         <DTable cols={["Type", "Open|mid", "Oldest|mid", "Held|num"]} rows={[

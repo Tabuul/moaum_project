@@ -55,7 +55,7 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title={`Attendance · ${roll.courseCode}`} right={desk.attendance.days.length ? `${desk.attendance.days.length} lecture${desk.attendance.days.length === 1 ? "" : "s"} recorded` : "no lecture recorded yet"}>
         <PBody>
-          <div className="sub2">The register is marked over the class list and nothing else: tick who is present, and everybody on the roll not ticked is recorded absent for the day. Marking the same day again replaces that day&rsquo;s register.</div>
+          <div className="sub2">Unticked students are recorded absent. Marking the same day again replaces that day&rsquo;s register.</div>
           <div className="row">
             <input className="ctl tnum" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} aria-label="Lecture date" style={{ width: 170 }} disabled={!teaches} />
             <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set(roll.rows.map((r) => r.studentId)))}>All present</Btn>
@@ -92,7 +92,7 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
         </Panel>
         <Panel title="Examination slot" right={desk.examSlot.held_on ? "on the examination card" : "not yet timetabled"}>
           <PBody>
-            <div className="sub2">The Examinations Office gives the paper its day, time and venue; every candidate on the roll sees it on the examination card the scheme releases.</div>
+            <div className="sub2">Set by the Examinations Office; shown on each candidate&rsquo;s examination card.</div>
             <div className="grid grid--2">
               <Field id="ed" label="Date"><input id="ed" className="ctl tnum" type="date" value={exam.heldOn} onChange={(e) => setExam({ ...exam, heldOn: e.target.value })} disabled={!examsOffice} /></Field>
               <Field id="ev" label="Venue"><input id="ev" className="ctl" value={exam.venue} onChange={(e) => setExam({ ...exam, venue: e.target.value })} disabled={!examsOffice} placeholder="CBT Hall A" /></Field>

@@ -38,7 +38,7 @@ export function TimeBack({ sittingId, incident, onDone, onClose }: { sittingId: 
     <Modal title="Give the time back" sub={`${INCIDENT_WORD[incident.kind] ?? incident.kind} at ${new Date(incident.occurred_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} — ${incident.detail}`} wide onClose={onClose}
       foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={onClose}>Back</Btn>
         <Btn kind="primary" disabled={busy || !writing.length || !Number(minutes) || Number(minutes) > 600} onClick={() => void give()}>{busy ? "Giving…" : `Give ${minutes || "…"} minutes to ${writing.length}`}</Btn></span>}>
-      <p className="sub2">The minutes are added to the extra time of every candidate {incident.candidate_id ? "named in the incident" : "of the sitting"} whose attempt was running when it happened and still runs, with the incident named as the reason. It is done once. A candidate who has finished since is not reopened; their result can be reviewed with the incident on record.</p>
+      <p className="sub2">The minutes are added to the extra time of every candidate {incident.candidate_id ? "named in the incident" : "of the sitting"} whose attempt is still running. Done once; a finished attempt is not reopened.</p>
       <Field id="tb-min" label="Minutes to give back" hint={incident.minutes_lost ? `${incident.minutes_lost} minutes were recorded as lost` : "1 to 600"}>
         <input id="tb-min" className="ctl tnum" inputMode="numeric" style={{ maxWidth: 110 }} value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/[^0-9]/g, ""))} />
       </Field>

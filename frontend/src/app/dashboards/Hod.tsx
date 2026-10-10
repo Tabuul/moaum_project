@@ -57,8 +57,7 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
   if (home && !home.resolved) {
     return (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
-        The dashboard is scoped to your department, and the portal cannot tell which one this office holds. Ask the
-        Registry to set the department on your Head-of-Department assignment, then this fills in.
+        Ask the Registry to set the department on your Head-of-Department assignment.
       </Note>
     );
   }
@@ -67,8 +66,7 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
     return (
       <>
         <Note kind="bad" title="The department's figures could not be read just now">
-          Your office is tied to {scope?.name ?? scope?.code ?? "your department"} and every department desk works as usual; only this
-          dashboard&rsquo;s summary did not load. Reload the page; if it persists, send the reference below to the Directorate of ICT.
+          Only this summary did not load; the desks of {scope?.name ?? scope?.code ?? "your department"} work as usual. Reload the page; if it persists, send the reference below to the Directorate of ICT.
         </Note>
         {homeProblem ? <ProblemNotice problem={homeProblem} /> : null}
         <Panel title="Your department desks" right="Everything scoped to your department">
@@ -105,38 +103,35 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
       {missing.length ? (
         <Note kind="info" title={`${missing.length === 1 ? "One figure" : `${missing.length} figures`} could not be read`}>
           {missing.map(([k, why]) => <div key={k}><b>{FIGURE[k] ?? k}</b>: {why}</div>)}
-          <div className="mt-1">The rest of the dashboard is current. A figure that depends on the clearance scheme reads once the Bursary has a scheme in force for the session.</div>
+          <div className="mt-1">Figures that depend on the clearance scheme appear once the Bursary has a scheme in force.</div>
         </Note>
       ) : null}
       <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
       {home.cceApprovals && home.cceApprovals.count > 0 && home.cceApprovals.session ? (
         <Note kind="bad" title={`${home.cceApprovals.count} CCE course registration${home.cceApprovals.count === 1 ? "" : "s"} waiting for your approval`}
           action={<LinkBtn kind="urgent" href={`/results/approvals?session=${encodeURIComponent(home.cceApprovals.session)}`}>Open the CCE session&rsquo;s approvals</LinkBtn>}>
-          Part-time students of the Centre for Continuing Education in {home.deptName}&rsquo;s programmes register in the CCE session, {home.cceApprovals.session}, on the Centre&rsquo;s classes. You approve them as any other registration.
+          CCE students register in the CCE session, {home.cceApprovals.session}.
         </Note>
       ) : null}
       {approvals ? (
         <Note kind="bad" title={`${approvals} course registration${approvals === 1 ? "" : "s"} waiting for your approval`}
           action={<LinkBtn kind="urgent" href="/results/approvals">Open approvals</LinkBtn>}>
-          Students in {home.deptName} have submitted registrations for {home.session}. They cannot appear on a class list,
-          an attendance register or a score sheet until you approve them.
+          {home.session}: they appear on class lists and score sheets only after your approval.
         </Note>
       ) : needLect ? (
         <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer allocated`}
           action={<LinkBtn kind="primary" href="/allocate">Allocate teaching</LinkBtn>}>
-          A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} courses so teaching
-          and assessment can begin.
+          A score sheet opens only once a lecturer is allocated.
         </Note>
       ) : siwesGap ? (
         <Note kind="info" title={`${siwesGap} SIWES student${siwesGap === 1 ? " has" : "s have"} no supervisor assigned`}
           action={<LinkBtn kind="primary" href="/siwes">Assign supervisors</LinkBtn>}>
-          The industrial-training students on your register need a supervisor each to be assessed. Assign the remaining
-          supervisors on the SIWES supervision desk.
+          Each needs a supervisor to be assessed.
         </Note>
       ) : (
         <Note kind="ok" title={`${home.deptName} is set up for ${home.session}`}
           action={<LinkBtn kind="ghost" href="/allocate">Teaching allocation</LinkBtn>}>
-          No registrations are waiting and every course has a lecturer. Nothing is blocking your department right now.
+          No registrations are waiting and every course has a lecturer.
         </Note>
       )}
 

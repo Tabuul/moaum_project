@@ -32,7 +32,7 @@ export default async function Page() {
       ) : (
         <Panel title="Your sittings">
           <PBody>
-            <Note kind="info" title="No sitting to invigilate">The office running a CBT examination names the invigilators of each of its sittings; you are told by email when you are named, and the sitting appears here.</Note>
+            <Note kind="info" title="No sitting to invigilate">You are told by email when you are named.</Note>
           </PBody>
         </Panel>
       )}

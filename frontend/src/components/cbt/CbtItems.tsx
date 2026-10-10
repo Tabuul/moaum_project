@@ -59,7 +59,7 @@ export function CbtItems({ examId, ended, canCorrect = false }: { examId: string
     fetch(`/api/bff/api/v1/cbt/exams/${encodeURIComponent(examId)}/key-corrections`).then(async (r) => { if (!gone && r.ok) setHistory((await r.json()) as KeyCorrection[]); }).catch(() => undefined);
     return () => { gone = true; };
   }, [examId, ended, canCorrect, reload]);
-  if (!ended) return <Note kind="info" title="The question analysis opens once the examination has ended">It shows each question&rsquo;s key and how the candidates answered it, so it waits until nobody is still writing.</Note>;
+  if (!ended) return <Note kind="info" title="The question analysis opens once the examination has ended" />;
   if (problem) return <Note kind="bad" title="The analysis could not be read">{problem.title}</Note>;
   if (!data) return <div className="sub2">Reading the answers…</div>;
   const rows = onlyFlagged ? data.questions.filter((q) => q.flags.length) : data.questions;
@@ -75,12 +75,12 @@ export function CbtItems({ examId, ended, canCorrect = false }: { examId: string
       ]} />
       {data.flagged ? (
         <Note kind="bad" title={`${data.flagged} question${data.flagged === 1 ? "" : "s"} may carry a wrong key`}>
-          More of the strongest candidates chose one other option than the option marked correct. Check the key in the bank before the results are approved; correcting a key and marking again is the office&rsquo;s decision, made on the results.
+          The strongest candidates mostly chose another option. Check the key before the results are approved.
         </Note>
       ) : null}
       <Panel title="Question by question" right={<label className="row row--inline row--tight sub2"><input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} /> Only those with something to look at</label>}>
         <PBody>
-          <div className="sub2">Facility is the share of candidates who got the question right — the usual guide is 0.20 to 0.90. Discrimination is that share in the top 27% of candidates by score minus that share in the bottom 27% — 0.20 or more separates well, below 0 means the weaker did better. Option counts show every candidate&rsquo;s choice, with the top group&rsquo;s in brackets; the key is in bold.</div>
+          <div className="sub2">Facility: share right (guide 0.20–0.90). Discrimination: top 27% minus bottom 27% (0.20+ good, below 0 poor). Top group&rsquo;s counts in brackets; key in bold.</div>
         </PBody>
         <DTable pageSize={25} cols={["#|mid", "Question", "Facility|num", "Discrimination|num", "Options chosen", "To look at", ...(canCorrect ? ["|mid"] : [])]} rows={rows.map((q) => [
           <span key="n" className="tnum">{q.n}</span>,
@@ -148,7 +148,7 @@ function KeyFix({ examId, q, onClose, onDone }: { examId: string; q: ItemRow; on
     return (
       <Modal title={`Question ${q.n}: key corrected`} onClose={onDone} foot={<Btn kind="primary" onClick={onDone}>Done</Btn>}>
         <p>{done.scores_changed} score{done.scores_changed === 1 ? "" : "s"} changed, each as a new version of the result naming this correction. {done.bank_fixed ? "The question in the bank is corrected too." : "The question in the bank is unchanged."}</p>
-        {done.sentToSheet ? <Note kind="info" title="The results were already sent to the score sheet">Send them again from Results &amp; analytics so the sheet carries the corrected scores (while the sheet is still at entry).</Note> : null}
+        {done.sentToSheet ? <Note kind="info" title="The results were already sent to the score sheet">Send them again from Results &amp; analytics while the sheet is at entry.</Note> : null}
       </Modal>
     );
   }
@@ -157,7 +157,7 @@ function KeyFix({ examId, q, onClose, onDone }: { examId: string; q: ItemRow; on
       foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={onClose}>Back</Btn>
         <Btn kind="secondary" disabled={busy || same || !key.length} onClick={() => void read()}>{busy && !preview ? "Reading…" : "See the effect"}</Btn>
         <Btn kind="primary" disabled={busy || !preview || same || !reason.trim()} onClick={() => void apply()}>{busy && preview ? "Correcting…" : "Correct the key and re-mark"}</Btn></span>}>
-      <div className="sub2 mb-2">Choose the right option{multi ? "s" : ""}. Every candidate who sat the question is re-marked: their score moves by the difference the key makes, so an amendment made by hand stays. Each changed score is a new version of the result, with your reason; nothing is overwritten.</div>
+      <div className="sub2 mb-2">Choose the right option{multi ? "s" : ""}. Every candidate who sat it is re-marked by the difference; hand amendments stay. Nothing is overwritten.</div>
       <div style={{ display: "grid", gap: 6 }}>
         {q.options.map((o) => (
           <label key={o.i} className="row row--inline row--tight" style={{ alignItems: "flex-start" }}>
@@ -167,7 +167,7 @@ function KeyFix({ examId, q, onClose, onDone }: { examId: string; q: ItemRow; on
         ))}
       </div>
       <Field id="kf-reason" label="Reason" required><textarea id="kf-reason" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. B is the right answer; the key was entered wrongly" /></Field>
-      <label className="row row--inline row--tight sub2"><input type="checkbox" checked={fixBank} onChange={(e) => setFixBank(e.target.checked)} /> Correct the question in the bank too, for later papers (skipped if the bank has changed it since, or a running examination uses it)</label>
+      <label className="row row--inline row--tight sub2"><input type="checkbox" checked={fixBank} onChange={(e) => setFixBank(e.target.checked)} /> Correct the question in the bank too, for later papers</label>
       {preview ? (
         <div className="mt-2">
           <Note kind={preview.changed ? "info" : "ok"} title={`${preview.changed} of ${preview.rows.length} candidates' scores change${preview.passChanged ? ` · ${preview.passChanged} pass or fail` : ""}`}>Read the changes before you apply them.</Note>

@@ -46,7 +46,7 @@ export function Assignments({ rows, examiners, sessions, filters }: { rows: Assi
 
   return (
     <>
-      <PageHead title="Project assignments" description="Every project with an external examiner, where each review stands, and the acts the desk takes on an assignment."
+      <PageHead title="Project assignments" 
         actions={<><LinkBtn kind="primary" href="/examiners/projects">Register or Assign a Project</LinkBtn><LinkBtn href="/examiners/reports">Reports</LinkBtn></>} />
       {problem && !dialog ? <ProblemNotice problem={problem} /> : null}
       <Tiles items={[
@@ -102,7 +102,7 @@ export function Assignments({ rows, examiners, sessions, filters }: { rows: Assi
           <div className="stack">
             <Field id="ra-ex" label="New examiner" required><select id="ra-ex" className="ctl" value={f.examinerId} onChange={(e) => setF({ ...f, examinerId: e.target.value })}><option value="">Choose…</option>{examiners.filter((e) => e.status === "ACTIVE" && e.id !== dialog.a.examiner_id).map((e) => <option key={e.id} value={e.id}>{e.name} · {e.institution}</option>)}</select></Field>
             <Field id="ra-deadline" label="Deadline for the new examiner"><input id="ra-deadline" className="ctl" type="date" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></Field>
-            <Field id="ra-reason" label="Reason" required hint="Recorded with the previous examiner, the new one, who changed it and when; both examiners are told"><textarea id="ra-reason" className="ctl" rows={3} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
+            <Field id="ra-reason" label="Reason" required hint="Both examiners are told"><textarea id="ra-reason" className="ctl" rows={3} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
             <div className="sub2">The current assignment ends and its draft, if any, stays on record; the new examiner starts afresh.</div>
             <div><Btn kind="ghost" size="sm" onClick={() => setDialog({ kind: "withdraw", a: dialog.a })}>Withdraw the assignment instead</Btn></div>
           </div>

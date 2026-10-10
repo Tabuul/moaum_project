@@ -63,7 +63,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
         {["open", "answered", "all"].map((s) => <LinkBtn key={s} href={`/results/queries?state=${s}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`} kind={state === s ? "primary" : "ghost"}>{s === "open" ? "Open" : s === "answered" ? "Answered" : "All"}</LinkBtn>)}
       </div>
       <Note kind="info" title="A query is against one mark, and the answer says what was checked">
-        Upheld: the script was re-totalled and the entry matched it. Corrected: the mark is amended on the sheet and the set goes back through the department, the faculty and Senate for an amendment minute; the published result changes when that finishes. Closed: not a query &mdash; &ldquo;I expected a better grade&rdquo;.
+        Upheld: re-totalled and matched. Corrected: amended through the department, faculty and Senate. Closed: not a query.
       </Note>
       {problem && !answering ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Queries" right={`${rows.length}`}>
@@ -84,7 +84,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
           <div className="sub2">They said: {answering.said}</div>
           <Field id="qv" label="Finding"><select id="qv" className="ctl" value={verdict} onChange={(e) => setVerdict(e.target.value)}><option value="UPHELD">Upheld — the mark stands</option><option value="CORRECTED">Corrected — the mark is amended through the chain</option><option value="CLOSED">Closed — not a query</option></select></Field>
           <Field id="qa" label="Answer" hint="What was checked and what was found. The student reads this."><textarea id="qa" className="ctl" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} /></Field>
-          {verdict === "CORRECTED" ? <Note kind="info" title="Correcting the mark is a separate act">Amend it on the sheet from the approval chain and return the set; this answer records that the correction is under way.</Note> : null}
+          {verdict === "CORRECTED" ? <Note kind="info" title="Correcting the mark is a separate act">Amend it on the sheet from the approval chain.</Note> : null}
           {problem ? <ProblemNotice problem={problem} /> : null}
         </Modal>
       ) : null}

@@ -65,7 +65,7 @@ export function Movements({ rows, grades, actingOffice }: { rows: MovementRow[];
   return (
     <>
       <Note kind="info" title="Approved is not implemented until the instrument exists">
-        A movement is requested and approved by a second officer, but until the letter is issued it changes nothing — not the grade, not the payroll, not the offices held. Issuing the instrument is the act that changes the record from the effective date, and the portal refuses to write an office that cites no instrument.
+        Until the letter is issued, an approved movement changes nothing. Issuing it changes the record from the effective date.
       </Note>
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}

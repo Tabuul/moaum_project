@@ -88,7 +88,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
               {v.deferred ? <p className="sub2 mt-2">The admission is deferred to a later session.</p> : null}
             </>
           ) : null}
-          <div className="sub2 mt-3">Only what the paper itself shows is disclosed. A paper is verified against the University&rsquo;s register, not by its appearance. <Link href="/verify/jupeb">Check another code</Link>.</div>
+          <div className="sub2 mt-3">Only what the paper shows is disclosed. <Link href="/verify/jupeb">Check another code</Link>.</div>
         </div>
       </div>
     </div>

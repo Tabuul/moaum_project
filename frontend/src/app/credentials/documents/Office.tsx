@@ -55,7 +55,7 @@ export function Office({ data, office }: { data: OfficeData; office: string | nu
 
   return (
     <>
-      <PageHead title="Documents office" description="Digital certificates and transcripts: requests through payment, validation, generation, quality check, release and delivery; the register of issued documents; verification by strangers."
+      <PageHead title="Documents office" 
         actions={<>
           <LinkBtn kind="secondary" href="/credentials/documents/requests">Requests</LinkBtn>
           <LinkBtn kind="secondary" href="/credentials/documents/register">Issued documents</LinkBtn>
@@ -111,13 +111,13 @@ export function Office({ data, office }: { data: OfficeData; office: string | nu
         <Panel title="Documents flagged after the record changed" right={`${data.flagged.length}`}>
           <DTable cols={["Document", "Holder", "Flagged|mid", "Why", "|num"]} rows={data.flagged.map((f) => [<span key="d"><strong>{f.kind_label}</strong> <span className="tnum sub2">{f.number}</span></span>, <span key="h">{f.student_name}<div className="sub2 tnum">{f.student_number}</div></span>, <span key="w" className="tnum sub2">{whenAt(f.flagged_at)}</span>, <span key="r" className="sub2">{f.flag_reason}</span>, <LinkBtn key="o" href={`/credentials/documents/register?q=${encodeURIComponent(f.number ?? f.verification_code)}`} size="sm" kind="primary">Review</LinkBtn>])} />
         </Panel>
-      ) : <Note kind="ok" title="No issued document is flagged">A result or an award that changes after issue flags the documents that rest on it; the desk reviews, and reissues where the document is wrong.</Note>}
+      ) : <Note kind="ok" title="No issued document is flagged" />}
 
       <div className="sub2">Revenue by month: {d.revenue.byMonth.map((m) => `${m.month} ${naira(m.amount)} (${m.n})`).join(" · ") || "none yet"} · <Link className="lnk" href="/credentials/transcripts">the earlier transcript queue</Link> still opens.</div>
 
       {ask ? (
         <Modal title={`Issue ${picked.length} digital certificate(s)`} onClose={() => setAsk(false)} foot={<><Btn kind="ghost" onClick={() => setAsk(false)}>Cancel</Btn><Btn kind="primary" onClick={() => void issueBulk()} disabled={busy}>{busy ? "Issuing…" : "Issue"}</Btn></>}>
-          <p>Each certificate is generated from the Senate-approved award and the record, numbered in the series, given a verification code, and the graduate told. One that fails the checks stops the run so the record can be put right; issued dates are today, {dayOf(new Date().toISOString())}.</p>
+          <p>Each certificate is numbered, given a verification code, and the graduate told. One that fails the checks stops the run. Issued {dayOf(new Date().toISOString())}.</p>
         </Modal>
       ) : null}
     </>
