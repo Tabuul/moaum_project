@@ -17,6 +17,7 @@ import { OFFICE_COOKIE, roleLabel, roleUnit } from "@/lib/offices";
 import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
 import { TITLES as PROTOTYPE_TITLES } from "@/lib/titles";
 import { ShellTitle } from "./ShellTitle";
+import { ManualHelp } from "@/components/manual/ManualHelp";
 
 /* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
@@ -86,6 +87,8 @@ export const ROUTES: Record<string, string> = {
   "t/putmebank": "/ict/question-bank",
   "t/putmescores": "/ict/putme-scores",
   "t/putmefiles": "/admissions/putme-scores",
+  "t/manual": "/manual",
+  "t/manualadmin": "/manual/admin",
   "t/candidatedata": "/admissions/candidate-data",
   "t/migrate": "/admissions/migrate",
   "t/readiness": "/readiness",
@@ -380,6 +383,8 @@ const OVERRIDES: Record<string, string> = {
   "t/putmebank": "Post-UTME question bank",
   "t/putmescores": "Post-UTME CBT scores",
   "t/putmefiles": "Post-UTME score files",
+  "t/manual": "Quick Operational Manual",
+  "t/manualadmin": "Manual Management",
   "t/epsbank": "EPS question bank",
   "t/unicbt": "CBT examinations",
   "t/cbtcourses": "CBT courses",
@@ -737,6 +742,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
                 <div className="topbar__who"><div className="topbar__name">{who}</div><div className="topbar__role">{label}</div></div>
               </div>
             ) : null}
+            {me ? <ManualHelp route={route} menu={me.menu ?? null} /> : null}
             <button className="topsrch" aria-label="Search" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="7" />

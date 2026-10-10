@@ -104,3 +104,40 @@ img { max-width: 100%; }
 .funnel__fill { display: block; height: 100%; background: var(--chrome, #2a78d6); border-radius: 999px; }
 .funnel__n { font-size: var(--t-sm, 13px); text-align: right; }
 @media (max-width: 720px) { .funnel__stage { grid-template-columns: 1fr; gap: 4px; } .funnel__n { text-align: left; } }
+
+/* ── V387: the Quick Operational Manual — the top-bar door and the reader ─────────────── */
+.topman { display: flex; align-items: center; gap: 8px; }
+.topman__btn { text-decoration: none; }
+.topman__howto { position: relative; }
+.topman__howto > summary { list-style: none; cursor: pointer; }
+.topman__howto > summary::-webkit-details-marker { display: none; }
+.topman__menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 260px; max-width: 360px; margin: 0; padding: 6px 0; list-style: none;
+  background: var(--panel, #fff); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+.topman__menu li a { display: block; padding: 7px 12px; font-size: var(--t-sm); color: var(--ink); text-decoration: none; }
+.topman__menu li a:hover { background: var(--bg); }
+.topman__all { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+.topman__all a { color: var(--chrome); font-weight: 600; }
+@media (max-width: 900px) { .topman__btn span { display: none; } .topman__menu { right: -8px; max-width: calc(100vw - 32px); } }
+.manual__search { margin: 8px 0 10px; max-width: 560px; }
+.manual__cats { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 14px; }
+.manual__cats .pill { cursor: pointer; border: 0; font: inherit; }
+.manual__count { margin-left: auto; }
+.manual__group { margin-bottom: 18px; }
+.manual__h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.manual__card { margin-bottom: 8px; padding: 0; overflow: hidden; }
+.manual__head { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; width: 100%; text-align: left; padding: 12px 14px; background: none; border: 0; cursor: pointer; font: inherit; color: inherit; }
+.manual__head:hover { background: var(--bg); }
+.manual__title { font-weight: 600; grid-column: 1; }
+.manual__purpose { grid-column: 1; }
+.manual__chev { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 18px; color: var(--muted); }
+.manual__body { padding: 0 14px 14px; border-top: 1px solid var(--line); }
+.manual__steps { margin: 10px 0 8px 20px; padding: 0; line-height: 1.55; }
+.manual__steps li { margin: 0 0 4px; }
+.manual__ctl { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: .92em; }
+.manual__menu { font-weight: 600; color: var(--chrome); text-decoration: none; }
+a.manual__menu:hover { text-decoration: underline; }
+.manual__expected { font-size: var(--t-sm); padding: 8px 10px; background: var(--bg); border-radius: var(--r-md); }
+@media print { .topman { display: none !important; } }
+
+.manual__link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--chrome); cursor: pointer; text-align: left; }
+.manual__link:hover { text-decoration: underline; }

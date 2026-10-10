@@ -188,6 +188,8 @@ export const TITLES: Record<string, string> = {
   "t/putmebank": "Post-UTME question bank",
   "t/putmescores": "Post-UTME CBT scores",
   "t/putmefiles": "Post-UTME score files",
+  "t/manual": "Quick Operational Manual",
+  "t/manualadmin": "Manual Management",
   "t/screening": "Screening register",
   "t/de-screening": "Direct Entry screening",
   "t/pgadmissions": "Postgraduate admissions",

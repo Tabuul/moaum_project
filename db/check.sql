@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 229
+\set EXPECTED 230
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -8938,6 +8938,69 @@ BEGIN
         format('both: classes=%s once=%s third=%s both=%s | resolve %s/%s/%s/%s | guard twin=%s copy=%s taken=%s | upload offers=%s held=%s bound=%s both=%s | dups=%s keep=%s dry=%s after=%s | merge office=%s reason=%s moved=%s alias=%s gone=%s classes=%s questions=%s entry=%s resolve=%s again=%s family=%s other=%s',
                n_cls, r_once, r_both, v_both, v_res1, v_res2, v_res3, v_res4, r_twin, r_copy, r_taken, imp.offers, n_zqk, v_bound, v_upl_both,
                n_dups, v_dup_keep, dry, n_after_dry, r_office, r_reason, merged->'moved', v_alias, v_gone, n_cls_keep, n_q, v_entry_course, v_res_alias, r_merged, r_family, r_clash));
+END $$;
+
+-- ── V387. The Quick Operational Manual: the first edition seeded and published for every office; a person reads only the
+--          procedures bound to the keys they act under (the office, the sidebar beside it, everyone) and, for a capability-bound
+--          procedure, only with a posting that carries it; a draft is unseen until published; an edit keeps the previous version;
+--          the edition steps on every publication and on a release; an archived procedure is restored before it is edited; an
+--          unknown office, an empty step and a taken key are refused; readings and acts are on the record ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); n_seed int; n_unpub int; n_bad_office int; n_student int; n_student_leak int; n_bursar_sign int;
+        n_agent int; n_agent_caps int; n_ctx int; n_search int; n_pg int; ed0 text; ed1 text; ed2 text; ed3 text; r manual.procedure; v_seen int; v_seen2 int;
+        v_ver int; v_snap int; v_old_title text; r_state text; r_arch text; r_unknown text; r_empty text; r_taken text; n_reorder int; n_views int; n_audit int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'super', true); PERFORM set_config('moaum.reason', 'CHECK V387', true);
+        -- (1) the first edition: seeded, published, bound to offices the portal knows
+        SELECT count(*) FILTER (WHERE seeded), count(*) FILTER (WHERE seeded AND state <> 'PUBLISHED') INTO n_seed, n_unpub FROM manual.procedure;
+        SELECT count(*) INTO n_bad_office FROM manual.procedure p, unnest(p.offices) o WHERE NOT (o = ANY (manual.known_keys()));
+        -- (2) who reads what: a student reads nothing of ICT's or the Bursary's; everyone signs in; a capability gates the CPO's course change
+        SELECT count(*) INTO n_student FROM manual.procedures_for(ARRAY['student'], '{}');
+        SELECT count(*) INTO n_student_leak FROM manual.procedures_for(ARRAY['student'], '{}') WHERE 'ict' = ANY (offices) OR 'bursar' = ANY (offices);
+        SELECT count(*) INTO n_bursar_sign FROM manual.procedures_for(ARRAY['bursar'], '{}') WHERE slug = 'sign-in';
+        SELECT count(*) INTO n_agent FROM manual.procedures_for(ARRAY['ictagent'], '{}') WHERE slug = 'cpo-add-course';
+        SELECT count(*) INTO n_agent_caps FROM manual.procedures_for(ARRAY['ictagent'], ARRAY['MANAGE_REGISTRATION']) WHERE slug = 'cpo-add-course';
+        SELECT count(*) INTO n_ctx FROM manual.context_for(ARRAY['student'], '{}', 's/register') WHERE slug = 'student-register';
+        SELECT count(*) INTO n_search FROM manual.search(ARRAY['academic'], '{}', 'matriculation') WHERE slug = 'matric-issue';
+        SELECT count(*) INTO n_pg FROM manual.procedures_for(ARRAY['student', 'pgstudent'], '{}') WHERE slug = 'pg-progress';
+        -- (3) Manual Management: draft, publish, edit, unpublish, archive, restore; the refusals; the edition; order, readings, audit
+        ed0 := manual.edition_text();
+        r := manual.save_procedure(NULL, 'check-v387', 'Check', 'Check purpose', 'DASHBOARD', ARRAY['bursar'], '{}', 't/payments', NULL, ARRAY['Open {menu:t/payments}.'], 'Done', 5, who, 'super', 'check');
+        SELECT count(*) INTO v_seen FROM manual.procedures_for(ARRAY['bursar'], '{}') WHERE slug = 'check-v387';
+        r := manual.set_state(r.id, 'PUBLISH', who, 'super', NULL);
+        ed1 := manual.edition_text();
+        SELECT count(*) INTO v_seen2 FROM manual.procedures_for(ARRAY['bursar'], '{}') WHERE slug = 'check-v387';
+        r := manual.save_procedure(r.id, 'check-v387', 'Check edited', 'Check purpose', 'DASHBOARD', ARRAY['bursar'], '{}', 't/payments', NULL, ARRAY['Open {menu:t/payments}.', 'Click `Export Excel`.'], 'Done', 5, who, 'super', 'edit');
+        v_ver := r.version;
+        SELECT count(*), max(snapshot ->> 'title') INTO v_snap, v_old_title FROM manual.procedure_version WHERE procedure_id = r.id;
+        r := manual.set_state(r.id, 'UNPUBLISH', who, 'super', NULL);
+        r_state := r.state;
+        r := manual.set_state(r.id, 'ARCHIVE', who, 'super', 'old');
+        BEGIN PERFORM manual.save_procedure(r.id, 'check-v387', 'x', 'x', 'DASHBOARD', ARRAY['bursar'], '{}', NULL, NULL, ARRAY['x'], 'x', 5, who, 'super', NULL); r_arch := 'EDITED'; EXCEPTION WHEN check_violation THEN r_arch := split_part(SQLERRM, ':', 1); END;
+        r := manual.set_state(r.id, 'RESTORE', who, 'super', NULL);
+        BEGIN PERFORM manual.save_procedure(NULL, 'check-v387-b', 'x', 'x', 'DASHBOARD', ARRAY['nobody'], '{}', NULL, NULL, ARRAY['x'], 'x', 5, who, 'super', NULL); r_unknown := 'SAVED'; EXCEPTION WHEN check_violation THEN r_unknown := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM manual.save_procedure(NULL, 'check-v387-c', 'x', 'x', 'DASHBOARD', ARRAY['bursar'], '{}', NULL, NULL, ARRAY['x', ' '], 'x', 5, who, 'super', NULL); r_empty := 'SAVED'; EXCEPTION WHEN check_violation THEN r_empty := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM manual.save_procedure(NULL, 'sign-in', 'x', 'x', 'DASHBOARD', ARRAY['bursar'], '{}', NULL, NULL, ARRAY['x'], 'x', 5, who, 'super', NULL); r_taken := 'SAVED'; EXCEPTION WHEN check_violation THEN r_taken := split_part(SQLERRM, ':', 1); END;
+        ed2 := manual.edition_text();
+        ed3 := manual.bump_edition(who, 'super', 'release', true);
+        n_reorder := manual.reorder(ARRAY(SELECT id FROM manual.procedure WHERE 'bursar' = ANY (offices) ORDER BY title LIMIT 3), who, 'super');
+        PERFORM manual.record_view(who, 'super', 'OPEN', NULL, NULL); PERFORM manual.record_view(who, 'super', 'PROCEDURE', r.id, NULL);
+        SELECT count(*) INTO n_views FROM manual.view WHERE person_id = who;
+        SELECT count(*) INTO n_audit FROM audit.entries WHERE actor_id = who AND subject_type ILIKE '%procedure%';
+        RAISE EXCEPTION 'the V387 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V387: the Quick Operational Manual — seeded and published for every office; read by the keys a person acts under and a posting''s capability; a draft unseen until published; an edit versioned; the edition stepping; an archived procedure restored before edited; unknown office, empty step and taken key refused; readings and acts recorded',
+        coalesce(n_seed >= 200 AND n_unpub = 0 AND n_bad_office = 0
+                 AND n_student >= 20 AND n_student_leak = 0 AND n_bursar_sign = 1 AND n_agent = 0 AND n_agent_caps = 1 AND n_ctx = 1 AND n_search = 1 AND n_pg = 1
+                 AND ed0 = '1.0' AND v_seen = 0 AND v_seen2 = 1 AND ed1 = '1.1' AND v_ver = 2 AND v_snap = 1 AND v_old_title = 'Check' AND r_state = 'DRAFT'
+                 AND r_arch = 'MANUAL_ARCHIVED' AND r_unknown = 'MANUAL_OFFICE_UNKNOWN' AND r_empty = 'MANUAL_STEP_EMPTY' AND r_taken = 'MANUAL_SLUG_TAKEN'
+                 AND ed2 = '1.5' AND ed3 = '2.0' AND n_reorder = 3 AND n_views = 2 AND n_audit >= 3, false),
+        format('seed=%s unpublished=%s bad_office=%s | student=%s leaks=%s bursar_signin=%s agent=%s/%s ctx=%s search=%s pg=%s | edition %s→%s→%s→%s seen=%s/%s ver=%s snap=%s/%s state=%s | arch=%s unknown=%s empty=%s taken=%s | reorder=%s views=%s audit=%s',
+               n_seed, n_unpub, n_bad_office, n_student, n_student_leak, n_bursar_sign, n_agent, n_agent_caps, n_ctx, n_search, n_pg, ed0, ed1, ed2, ed3, v_seen, v_seen2, v_ver, v_snap, v_old_title, r_state,
+               r_arch, r_unknown, r_empty, r_taken, n_reorder, n_views, n_audit));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

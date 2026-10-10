@@ -1161,7 +1161,8 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
-          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
+          { "id": "t/manualadmin", "icon": "book", "label": "Manual Management" }
         ]
       },
       {
@@ -1358,7 +1359,8 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
-          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
+          { "id": "t/manualadmin", "icon": "book", "label": "Manual Management" }
         ]
       },
       {
@@ -1502,7 +1504,8 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
-          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" }
+          { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
+          { "id": "t/manualadmin", "icon": "book", "label": "Manual Management" }
         ]
       },
       {
