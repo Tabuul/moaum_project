@@ -57,6 +57,11 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/payments/paydirect/interswitch",
   "/api/bff/api/v1/payments/paydirect/validate",
   "/api/bff/api/v1/payments/paydirect/notify",
+  /* the Post-UTME CBT door and the result-checking page (V385): a candidate has no session until the JAMB number opens one; the
+     examination room behind the door needs that session. The API limits each connection. */
+  "/post-utme/cbt",
+  "/post-utme/results",
+  "/api/bff/api/v1/putme/results/check",
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 

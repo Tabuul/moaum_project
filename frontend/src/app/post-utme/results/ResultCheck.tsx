@@ -55,7 +55,7 @@ export function ResultCheck({ state }: { state: PutmePublic }) {
         <input id="rc-jamb" className="ctl tnum" autoComplete="off" value={jamb} onChange={(e) => setJamb(e.target.value.toUpperCase())} />
         <label className="lbl mt-2" htmlFor="rc-proof">{state.resultFactorLabel}</label>
         <input id="rc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.resultFactor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : ""} />
-        <div className="mt-2"><Btn kind="primary" disabled={busy || !jamb.trim() || !proof.trim()}>{busy ? "Checking…" : "Check result"}</Btn></div>
+        <div className="mt-2"><Btn kind="primary" type="submit" disabled={busy || !jamb.trim() || !proof.trim()}>{busy ? "Checking…" : "Check result"}</Btn></div>
       </form>
     </AuthLayout>
   );

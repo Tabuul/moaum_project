@@ -113,7 +113,7 @@ export function PutmeGate({ state }: { state: PutmePublic }) {
           <label className="lbl mt-2" htmlFor="pc-proof">{state.factorLabel}</label>
           <input id="pc-proof" className="ctl" autoComplete="off" value={proof} onChange={(e) => setProof(e.target.value)} placeholder={state.factor === "DATE_OF_BIRTH" ? "yyyy-mm-dd" : state.factor === "PHONE" ? "0803…" : ""} />
         </>}
-        <div className="mt-2"><Btn kind="primary" disabled={busy || !REG_SHAPE.test(jamb.trim()) || (!jambAlone && !proof.trim())}>{busy ? "Verifying…" : "Verify candidate"}</Btn></div>
+        <div className="mt-2"><Btn kind="primary" type="submit" disabled={busy || !REG_SHAPE.test(jamb.trim()) || (!jambAlone && !proof.trim())}>{busy ? "Verifying…" : "Verify candidate"}</Btn></div>
       </form>
       <div className="sub2 mt-2">Checking a result? <a href="/post-utme/results">Post-UTME result checking</a>.</div>
     </AuthLayout>
