@@ -12,7 +12,7 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import { BASES, KINDS, LEVELS, PROPOSAL_STATE, SOURCE, STATE, semName, usageWords, type CourseDetail as Detail, type Directory } from "@/lib/catalogue";
+import { BASES, EVIDENCE, KINDS, LEVELS, PROPOSAL_STATE, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type Directory } from "@/lib/catalogue";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -72,9 +72,9 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
   return (
     <>
       <PageHead eyebrow={<span className="tnum">{c.dept_name ?? c.dept_code} · {c.faculty_name ?? ""}</span>} title={<><span className="tnum">{c.code}</span> — {c.title}</>}
-        description={<>{c.units} units · {c.level} Level · {semName(c.semester)} semester · {c.kind}{c.curriculum ? ` · ${c.curriculum}` : ""}{c.general_office ? ` · ${c.general_office}` : ""} · <Pil kind={STATE[c.state]?.[0] ?? "grey"}>{STATE[c.state]?.[1] ?? c.state}</Pil> <span className="sub2 tnum">Course ID {c.id}</span></>}
+        description={<>{c.units} units · {c.level} Level · {courseSemName(c.semester, c.both_semesters)} semester · {c.kind}{c.curriculum ? ` · ${c.curriculum}` : ""}{c.general_office ? ` · ${c.general_office}` : ""} · <Pil kind={STATE[c.state]?.[0] ?? "grey"}>{STATE[c.state]?.[1] ?? c.state}</Pil> <span className="sub2 tnum">Course ID {c.id}</span></>}
         actions={<>
-          {data.may.edit && c.state !== "ENDED" ? <Btn kind="secondary" onClick={() => setEdit({ title: c.title, units: String(c.units), semester: String(c.semester), level: String(c.level), kind: c.kind })}>Edit</Btn> : null}
+          {data.may.edit && c.state !== "ENDED" ? <Btn kind="secondary" onClick={() => setEdit({ title: c.title, units: String(c.units), semester: c.both_semesters ? "both" : String(c.semester), level: String(c.level), kind: c.kind })}>Edit</Btn> : null}
           {data.may.edit ? <Btn kind="ghost" onClick={() => setRename(c.code)}>Rename the code</Btn> : null}
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`); }}>End</Btn> : null}
           {data.may.edit && c.state === "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`); }}>Restore</Btn> : null}
@@ -82,6 +82,11 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
           <LinkBtn href={`/catalogue?dept=${encodeURIComponent(ownDept)}`}>Department courses</LinkBtn>
           <LinkBtn href="/catalogue/all">All courses</LinkBtn>
         </>} />
+      {data.requested && data.requested !== c.code ? (
+        <Note kind="info" title={`${data.requested} is ${c.code}`}>
+          {(data.aliases ?? []).some((a) => a.alias_code === data.requested) ? `${data.requested} was merged into ${c.code}; the pool holds the course once, under ${c.code}.` : `The pool holds this course under ${c.code}.`}
+        </Note>
+      ) : null}
 
       <Tiles items={[
         ["Course owner", c.dept_name ?? c.dept_code ?? "—", null, c.owner_programme_name ? `Owner programme: ${c.owner_programme_name}` : "Sets the sheet, answers a query on a mark"],
@@ -202,20 +207,29 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
       {edit ? (
         <Modal title={`Edit ${c.code}`} sub={used ? `This course carries ${used}; all of it follows.` : "Nothing hangs on this course yet."} onClose={() => setEdit(null)}
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !edit.title.trim()} onClick={async () => {
-            const changed = Number(edit.units) !== c.units || Number(edit.level) !== c.level || Number(edit.semester) !== c.semester;
+            const both = edit.semester === "both";
+            const changed = Number(edit.units) !== c.units || Number(edit.level) !== c.level || (both ? !c.both_semesters : Number(edit.semester) !== c.semester || !!c.both_semesters);
             if (changed && used && !window.confirm(`The units, level or semester change on a course that carries ${used}. Past results keep the marks they carry; registration and fees from now on read the new values. Continue?`)) return;
-            if (await call("PUT", `/courses/${encodeURIComponent(c.code)}`, { title: edit.title.trim(), units: Number(edit.units), semester: Number(edit.semester), level: Number(edit.level), kind: edit.kind }, `${c.code} edited`)) setEdit(null);
+            if (await call("PUT", `/courses/${encodeURIComponent(c.code)}`, { title: edit.title.trim(), units: Number(edit.units), semester: both ? 1 : Number(edit.semester), level: Number(edit.level), kind: edit.kind, bothSemesters: both }, `${c.code} edited`)) setEdit(null);
           }}>Save</Btn></>}>
           <div className="stack">
             <Field id="ed-title" label="Title" required><input id="ed-title" className="ctl" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} maxLength={120} /></Field>
             <div className="grid grid--4">
               <Field id="ed-units" label="Units"><input id="ed-units" className="ctl tnum" inputMode="numeric" value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })} /></Field>
               <Field id="ed-level" label="Level"><select id="ed-level" className="ctl" value={edit.level} onChange={(e) => setEdit({ ...edit, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
-              <Field id="ed-sem" label="Semester"><select id="ed-sem" className="ctl" value={edit.semester} onChange={(e) => setEdit({ ...edit, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
+              <Field id="ed-sem" label="Semester"><select id="ed-sem" className="ctl" value={edit.semester} onChange={(e) => setEdit({ ...edit, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option><option value="both">First and second</option></select></Field>
               <Field id="ed-kind" label="Kind"><select id="ed-kind" className="ctl" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
             </div>
           </div>
         </Modal>
+      ) : null}
+      {(data.aliases ?? []).length ? (
+        <Panel title="Codes merged into this course" right="Each answers for this course in every upload">
+          <DTable pageSize={0} noPrint cols={["Code|mid", "Title then", "Why one course", "Reason", "By", "When|mid"]} rows={(data.aliases ?? []).map((a) => [
+            <b key="c" className="tnum">{a.alias_code}</b>, a.title ?? "—", EVIDENCE[a.evidence] ?? a.evidence, <span key="r" className="sub2">{a.reason}</span>,
+            <span key="b" className="sub2">{a.merged_by ?? a.merged_office ?? "—"}</span>, <span key="w" className="tnum sub2">{when(a.merged_at)}</span>,
+          ])} />
+        </Panel>
       ) : null}
       {(data.ownerHistory ?? []).length ? (
         <Panel title="Owner history" right="Every change of the department or programme that owns the course">

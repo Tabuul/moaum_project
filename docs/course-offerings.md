@@ -144,3 +144,44 @@ blindly. `catalogue.rename_course` now accepts every form the catalogue keys (CS
 and spacing; a prefix is known when the catalogue already carries it hyphenated or it is one of the University's own
 (MOAU, MOAUM, MOUA, BSU, FBSU). Property 181 and `CourseOfferingIT` cover it. Railway carried one such code at the time
 (BSUGEO 413); the AWS portal, fed by uploads, is where the rest are expected.
+
+## 10. One course held once, whatever the session (V386)
+
+**What was found.** The pool already followed the rule: `catalogue.course` holds a course once (its code, a stable id, no
+session); `catalogue.course_offer` binds it to programmes and levels with no session and is reused every session; a session's
+class (`catalogue.offering`) carries the session, semester and lecturer, and registrations, score sheets, results, allocations
+and CBT examinations hang from the class. The All courses page needs no session (its "Offered in session" filter is optional
+history). Three gaps were closed.
+
+**1 · The structure upload matches the pool.** `catalogue.resolve_course_code` is the one rule: the code as written if it is
+a course; its normal form (CSC101 → CSC 101); a code merged into another; the one course written the same way (CSC-101); the
+course a session copy copies ("CSC 101 2025/2026" → CSC 101); else the normal form of a new course. The programme-structure
+upload (`import_courses_rows`) and the catalogue upload (`import_catalogue_rows`, and its prerequisites) both use it.
+
+**2 · Both semesters.** `catalogue.course.both_semesters` (first and second; never with the third — `CAT_SEMESTER_BOTH`).
+Opening registration, the CCE classes, the GST/EPS gaps, SIWES units, deferment and the current-session class for a course
+made live all open or count it in each semester (`catalogue.runs_in`); the course list's semester filter finds it in either.
+A student registers it once a session (`REGISTRATION_ONCE_A_SESSION`). The uploads read "Both", "B", "1 & 2", "First and
+Second"; the course page's edit and the new-course form take it.
+
+**3 · Duplicates.** The pool refuses a new code (or a rename) that is a course written differently (`COURSE_DUPLICATE_CODE`),
+a copy of a course for a session (`COURSE_SESSION_COPY`) or a merged code (`COURSE_CODE_MERGED`); a rename onto a code taken
+is refused by the key as before. The twins already held are listed (`catalogue.duplicate_codes`, on All courses: "The same
+course under two codes") with the code to keep — the University's form, then the live one, then the one more used. A merge
+(`catalogue.merge_course`) is previewed by anyone who may edit courses and made by the Academic Office or the Registry with a
+reason: every class (with its registrations, sheets and results), binding, prerequisite, CBT examination, question, deferral,
+offer proposal and held old-portal result moves to the course kept; a binding or prerequisite the course kept already holds
+stays as it is; the merged code becomes an alias (`catalogue.course_alias`, with the merged record as it was, what moved and
+why) and answers for the course kept in every upload and on the course page. Refused: two courses that are not one by code
+or by title, level, semester and owner (`MERGE_NOT_SAME`); a BSU- code and its MOAU- twin (`MERGE_FAMILY`); a BMAS course and
+its CCMAS counterpart (`MERGE_CURRICULUM`); two general-studies offices; an ended course kept; and two classes in the same
+session and semester (`MERGE_CLASS_CLASH` — two classes are not joined by a merge). The department duplicates desk offers
+"Merge into …" beside Remove and End. Issued documents keep the code they were issued with.
+
+**API.** `GET /duplicate-codes`, `POST /courses/merge/preview`, `POST /courses/merge`; `PUT /courses/{code}` and
+`POST /courses` take `bothSemesters`; `GET /courses/{code}/detail` resolves a merged or differently written code and lists
+the aliases.
+
+**Tests.** check.sql — the V386 property (both semesters opened and registered once, resolution, the guard, the upload, the
+twins listed, the dry run, the merge, the alias, the family refusal; 228); the V333 property makes its deliberate twin with
+the guard off, as the old data was. `CourseMergeIT` through the API.

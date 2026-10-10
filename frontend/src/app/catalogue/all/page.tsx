@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import type { CourseList, Directory } from "@/lib/catalogue";
+import type { CourseList, Directory, DuplicatePair } from "@/lib/catalogue";
 import { AllCourses, type Filters } from "./AllCourses";
 import { GstTransfers, type ChaseSettings, type GeneralTransfer } from "@/components/gst/GstTransfers";
 
@@ -16,11 +16,13 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) if (v) qs.set(k, v);
   qs.set("page", String(page));
-  const [me, list, directory, sessions] = await Promise.all([
+  const [me, list, directory, sessions, duplicates] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<CourseList>(`/api/v1/catalogue/courses/list?${qs.toString()}`),
     api<Directory>("/api/v1/catalogue/directory"),
     api<{ name: string; state: string }[]>("/api/v1/cohorts/settings").then((r) => (r.ok ? (r.data as unknown as { sessions: { name: string; state: string }[] }).sessions : [])).catch(() => [] as { name: string; state: string }[]),
+    // V386: the codes the pool holds twice
+    api<DuplicatePair[]>("/api/v1/catalogue/duplicate-codes").then((r) => (r.ok ? r.data : [])).catch(() => [] as DuplicatePair[]),
   ]);
   // V369: the Academic Office (and the Super Administrator) decides the requests the GST and EPS offices have not settled
   const acting = me.ok ? me.data.activeOffice ?? null : null;
@@ -35,7 +37,8 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
       {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
-        <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null} />
+        <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null}
+          duplicates={duplicates} mayMerge={["academic", "registrar", "dregistrar", "super"].includes(acting ?? "")} />
       )}
     </Shell>
   );

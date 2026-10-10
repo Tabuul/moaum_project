@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 228
+\set EXPECTED 229
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4989,11 +4989,13 @@ BEGIN
         PERFORM set_config('moaum.actor_office', 'registrar', true);
         SELECT d.code, p.code INTO d_a, p_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
          WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
-        -- uploaded as the old portal wrote them: the hyphen dropped
+        -- uploaded as the old portal wrote them: the hyphen dropped (V386: the pool now refuses a twin, so the old data is made as it was)
+        ALTER TABLE catalogue.course DISABLE TRIGGER trg_course_code_guard;
         INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
           ('MOAUCHM 181', 'Physical Chemistry I', 3, 1, 100, d_a, 'Core', 'LIVE'),
           ('BSUGEO 181', 'Map Reading', 2, 2, 100, d_a, 'Core', 'LIVE'),
           ('BSU-GEO 181', 'Map Reading', 2, 2, 100, d_a, 'Core', 'LIVE');
+        ALTER TABLE catalogue.course ENABLE TRIGGER trg_course_code_guard;
         PERFORM catalogue.bind_offer('MOAUCHM 181', p_a, 100, 'Core', NULL, 'IMPORT');
         SELECT id INTO v_id FROM catalogue.course WHERE code = 'MOAUCHM 181';
         SELECT count(*) INTO n_fix FROM catalogue.code_fixes(d_a) WHERE code IN ('MOAUCHM 181', 'BSUGEO 181');
@@ -8822,6 +8824,120 @@ BEGIN
                  AND v_rfactor = 'APPLICATION_NO' AND rc_alone = 'NOT_VERIFIED' AND rc_number = 'NOT_RELEASED' AND r_none = 'NONE' AND r_bogus = 'CBT_SETTING', false),
         format('default=%s factor=%s alone=%s null=%s unknown=%s strict=%s | result factor=%s alone=%s number=%s | setting none=%s bogus=%s',
                v_default, v_factor, v_alone = app, v_null = app, v_unknown, v_strict, v_rfactor, rc_alone, rc_number, r_none, r_bogus));
+END $$;
+
+-- ── V386: one course held once — the uploads match the pool, a course in both semesters, the twins merged ──
+-- A course taught in both semesters is opened in each and registered once a session; a code written differently, a
+-- merged code or a session copy resolves to the course held, and the pool refuses to hold it twice; the structure upload
+-- binds the course held; the twins already held are listed, a dry run moves nothing, and the merge by the Registry with a
+-- reason moves every class, registration, binding and question to the course kept and leaves the old code an alias of it.
+-- The BSU- and MOAU- codes are never merged. The block undoes its own writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9935/9936'; d_a text; p_a text; stu uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid();
+        n_cls int; c1 uuid; c2 uuid; r_once text; r_both text; v_both boolean; v_res1 text; v_res2 text; v_res3 text; v_res4 text;
+        r_twin text; r_copy text; r_taken text; imp record; n_zqk int; v_bound boolean; v_upl_both boolean; n_dups int; v_dup_keep text;
+        dry jsonb; n_after_dry int; r_office text; r_reason text; merged jsonb; v_alias text; v_gone boolean; n_cls_keep int; n_q int;
+        v_entry_course text; r_merged text; v_res_alias text; r_family text; r_clash text; q_id uuid := gen_random_uuid(); msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V386', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT d.code, p.code INTO d_a, p_a FROM ref.department d JOIN ref.programme p ON p.dept_code = d.code AND NOT coalesce(p.archived, false)
+         WHERE d.ended_on IS NULL ORDER BY d.code, p.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9935-10-01', date '9936-08-31') ON CONFLICT (name) DO NOTHING;
+
+        -- (1) a course taught in both semesters: a class in each, registered once a session
+        INSERT INTO catalogue.course (code, title, units, semester, both_semesters, level, dept_code, kind, state)
+        VALUES ('ZQK 101', 'Check Both Semesters', 2, 1, true, 100, d_a, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQK 101', p_a, 100, 'Core');
+        PERFORM registration.open_course_registration(S, 1);
+        PERFORM registration.open_course_registration(S, 2);
+        SELECT count(*) INTO n_cls FROM catalogue.offering WHERE course_code = 'ZQK 101' AND session = S AND stream = 'REGULAR';
+        SELECT id INTO c1 FROM catalogue.offering WHERE course_code = 'ZQK 101' AND session = S AND semester = 1 AND stream = 'REGULAR';
+        SELECT id INTO c2 FROM catalogue.offering WHERE course_code = 'ZQK 101' AND session = S AND semester = 2 AND stream = 'REGULAR';
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (stu, 'MOAUM/ADM/35/990386', 'MOAUM/CHK/35/0386', 'ZZBOTH386', 'Twice', p_a, 'UTME', 'FULL_TIME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at)
+        VALUES (r1, stu, S, 1, 100, 'SUBMITTED', now()), (r2, stu, S, 2, 100, 'SUBMITTED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r1, c1, 2, 'CURRENT', 'REGISTERED');
+        BEGIN INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r2, c2, 2, 'CURRENT', 'REGISTERED'); r_once := 'SET';
+        EXCEPTION WHEN check_violation THEN r_once := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQK 301', 'Check Third Semester', 2, 3, 300, d_a, 'Core', 'LIVE');
+        BEGIN PERFORM catalogue.update_course('ZQK 301', 'Check Third Semester', 2, 3, 300, 'Core', true); r_both := 'SET';
+        EXCEPTION WHEN check_violation THEN r_both := split_part(SQLERRM, ':', 1); END;
+        PERFORM catalogue.update_course('ZQK 301', 'Check Third Semester', 2, 2, 300, 'Core', true);
+        SELECT both_semesters INTO v_both FROM catalogue.course WHERE code = 'ZQK 301';
+
+        -- (2) a code resolves to the course held; the pool refuses a second record of it
+        v_res1 := catalogue.resolve_course_code('zqk101');
+        v_res2 := catalogue.resolve_course_code('ZQK-101');
+        v_res3 := catalogue.resolve_course_code('ZQK 101 2025/2026');
+        v_res4 := catalogue.resolve_course_code('zqk 999');
+        BEGIN INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQK101', 'Check Both Semesters', 2, 1, 100, d_a, 'Core', 'LIVE'); r_twin := 'MADE';
+        EXCEPTION WHEN check_violation THEN r_twin := split_part(SQLERRM, ':', 1); END;
+        BEGIN INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQK 101 2025/2026', 'Check Both Semesters', 2, 1, 100, d_a, 'Core', 'LIVE'); r_copy := 'MADE';
+        EXCEPTION WHEN check_violation THEN r_copy := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.rename_course('ZQK 301', 'ZQK 101'); r_taken := 'RENAMED';
+        EXCEPTION WHEN unique_violation THEN r_taken := 'TAKEN'; WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_taken := split_part(msg, ':', 1); END;
+
+        -- (3) the structure upload binds the course held, however written; a semester may be both
+        SELECT * INTO imp FROM catalogue.import_courses_rows(p_a, jsonb_build_array(
+            jsonb_build_object('code', 'zqk101', 'title', 'Check Both Semesters', 'units', '2', 'level', '200', 'semester', 'Both', 'status', 'C'),
+            jsonb_build_object('code', 'ZQK 205', 'title', 'Check Upload Both', 'units', '3', 'level', '200', 'semester', '1 & 2', 'status', 'C')));
+        SELECT count(*) INTO n_zqk FROM catalogue.course WHERE catalogue.code_key(code) = 'ZQK101';
+        v_bound := EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = 'ZQK 101' AND programme_code = p_a AND level = 200);
+        SELECT both_semesters INTO v_upl_both FROM catalogue.course WHERE code = 'ZQK 205';
+
+        -- (4) the twins the pool already held (made as the old data made them), listed and merged
+        ALTER TABLE catalogue.course DISABLE TRIGGER trg_course_code_guard;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+          ('ZQK102', 'Check Twin', 2, 1, 100, d_a, 'Core', 'LIVE'), ('ZQK 102', 'Check Twin', 2, 1, 100, d_a, 'Core', 'LIVE'),
+          ('BSU-ZQK 181', 'Check Family', 2, 1, 100, d_a, 'Core', 'LIVE'), ('MOAU-ZQK 181', 'Check Family', 2, 1, 100, d_a, 'Core', 'LIVE');
+        ALTER TABLE catalogue.course ENABLE TRIGGER trg_course_code_guard;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQK102', p_a, 100, 'Core'), ('ZQK 102', p_a, 100, 'Core'), ('ZQK102', p_a, 200, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZQK102', S, 1);
+        UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = r1;
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT r1, o.id, 2, 'CURRENT', 'REGISTERED' FROM catalogue.offering o WHERE o.course_code = 'ZQK102' AND o.session = S;
+        SELECT count(*), min(keep_code) INTO n_dups, v_dup_keep FROM catalogue.duplicate_codes() WHERE merge_code IN ('ZQK102', 'ZQK 102');
+        dry := catalogue.merge_course('ZQK 102', 'ZQK102', NULL, true);
+        SELECT count(*) INTO n_after_dry FROM catalogue.course WHERE code = 'ZQK102';
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM catalogue.merge_course('ZQK 102', 'ZQK102', 'the check', false); r_office := 'MERGED';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM catalogue.merge_course('ZQK 102', 'ZQK102', ' ', false); r_reason := 'MERGED';
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        merged := catalogue.merge_course('ZQK 102', 'ZQK102', 'the old portal wrote it without its space', false);
+        SELECT course_code INTO v_alias FROM catalogue.course_alias WHERE alias_code = 'ZQK102';
+        v_gone := NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZQK102');
+        SELECT count(*) INTO n_cls_keep FROM catalogue.offering WHERE course_code = 'ZQK 102' AND session = S;
+        SELECT count(*) INTO n_q FROM assessment.question WHERE course_code = 'ZQK 102';
+        SELECT o.course_code INTO v_entry_course FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1 AND e.status = 'REGISTERED';
+        v_res_alias := catalogue.resolve_course_code('zqk102');
+        BEGIN INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQK102', 'Check Twin', 2, 1, 100, d_a, 'Core', 'LIVE'); r_merged := 'MADE';
+        EXCEPTION WHEN check_violation THEN r_merged := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.merge_course('MOAU-ZQK 181', 'BSU-ZQK 181', 'the check', false); r_family := 'MERGED';
+        EXCEPTION WHEN check_violation THEN r_family := split_part(SQLERRM, ':', 1); END;
+        r_clash := (catalogue.merge_course('ZQK 101', 'ZQK 205', 'the check', true))->>'blocked';
+        RAISE EXCEPTION 'the V386 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V386: one course held once — a course in both semesters is opened in each and registered once a session; a code written differently, a session copy or a merged code resolves to the course held and the pool refuses to hold it twice; the structure upload binds the course held; the twins already held are listed, a dry run moves nothing, the merge by the Registry with a reason moves the classes, registrations and bindings to the course kept and leaves the old code its alias; the BSU- and MOAU- codes are never merged',
+        coalesce(n_cls = 2 AND r_once = 'REGISTRATION_ONCE_A_SESSION' AND r_both = 'CAT_SEMESTER_BOTH' AND v_both
+                 AND v_res1 = 'ZQK 101' AND v_res2 = 'ZQK 101' AND v_res3 = 'ZQK 101' AND v_res4 = 'ZQK 999'
+                 AND r_twin = 'COURSE_DUPLICATE_CODE' AND r_copy = 'COURSE_SESSION_COPY' AND r_taken = 'TAKEN'
+                 AND imp.offers = 2 AND n_zqk = 1 AND v_bound AND v_upl_both
+                 AND n_dups = 1 AND v_dup_keep = 'ZQK 102' AND (dry->>'evidence') = 'SAME_CODE_WRITTEN_DIFFERENTLY' AND (dry->>'blocked') IS NULL
+                 AND (dry->'moved'->>'catalogue.offering.course_code')::int = 1 AND n_after_dry = 1
+                 AND r_office = 'MERGE_OFFICE' AND r_reason = 'MERGE_REASON' AND (merged->'moved'->>'bindingsAlreadyHeld')::int = 1
+                 AND v_alias = 'ZQK 102' AND v_gone AND n_cls_keep = 1 AND v_entry_course = 'ZQK 102' AND v_res_alias = 'ZQK 102'
+                 AND r_merged = 'COURSE_CODE_MERGED' AND r_family = 'MERGE_FAMILY' AND r_clash LIKE 'MERGE_NOT_SAME%', false),
+        format('both: classes=%s once=%s third=%s both=%s | resolve %s/%s/%s/%s | guard twin=%s copy=%s taken=%s | upload offers=%s held=%s bound=%s both=%s | dups=%s keep=%s dry=%s after=%s | merge office=%s reason=%s moved=%s alias=%s gone=%s classes=%s questions=%s entry=%s resolve=%s again=%s family=%s other=%s',
+               n_cls, r_once, r_both, v_both, v_res1, v_res2, v_res3, v_res4, r_twin, r_copy, r_taken, imp.offers, n_zqk, v_bound, v_upl_both,
+               n_dups, v_dup_keep, dry, n_after_dry, r_office, r_reason, merged->'moved', v_alias, v_gone, n_cls_keep, n_q, v_entry_course, v_res_alias, r_merged, r_family, r_clash));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

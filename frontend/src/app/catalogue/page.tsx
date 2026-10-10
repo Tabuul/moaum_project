@@ -32,7 +32,8 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
       ) : (
         <DeptCourses depts={deptList} dept={dept} courses={courses && courses.ok ? courses.data : []} duplicates={duplicates && duplicates.ok ? duplicates.data : []} programmes={programmes && programmes.ok ? programmes.data : []} problem={courses && !courses.ok ? courses.problem : null}
           directory={directory && directory.ok ? directory.data : null} proposals={proposals && proposals.ok ? { toDecide: proposals.data.toDecide.filter((p) => p.state === "PENDING"), mine: proposals.data.mine } : null}
-          codeFixes={codeFixes && codeFixes.ok ? codeFixes.data : []} />
+          codeFixes={codeFixes && codeFixes.ok ? codeFixes.data : []}
+          mayMerge={["academic", "registrar", "dregistrar", "super"].includes(me.ok ? me.data.activeOffice ?? "" : "")} />
       )}
     </Shell>
   );

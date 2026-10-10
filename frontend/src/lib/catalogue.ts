@@ -11,6 +11,8 @@ export interface Directory {
 
 export interface CourseHead {
   id: string; code: string; title: string; units: number; semester: number; level: number; kind: string; state: string;
+  /** V386: taught in the first and the second semester alike */
+  both_semesters?: boolean;
   dept_code: string | null; dept_name: string | null; faculty_name?: string | null; programmes?: number;
 }
 
@@ -41,12 +43,15 @@ export interface CourseDetail {
   prerequisites?: { code: string; title: string }[];
   ownerHistory?: { from_dept: string | null; from_dept_name: string | null; to_dept: string | null; to_dept_name: string | null; from_programme: string | null; to_programme: string | null; to_programme_name: string | null; source: string | null; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
   may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean };
+  /** V386: the code asked for (a merged or differently written code opens the course held) and the codes merged into it */
+  requested?: string;
+  aliases?: { alias_code: string; title: string | null; evidence: string; reason: string; merged_at: string; merged_office: string | null; merged_by: string | null; moved: string }[];
 }
 
 export interface Usage { registrations: number; scores: number; offerings: number; cbt_exams: number; questions: number; deferred: number; legacy: number }
 
 export interface CourseListRow {
-  id: string; code: string; title: string; units: number; level: number; semester: number; kind: string; state: string; ended_on: string | null; curriculum: string | null; general_office: string | null;
+  id: string; code: string; title: string; units: number; level: number; semester: number; both_semesters?: boolean; kind: string; state: string; ended_on: string | null; curriculum: string | null; general_office: string | null;
   dept_code: string | null; dept_name: string | null; faculty_name: string | null; programme_count: number; owner_programme?: string | null; owner_programme_name?: string | null;
   programmes: { code: string; name: string; dept: string | null; deptName?: string | null; faculty?: string | null; level: number; basis: string }[]; last_session: string | null; pending: number;
 }
@@ -61,6 +66,24 @@ export const KINDS = ["Core", "Required", "Elective", "GST"];
 export const BASES = ["Core", "Elective", "Borrowed", "GST"];
 export const LEVELS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 export const semName = (n: number | null | undefined) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
+/** V386: a course's semester in words — "First and second" for a course taught in both */
+export const courseSemName = (n: number | null | undefined, both?: boolean | null) => (both ? "First and second" : semName(n));
+
+/** V386: why two codes are one course */
+export const EVIDENCE: Record<string, string> = {
+  SAME_CODE_WRITTEN_DIFFERENTLY: "the same code written differently", SESSION_COPY: "a copy of the course made for a session",
+  SAME_TITLE_AND_LEVEL: "the same title, level, semester and owner",
+};
+/** V386: a pair of codes the pool holds for one course, with the code to keep */
+export interface DuplicatePair {
+  evidence: string; keep_code: string; merge_code: string; keep_title: string; merge_title: string; keep_dept: string | null; merge_dept: string | null;
+  keep_state: string; merge_state: string; keep_uses: number; merge_uses: number; differences: string[];
+}
+/** V386: what a merge would do, or did */
+export interface MergeResult {
+  keep: string; merge: string; keepTitle: string; mergeTitle: string; evidence: string | null; warnings: string[]; dry: boolean; blocked: string | null;
+  moved?: Record<string, number>;
+}
 export const PROPOSAL_STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   PENDING: ["warn", "Awaiting the department"], APPROVED: ["ok", "Approved"], REJECTED: ["bad", "Rejected"], CANCELLED: ["grey", "Withdrawn"],
 };

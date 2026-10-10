@@ -37,6 +37,8 @@ import ng.edu.moaum.portal.shared.OfficeScope;
  * at once, another department's proposed and decided by that department), the course edited and its code renamed
  * without becoming another course, duplicate detection before a course is created, and every course within the
  * office's scope listed with its offerings. The structure itself is V013's catalogue.course_offer; nothing is duplicated.
+ * V386: a course may be taught in both semesters; the codes the pool holds twice are listed and merged into the course
+ * kept (a dry run first; the merge by the Academic Office or the Registry with a reason), the old code its alias.
  */
 @RestController
 @RequestMapping("/api/v1/catalogue")
@@ -45,6 +47,8 @@ class CourseOfferingController {
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict')";
     private static final Set<String> SORTS = Set.of("code", "title", "level", "dept", "programmes", "state");
+    /** V386: the University's offices that merge one course into another */
+    private static final String MERGERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
@@ -109,7 +113,7 @@ class CourseOfferingController {
     Map<String, Object> exists(@RequestParam String code, @RequestParam(required = false) String title,
                                @RequestParam(required = false) Integer level, @RequestParam(required = false) Integer semester) {
         String head = """
-                SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.dept_code, d.name AS dept_name, f.name AS faculty_name,
+                SELECT c.id, c.code, c.title, c.units, c.semester, c.both_semesters, c.level, c.kind, c.state, c.dept_code, d.name AS dept_name, f.name AS faculty_name,
                        (SELECT count(*) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programmes
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                 """;
@@ -166,7 +170,7 @@ class CourseOfferingController {
                         OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code WHERE co.course_code = c.code AND p.dept_code = :dept))
                    AND (:prog::text IS NULL OR EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code AND co.programme_code = :prog))
                    AND (:level::int IS NULL OR c.level = :level)
-                   AND (:sem::int IS NULL OR c.semester = :sem)
+                   AND (:sem::int IS NULL OR catalogue.runs_in(c.semester, c.both_semesters, :sem))   -- V386: a course in both semesters is in each
                    AND (:kind::text IS NULL OR c.kind = :kind)
                    AND (:state::text IS NULL OR c.state = :state)
                    AND (:session::text IS NULL OR EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :session))
@@ -187,7 +191,7 @@ class CourseOfferingController {
         params.put("q", blank(q) == null ? null : "%" + q.trim() + "%");
         var count = jdbc.sql("SELECT count(*) " + where);
         var rows = jdbc.sql("""
-                SELECT c.id, c.code, c.title, c.units, c.level, c.semester, c.kind, c.state, c.ended_on, c.curriculum, c.general_office,
+                SELECT c.id, c.code, c.title, c.units, c.level, c.semester, c.both_semesters, c.kind, c.state, c.ended_on, c.curriculum, c.general_office,
                        c.dept_code, d.name AS dept_name, f.name AS faculty_name,
                        c.owner_programme, (SELECT p.name FROM ref.programme p WHERE p.code = c.owner_programme) AS owner_programme_name,
                        (SELECT count(*) FROM catalogue.course_offer co WHERE co.course_code = c.code) AS programme_count,
@@ -220,9 +224,10 @@ class CourseOfferingController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> detail(@PathVariable String code) {
-        String c = code(code);
+        // V386: a code written differently, or merged into another course, opens the course the pool holds
+        String c = jdbc.sql("SELECT coalesce(catalogue.resolve_course_code(:c), :c)").param("c", code(code)).query(String.class).single();
         Map<String, Object> course = jdbc.sql("""
-                SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max, c.general_office,
+                SELECT c.id, c.code, c.title, c.units, c.semester, c.both_semesters, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max, c.general_office,
                        c.lecture_hours, c.practical_hours, c.industrial_training, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
                        c.owner_programme, op.name AS owner_programme_name, c.description
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
@@ -305,6 +310,13 @@ class CourseOfferingController {
         out.put("proposals", proposals);
         out.put("history", history);
         out.put("usage", usage);
+        // V386: the codes merged into this course, each with why and what moved
+        out.put("requested", code == null ? null : code.trim().toUpperCase());   // as asked, before its spacing is mended
+        out.put("aliases", jdbc.sql("""
+                SELECT a.alias_code, a.absorbed->>'title' AS title, a.evidence, a.reason, a.merged_at, a.merged_office, helpdesk.person_name(a.merged_by) AS merged_by,
+                       a.moved::text AS moved
+                  FROM catalogue.course_alias a WHERE a.course_code = :c ORDER BY a.merged_at DESC
+                """).param("c", c).query().listOfRows());
         // V338: what the course requires first, and every change of its owner
         out.put("prerequisites", jdbc.sql("""
                 SELECT q.requires_code AS code, c.title FROM catalogue.course_prerequisite q JOIN catalogue.course c ON c.code = q.requires_code
@@ -472,7 +484,7 @@ class CourseOfferingController {
     /* ── editing the course keeps it the same course ── */
 
     public record Edit(@NotBlank @Size(max = 120) String title, @NotNull @Min(0) @Max(12) Integer units, @NotNull @Min(1) @Max(3) Integer semester,
-                       @NotNull @Min(100) @Max(900) Integer level, @Size(max = 20) String kind) {
+                       @NotNull @Min(100) @Max(900) Integer level, @Size(max = 20) String kind, Boolean bothSemesters) {
     }
 
     @PutMapping("/courses/{code}")
@@ -481,9 +493,10 @@ class CourseOfferingController {
     Map<String, Object> edit(@PathVariable String code, @Valid @RequestBody Edit body) {
         String c = code(code);
         authority.assertOwns(authority.deptOfCourse(c), c);
-        jdbc.sql("SELECT catalogue.update_course(:c, :t, :u, :s, :l, :k)").param("c", c).param("t", body.title().trim()).param("u", body.units())
-                .param("s", body.semester()).param("l", body.level()).param("k", blank(body.kind()), Types.VARCHAR).query().singleRow();
-        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title, units, semester, level, kind, state FROM catalogue.course WHERE code = :c").param("c", c).query().singleRow());
+        jdbc.sql("SELECT catalogue.update_course(:c, :t, :u, :s, :l, :k, :b)").param("c", c).param("t", body.title().trim()).param("u", body.units())
+                .param("s", body.semester()).param("l", body.level()).param("k", blank(body.kind()), Types.VARCHAR).param("b", body.bothSemesters(), Types.BOOLEAN)
+                .query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title, units, semester, both_semesters, level, kind, state FROM catalogue.course WHERE code = :c").param("c", c).query().singleRow());
         out.put("usage", jdbc.sql("SELECT * FROM catalogue.course_usage(:c)").param("c", c).query().singleRow());
         return out;
     }
@@ -501,5 +514,49 @@ class CourseOfferingController {
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title FROM catalogue.course WHERE code = :c").param("c", n).query().singleRow());
         out.put("was", c);
         return out;
+    }
+
+    /* ── V386: the codes the pool holds twice, and the merge into the course kept ── */
+
+    /** the pairs of codes that are one course — written differently, or copied for a session — each with the code to keep */
+    @GetMapping("/duplicate-codes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> duplicateCodes() {
+        return jdbc.sql("SELECT * FROM catalogue.duplicate_codes()").query().listOfRows().stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>(r);
+            Object d = m.get("differences");
+            if (d instanceof java.sql.Array a) {
+                try { m.put("differences", List.of((Object[]) a.getArray())); } catch (java.sql.SQLException e) { m.put("differences", List.of()); }
+            }
+            return m;
+        }).toList();
+    }
+
+    public record Merge(@NotBlank @Size(max = 20) String keep, @NotBlank @Size(max = 20) String merge, @Size(max = 400) String reason) {
+    }
+
+    /** what a merge would do — the evidence, the differences, what would move, or why it cannot — changing nothing */
+    @PostMapping("/courses/merge/preview")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Object mergePreview(@Valid @RequestBody Merge body) {
+        return json.readValue(jdbc.sql("SELECT catalogue.merge_course(:k, :m, :r, true)::text").param("k", body.keep().trim()).param("m", body.merge().trim())
+                .param("r", blank(body.reason()), Types.VARCHAR).query(String.class).single(), Object.class);
+    }
+
+    /** the merge: every class, registration, result, binding and examination of the twin moves to the course kept; the twin's
+     *  code becomes its alias. The database refuses what is not one course, the BSU-/MOAU- pairs, two classes in one session,
+     *  and a merge without its reason */
+    @PostMapping("/courses/merge")
+    @PreAuthorize(MERGERS)
+    @Transactional
+    Object merge(@Valid @RequestBody Merge body) {
+        if (blank(body.reason()) == null) {
+            throw new DomainRuleViolation("MERGE_REASON", "A merge is recorded with its reason.",
+                    new DomainRuleViolation.Remedy("Say why the two codes are one course — the old portal's spacing, a copy made for a session.", "Academic Office"));
+        }
+        return json.readValue(jdbc.sql("SELECT catalogue.merge_course(:k, :m, :r, false)::text").param("k", body.keep().trim()).param("m", body.merge().trim())
+                .param("r", body.reason().trim()).query(String.class).single(), Object.class);
     }
 }

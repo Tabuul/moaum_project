@@ -71,7 +71,8 @@ class CatalogueController {
 
     public record NewCourse(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 120) String title,
                             @NotNull @Min(0) Integer units, @NotNull Integer semester, @NotNull Integer level,
-                            @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind, @Valid List<FirstOffer> offers) {
+                            @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind, @Valid List<FirstOffer> offers,
+                            Boolean bothSemesters) {
     }
 
     public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 12) String curriculum) {
@@ -279,7 +280,7 @@ class CatalogueController {
         dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
         List<Map<String, Object>> rows = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
-                SELECT c.id, c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
+                SELECT c.id, c.code, c.title, c.units, c.semester, c.both_semesters, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
                        (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
@@ -335,7 +336,7 @@ class CatalogueController {
         String p = prog.trim().toUpperCase();
         scope.bound(null, null, p);                        // a department office reads its own programmes only
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT co.level, c.semester, c.code, c.title, c.units, c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
+                SELECT co.level, c.semester, c.both_semesters, c.code, c.title, c.units, c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code
@@ -417,7 +418,7 @@ class CatalogueController {
         String needle = "%" + q.trim().toLowerCase() + "%";
         if (q.trim().length() < 2) return List.of();
         return jdbc.sql("""
-                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.dept_code, d.name AS dept_name
+                SELECT c.code, c.title, c.units, c.semester, c.both_semesters, c.level, c.kind, c.state, c.dept_code, d.name AS dept_name
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code
                  WHERE c.state <> 'ENDED' AND (lower(c.code) LIKE :q OR lower(c.title) LIKE :q)
                  ORDER BY (lower(c.code) LIKE :q) DESC, c.code
@@ -575,7 +576,7 @@ class CatalogueController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> offered(@RequestParam String programme) {
         return jdbc.sql("""
-                SELECT c.code, c.title, c.units, co.level, c.semester, c.kind, co.basis,
+                SELECT c.code, c.title, c.units, co.level, c.semester, c.both_semesters, c.kind, co.basis,
                        c.lecture_hours, c.practical_hours
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
@@ -591,7 +592,7 @@ class CatalogueController {
     List<Map<String, Object>> catalogueExport() {
         return jdbc.sql("""
                 SELECT f.name AS faculty, pr.code AS programme_code, pr.name AS programme,
-                       d.name AS department, co.level, c.semester, c.code, c.title, c.units,
+                       d.name AS department, co.level, c.semester, c.both_semesters, c.code, c.title, c.units,
                        c.kind, co.basis, c.curriculum
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
@@ -608,7 +609,7 @@ class CatalogueController {
     @Transactional(readOnly = true)
     Map<String, Object> eligibility(@PathVariable String code) {
         List<Map<String, Object>> head = jdbc.sql("""
-                SELECT c.code, c.title, c.dept_code, d.name AS dept_name, c.units, c.level, c.semester
+                SELECT c.code, c.title, c.dept_code, d.name AS dept_name, c.units, c.level, c.semester, c.both_semesters
                   FROM catalogue.course c JOIN ref.department d ON d.code = c.dept_code WHERE c.code = :code
                 """).param("code", code).query().listOfRows();
         if (head.isEmpty()) {
@@ -639,10 +640,17 @@ class CatalogueController {
     @Transactional
     Map<String, Object> create(@Valid @RequestBody NewCourse body) {
         assertHodOwns(body.dept());                         // an HOD creates courses in their own department only
+        if (Boolean.TRUE.equals(body.bothSemesters()) && body.semester() != null && body.semester() == 3) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_SEMESTER_BOTH", "A course taught in both semesters is taught in the first and the second.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose the first semester with both, or the third semester alone.", "Head of Department"));
+        }
         String code = jdbc.sql("SELECT catalogue.create_course(:c, :t, :u, :s, :l, :d, :k)")
                 .param("c", body.code()).param("t", body.title()).param("u", body.units()).param("s", body.semester())
                 .param("l", body.level()).param("d", body.dept()).param("k", body.kind())
                 .query(String.class).single();
+        if (Boolean.TRUE.equals(body.bothSemesters())) {   // V386: taught in the first and the second semester alike
+            jdbc.sql("UPDATE catalogue.course SET semester = 1, both_semesters = true WHERE code = :c").param("c", code).update();
+        }
         // V332: the one course, offered to its first programmes — the owner's bound now, another department's proposed to it
         List<Map<String, Object>> outcomes = new java.util.ArrayList<>();
         for (FirstOffer o : body.offers() == null ? List.<FirstOffer>of() : body.offers()) {
@@ -691,13 +699,14 @@ class CatalogueController {
     private void ensureCurrentOffering(String code) {
         jdbc.sql("""
                 INSERT INTO catalogue.offering (id, course_code, session, semester)
-                SELECT gen_random_uuid(), c.code, cur.name, c.semester
+                SELECT gen_random_uuid(), c.code, cur.name, s.sem
                   FROM catalogue.course c
+                  CROSS JOIN LATERAL unnest(catalogue.course_semesters(c.semester, c.both_semesters)) s(sem)   -- V386: each semester it is taught in
                   CROSS JOIN (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1) cur
                  WHERE c.code = :c AND c.state <> 'ENDED'
                    AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
                    AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
-                                    WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = c.semester AND o.stream = 'REGULAR')
+                                    WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = s.sem AND o.stream = 'REGULAR')
                 """).param("c", code).update();
     }
 
@@ -747,13 +756,14 @@ class CatalogueController {
         if (session != null && n > 0) {
             offered = jdbc.sql("""
                     INSERT INTO catalogue.offering (id, course_code, session, semester)
-                    SELECT gen_random_uuid(), c.code, :ses, c.semester
+                    SELECT gen_random_uuid(), c.code, :ses, s.sem
                       FROM catalogue.course c
+                      CROSS JOIN LATERAL unnest(catalogue.course_semesters(c.semester, c.both_semesters)) s(sem)   -- V386: each semester it is taught in
                      WHERE c.dept_code = :d AND c.state = 'LIVE'
                        AND (:lvl::int IS NULL OR c.level = :lvl)
                        AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
                        AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
-                                        WHERE o.course_code = c.code AND o.session = :ses AND o.semester = c.semester AND o.stream = 'REGULAR')
+                                        WHERE o.course_code = c.code AND o.session = :ses AND o.semester = s.sem AND o.stream = 'REGULAR')
                     """).param("d", d).param("ses", session).param("lvl", level, java.sql.Types.INTEGER).update();
         }
         return Map.of("dept", d, "made_live", n, "offerings_created", offered);

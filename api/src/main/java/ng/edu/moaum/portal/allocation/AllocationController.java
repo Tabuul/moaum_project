@@ -175,7 +175,7 @@ class AllocationController {
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
                    AND o.stream = 'REGULAR'                   -- V380: the full-time classes; the Centre allocates its own
-                   AND c.semester = :semester                 -- only courses actually offered in this semester
+                   AND catalogue.runs_in(c.semester, c.both_semesters, :semester)   -- only courses taught in this semester (V386: or in both)
                    AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
                    AND (:level::int IS NULL OR c.level = :level)
                  ORDER BY c.level, o.course_code

@@ -16,14 +16,14 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface ProgrammeOption { code: string; name: string; dept_code: string | null; department_name: string | null; faculty_name: string; archived: boolean }
-export interface StructureRow { level: number; semester: number | null; code: string; title: string; units: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number }
+export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number }
 export interface StructureData {
   programme: { code: string; name: string; dept_code: string | null; dept_name: string | null; faculty_code: string };
   rows: StructureRow[];
   limits: { level: number; min_units: number; max_units: number }[];
   tracks: { code: string; name: string }[];
 }
-interface Found { code: string; title: string; units: number; semester: number | null; level: number; kind: string; dept_code: string; dept_name: string | null }
+interface Found { code: string; title: string; units: number; semester: number | null; both_semesters?: boolean; level: number; kind: string; dept_code: string; dept_name: string | null }
 
 const BASES = ["Core", "Elective", "Borrowed", "GST"];
 const LEVELS = [100, 200, 300, 400, 500, 600];
@@ -133,7 +133,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                         {found.map((c) => (
                           <button key={c.code} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "var(--s-2) var(--s-3)", border: 0, background: "transparent", cursor: "pointer" }}
                             onClick={() => { setPick(c); setF({ ...f, level: String(c.level || f.level), basis: c.kind === "GST" ? "GST" : ownDept && c.dept_code !== ownDept ? "Borrowed" : c.kind === "Elective" ? "Elective" : "Core" }); }}>
-                            <strong className="tnum">{c.code}</strong> <span>{c.title}</span> <span className="sub2">· {c.units} units · {c.level} level · {semName(c.semester)} · {c.dept_name ?? c.dept_code}</span>
+                            <strong className="tnum">{c.code}</strong> <span>{c.title}</span> <span className="sub2">· {c.units} units · {c.level} level · {c.both_semesters ? "First and second semesters" : semName(c.semester)} · {c.dept_name ?? c.dept_code}</span>
                           </button>
                         ))}
                       </div>
@@ -177,7 +177,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                       </div>
                       <DTable cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Track|mid", "Owner", "State|mid", ...(may ? ["|num"] : [])]} rows={list.map((r) => [
                         <strong className="tnum" key="c">{r.code}</strong>,
-                        <span key="t">{r.title}</span>,
+                        <span key="t">{r.title}{r.both_semesters ? <span className="sub2"> · both semesters</span> : null}</span>,
                         <span className="tnum" key="u">{r.units}</span>,
                         <Pil key="b" kind={r.basis === "Core" ? "info" : r.basis === "GST" ? "ok" : "grey"}>{r.basis}</Pil>,
                         <span className="sub2 tnum" key="tr">{r.track ?? "every track"}</span>,

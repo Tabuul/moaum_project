@@ -17,7 +17,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { semesterText } from "@/lib/student-portal";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
-interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string; classification?: string }
+interface Row { code: string; title: string; units: string; status: string; level: number | null; /** V386: "Both" for a course taught in the first and the second */ semester: number | "Both" | null; lh: string; ph: string; programmeCode?: string; category?: string; classification?: string }
 interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
 /** V369: what loading the structure would do to one GST/EPS course (catalogue.structure_placements) */
 type Change = "NEW_TO_OFFICE" | "NEW_NO_OFFICE" | "TO_OFFICE" | "MARKED_GENERAL_NO_OFFICE" | "BACK_TO_DEPARTMENT" | "KEPT_WITH_OFFICE" | "KEPT_WITH_DEPARTMENT" | "OTHER_OFFICE_HOLDS";
@@ -141,9 +141,11 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const lv = Number(g(ci.level).replace(/[^0-9]/g, ""));
       /* the semester cell may read a word ("First"/"Second"/"Third") or a digit — accept both */
       const semRaw = g(ci.sem);
-      let sm = Number(semRaw.replace(/[^0-9]/g, ""));
-      if (!sm) sm = /first|1st/i.test(semRaw) ? 1 : /second|2nd/i.test(semRaw) ? 2 : /third|3rd/i.test(semRaw) ? 3 : 0;
-      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined, classification: g(ci.cls) || undefined };
+      // V386: "Both", "1 & 2", "First and Second" — taught in both semesters, read by the server as such
+      const both = /^\s*(both|b|1\s*(&|and|\/|,|\+)\s*2|(first|1st)(\s*semester)?\s*(&|and|\/|,|\+)\s*(second|2nd))/i.test(semRaw);
+      let sm = both ? 0 : Number(semRaw.replace(/[^0-9]/g, ""));
+      if (!sm && !both) sm = /first|1st/i.test(semRaw) ? 1 : /second|2nd/i.test(semRaw) ? 2 : /third|3rd/i.test(semRaw) ? 3 : 0;
+      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: both ? ("Both" as const) : sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined, classification: g(ci.cls) || undefined };
     }).filter((x) => !/^course\s*code$/i.test(x.code));
   }
 

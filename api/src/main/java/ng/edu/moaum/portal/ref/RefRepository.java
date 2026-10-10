@@ -102,7 +102,7 @@ class RefRepository {
                 SELECT c.code, c.title, c.units, c.semester, c.level, c.dept_code, d.name AS dept_name, c.kind, c.state, c.ended_on
                   FROM catalogue.course c JOIN ref.department d ON d.code = c.dept_code
                  WHERE (:dept::text IS NULL OR c.dept_code = :dept)
-                   AND (:sem::int IS NULL OR c.semester = :sem)
+                   AND (:sem::int IS NULL OR catalogue.runs_in(c.semester, c.both_semesters, :sem))   -- V386: a course in both semesters is in each
                    AND (:level::int IS NULL OR c.level = :level)
                  ORDER BY c.code
                 """)

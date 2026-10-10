@@ -15,11 +15,14 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { PROPOSAL_STATE, type Directory, type Exists, type Proposal } from "@/lib/catalogue";
+import { MergeCourse } from "@/components/catalogue/MergeCourse";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
   /** the course's identity (V332): unchanged by an edit of its code, title or units */
   id?: string;
+  /** V386: taught in the first and the second semester alike */
+  both_semesters?: boolean;
   /** proposals of this course to other departments' programmes still awaiting them (V332) */
   pending?: number;
   code: string; title: string; units: number; semester: number; level: number; kind: string;
@@ -48,7 +51,9 @@ const LEVELS = [100, 200, 300, 400, 500, 600];
 const SPLITS: [number, string][] = [[40, "CA 40 / Exam 60"], [30, "CA 30 / Exam 70"]];
 const splitLabel = (caMax: number) => `CA ${caMax} / Exam ${100 - caMax}`;
 
-export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null, codeFixes = [] }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null; codeFixes?: CodeFix[] }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null, codeFixes = [], mayMerge = false }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null; codeFixes?: CodeFix[]; mayMerge?: boolean }) {
+  // V386: a duplicate merged into the code kept, everything on it moving with it
+  const [merging, setMerging] = useState<{ keep: string; merge: string } | null>(null);
   const router = useRouter();
   const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
@@ -251,7 +256,8 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       {toEnd.length ? (
         <Panel title="Duplicate courses" right={`${toEnd.length} to end or remove · the same course under more than one code`}>
           <PBody>
-            <div className="sub2 mb-2">The same course under more than one code; the cleanest code is kept. A <b>BSU-</b> code and its <b>MOAU-</b> twin are both kept (300 level and above carry BSU-, 100 and 200 level MOAU-) and are not listed. A code nothing carries can be <b>removed completely</b>; one a record carries is <b>ended</b> instead.</div>
+            {merging ? <MergeCourse keep={merging.keep} merge={merging.merge} mayMerge={mayMerge} onClose={() => setMerging(null)} /> : null}
+            <div className="sub2 mb-2">The same course under more than one code; the cleanest code is kept. <b>Merge</b> moves everything on a duplicate — classes, registrations, results, bindings — to the code kept and keeps the old code as its alias. A <b>BSU-</b> code and its <b>MOAU-</b> twin are both kept (300 level and above carry BSU-, 100 and 200 level MOAU-) and are not listed. A code nothing carries can be <b>removed completely</b>; one a record carries is <b>ended</b> instead.</div>
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
@@ -261,6 +267,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                       {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : (
                         <>
                           <span className="ink-red" style={{ textDecoration: "line-through" }}>{c.code}</span>
+                          {g.codes.find((x) => x.keeper) ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => setMerging({ keep: g.codes.find((x) => x.keeper)!.code, merge: c.code })}>Merge into {g.codes.find((x) => x.keeper)!.code}</Btn> : null}
                           <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Remove ${c.code} completely? It is deleted from the catalogue, with the programmes it was offered to. The portal refuses if any registration, result or timetable carries it; end it then.`)) void send(`/courses/${encodeURIComponent(c.code)}`, null, `Removed ${c.code} completely`, "DELETE").then((j) => { if (j) setSaid(`${c.code} removed completely`); }); }}>Remove</Btn>
                         </>
                       )}
@@ -304,7 +311,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             <b className="tnum" key="c">{c.code}</b>,
             <span key="t">{c.title}{c.pending ? <span className="sub2 ink-amber"> · {c.pending} proposal{c.pending === 1 ? "" : "s"} awaiting a department</span> : null}{c.bindings && c.bindings.length ? <div className="sub2 row" style={{ marginTop: 2, gap: "var(--s-1)" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill t-xs" style={{ textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2 ink-red" style={{ marginTop: 2 }}>Not bound to any programme — no student sees it at registration</div>}</span>,
             <span className="tnum" key="u">{c.units}</span>,
-            <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
+            <span className="tnum" key="s">{c.both_semesters ? "First and second" : c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
             <span className="sub2" key="k">{kindLabel(c.kind)}</span>,
             <select key="cur" className="ctl t-sm" style={{ minWidth: 96, padding: "3px 6px" }} value={c.curriculum ?? ""} disabled={busy || c.state === "ENDED"}

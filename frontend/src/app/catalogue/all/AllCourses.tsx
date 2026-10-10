@@ -2,18 +2,21 @@
 /** All courses within the office's scope (V332): one row a course, the programmes that offer it beside it, searched,
  *  filtered, sorted and paged by the server; S/N first; exports to the University's standard. */
 import Link from "next/link";
+import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
+import { MergeCourse } from "@/components/catalogue/MergeCourse";
 import { Btn, LinkBtn, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { KINDS, LEVELS, STATE, semName, type CourseList, type Directory } from "@/lib/catalogue";
+import { EVIDENCE, KINDS, LEVELS, STATE, courseSemName, type CourseList, type Directory, type DuplicatePair } from "@/lib/catalogue";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; semester: string; kind: string; state: string; session: string; sort: string; dir: string; size: string }
 
-export function AllCourses({ list, directory, sessions, filters, page, generatedBy }: { list: CourseList; directory: Directory | null; sessions: string[]; filters: Filters; page: number; generatedBy: string | null }) {
+export function AllCourses({ list, directory, sessions, filters, page, generatedBy, duplicates = [], mayMerge = false }: { list: CourseList; directory: Directory | null; sessions: string[]; filters: Filters; page: number; duplicates?: DuplicatePair[]; mayMerge?: boolean; generatedBy: string | null }) {
   const go = useQueryNav();
+  const [merging, setMerging] = useState<DuplicatePair | null>(null);
   function nav(patch: Partial<Filters & { page: string }>) {
     const next: Record<string, string> = { ...filters, page: "1", ...patch };
     const qs = new URLSearchParams();
@@ -27,7 +30,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "asc" ? "desc" : "asc" });
 
   const HEAD = ["S/N", "Course code", "Course title", "Units", "Level", "Semester", "Course type", "Faculty", "Owner department", "Owner programme", "Programmes offering", "Last session offered", "Status"];
-  const exportRows = () => list.rows.map((r, i) => [i + 1, r.code, r.title, r.units, r.level, semName(r.semester), r.kind, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.owner_programme_name ?? "", r.programmes.map((p) => `${p.name} (${p.level})`).join("; "), r.last_session ?? "", STATE[r.state]?.[1] ?? r.state]);
+  const exportRows = () => list.rows.map((r, i) => [i + 1, r.code, r.title, r.units, r.level, courseSemName(r.semester, r.both_semesters), r.kind, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.owner_programme_name ?? "", r.programmes.map((p) => `${p.name} (${p.level})`).join("; "), r.last_session ?? "", STATE[r.state]?.[1] ?? r.state]);
   /** V338: one row per programme offering — the course, its owner, and where it is offered and how */
   const OFFER_HEAD = ["S/N", "Course Code", "Course Title", "Units", "Course Owner Faculty", "Course Owner Department", "Course Owner Programme", "Offering Faculty", "Offering Department", "Offering Programme", "Offering Type", "Level", "Status"];
   const offerRows = () => list.rows.flatMap((r) => r.programmes.map((p) => [r.code, r.title, r.units, r.faculty_name ?? "", r.dept_name ?? r.dept_code ?? "", r.owner_programme_name ?? "",
@@ -57,6 +60,18 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
           </div>
         </div>
       </form>
+      {duplicates.length ? (
+        <Panel title="The same course under two codes" right={`${duplicates.length} pair${duplicates.length === 1 ? "" : "s"} · the pool holds a course once`}>
+          <DTable pageSize={0} noPrint cols={["Keep", "Merge", "Why one course", "Differs|mid", "|num"]} rows={duplicates.map((d) => [
+            <span key="k"><Link className="lnk tnum b600" href={`/catalogue/course?code=${encodeURIComponent(d.keep_code)}`}>{d.keep_code}</Link><div className="sub2">{d.keep_title}</div></span>,
+            <span key="m"><span className="tnum">{d.merge_code}</span><div className="sub2">{d.merge_title}{d.merge_state === "ENDED" ? " · ended" : ""}</div></span>,
+            EVIDENCE[d.evidence] ?? d.evidence,
+            d.differences.length ? <Pil key="d" kind="warn">{d.differences.map((x) => x.toLowerCase()).join(", ")}</Pil> : <span key="d" className="sub2">nothing</span>,
+            <Btn key="b" kind="ghost" size="sm" onClick={() => setMerging(d)}>{mayMerge ? "Review and merge" : "Review"}</Btn>,
+          ])} />
+        </Panel>
+      ) : null}
+      {merging ? <MergeCourse keep={merging.keep_code} merge={merging.merge_code} mayMerge={mayMerge} onClose={() => setMerging(null)} /> : null}
       <Panel title="Courses" right={<span className="row row--inline row--tight">
         <span className="sub2">{list.total.toLocaleString()} course{list.total === 1 ? "" : "s"} · sorted by</span>
         {[["code", "Code"], ["title", "Title"], ["level", "Level"], ["dept", "Owner"], ["programmes", "Programmes"], ["state", "Status"]].map(([k, l]) => (
@@ -73,7 +88,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
             <span key="n" className="tnum sub2">{(list.page - 1) * list.size + i + 1}</span>,
             <b key="c" className="tnum">{r.code}</b>,
             <span key="t">{r.title}{r.pending ? <div className="sub2 ink-amber">{r.pending} proposal{r.pending === 1 ? "" : "s"} awaiting a department</div> : null}</span>,
-            <span key="u" className="tnum">{r.units}</span>, <span key="l" className="tnum">{r.level}</span>, <span key="s" className="tnum">{semName(r.semester)}</span>,
+            <span key="u" className="tnum">{r.units}</span>, <span key="l" className="tnum">{r.level}</span>, <span key="s" className="tnum">{courseSemName(r.semester, r.both_semesters)}</span>,
             <span key="k" className="sub2">{r.kind}{r.general_office ? ` · ${r.general_office}` : ""}</span>,
             <span key="o">{r.dept_name ?? r.dept_code ?? "—"}<div className="sub2">{r.owner_programme_name ? `${r.owner_programme_name} · ` : ""}{r.faculty_name ?? ""}</div></span>,
             <span key="p">{r.programmes.length ? <>{r.programmes.slice(0, 3).map((p) => <div key={`${p.code}-${p.level}`} className="sub2"><Link href={`/catalogue/structure?prog=${encodeURIComponent(p.code)}`} className="lnk">{p.name}</Link> · {p.level}{p.basis !== "Core" ? ` · ${p.basis}` : ""}</div>)}{r.programmes.length > 3 ? <Link href={`/catalogue/course?code=${encodeURIComponent(r.code)}`} className="lnk sub2">+{r.programmes.length - 3} more</Link> : null}</> : <span className="sub2 ink-red">None</span>}</span>,
