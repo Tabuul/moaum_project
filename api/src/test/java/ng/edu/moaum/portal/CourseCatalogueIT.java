@@ -81,7 +81,8 @@ class CourseCatalogueIT {
         String c;
         do {
             c = "C9" + String.format("%04d", r.nextInt(10000));
-        } while (jdbc.sql("SELECT count(*) FROM ref.programme WHERE code = :c").param("c", c).query(Long.class).single() > 0);
+        } while (c.equals(p1) || c.equals(p2)   // the setup draws all three before inserting any: never the same one twice
+                || jdbc.sql("SELECT count(*) FROM ref.programme WHERE code = :c").param("c", c).query(Long.class).single() > 0);
         return c;
     }
 

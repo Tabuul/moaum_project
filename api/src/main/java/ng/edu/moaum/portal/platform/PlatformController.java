@@ -160,6 +160,19 @@ class PlatformController {
         checks.add(chk("sms", "SMS configured", sms ? "ok" : "warn",
                 sms ? "The SMS gateway is enabled and keyed" : "SMS is not enabled — applicants and students get no text alerts", "/platform/sms"));
 
+        // V393: postgraduate registration, in the School of Postgraduate Studies' own session
+        Map<String, Object> pg = pgReadiness();
+        boolean pgReady = Boolean.TRUE.equals(pg.get("ready"));
+        List<String> pgMissing = new ArrayList<>();
+        String pgFix = null;   // where the first missing piece is put right
+        if (!Boolean.TRUE.equals(pg.get("current"))) { pgMissing.add("no current session on the School's calendar"); pgFix = "/admissions/postgraduate/calendar"; }
+        if (pg.get("semester") == null) { pgMissing.add("no semester open within its registration dates"); if (pgFix == null) pgFix = "/admissions/postgraduate/calendar"; }
+        if (((Number) pg.get("classes")).longValue() == 0) { pgMissing.add("the School's classes are not set up"); if (pgFix == null) pgFix = "/admissions/postgraduate/courses"; }
+        if (((Number) pg.get("unstated")).longValue() > 0) { pgMissing.add(pg.get("unstated") + " PG student(s) with no fee line stated"); if (pgFix == null) pgFix = "/finance/fees?session=" + pg.get("session"); }
+        checks.add(chk("pg_registration", "Postgraduate registration can open", pgReady ? "ok" : "warn",
+                pgReady ? "The School's session " + pg.get("session") + " is ready for course registration"
+                        : pg.get("session") + ": " + String.join("; ", pgMissing), pgFix));
+
         long bad = checks.stream().filter(c -> "bad".equals(c.get("status"))).count();
         long warn = checks.stream().filter(c -> "warn".equals(c.get("status"))).count();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -178,7 +191,27 @@ class PlatformController {
         body.put("commit", commit == null || commit.isBlank() ? null : commit);
         body.put("startedAt", STARTED.toString());
         body.put("database", database());
+        // V393: whether postgraduate registration can open — the School's session and yes/no answers only, nothing personal
+        try {
+            Map<String, Object> pg = pgReadiness();
+            Map<String, Object> pub = new LinkedHashMap<>();
+            pub.put("session", pg.get("session"));
+            pub.put("current", pg.get("current"));
+            pub.put("semesterOpen", pg.get("semester") != null);
+            pub.put("classes", ((Number) pg.get("classes")).longValue() > 0);
+            pub.put("feesStated", pg.get("feesStated"));
+            pub.put("ready", pg.get("ready"));
+            body.put("postgraduate", pub);
+        } catch (RuntimeException e) {
+            body.put("postgraduate", null);
+        }
         return body;
+    }
+
+    /** V393: admissions.pg_readiness(), read */
+    private Map<String, Object> pgReadiness() {
+        String text = jdbc.sql("SELECT admissions.pg_readiness()::text").query(String.class).single();
+        return this.json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     /** the migration ledger: what has been applied to this database, in order */

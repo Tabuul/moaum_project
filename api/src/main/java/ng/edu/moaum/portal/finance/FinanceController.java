@@ -165,6 +165,28 @@ class FinanceController {
     }
 
     /** the fee groups a charge can be scoped to — data, not code, so the set can grow */
+    /* ── V393: postgraduate fees after V391, read only ── */
+
+    /** the PG students whose confirmed school-fee payments of the session exceed what they owe under the School's lines, with
+     *  the references paid; the Bursary decides each case by its own refund process, and nothing is refunded here */
+    @GetMapping("/sessions/{session}/{year}/postgraduate/review")
+    @PreAuthorize(RECONCILERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> pgFeeReview(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("""
+                SELECT student_id, admission_no, matric_no, surname, other_names, status, programme_code, programme, level, due, paid, excess, payments::text AS payments
+                  FROM finance.pg_fee_review(:s)
+                """).param("s", session + "/" + year).query().listOfRows();
+    }
+
+    /** the live PG students with no fee line stated for the session, by level and programme */
+    @GetMapping("/sessions/{session}/{year}/postgraduate/unstated")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> pgUnstated(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT level, programme_code, programme, students FROM finance.pg_unstated(:s)").param("s", session + "/" + year).query().listOfRows();
+    }
+
     @GetMapping("/fee-groups")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)

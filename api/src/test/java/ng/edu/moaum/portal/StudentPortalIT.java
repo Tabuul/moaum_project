@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -46,11 +47,35 @@ class StudentPortalIT {
     String bursar = ItSupport.token("bursar");
     String hod = ItSupport.token("hod");
 
+    /** the session that was current before the test, put back after it */
+    String wasCurrent;
+
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();
         it.session(SESSION, 2090);
+        wasCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1").query(String.class).optional().orElse(null);
+    }
+
+    /** the calendar as the test found it: the test's session planned again, the one that was current current again */
+    @AfterEach
+    void restoreTheCalendar() {
+        it.db(() -> {
+            jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :s AND name IS DISTINCT FROM :w AND state <> 'PLANNED'")
+                    .param("s", SESSION).param("w", wasCurrent, java.sql.Types.VARCHAR).update();
+            return wasCurrent == null ? 0
+                    : jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = :w AND state <> 'CURRENT'").param("w", wasCurrent).update();
+        });
+    }
+
+    /** the test's own session made the University's current one, as the Registrar would: what the student reads as "now" — the
+     *  timetable, the attendance and the examination docket — is then this session's, whatever other tests left on the calendar */
+    void standInTheTestSession() {
+        it.db(() -> {
+            jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT' AND name <> :s").param("s", SESSION).update();
+            return jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = coalesce(senate_minute, 'SEN/TEST/2090/001') WHERE name = :s").param("s", SESSION).update();
+        });
     }
 
     @SuppressWarnings("rawtypes")
@@ -176,7 +201,9 @@ class StudentPortalIT {
         assertThat(results.get("cgpa")).isNull();
 
         // the services (V027): the department gives a slot and marks the register, and the student sees both — the
-        // Head of the course's own department (V381: another department's class is refused)
+        // Head of the course's own department (V381: another department's class is refused); the timetable and the docket
+        // read the session the University is in, so the test's own session is made current first
+        standInTheTestSession();
         UUID offering = offerings.get(0);
         String hod = it.officer("hod", "department", jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = 'ITP 101'").query(String.class).single());
         assertThat(it.callList(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/slots",

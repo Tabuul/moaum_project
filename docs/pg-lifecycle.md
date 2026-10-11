@@ -125,3 +125,13 @@ Examinations, CBT Examinations, Deferment, My Documents.
 - **Matriculation.** A PG student is matriculated in the session they registered in, the School's: the candidate list
   already counts an approved registration of the session chosen. Matriculation Management now names the School's session,
   with how many PG students registered in it wait for a number, and opens it in one click.
+
+## What the Bursary and the Directorate see (V393)
+
+Read only; nothing here changes a fee, a payment or a reference.
+
+| View | Who | What it shows |
+|---|---|---|
+| Fee Setup → Postgraduate students · school fees | Bursary, Audit (the payments); the fee page's readers (the counts) | The live PG students with no fee line stated for the session, by level and programme (`finance.pg_unstated`). The PG students whose confirmed school-fee payments exceed what they owe under the School's lines (`finance.pg_fee_review`): what they owe, what they paid, the excess and each reference and receipt, for the Bursary to decide through its own refund process. |
+| Go-live readiness → Postgraduate registration can open | ICT, Registry, Academic Office, Bursary | `admissions.pg_readiness()`: a current session on the School's calendar, a semester open within its registration dates, the School's classes set up, and a fee line stated for every live PG student, with what is missing. |
+| `GET /api/v1/platform/status` → `postgraduate` | Anyone (public) | The School's session and yes/no answers only (current, semester open, classes, fees stated, ready), so Railway and AWS can be checked with `curl`. Nothing personal. |

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 233
+\set EXPECTED 234
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9216,6 +9216,64 @@ BEGIN
         format('stated0=%s ft0=%s | submit=%s | stated1=%s pg lines=%s total=%s due=%s bulk=%s | ft lines=%s total=%s bulk=%s | list1 reg=%s paid=%s reason=%s',
                st0, ft_lines0, r_submit, st1, pg_lines, pg_total, pg_due, pg_bulk, ft_lines, ft_total, ft_bulk,
                m1.registered, m1.paid, m1.reason));
+END $$;
+
+-- ── V393: postgraduate fees after V391, read only ──
+-- A PG student who paid against a full-time line is on the Bursary's review with what they owe, what they paid, the excess
+-- and the reference — a full-time student never is; the live PG students with no line stated are listed by level and
+-- programme until a PG line reaches them; the School's readiness names its session, its open semester and its classes,
+-- and is not ready while a piece is missing. Nothing is changed by any of the three. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9951/9952'; pa text; ug text; lvl int; pg uuid := gen_random_uuid(); pg2 uuid := gen_random_uuid(); ft uuid := gen_random_uuid();
+        r0 record; n_ft0 int; u0 bigint; r1 record; u1 bigint; rd jsonb; n_refs0 int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V393', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT code, admissions.pg_award_level(pg_award) INTO pa, lvl FROM ref.programme
+         WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) AND faculty_code IS NOT NULL ORDER BY code LIMIT 1;
+        SELECT code INTO ug FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHECK/V393/P', 'ZZFEEREVIEW', 'Invented', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9951-10-01', date '9952-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (pg, 'MOAUM/ADM/51/990393', NULL, 'ZZPG393', 'Review', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED', NULL),
+               (pg2, 'MOAUM/ADM/51/990394', 'MOAUM/CHK/51/0394', 'ZZPG393', 'Unstated', pa, 'POSTGRADUATE', S, lvl, lvl, 'ACTIVE', now()),
+               (ft, 'MOAUM/ADM/51/990395', NULL, 'ZZFT393', 'Review', ug, 'UTME', S, 100, 100, 'ADMITTED', NULL);
+
+        -- (1) a full-time line, and both a PG and a full-time student paid against it
+        INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'Check: every student', 1000, NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (pg, S, 'CHK-V393-PG', 'School fees ' || S, 1000, now() + interval '1 day', now(), who, 'BANK', 'CHK-RCPT-V393-PG'),
+               (ft, S, 'CHK-V393-FT', 'School fees ' || S, 1000, now() + interval '1 day', now(), who, 'BANK', 'CHK-RCPT-V393-FT');
+        SELECT due, paid, excess INTO r0 FROM finance.pg_fee_review(S) WHERE student_id = pg;
+        SELECT jsonb_array_length(payments) INTO n_refs0 FROM finance.pg_fee_review(S) WHERE student_id = pg AND payments @> '[{"reference": "CHK-V393-PG"}]';
+        SELECT count(*) INTO n_ft0 FROM finance.pg_fee_review(S) WHERE student_id = ft;
+        SELECT students INTO u0 FROM finance.pg_unstated(S) WHERE level = lvl AND programme_code = pa;
+
+        -- (2) the Bursary states the School's line for the level: the excess shrinks, nobody of the programme is unstated
+        INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'Check: PG level', 600, lvl);
+        SELECT due, paid, excess INTO r1 FROM finance.pg_fee_review(S) WHERE student_id = pg;
+        SELECT coalesce(sum(students), 0) INTO u1 FROM finance.pg_unstated(S) WHERE level = lvl AND programme_code = pa;
+
+        -- (3) the School's readiness: its current session and open semester, no class yet, so not ready
+        UPDATE admissions.pg_academic_session SET state = 'PLANNED' WHERE state = 'CURRENT';
+        INSERT INTO admissions.pg_academic_session (name, starts_on, ends_on, semesters, state) VALUES (S, date '9951-10-01', date '9952-08-31', 2, 'CURRENT');
+        INSERT INTO admissions.pg_semester (session, number, registration_opens, registration_closes, lectures_from, state)
+        VALUES (S, 1, current_date - 1, current_date + 10, current_date, 'OPEN');
+        rd := admissions.pg_readiness();
+        RAISE EXCEPTION 'the V393 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V393 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V393: postgraduate fees after V391, read only — a PG student who paid against a full-time line is on the Bursary''s review with what they owe, what they paid, the excess and the reference, a full-time student never; the live PG students with no line stated are listed until a PG line reaches them; the School''s readiness names its session, semester and classes and is not ready while a piece is missing',
+        coalesce(r0.due = 0 AND r0.paid = 1000 AND r0.excess = 1000 AND n_refs0 = 1 AND n_ft0 = 0 AND u0 = 2
+                 AND r1.due = 600 AND r1.excess = 400 AND u1 = 0
+                 AND rd->>'session' = S AND (rd->>'current')::boolean AND (rd->>'semester')::int = 1 AND (rd->>'classes')::int = 0
+                 AND NOT (rd->>'ready')::boolean, false),
+        format('review0 due=%s paid=%s excess=%s refs=%s ft=%s unstated0=%s | review1 due=%s excess=%s unstated1=%s | readiness=%s',
+               r0.due, r0.paid, r0.excess, n_refs0, n_ft0, u0, r1.due, r1.excess, u1, rd));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

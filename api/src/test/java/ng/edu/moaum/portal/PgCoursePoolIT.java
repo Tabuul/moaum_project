@@ -23,7 +23,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * course of the pool; the School opens its classes in its session (a Head of Department cannot); a PG student reads the
  * School's classes on the one registration screen, registers on them, and the PG window closes it; the old registration
  * refuses; the summary carries the next steps from the record; ICT sets a PG examination session; the broadsheet reads the
- * PG stream; a student without a PG application has none to read, nor anyone else's documents. Needs DATABASE_URL.
+ * PG stream; a student without a PG application has none to read, nor anyone else's documents; the Bursary's review of what
+ * PG students paid is the Bursary's and Audit's, and the readiness and public status name the School's session. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -135,5 +136,16 @@ class PgCoursePoolIT {
         UUID other = it.db(() -> jdbc.sql("SELECT d.id FROM admissions.pg_document d JOIN admissions.pg_application a ON a.id = d.application_id WHERE a.student_id IS DISTINCT FROM :me LIMIT 1")
                 .param("me", stu).query(UUID.class).optional().orElse(UUID.randomUUID()));
         assertThat(it.get(student, "/api/v1/pg/student/documents/" + other + "/content").getStatusCode().value()).isEqualTo(404);
+
+        // (7) V393: the review of what PG students paid is the Bursary's and Audit's; the unstated list is the fee page's
+        // readers'; the readiness names the School's session, and the public status answers yes or no about it
+        String[] ses = SESSION.split("/");
+        assertThat(it.getList(ItSupport.token("bursar"), "/api/v1/finance/sessions/" + ses[0] + "/" + ses[1] + "/postgraduate/review").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.getList(registrar, "/api/v1/finance/sessions/" + ses[0] + "/" + ses[1] + "/postgraduate/review").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.getList(registrar, "/api/v1/finance/sessions/" + ses[0] + "/" + ses[1] + "/postgraduate/unstated").getStatusCode().value()).isEqualTo(200);
+        Map<String, Object> ready = ok(it.get(ict, "/api/v1/platform/readiness?session=" + SESSION));
+        assertThat(((List<Map<String, Object>>) ready.get("checks")).stream().map(c -> c.get("key"))).contains("pg_registration");
+        Map<String, Object> status = ok(it.anon(HttpMethod.GET, "/api/v1/platform/status", null));
+        assertThat((Map<String, Object>) status.get("postgraduate")).containsKeys("session", "current", "semesterOpen", "classes", "feesStated", "ready");
     }
 }

@@ -20,6 +20,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
+import { PgFees } from "./PgFees";
 import type { GstFeePage } from "@/lib/gst";
 
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
@@ -613,6 +614,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </div>
         </PBody>
       </Panel>
+      <PgFees session={session} />
       <Panel title="Deferment · application fee" right={dfMeta?.fee_updated_at ? `Stated by the Bursary · ${new Date(dfMeta.fee_updated_at).toLocaleDateString("en-GB")}` : "Default ₦10,000 until the Bursary states it"}>
         <PBody>
           <div className="sub2 mb-3">
