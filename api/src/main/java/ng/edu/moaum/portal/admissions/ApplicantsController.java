@@ -550,7 +550,7 @@ class ApplicantsController {
         }
         if (status.equals("REJECTED") && (body.note() == null || body.note().isBlank())) {
             throw new DomainRuleViolation("APP_REVIEW_NOTE", "A rejection says what was wrong.",
-                    new DomainRuleViolation.Remedy("The applicant must know what to replace it with.", "Academic Office"));
+                    new DomainRuleViolation.Remedy("Say what the applicant must replace.", "Academic Office"));
         }
         UUID actor = AuditContextHolder.current().map(c -> c.actorId()).orElse(null);
         int n = jdbc.sql("""

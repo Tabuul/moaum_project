@@ -56,7 +56,7 @@ export function CceRegister({ session }: { session: string }) {
     if (!EMAIL_SHAPE.test(email.trim())) e.email = "A complete email address: a name, an @, and a domain with a dot in it.";
     const ph = phoneRead(phone);
     if (!ph.ok) e.phone = `Eleven digits beginning with a zero are needed; ${ph.digits.length} were read. Written as +234 or without the zero is fine.`;
-    if (pw.length < 8) e.pw = "Eight characters at the very least. This one account carries you to graduation.";
+    if (pw.length < 8) e.pw = "At least eight characters.";
     else if (pw !== pw2) e.pw2 = "The two passwords do not match.";
     setErr(e);
     return Object.keys(e).length === 0;

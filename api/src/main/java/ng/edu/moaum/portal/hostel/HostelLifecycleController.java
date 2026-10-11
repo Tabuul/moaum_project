@@ -433,7 +433,7 @@ class HostelLifecycleController {
     @Transactional
     Map<String, Object> window(@PathVariable String s, @PathVariable String y, @RequestBody WindowIn body) {
         String session = ses(s, y);
-        if (body.fee() == null || body.fee().signum() < 0) throw new DomainRuleViolation("HOSTEL_FEE", "State the accommodation fee for the session.", new DomainRuleViolation.Remedy("Zero is a fee; blank is not.", "Housing"));
+        if (body.fee() == null || body.fee().signum() < 0) throw new DomainRuleViolation("HOSTEL_FEE", "State the accommodation fee for the session.", new DomainRuleViolation.Remedy("Enter zero for no fee.", "Housing"));
         String method = blank(body.allocationMethod()) == null ? "BALLOT" : body.allocationMethod().trim().toUpperCase();
         if (!METHODS.contains(method)) throw new DomainRuleViolation("HOSTEL_METHOD", "'" + method + "' is not an allocation method.", new DomainRuleViolation.Remedy("Ballot, first come, level, faculty, programme, special needs or manual.", "Housing"));
         String state = blank(body.state()) == null ? null : body.state().trim().toUpperCase();

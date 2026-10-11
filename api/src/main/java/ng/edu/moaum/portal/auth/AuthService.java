@@ -176,7 +176,7 @@ public class AuthService {
         }
         if (repo.usernameTaken(username, person)) {
             throw new DomainRuleViolation("AUTH_USERNAME_TAKEN", "'" + username + "' already signs somebody else in.",
-                    new DomainRuleViolation.Remedy("Two people do not share a username.", "Registry"));
+                    new DomainRuleViolation.Remedy("Choose another username.", "Registry"));
         }
         checkPolicy(username, password);
         boolean existed = repo.byPerson(person).isPresent();

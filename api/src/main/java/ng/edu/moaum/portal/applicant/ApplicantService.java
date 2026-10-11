@@ -123,7 +123,7 @@ public class ApplicantService {
         }
         if (password == null || password.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
-                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
         ApplicantRepository.Reset r = repo.resetByHash(sha256(token.trim())).orElse(null);
         if (r == null || r.usedAt() != null || r.expiresAt().isBefore(OffsetDateTime.now())) {
@@ -196,7 +196,7 @@ public class ApplicantService {
         }
         if (password == null || password.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
-                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
         // V312: a new applicant account is started only while the Director of ICT has Post-UTME registration open for the session
         windows.requireOpen(ApplicationWindows.POST_UTME, session);
@@ -603,7 +603,7 @@ public class ApplicantService {
         }
         if (password == null || password.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
-                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
         Map<String, Object> listed = repo.cceLookup(key, dob);
         if ("found".equals(listed.get("state"))) {

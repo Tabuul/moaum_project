@@ -212,7 +212,7 @@ public class WalletService {
     @Transactional
     public Map<String, Object> resetWallet(String number, String reason) {
         if (reason == null || reason.isBlank()) {
-            throw new DomainRuleViolation("WAL_RESET_WHY", "A wallet reset names its reason.", new DomainRuleViolation.Remedy("Say why the wallet is wiped; it is on the record.", "Bursary"));
+            throw new DomainRuleViolation("WAL_RESET_WHY", "A wallet reset names its reason.", new DomainRuleViolation.Remedy("Say why the wallet is wiped.", "Bursary"));
         }
         UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
                 "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));

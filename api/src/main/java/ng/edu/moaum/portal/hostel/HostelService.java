@@ -97,7 +97,7 @@ public class HostelService {
     public Map<String, Object> putSetting(String sessionAsked, BigDecimal fee, Integer holdHours, LocalDate close) {
         String session = session(sessionAsked);
         if (fee == null || fee.signum() < 0) {
-            throw new DomainRuleViolation("HOSTEL_FEE", "State the accommodation fee for the session.", new DomainRuleViolation.Remedy("Zero is a fee; blank is not.", "Student Services"));
+            throw new DomainRuleViolation("HOSTEL_FEE", "State the accommodation fee for the session.", new DomainRuleViolation.Remedy("Enter zero for no fee.", "Student Services"));
         }
         repo.putSetting(session, fee, holdHours == null ? 72 : holdHours, close);
         return Map.of("session", session, "fee", fee, "holdHours", holdHours == null ? 72 : holdHours);

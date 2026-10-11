@@ -1375,7 +1375,7 @@ class CollegeController {
                  WHERE st.id = :me
                 """).param("me", me).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("student", me.toString()));
         if (!"CHS".equals(st.get("college_code"))) {
-            throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "This record is not the College of Health Sciences'.", new DomainRuleViolation.Remedy("The College's journey is the MBBS student's.", "College Secretary"));
+            throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "This record is not the College of Health Sciences'.", new DomainRuleViolation.Remedy("Open an MBBS student's record.", "College Secretary"));
         }
         String session = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
                 .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());

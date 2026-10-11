@@ -85,7 +85,7 @@ export function Register({ session }: { session: string }) {
     if (!phone.trim()) e.phone = "A phone number is required. Screening batches and venue changes are sent by SMS.";
     else if (!ph.ok) e.phone = ph.digits.length === 11 ? "Eleven digits, but a Nigerian mobile number begins with a zero. Check the first digit." : `That is ${ph.digits.length} digit${ph.digits.length === 1 ? "" : "s"}. Eleven are needed, beginning with a zero — 0803 411 7725. Written as +234 or without the zero is fine.`;
     if (!pw) e.pw = "Choose a password.";
-    else if (pw.length < 8) e.pw = "Eight characters at the very least. This one account carries you to graduation.";
+    else if (pw.length < 8) e.pw = "At least eight characters.";
     if (!e.pw && !pw2) e.pw2 = "Type it a second time.";
     else if (!e.pw && pw !== pw2) e.pw2 = "The two do not match. Nothing has been saved and nothing is lost — type both again, or press Show to see them.";
     setErr(e);

@@ -702,7 +702,7 @@ public class ResultsService {
         Sheets.ExamSession cur = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
         if ("CLOSED".equals(cur.state())) {
             throw new DomainRuleViolation("EXAM_CLOSED", "A closed examination session cannot be changed.",
-                    new DomainRuleViolation.Remedy("A closed session is a record; open a new session instead.", "Examinations"));
+                    new DomainRuleViolation.Remedy("Open a new session instead.", "Examinations"));
         }
         checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
         String kind = in.kind() == null || in.kind().isBlank() ? "MAIN" : in.kind();

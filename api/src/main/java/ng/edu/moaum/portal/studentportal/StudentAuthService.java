@@ -229,7 +229,7 @@ public class StudentAuthService {
         }
         if (next == null || next.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
-                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
         repo.changePassword(student, encoder.encode(next));
         repo.event("", student, "PASSWORD_CHANGED", null);

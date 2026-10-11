@@ -125,7 +125,7 @@ public class RegistrationService {
         assertMayDecide(id);
         if (!Set.of("ADMITTED", "ACTIVE", "PROBATION").contains(r.studentStatus())) {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE",
-                    "A student who is " + r.studentStatus().toLowerCase() + " does not register (I-STU-2).",
+                    "A student who is " + r.studentStatus().toLowerCase() + " does not register.",
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
         int units = repo.units(id);
