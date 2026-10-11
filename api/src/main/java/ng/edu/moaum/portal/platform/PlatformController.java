@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import ng.edu.moaum.portal.shared.ApplicationWindows;
 import ng.edu.moaum.portal.shared.Sessions;
 
 /**
@@ -39,10 +40,13 @@ class PlatformController {
     private final JdbcClient jdbc;
     private final String commit;
     private final tools.jackson.databind.ObjectMapper json;
+    private final ApplicationWindows windows;
 
-    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
+    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows,
+                       @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
         this.jdbc = jdbc;
         this.json = json;
+        this.windows = windows;
         this.commit = commit;
     }
 
@@ -89,8 +93,15 @@ class PlatformController {
         return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
-    private static Map<String, Object> chk(String key, String label, String status, String detail, String fix) {
+    /** the three parts of the readiness: the admission exercise (the intake session, V378), the running session, and what
+     *  holds across the University */
+    static final String INTAKE = "intake";
+    static final String RUNNING = "running";
+    static final String INSTITUTION = "institution";
+
+    private static Map<String, Object> chk(String group, String key, String label, String status, String detail, String fix) {
         Map<String, Object> m = new LinkedHashMap<>();
+        m.put("group", group);
         m.put("key", key);
         m.put("label", label);
         m.put("status", status);   // ok | warn | bad
@@ -99,49 +110,86 @@ class PlatformController {
         return m;
     }
 
-    /** Go-live readiness for a session: each configuration gate that silently blocks part of launch,
-     *  checked live, so it is a screen and not a manual list. Read-only. */
+    /** Go-live readiness: each configuration gate that silently blocks part of launch, checked live, so it is a screen and
+     *  not a manual list. Read-only. Two sessions are checked at once: the admission exercise is the intake session's
+     *  ({@code intake}; by default policy.intake_session(), the session candidates apply into — V378), and registration,
+     *  school fees and clearance are the running session's ({@code session}; by default the University's current one), so
+     *  the coming session's admissions are not read green from the last exercise, nor the running session's fees from the
+     *  coming one. */
     @GetMapping("/readiness")
     @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_ict','OFFICE_admin','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_bursar')")
     @Transactional(readOnly = true)
-    Map<String, Object> readiness(@RequestParam(required = false) String session) {
+    Map<String, Object> readiness(@RequestParam(required = false) String session, @RequestParam(required = false) String intake) {
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
                 : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
+        String in = intake != null && intake.matches("\\d{4}/\\d{4}") ? intake
+                : jdbc.sql("SELECT policy.intake_session()").query(String.class).optional().orElse(s);
         List<Map<String, Object>> checks = new ArrayList<>();
 
-        boolean fee = Boolean.TRUE.equals(jdbc.sql("SELECT stated FROM admissions.applicant_fee_rule(:s)").param("s", s).query(Boolean.class).single());
-        checks.add(chk("applicant_fee", "Applicant fee set", fee ? "ok" : "bad",
-                fee ? "Application, portal and acceptance fees are stated for " + s : "Not stated for " + s + " — receipts use fallback amounts", "/admissions/settings"));
+        // ── the admission exercise: the intake session ──
+        Map<String, Object> inSes = jdbc.sql("SELECT state, policy.session_label(state) AS label FROM policy.academic_session WHERE name = :s")
+                .param("s", in).query().listOfRows().stream().findFirst().orElse(null);
+        String inState = inSes == null ? null : (String) inSes.get("state");
+        checks.add(chk(INTAKE, "intake_session", "Admission session on the calendar",
+                inState == null ? "bad" : "PLANNED".equals(inState) || "CURRENT".equals(inState) ? "ok" : "warn",
+                inState == null ? in + " is not on the calendar" : in + " is " + String.valueOf(inSes.get("label")).toLowerCase(), "/calendar"));
 
-        boolean policy = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM admissions.session_policy WHERE session=:s AND state='IN_FORCE')").param("s", s).query(Boolean.class).single());
-        checks.add(chk("admission_policy", "Admission policy in force", policy ? "ok" : "bad",
-                policy ? "Weights and quota are in force for " + s : "No in-force policy for " + s + " — it is still a draft", "/admissions/settings"));
+        Map<String, Object> fee = jdbc.sql("SELECT stated, application_fee, acceptance_fee, carried_from FROM admissions.applicant_fee_rule(:s)")
+                .param("s", in).query().singleRow();
+        boolean feeStated = Boolean.TRUE.equals(fee.get("stated"));
+        checks.add(chk(INTAKE, "applicant_fee", "Applicant fees set", feeStated ? "ok" : "bad",
+                feeStated ? "Application, acceptance and checking fees are set for " + in
+                        : "Not set for " + in + ": candidates would be charged " + (fee.get("carried_from") == null ? "the built-in amounts" : fee.get("carried_from") + "'s amounts")
+                                + " (application ₦" + naira(fee.get("application_fee")) + ", acceptance ₦" + naira(fee.get("acceptance_fee")) + ")",
+                "/admissions/settings?session=" + in));
 
+        boolean policy = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM admissions.session_policy WHERE session=:s AND state='IN_FORCE')").param("s", in).query(Boolean.class).single());
+        checks.add(chk(INTAKE, "admission_policy", "Admission policy in force", policy ? "ok" : "bad",
+                policy ? "Weights and quota are in force for " + in : "No in-force policy for " + in, "/admissions/settings?session=" + in));
+
+        long listed = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live WHERE session = :s").param("s", in).query(Long.class).single();
+        checks.add(chk(INTAKE, "jamb_list", "JAMB's list uploaded", listed > 0 ? "ok" : "bad",
+                listed > 0 ? String.format(java.util.Locale.ENGLISH, "%,d", listed) + " candidates on JAMB's list for " + in
+                        : "No JAMB list for " + in + ": the Post-UTME page finds no candidate", "/admissions/caps?session=" + in));
+
+        ApplicationWindows.Window putme = windows.read(ApplicationWindows.POST_UTME, in);
+        checks.add(chk(INTAKE, "post_utme_window", "Post-UTME registration open", putme.open() ? "ok" : "warn",
+                putme.open() ? "Open for " + in + (putme.closesAt() == null ? "" : " until " + day(putme.closesAt()))
+                        : "SCHEDULED".equals(putme.state()) && putme.opensAt() != null ? "Opens " + day(putme.opensAt()) + " for " + in
+                        : "Closed for " + in + ": candidates cannot register", "/ict/applications?session=" + in));
+
+        long examProg = jdbc.sql("SELECT count(*) FROM admissions.screening_exam_programme WHERE session=:s").param("s", in).query(Long.class).single();
+        long putmeExams = jdbc.sql("SELECT count(*) FROM assessment.cbt_exam WHERE office = 'POST_UTME' AND putme_session = :s AND cancelled_at IS NULL")
+                .param("s", in).query(Long.class).single();
+        checks.add(chk(INTAKE, "exam_programmes", "Post-UTME examination", examProg == 0 || putmeExams > 0 ? "ok" : "warn",
+                examProg == 0 ? "No programme screens by examination for " + in + "; all screen on O'Level"
+                        : putmeExams > 0 ? examProg + " programme(s) screen by examination; the Post-UTME CBT is set up for " + in
+                        : examProg + " programme(s) screen by examination, but no Post-UTME CBT is set up for " + in,
+                examProg == 0 ? "/admissions/settings?session=" + in : "/ict/cbt"));
+
+        // ── the running session ──
         String sesState = jdbc.sql("SELECT state FROM policy.academic_session WHERE name=:s").param("s", s).query(String.class).optional().orElse(null);
-        checks.add(chk("session", "Session on the calendar", sesState == null ? "bad" : "CURRENT".equals(sesState) ? "ok" : "warn",
+        checks.add(chk(RUNNING, "session", "Session on the calendar", sesState == null ? "bad" : "CURRENT".equals(sesState) ? "ok" : "warn",
                 sesState == null ? s + " is not on the calendar" : s + " is " + sesState.toLowerCase(), "/calendar"));
 
         List<Integer> open = jdbc.sql("SELECT number FROM policy.semester WHERE session=:s AND state='OPEN' ORDER BY number").param("s", s).query(Integer.class).list();
-        checks.add(chk("semester", "A semester is open", open.isEmpty() ? "warn" : "ok",
+        checks.add(chk(RUNNING, "semester", "A semester is open", open.isEmpty() ? "warn" : "ok",
                 open.isEmpty() ? "No semester is open for " + s + " — students cannot register" : "Semester " + open.stream().map(String::valueOf).reduce((a, b) -> a + " and " + b).orElse("") + " open", "/calendar"));
 
         boolean feeSchedule = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM finance.fee_schedule WHERE session=:s AND ended_at IS NULL)").param("s", s).query(Boolean.class).single());
-        checks.add(chk("fee_schedule", "School-fee schedule set", feeSchedule ? "ok" : "bad",
+        checks.add(chk(RUNNING, "fee_schedule", "School-fee schedule set", feeSchedule ? "ok" : "bad",
                 feeSchedule ? "A current fee schedule exists for " + s : "No fee schedule for " + s + " — students cannot pay or register", "/finance/fees"));
 
         boolean clearance = Boolean.TRUE.equals(jdbc.sql("SELECT policy.in_force('clearance','UNIVERSITY',current_date) IS NOT NULL").query(Boolean.class).single());
-        checks.add(chk("clearance", "Clearance scheme in force", clearance ? "ok" : "warn",
+        checks.add(chk(RUNNING, "clearance", "Clearance scheme in force", clearance ? "ok" : "warn",
                 clearance ? "A clearance scheme is in force" : "No clearance scheme in force — clearance cannot run", "/clearance"));
 
+        // ── across the University ──
         long demoStudents = jdbc.sql("SELECT count(*) FROM people.student WHERE surname='DEMO' AND matric_no ~ '^MOAUM/[A-Z]{2,6}/[0-9]{2}/990[1-6]$'").query(Long.class).single();
         long demoCourses = jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code LIKE 'DMO %' OR code LIKE 'DMC %' OR title ILIKE 'Demo %'").query(Long.class).single();
         long demo = demoStudents + demoCourses;
-        checks.add(chk("demo", "Demo data removed", demo == 0 ? "ok" : "warn",
+        checks.add(chk(INSTITUTION, "demo", "Demo data removed", demo == 0 ? "ok" : "warn",
                 demo == 0 ? "No demo students or courses remain" : demoStudents + " demo student(s) and " + demoCourses + " demo course(s) still on the system", null));
-
-        long examProg = jdbc.sql("SELECT count(*) FROM admissions.screening_exam_programme WHERE session=:s").param("s", s).query(Long.class).single();
-        checks.add(chk("exam_programmes", "Exam-screened programmes set", "ok",
-                examProg + " programme(s) screened by Post-UTME examination for " + s + " — the rest screen on O'Level", "/admissions/settings"));
 
         // ── institution-level gates (not session-scoped) ──
         Map<String, Object> gw = jdbc.sql("""
@@ -151,15 +199,15 @@ class PlatformController {
                 """).query().singleRow();
         long gwAny = ((Number) gw.get("any")).longValue();
         long gwLive = ((Number) gw.get("live")).longValue();
-        checks.add(chk("gateway", "Payment gateway configured", gwLive > 0 ? "ok" : gwAny > 0 ? "warn" : "bad",
+        checks.add(chk(INSTITUTION, "gateway", "Payment gateway configured", gwLive > 0 ? "ok" : gwAny > 0 ? "warn" : "bad",
                 gwLive > 0 ? "A live payment gateway key is set" : gwAny > 0 ? "Only a TEST gateway key is set — no live payments" : "No payment gateway key set — online payments cannot be taken", "/finance/gateways"));
 
         boolean mail = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM platform.mail_settings WHERE coalesce(smtp_host,'') <> '')").query(Boolean.class).single());
-        checks.add(chk("email", "Email (SMTP) configured", mail ? "ok" : "warn",
+        checks.add(chk(INSTITUTION, "email", "Email (SMTP) configured", mail ? "ok" : "warn",
                 mail ? "Outgoing email is set up" : "No SMTP host set — receipts and notices reach applicants in-portal only, not by email", "/platform/mail"));
 
         boolean sms = Boolean.TRUE.equals(jdbc.sql("SELECT coalesce(bool_or(enabled AND api_key_enc IS NOT NULL), false) FROM platform.sms_settings").query(Boolean.class).single());
-        checks.add(chk("sms", "SMS configured", sms ? "ok" : "warn",
+        checks.add(chk(INSTITUTION, "sms", "SMS configured", sms ? "ok" : "warn",
                 sms ? "The SMS gateway is enabled and keyed" : "SMS is not enabled — applicants and students get no text alerts", "/platform/sms"));
 
         // V393: postgraduate registration, in the School of Postgraduate Studies' own session
@@ -171,19 +219,31 @@ class PlatformController {
         if (pg.get("semester") == null) { pgMissing.add("no semester open within its registration dates"); if (pgFix == null) pgFix = "/admissions/postgraduate/calendar"; }
         if (((Number) pg.get("classes")).longValue() == 0) { pgMissing.add("the School's classes are not set up"); if (pgFix == null) pgFix = "/admissions/postgraduate/courses"; }
         if (((Number) pg.get("unstated")).longValue() > 0) { pgMissing.add(pg.get("unstated") + " PG student(s) with no fee line stated"); if (pgFix == null) pgFix = "/finance/fees?session=" + pg.get("session"); }
-        checks.add(chk("pg_registration", "Postgraduate registration can open", pgReady ? "ok" : "warn",
+        checks.add(chk(INSTITUTION, "pg_registration", "Postgraduate registration can open", pgReady ? "ok" : "warn",
                 pgReady ? "The School's session " + pg.get("session") + " is ready for course registration"
                         : pg.get("session") + ": " + String.join("; ", pgMissing), pgFix));
 
         long bad = checks.stream().filter(c -> "bad".equals(c.get("status"))).count();
         long warn = checks.stream().filter(c -> "warn".equals(c.get("status"))).count();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("session", s);
+        out.put("session", s);              // the running session
+        out.put("intakeSession", in);       // the admission exercise's
         out.put("ready", bad == 0);
         out.put("blocking", bad);
         out.put("warnings", warn);
         out.put("checks", checks);
         return out;
+    }
+
+    /** an amount as the readiness writes it: 25000 → 25,000 */
+    private static String naira(Object amount) {
+        return amount == null ? "—" : String.format(java.util.Locale.ENGLISH, "%,.0f", new java.math.BigDecimal(amount.toString()));
+    }
+
+    /** a window's date as the readiness writes it, in Lagos: 30 Nov 2026 */
+    private static String day(java.time.OffsetDateTime at) {
+        return at.atZoneSameInstant(java.time.ZoneId.of("Africa/Lagos"))
+                .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH));
     }
 
     @GetMapping("/status")

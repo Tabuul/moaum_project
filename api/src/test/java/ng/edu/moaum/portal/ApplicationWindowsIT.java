@@ -261,7 +261,8 @@ class ApplicationWindowsIT {
             jdbc.sql("UPDATE jupeb.setting SET current_session = NULL WHERE session = '*'").update();
             assertThat(jdbc.sql("SELECT policy.application_session('JUPEB_APPLICATION')").query(String.class).single()).isEqualTo("2141/2142");
             // nothing planned after the current session: the current one is the intake
-            jdbc.sql("UPDATE policy.academic_session SET state = 'DRAFT' WHERE name IN ('2142/2143', '2143/2144')").update();
+            // (every planned session after it, other tests' far-future ones included, put back to a draft for the moment)
+            jdbc.sql("UPDATE policy.academic_session SET state = 'DRAFT' WHERE state = 'PLANNED' AND starts_on > DATE '2141-10-01'").update();
             assertThat(jdbc.sql("SELECT policy.application_session('POST_UTME_REGISTRATION')").query(String.class).single()).isEqualTo("2141/2142");
             return null;
         }));
