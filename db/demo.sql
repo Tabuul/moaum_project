@@ -53,9 +53,10 @@ DECLARE
     c           record;
     elig        record;
 BEGIN
-    -- ── the session everything hangs in: the calendar's current one (the latest run or on the calendar when none is
-    --    current), else the session the date falls in, September to August; never a year written in here ──
-    v_session := coalesce(policy.university_current_session(),
+    -- ── the session everything hangs in: the CURRENT one, else the session the date falls in, September to August;
+    --    never a year written in here, and never "the latest on the calendar", which the property suite (check.sql,
+    --    run before the demo in CI) leaves holding sessions of its own such as 9997/9998 ──
+    v_session := coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1),
                           CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
                           || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END);
     v_yy := substr(v_session, 3, 2);
@@ -644,8 +645,8 @@ END $recruit$;
 DO $appraisal$
 DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_hr uuid; em record; v_session text;
 BEGIN
-    -- the cycle the HR screens read (policy.university_current_session()), else the session the date falls in
-    v_session := coalesce(policy.university_current_session(),
+    -- the CURRENT cycle, else the session the date falls in (as the session above)
+    v_session := coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1),
                           CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
                           || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END);
     SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
@@ -744,7 +745,6 @@ DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30';
         v_session text; v_rows jsonb; v_appr uuid; v_payer uuid; s_paid uuid; s_apply uuid; w record;
 BEGIN
     SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    IF v_session IS NULL THEN v_session := policy.university_current_session(); END IF;
     IF v_session IS NULL THEN
         v_session := CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
                      || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END;
@@ -821,7 +821,6 @@ DECLARE
     v_lecturer uuid; v_exams uuid; d record; v_rows jsonb; v_due numeric; v_ref text; st record;
 BEGIN
     SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    IF v_session IS NULL THEN v_session := policy.university_current_session(); END IF;
     IF v_session IS NULL THEN
         v_session := CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
                      || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END;
