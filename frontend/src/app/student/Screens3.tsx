@@ -24,6 +24,9 @@ function courseType(e: { kind?: string; basis?: string; entryType?: string }): s
   if (b === "gst") return "GST";
   if (b === "elective") return "Elective";
   if (b === "core" || b === "compulsory" || b === "required") return "Core";
+  // V389: a postgraduate programme's research course and deficiency course (the latter earns no credit)
+  if (b === "research") return "Research";
+  if (b === "deficiency") return "Deficiency";
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
@@ -57,8 +60,11 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   // its own department yet Elective for this programme (course_offer.basis). Core/GST are required here;
   // everything else is an elective. GST (General Studies) is a University requirement.
   const core = v.menu.filter((m) => !m.carryover && (m.basis === "Core" || m.basis === "GST"));
-  const elec = v.menu.filter((m) => !m.carryover && !core.includes(m));
-  const total = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
+  // V389: a postgraduate programme's research and deficiency courses are neither core nor electives
+  const special = v.menu.filter((m) => !m.carryover && (m.basis === "Research" || m.basis === "Deficiency"));
+  const elec = v.menu.filter((m) => !m.carryover && !core.includes(m) && !special.includes(m));
+  const total = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0)
+    + special.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
   const min = v.limit.min_units;
   const max = v.limit.max_units;
   const onProbation = !!v.probation && v.probation.standing === "PROBATION";
@@ -151,6 +157,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
+      {m.basis === "Research" || m.basis === "Deficiency" ? <Pil kind={m.basis === "Research" ? "ok" : "warn"}>{m.basis}</Pil> : null}
       {m.gstLocked ? <Pil kind="bad">GST fee required</Pil> : null}
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
@@ -246,6 +253,11 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       <Panel title="Electives" right={<>choose to reach {min}–{max} units</>}>
         <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           </PBody></Panel>
+      {special.length ? (
+        <Panel title="Research and deficiency courses">
+          <PBody>{special.map((m) => pick(m, false, chosen.has(m.offering_id)))}
+            <div className="sub2 mt-2">A deficiency course earns no credit; register it where the School requires it of you.</div></PBody></Panel>
+      ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (
         <div className="row">
