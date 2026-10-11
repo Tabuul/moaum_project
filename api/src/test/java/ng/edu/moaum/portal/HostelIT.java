@@ -54,12 +54,14 @@ class HostelIT {
         housing = TestTokens.token(it.person("ZZHS-HOUSING", "ZZHSHOUSING"), List.of("housing"));
         bursar = TestTokens.token(it.person("ZZHS-BURSAR", "ZZHSBURSAR"), List.of("bursar"));
         lecturer = ItSupport.token("lecturer");
-        // an earlier run on the same database (never in CI): its stays closed and its window cleared
+        // an earlier run on the same database, or check.sql's hall (never in CI's API job, which starts from a fresh database): its stays closed and its window cleared
         it.db(() -> {
             jdbc.sql("UPDATE hostel.allocation SET ended_at = coalesce(ended_at, now()), ended_reason = coalesce(ended_reason, 'test reset'), state = CASE WHEN ended_at IS NULL THEN 'CANCELLED' ELSE state END WHERE session = :s AND lapsed_at IS NULL AND ended_at IS NULL").param("s", SESSION).update();
             jdbc.sql("UPDATE hostel.application SET state = 'WITHDRAWN', withdrawn_at = now(), withdrawn_reason = 'test reset' WHERE session = :s AND state <> 'WITHDRAWN'").param("s", SESSION).update();
             jdbc.sql("UPDATE hostel.session_setting SET seed = NULL, drawn_at = NULL, drawn_by = NULL, state = 'OPEN' WHERE session = :s").param("s", SESSION).update();
-            return jdbc.sql("UPDATE hostel.hall SET state = 'CLOSED', state_reason = 'test reset' WHERE code LIKE 'ZH%' AND state = 'ACTIVE'").update();
+            // every other active hall is closed for the test: the free beds, the draw and the waiting list below are counted over the whole
+            // session, and a hall left by an earlier run, another class or check.sql (CHKH) would seat Cara and break the arithmetic
+            return jdbc.sql("UPDATE hostel.hall SET state = 'CLOSED', state_reason = 'test reset: HostelIT seats its own hall only' WHERE state = 'ACTIVE'").update();
         });
     }
 
