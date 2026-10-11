@@ -59,6 +59,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [jambBusy, setJambBusy] = useState(false);
   const [jambProg, setJambProg] = useState<{ label: string; sent: number; of: number } | null>(null);
   const [jambMsg, setJambMsg] = useState<string | null>(null);
@@ -118,20 +119,73 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     }
   }
 
+  type Template = {
+    session: string; programme: string; asAt: string; summary: Record<string, number | null>;
+    quotaDistribution: { criterion: string; percent: number; quota: number; admitted: number; shortfall: number }[];
+    lgaAnalysis: { lga: string; elg: number; sm: number; nm: number; total: number }[];
+    lgaTotal: { lga: string; elg: number; sm: number; nm: number; total: number };
+    rows: Record<string, unknown>[];
+    /** every programme's own summary, when the workbook is the whole session's */
+    perProgramme?: { programme: string; summary: Record<string, number | null> }[];
+  };
+  async function fetchTemplate(programme: string): Promise<Template | null> {
+    const r = await fetch(`${base}/jamb-template${programme ? `?programme=${encodeURIComponent(programme)}` : ""}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+    return j as Template;
+  }
+  /** the whole session: one workbook from every programme's own template, so each count, quota and criterion is the programme's and the sheets add up */
+  function mergeTemplates(parts: Template[]): Template {
+    const sum = (k: string) => parts.reduce<number | null>((a, p) => (p.summary[k] === null || p.summary[k] === undefined ? a : (a ?? 0) + Number(p.summary[k])), null);
+    const summary: Record<string, number | null> = {};
+    for (const k of ["totalApplicants", "registeredApplicants", "qualifiedCases", "nonQualifiedCases", "totalQuota", "utmeQuota", "numberOnMeritList", "unevaluated"]) summary[k] = sum(k);
+    const quota = new Map<string, { criterion: string; percent: number; quota: number; admitted: number; shortfall: number }>();
+    for (const p of parts) for (const q of p.quotaDistribution) {
+      const c = quota.get(q.criterion) ?? { criterion: q.criterion, percent: q.percent, quota: 0, admitted: 0, shortfall: 0 };
+      c.quota += q.quota; c.admitted += q.admitted; c.shortfall += q.shortfall; quota.set(q.criterion, c);
+    }
+    const lga = new Map<string, { lga: string; elg: number; sm: number; nm: number; total: number }>();
+    for (const p of parts) for (const l of p.lgaAnalysis) {
+      const c = lga.get(l.lga) ?? { lga: l.lga, elg: 0, sm: 0, nm: 0, total: 0 };
+      c.elg += l.elg; c.sm += l.sm; c.nm += l.nm; c.total += l.total; lga.set(l.lga, c);
+    }
+    const lgaRows = [...lga.values()].sort((a, b) => a.lga.localeCompare(b.lga));
+    const lgaTotal = lgaRows.reduce((t, l) => ({ lga: "TOTAL", elg: t.elg + l.elg, sm: t.sm + l.sm, nm: t.nm + l.nm, total: t.total + l.total }), { lga: "TOTAL", elg: 0, sm: 0, nm: 0, total: 0 });
+    return {
+      session: parts[0]?.session ?? desk.session, programme: "", asAt: parts[0]?.asAt ?? new Date().toLocaleDateString("en-GB"), summary,
+      quotaDistribution: [...quota.values()], lgaAnalysis: lgaRows, lgaTotal, rows: parts.flatMap((p) => p.rows),
+      perProgramme: parts.map((p) => ({ programme: p.programme, summary: p.summary })),
+    };
+  }
+
   async function exportTemplate(programme: string) {
     setExporting(true);
+    setExportProgress(null);
     setProblem(null);
     try {
-      const r = await fetch(`${base}/jamb-template${programme ? `?programme=${encodeURIComponent(programme)}` : ""}`, { cache: "no-store" });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const t = j as {
-        session: string; programme: string; asAt: string; summary: Record<string, number | null>;
-        quotaDistribution: { criterion: string; percent: number; quota: number; admitted: number; shortfall: number }[];
-        lgaAnalysis: { lga: string; elg: number; sm: number; nm: number; total: number }[];
-        lgaTotal: { lga: string; elg: number; sm: number; nm: number; total: number };
-        rows: Record<string, unknown>[];
-      };
+      let t: Template | null;
+      if (programme) {
+        t = await fetchTemplate(programme);
+      } else {
+        // every programme, three at a time: a whole session in one request ran for minutes and could be cut off at the gateway
+        const names = programmes;
+        const parts: (Template | null)[] = new Array(names.length).fill(null);
+        let next = 0, done = 0, failed = false;
+        const worker = async () => {
+          while (!failed) {
+            const i = next++;
+            if (i >= names.length) return;
+            const p = await fetchTemplate(names[i]);
+            if (!p) { failed = true; return; }
+            parts[i] = p;
+            setExportProgress(`${++done} of ${names.length}`);
+          }
+        };
+        await Promise.all([worker(), worker(), worker()]);
+        if (failed) return;
+        t = mergeTemplates(parts as Template[]);
+      }
+      if (!t) return;
       // a letterhead in the seven rows the template reserves above the data: the
       // school name and title at the top-left (column B, beside the floating crest),
       // then blank rows so the "SN" column header still lands on row 8
@@ -178,13 +232,20 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       }
       const nonCols = [...cols, "UTME REMARKS", "OL REMARKS"];
       const logo = await loadCrest();
-      const book = xlsx([
-        ["Admission_Summary", summary],
+      const sheets: [string, Cell[][]][] = [["Admission_Summary", summary]];
+      if (t.perProgramme?.length) {
+        // the whole session: each programme's own figures on one sheet, in the merit list's order of programmes
+        sheets.push(["Programme_Summary", [...head("SUMMARY BY PROGRAMME"),
+          ["SN", "PROGRAMME", "TOTAL APPLICANTS", "REGISTERED", "QUALIFIED", "NON-QUALIFIED", "TOTAL QUOTA", "UTME QUOTA", "ON MERIT LIST"],
+          ...t.perProgramme.map((p, i) => [i + 1, p.programme, p.summary.totalApplicants, p.summary.registeredApplicants, p.summary.qualifiedCases, p.summary.nonQualifiedCases, p.summary.totalQuota, p.summary.utmeQuota, p.summary.numberOnMeritList] as Cell[])]]);
+      }
+      sheets.push(
         ["Merit_List", [...head("MERIT LIST"), cols, ...merit.map((x, i) => line(x, i))]],
         ["Other_Qualified_Cases", [...head("OTHER QUALIFIED CASES"), cols, ...other.map((x, i) => line(x, i))]],
         ["Non_Qualified_Cases", [...head("NON-QUALIFIED CASES"), nonCols, ...non.map((x, i) => line(x, i, remarks(x)))]],
         ["Ranked_sheet", [...head("RANKED SHEET"), nonCols, ...t.rows.map((x, i) => line(x, i, remarks(x)))]],
-      ], { logo: logo ?? undefined });
+      );
+      const book = xlsx(sheets, { logo: logo ?? undefined });
       const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -194,6 +255,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       URL.revokeObjectURL(url);
     } finally {
       setExporting(false);
+      setExportProgress(null);
     }
   }
 
@@ -348,7 +410,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <option value="">Every programme in one workbook</option>
               {programmes.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-            <Btn kind="primary" disabled={exporting || !rows.length} onClick={() => void exportTemplate(val("export", ""))}>{exporting ? "Building…" : "Download for JAMB"}</Btn>
+            <Btn kind="primary" disabled={exporting || !rows.length} onClick={() => void exportTemplate(val("export", ""))}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
           </div>
         </PBody>
       </Panel>

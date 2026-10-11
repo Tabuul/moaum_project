@@ -95,6 +95,7 @@ class AdmissionSettingsRepository {
                   LEFT JOIN (SELECT c.* FROM admissions.programme_closed c
                                JOIN admissions.session_policy p ON p.id = c.policy_id
                               WHERE p.session = :session) cl ON cl.programme_code = g.code
+                 WHERE g.category = 'UNDER GRADUATE'   -- the UTME/DE cut-offs and subjects are the undergraduate programmes'; the School of Postgraduate Studies admits on its own desk
                  ORDER BY f.name, g.name
                 """)
                 .param("session", session)

@@ -937,15 +937,22 @@ class ApplicantsController {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         int[] budget = { 400 };   // evaluations this export may run for applications the engine has not seen; the desk's button does the rest
         int unevaluated = 0;
+        // every applicant's best grade per O'Level subject in one query (a query per applicant made a whole session's export run for minutes)
+        Map<String, List<Map<String, Object>>> gradesByKey = new java.util.HashMap<>();
+        for (Map<String, Object> g : jdbc.sql("""
+                SELECT st.jamb_key, g.subject, (array_agg(g.grade ORDER BY admissions.olevel_points(:s, g.grade) DESC, g.grade))[1] AS grade,
+                       max(admissions.olevel_points(:s, g.grade)) AS points
+                  FROM admissions.olevel_sitting st JOIN admissions.olevel_grade g ON g.sitting_id = st.id
+                 WHERE st.session = :s
+                   AND (:p::text IS NULL OR st.jamb_key IN (SELECT c.jamb_key FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                                                              WHERE a.session = :s AND a.submitted_at IS NOT NULL AND c.programme = :p))
+                 GROUP BY st.jamb_key, g.subject ORDER BY st.jamb_key, points DESC, g.subject
+                """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows()) {
+            gradesByKey.computeIfAbsent((String) g.get("jamb_key"), k -> new java.util.ArrayList<>()).add(g);
+        }
         for (Map<String, Object> r : rows) {
             Map<String, Object> raw = CandidateDataController.Json.map((String) r.get("raw_text"));
-            List<Map<String, Object>> grades = jdbc.sql("""
-                    SELECT g.subject, (array_agg(g.grade ORDER BY admissions.olevel_points(:s, g.grade) DESC, g.grade))[1] AS grade,
-                           max(admissions.olevel_points(:s, g.grade)) AS points
-                      FROM admissions.olevel_sitting st JOIN admissions.olevel_grade g ON g.sitting_id = st.id
-                     WHERE st.session = :s AND st.jamb_key = :k
-                     GROUP BY g.subject ORDER BY points DESC, g.subject
-                    """).param("s", s).param("k", r.get("jamb_key")).query().listOfRows();
+            List<Map<String, Object>> grades = gradesByKey.getOrDefault((String) r.get("jamb_key"), List.of());
             Map<String, Object> eng = grades.stream().filter(g -> "English Language".equals(g.get("subject"))).findFirst().orElse(null);
             Map<String, Object> maths = grades.stream().filter(g -> "Mathematics".equals(g.get("subject"))).findFirst().orElse(null);
             List<Map<String, Object>> others = grades.stream().filter(g -> g != eng && g != maths).limit(3).toList();
