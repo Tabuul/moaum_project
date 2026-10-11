@@ -98,7 +98,7 @@ public class CapsIntakeService {
         return caps.loadCutoff(session).orElseThrow(() -> new DomainRuleViolation("ADM_LOAD_CUTOFF_NOT_STATED",
                 "No general UTME cut-off is stated for loading the " + session + " lists, so nothing may be loaded.",
                 new DomainRuleViolation.Remedy(
-                        "State the general cut-off for loading — the UTME score under which a candidate is not loaded, whatever the programme — on the admission settings, before the file is uploaded.",
+                        "State the general UTME cut-off for loading on the admission settings, then upload the file.",
                         "Academic Office")));
     }
 
@@ -358,7 +358,7 @@ public class CapsIntakeService {
         if (holder.isPresent() && !holder.get().equals(upper)) {
             throw new DomainRuleViolation("ADM_ALIAS_TAKEN",
                     "\"" + name + "\" is already what JAMB calls " + holder.get() + "; one JAMB name cannot mean two programmes.",
-                    new DomainRuleViolation.Remedy("Check the CAPS download: JAMB names each programme once. If " + holder.get()
+                    new DomainRuleViolation.Remedy("If " + holder.get()
                             + " no longer carries this name, change its alias first.", "Academic Office"));
         }
         if (holder.isPresent()) {

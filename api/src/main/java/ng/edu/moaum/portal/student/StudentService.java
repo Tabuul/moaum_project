@@ -83,8 +83,7 @@ public class StudentService {
         String value = in.value().trim();
         if ("locked".equals(tier)) {
             throw new DomainRuleViolation("STU_FIELD_LOCKED",
-                    "This field is read from the JAMB record and is not changed on the portal. "
-                            + "Correcting it here would put one name on the portal and another on the degree.",
+                    "This field is read from the JAMB record and is not changed on the portal.",
                     new DomainRuleViolation.Remedy("Corrected with JAMB, not here", "Academic Office"));
         }
         // A student's own biodata is written straight away — express, no Registry

@@ -115,7 +115,7 @@ class SupportAccess {
     static void can(Access a, String cap) {
         if (!a.has(cap)) {
             throw new DomainRuleViolation("SUPPORT_CAPABILITY", "Your posting does not carry " + WORDS.getOrDefault(cap, cap.toLowerCase()) + " for this student.",
-                    new DomainRuleViolation.Remedy("Ask the Head of the ICT Support Desk to grant it on a posting that covers the student; until then, document the issue on the ticket and escalate it.", "Head of ICT Support Desk"));
+                    new DomainRuleViolation.Remedy("Ask the Head of the ICT Support Desk to grant it; until then, escalate the ticket.", "Head of ICT Support Desk"));
         }
     }
 

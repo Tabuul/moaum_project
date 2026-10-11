@@ -318,10 +318,10 @@ public class ResultsService {
         boolean lecturerReached = Boolean.TRUE.equals(c.get("lecturerReachable"));
         if ("REMIND".equals(c.get("kind"))) {
             return told > 0 ? course + ": the reminder went to " + lecturer + "."
-                    : course + ": " + lecturer + " has no email or phone on record, so nothing could be sent — the reminder is kept, and shows on their own score sheets when they sign in.";
+                    : course + ": " + lecturer + " has no email or phone on record; the reminder shows on their score sheets.";
         }
         String to = c.get("toOfficeLabel") == null ? String.valueOf(c.get("toOffice")) : String.valueOf(c.get("toOfficeLabel"));
-        return course + ": escalated to the " + to + (told > 0 ? " — " + c.get("toldNames") + " told" : " — no one posted there has an email or phone on record; it shows on their desk's list")
+        return course + ": escalated to the " + to + (told > 0 ? " — " + c.get("toldNames") + " told" : " — no one posted there has an email or phone on record")
                 + (lecturerReached ? "; " + lecturer + " was told it was escalated." : "; " + lecturer + " has no email or phone on record.");
     }
 
@@ -600,7 +600,7 @@ public class ResultsService {
         if (onBehalf && (behalfReason == null || behalfReason.isEmpty())) {
             throw new DomainRuleViolation("RES_UPLOAD_ON_BEHALF_SAYS_WHY", "You do not teach " + r.courseCode()
                     + "; marks you enter are on the lecturer's behalf and carry the reason.",
-                    new DomainRuleViolation.Remedy("Say why the lecturer is not entering the marks themselves (away, unwell, no access). It is written on the record beside your name, and the lecturer remains the sheet's academic owner.", "Programme Examinations Officer"));
+                    new DomainRuleViolation.Remedy("Say why the lecturer is not entering the marks (away, unwell, no access).", "Programme Examinations Officer"));
         }
         if (!onBehalf) behalfReason = null;
         int written = 0;
@@ -661,7 +661,7 @@ public class ResultsService {
             if (comment == null || comment.isBlank()) {
                 throw new DomainRuleViolation("RES_SUBMIT_ON_BEHALF_SAYS_WHY", "You do not teach " + r.courseCode()
                         + "; submitting its sheet is on the lecturer's behalf and carries the reason.",
-                        new DomainRuleViolation.Remedy("Say why the lecturer is not attesting the sheet themselves. It goes on the record with your name; another person must verify it.", "Programme Examinations Officer"));
+                        new DomainRuleViolation.Remedy("Say why the lecturer is not attesting the sheet; another person must verify it.", "Programme Examinations Officer"));
             }
             comment = "Submitted on behalf of " + (r.lecturer() == null ? "the lecturer" : r.lecturer()) + ": " + comment.trim();
         }

@@ -168,7 +168,7 @@ export function markedSheetPdf(m: MarkedSheet, semester: string): Uint8Array {
     // the footer, the same on every page
     const fy = BOTTOM - 6;
     p.rule(L, fy + 14, W - R, fy + 14, 0.6, 0.6);
-    p.text(L, fy, `Generated ${generated} from the register. For reference: the total carries the University's grace mark where it applies; the grade and the point follow from the scheme in force. The record is the register, not this print.`, 6.8, false, MUTED);
+    p.text(L, fy, `Generated ${generated} from the register, for reference. The total carries the University's grace mark where it applies.`, 6.8, false, MUTED);
     return { p, y };
   };
   const tableHeader = (p: Page, y: number): number => {

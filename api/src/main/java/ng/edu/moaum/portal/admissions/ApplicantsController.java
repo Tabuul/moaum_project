@@ -863,7 +863,7 @@ class ApplicantsController {
         String basis = body.basis() == null || body.basis().isBlank() ? null : body.basis().trim().toUpperCase();
         if (basis != null && !BASES.contains(basis)) {
             throw new DomainRuleViolation("APP_DECISION_BASIS", "'" + body.basis() + "' is not a basis the Board admits on.",
-                    new DomainRuleViolation.Remedy("NM, SM, ELG, LOCALITY, PLWD or OTHER — it is what goes back to JAMB.", "Admissions Board"));
+                    new DomainRuleViolation.Remedy("NM, SM, ELG, LOCALITY, PLWD or OTHER.", "Admissions Board"));
         }
         jdbc.sql("SELECT admissions.decide_application(:id, :d, :n, :b)").param("id", id).param("d", d)
                 .param("n", body.note(), Types.VARCHAR).param("b", basis, Types.VARCHAR).query(String.class).single();

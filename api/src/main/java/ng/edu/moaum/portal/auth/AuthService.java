@@ -147,7 +147,7 @@ public class AuthService {
     static void checkPolicy(String username, String password) {
         if (password == null || password.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("AUTH_PASSWORD_SHORT", "A password is at least " + MIN_PASSWORD + " characters.",
-                    new DomainRuleViolation.Remedy("Choose a longer one; a sentence you will remember is better than a word you will not.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a longer one.", "You"));
         }
         if (username != null && !username.isBlank() && password.toLowerCase().contains(username.toLowerCase())) {
             throw new DomainRuleViolation("AUTH_PASSWORD_IS_USERNAME", "The password contains the username.",

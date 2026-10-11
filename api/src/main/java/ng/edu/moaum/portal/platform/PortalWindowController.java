@@ -146,7 +146,7 @@ class PortalWindowController {
         // V385: the Post-UTME CBT door and result checking — windows of the admission exercise, like admission status checking
         boolean putmeCbt = ApplicationWindows.POST_UTME_CBT_TYPES.contains(t);
         if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && !putmeCbt) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time, CCE and postgraduate students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking, the CCE application, the Post-UTME CBT examination and Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the fifteen.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "'" + t + "' is not one of the portal's windows.", new DomainRuleViolation.Remedy("Choose one of the portal's windows.", "Directorate of ICT"));
         }
         if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t) || putmeCbt) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "This window opens and closes for the whole admission exercise of a session, with no semester and no late period.",
@@ -296,7 +296,7 @@ class PortalWindowController {
     Map<String, Object> message(@PathVariable String type, @Valid @RequestBody MessageIn body, @RequestParam(required = false) String session) {
         String t = type.trim().toUpperCase();
         if (!ApplicationWindows.TYPES.contains(t) && !ApplicationWindows.POST_UTME_CBT_TYPES.contains(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration, the postgraduate application, the JUPEB application, the CCE application, the Post-UTME CBT examination or Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the six.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "Only an application window, the Post-UTME CBT or Post-UTME result checking carries a closure message.", new DomainRuleViolation.Remedy("Choose one of those windows.", "Directorate of ICT"));
         }
         AuditContext ctx = AuditContextHolder.required();
         jdbc.sql("SELECT policy.window_message_set(:t, :m, :by, :office)")
@@ -451,7 +451,7 @@ class PortalWindowController {
         };
         String body = switch (action) {
             case "CLOSE" -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is closed from now. " + (after.get("reason") == null ? "" : String.valueOf(after.get("reason")) + " ")
-                    + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "A reference already generated may still be paid and is confirmed as usual; no new reference is generated until the window is reopened." : "No registration is drafted, changed or submitted until the window is reopened.");
+                    + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "A reference already generated may still be paid; no new one is generated until the window reopens." : "No registration is drafted, changed or submitted until the window reopens.");
             default -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is " + (action.equals("EXTEND") ? "extended" : "open") + "."
                     + (after.get("closes_at") == null ? "" : " It closes on " + day(after.get("closes_at")) + ".")
                     + (after.get("late_until") == null ? "" : " Late " + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "payment" : "registration") + " runs until " + day(after.get("late_until")) + (Boolean.TRUE.equals(after.get("late_fee_enabled")) ? ", with the late fee the Bursar states" : "") + ".")

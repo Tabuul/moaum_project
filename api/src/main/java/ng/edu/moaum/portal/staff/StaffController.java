@@ -65,7 +65,7 @@ class StaffController {
     Map<String, Object> savePhoto(@RequestBody PhotoIn body) {
         String type = body == null || body.contentType() == null ? "" : body.contentType().trim().toLowerCase();
         if (!type.equals("image/jpeg") && !type.equals("image/png")) {
-            throw new DomainRuleViolation("STAFF_PHOTO_TYPE", "A photograph is a JPEG or PNG image. Save the picture as JPEG or PNG and upload it again.");
+            throw new DomainRuleViolation("STAFF_PHOTO_TYPE", "A photograph is a JPEG or PNG image.");
         }
         byte[] content;
         try {

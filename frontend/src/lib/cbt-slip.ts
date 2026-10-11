@@ -56,6 +56,6 @@ export async function printSlips(title: string, subtitle: string, slips: Slip[])
   await printDocument("FORM", {
     title, subtitle, copy: null, confidentiality: null,
     bodyHtml: `${CSS}<div class="slips${slips.length === 1 ? " one" : ""}">${cards.join("")}</div>`,
-    footnote: "Each slip's QR opens the portal's check-in page for that candidate and examination only; the portal checks the code. Keep your slip until you leave the hall.",
+    footnote: "Each slip's QR is checked at check-in. Keep your slip until you leave the hall.",
   });
 }

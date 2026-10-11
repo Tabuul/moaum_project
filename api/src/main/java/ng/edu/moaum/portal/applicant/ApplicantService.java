@@ -107,8 +107,8 @@ public class ApplicantService {
             repo.newReset(a.id(), sha256(token), Instant.now().plus(Duration.ofHours(1)));
             String link = portalUrl + "/login/reset?token=" + token;
             repo.queueNotice("EMAIL", a.email(), "Reset your MOAUM application password",
-                    "Somebody — we hope you — asked to reset the password of application " + a.applicationNo() + ". Open this link within the hour to choose a new one: "
-                            + link + " If you did not ask, ignore this; nothing changes until the link is used.", a.applicationId());
+                    "A password reset was requested for application " + a.applicationNo() + ". Open this link within the hour to choose a new one: "
+                            + link + " If you did not ask, ignore this; your password is unchanged.", a.applicationId());
             repo.queueNotice("SMS", a.phone(), "Reset your MOAUM application password",
                     "MOAUM: reset your application password within the hour at " + link, a.applicationId());
             repo.event(identifier, a.id(), "RESET_REQUESTED", ip);
@@ -484,8 +484,8 @@ public class ApplicantService {
            back with them because the Centre asked; otherwise a verified document could be swapped behind the Centre's back */
         Optional<String> cceState = repo.cceState(app);
         if (cceState.isPresent() && !List.of("DRAFT", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED").contains(cceState.get())) {
-            throw new DomainRuleViolation("CCE_NOT_EDITABLE", "The application is with the Centre for Continuing Education; its documents are changed only when the Centre asks.",
-                    new DomainRuleViolation.Remedy("Wait for the Centre; if something is wrong, write to the Centre quoting your application number.", "Centre for Continuing Education"));
+            throw new DomainRuleViolation("CCE_NOT_EDITABLE", "The application is with the Centre for Continuing Education; documents change only when the Centre asks.",
+                    new DomainRuleViolation.Remedy("If something is wrong, write to the Centre quoting your application number.", "Centre for Continuing Education"));
         }
         if ("OLEVEL_STATEMENT_2".equals(kind) && cceState.isEmpty()) {
             throw new DomainRuleViolation("APP_DOCUMENT_KIND", "The second sitting's result is a document of the CCE application.",

@@ -1879,7 +1879,7 @@ class JupebOfficeController {
                   FROM jupeb.application a CROSS JOIN LATERAL jupeb.school_fees(a.id) sf WHERE a.session = :s AND a.state IN ('STUDENT', 'COMPLETED')
                 """).param("s", from).query().singleRow();
         add.accept(new String[] {from, ((Number) owed.get("n")).longValue() > 0 ? "info" : "ok", "School fees outstanding",
-                "₦" + String.format("%,.0f", ((Number) owed.get("total")).doubleValue()) + " in all — the Bursary's to follow up."}, owed.get("n"));
+                "₦" + String.format("%,.0f", ((Number) owed.get("total")).doubleValue()) + " in all."}, owed.get("n"));
         long unlocked = jdbc.sql("SELECT count(*) FROM attendance.register WHERE context = 'JUPEB' AND session = :s AND locked_at IS NULL").param("s", from).query(Long.class).single();
         add.accept(new String[] {from, unlocked > 0 ? "info" : "ok", "Attendance registers not locked", "Lock them, so their marks are final."}, unlocked);
         long ahead = jdbc.sql("SELECT count(*) FROM jupeb.calendar_event WHERE session = :s AND removed_at IS NULL AND coalesce(ends_on, starts_on) >= (now() AT TIME ZONE 'Africa/Lagos')::date")

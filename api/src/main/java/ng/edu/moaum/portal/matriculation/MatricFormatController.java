@@ -141,7 +141,7 @@ class MatricFormatController {
     Map<String, Object> programme(@PathVariable String code, @RequestBody ProgrammeIn body) {
         String mc = code(body.matricCode(), "programme");
         boolean uses = body.matricUsesCode() != null ? body.matricUsesCode() : mc != null;
-        if (uses && mc == null) throw new DomainRuleViolation("MATRIC_NO_CODE", "The programme is set to carry a code but none is given.", new DomainRuleViolation.Remedy("Give the code the schedule prints, or set the programme to carry none — no code is invented.", "The Registry"));
+        if (uses && mc == null) throw new DomainRuleViolation("MATRIC_NO_CODE", "The programme is set to carry a code but none is given.", new DomainRuleViolation.Remedy("Give the code the schedule prints, or set the programme to carry none.", "The Registry"));
         int n = jdbc.sql("UPDATE ref.programme SET matric_code = :m, matric_uses_code = :u, matric_faculty_code = :f, matric_series = :s WHERE code = :c")
                 .param("m", mc, Types.VARCHAR).param("u", uses).param("f", code(body.matricFacultyCode(), "faculty segment"), Types.VARCHAR).param("s", blank(body.matricSeries()) == null ? null : body.matricSeries().trim().toUpperCase(), Types.VARCHAR).param("c", code.trim()).update();
         if (n == 0) throw new NotFound("programme", code);

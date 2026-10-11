@@ -21,7 +21,7 @@ export async function GET() {
     reference: `${inst.shortName}/SAMPLE/${new Date().getFullYear()}`,
     watermark: "SAMPLE",
   }, inst);
-  doc.paragraph("A sample: the rows below are invented. Every real report prints under this header with the filters it was made with, the table header repeated on each page, the serial numbers running on, and the footer with the page count.");
+  doc.paragraph("A sample: the rows below are invented.");
   doc.keyValues([["Prepared for", "The Registrar"], ["Prepared by", me.data.name ?? "—"], ["Rows", "120 invented"], ["Status", "All"]]);
   const names = ["Adaeze Okafor", "Terhemba Iorfa", "Grace Abah", "Musa Danladi", "Ngozi Eze", "Aondona Ukpe"];
   doc.table(["Matriculation number", "Name", "Level", "Score", "Grade"],

@@ -262,8 +262,8 @@ class JupebPublicController {
                         .param("a", a.get("id")).param("h", sha256(token)).update();
                 jdbc.sql("SELECT platform.queue_notice('EMAIL', :to, :s, :b, 'jupeb_application', :id)").param("to", a.get("email"))
                         .param("s", "Reset your JUPEB application password")
-                        .param("b", "Somebody — we hope you — asked to reset the password of JUPEB application " + a.get("application_no")
-                                + ". Open this link within the hour to choose a new one: " + link + "\n\nIf you did not ask, ignore this; nothing changes until the link is used.")
+                        .param("b", "A password reset was requested for JUPEB application " + a.get("application_no")
+                                + ". Open this link within the hour to choose a new one: " + link + "\n\nIf you did not ask, ignore this; your password is unchanged.")
                         .param("id", app).query().listOfRows();
                 return null;
             }));

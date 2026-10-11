@@ -87,7 +87,7 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   }
   p.text(L, qy, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
   const textW = qx - L - 16;
-  let ty = p.paragraph(L, qy - 14, "Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary's ledger.", textW, 9);
+  let ty = p.paragraph(L, qy - 14, "Verify this receipt by the QR code or the check code.", textW, 9);
   ty -= 6;
   // the QR carries the address; nothing of it is printed
   p.text(L, ty, `Check code  ${token}`, 8.5, true);

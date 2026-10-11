@@ -94,7 +94,7 @@ export async function GET() {
   p.text(L, y, a.submittedAt ? `Submitted on ${day(a.submittedAt)}` : "Not yet submitted", 10, true,
     a.submittedAt ? [0.1, 0.4, 0.2] : [0.72, 0.11, 0.11]);
   y -= 24;
-  y = p.paragraph(L, y, "This form is a view of the application record held by the University. The biodata, programme and O’Level results are as JAMB sent them; the programme choice comes from JAMB and cannot be changed on the portal. If anything on it is wrong, write to the Registry quoting the application number — do not create a second account.", A4.w - 2 * L, 9);
+  y = p.paragraph(L, y, "Biodata, programme and O’Level results are as JAMB sent them. If anything is wrong, write to the Registry quoting the application number — do not create a second account.", A4.w - 2 * L, 9);
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${clean(a.applicationNo)}`, 7.5, false, [0.4, 0.4, 0.4]);
 
   const bytes = finishPdf([p], `Application form ${a.applicationNo}`, "FORM");

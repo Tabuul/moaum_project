@@ -578,7 +578,7 @@ class DefermentsController {
         };
         if (!allowed) {
             throw new DomainRuleViolation("DEF_NOT_YOUR_STAGE", "This request is " + String.valueOf(d.get("stage_label")).toLowerCase() + "; " + action.toLowerCase().replace('_', ' ') + " is not this desk's act at that stage.",
-                    new DomainRuleViolation.Remedy("The Bursary verifies a submitted request, the Head of Department decides after the Bursary, the faculty after the department, the Academic Office forwards, and the DVC decides a forwarded request — the final approval; each may return or reject at its own stage only.", "Registry"));
+                    new DomainRuleViolation.Remedy("Order: Bursary, Head of Department, faculty, Academic Office, then the DVC (final). Each returns or rejects at its own stage only.", "Registry"));
         }
         if ("DVC_APPROVE".equals(action) && (body.note() == null || body.note().isBlank())) {
             throw new DomainRuleViolation("DEF_DVC_COMMENT", "The DVC's decision carries a comment.", new DomainRuleViolation.Remedy("Write the recommendation or observation that goes on the record with the approval.", "Deputy Vice-Chancellor"));
@@ -611,7 +611,7 @@ class DefermentsController {
         Map<String, Object> d = inBound(id, b);
         if (!downloadable(b, d)) {
             throw new DomainRuleViolation("DEF_NOT_DOWNLOADABLE", "The Academic Office downloads an application once the faculty has approved it; this one is " + String.valueOf(d.get("stage_label")).toLowerCase() + ".",
-                    new DomainRuleViolation.Remedy("It may be viewed on the desk; it is downloaded when the faculty's approval is on it.", "Academic Office"));
+                    new DomainRuleViolation.Remedy("View it on the desk until the faculty approves it.", "Academic Office"));
         }
         jdbc.sql("SELECT people.deferment_viewed(:id, 'DOWNLOADED', :o)").param("id", id).param("o", "Application downloaded by the " + officeWord(b.office())).query().listOfRows();
         return enriched(id, b);

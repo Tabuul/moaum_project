@@ -304,7 +304,7 @@ public class StudentPortalService {
         /* registration is now gated per semester on that semester's school fees, paid in full (V149) */
         boolean inForce = repo.schemeInForce();
         out.put("clearsRegistration", repo.semesterCleared(id, session, repo.openSemester(id, session)));
-        String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination, results and transcript are not yet released against a payment; the Bursar states the scheme. Course registration opens on this semester's school fees, paid in full.";
+        String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination card, results and transcript are not yet released. Course registration opens on this semester's school fees, paid in full.";
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
@@ -447,11 +447,11 @@ public class StudentPortalService {
             String mode = student(id).entryMode();
             throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate, "CCE".equals(mode)
                     // V380: a CCE student's door is the Centre's calendar and classes
-                    ? new DomainRuleViolation.Remedy("The Centre for Continuing Education sets up the semester's classes and opens it on the CCE calendar; the Directorate of ICT may also hold the CCE registration window.", "Centre for Continuing Education")
+                    ? new DomainRuleViolation.Remedy("The Centre opens the semester on the CCE calendar; the Directorate of ICT may also hold the CCE registration window.", "Centre for Continuing Education")
                     // V389: a PG student's door is the School's calendar and classes
                     : "POSTGRADUATE".equals(mode)
-                    ? new DomainRuleViolation.Remedy("The School of Postgraduate Studies sets up the semester's classes and opens it on its calendar; the Directorate of ICT may also hold the postgraduate registration window.", "School of Postgraduate Studies")
-                    : new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar or dates the early window for the session's fresh students.", "Directorate of ICT"));
+                    ? new DomainRuleViolation.Remedy("The School opens the semester on its calendar; the Directorate of ICT may also hold the postgraduate registration window.", "School of Postgraduate Studies")
+                    : new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar.", "Directorate of ICT"));
         }
     }
 
@@ -597,7 +597,7 @@ public class StudentPortalService {
         out.put("session", session);
         boolean inForce = repo.schemeInForce();
         Boolean cleared = inForce ? repo.clears(id, session, "EXAMINATION") : null;
-        String schemeProblem = inForce ? null : "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
+        String schemeProblem = inForce ? null : "No clearance scheme is in force yet; the Bursar states it.";
         out.put("clearsExamination", cleared);
         out.put("schemeProblem", schemeProblem);
         List<Map<String, Object>> sessions = new ArrayList<>();

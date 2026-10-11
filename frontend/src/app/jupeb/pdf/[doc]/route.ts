@@ -76,7 +76,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     pdf.heading("Documents received");
     pdf.table(["Document", "File"], c.documents.filter((d) => d.filename).map((d) => [d.label, d.filename]), { serial: true });
     pdf.paragraph("This acknowledges that your application for the JUPEB programme has been received. It is not an offer of admission. "
-      + "When the Directorate of ICT opens admission status checking, sign in to the JUPEB portal with your application number to check your status.");
+      + "Check your admission status on the JUPEB portal with your application number once checking opens.");
     name = `jupeb-acknowledgement-${c.application_no}`;
   } else if (doc === "status") {
     if (!mayCheck || !c.statusChecking.status) return refuse("The admission status slip is issued once you have checked your admission status.");
@@ -133,7 +133,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
       [`Second semester (${100 - Number(f.first_percent)}%)`, money(f.second_amount), f.second_paid || f.full_paid ? "PAID" : "UNPAID"],
     ], { serial: true });
     pdf.keyValues([["Paid to date", money(f.paid)], ["Outstanding", money(f.outstanding)]]);
-    pdf.paragraph(`Pay on the JUPEB portal only; the amount is the Bursary's.${f.allow_full ? " The full school fee may be paid at once." : ""} A receipt is issued for each confirmed payment.`);
+    pdf.paragraph(`Pay on the JUPEB portal only.${f.allow_full ? " The full school fee may be paid at once." : ""} A receipt is issued for each confirmed payment.`);
     name = `jupeb-invoice-${c.application_no}`;
   } else if (doc === "receipt") {
     const ref = (url.searchParams.get("ref") ?? "").toUpperCase();
@@ -145,7 +145,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     if (r.kind.startsWith("SCHOOL_") && c.fees) {
       pdf.keyValues([["School fee", money(c.fees.total)], ["Paid to date", money(c.fees.paid)], ["Outstanding", money(c.fees.outstanding)], ["Category", `${feeCategoryLabel(c.fees.category)} · ${c.fees.indigene ? "indigene" : "non-indigene"}`]]);
     }
-    pdf.paragraph("This receipt is generated from the University's confirmed record of the payment. The reference can be verified with the Bursary.");
+    pdf.paragraph("Generated from the University's confirmed record of the payment; the reference can be verified with the Bursary.");
     name = `jupeb-receipt-${r.reference}`;
   } else if (doc === "slip") {
     if (!c.subjects_registered_at) return refuse("The registration slip is issued once your three subjects are registered.");
@@ -195,7 +195,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     [
       "Bring this card and your JUPEB identity card to every paper; a candidate whose face does not match the photograph is not admitted.",
       "Be at the venue before each paper starts. The Board may move a paper; the JUPEB portal always shows the timetable as it stands.",
-      "The QR code below opens the University's record of this card; an altered card does not verify.",
+      "Verify this card by the QR code below; an altered card does not verify.",
     ].forEach((t, i) => pdf.paragraph(`${i + 1}. ${t}`, 8.5));
     pdf.signatures([{ designation: "Candidate" }, { designation: "JUPEB Office" }]);
     name = `jupeb-admit-card-${c.exam_no}`;

@@ -96,7 +96,7 @@ class ExaminerNotifier {
                 "The University invites you to serve as an External Examiner" + (appointment == null ? "" : " for " + appointment) + ", to assess final-year projects independently on the University's assessment form.\n\n"
                         + "Please activate your examiner account through this link, which works once and expires on " + expires.format(DAY) + ":\n\n" + link + "\n\n"
                         + "You will choose a password on that page; the University never sends passwords by email. Your username is this email address. "
-                        + "Once active, the projects assigned to you, their documents and the assessment form are in your workspace.");
+                        + "Once active, your assigned projects are in your workspace.");
     }
 
     void activated(UUID examinerId, UUID invitedBy) {
@@ -156,7 +156,7 @@ class ExaminerNotifier {
         toDesk(a.assignedBy(), "External Examiner Assessment " + (again ? "Resubmitted" : "Submitted") + " — " + a.number(),
                 e.name() + " (" + e.institution() + ") has " + (again ? "resubmitted" : "submitted") + " the assessment below.\n\n" + describe(a) + "\n\nOpen it: " + portalUrl + "/examiners/assignments/" + a.id());
         toExaminer(e, "Assessment Received — " + university(),
-                "Thank you. Your assessment of the project below has been received and is now read-only.\n\n" + describe(a) + "\n\nIf the University needs a correction, the desk will reopen it and you will be told.");
+                "Thank you. Your assessment of the project below has been received and is now read-only.\n\n" + describe(a));
     }
 
     void reopened(UUID assignmentId, String reason) {

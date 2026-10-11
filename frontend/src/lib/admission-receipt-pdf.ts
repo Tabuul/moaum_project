@@ -41,7 +41,7 @@ export function admissionReceiptPdf(r: AdmissionReceipt): Uint8Array {
   p.text(L + 10, y - 6, "Amount received", 9.5, true);
   p.text(L + 190, y - 8, naira(r.amount), 15, true);
   y -= 60;
-  p.text(L, y, "This receipt is issued by the portal against a payment the University confirmed. It is verified against the Bursary's record, not by its appearance.", 8.5, false, [0.4, 0.4, 0.4]);
+  p.text(L, y, "Issued against a payment the University confirmed; verified against the Bursary's record.", 8.5, false, [0.4, 0.4, 0.4]);
   y -= 30;
   p.text(L, y, "Bursar", 10.5, true);
   p.text(L, 50, `Reference ${r.reference} · generated ${when(r.generated_at)} · ${currentInstitution().name}`, 7.5, false, [0.4, 0.4, 0.4]);

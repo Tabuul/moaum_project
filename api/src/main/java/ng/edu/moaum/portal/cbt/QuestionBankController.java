@@ -576,7 +576,7 @@ class QuestionBankController {
         Checked c = check(body.kind(), body.options(), body.answer(), body.answers());
         if (q.get("live") != null) {
             throw new DomainRuleViolation("CBT_QUESTION_IN_LIVE_EXAM", "This question is on the paper of " + q.get("live") + ", which is published to candidates; its paper is fixed until it closes.",
-                    new DomainRuleViolation.Remedy("Correct it once the examination closes (or withdraw the examination if nobody has started it); the attempts already sat keep the version they drew, and a result is amended with a reason.", "You"));
+                    new DomainRuleViolation.Remedy("Correct it once the examination closes, or withdraw the examination if nobody has started it.", "You"));
         }
         if (q.get("archived_at") != null) {
             throw new DomainRuleViolation("CBT_QUESTION_ARCHIVED", "An archived question is kept as it was.", new DomainRuleViolation.Remedy("Restore it from the archive first.", "You"));

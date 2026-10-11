@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     meta: [["Role", clean(label)], ["Office", clean(office)], ["Edition", d.edition.version], ["Last updated", dayOf(d.edition.updated_at)], ["Procedures", String(d.procedures.length)]],
     generatedBy: clean(me.data.name ?? me.data.actorId),
   }, inst);
-  pdf.paragraph("What to click, what to enter, what to confirm and what to expect. Menu and button names are the portal's own at the time of generation; the dashboard always carries the current edition.", 9);
+  pdf.paragraph("Menu and button names as at generation; the dashboard carries the current edition.", 9);
   if (d.procedures.length > 6) {
     pdf.space(6);
     pdf.heading("Contents");

@@ -99,7 +99,7 @@ public class WalletService {
         }
         if (refund != null && refund.contains("GRANT")) {
             throw new DomainRuleViolation("WAL_POLICY_REFUND", "A grant is never refunded to the student through the wallet.",
-                    new DomainRuleViolation.Remedy("A scholarship or a sponsor's money goes back to its giver by the Bursary's own refund, not from the student's wallet.", "Bursar"));
+                    new DomainRuleViolation.Remedy("The Bursary refunds a scholarship or sponsor's money to its giver.", "Bursar"));
         }
         return repo.setPolicy(order == null ? null : String.join(",", order), over, refund == null ? null : String.join(",", refund));
     }

@@ -314,7 +314,7 @@ class ResultsRepository {
                 SELECT platform.queue_notice('EMAIL', p.email,
                            o.course_code || ': marks entered on your behalf',
                            format('%s marks were entered on the score sheet of %s (%s, %s semester %s) on your behalf by %s (%s). Reason given: %s. '
-                                  || 'You remain the academic owner of the sheet; it passes verification, the Departmental Board, the Faculty and Senate as any other.',
+                                  || 'You remain the academic owner of the sheet.',
                                   :rows, o.course_code, o.session, o.semester, p.surname, :by, :office, :reason),
                            'score_sheet', :sheet)
                   FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id JOIN iam.person p ON p.id = o.lecturer_id

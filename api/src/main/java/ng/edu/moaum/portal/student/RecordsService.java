@@ -25,12 +25,10 @@ class RecordsService {
     static final int CGPA_SCOPE = 1500;
 
     private static final String FEES_NOTE =
-            "The session's school fees as the Bursary's fee schedule charges each student and the confirmed school-fee payments "
-                    + "against them. Arrears of earlier sessions are on each student's own record.";
+            "School fees charged by the Bursary's fee schedule and confirmed school-fee payments. Earlier sessions' arrears are on each student's record.";
 
     private static final String ATTENDANCE_NOTE =
-            "Attendance as the lecturers have marked it on the approved registrations. No minimum attendance is configured for "
-                    + "the University's courses, so no student is marked as short; a course with no register shows nothing.";
+            "Attendance as marked by lecturers on approved registrations. No minimum attendance is configured, so no student is marked short.";
 
     private final RecordsRepository records;
     private final StudentRepository students;
@@ -48,7 +46,7 @@ class RecordsService {
         int total = students.inScope(scope);
         return switch (view) {
             case "students" -> new RecordsResult(view, records.students(scope, total <= CGPA_SCOPE), total, null,
-                    total <= CGPA_SCOPE ? null : "The CGPA is read for a scope of up to " + CGPA_SCOPE + " students; narrow it to a department or programme to see it.");
+                    total <= CGPA_SCOPE ? null : "CGPA is shown for up to " + CGPA_SCOPE + " students; narrow to a department or programme.");
             case "registration" -> new RecordsResult(view, records.registration(scope), total, null);
             case "results" -> new RecordsResult(view, records.results(scope), total, null);
             case "exams" -> new RecordsResult(view, records.exams(scope), total, null);

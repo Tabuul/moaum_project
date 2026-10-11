@@ -64,7 +64,7 @@ public class StudentAuthService {
 
     private static DomainRuleViolation badCredentials() {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That number and password do not match a student account.",
-                new DomainRuleViolation.Remedy("Use your matriculation number, or your admission number before it is issued, with the password you chose at application or the one the Registry gave you; five failures lock the account for fifteen minutes.", "Registry"));
+                new DomainRuleViolation.Remedy("Use your matriculation number (or admission number before it is issued) and your password; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
     /** what the student account opens with when it is carried over from the applicant's: the applicant's own bcrypt hash — or, for an
@@ -168,7 +168,7 @@ public class StudentAuthService {
         Object outcome = atTheDoor(s == null ? null : s.id(), "student portal continued from the applicant portal", () -> {
             if (s == null) {
                 return new DomainRuleViolation("AUTH_NOT_ON_REGISTER", "You are not yet on the student register.",
-                        new DomainRuleViolation.Remedy("The register follows your admission: it opens when your screening is successful, or on acceptance where the session needs no screening. Until then, everything is on the applicant portal.", "Registry"));
+                        new DomainRuleViolation.Remedy("Your student account opens when your screening is successful, or on acceptance where no screening is needed. Until then, use the applicant portal.", "Registry"));
             }
             String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
             StudentPortalRepository.Account a = repo.account(s.id()).orElse(null);

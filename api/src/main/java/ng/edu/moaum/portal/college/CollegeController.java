@@ -692,7 +692,7 @@ class CollegeController {
             String u = c.toUpperCase();
             if (!(u.startsWith("GST") || u.startsWith("EPS"))) {
                 throw new DomainRuleViolation("COLLEGE_CARRY_OVER", "No carry-over except GST and EPS courses: " + c + " is not carried over on the MBBS programme.",
-                        new DomainRuleViolation.Remedy("A failed subject of the examination is a resit or a repeat, never a carry-over; only GST and EPS courses are carried.", "College Secretary"));
+                        new DomainRuleViolation.Remedy("Record a failed subject as a resit or a repeat.", "College Secretary"));
             }
         }
         UUID id = jdbc.sql("""

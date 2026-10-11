@@ -643,7 +643,7 @@ class StudentSupportController {
                 out.put("method", "TEMPORARY_PASSWORD");
                 out.put("temporaryPassword", t.password());
                 out.put("expiresAt", t.expiresAt().toString());
-                out.put("note", "Give it to the student now; it is not shown again and is kept only as a hash. It opens one sign-in, and the student must change it there.");
+                out.put("note", "Give it to the student now; it is not shown again. It opens one sign-in, where the student must change it.");
             }
             default -> throw new DomainRuleViolation("SUPPORT_RESET_METHOD", "A reset is a link to the student's address, or a temporary password at the desk.",
                     new DomainRuleViolation.Remedy("Choose LINK or TEMPORARY.", "You"));

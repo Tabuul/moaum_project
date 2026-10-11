@@ -144,7 +144,7 @@ public class AdmissionSettingsService {
         settings.row(session).ifPresent(r -> assertDraft(r));
         if (s.weightUtme() + s.weightPutme() != 100) {
             throw refused("ADM_WEIGHTS", "The weighting does not total 100%: " + s.weightUtme() + " + " + s.weightPutme() + ".",
-                    "Two weights that do not total a hundred produce an aggregate on a scale nobody can state.");
+                    "Make the two weights total 100.");
         }
         if (s.ratioUtme() + s.ratioDe() != 100) {
             throw refused("ADM_RATIO_UTME_DE", "UTME to Direct Entry does not total 100: " + s.ratioUtme() + ":" + s.ratioDe() + ".",
@@ -336,7 +336,7 @@ public class AdmissionSettingsService {
         }
         if (reason == null || reason.isBlank()) {
             throw new DomainRuleViolation("ADM_CLOSE_REASON", "A programme is closed for a session for a reason.",
-                    new DomainRuleViolation.Remedy("Say why it does not admit this session — no accreditation, no intake, suspended by Senate.", "Academic Office"));
+                    new DomainRuleViolation.Remedy("Say why, e.g. no accreditation, no intake, suspended by Senate.", "Academic Office"));
         }
         settings.closeProgramme(id, code, reason.trim());
         return policy(session);
@@ -379,7 +379,7 @@ public class AdmissionSettingsService {
         if (!"DRAFT".equals(r.state())) {
             throw new DomainRuleViolation("ADM_SETTINGS_IN_FORCE",
                     "The " + r.session() + " settings are in force under " + r.instrument() + " and are not edited.",
-                    new DomainRuleViolation.Remedy("A correction is a new version citing a new minute; this one stays readable for as long as anybody admitted under it is alive.",
+                    new DomainRuleViolation.Remedy("A correction is a new version citing a new minute.",
                             "Central Admissions Committee"));
         }
     }

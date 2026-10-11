@@ -339,7 +339,7 @@ public class AllocationImportService {
 
             // the session and the semester
             Map<String, Object> sess = session == null ? null : reg.sessions.get(session);
-            if (session != null && sess == null) { codes.add("SESSION_NOT_FOUND"); messages.add("Academic session " + session + " is not on the calendar"); action = "Choose a session the University has opened; a session is created on the academic calendar, never from a file."; fatal = true; }
+            if (session != null && sess == null) { codes.add("SESSION_NOT_FOUND"); messages.add("Academic session " + session + " is not on the calendar"); action = "Choose a session the University has opened on the academic calendar."; fatal = true; }
             else if (sess != null && semester != null) {
                 int semesters = sess.get("semesters") == null ? 2 : ((Number) sess.get("semesters")).intValue();
                 if (semester > semesters) { codes.add("SEMESTER_NOT_FOUND"); messages.add("Session " + session + " has " + semesters + " semesters; semester " + semester + " is not one of them"); fatal = true; }
@@ -347,7 +347,7 @@ public class AllocationImportService {
 
             // the lecturer
             Person person = up(r.staffId()).isEmpty() ? null : reg.personsByStaff.get(up(r.staffId()));
-            if (!up(r.staffId()).isEmpty() && person == null) { codes.add("STAFF_ID_NOT_FOUND"); messages.add("No member of staff holds the number " + t(r.staffId())); action = "Check the staff number on the teaching staff register; a lecturer is added there, never from this file."; fatal = true; }
+            if (!up(r.staffId()).isEmpty() && person == null) { codes.add("STAFF_ID_NOT_FOUND"); messages.add("No member of staff holds the number " + t(r.staffId())); action = "Check the staff number on the teaching staff register."; fatal = true; }
             Set<String> lecturerDepts = person == null ? Set.of() : reg.deptsOfPerson.getOrDefault(person.id(), Set.of());
             if (person != null) {
                 if (person.ended()) { codes.add("LECTURER_INACTIVE"); messages.add(person.surname() + ", " + person.givenNames() + " has left the University"); fatal = true; }
@@ -368,7 +368,7 @@ public class AllocationImportService {
 
             // the course
             Course course = up(r.courseCode()).isEmpty() ? null : reg.course(r.courseCode());
-            if (!up(r.courseCode()).isEmpty() && course == null) { codes.add("COURSE_NOT_FOUND"); messages.add("No course " + up(r.courseCode()) + " is on the catalogue"); action = "Create the course on the department's catalogue first; an allocation never creates a course."; fatal = true; }
+            if (!up(r.courseCode()).isEmpty() && course == null) { codes.add("COURSE_NOT_FOUND"); messages.add("No course " + up(r.courseCode()) + " is on the catalogue"); action = "Create the course on the department's catalogue first."; fatal = true; }
             if (course != null) {
                 if ("ENDED".equals(course.state())) { codes.add("COURSE_ENDED"); messages.add(course.code() + " has ended and is not allocated"); fatal = true; }
                 String wantTitle = up(r.courseTitle());
@@ -380,7 +380,7 @@ public class AllocationImportService {
                 if (!up(r.courseDept()).isEmpty() && sheetCourseDept == null) { codes.add("DEPARTMENT_NOT_FOUND"); messages.add("Course department \"" + t(r.courseDept()) + "\" is not on the register"); fatal = true; }
                 else if (sheetCourseDept != null && !sheetCourseDept.equalsIgnoreCase(course.dept())) {
                     codes.add("COURSE_DEPARTMENT_MISMATCH"); messages.add("The file puts " + course.code() + " in " + reg.deptName(sheetCourseDept) + "; the catalogue has it in " + reg.deptName(course.dept()));
-                    action = "Correct the course department in the file; a course's department is changed on the catalogue, never from a file."; fatal = true;
+                    action = "Correct the course department in the file."; fatal = true;
                 }
                 // the lecturer's department against the course's: strict, unless the course is a service course (GST) or the
                 // row says so, as the allocation desk's "lecturers from other departments" does
@@ -388,7 +388,7 @@ public class AllocationImportService {
                 if (person != null && !lecturerDepts.isEmpty() && !lecturerDepts.contains(course.dept()) && !service && !yes(r.crossDepartment())) {
                     codes.add("CROSS_DEPARTMENT_NOT_ALLOWED");
                     messages.add(course.code() + " belongs to " + reg.deptName(course.dept()) + "; " + person.surname() + " is in " + String.join(", ", lecturerDepts.stream().map(reg::deptName).sorted().toList()));
-                    action = "Put YES in Cross-department to allocate across departments, as the allocation desk's option does, or choose a lecturer of the course's department."; fatal = true;
+                    action = "Put YES in Cross-department, or choose a lecturer of the course's department."; fatal = true;
                 }
                 // the office's own scope: a Head of Department allocates their department's courses, a faculty office its faculty's
                 if (hod && (hodDept == null || !hodDept.equalsIgnoreCase(course.dept()))) {
@@ -415,7 +415,7 @@ public class AllocationImportService {
             Offering off = (course == null || session == null || semester == null) ? null : reg.offerings.get(key(course.code(), session, semester));
             if (course != null && session != null && semester != null && sess != null && off == null) {
                 codes.add("COURSE_NOT_OFFERED"); messages.add(course.code() + " is not offered in " + session + " semester " + semester + (course.semester() != semester ? " (it is a semester " + course.semester() + " course)" : ""));
-                action = "The offering opens when course registration is opened for the semester, or the Academic Office adds it; an allocation never creates one."; fatal = true;
+                action = "The offering opens with the semester's course registration, or the Academic Office adds it."; fatal = true;
             }
 
             // duplicates in the file: the same lecturer, course, session, semester and role twice
@@ -443,7 +443,7 @@ public class AllocationImportService {
                             if (overload) {
                                 codes.add("LECTURER_WORKLOAD_EXCEEDED"); messages.add(person.surname() + " carries " + have + " units in " + session + " semester " + semester + "; " + course.code() + " makes " + (have + course.units()) + ", over the maximum of " + MAX_UNITS);
                                 if (opts.overload()) status = "WARNING";
-                                else { action = "Tick \"Allow overloads\" to allocate above " + MAX_UNITS + " units — the overload is on the record and reported to the Dean — or lighten the load."; fatal = true; }
+                                else { action = "Tick \"Allow overloads\" to allocate above " + MAX_UNITS + " units (reported to the Dean), or lighten the load."; fatal = true; }
                             }
                             if (!fatal) {
                                 projected.put(lk, have + course.units());
@@ -503,7 +503,7 @@ public class AllocationImportService {
     @Transactional
     public ImportResult importRows(UUID importKey, String fileName, List<RowIn> rows, Options opts) {
         if (importKey == null) {
-            throw new DomainRuleViolation("ALLOC_IMPORT_KEY", "An import carries the key its validation was given, so a repeated press cannot allocate twice.",
+            throw new DomainRuleViolation("ALLOC_IMPORT_KEY", "The import has no validation key.",
                     new DomainRuleViolation.Remedy("Validate the file again and import from the preview.", "You"));
         }
         Map<String, Object> already = jdbc.sql("SELECT id, reference, status, imported, findings::text AS findings, total_rows, valid_rows, warnings, errors, existing, skipped FROM catalogue.allocation_import WHERE import_key = :k")
@@ -581,7 +581,7 @@ public class AllocationImportService {
                   FROM iam.person person WHERE person.id = :p AND nullif(btrim(coalesce(person.email, '')), '') IS NOT NULL
                 """).param("subj", "Course allocation: " + p.courseCode() + " — " + p.courseTitle())
                 .param("body", "You have been allocated " + p.courseCode() + " — " + p.courseTitle() + " (" + p.units() + " units) for " + p.session() + ", " + semester
-                        + " semester" + ("CO_LECTURER".equals(p.role()) ? ", as a co-lecturer" : ", as the lead lecturer") + ". The course is on your teaching page on the portal; its score sheet opens there once the examination session is open.")
+                        + " semester" + ("CO_LECTURER".equals(p.role()) ? ", as a co-lecturer" : ", as the lead lecturer") + ". It is on your teaching page; its score sheet opens there with the examination session.")
                 .param("o", p.offering()).param("p", p.person()).query().listOfRows();
     }
 

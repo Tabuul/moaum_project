@@ -276,7 +276,7 @@ public class PaymentsService {
            issued while it was open is not taken to a gateway after it closes, nor once the fee is paid on another reference */
         if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
             throw new DomainRuleViolation("ADMISSION_CHECKING_NOT_PAYABLE", "The admission checking fee cannot be paid now: Admission Status Checking is closed, or the fee is already paid.",
-                    new DomainRuleViolation.Remedy("Open Admission Status on the applicant portal: it says whether checking is open and whether your fee is paid. A fee already paid is never charged again.", "You"));
+                    new DomainRuleViolation.Remedy("Admission Status on the applicant portal says which. A fee already paid is never charged again.", "You"));
         }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller"
                 : repo.quicktellerLink(r.reference()).isPresent() ? "paydirect" : "") : gateway.trim().toLowerCase();
@@ -472,7 +472,7 @@ public class PaymentsService {
         }
         // V295: as at the checkout, the admission checking fee is paid only while Admission Status Checking is open, and once
         if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
-            return notice("The admission checking fee cannot be paid now", "Admission Status Checking is closed, or the fee is already paid. Open Admission Status on the applicant portal: it says which. A fee already paid is never charged again.");
+            return notice("The admission checking fee cannot be paid now", "Admission Status Checking is closed, or the fee is already paid; Admission Status on the applicant portal says which. A fee already paid is never charged again.");
         }
         WebpayMerchant m = merchantFor(q, r.reference());
         long kobo = r.amount().movePointRight(2).longValueExact();

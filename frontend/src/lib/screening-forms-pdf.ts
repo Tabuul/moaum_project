@@ -174,7 +174,7 @@ function verification(p: Page, input: FormsInput) {
   const x0 = R - side, y0 = 40;
   for (let r = 0; r < d.qr.size; r++) for (let c = 0; c < d.qr.size; c++) if (d.qr.dark[r * d.qr.size + c]) p.fill(x0 + c * cell, y0 + (d.qr.size - 1 - r) * cell, cell, cell, 0);
   p.text(L, 62, `Screening forms ${d.number} · version ${d.version} · issued ${longDate(d.issuedOn)} · verification code ${d.code}`, 8, true);
-  p.text(L, 50, `Verify at ${d.verifyPage} by the code or the document number; only what the University discloses is shown. A field left blank is not held by the University and is filled by hand.`, 7.5, false, GREY);
+  p.text(L, 50, `Verify at ${d.verifyPage} by the code or the document number. Fill any blank field by hand.`, 7.5, false, GREY);
 }
 
 /** the faculty group ticked on the screening form: A Arts, Law · B Soc. Sc, Mgt. Sc · C Edu., Scs., CHS */

@@ -92,7 +92,7 @@ class HeldScriptsController {
                     + "You sat the paper in " + course + " (" + r.get("session") + ", semester " + r.get("semester") + ") without registering the course. "
                     + "Your lecturer has held your script and its mark on the portal. The mark is not on any result yet.\n\n"
                     + "To have it counted: pay your fees, register the course on the portal, and have the registration approved by your Head of Department " + by + ". "
-                    + "The moment the registration is approved, the register releases the mark into the score sheet on its own. "
+                    + "Once it is approved, the mark goes into the score sheet. "
                     + "A script not released by then lapses and the result is lost.\n\n"
                     + ng.edu.moaum.portal.platform.Branding.name() + " — the Registry";
             String sms = "MOAUM: your " + r.get("course_code") + " script (" + r.get("session") + ") is HELD - you sat without registering. Pay fees, register the course and get it approved " + by + " or the mark lapses.";

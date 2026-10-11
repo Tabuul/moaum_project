@@ -67,9 +67,9 @@ class ChangeService {
         BiodataChangeRow row = changes.one(id).orElseThrow(() -> new NotFound("biodata change", id));
         if (DECIDED.contains(row.state())) {
             throw new DomainRuleViolation("STU_CHANGE_DECIDED",
-                    "This request was already " + row.state().toLowerCase() + ". A decision is made once, and stands on the record.",
+                    "This request was already " + row.state().toLowerCase() + ".",
                     new DomainRuleViolation.Remedy(
-                            "If the decision was wrong, the student asks again and the new request carries the reason.",
+                            "If the decision was wrong, the student asks again.",
                             "Academic Office"));
         }
         return row;
@@ -81,7 +81,7 @@ class ChangeService {
             throw new DomainRuleViolation("STU_DECISION_REQUIRED",
                     "A decision on a biodata change is recorded with its reason, and none was given.",
                     new DomainRuleViolation.Remedy(
-                            "Say what was seen, or why the request is refused. The student sees this in their change history.",
+                            "Say what was seen, or why it is refused; the student sees it in their change history.",
                             "Academic Office"));
         }
         return decision;

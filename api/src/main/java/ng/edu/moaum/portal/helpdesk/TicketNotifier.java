@@ -133,7 +133,7 @@ class TicketNotifier {
             toRequester(t, "ICT Support Ticket Received — " + t.number(),
                     "Dear " + t.requesterName() + ",\n\nYour ticket has been received by the Directorate of ICT.\n\n"
                             + "Ticket number: " + t.number() + "\nSubject: " + t.subject() + "\nCategory: " + t.category() + "\nSubmitted: " + java.time.LocalDate.now() + "\n\n"
-                            + "Quote the ticket number in any follow-up. You will be told when the desk opens it, when work begins, and when it is resolved.\n"
+                            + "Quote the ticket number in any follow-up.\n"
                             + trackingLines(t) + "\nDirectorate of ICT");
         }
         String line = t.number() + " from " + t.requesterName() + " (" + t.category() + (t.queue() == null ? "" : " · " + t.queue() + " queue") + "): " + t.subject() + "\n\nOpen it: " + deskLink(t) + "\n";
@@ -156,14 +156,14 @@ class TicketNotifier {
     void waiting(UUID id, String reason) {
         T t = load(id);
         toRequester(t, "Your ticket " + t.number() + " needs something from you",
-                "On your ticket " + t.number() + " (" + t.subject() + "), the support desk needs something from you before it can go on:\n\n" + reason
-                        + "\n\nReply on the ticket — sign in and open Support → My Tickets — and work resumes at once.\n" + trackingLines(t) + "\nDirectorate of ICT");
+                "On your ticket " + t.number() + " (" + t.subject() + "), the support desk needs something from you:\n\n" + reason
+                        + "\n\nReply on the ticket: sign in and open Support → My Tickets.\n" + trackingLines(t) + "\nDirectorate of ICT");
     }
 
     void transferred(UUID id, String fromQueue, String toQueue, String reason, UUID newAgent) {
         T t = load(id);
         toRequester(t, "Your ticket " + t.number() + " has been passed to " + toQueue,
-                "Your ticket " + t.number() + " (" + t.subject() + ") is now with " + toQueue + ", which handles matters of this kind. Its number is unchanged.\n\n" + trackingLines(t) + "\nDirectorate of ICT");
+                "Your ticket " + t.number() + " (" + t.subject() + ") is now with " + toQueue + ". Its number is unchanged.\n\n" + trackingLines(t) + "\nDirectorate of ICT");
         String line = t.number() + " from " + t.requesterName() + " (" + t.category() + "): " + t.subject() + "\n\nTransferred from " + fromQueue + " to " + toQueue + ": " + reason + "\n\nOpen it: " + deskLink(t) + "\n";
         if (newAgent != null) toPerson(newAgent, "Ticket transferred to you — " + t.number(), line);
         else toAll(heads(), "Ticket transferred and queued with no agent — " + t.number(), line);
@@ -174,7 +174,7 @@ class TicketNotifier {
         String label = jdbc.sql("SELECT label FROM ref.office WHERE code = :c").param("c", office).query(String.class).optional().orElse(office);
         toAll(holders(office), "A support ticket awaits your decision — " + t.number(),
                 t.number() + " from " + t.requesterName() + " (" + t.category() + "): " + t.subject() + "\n\nThe support desk asks " + label + " to decide: " + reason
-                        + "\n\nOpen it: " + portalUrl + "/helpdesk/office/" + t.id() + "\nYour answer goes to the agent; the ticket waits until it comes.\n");
+                        + "\n\nOpen it: " + portalUrl + "/helpdesk/office/" + t.id() + "\n");
         toRequester(t, "Update on your ICT support ticket " + t.number(),
                 "Your ticket " + t.number() + " (" + t.subject() + ") has been referred to " + label + " for a decision. You will be told when it comes back.\n\n" + trackingLines(t) + "\nDirectorate of ICT");
     }
@@ -197,7 +197,7 @@ class TicketNotifier {
         List<String> lines = jdbc.sql("SELECT t.number || ' · ' || coalesce(q.name, 'no queue') || ' · ' || t.subject FROM helpdesk.ticket t LEFT JOIN helpdesk.queue q ON q.code = t.queue_code WHERE t.id = ANY(string_to_array(:ids, ',')::uuid[]) ORDER BY t.number")
                 .param("ids", ids.stream().map(UUID::toString).reduce((a, b) -> a + "," + b).orElse("")).query(String.class).list();
         toAll(heads(), ids.size() + " ticket" + (ids.size() == 1 ? "" : "s") + " returned to the queue",
-                "The agent holding these tickets is no longer available (left, lost the office, or on leave), so they are back on their queue with no agent:\n\n"
+                "The agent holding these tickets is no longer available; they are back on their queue with no agent:\n\n"
                         + String.join("\n", lines) + "\n\nAssign them, or post an agent: " + portalUrl + "/helpdesk?agent=none\n");
     }
 

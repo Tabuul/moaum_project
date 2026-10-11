@@ -389,7 +389,7 @@ class JupebSupportController {
             d.put("outcome", !was && now ? "COMPLETED" : "NO_CHANGE");
             d.put("summary", !was && now ? "Payment " + ref + " verified with the gateway and confirmed" : "Gateway asked about " + ref + ": " + answer.get("outcome"));
             act(id, ticket, "PAYMENT_VERIFIED", null, was ? "Confirmed" : "Not confirmed", now ? "Confirmed" : "Not confirmed", reason, d);
-            if (!was && now) tell(id, "Your payment issue has been resolved", "Your payment issue has been resolved. Your verified payment has been synchronized with your JUPEB portal.");
+            if (!was && now) tell(id, "Your payment issue has been resolved", "Your verified payment is now synchronized with your JUPEB portal.");
         });
         return Map.of("gateway", answer, "confirmed", now, "changed", !was && now);
     }
@@ -407,7 +407,7 @@ class JupebSupportController {
         String reason = body == null || blank(body.reason()) == null ? "The school fee is paid but the studentship did not follow" : body.reason().trim();
         act(id, ticket, "ENTITLEMENT_REFRESHED", "state", before, after, reason, Map.of("method", "ENTITLEMENT_REFRESH", "outcome", activated ? "COMPLETED" : "NO_CHANGE",
                 "summary", activated ? "Studentship activated: the paid school fee now stands on the record" : "Nothing to re-apply: the record already follows its payments (" + after.toLowerCase() + ")"));
-        if (activated) tell(id, "Your payment issue has been resolved", "Your payment issue has been resolved. Your verified payment has been synchronized with your JUPEB portal, and your studentship is active.");
+        if (activated) tell(id, "Your payment issue has been resolved", "Your verified payment is now synchronized with your JUPEB portal, and your studentship is active.");
         return Map.of("activated", activated, "state", after);
     }
 

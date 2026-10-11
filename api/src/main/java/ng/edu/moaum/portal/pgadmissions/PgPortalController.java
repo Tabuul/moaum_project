@@ -210,7 +210,7 @@ class PgPortalController {
             if (!Boolean.TRUE.equals(chk.get("paid")) && !"OPEN".equals(chk.get("window_state"))) {
                 throw new DomainRuleViolation("PG_CHECKING_CLOSED",
                         "Admission status checking is " + String.valueOf(chk.get("window_state")).toLowerCase() + " for this session.",
-                        new DomainRuleViolation.Remedy("The Directorate of ICT opens admission status checking; you are told by email when the School releases admission status.", "Directorate of ICT"));
+                        new DomainRuleViolation.Remedy("You are told by email when the School releases admission status.", "Directorate of ICT"));
             }
         }
         if ("ACCEPTANCE".equals(k) && !(("OFFERED".equals(app.get("state")) || "ACCEPTED".equals(app.get("state")) || "ADMITTED".equals(app.get("state"))) && app.get("checking_confirmed_at") != null)) {
@@ -492,7 +492,7 @@ class PgPortalController {
         if (!ok) {
             throw new DomainRuleViolation("PG_RECORD_LOCKED",
                     "Your application is with the University for a decision, so it cannot be changed now.",
-                    new DomainRuleViolation.Remedy("If something must be corrected, the department returns the application to you and says what; you then correct it and resubmit.",
+                    new DomainRuleViolation.Remedy("If something must be corrected, the department returns it to you with the reason.",
                             "School of Postgraduate Studies"));
         }
     }

@@ -287,7 +287,7 @@ class AllocationController {
             String m = String.valueOf(e.getMostSpecificCause() == null ? e.getMessage() : e.getMostSpecificCause().getMessage());
             if (m.contains("lock timeout") || m.contains("55P03") || m.contains("statement timeout") || m.contains("57014")) {
                 throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ALLOC_BUSY",
-                        "The offerings are held by another act at the moment — someone is opening registration or loading a course structure.",
+                        "The offerings are busy: registration is being opened or a course structure loaded.",
                         new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Nothing was saved. Wait a minute and press Save again.", "You"));
             }
             throw e;
@@ -311,7 +311,7 @@ class AllocationController {
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course_offer co ON co.course_code = o.course_code
                  WHERE o.id = :o AND co.programme_code = :p
                 """).param("o", offering).param("p", group).query(Long.class).single() == 0) {
-            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ALLOC_GROUP", "That programme does not offer this course; a co-lecturer is posted to a programme that carries it.",
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ALLOC_GROUP", "That programme does not offer this course.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Offer the course to the programme first, or post the co-lecturer to every programme.", "Head of Department"));
         }
         Integer n = jdbc.sql("""

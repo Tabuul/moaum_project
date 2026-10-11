@@ -85,7 +85,7 @@ class DocumentsController {
         });
         if (w[1] > VERIFY_LIMIT) {
             throw new DomainRuleViolation("VERIFY_THROTTLED", "Too many verifications from this source; try again in a few minutes.",
-                    new DomainRuleViolation.Remedy("The verification page answers a handful of documents at a time, not a list.", "The Registry"));
+                    new DomainRuleViolation.Remedy("Check documents one at a time.", "The Registry"));
         }
         if (hits.size() > 20_000) hits.clear();
     }

@@ -90,7 +90,7 @@ export async function GET(request: Request) {
   y = p.paragraph(L + 10, y - 20, "Bring this slip, printed or on your phone; your JAMB result slip; a valid photo identification document; a dark pen. Do not bring any phone, watch or electronic device into the hall, written material of any kind, or bags — there is no storage at the venue.", A4.w - 2 * L - 20, 9);
   y -= 24;
   y = p.paragraph(L, y, `Your photograph is checked at the door and again at your seat. If the person who arrives is not the person in the photograph, both are reported to the Board and both lose the place. Report by ${reportingTime(slip)}; check-in closes when the batch begins at ${clock(slip.startsAt)}.${slip.contact ? ` Enquiries: ${clean(slip.contact)}.` : ""}`, A4.w - 2 * L, 9);
-  p.text(L, 50, `Issued by the portal on ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · ${a.applicationNo} · the QR verifies this slip against the University's record`, 7.5, false, [0.4, 0.4, 0.4]);
+  p.text(L, 50, `Issued by the portal on ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · ${a.applicationNo} · verified by the QR`, 7.5, false, [0.4, 0.4, 0.4]);
 
   const bytes = pdf([p], `Examination slip ${a.applicationNo}`);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="putme-slip-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });

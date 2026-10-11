@@ -23,7 +23,7 @@ export async function GET() {
   if (!cardR.ok) return NextResponse.json(cardR.problem, { status: cardR.problem.status });
   const live = cardR.data.cards.find((x) => x.state === "ISSUED") ?? null;
   if (!live) {
-    return NextResponse.json({ status: 409, title: "No identity card issued", detail: "The Library prints your card after matriculation and clearance; there is nothing to print yet." }, { status: 409 });
+    return NextResponse.json({ status: 409, title: "No identity card issued", detail: "The Library prints your card after matriculation and clearance." }, { status: 409 });
   }
 
   let photo: Image | null = null;

@@ -40,9 +40,9 @@ public class Throttle {
         JUPEB_SIGN_IN(20, "AUTH_THROTTLED", "Too many failed sign-ins from this connection", "Wait, or reset your password with the email you applied with."),
         RESET_LINK(20, "AUTH_THROTTLED", "Too many password-reset requests from this connection", "Wait; a link already sent is good for an hour."),
         RESET(20, "AUTH_THROTTLED", "Too many reset links that did not work from this connection", "Wait, then ask for a new link and use it within the hour."),
-        APPLICANT_LOOKUP(60, "APP_THROTTLED", "Too many JAMB look-ups from this connection", "Each applicant looks up their own JAMB number; a list is not looked up here."),
+        APPLICANT_LOOKUP(60, "APP_THROTTLED", "Too many JAMB look-ups from this connection", "Wait, then look up your own JAMB number."),
         APPLICANT_REGISTER(30, "APP_THROTTLED", "Too many registrations from this connection", "Wait; each applicant registers once, with their own JAMB number."),
-        VERIFY(40, "VERIFY_THROTTLED", "Too many checks that did not match from this connection", "The verification page checks documents one at a time, by the QR on each."),
+        VERIFY(40, "VERIFY_THROTTLED", "Too many checks that did not match from this connection", "Wait, then scan each document's QR code."),
         /* V363: the public ticket tracking, counted every look-up — by the connection and by the email asked about — so the number space cannot be walked */
         TRACK(12, "HELPDESK_TRACK_SLOW_DOWN", "Too many ticket look-ups in a short time", "Sign in to the portal to see your tickets, or wait and look again."),
         /* V363: help asked from the sign-in page by a person not signed in, counted every request */

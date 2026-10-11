@@ -158,8 +158,7 @@ public class CalendarService {
             throw new DomainRuleViolation("CAL_MINUTE_REQUIRED",
                     "A session stays planned until its Senate minute is recorded against it, and none was given.",
                     new DomainRuleViolation.Remedy(
-                            "Quote the Senate minute that resolved to run " + session + ". Opening a session early would let "
-                                    + "students register into a session the University has not resolved to run.",
+                            "Quote the Senate minute that resolved to run " + session + ".",
                             "Academic Office"));
         }
         mustExist(session);
@@ -172,7 +171,7 @@ public class CalendarService {
         if (!"TRANSITION".equalsIgnoreCase(in.confirm() == null ? "" : in.confirm().trim())) {
             throw new DomainRuleViolation("SESSION_TRANSITION_UNCONFIRMED",
                     "Type TRANSITION to confirm completing the current session and making " + session + " current.",
-                    new DomainRuleViolation.Remedy("The word is the confirmation; the reason is what the log keeps.", "Registry"));
+                    new DomainRuleViolation.Remedy("Type TRANSITION and give the reason.", "Registry"));
         }
         if (in.reason() == null || in.reason().isBlank()) {
             throw new DomainRuleViolation("SESSION_TRANSITION_UNCONFIRMED", "A session transition names its reason.",
@@ -219,7 +218,7 @@ public class CalendarService {
         String failed = checks.stream().filter(c -> Boolean.FALSE.equals(c.get("ok")))
                 .map(c -> String.valueOf(c.get("detail"))).reduce((a, b) -> a + " " + b).orElse("A readiness check failed.");
         throw new DomainRuleViolation("SESSION_TRANSITION_BLOCKED", "The transition into " + session + " is blocked. " + failed,
-                new DomainRuleViolation.Remedy("Put right what the checks name on the calendar, then transition again; nothing was changed.", "Registry"));
+                new DomainRuleViolation.Remedy("Nothing was changed. Put right what the checks name, then transition again.", "Registry"));
     }
 
     /** the offices that work to the session are told the transition happened */
@@ -228,8 +227,7 @@ public class CalendarService {
         String body = (from == null || "null".equals(from) ? "No session was current; " : from + " is completed and ")
                 + to + " is the current academic session from now"
                 + ("AUTOMATIC".equals(mode) ? ", by the session clock on the configured transition date." : ", by the Registry's act.")
-                + " Reason: " + reason + ". Returning students continue under the progression rules; entrants of " + to
-                + " continue under the same accounts. No record was moved or recreated.";
+                + " Reason: " + reason + ".";
         for (String office : List.of("registrar", "academic", "bursar", "ict")) {
             try {
                 calendar.tellOffice(office, subject, body);

@@ -162,10 +162,10 @@ public class CredentialsService {
     public Credentials.Certificate print(PrintIn in) {
         Credentials.Graduand g = repo.approvedGraduand(in.studentId()).orElseThrow(() -> new DomainRuleViolation("CRED_NOT_GRADUATED",
                 "No Senate-approved award stands against this student.",
-                new DomainRuleViolation.Remedy("A certificate is printed only against a graduand Senate has approved. Run the degree audit and send the list to Senate.", "Academic Office")));
+                new DomainRuleViolation.Remedy("Run the degree audit and send the list to Senate.", "Academic Office")));
         if (!repo.isClear(in.studentId(), "CONVOCATION")) {
             throw new DomainRuleViolation("CRED_NOT_CLEARED", "The candidate is held by a unit.",
-                    new DomainRuleViolation.Remedy("The certificate is printed only against a cleared record; the student's clearance screen names the unit.", "The unit holding"));
+                    new DomainRuleViolation.Remedy("The student's clearance screen names the unit.", "The unit holding"));
         }
         Integer serial = null;
         if (in.batchId() != null) {

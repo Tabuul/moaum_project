@@ -109,7 +109,7 @@ export function keptReportPdf(k: KeptReport): Uint8Array {
     const fy = BOTTOM - 6;
     p.rule(L, fy + 14, W - R, fy + 14, 0.6, 0.6);
     p.text(L, fy, `Kept ${day(k.taken_at)}${k.taken_by_name ? ` by ${k.taken_by_name}` : ""}${k.taken_office ? ` (${k.taken_office})` : ""}`
-      + `${k.filed_at ? ` · filed with ${k.filed_to} on ${day(k.filed_at)}` : " · not yet filed"}. Verify at /verify/report/${k.verification_code}. A return is a view of the register, verified against it — not by its appearance.`, 6.8, false, MUTED);
+      + `${k.filed_at ? ` · filed with ${k.filed_to} on ${day(k.filed_at)}` : " · not yet filed"}. Verify at /verify/report/${k.verification_code}.`, 6.8, false, MUTED);
     pages.push(p);
   } while (idx < k.rows.length);
 

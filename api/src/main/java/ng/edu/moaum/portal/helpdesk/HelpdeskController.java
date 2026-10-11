@@ -1092,7 +1092,7 @@ class HelpdeskController {
     Map<String, Object> post(Authentication auth, @Valid @RequestBody PostingIn body) {
         boolean agent = jdbc.sql("SELECT helpdesk.is_agent(:p) AND EXISTS (SELECT 1 FROM iam.person WHERE id = :p AND ended_on IS NULL)").param("p", body.personId()).query(Boolean.class).single();
         if (!agent) {
-            throw new DomainRuleViolation("HELPDESK_NOT_AN_AGENT", "Only a person who holds the ICT Support Agent office is posted to a queue; support access comes from that office, never from a posting.",
+            throw new DomainRuleViolation("HELPDESK_NOT_AN_AGENT", "Only a person who holds the ICT Support Agent office is posted to a queue.",
                     new DomainRuleViolation.Remedy("Grant the person the ICT Support Agent office under Users & Roles first.", "Directorate of ICT"));
         }
         String queue = body.queueCode().trim().toUpperCase();

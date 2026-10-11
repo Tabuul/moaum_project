@@ -109,7 +109,7 @@ public class ClearanceService {
         }
         if (item == null || item.isBlank()) {
             throw new DomainRuleViolation("CLR_HOLD_NAMES_ITEM", "A hold names the specific item outstanding.",
-                    new DomainRuleViolation.Remedy("Say what the candidate must return, pay or deposit. A hold with no item against it is leverage.", "The unit holding"));
+                    new DomainRuleViolation.Remedy("Say what the candidate must return, pay or deposit.", "The unit holding"));
         }
         Clearance.Unit u = unitFor(unit, ctx);
         repo.decide(student, purpose, u.code(), "HELD", item, ctx.actorId(), note);

@@ -285,7 +285,7 @@ class TransferController {
                 .param("id", id).param("ap", body.approve()).param("note", body.note(), Types.VARCHAR)
                 .query().singleRow();
         tell(id, body.approve() ? "Senate approved your transfer" : "Senate did not approve your transfer",
-                body.approve() ? "Senate approved your transfer. The Registry gives it effect on your record; you will be told when your new programme stands." : "Senate did not approve your transfer." + (body.note() == null ? "" : "\n\nNote: " + body.note()));
+                body.approve() ? "Senate approved your transfer. You will be told when the Registry gives it effect on your record." : "Senate did not approve your transfer." + (body.note() == null ? "" : "\n\nNote: " + body.note()));
         return Map.of("id", id, "state", body.approve() ? "APPROVED" : "DECLINED");
     }
 
@@ -302,7 +302,7 @@ class TransferController {
     @Transactional
     Map<String, Object> effect(@PathVariable UUID id) {
         jdbc.sql("SELECT people.effect_transfer(:id)").param("id", id).query().singleRow();
-        tell(id, "Your transfer has taken effect", "Your transfer has been given effect on the register: your new programme and level now stand on your record. Register your courses on the portal for the current semester.");
+        tell(id, "Your transfer has taken effect", "Your new programme and level now stand on your record. Register your courses for the current semester.");
         return Map.of("id", id, "state", "EFFECTED");
     }
 
