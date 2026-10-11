@@ -62,12 +62,24 @@ class GstEligibilityIT {
     static Map<String, Object> m(Object o) { return (Map<String, Object>) o; }
     static List<Map<String, Object>> l(Object o) { return (List<Map<String, Object>>) o; }
 
+    /** a course code of the prefix that no course holds: the catalogue's codes are three letters and three digits */
+    String freshCode(String prefix, int from) {
+        for (int i = 0; i < 100; i++) {
+            String code = prefix + (from + new Random().nextInt(199));
+            if (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", code).query(Integer.class).single() == 0) return code;
+        }
+        throw new IllegalStateException("no free " + prefix + " code");
+    }
+
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(EARLIER, 2115);
         it.session(SESSION, 2116);
-        n = new Random().nextInt(9000) + 1000;
+        // a draw whose four admission numbers (n … n+3) no student holds: two tests' draws overlapped once in fifty runs
+        do { n = new Random().nextInt(900000) + 100000; }
+        while (jdbc.sql("SELECT count(*) FROM people.student WHERE admission_no LIKE 'MOAUM/ADM/16/%' AND right(admission_no, 6)::int BETWEEN :a AND :b")
+                .param("a", n).param("b", n + 3).query(Integer.class).single() > 0);
         gstCode = "GST " + (500 + n % 199);
         epsCode = "EPS " + (500 + n % 199);
         plainCode = "ZZE " + (300 + n % 199);
@@ -228,7 +240,8 @@ class GstEligibilityIT {
     @Test
     void onlyTheOfficesOwnCoursesAreOnItsDeskAndOweTheFee() {
         // V367: a departmental course a structure marked general (kind GST) is no office's: off the GST desk, no fee, examined centrally
-        String dept = "ZZD " + (300 + n % 199);
+        // a code no course holds yet: the insert below keeps an existing row as it is (ON CONFLICT DO NOTHING), which would be another test's course
+        String dept = freshCode("ZZD ", 300);
         UUID off = UUID.randomUUID();
         it.db(() -> {
             String d = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROG_B).query(String.class).single();
@@ -239,8 +252,12 @@ class GstEligibilityIT {
                     .param("id", off).param("c", dept).param("s", SESSION).update();
             return null;
         });
-        assertThat(jdbc.sql("SELECT general_office FROM catalogue.course WHERE code = :c").param("c", dept).query(String.class).optional().orElse(null)).isNull();
-        Map<String, Object> courses = it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION).getBody();
+        Map<String, Object> row = jdbc.sql("SELECT kind, state, general_office FROM catalogue.course WHERE code = :c").param("c", dept).query().singleRow();
+        assertThat(row.get("general_office")).as(String.valueOf(row)).isNull();
+        assertThat(row.get("kind")).as(String.valueOf(row)).isEqualTo("GST");
+        ResponseEntity<Map> desk = it.get(gst, "/api/v1/gst/GST/courses?session=" + SESSION);
+        assertThat(desk.getStatusCode().value()).as(String.valueOf(desk.getBody())).isEqualTo(200);
+        Map<String, Object> courses = desk.getBody();
         assertThat(l(courses.get("catalogue"))).noneSatisfy(c -> assertThat(c.get("code")).isEqualTo(dept));
         assertThat(l(courses.get("unassigned"))).anySatisfy(c -> assertThat(c.get("code")).isEqualTo(dept));
         assertThat(l(courses.get("families"))).anySatisfy(f -> { assertThat(f.get("prefix")).isEqualTo("GST"); assertThat(f.get("office")).isEqualTo("GST"); });
@@ -340,7 +357,7 @@ class GstEligibilityIT {
     void theStructureUploadSaysWhatItWouldDoToTheOfficesCourses() {
         // V369: read before loading — a new GST-coded course goes to the GST office; the EPS office's course marked C stays the office's
         String code = "GST " + (800 + n % 199);
-        String bus = "ZZB " + (800 + n % 199);
+        String bus = freshCode("ZZB ", 800);
         Map<String, Object> group = Map.of("programme", PROG_A, "rows", List.of(
                 Map.of("code", code, "title", "Logic " + n, "units", "2", "status", "G", "level", "100", "semester", "1"),
                 Map.of("code", epsCode, "title", "Venture Creation " + n, "units", "2", "status", "C", "level", "300", "semester", "1"),

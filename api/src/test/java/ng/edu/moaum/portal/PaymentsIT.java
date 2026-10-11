@@ -71,7 +71,10 @@ class PaymentsIT {
                 "email", jamb.toLowerCase() + "@example.com", "phone", "08034117725", "password", "a long enough password"));
         assertThat(registered.getStatusCode().value()).as(String.valueOf(registered.getBody())).isEqualTo(200);
         String token = String.valueOf(registered.getBody().get("token"));
-        String reference = String.valueOf(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION")).getBody().get("reference"));
+        ResponseEntity<Map> drawn = it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION"));
+        assertThat(drawn.getStatusCode().value()).as(String.valueOf(drawn.getBody())).isEqualTo(200);
+        String reference = String.valueOf(drawn.getBody().get("reference"));
+        assertThat(reference).matches("MOAUM-APP-[0-9A-Z]{1,6}-[0-9]{4}");
 
         // no gateway wired for checkout beyond the secret? Paystack is: the checkout call reaches out, and is refused or answered by the world — not asserted here
 
@@ -79,7 +82,9 @@ class PaymentsIT {
         String body = "{\"event\":\"charge.success\",\"data\":{\"reference\":\"" + reference + "\",\"amount\":230000,\"status\":\"success\",\"id\":12345}}";
         ResponseEntity<Map> unsigned = open.post().uri("/api/v1/payments/webhook/paystack").contentType(MediaType.APPLICATION_JSON).body(body).retrieve().toEntity(Map.class);
         assertThat(unsigned.getStatusCode().value()).isEqualTo(401);
-        assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("feeConfirmedAt")).isNull();
+        ResponseEntity<Map> mine = it.get(token, "/api/v1/applicant/me");
+        assertThat(mine.getStatusCode().value()).as(String.valueOf(mine.getBody())).isEqualTo(200);
+        assertThat(mine.getBody().get("feeConfirmedAt")).isNull();
 
         // short-paid is not confirmed
         String shortBody = "{\"event\":\"charge.success\",\"data\":{\"reference\":\"" + reference + "\",\"amount\":100,\"status\":\"success\",\"id\":12346}}";

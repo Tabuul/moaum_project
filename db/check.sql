@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 231
+\set EXPECTED 232
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9108,6 +9108,51 @@ BEGIN
         format('pool=%s bind=%s basis=%s mapped=%s | stream=%s window=%s calendar=%s gate0=%s | office=%s opened=%s regular=%s gate=%s menu=%s | ft=%s moved=%s | scope=%s pg45=%s ug45=%s cgpa=%s results=%s | told=%s/%s opened=%s | steps=%s',
                n_pool, n_bind, v_basis, v_mapped, v_stream, v_wt, v_cal, r_gate0, r_office, n_open, v_regular, v_gate, v_menu, r_ft, r_moved,
                v_scope, v_pg_f, v_ug_d, v_cgpa, n_res, n_told, n_told2, n_opened, left(steps::text, 400)));
+END $$;
+
+-- ── V390. A fee reference is drawn until a free one is found: the four random digits that make MOAUM-APP-000001-dddd may repeat
+--          another application's reference (the last six digits are the session's running number, shared across sessions); the draw
+--          that lands on a taken reference is drawn again, the format unchanged, and the applicant is never answered with a clash ──
+DO $$
+DECLARE S text := '9962/9963'; who uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        cr uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); other uuid := gen_random_uuid(); v_first int; v_taken text; v_ref text; n_refs int; v_amount numeric;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V390', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9962-10-01', date '9963-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (batch, S, 'CAPS_DOWNLOAD', 'UTME', '\xB390'::bytea, 1, current_date, who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        VALUES (cr, batch, S, '20629620001', '{}'::jsonb, 'CHECKFEEREF', 'Cand', 'C00066', 250, 'UTME', 'F', 'Benue', 'Makurdi');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (cand, S, '20629620001', 'CHECKFEEREF', 'Cand', (SELECT name FROM ref.programme WHERE code = 'C00066'), 'UTME', 100, 'PROPOSED', cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '20629620001', 'checkfeeref@example.com', '08031234567', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, S, 'APP/62/000001');
+        -- the draw is the session's random(): seeded, the first draw is known, so a reference another application took with those four
+        -- digits is put in its way; the function must step past it to the second draw
+        PERFORM setseed(0.4321);
+        v_first := floor(random() * 10000)::int;
+        v_taken := 'MOAUM-APP-000001-' || lpad(v_first::text, 4, '0');
+        -- (another application of a session whose running number ends the same way holds that reference already)
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (other, S, '20629620002', 'CHECKFEEREF', 'Other', (SELECT name FROM ref.programme WHERE code = 'C00066'), 'UTME', 100, 'PROPOSED', cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (gen_random_uuid(), S, other, '20629620002', 'checkfeeref2@example.com', '08031234568', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no)
+        SELECT gen_random_uuid(), a.id, other, S, 'APP/61/000001' FROM admissions.applicant_account a WHERE a.candidate_id = other;
+        INSERT INTO admissions.fee_reference (id, application_id, kind, reference, amount, expires_at)
+        SELECT gen_random_uuid(), x.id, 'APPLICATION', v_taken, 1, now() + interval '1 day' FROM admissions.application x WHERE x.candidate_id = other;
+        PERFORM setseed(0.4321);
+        v_ref := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT count(*), max(amount) INTO n_refs, v_amount FROM admissions.fee_reference WHERE application_id = app;
+        RAISE EXCEPTION 'the V390 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V390: a fee reference landing on a taken one is drawn again — the format kept, the amount the session''s, the applicant never answered with a clash',
+        coalesce(v_ref IS NOT NULL AND v_ref <> v_taken AND v_ref ~ '^MOAUM-APP-000001-[0-9]{4}$' AND n_refs = 1 AND v_amount > 0, false),
+        format('taken=%s drawn=%s refs=%s amount=%s', v_taken, v_ref, n_refs, v_amount));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
