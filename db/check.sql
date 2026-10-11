@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 230
+\set EXPECTED 231
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9001,6 +9001,113 @@ BEGIN
         format('seed=%s unpublished=%s bad_office=%s | student=%s leaks=%s bursar_signin=%s agent=%s/%s ctx=%s search=%s pg=%s | edition %s→%s→%s→%s seen=%s/%s ver=%s snap=%s/%s state=%s | arch=%s unknown=%s empty=%s taken=%s | reorder=%s views=%s audit=%s',
                n_seed, n_unpub, n_bad_office, n_student, n_student_leak, n_bursar_sign, n_agent, n_agent_caps, n_ctx, n_search, n_pg, ed0, ed1, ed2, ed3, v_seen, v_seen2, v_ver, v_snap, v_old_title, r_state,
                r_arch, r_unknown, r_empty, r_taken, n_reorder, n_views, n_audit));
+END $$;
+
+-- ── V389: postgraduate coursework on the University's engines ──
+-- A PG course is a course of the pool, held once whatever the programmes that take it and bound to each at its level (a
+-- deficiency course earning no credit); a PG student is the stream PG, on the School's calendar and gate and the PG
+-- windows; the School opens its classes in its own session (no other office), and the full-time opening leaves them be;
+-- the student registers on the engine on the School's classes only, and the old registration refuses new registrations;
+-- a PG class is read on the School's scale; the PG GPA reads the old coursework (without the deficiency course); the
+-- School's students are told once when registration opens; the next steps are the record's. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9931/9932'; pa text; pb text; lvl int; stu uuid := gen_random_uuid(); ft uuid := gen_random_uuid();
+        crs1 uuid := gen_random_uuid(); crs2 uuid := gen_random_uuid(); crs3 uuid := gen_random_uuid(); n_pool int; n_bind int; v_basis text; v_mapped text;
+        v_stream text; v_wt text; v_cal text; r_gate0 text; r_office text; n_open int; v_gate text; v_menu int; v_regular int; c1 uuid;
+        r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r_ft text; r_moved text; v_scope text; v_pg_f text; v_ug_d text;
+        lreg uuid := gen_random_uuid(); le1 uuid := gen_random_uuid(); le2 uuid := gen_random_uuid(); v_cgpa numeric; n_res int;
+        n_told int; n_told2 int; n_opened int; steps jsonb; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V389', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT code INTO pa FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        SELECT code INTO pb FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) AND code <> pa ORDER BY code LIMIT 1;
+        SELECT admissions.pg_award_level(pg_award) INTO lvl FROM ref.programme WHERE code = pa;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHECK/V389/P', 'ZZPGCHECK', 'Invented', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9931-10-01', date '9932-08-31'),
+               (gen_random_uuid(), '9929/9930', date '9929-10-01', date '9930-08-31') ON CONFLICT (name) DO NOTHING;
+        UPDATE admissions.pg_academic_session SET state = 'PLANNED' WHERE state = 'CURRENT';
+        INSERT INTO admissions.pg_academic_session (name, starts_on, ends_on, semesters, state) VALUES (S, date '9931-10-01', date '9932-08-31', 2, 'CURRENT');
+        INSERT INTO admissions.pg_semester (session, number, registration_opens, registration_closes, lectures_from, state)
+        VALUES (S, 1, current_date - 1, current_date + 10, current_date, 'OPEN');
+
+        -- (1) the courses into the pool: one course for the code however many programmes, a deficiency course bound as such
+        INSERT INTO admissions.pg_course (id, programme_code, code, title, units, kind, semester) VALUES
+          (crs1, pa, 'ZPG 801', 'Check PG Core', 3, 'CORE', 1), (crs2, pb, 'ZPG801', 'Check PG Core', 3, 'CORE', 1),
+          (crs3, pa, 'ZPG 702', 'Check PG Deficiency', 2, 'DEFICIENCY', 1);
+        PERFORM catalogue.pg_bind_course(pa, 'ZPG 801', 'Check PG Core', 3, 1, 'CORE');
+        PERFORM catalogue.pg_bind_course(pb, 'zpg801', 'Check PG Core', 3, 1, 'CORE');
+        v_mapped := catalogue.pg_bind_course(pa, 'ZPG 702', 'Check PG Deficiency', 2, 1, 'DEFICIENCY');
+        SELECT count(*) INTO n_pool FROM catalogue.course WHERE catalogue.code_key(code) = 'ZPG801';
+        SELECT count(*) INTO n_bind FROM catalogue.course_offer WHERE course_code = 'ZPG 801' AND programme_code IN (pa, pb);
+        SELECT basis INTO v_basis FROM catalogue.course_offer WHERE course_code = 'ZPG 702' AND programme_code = pa;
+
+        -- (2) the PG student: the stream PG, the School's calendar and the PG windows
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (stu, 'MOAUM/ADM/31/990389', 'MOAUM/CHK/31/0389', 'ZZPG389', 'Coursework', pa, 'POSTGRADUATE', S, lvl, lvl, 'ACTIVE', now()),
+               (ft, 'MOAUM/ADM/31/990390', 'MOAUM/CHK/31/0390', 'ZZFT389', 'Daytime', (SELECT code FROM ref.programme WHERE category IS DISTINCT FROM 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1),
+                'UTME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (stu, '08030000389', 'zzpg389@example.invalid', now()) ON CONFLICT (student_id) DO NOTHING;
+        v_stream := people.student_stream(stu);
+        v_wt := policy.window_type_for(stu, 'COURSE_REGISTRATION');
+        SELECT calendar INTO v_cal FROM registration.calendar_semester(stu, S, 1);
+        r_gate0 := registration.registration_gate(stu, S, 1);
+
+        -- (3) the School opens its classes; no other office may; the full-time opening leaves them be
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        BEGIN PERFORM catalogue.pg_open_classes(S, 1); r_office := 'OPENED';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        n_open := catalogue.pg_open_classes(S, 1);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM registration.open_course_registration(S, 1);
+        SELECT count(*) INTO v_regular FROM catalogue.offering WHERE course_code = 'ZPG 801' AND session = S AND stream = 'REGULAR';
+        SELECT id INTO c1 FROM catalogue.offering WHERE course_code = 'ZPG 801' AND session = S AND semester = 1 AND stream = 'PG';
+        v_gate := registration.registration_gate(stu, S, 1);
+        SELECT count(*) INTO v_menu FROM registration.student_menu(stu, S, 1) m WHERE m.offering_id = c1;
+
+        -- (4) registration on the engine, on the School's class only; the old registration refuses
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (r1, stu, S, 1, lvl, 'SUBMITTED', now()), (r2, ft, S, 1, 100, 'DRAFT', NULL);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r1, c1, 3, 'CURRENT', 'REGISTERED');
+        BEGIN INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r2, c1, 3, 'CURRENT', 'REGISTERED'); r_ft := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN r_ft := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.pg_register(stu, S, 1, 'FULL_TIME', ARRAY[crs1]); r_moved := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN r_moved := split_part(SQLERRM, ':', 1); END;
+
+        -- (5) the School's scale on its classes; the PG CGPA reads the old coursework without the deficiency course
+        v_scope := policy.grading_scope(c1);
+        SELECT grade INTO v_pg_f FROM policy.grade_of(45, current_date, 'POSTGRADUATE');
+        SELECT grade INTO v_ug_d FROM policy.grade_of(45, current_date, 'UNIVERSITY');
+        INSERT INTO admissions.pg_registration (id, student_id, session, semester, mode, state, endorsed_by, endorsed_at) VALUES (lreg, stu, '9929/9930', 1, 'FULL_TIME', 'ENDORSED', who, now());
+        INSERT INTO admissions.pg_registration_entry (id, registration_id, course_id) VALUES (le1, lreg, crs1), (le2, lreg, crs3);
+        PERFORM admissions.pg_record_score(le1, 30, 45, who);   -- 75: A
+        PERFORM admissions.pg_record_score(le2, 10, 20, who);   -- 30: F, on a deficiency course
+        v_cgpa := admissions.pg_cgpa(stu);
+        SELECT count(*) INTO n_res FROM admissions.pg_course_results(stu);
+
+        -- (6) the School's students told once that registration is open; the next steps from the record
+        n_told := admissions.pg_tell_registration();
+        n_told2 := admissions.pg_tell_registration();
+        SELECT count(*) INTO n_opened FROM admissions.pg_registration_notice WHERE session = S AND semester = 1 AND kind = 'OPENED';
+        steps := admissions.pg_next_steps(stu);
+        RAISE EXCEPTION 'the V389 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V389: postgraduate coursework on the University''s engines — a PG course is one course of the pool bound to each programme (a deficiency course as Deficiency); a PG student is the stream PG on the School''s calendar, gate and windows; only the School opens its classes and the full-time opening leaves them be; registration is on the engine on the School''s class only and the old registration refuses; a PG class is read on the School''s scale; the PG CGPA reads the old coursework without the deficiency course; the students are told once that registration opens; the next steps are the record''s',
+        coalesce(n_pool = 1 AND n_bind = 2 AND v_basis = 'Deficiency' AND v_mapped = 'ZPG 702'
+                 AND v_stream = 'PG' AND v_wt = 'PG_COURSE_REGISTRATION' AND v_cal = 'PG' AND r_gate0 LIKE '%classes%'
+                 AND r_office = 'PG_OFFICE' AND n_open >= 2 AND v_regular = 0 AND c1 IS NOT NULL AND v_gate IS NULL AND v_menu = 1
+                 AND r_ft = 'REGISTRATION_STREAM' AND r_moved = 'PG_REGISTRATION_MOVED'
+                 AND v_scope = 'POSTGRADUATE' AND v_pg_f = 'F' AND v_ug_d = 'D' AND v_cgpa = 5.00 AND n_res = 2
+                 AND n_told >= 1 AND n_told2 = 0 AND n_opened = 1
+                 AND jsonb_path_exists(steps, '$[*] ? (@.key == "REGISTRATION" && @.state == "WAITING")')
+                 AND jsonb_path_exists(steps, '$[*] ? (@.key == "FEES")') AND jsonb_path_exists(steps, '$[*] ? (@.key == "MATRICULATION" && @.state == "DONE")'), false),
+        format('pool=%s bind=%s basis=%s mapped=%s | stream=%s window=%s calendar=%s gate0=%s | office=%s opened=%s regular=%s gate=%s menu=%s | ft=%s moved=%s | scope=%s pg45=%s ug45=%s cgpa=%s results=%s | told=%s/%s opened=%s | steps=%s',
+               n_pool, n_bind, v_basis, v_mapped, v_stream, v_wt, v_cal, r_gate0, r_office, n_open, v_regular, v_gate, v_menu, r_ft, r_moved,
+               v_scope, v_pg_f, v_ug_d, v_cgpa, n_res, n_told, n_told2, n_opened, left(steps::text, 400)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

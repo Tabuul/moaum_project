@@ -169,6 +169,16 @@ class PgPortalController {
         return view(me);
     }
 
+    /** V389: the PG student's own application, as the applicant read it — for the offer of admission in the student's documents */
+    @GetMapping("/student/application")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    Map<String, Object> studentApplication(Authentication authentication) {
+        UUID student = UUID.fromString(authentication.getName());
+        UUID applicant = jdbc.sql("SELECT applicant_id FROM admissions.pg_application WHERE student_id = :s ORDER BY admitted_at DESC NULLS LAST LIMIT 1")
+                .param("s", student).query(UUID.class).optional().orElseThrow(() -> new NotFound("postgraduate application of the student", student));
+        return view(applicant);
+    }
+
     /**
      * The reference to pay the application fee against, ready for checkout. A live unpaid reference is
      * reused; a missing or expired one is minted afresh (the mint is an applicant-attributed write, since
@@ -428,6 +438,26 @@ class PgPortalController {
                   JOIN admissions.pg_application a ON a.id = d.application_id
                  WHERE d.id = :d AND a.applicant_id = :me
                 """).param("d", docId).param("me", me).query().listOfRows());
+        if (d == null) throw new NotFound("document", docId);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(String.valueOf(d.get("content_type"))))
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .header("Content-Disposition", org.springframework.http.ContentDisposition.inline().filename(String.valueOf(d.get("filename")), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
+                .body(files.resolve((byte[]) d.get("bytes"), (java.util.UUID) d.get("object_id")));
+    }
+
+    /** V389: a document the student submitted with the postgraduate application that admitted them, for their document
+     *  centre; scoped to the student's own application, so no other record is reachable */
+    @GetMapping("/student/documents/{docId}/content")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    org.springframework.http.ResponseEntity<byte[]> studentDocument(Authentication authentication, @PathVariable UUID docId) {
+        UUID student = UUID.fromString(authentication.getName());
+        Map<String, Object> d = firstOrNull(jdbc.sql("""
+                SELECT d.filename, d.content_type, d.bytes, d.object_id FROM admissions.pg_document d
+                  JOIN admissions.pg_application a ON a.id = d.application_id
+                 WHERE d.id = :d AND a.student_id = :me
+                """).param("d", docId).param("me", student).query().listOfRows());
         if (d == null) throw new NotFound("document", docId);
         return org.springframework.http.ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.parseMediaType(String.valueOf(d.get("content_type"))))

@@ -1639,9 +1639,14 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "s/deferment", "icon": "cal", "label": "Deferment" },
-          { "id": "s/pgcourses", "icon": "book", "label": "Course Registration & Results" },
+          { "id": "s/register", "icon": "book", "label": "Course Registration" },
+          { "id": "s/pgcourses", "icon": "cap", "label": "Results by Semester" },
           { "id": "s/pgprogress", "icon": "chart", "label": "Academic Progress" },
+          { "id": "s/timetable", "icon": "cal", "label": "Timetable" },
+          { "id": "s/attendance", "icon": "check", "label": "Attendance" },
+          { "id": "s/exams", "icon": "cap", "label": "Examinations" },
+          { "id": "s/cbt", "icon": "cap", "label": "CBT Examinations" },
+          { "id": "s/deferment", "icon": "cal", "label": "Deferment" },
           { "id": "s/documents", "icon": "doc", "label": "My Documents" }
         ]
       },

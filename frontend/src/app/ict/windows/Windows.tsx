@@ -18,10 +18,13 @@ export interface WindowRow { type: string; scope: "SESSION" | "SEMESTER"; semest
 export interface WindowEvent { id: string; window_type: string; session: string; semester: number | null; action: string; previous_state: string | null; new_state: string | null; previous_opens_at: string | null; previous_closes_at: string | null; previous_late_until: string | null; new_opens_at: string | null; new_closes_at: string | null; new_late_until: string | null; late_fee_enabled: boolean | null; reason: string | null; office: string | null; at: string; officer: string | null }
 export interface WindowsPage { session: string; sessions: { name: string; state: string }[]; semesters: { number: number; state: string }[]; openSemester: number; windows: WindowRow[]; affected: number; lateFees: { kind: string; lines: number; total: number }[]; events: WindowEvent[]; now: string;
   /** V380: the CCE session (where the Centre's students study), the CCE calendar's open semester in this session, and how many CCE students there are */
-  cce?: { session: string | null; openSemester: number; students: number } }
+  cce?: { session: string | null; openSemester: number; students: number };
+  /** V389: the School of Postgraduate Studies' session, its open semester and how many PG students there are */
+  pg?: { session: string | null; openSemester: number; students: number } }
 
 const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration", ADMISSION_STATUS_CHECKING: "Admission status checking", POST_UTME_REGISTRATION: "Post-UTME registration", POSTGRADUATE_APPLICATION: "Postgraduate application",
-  CCE_SCHOOL_FEES_PAYMENT: "CCE school fees payment", CCE_COURSE_REGISTRATION: "CCE course registration" };
+  CCE_SCHOOL_FEES_PAYMENT: "CCE school fees payment", CCE_COURSE_REGISTRATION: "CCE course registration",
+  PG_SCHOOL_FEES_PAYMENT: "Postgraduate school fees payment", PG_COURSE_REGISTRATION: "Postgraduate course registration" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
 const remaining = (iso: string | null | undefined, now: string) => { if (!iso) return ""; const ms = new Date(iso).getTime() - new Date(now).getTime(); if (ms <= 0) return "passed"; const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000); return d ? `${d} day${d === 1 ? "" : "s"} ${h} h left` : `${h} h left`; };
@@ -49,6 +52,9 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
   // V380: the Centre for Continuing Education's students answer to their own two windows, never to the full-time ones of the same session
   const cceSem = page.cce?.openSemester ?? 1;
   const cceFees = rowOf("CCE_SCHOOL_FEES_PAYMENT", null), cceReg = rowOf("CCE_COURSE_REGISTRATION", cceSem);
+  // V389: and the School of Postgraduate Studies' students theirs
+  const pgSem = page.pg?.openSemester ?? 1;
+  const pgFees = rowOf("PG_SCHOOL_FEES_PAYMENT", null), pgReg = rowOf("PG_COURSE_REGISTRATION", pgSem);
 
   const start = (type: string, semester: number | null, action: string) => {
     const row = rowOf(type, semester);
@@ -135,6 +141,16 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
       <div className="grid grid--2">
         {card(cceFees, "CCE SCHOOL FEES PAYMENT", `${session} · the CCE students' school fees. Closing stops new references only.`)}
         {card(cceReg, `CCE COURSE REGISTRATION · SEMESTER ${cceSem}`, `${session} · the CCE calendar's open semester. Closing stops CCE students drafting, changing and submitting a registration.`)}
+      </div>
+      <Panel title="POSTGRADUATE STUDENTS&rsquo; WINDOWS" right={page.pg?.session ? `PG session ${page.pg.session} · ${page.pg.students} PG student${page.pg.students === 1 ? "" : "s"}` : null}>
+        <PBody>
+          <div className="sub2">These govern postgraduate students only; the full-time windows above never do. Unset, the School of Postgraduate Studies&rsquo; calendar decides.
+            {page.pg?.session && page.pg.session !== session ? <> PG students are in <b>{page.pg.session}</b>: <a href={`/ict/windows?session=${encodeURIComponent(page.pg.session)}`}>choose it</a> to set their windows.</> : null}</div>
+        </PBody>
+      </Panel>
+      <div className="grid grid--2">
+        {card(pgFees, "PG SCHOOL FEES PAYMENT", `${session} · the postgraduate students' school fees. Closing stops new references only.`)}
+        {card(pgReg, `PG COURSE REGISTRATION · SEMESTER ${pgSem}`, `${session} · the School's open semester. Closing stops PG students drafting, changing and submitting a registration.`)}
       </div>
       <Panel title="EVERY SEMESTER" right="A semester&rsquo;s own rule stands over the session&rsquo;s">
         <DTable pageSize={0} cols={["Window", "Scope", "Status|mid", "Phase|mid", "Opens|mid", "Closes|mid", "Late until|mid", "Rule", "|num"]} rows={windows.map((w) => [

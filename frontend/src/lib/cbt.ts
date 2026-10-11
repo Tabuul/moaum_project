@@ -25,7 +25,7 @@ export interface CbtExamRow {
   putme_session?: string | null;
 }
 /** V381: stream — a CCE class (the Centre's evening class) or a full-time class */
-export interface CbtOffering { id: string; course_code: string; title: string; units: number; level: number; semester: number; session: string; questions: number; stream?: "REGULAR" | "CCE" }
+export interface CbtOffering { id: string; course_code: string; title: string; units: number; level: number; semester: number; session: string; questions: number; stream?: "REGULAR" | "CCE" | "PG" }
 /** V365: a JUPEB subject the JUPEB Office may examine by CBT */
 export interface JupebSubject { id: string; code: string; title: string; cbt_enabled: boolean; questions: number; registered: number }
 export interface CbtExamList { office: CbtOffice; session: string; semester: number | null; archived?: boolean; rows: CbtExamRow[]; sessions: { name: string; state: string }[]; offerings: CbtOffering[]; subjects?: JupebSubject[]; putmeSessions?: PutmeSession[]; now: string }

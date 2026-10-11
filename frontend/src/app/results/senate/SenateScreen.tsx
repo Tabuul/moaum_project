@@ -58,6 +58,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's result sets">A minute recorded here publishes the Centre&rsquo;s sets only.</Note> : null}
+      {stream === "PG" ? <Note kind="info" title="The School of Postgraduate Studies' result sets">A minute recorded here publishes the School&rsquo;s sets only.</Note> : null}
       {publish ? (
         <Note kind={senate.published ? "ok" : "bad"} title={senate.published ? `${senate.published} set${senate.published === 1 ? " is" : "s are"} live to their candidates` : "Publication is held: there is no Senate minute"}>
           {senate.published

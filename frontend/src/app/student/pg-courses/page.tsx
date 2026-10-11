@@ -7,7 +7,7 @@ import { Coursework } from "./Coursework";
 
 export const dynamic = "force-dynamic";
 
-/** s/pgcourses — postgraduate course registration & results (V211); postgraduates only. */
+/** s/pgcourses — a postgraduate student's results by semester, from the earlier coursework and the results chain (V211, V389); postgraduates only. */
 export default async function Page() {
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/pgcourses" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;

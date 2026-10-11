@@ -13,10 +13,10 @@ export function StreamTabs({ stream }: { stream: Stream }) {
   const params = useSearchParams();
   return (
     <Tabs<Stream> label="Students" value={stream}
-      items={[{ id: "REGULAR", label: "Full-time" }, { id: "CCE", label: "CCE (part-time)" }]}
+      items={[{ id: "REGULAR", label: "Full-time" }, { id: "CCE", label: "CCE (part-time)" }, { id: "PG", label: "Postgraduate" }]}
       onChange={(next) => {
         const q = new URLSearchParams(params.toString());
-        if (next === "CCE") q.set("stream", "CCE");
+        if (next !== "REGULAR") q.set("stream", next);
         else q.delete("stream");
         queryNav(`${pathname}?${q.toString()}`);
       }} />

@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import type { MyDocuments } from "@/lib/documents";
 import type { AdmissionDocRow } from "@/lib/admission-documents";
 import { loadStudent } from "../load";
-import { Documents } from "./Documents";
+import { Documents, type PgOffer } from "./Documents";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +16,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const d = await api<MyDocuments>("/api/v1/me/documents");
   // the documents of the admission the student came through (V282): none for a student who did not
   const adm = await api<{ rows: AdmissionDocRow[] }>("/api/v1/me/admission-documents");
+  // V389: a postgraduate student's own application, for the offer of admission; none for any other student
+  const pg = await api<PgOffer>("/api/v1/pg/student/application");
   return (
     <Shell route="s/documents" me={loaded.me}>
-      {d.ok ? <Documents d={d.data} admission={adm.ok ? adm.data.rows : []} open={typeof p.request === "string" ? p.request : ""} wizard={typeof p.new === "string" ? p.new : ""} /> : <ProblemNotice problem={d.problem} />}
+      {d.ok ? <Documents d={d.data} admission={adm.ok ? adm.data.rows : []} pgOffer={pg.ok ? pg.data : null} open={typeof p.request === "string" ? p.request : ""} wizard={typeof p.new === "string" ? p.new : ""} /> : <ProblemNotice problem={d.problem} />}
     </Shell>
   );
 }

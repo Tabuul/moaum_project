@@ -21,7 +21,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
   /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
-  const fileName = (degree: string, level: number | string, session: string) => `Result ${degree}${stream === "CCE" ? " CCE" : ""} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
+  const fileName = (degree: string, level: number | string, session: string) => `Result ${degree}${stream === "CCE" ? " CCE" : stream === "PG" ? " PG" : ""} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
      this semester), then the core courses with the GST courses leading them, then elective */
   const lvl = Number(sheet?.level ?? 0);
@@ -256,6 +256,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
         onExport={sheet ? () => void exportExcel() : undefined} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's students">On the Centre&rsquo;s evening classes in the session chosen above; never mixed with the full-time class.</Note> : null}
+      {stream === "PG" ? <Note kind="info" title="The School of Postgraduate Studies' students">On the School&rsquo;s classes in its session, graded on the School&rsquo;s scale (A 70, B 60, C 50).</Note> : null}
       {!sheet ? (
         <Note kind="info" title="Choose a programme and a level" />
       ) : (

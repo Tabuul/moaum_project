@@ -52,8 +52,10 @@ class PortalWindowController {
 
     /** the one office that opens and closes the portal's windows */
     private static final String DIRECTOR = "hasAuthority('OFFICE_ict')";
-    /** V380: beside the full-time students' two, the Centre for Continuing Education's own — a CCE student is governed by these */
-    private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION", "CCE_SCHOOL_FEES_PAYMENT", "CCE_COURSE_REGISTRATION");
+    /** V380: beside the full-time students' two, the Centre for Continuing Education's own — a CCE student is governed by these;
+     *  V389: and the School of Postgraduate Studies' own — a PG student is governed by these */
+    private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION", "CCE_SCHOOL_FEES_PAYMENT", "CCE_COURSE_REGISTRATION",
+            "PG_SCHOOL_FEES_PAYMENT", "PG_COURSE_REGISTRATION");
     /** V295: admission status checking, a window of the admission exercise, beside the two of the academic session */
     private static final String CHECKING = "ADMISSION_STATUS_CHECKING";
     /** V337: postgraduate admission status checking, its own window for the School's admission exercise of a session;
@@ -103,6 +105,12 @@ class PortalWindowController {
                        coalesce((SELECT max(number) FROM policy.route_semester WHERE route = 'CCE' AND session = :s AND state = 'OPEN'), 1) AS "openSemester",
                        (SELECT count(*) FROM people.student st WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')) AS students
                 """).param("s", s).query().singleRow());
+        // V389: the School of Postgraduate Studies' session and its open semester, for the PG windows
+        out.put("pg", jdbc.sql("""
+                SELECT admissions.pg_current_session() AS session,
+                       coalesce((SELECT max(number) FROM admissions.pg_semester WHERE session = admissions.pg_current_session() AND state = 'OPEN'), 1) AS "openSemester",
+                       (SELECT count(*) FROM people.student st WHERE st.entry_mode = 'POSTGRADUATE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')) AS students
+                """).query().singleRow());
         out.put("affected", jdbc.sql("""
                 SELECT count(*) FROM people.student st
                  WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
@@ -138,7 +146,7 @@ class PortalWindowController {
         // V385: the Post-UTME CBT door and result checking — windows of the admission exercise, like admission status checking
         boolean putmeCbt = ApplicationWindows.POST_UTME_CBT_TYPES.contains(t);
         if (!TYPES.contains(t) && !CHECKING.equals(t) && !application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && !putmeCbt) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time and for CCE students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking, the CCE application, the Post-UTME CBT examination and Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the thirteen.", "Directorate of ICT"));
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration (for full-time, CCE and postgraduate students), admission status checking, Post-UTME registration, the postgraduate application, postgraduate admission status checking, the JUPEB application, JUPEB admission status checking, the CCE application, the Post-UTME CBT examination and Post-UTME result checking.", new DomainRuleViolation.Remedy("Name one of the fifteen.", "Directorate of ICT"));
         }
         if ((CHECKING.equals(t) || PG_CHECKING.equals(t) || JUPEB_CHECKING.equals(t) || putmeCbt) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "This window opens and closes for the whole admission exercise of a session, with no semester and no late period.",
@@ -408,6 +416,8 @@ class PortalWindowController {
             case "SCHOOL_FEES_PAYMENT" -> "School fees payment";
             case "CCE_SCHOOL_FEES_PAYMENT" -> "CCE school fees payment";
             case "CCE_COURSE_REGISTRATION" -> "CCE course registration";
+            case "PG_SCHOOL_FEES_PAYMENT" -> "Postgraduate school fees payment";
+            case "PG_COURSE_REGISTRATION" -> "Postgraduate course registration";
             case CHECKING -> "Admission status checking";
             case ApplicationWindows.POST_UTME -> "Post-UTME registration";
             case ApplicationWindows.POSTGRADUATE -> "Postgraduate application";
@@ -448,7 +458,9 @@ class PortalWindowController {
                     + ("LATE".equals(phase) ? " You are now in the late period." : "");
         };
         String sms = "MOAUM: " + subject + ". See the portal.";
-        String audience = type.startsWith("CCE_") ? "st.entry_mode = 'CCE'" : "st.entry_mode IS DISTINCT FROM 'CCE'";   // V380
+        // V380/V389: the Centre's windows reach its students, the School's its students, the University's every other student
+        String audience = type.startsWith("CCE_") ? "st.entry_mode = 'CCE'" : type.startsWith("PG_") ? "st.entry_mode = 'POSTGRADUATE'"
+                : "coalesce(st.entry_mode, '') NOT IN ('CCE', 'POSTGRADUATE')";
         return jdbc.sql(("""
                 SELECT count(*) FROM (
                     SELECT platform.queue_notice('EMAIL', r.email, :subj, :body || E'\\n\\nDirectorate of ICT, ' || :uni, 'student', st.id) AS n

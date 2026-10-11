@@ -6,7 +6,12 @@ export interface PgSemester { number: number; registration_opens: string | null;
 export interface PgSupervisor { name: string; role: string; is_external: boolean; assigned_at: string; department: string | null; email: string | null }
 export interface PgCoursework { courses: number; graded: number; passed: number; failed: number; units_registered: number; units_passed: number; registrations: number; endorsed: number }
 export interface PgClearanceUnit { unit: string; label: string; state: string; decided_at: string | null }
+/** V389: a next step, worked out by the database from the record: DONE, ACTION, WAITING or BLOCKED */
+export interface PgStep { key: string; state: "DONE" | "ACTION" | "WAITING" | "BLOCKED"; label: string; detail: string | null; href: string | null; action: string | null }
+
 export interface PgSummary {
+  /** V389: what the student may do now, from the record */
+  next?: PgStep[];
   postgraduate: boolean;
   cgpa: number | null;
   standing: string;

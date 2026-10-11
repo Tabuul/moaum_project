@@ -515,6 +515,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state IN ('CURRENT', 'CLOSED', 'ARCHIVED') ORDER BY name DESC LIMIT 1").query(String.class).optional();
     }
 
+    /** V389: the School of Postgraduate Studies' session in progress */
+    String pgSession() {
+        return jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single();
+    }
+
     /** V379: the current session of a route with a calendar of its own (CCE) */
     String routeSession(String route) {
         return jdbc.sql("SELECT policy.route_session(:r)").param("r", route).query(String.class).optional().orElse(null);

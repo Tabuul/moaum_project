@@ -42,6 +42,8 @@ class PgCourseworkController {
 
     private static final String STUDENT = "hasAuthority('OFFICE_student')";
     private static final String DESK = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_super')";
+    /** V389: the offices that open the School's classes in its session */
+    private static final String SCHOOL = "hasAnyAuthority('OFFICE_academic','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_super')";
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
@@ -145,6 +147,18 @@ class PgCourseworkController {
         out.put("courses", courses);
         out.put("registration", reg);
         out.put("entries", entries);
+        // V389: the semester's results from both sources, and the registration on the University's engine
+        out.put("results", jdbc.sql("""
+                SELECT code, title, units, kind, grade, points, total, source FROM admissions.pg_course_results(:me)
+                 WHERE session = :s AND semester = :sem ORDER BY code
+                """).param("me", me).param("s", session).param("sem", semester).query().listOfRows());
+        out.put("engineRegistration", firstOrNull(jdbc.sql("""
+                SELECT cr.id, cr.status, count(e.offering_id) AS courses, coalesce(sum(e.units), 0) AS units
+                  FROM registration.course_registration cr
+                  LEFT JOIN registration.entry e ON e.registration_id = cr.id AND e.status IN ('REGISTERED', 'APPROVED')
+                 WHERE cr.student_id = :me AND cr.session = :s AND cr.semester = :sem
+                 GROUP BY cr.id, cr.status
+                """).param("me", me).param("s", session).param("sem", semester).query().listOfRows()));
         out.put("gpa", jdbc.sql("SELECT admissions.pg_gpa(:me, :s, :sem)").param("me", me).param("s", session).param("sem", semester).query(BigDecimal.class).single());
         out.put("cgpa", jdbc.sql("SELECT admissions.pg_cgpa(:me)").param("me", me).query(BigDecimal.class).single());
         return out;
@@ -161,12 +175,23 @@ class PgCourseworkController {
             return Map.of("postgraduate", false);
         }
         BigDecimal cgpa = jdbc.sql("SELECT admissions.pg_cgpa(:me)").param("me", me).query(BigDecimal.class).single();
-        boolean scored = Boolean.TRUE.equals(jdbc.sql("""
-                SELECT EXISTS (SELECT 1 FROM admissions.pg_registration r
-                    JOIN admissions.pg_registration_entry e ON e.registration_id = r.id
-                    JOIN admissions.pg_score s ON s.entry_id = e.id WHERE r.student_id = :me)
-                """).param("me", me).query(Boolean.class).single());
+        // V389: a result of the old coursework or a published result of the School's classes
+        boolean scored = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.pg_course_results(:me))")
+                .param("me", me).query(Boolean.class).single());
+        // V389: the latest registration on the University's engine, else on the old coursework
         Map<String, Object> reg = firstOrNull(jdbc.sql("""
+                SELECT cr.session, cr.semester, st.study_mode AS mode,
+                       CASE WHEN cr.status IN ('APPROVED', 'LOCKED') THEN 'ENDORSED' ELSE cr.status END AS state,
+                       count(e.offering_id) AS courses, coalesce(sum(e.units), 0) AS units
+                  FROM registration.course_registration cr
+                  JOIN people.student st ON st.id = cr.student_id
+                  JOIN registration.entry e ON e.registration_id = cr.id AND e.status IN ('REGISTERED', 'APPROVED')
+                  JOIN catalogue.offering o ON o.id = e.offering_id AND o.stream = 'PG'
+                 WHERE cr.student_id = :me
+                 GROUP BY cr.id, cr.session, cr.semester, st.study_mode, cr.status
+                 ORDER BY cr.session DESC, cr.semester DESC LIMIT 1
+                """).param("me", me).query().listOfRows());
+        if (reg == null) reg = firstOrNull(jdbc.sql("""
                 SELECT r.session, r.semester, r.mode, r.state,
                        (SELECT count(*) FROM admissions.pg_registration_entry e WHERE e.registration_id = r.id) AS courses,
                        (SELECT coalesce(sum(c.units), 0) FROM admissions.pg_registration_entry e
@@ -207,20 +232,27 @@ class PgCourseworkController {
                 SELECT r.corrections_due, r.viva_held_at, r.draft_submitted_at, r.final_submitted_at, r.cleared_at, r.awarded_at, r.viva_outcome
                   FROM admissions.pg_research r WHERE r.student_id = :me
                 """).param("me", me).query().listOfRows()));
+        // V389: the old coursework and the School's classes on the engine together; results from both sources
         out.put("coursework", jdbc.sql("""
-                SELECT count(DISTINCT e.id) AS courses,
-                       count(DISTINCT e.id) FILTER (WHERE sc.entry_id IS NOT NULL) AS graded,
-                       count(DISTINCT e.id) FILTER (WHERE sc.grade IS NOT NULL AND sc.grade <> 'F') AS passed,
-                       count(DISTINCT e.id) FILTER (WHERE sc.grade = 'F') AS failed,
-                       coalesce(sum(c.units) FILTER (WHERE c.kind <> 'DEFICIENCY'), 0) AS units_registered,
-                       coalesce(sum(c.units) FILTER (WHERE c.kind <> 'DEFICIENCY' AND sc.grade IS NOT NULL AND sc.grade <> 'F'), 0) AS units_passed,
-                       count(DISTINCT r.id) AS registrations,
-                       count(DISTINCT r.id) FILTER (WHERE r.state = 'ENDORSED') AS endorsed
-                  FROM admissions.pg_registration r
-                  JOIN admissions.pg_registration_entry e ON e.registration_id = r.id
-                  JOIN admissions.pg_course c ON c.id = e.course_id
-                  LEFT JOIN admissions.pg_score sc ON sc.entry_id = e.id
-                 WHERE r.student_id = :me
+                WITH res AS (SELECT * FROM admissions.pg_course_results(:me)),
+                legacy AS (SELECT e.id, c.units, c.kind, r.id AS reg, r.state
+                             FROM admissions.pg_registration r JOIN admissions.pg_registration_entry e ON e.registration_id = r.id
+                             JOIN admissions.pg_course c ON c.id = e.course_id WHERE r.student_id = :me),
+                engine AS (SELECT e.offering_id AS id, e.units, coalesce(co.basis, 'Core') AS basis, cr.id AS reg, cr.status
+                             FROM registration.course_registration cr
+                             JOIN registration.entry e ON e.registration_id = cr.id AND e.status IN ('REGISTERED', 'APPROVED')
+                             JOIN catalogue.offering o ON o.id = e.offering_id AND o.stream = 'PG'
+                             JOIN people.student st ON st.id = cr.student_id
+                             LEFT JOIN catalogue.course_offer co ON co.course_code = o.course_code AND co.programme_code = st.programme_code AND co.level = cr.level
+                            WHERE cr.student_id = :me)
+                SELECT (SELECT count(*) FROM legacy) + (SELECT count(*) FROM engine) AS courses,
+                       (SELECT count(*) FROM res) AS graded,
+                       (SELECT count(*) FROM res WHERE grade <> 'F') AS passed,
+                       (SELECT count(*) FROM res WHERE grade = 'F') AS failed,
+                       (SELECT coalesce(sum(units), 0) FROM legacy WHERE kind <> 'DEFICIENCY') + (SELECT coalesce(sum(units), 0) FROM engine WHERE basis <> 'Deficiency') AS units_registered,
+                       (SELECT coalesce(sum(units), 0) FROM res WHERE kind <> 'DEFICIENCY' AND grade <> 'F') AS units_passed,
+                       (SELECT count(DISTINCT reg) FROM legacy) + (SELECT count(DISTINCT reg) FROM engine) AS registrations,
+                       (SELECT count(DISTINCT reg) FROM legacy WHERE state = 'ENDORSED') + (SELECT count(DISTINCT reg) FROM engine WHERE status IN ('APPROVED', 'LOCKED')) AS endorsed
                 """).param("me", me).query().singleRow());
         out.put("graduand", firstOrNull(jdbc.sql("""
                 SELECT g.session, g.award, g.cgpa, g.senate_state, g.senate_minute FROM records.graduand g WHERE g.student_id = :me ORDER BY g.session DESC LIMIT 1
@@ -228,6 +260,11 @@ class PgCourseworkController {
         out.put("clearance", jdbc.sql("SELECT unit, label, state, decided_at FROM clearance.position(:me, 'CONVOCATION') ORDER BY ord")
                 .param("me", me).query().listOfRows());
         out.put("status", jdbc.sql("SELECT status FROM people.student WHERE id = :me").param("me", me).query(String.class).single());
+        // V389: what the student may do now, worked out by the database from the record — never by the page
+        out.put("next", jdbc.sql("""
+                SELECT x->>'key' AS key, x->>'state' AS state, x->>'label' AS label, x->>'detail' AS detail, x->>'href' AS href, x->>'action' AS action
+                  FROM jsonb_array_elements(admissions.pg_next_steps(:me)) x
+                """).param("me", me).query().listOfRows());
         return out;
     }
 
@@ -247,6 +284,62 @@ class PgCourseworkController {
                 .param("c", arr)
                 .query().listOfRows();
         return mine(authentication, body.session().trim(), body.semester());
+    }
+
+    /* ── V389: the School's classes, in its own session, on the University's engines ── */
+
+    /** the School's classes of a session's semester, with their lecturers, their registered students and their sheets;
+     *  a Head of Department reads their own department's courses */
+    @GetMapping("/classes")
+    @PreAuthorize(DESK)
+    @Transactional(readOnly = true)
+    Map<String, Object> classes(@RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
+        String s = session == null || session.isBlank() ? jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single() : session.trim();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("semester", semester);
+        out.put("gate", jdbc.sql("SELECT registration.pg_gate_of(:s, :sem)").param("s", s).param("sem", semester).query(String.class).optional().orElse(null));
+        out.put("classes", jdbc.sql("""
+                SELECT o.id, o.course_code, coalesce(o.title, c.title) AS title, coalesce(o.units, c.units) AS units, c.dept_code, d.name AS department,
+                       nullif(btrim(coalesce(lp.surname, '') || ', ' || coalesce(lp.given_names, '')), ',') AS lecturer,
+                       (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                         WHERE e.offering_id = o.id AND e.status IN ('REGISTERED', 'APPROVED') AND r.status IN ('SUBMITTED', 'APPROVED', 'LOCKED')) AS registered,
+                       (SELECT sh.stage FROM assessment.score_sheet sh WHERE sh.offering_id = o.id ORDER BY sh.due_on DESC NULLS LAST LIMIT 1) AS sheet_stage
+                  FROM catalogue.offering o
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                  LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
+                 WHERE o.stream = 'PG' AND o.session = :s AND o.semester = :sem AND (:dept::text IS NULL OR c.dept_code = :dept)
+                 ORDER BY o.course_code
+                """).param("s", s).param("sem", semester).param("dept", hodDept(), java.sql.Types.VARCHAR).query().listOfRows());
+        out.put("unmapped", jdbc.sql("SELECT programme_code, code, title FROM admissions.pg_course_unmapped WHERE active ORDER BY programme_code, code LIMIT 200").query().listOfRows());
+        return out;
+    }
+
+    public record OpenIn(@NotBlank String session, @NotNull Integer semester) {
+    }
+
+    /** every class the semester needs, opened at once in the School's session */
+    @PostMapping("/classes/open")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> openClasses(@Valid @RequestBody OpenIn body) {
+        Integer n = jdbc.sql("SELECT catalogue.pg_open_classes(:s, :sem)").param("s", body.session().trim()).param("sem", body.semester()).query(Integer.class).single();
+        Map<String, Object> out = classes(body.session().trim(), body.semester());
+        out.put("opened", n);
+        return out;
+    }
+
+    public record ClassIn(@NotBlank @Size(max = 20) String course, @NotBlank String session, @NotNull Integer semester) {
+    }
+
+    /** one class added for a course of the pool */
+    @PostMapping("/classes")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> addClass(@Valid @RequestBody ClassIn body) {
+        jdbc.sql("SELECT catalogue.pg_add_class(:c, :s, :sem)").param("c", body.course().trim()).param("s", body.session().trim()).param("sem", body.semester()).query().listOfRows();
+        return classes(body.session().trim(), body.semester());
     }
 
     /* ── the department / School desk ─────────────────────────────────────── */

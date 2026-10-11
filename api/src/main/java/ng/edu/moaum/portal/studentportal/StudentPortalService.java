@@ -122,8 +122,19 @@ public class StudentPortalService {
             String cce = repo.routeSession("CCE");
             return s.entrySession() != null && (cce == null || s.entrySession().compareTo(cce) > 0) ? s.entrySession() : cce;
         }
+        // V389: a postgraduate student stands in the School of Postgraduate Studies' session
+        if ("POSTGRADUATE".equals(s.entryMode())) {
+            String pg = repo.pgSession();
+            return s.entrySession() != null && (pg == null || s.entrySession().compareTo(pg) > 0) ? s.entrySession() : pg;
+        }
         String current = repo.currentSession().or(repo::latestRunSession).orElseGet(this::session);
         return s.entrySession() != null && s.entrySession().compareTo(current) > 0 ? s.entrySession() : current;
+    }
+
+    /** V389: a student on a calendar of their own — the Centre's (CCE) or the School of Postgraduate Studies' */
+    private boolean ownCalendar(UUID id) {
+        String mode = student(id).entryMode();
+        return "CCE".equals(mode) || "POSTGRADUATE".equals(mode);
     }
 
     public String sessionFor(UUID id) {
@@ -297,7 +308,7 @@ public class StudentPortalService {
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
-        out.put("sessions", "CCE".equals(student(id).entryMode()) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());
+        out.put("sessions", ownCalendar(id) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());   // V389: and a PG student
         out.put("window", repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period (V380: the CCE window for a CCE student)
         return out;
     }
@@ -397,6 +408,7 @@ public class StudentPortalService {
         window.put("fresh", session.equals(s.entrySession()));
         window.put("portal", repo.windowFor(id, "COURSE_REGISTRATION", session, semester));   // V288 (V380: the CCE window for a CCE student)
         window.put("cce", "CCE".equals(s.entryMode()));
+        window.put("pg", "POSTGRADUATE".equals(s.entryMode()));   // V389
         out.put("window", window);
         return out;
     }
@@ -432,9 +444,13 @@ public class StudentPortalService {
     private void assertWindowOpen(UUID id, String session, int semester) {
         String gate = repo.registrationGate(id, session, semester);
         if (gate != null) {
-            throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate, "CCE".equals(student(id).entryMode())
+            String mode = student(id).entryMode();
+            throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate, "CCE".equals(mode)
                     // V380: a CCE student's door is the Centre's calendar and classes
                     ? new DomainRuleViolation.Remedy("The Centre for Continuing Education sets up the semester's classes and opens it on the CCE calendar; the Directorate of ICT may also hold the CCE registration window.", "Centre for Continuing Education")
+                    // V389: a PG student's door is the School's calendar and classes
+                    : "POSTGRADUATE".equals(mode)
+                    ? new DomainRuleViolation.Remedy("The School of Postgraduate Studies sets up the semester's classes and opens it on its calendar; the Directorate of ICT may also hold the postgraduate registration window.", "School of Postgraduate Studies")
                     : new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar or dates the early window for the session's fresh students.", "Directorate of ICT"));
         }
     }
@@ -576,7 +592,7 @@ public class StudentPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> docket(UUID id) {
         // V381: a CCE student's examination card is the CCE session's
-        String session = "CCE".equals(student(id).entryMode()) ? sessionFor(id) : session();
+        String session = ownCalendar(id) ? sessionFor(id) : session();   // V389: and a PG student's card is the School's session
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         boolean inForce = repo.schemeInForce();
@@ -604,7 +620,7 @@ public class StudentPortalService {
     public Map<String, Object> timetable(UUID id, int semester) {
         // V380: a CCE student's timetable and attendance are the CCE session's, and their attendance is the register's
         boolean cce = "CCE".equals(student(id).entryMode());
-        String session = cce ? sessionFor(id) : session();
+        String session = ownCalendar(id) ? sessionFor(id) : session();   // V389: a PG student's timetable is the School's session
         if (!cce) {
             return Map.of("session", session, "semester", semester, "slots", repo.timetable(id, session, semester), "attendance", repo.attendance(id, session, semester));
         }

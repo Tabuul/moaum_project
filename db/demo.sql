@@ -1227,11 +1227,14 @@ BEGIN
             ('C90002', 'CSC 899', 'Dissertation',                     6, 'RESEARCH', 1)
         ON CONFLICT (programme_code, code) DO NOTHING;
 
-        -- register the coursework, endorse it, and record externally-moderated scores
+        -- the coursework registered and endorsed on the School's earlier course list (as the old-portal import, V214,
+        -- carries it: since V389 new registrations are on Course Registration), and externally-moderated scores
         SELECT array_agg(id) INTO v_courses FROM admissions.pg_course
          WHERE programme_code = 'C90002' AND kind <> 'RESEARCH';
-        v_reg := admissions.pg_register(v_student, '2025/2026', 1, 'FULL_TIME', v_courses);
-        UPDATE admissions.pg_registration SET state = 'ENDORSED', endorsed_by = v_dean, endorsed_at = now() WHERE id = v_reg;
+        INSERT INTO admissions.pg_registration (student_id, session, semester, mode, state, endorsed_by, endorsed_at)
+        VALUES (v_student, '2025/2026', 1, 'FULL_TIME', 'ENDORSED', v_dean, now())
+        RETURNING id INTO v_reg;
+        INSERT INTO admissions.pg_registration_entry (registration_id, course_id) SELECT v_reg, unnest(v_courses);
         FOR e IN SELECT ent.id AS entry_id, c.code FROM admissions.pg_registration_entry ent
                    JOIN admissions.pg_course c ON c.id = ent.course_id WHERE ent.registration_id = v_reg LOOP
             PERFORM admissions.pg_record_score(e.entry_id,

@@ -14,12 +14,12 @@ University's full lifecycle and changed only what was missing or wrong. This pag
 | Faculty vetting | Dean (own faculty only) | `POST …/faculty-decision` on a department's recommendation |
 | School's final decision | School, Secretary | `POST …/spgs-decision` on FAC_RECOMMENDED, FAC_DECLINED or DEPT_DECLINED; `POST …/return-to-department` sends a recommendation back |
 | Admission status checking | Applicant, Director of ICT | The POSTGRADUATE_ADMISSION_STATUS_CHECKING window; `admissions.pg_status_checking` |
-| Offer letter | Applicant | `/pg/offer/pdf` after the acceptance fee |
+| Offer letter | Applicant; the student later | `/pg/offer/pdf` after the acceptance fee; once on the register, My Documents and the dashboard's next steps (`/student/pg-offer/pdf`, V389) |
 | Acceptance | Applicant | The acceptance fee accepts the offer (`pg_confirm_fee`) |
 | Physical screening | School, Secretary, Academic Office, Registry | `admissions.pg_screening_policy` per session; `POST …/screening/schedule`, `POST …/screening/decision`; the desk at `GET /api/v1/pg/screening` |
 | On the register | Automatic on clearance, or the School where the session does not screen | `admissions.pg_admit`: the student row (ADMITTED), the applicant's password as the student account, contact and address carried over |
-| School fees | Student, Bursary | The student portal and the fee engine (`finance.new_reference`, the SCHOOL_FEES_PAYMENT window) |
-| Course registration | Student, the desk endorses | `/api/v1/pg/coursework` (`admissions.pg_registration`) |
+| School fees | Student, Bursary | The student portal and the fee engine (`finance.new_reference`), behind the PG_SCHOOL_FEES_PAYMENT window (V389) |
+| Course registration | Student, the Head of Department approves | Course Registration (`/student/register`) on the School's classes, in the School's session, behind the PG_COURSE_REGISTRATION window (V389). Earlier registrations on `admissions.pg_registration` stay and are read |
 | Matriculation | Academic Office | Matriculation Management (V267): batches per faculty, generate, validate, issue; the number becomes the username |
 
 ## The states
@@ -81,13 +81,33 @@ School's note is shown with the status.
   (`people.student_username_change`). The password the applicant chose is kept, as for every student.
 - **Registration before matriculation.** Matriculation Management requires an approved registration for every student
   (V064, V267). That is existing University policy, not one V337 invented.
-- **PG coursework keeps its own course list** (`admissions.pg_course`, V211). Moving it onto the canonical
-  `catalogue.course` + `course_offer` would migrate every PG registration, score and GPA. That is a decision for the
-  University, not part of this change.
+- ~~PG coursework keeps its own course list~~: moved onto the University's engines by V389 (below), without migrating
+  a single past registration or score.
 
 ## Not built
 
 - A department recommending a different programme from the one applied for.
 - A waiting list for postgraduate admission.
-- An SMS channel for the PG notices. They go through `platform.queue_notice` by email, like the rest of the School's
-  notices.
+- ~~An SMS channel for the PG notices~~: V389 sends the applicant's notices by SMS as well as email.
+
+## Coursework on the University's engines (V389)
+
+A postgraduate student is now a stream of the one portal, as the Centre for Continuing Education's students are (V380).
+Nothing of the School's own coursework was deleted or rewritten: past registrations, scores, GPAs and endorsements stay
+where they are and are read alongside the new results.
+
+| Part | What runs it |
+|---|---|
+| Courses | Every PG course is a course of the University's pool (`catalogue.course`), held once whatever the number of programmes that take it, bound to each programme at its award level (`catalogue.course_offer`, source PG; a deficiency course as Deficiency, a research course as Research). A course the School adds on its desk goes into the pool by trigger (`catalogue.pg_bind_course`). Each `admissions.pg_course` row now names its course (`course_code`); rows whose code is not a valid course are listed on the desk (`admissions.pg_course_unmapped`) until corrected. |
+| Session and calendar | The School's own session and semesters (`admissions.pg_academic_session`, `admissions.pg_semester`), read by `people.student_current_session` and `registration.calendar_semester` for a PG student. The University's current session is not used for them. |
+| Classes | The stream PG. The School (School, Secretary, Academic Office) opens the semester's classes (`catalogue.pg_open_classes`: every course bound to a programme with live PG students, plus carry-overs) or one class (`catalogue.pg_add_class`) on Postgraduate courses. A Head of Department cannot open them. The Head of Department allocates the lecturer as for any class. |
+| Registration | Course Registration, on the University's registration engine, with its rules unchanged (units, prerequisites, approval). The gate (`registration.pg_gate_of`) is: the School's classes set up, the School's semester open and within its dates, and the PG_COURSE_REGISTRATION window open where the Directorate of ICT holds one. The old endpoint refuses new registrations with PG_REGISTRATION_MOVED. |
+| Windows | PG_COURSE_REGISTRATION and PG_SCHOOL_FEES_PAYMENT on ICT window management (`/ict/windows`), with the same open / close / extend / reopen actions and audit as every window. |
+| Examinations and results | ICT sets PG examination sessions (stream PG); score sheets move on the one results chain; the broadsheet and Senate desks have a Postgraduate tab. A PG class is graded on the School's scale, kept as policy version `grading` scope POSTGRADUATE (A 70, B 60, C 50, F below 50), the scale `admissions.pg_grade` applied. |
+| GPA, statement, transcript | `admissions.pg_course_results` reads the old coursework and the published results together; `pg_gpa`, `pg_cgpa` and the statement of result read it. A deficiency course earns no credit. |
+| Notices | `admissions.pg_tell_registration`, hourly (`PgRegistrationClock`): PG students are told by email and SMS when registration opens on the School's calendar (only where no PG window is configured, since ICT's window sends its own) and, three days before it closes, those not yet registered. Each notice is sent once per semester (`admissions.pg_registration_notice`). No password or fee detail is in a notice. |
+| Document centre | My Documents: the offer of admission (`/student/pg-offer/pdf`, from the student's own application) and the documents submitted with the application (`GET /api/v1/pg/student/documents/{id}/content`, held to the student's own application). Certificates and transcripts as for every student. |
+| Next steps | `admissions.pg_next_steps(student)` works out the dashboard's next steps from the record: offer letter, school fees (from `finance.fee_stated` and `finance.position`, never from the page), registration, examination card, results, matriculation. |
+
+The student's menu: Course Registration, Results by semester (both sources), Academic progress, Timetable, Attendance,
+Examinations, CBT Examinations, Deferment, My Documents.

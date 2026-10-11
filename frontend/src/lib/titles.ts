@@ -35,7 +35,7 @@ export const TITLES: Record<string, string> = {
   "s/register": "Course registration",
   "s/results": "Results",
   "s/research": "Research & thesis",
-  "s/pgcourses": "Course registration & results",
+  "s/pgcourses": "Results by semester",
   "t/pgcourses": "Postgraduate courses",
   "t/pgstudents": "Postgraduate register",
   "t/pgresearch": "Research desk",

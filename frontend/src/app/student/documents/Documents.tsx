@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import type { AdmissionDocRow } from "@/lib/admission-documents";
 import { AdmissionDocumentsCentre } from "@/components/AdmissionDocumentsCentre";
+import { docLabel } from "@/lib/pg-documents";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -18,7 +19,11 @@ import { PayByCard } from "../common";
 type Wizard = { kind: string; session: string; semester: string; delivery: string; destination: string; destinationName: string; department: string; recipientName: string; recipientEmail: string; recipientAddress: string; recipientReference: string; purpose: string; express: boolean; international: boolean; copies: string };
 const EMPTY: Wizard = { kind: "TRANSCRIPT", session: "", semester: "", delivery: "DIGITAL", destination: "SELF", destinationName: "", department: "", recipientName: "", recipientEmail: "", recipientAddress: "", recipientReference: "", purpose: "", express: false, international: false, copies: "1" };
 
-export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments; admission?: AdmissionDocRow[]; open: string; wizard: string }) {
+/** V389: the postgraduate application the student came through, for the offer of admission */
+export interface PgOffer { applicationNo: string; session: string; programme: string; acceptanceConfirmedAt: string | null;
+  documents?: { id: string; kind: string; filename: string }[] }
+
+export function Documents({ d, admission = [], pgOffer = null, open, wizard }: { d: MyDocuments; admission?: AdmissionDocRow[]; pgOffer?: PgOffer | null; open: string; wizard: string }) {
   const router = useRouter();
   const [step, setStep] = useState(wizard ? 1 : 0);
   const [w, setW] = useState<Wizard>({ ...EMPTY, kind: wizard && KIND[wizard.toUpperCase()] ? wizard.toUpperCase() : "TRANSCRIPT" });
@@ -95,6 +100,27 @@ export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments;
       ) : null}
 
       {admission.length ? <AdmissionDocumentsCentre rows={admission} side="student" /> : null}
+
+      {pgOffer ? (
+        <Panel title="Your postgraduate admission" right={<span className="tnum">{pgOffer.applicationNo}</span>}>
+          <PBody>
+            <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
+              <span>{pgOffer.programme} · {pgOffer.session}</span>
+              {pgOffer.acceptanceConfirmedAt
+                ? <a className="btn btn--ghost btn--sm" href="/student/pg-offer/pdf" target="_blank" rel="noopener">Offer of admission (PDF)</a>
+                : <span className="sub2">The offer of admission is available once the acceptance fee is confirmed.</span>}
+            </div>
+            {pgOffer.documents?.length ? (
+              <div className="mt-2">
+                <div className="sub2">Submitted with your application</div>
+                {pgOffer.documents.map((x) => (
+                  <span key={x.id} className="blk"><a className="lnk b600" href={`/api/bff/api/v1/pg/student/documents/${x.id}/content`} target="_blank" rel="noopener">{docLabel(x.kind)}</a> <span className="sub2">{x.filename}</span></span>
+                ))}
+              </div>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
       <Panel title="Documents issued to you" right={active.length ? `${active.length} valid` : "none yet"}>
         {d.documents.length ? (

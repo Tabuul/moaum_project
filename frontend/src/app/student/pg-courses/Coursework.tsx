@@ -2,79 +2,60 @@
 import { notifyProblem } from "@/components/proto/Toast";
 
 /**
- * The postgraduate student's course registration and results (V211). They register the courses their
- * programme carries for a session and semester (core, elective, research), and once the department has
- * recorded scores they see the grade (A/B/C/F), the GPA and the cumulative CGPA. Self-contained
- * postgraduate grading (Policy 16): pass mark 50, no resit.
+ * The postgraduate student's results by semester (V211; V389). Results come from both sources: the School's earlier
+ * coursework and the published results of its classes on the University's results chain. Course registration itself is
+ * on Course Registration, on the University's registration engine, since V389; a registration made earlier on the
+ * School's own list is shown here as it stands. Grading (Policy 16): A 70, B 60, C 50, F below 50; a deficiency course
+ * earns no credit.
  */
 import { useCallback, useEffect, useState } from "react";
-import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Btn, KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-interface Course { id: string; code: string; title: string; units: number; kind: string; semester: number }
 interface Entry { entry_id: string; course_id: string; code: string; title: string; units: number; kind: string; ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null }
 interface Reg { id: string; mode: string; state: string; endorsed_at: string | null }
-interface View { programme: string; programmeCode: string; session: string; semester: number; courses: Course[]; registration: Reg | null; entries: Entry[]; gpa: number; cgpa: number }
+interface Result { code: string; title: string; units: number; kind: string; grade: string | null; points: number | null; total: number | null; source: string }
+interface EngineReg { id: string; status: string; courses: number; units: number }
+interface View { programme: string; programmeCode: string; session: string; semester: number; registration: Reg | null; entries: Entry[]; gpa: number; cgpa: number;
+  results?: Result[]; engineRegistration?: EngineReg | null }
 
 const KIND: Record<string, string> = { CORE: "Core", ELECTIVE: "Elective", DEFICIENCY: "Deficiency", RESEARCH: "Research" };
 const KIND_PILL: Record<string, "info" | "grey" | "ok" | "warn"> = { CORE: "info", ELECTIVE: "grey", RESEARCH: "ok", DEFICIENCY: "warn" };
+const ENGINE_STATE: Record<string, ["ok" | "info" | "warn" | "grey", string]> = {
+  DRAFT: ["grey", "Draft"], SUBMITTED: ["info", "Submitted, awaiting approval"], RETURNED: ["warn", "Returned for correction"], APPROVED: ["ok", "Approved"], LOCKED: ["ok", "Approved"],
+};
 
 export function Coursework({ initialSession }: { initialSession: string }) {
   const [session, setSession] = useState(initialSession);
   const [semester, setSemester] = useState(1);
   const [v, setV] = useState<View | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState("FULL_TIME");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (s: string, sem: number) => {
     try {
       const r = await fetch(`/api/bff/api/v1/pg/coursework/me?session=${encodeURIComponent(s)}&semester=${sem}`, { cache: "no-store" });
       setProblem(null);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
-      const data = j as View;
-      setV(data);
-      setPicked(new Set(data.entries.map((e) => e.course_id)));
-      if (data.registration?.mode) setMode(data.registration.mode);
+      if (!r.ok) { const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); setLoading(false); return; }
+      setV(j as View);
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { void load(session, semester); }, [load, session, semester]);
 
-  function toggle(id: string) {
-    setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  }
-
-  async function register() {
-    setBusy(true); setProblem(null);
-    try {
-      const r = await fetch("/api/bff/api/v1/pg/coursework/register", {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Registered ${picked.size} PG courses for ${session} sem ${semester}`) },
-        body: JSON.stringify({ session, semester, mode, courseIds: [...picked] }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      const data = j as View;
-      setV(data);
-      setPicked(new Set(data.entries.map((e) => e.course_id)));
-    } finally { setBusy(false); }
-  }
-
   if (loading) return <Note kind="info" title="Loading your courses…">One moment.</Note>;
   if (!v) return <ProblemNotice problem={problem ?? { status: 500, title: "Your coursework could not be read." }} />;
 
-  const pickedUnits = v.courses.filter((c) => picked.has(c.id)).reduce((s, c) => s + c.units, 0);
-  const scored = v.entries.filter((e) => e.total != null);
-  const endorsed = v.registration?.state === "ENDORSED";
-  const unitsSat = scored.reduce((a, e) => a + e.units, 0);
-  const unitsPassed = scored.filter((e) => e.grade && e.grade !== "F").reduce((a, e) => a + e.units, 0);
+  const results = v.results ?? [];
+  const credited = results.filter((e) => e.kind !== "DEFICIENCY" && e.points != null);
+  const unitsSat = credited.reduce((a, e) => a + Number(e.units), 0);
+  const unitsPassed = credited.filter((e) => e.grade && e.grade !== "F").reduce((a, e) => a + Number(e.units), 0);
   const cgpa = Number(v.cgpa);
+  const er = v.engineRegistration ?? null;
+  const [erKind, erWord]: ["ok" | "info" | "warn" | "grey", string] = er ? ENGINE_STATE[er.status] ?? ["grey", er.status] : ["grey", ""];
 
   return (
     <>
@@ -84,29 +65,33 @@ export function Coursework({ initialSession }: { initialSession: string }) {
         <span className="row row--tight">
           <input className="ctl tnum" style={{ width: 110 }} value={session} onChange={(e) => setSession(e.target.value)} aria-label="Session" />
           <select className="ctl" style={{ width: "auto" }} value={semester} onChange={(e) => setSemester(Number(e.target.value))} aria-label="Semester">
-            <option value={1}>First semester</option><option value={2}>Second semester</option>
+            <option value={1}>First semester</option><option value={2}>Second semester</option><option value={3}>Third semester</option>
           </select>
         </span>
       }>
         <PBody>
-          <div className="sub2">
-            {v.registration
-              ? <>Registered ({KIND[v.registration.mode] ?? v.registration.mode.toLowerCase()}) · {endorsed ? <Pil kind="ok">Endorsed</Pil> : <Pil kind="info">{v.registration.state.toLowerCase()}</Pil>}</>
-              : "Not registered for this semester yet."}
-          </div>
+          {er ? (
+            <div className="row row--inline row--tight"><Pil kind={erKind}>{erWord}</Pil><span className="sub2">{er.courses} course(s), {er.units} units on Course Registration</span>
+              <LinkBtn kind="ghost" href="/student/register">Course Registration</LinkBtn></div>
+          ) : v.registration ? (
+            <div className="sub2">Registered on the School&rsquo;s earlier course list · {v.registration.state === "ENDORSED" ? <Pil kind="ok">Endorsed</Pil> : <Pil kind="info">{v.registration.state.toLowerCase()}</Pil>}</div>
+          ) : (
+            <Note kind="info" title="Not registered for this semester" action={<LinkBtn kind="primary" href="/student/register">Course Registration</LinkBtn>}>
+              Postgraduate course registration is on Course Registration, on the School&rsquo;s classes for its session.
+            </Note>
+          )}
         </PBody>
       </Panel>
 
-      {scored.length ? (
-        <Panel title="Results" right={`GPA ${Number(v.gpa).toFixed(2)} · CGPA ${Number(v.cgpa).toFixed(2)}`}>
-          <DTable cols={["Course", "Title", "Units|num", "CA|num", "Exam|num", "Total|num", "Grade|mid", "Points|num"]}
-            rows={scored.map((e) => [
-              <span key="c" className="tnum">{e.code}</span>, e.title, <span key="u" className="tnum">{e.units}</span>,
-              <span key="ca" className="tnum">{e.ca ?? "—"}</span>, <span key="ex" className="tnum">{e.exam ?? "—"}</span>,
-              <span key="t" className="tnum">{e.total}</span>,
-              <Pil key="g" kind={e.grade === "F" ? "bad" : e.grade === "C" ? "warn" : "ok"}>{e.grade}</Pil>,
-              <span key="p" className="tnum">{e.points != null ? (Number(e.points) * e.units).toFixed(0) : "—"}</span>,
-            ])} texts={scored.map((e) => `${e.code} ${e.title}`)} />
+      {results.length ? (
+        <Panel title="Results" right={`GPA ${Number(v.gpa).toFixed(2)} · CGPA ${cgpa.toFixed(2)}`}>
+          <DTable cols={["Course", "Title", "Type|mid", "Units|num", "Total|num", "Grade|mid", "Quality points|num"]}
+            rows={results.map((e) => [
+              <span key="c" className="tnum">{e.code}</span>, e.title, <Pil key="k" kind={KIND_PILL[e.kind] ?? "grey"}>{KIND[e.kind] ?? e.kind}</Pil>,
+              <span key="u" className="tnum">{e.units}</span>, <span key="t" className="tnum">{e.total ?? "—"}</span>,
+              e.grade ? <Pil key="g" kind={e.grade === "F" ? "bad" : e.grade === "C" ? "warn" : "ok"}>{e.grade}</Pil> : <span key="g" className="sub2">—</span>,
+              <span key="p" className="tnum">{e.points != null && e.kind !== "DEFICIENCY" ? (Number(e.points) * Number(e.units)).toFixed(0) : "—"}</span>,
+            ])} texts={results.map((e) => `${e.code} ${e.title}`)} />
           <PBody>
             <KvGrid cls="grid--4" pairs={[
               ["GPA (this semester)", Number(v.gpa).toFixed(2)],
@@ -114,47 +99,18 @@ export function Coursework({ initialSession }: { initialSession: string }) {
               ["Units passed", `${unitsPassed} of ${unitsSat}`],
               ["Standing", cgpa >= 2.5 ? <Pil kind="ok">Good standing</Pil> : <Pil kind="bad">Probation</Pil>],
             ]} />
-            <div className="sub2 mt-2">Grading (Policy 16): A 70+ · B 60–69 · C 50–59 · F 0–49. Pass mark 50; there is no resit. A CGPA below 2.50 places you on probation for a semester.</div>
+            <div className="sub2 mt-2">A 70+ · B 60–69 · C 50–59 · F 0–49. A deficiency course earns no credit. Results appear once published.</div>
           </PBody>
         </Panel>
-      ) : null}
+      ) : <Panel title="Results"><PBody><div className="sub2">No result is published for this semester yet.</div></PBody></Panel>}
 
-      <Panel title="Course registration" right={`${pickedUnits} units selected`}>
-        <PBody>
-          {endorsed ? (
-            <Note kind="ok" title="Your registration is endorsed">Write to the department to change it.</Note>
-          ) : v.courses.length ? (
-            <>
-              <div className="stack">
-                {v.courses.map((c) => {
-                  const on = picked.has(c.id);
-                  const locked = v.entries.some((e) => e.course_id === c.id && e.total != null);
-                  return (
-                    <label key={c.id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", opacity: locked ? 0.7 : 1 }}>
-                      <input type="checkbox" className="pchk" checked={on} disabled={locked || busy} onChange={() => toggle(c.id)} />
-                      <span className="tnum" style={{ width: 72 }}>{c.code}</span>
-                      <span className="grow">{c.title}</span>
-                      <Pil kind={KIND_PILL[c.kind] ?? "grey"}>{KIND[c.kind] ?? c.kind}</Pil>
-                      <span className="tnum sub2" style={{ width: 56, textAlign: "right" }}>{c.units} u</span>
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="row mt-3">
-                <select className="ctl" style={{ width: "auto" }} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
-                  <option value="FULL_TIME">Full-time</option><option value="PART_TIME">Part-time</option>
-                </select>
-                <Btn kind="primary" disabled={busy || picked.size === 0} onClick={() => void register()}>
-                  {busy ? "Saving…" : v.registration ? "Update registration" : "Register these courses"}
-                </Btn>
-                <span className="sub2">Minimum coursework is 24 units for a taught programme (Policy 15).</span>
-              </div>
-            </>
-          ) : (
-            <Note kind="info" title="No courses listed for this semester yet" />
-          )}
-        </PBody>
-      </Panel>
+      {v.registration && v.entries.length ? (
+        <Panel title="Registered on the School&rsquo;s earlier course list">
+          <DTable cols={["Course", "Title", "Type|mid", "Units|num"]} rows={v.entries.map((e) => [
+            <span key="c" className="tnum">{e.code}</span>, e.title, <Pil key="k" kind={KIND_PILL[e.kind] ?? "grey"}>{KIND[e.kind] ?? e.kind}</Pil>, <span key="u" className="tnum">{e.units}</span>,
+          ])} texts={v.entries.map((e) => `${e.code} ${e.title}`)} />
+        </Panel>
+      ) : null}
     </>
   );
 }

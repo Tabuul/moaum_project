@@ -174,7 +174,7 @@ class AllocationController {
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
-                   AND o.stream = 'REGULAR'                   -- V380: the full-time classes; the Centre allocates its own
+                   AND o.stream IN ('REGULAR', 'PG')          -- V380: the full-time classes; the Centre allocates its own (V389: and the School's)
                    AND catalogue.runs_in(c.semester, c.both_semesters, :semester)   -- only courses taught in this semester (V386: or in both)
                    AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
                    AND (:level::int IS NULL OR c.level = :level)
@@ -212,7 +212,7 @@ class AllocationController {
         String live = "a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department'"
                 + " AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)";
         String load = "coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code"
-                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester AND o.stream = 'REGULAR'), 0) AS load";
+                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester AND o.stream IN ('REGULAR', 'PG')), 0) AS load";
         if (all) {
             return jdbc.sql("""
                     SELECT p.id, concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS name, p.staff_number,

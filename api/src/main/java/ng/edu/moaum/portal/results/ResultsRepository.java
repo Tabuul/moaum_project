@@ -621,7 +621,7 @@ class ResultsRepository {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode
                   FROM people.student st
-                 WHERE st.programme_code = :prog AND (CASE WHEN st.entry_mode = 'CCE' THEN 'CCE' ELSE 'REGULAR' END) = :stream
+                 WHERE st.programme_code = :prog AND people.student_stream(st.id) = :stream   -- V389: the School's students on the PG broadsheet
                    AND (EXISTS (SELECT 1 FROM registration.course_registration r
                                  WHERE r.student_id = st.id AND r.session = :session AND r.level = :level AND r.status IN ('APPROVED','LOCKED'))
                         OR (st.current_level = :level AND st.status IN ('ACTIVE','PROBATION')
@@ -662,10 +662,15 @@ class ResultsRepository {
     }
 
     List<Sheets.GradeBand> gradeBands() {
+        return gradeBands("UNIVERSITY");
+    }
+
+    /** V389: the bands of a grading scope — the School of Postgraduate Studies' for its classes — else the University's */
+    List<Sheets.GradeBand> gradeBands(String scope) {
         return jdbc.sql("""
                 SELECT b.grade, b.low, b.high, b.points FROM policy.grade_band b
-                 WHERE b.version_id = policy.in_force('grading', 'UNIVERSITY', current_date) ORDER BY b.low DESC
-                """).query(Sheets.GradeBand.class).list();
+                 WHERE b.version_id = coalesce(policy.in_force('grading', :scope, current_date), policy.in_force('grading', 'UNIVERSITY', current_date)) ORDER BY b.low DESC
+                """).param("scope", scope).query(Sheets.GradeBand.class).list();
     }
 
     List<Sheets.ClassBand> classBands() {
@@ -676,8 +681,12 @@ class ResultsRepository {
     }
 
     String gradingInstrument() {
-        return jdbc.sql("SELECT v.instrument FROM policy.version v WHERE v.id = policy.in_force('grading', 'UNIVERSITY', current_date)")
-                .query(String.class).optional().orElse(null);
+        return gradingInstrument("UNIVERSITY");
+    }
+
+    String gradingInstrument(String scope) {
+        return jdbc.sql("SELECT v.instrument FROM policy.version v WHERE v.id = coalesce(policy.in_force('grading', :scope, current_date), policy.in_force('grading', 'UNIVERSITY', current_date))")
+                .param("scope", scope).query(String.class).optional().orElse(null);
     }
 
     /* ── Senate: the schedule by faculty, and the minutes recorded (proto/part26 tSenate, tPublish) ── */

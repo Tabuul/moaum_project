@@ -287,7 +287,7 @@ class ResultsController {
     @GetMapping("/broadsheet")
     @PreAuthorize(READERS)
     Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem,
-                                 @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+                                 @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE|PG") String stream) {
         scope.bound(null, null, prog);   // a programme outside the office's bound is refused
         return service.broadsheet(prog, level, session, sem, stream);   // V381: the full-time students' unless the Centre's is asked for
     }
@@ -295,13 +295,13 @@ class ResultsController {
     @GetMapping("/senate")
     @PreAuthorize(READERS)
     Sheets.Senate senate(@RequestParam String session, @RequestParam int sem,
-                         @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+                         @RequestParam(defaultValue = "REGULAR") @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE|PG") String stream) {
         return service.senate(session, sem, stream);
     }
 
     /** V381: stream REGULAR (the default) or CCE — a minute publishes one stream's sets */
     public record MinuteIn(@NotBlank String session, @NotNull Integer sem, String fac, @NotBlank String minute,
-                           @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+                           @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE|PG") String stream) {
     }
 
     @PostMapping("/senate/minute")

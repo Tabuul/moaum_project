@@ -38,7 +38,7 @@ export interface SheetListed {
   /** scripts held from candidates not on the roll, waiting on registration (V240) */
   heldScripts: number;
   /** V381: a CCE class's sheet (the Centre's evening class) or a full-time class's */
-  stream?: "REGULAR" | "CCE";
+  stream?: "REGULAR" | "CCE" | "PG";
   /** V359: how the sheet has been chased while at entry */
   chase?: Chase | null;
 }
@@ -185,20 +185,20 @@ export interface ExamSession {
   cardsReleasedAt?: string | null;
   sheetsReleasedAt?: string | null;
   /** V381: whose classes it examines — the full-time students' (REGULAR) or the Centre for Continuing Education's (CCE) */
-  stream?: "REGULAR" | "CCE";
+  stream?: "REGULAR" | "CCE" | "PG";
 }
 
 /** V381: whose results a page reads — the full-time students' or the Centre for Continuing Education's */
-export type Stream = "REGULAR" | "CCE";
+export type Stream = "REGULAR" | "CCE" | "PG";
 
 /** V381: the stream a page was asked for (?stream=CCE); the full-time students' otherwise */
 export function streamOf(params: Record<string, string | string[] | undefined>): Stream {
-  return params.stream === "CCE" ? "CCE" : "REGULAR";
+  return params.stream === "CCE" ? "CCE" : params.stream === "PG" ? "PG" : "REGULAR";
 }
 
 /** V381: the stream in words */
 export function streamWords(stream: string | null | undefined): string {
-  return stream === "CCE" ? "CCE (part-time)" : "Full-time";
+  return stream === "CCE" ? "CCE (part-time)" : stream === "PG" ? "Postgraduate" : "Full-time";
 }
 
 export interface Monitor {

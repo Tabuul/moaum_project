@@ -72,7 +72,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
   }
 
   const row = (s: SheetListed) => [
-    <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}{s.stream === "CCE" ? <span className="pill pill--info" style={{ marginLeft: 6 }} title="A class of the Centre for Continuing Education">CCE</span> : null}</span>} b={s.courseTitle} />,
+    <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}{s.stream === "CCE" ? <span className="pill pill--info" style={{ marginLeft: 6 }} title="A class of the Centre for Continuing Education">CCE</span> : s.stream === "PG" ? <span className="pill pill--info" style={{ marginLeft: 6 }} title="A class of the School of Postgraduate Studies">PG</span> : null}</span>} b={s.courseTitle} />,
     <span className="sub2" key="d">{s.deptName}</span>,
     <span className="tnum" key="n">{s.candidates}</span>,
     s.failRate === null ? <span className="sub2" key="f">—</span> : <span className={`tnum${s.failRate > 50 ? " ink-red b700" : ""}`} key="f">{s.failRate}%</span>,

@@ -12,6 +12,7 @@ import { naira } from "./common";
 import { RESEARCH_WORD, awardWord, eligibility, fmtDay, nextStep, type PgSummary } from "./pg-common";
 
 const SEM = ["", "First semester", "Second semester", "Third semester"];
+const STEP_WORD: Record<string, string> = { DONE: "Done", ACTION: "To do", WAITING: "Waiting", BLOCKED: "Not yet" };
 
 export type { PgSummary };
 
@@ -68,7 +69,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
 
       <Tiles items={[
         ["Programme", awardWord(s.entryLevel), null, s.programme],
-        ["Registered courses", reg ? String(reg.courses) : "0", registered ? "var(--green-ink)" : null, reg ? `${SEM[reg.semester] ?? `Semester ${reg.semester}`} · ${regWord}` : "Not yet registered", "/student/pg-courses"],
+        ["Registered courses", reg ? String(reg.courses) : "0", registered ? "var(--green-ink)" : null, reg ? `${SEM[reg.semester] ?? `Semester ${reg.semester}`} · ${regWord}` : "Not yet registered", "/student/register"],
         ["CGPA", cgpaShown ? Number(pg!.cgpa).toFixed(2) : "—", pg?.standing === "PROBATION" ? "var(--red-ink)" : cgpaShown ? "var(--green-ink)" : null, pg?.standing === "PROBATION" ? "Probation · below 2.50" : cgpaShown ? "of 5.00 · good standing" : "No results yet", "/student/pg-courses"],
         ["Outstanding fees", f.balance > 0 ? naira(f.balance) : f.due > 0 ? "₦0" : "—", f.balance > 0 ? "var(--red-ink)" : f.paidInFull ? "var(--green-ink)" : null, f.paidInFull ? `Paid in full · ${f.session}` : f.due > 0 ? f.session : "No charge stated yet", "/student/fees"],
         ["Research", research ? (RESEARCH_WORD[research.stage] ?? research.stage) : "—", research && research.stage !== "WITHDRAWN" ? "var(--chrome)" : null, research ? (step ? step[0] : "") : "Not started", "/student/research"],
@@ -78,25 +79,43 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         ["Graduation", graduated ? "Graduated" : elig ? `${met} / ${elig.length}` : "—", graduated ? "var(--green-ink)" : elig && met === elig.length ? "var(--green-ink)" : null, graduated ? (pg?.graduand?.award ? `${pg.graduand.award} · ${pg.graduand.session}` : "Award recorded") : "Requirements met", "/student/pg-progress"],
       ]} />
 
+      {pg?.next?.length ? (
+        <Panel title="Next steps" right={pg.session ? `${pg.session} session` : undefined}>
+          <PBody>
+            <div className="stack">
+              {pg.next.map((x) => (
+                <div key={x.key} className="row row--base" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                  <Pil kind={x.state === "DONE" ? "ok" : x.state === "ACTION" ? "info" : x.state === "BLOCKED" ? "bad" : "grey"}>{STEP_WORD[x.state]}</Pil>
+                  <span className="grow"><b>{x.label}</b>{x.detail ? <div className="sub2">{x.detail}</div> : null}</span>
+                  {x.href && x.action ? (x.href.endsWith("/pdf")
+                    ? <a className={`btn btn--${x.state === "ACTION" ? "primary" : "ghost"} btn--sm`} href={x.href} target="_blank" rel="noopener">{x.action}</a>
+                    : <LinkBtn kind={x.state === "ACTION" ? "primary" : "ghost"} href={x.href}>{x.action}</LinkBtn>) : null}
+                </div>
+              ))}
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
+
       {graduated ? (
         <Note kind="ok" title={`Your award of ${pg?.graduand?.award ?? awardWord(s.entryLevel)} is recorded`} action={<LinkBtn kind="primary" href="/student/graduation">Graduation and Certificate</LinkBtn>}>
           Senate approved the award{pg?.graduand?.senate_minute ? ` under minute ${pg.graduand.senate_minute}` : ""}.
         </Note>
       ) : pg?.standing === "PROBATION" ? (
-        <Note kind="bad" title="On academic probation" action={<LinkBtn kind="primary" href="/student/pg-courses">My Results</LinkBtn>}>
+        <Note kind="bad" title="On academic probation" action={<LinkBtn kind="primary" href="/student/pg-courses">Results by semester</LinkBtn>}>
           Your CGPA is below 2.50. You are on probation for a semester and are advised to withdraw if it does not improve (Policy 15.5 / 20).
         </Note>
       ) : !registered && sem ? (
-        <Note kind="info" title={reg ? `Complete your registration for ${pg?.session ?? s.session}` : `Register your courses for ${SEM[Number(sem.number)]?.toLowerCase() ?? "this semester"}`} action={<LinkBtn kind="primary" href="/student/pg-courses">Course Registration</LinkBtn>}>
-          The department endorses the form.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
+        <Note kind="info" title={reg ? `Complete your registration for ${pg?.session ?? s.session}` : `Register your courses for ${SEM[Number(sem.number)]?.toLowerCase() ?? "this semester"}`} action={<LinkBtn kind="primary" href="/student/register">Course Registration</LinkBtn>}>
+          Your Head of Department approves it.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
         </Note>
       ) : step ? (
         <Note kind={step[2]} title={step[0]} action={<LinkBtn kind="ghost" href="/student/research">Research &amp; Thesis</LinkBtn>}>
           {step[1]}
         </Note>
       ) : reg ? (
-        <Note kind="ok" title={`Registered for ${reg.session} · ${SEM[reg.semester] ?? `semester ${reg.semester}`}`} action={<LinkBtn kind="ghost" href="/student/pg-courses">Registration &amp; Results</LinkBtn>}>
-          {reg.courses} course{reg.courses === 1 ? "" : "s"} registered ({modeWord!.toLowerCase()}){reg.state === "ENDORSED" ? ", endorsed by the department" : ""}. {feeLine}
+        <Note kind="ok" title={`Registered for ${reg.session} · ${SEM[reg.semester] ?? `semester ${reg.semester}`}`} action={<LinkBtn kind="ghost" href="/student/register">Course Registration</LinkBtn>}>
+          {reg.courses} course{reg.courses === 1 ? "" : "s"} registered ({modeWord!.toLowerCase()}){reg.state === "ENDORSED" ? ", approved by your Head of Department" : ""}. {feeLine}
         </Note>
       ) : (
         <Note kind="info" title="No semester is open for registration yet">

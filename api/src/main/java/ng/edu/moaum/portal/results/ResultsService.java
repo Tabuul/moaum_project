@@ -46,12 +46,12 @@ public class ResultsService {
     /** V381: stream REGULAR (the full-time classes, the default) or CCE (the Centre for Continuing Education's classes) */
     public record ExamSessionIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
                                 @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue,
-                                @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+                                @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE|PG") String stream) {
     }
 
     public record ExamEditIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
                              @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue,
-                             @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE") String stream) {
+                             @jakarta.validation.constraints.Pattern(regexp = "REGULAR|CCE|PG") String stream) {
     }
 
     /** the three dates are ordered: begin ≤ end ≤ sheets due. A clear message beats the raw DB constraint. */
@@ -961,7 +961,8 @@ public class ResultsService {
                 byStudent.size() - missingCandidates.size(),
                 courseCoverage.stream().filter(x -> "PUBLISHED".equals(x.stage())).count(), courseCoverage, missingCandidates);
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
-                repo.gradeBands(), classes, repo.gradingInstrument(), coverage);
+                repo.gradeBands("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), classes,
+                repo.gradingInstrument("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), coverage);   // V389: the School's scale on its broadsheet
     }
 
     /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */

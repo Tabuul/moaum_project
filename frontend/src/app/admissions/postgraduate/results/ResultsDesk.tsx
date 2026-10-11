@@ -101,6 +101,9 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      <Note kind="info" title="The earlier coursework">
+        This desk keeps the registrations and scores of the School&rsquo;s earlier course list. The School&rsquo;s classes now register on Course Registration (the Head of Department approves them on the registrations desk) and are scored on their score sheets on the results desks.
+      </Note>
       <Panel title="Registrations" right={
         <span className="row row--tight">
           <input className="ctl tnum" style={{ width: 110 }} value={session} onChange={(e) => setSession(e.target.value)} aria-label="Session" />
