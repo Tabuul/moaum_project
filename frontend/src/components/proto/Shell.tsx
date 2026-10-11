@@ -9,6 +9,7 @@
  * the prototype lays it out for each of the offices (lib/menus); items the
  * portal does not yet serve are the same buttons, and say so when pressed.
  */
+import { AccountMenu } from "./AccountMenu";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -736,12 +737,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <h1>{t0}</h1>
               {t1 ? <div className="sub">{t1}</div> : null}
             </div>
-            {me ? (
-              <div className="topbar__me" title={label}>
-                <div className="avatar avatar--sm">{initials(who)}</div>
-                <div className="topbar__who"><div className="topbar__name">{who}</div><div className="topbar__role">{label}</div></div>
-              </div>
-            ) : null}
+            {me ? <AccountMenu who={who} label={label} initials={initials(who)} /> : null}
             {me ? <ManualHelp route={route} menu={me.menu ?? null} /> : null}
             <button className="topsrch" aria-label="Search" title="Search records (/)" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

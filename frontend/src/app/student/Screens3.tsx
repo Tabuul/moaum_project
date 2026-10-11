@@ -63,15 +63,22 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   // V389: a postgraduate programme's research and deficiency courses are neither core nor electives
   const special = v.menu.filter((m) => !m.carryover && (m.basis === "Research" || m.basis === "Deficiency"));
   const elec = v.menu.filter((m) => !m.carryover && !core.includes(m) && !special.includes(m));
-  const total = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0)
+  const chosenTotal = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0)
     + special.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
+  // a registration submitted or approved is read from itself, not from today's menu: a course whose binding changed after
+  // approval, or one added on the student's behalf, is not on the menu, and the page then showed nothing ticked and
+  // "0 units · Below minimum" under "Approved · 15 units"
+  const registered = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED"));
+  const total = locked ? Number(reg!.units) : chosenTotal;
   const min = v.limit.min_units;
   const max = v.limit.max_units;
   const onProbation = !!v.probation && v.probation.standing === "PROBATION";
   const ok = total >= min && total <= max;
-  const meter = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Below minimum", hint: `You need at least ${min} credit units. Add ${min - total} more.` }
+  const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Below minimum", hint: `You need at least ${min} credit units. Add ${min - total} more.` }
     : total > max ? { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit", hint: onProbation && v.probation?.probation_max_units != null && max === v.probation.probation_max_units ? `On probation the maximum is ${max} units. Remove ${total - max}; the courses you owe stay.` : `Maximum is ${max} units. Remove ${total - max}, or request an overload from your HOD.` }
       : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Valid", hint: `Within the permitted range for ${v.level} Level.` };
+  // a registration submitted or approved, with add/drop closed, cannot be changed by the student: say what it holds, not what to add
+  if (locked && !v.addDropOpen) meter.hint = `${total} units registered; the range for ${v.level} Level is ${min}–${max}.`;
 
   const fees = v.fees;
   // gate on THIS semester's fees, not only the open one — a full-session payment clears an
@@ -231,14 +238,28 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="sub2">{meter.hint}</div>
         </div>
       </div></div>
-      {deferredCourses.length ? (
+      {locked ? (
+        <Panel title="Your registered courses" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg!.units} units`}>
+          <PBody>
+            {registered.length ? registered.map((e) => (
+              <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+                <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}</span>
+                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{courseType(e)}</Pil>
+                <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
+              </div>
+            )) : <div className="sub2">No course is on this registration.</div>}
+          </PBody>
+        </Panel>
+      ) : null}
+      {!locked && deferredCourses.length ? (
         <Panel title="Deferred / catch-up courses" right="from your approved deferment · added automatically, cannot be removed">
           <PBody>
             <div className="sub2 mb-1">Courses of your deferred period, now due. They count in your GPA only when taken.</div>
             {deferredCourses.map((m) => pick(m, true, true))}
           </PBody></Panel>
       ) : null}
-      {carry.length ? (
+      {!locked && carry.length ? (
         <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
           <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
       ) : null}
@@ -248,12 +269,14 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           {v.gst.state === "PENDING" ? " A reference is open; the courses unlock when it is confirmed." : ""}
         </Note>
       ) : null}
+      {!locked ? (<>
       <Panel title={`${v.level} Level Core Courses`}>
         <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet.</div>}</PBody></Panel>
       <Panel title="Electives" right={<>choose to reach {min}–{max} units</>}>
         <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           </PBody></Panel>
-      {special.length ? (
+      </>) : null}
+      {!locked && special.length ? (
         <Panel title="Research and deficiency courses">
           <PBody>{special.map((m) => pick(m, false, chosen.has(m.offering_id)))}
             <div className="sub2 mt-2">A deficiency course earns no credit; register it where the School requires it of you.</div></PBody></Panel>

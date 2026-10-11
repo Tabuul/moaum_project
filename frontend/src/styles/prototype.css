@@ -2053,3 +2053,96 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
   .shell .mdl__body { padding: var(--app-modal-pad-y) var(--app-modal-pad-x); gap: var(--app-modal-gap); }
   .shell .mdl__foot { padding-top: var(--app-modal-pad-y); padding-bottom: var(--app-modal-pad-y); }
 }
+
+/* ── Display density, as the person chooses it (html[data-density], set from a cookie before the page paints) ──────
+   Compact is the layer above and the default. Normal puts every token back to the spacing the portal had before it;
+   Very compact steps one tier tighter at each width, the type still at its floor. The attribute selector outranks
+   :root, so these win whatever the media query. */
+html[data-density="normal"] {
+  --app-font-body: 14px;
+  --app-content-pad-y: 22px;  --app-content-pad-x: 24px;  --app-gap: 18px;
+  --app-header-pad-y: 14px;   --app-header-pad-x: 24px;   --app-header-title: 19px;
+  --app-sidebar-width: 244px; --app-nav-item-pad-y: 10px; --app-nav-item-height: 42px; --app-nav-group-pad-y: 11px; --app-nav-group-height: 40px;
+  --app-grid-gap: 14px;
+  --app-card-head-pad-y: 13px; --app-card-head-pad-x: 16px; --app-card-padding: 16px; --app-card-gap: 12px;
+  --app-tile-pad-y: 16px; --app-tile-pad-x: 17px; --app-tile-figure: 29px;
+  --app-notice-pad-y: 14px; --app-notice-pad-x: 16px;
+  --app-cell-pad-y: 11px; --app-cell-pad-x: 12px; --app-head-pad-y: 10px; --app-cell-font: 13px;
+  --app-btn-pad-y: 13px; --app-btn-pad-x: 18px; --app-btn-height: 48px; --app-btn-font: 15px;
+  --app-btn-sm-pad-y: 8px; --app-btn-sm-pad-x: 13px; --app-btn-sm-height: 36px; --app-btn-sm-font: 13px;
+  --app-control-pad-y: 11px; --app-control-pad-x: 14px; --app-control-height: 46px; --app-control-font: 14.5px;
+  --app-scope-pad-y: 14px; --app-scope-pad-x: 16px; --app-scope-control-height: 42px;
+  --app-modal-pad-y: 16px; --app-modal-pad-x: 18px; --app-modal-gap: 14px;
+}
+/* up to 1180px the tables were already tighter, and Normal keeps them so */
+@media screen and (max-width: 1180px) {
+  html[data-density="normal"] { --app-cell-pad-y: 9px; --app-cell-pad-x: 8px; --app-head-pad-y: 9px; --app-cell-font: 12.4px; }
+}
+@media screen and (min-width: 1024px) {
+  html[data-density="very"] {
+    --app-font-body: 13.5px;
+    --app-content-pad-y: 16px;  --app-content-pad-x: 18px;  --app-gap: 12px;
+    --app-header-pad-y: 9px;    --app-header-pad-x: 18px;   --app-header-title: 17px;
+    --app-sidebar-width: 224px; --app-nav-item-pad-y: 7px;  --app-nav-item-height: 36px; --app-nav-group-pad-y: 8px; --app-nav-group-height: 34px;
+    --app-grid-gap: 11px;
+    --app-card-head-pad-y: 9px; --app-card-head-pad-x: 13px; --app-card-padding: 12px; --app-card-gap: 9px;
+    --app-tile-pad-y: 11px; --app-tile-pad-x: 13px; --app-tile-figure: 24px;
+    --app-notice-pad-y: 10px; --app-notice-pad-x: 13px;
+    --app-cell-pad-y: 6.5px; --app-cell-pad-x: 9px; --app-head-pad-y: 7px; --app-cell-font: 12.75px;
+    --app-btn-pad-y: 10px; --app-btn-pad-x: 15px; --app-btn-height: 40px; --app-btn-font: 14px;
+    --app-btn-sm-pad-y: 6px; --app-btn-sm-pad-x: 11px; --app-btn-sm-height: 32px; --app-btn-sm-font: 12.75px;
+    --app-control-pad-y: 8px; --app-control-pad-x: 11px; --app-control-height: 37px; --app-control-font: 13.5px;
+    --app-scope-pad-y: 10px; --app-scope-pad-x: 13px; --app-scope-control-height: 36px;
+    --app-modal-pad-y: 12px; --app-modal-pad-x: 16px; --app-modal-gap: 11px;
+  }
+}
+@media screen and (min-width: 1440px) {
+  html[data-density="very"] {
+    --app-font-body: 13px;
+    --app-content-pad-y: 14px;  --app-content-pad-x: 18px;  --app-gap: 10px;
+    --app-header-pad-y: 8px;    --app-header-pad-x: 18px;   --app-header-title: 16.5px;
+    --app-sidebar-width: 216px; --app-nav-item-pad-y: 6px;  --app-nav-item-height: 34px; --app-nav-group-pad-y: 7px; --app-nav-group-height: 32px;
+    --app-grid-gap: 10px;
+    --app-card-head-pad-y: 8px; --app-card-head-pad-x: 12px; --app-card-padding: 11px; --app-card-gap: 8px;
+    --app-tile-pad-y: 10px; --app-tile-pad-x: 12px; --app-tile-figure: 22px;
+    --app-notice-pad-y: 9px; --app-notice-pad-x: 12px;
+    --app-cell-pad-y: 5.5px; --app-cell-pad-x: 8px; --app-head-pad-y: 6px; --app-cell-font: 12.5px;
+    --app-btn-pad-y: 9px; --app-btn-pad-x: 14px; --app-btn-height: 38px; --app-btn-font: 13.5px;
+    --app-btn-sm-pad-y: 5px; --app-btn-sm-pad-x: 10px; --app-btn-sm-height: 30px; --app-btn-sm-font: 12.5px;
+    --app-control-pad-y: 7px; --app-control-pad-x: 10px; --app-control-height: 34px; --app-control-font: 13px;
+    --app-scope-pad-y: 9px; --app-scope-pad-x: 12px; --app-scope-control-height: 34px;
+    --app-modal-pad-y: 11px; --app-modal-pad-x: 14px; --app-modal-gap: 10px;
+  }
+}
+@media screen and (min-width: 1920px) {
+  html[data-density="very"] {
+    --app-font-body: 13px;
+    --app-content-pad-y: 12px;  --app-content-pad-x: 16px;  --app-gap: 8px;
+    --app-header-pad-y: 6px;    --app-header-pad-x: 16px;   --app-header-title: 16px;
+    --app-sidebar-width: 208px; --app-nav-item-pad-y: 5px;  --app-nav-item-height: 32px; --app-nav-group-pad-y: 6px; --app-nav-group-height: 30px;
+    --app-grid-gap: 8px;
+    --app-card-head-pad-y: 7px; --app-card-head-pad-x: 11px; --app-card-padding: 9px; --app-card-gap: 7px;
+    --app-tile-pad-y: 8px; --app-tile-pad-x: 11px; --app-tile-figure: 21px;
+    --app-notice-pad-y: 8px; --app-notice-pad-x: 11px;
+    --app-cell-pad-y: 4.5px; --app-cell-pad-x: 7px; --app-head-pad-y: 5px; --app-cell-font: 12.5px;
+    --app-btn-pad-y: 8px; --app-btn-pad-x: 13px; --app-btn-height: 36px; --app-btn-font: 13.5px;
+    --app-btn-sm-pad-y: 4px; --app-btn-sm-pad-x: 9px; --app-btn-sm-height: 28px; --app-btn-sm-font: 12.5px;
+    --app-control-pad-y: 6px; --app-control-pad-x: 9px; --app-control-height: 32px; --app-control-font: 13px;
+    --app-scope-pad-y: 8px; --app-scope-pad-x: 11px; --app-scope-control-height: 32px;
+    --app-modal-pad-y: 10px; --app-modal-pad-x: 13px; --app-modal-gap: 9px;
+  }
+}
+
+/* the account pill opens the person's own settings (components/proto/AccountMenu) */
+.acct { position: relative; }
+.acct > summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; border-radius: var(--r-pill); }
+.acct > summary::-webkit-details-marker { display: none; }
+.acct[open] > summary, .acct > summary:hover { background: var(--bg); }
+.acct__menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 260px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-3); }
+.acct__h { font-size: 11.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); padding: 4px 6px 6px; }
+.acct__opt { display: flex; align-items: flex-start; gap: 9px; padding: 7px 6px; border-radius: var(--r); cursor: pointer; }
+.acct__opt:hover { background: var(--bg); }
+.acct__opt.is-on { background: var(--sky-bg); }
+.acct__opt input { margin-top: 3px; accent-color: var(--chrome); }
+.acct__note { padding: 6px 6px 2px; border-top: 1px solid var(--line-2); margin-top: 6px; }

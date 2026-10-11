@@ -141,6 +141,11 @@ jobs:
           # the verdict line itself, at the start of a line: the words also appear in the script's own
           # source, which psql echoes inside any error, and matching that let a broken suite pass
           echo "$out" | grep -q "^=== FOUNDATION GREEN" || {
+            # each failing check, each block that errored and the verdict, as annotations on the run: anyone reads those
+            # without signing in, where the log needs a GitHub sign-in (GitHub keeps ten error annotations a step)
+            echo "$out" | grep -a "NOTICE:  FAIL" | head -5 | sed -e 's/%/%25/g' -e 's/^.*NOTICE:  FAIL  */::error title=check.sql FAIL::/' | cut -c1-1000
+            echo "$out" | grep -a "ERROR:" | head -3 | sed -e 's/%/%25/g' -e 's/^/::error title=check.sql ERROR::/' | cut -c1-1000
+            echo "$out" | grep -a "^=== " | tail -1 | sed -e 's/%/%25/g' -e 's/^/::error title=check.sql verdict::/'
             echo "::error::The property suite is not green. A block that ERRORS never"
             echo "reaches its assertion, so check the 'of N checks RAN' line too."
             exit 1; }
