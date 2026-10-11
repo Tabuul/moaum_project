@@ -10,13 +10,19 @@
 -- second-screen rule stand; a wrong JAMB number still counts against the connection; the candidate still sees no score.
 -- The result-checking page shows a score, so it keeps a second factor: when the examination's door asks for nothing more than the
 -- JAMB number, the result check asks for the application number (admissions.putme_result_factor).
+--
+-- One transaction (migrate.sh applies a file statement by statement): the audit context set below lasts to the COMMIT, so the
+-- examinations already made are switched to NONE attributed. Re-runnable over the first attempt on Railway, which stopped at that
+-- UPDATE after the constraint and the default had been changed.
+
+BEGIN;
 
 SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true),
        set_config('moaum.actor_office', 'ict', true),
        set_config('moaum.reason', 'V388: the Post-UTME CBT door asks for the JAMB registration number alone', true);
 
 -- ── 1 · the factor NONE: the JAMB registration number alone; the default, and the setting of the examinations already made ──
-ALTER TABLE assessment.cbt_exam DROP CONSTRAINT ck_cbt_exam_putme_verify;
+ALTER TABLE assessment.cbt_exam DROP CONSTRAINT IF EXISTS ck_cbt_exam_putme_verify;
 ALTER TABLE assessment.cbt_exam ADD CONSTRAINT ck_cbt_exam_putme_verify
     CHECK (putme_verify IN ('NONE', 'APPLICATION_NO', 'SLIP_TOKEN', 'PHONE', 'DATE_OF_BIRTH'));
 ALTER TABLE assessment.cbt_exam ALTER COLUMN putme_verify SET DEFAULT 'NONE';
@@ -112,7 +118,7 @@ END $$;
 /* the application a JAMB registration number and a factor name, for the session's Post-UTME — or NULL, with no word on which part failed.
    NONE: the JAMB registration number alone. Otherwise the application number, the screening slip's token, the phone registered with, or
    the date of birth on the attachment the Academic Office uploaded (yyyy-mm-dd). */
-CREATE FUNCTION admissions.putme_verify_as(p_session text, p_jamb text, p_proof text, p_kind text)
+CREATE OR REPLACE FUNCTION admissions.putme_verify_as(p_session text, p_jamb text, p_proof text, p_kind text)
 RETURNS uuid
 LANGUAGE plpgsql STABLE AS $$
 DECLARE a record; v_kind text := upper(coalesce(p_kind, 'APPLICATION_NO')); v_proof text := upper(regexp_replace(coalesce(p_proof, ''), '\s+', '', 'g')); v_ok boolean := false;
@@ -155,7 +161,7 @@ COMMENT ON FUNCTION admissions.putme_cbt_verify(text, text, text) IS 'V385, V388
 
 -- ── 4 · the result-checking page shows a score, so it always asks for a second factor ──
 /* the examination's factor; the application number when the examination's door asks for the JAMB number alone */
-CREATE FUNCTION admissions.putme_result_factor(p_session text)
+CREATE OR REPLACE FUNCTION admissions.putme_result_factor(p_session text)
 RETURNS text
 LANGUAGE sql STABLE AS $$
     SELECT CASE WHEN f = 'NONE' THEN 'APPLICATION_NO' ELSE f END FROM (SELECT admissions.putme_cbt_factor(p_session) AS f) x
@@ -179,3 +185,5 @@ BEGIN
     RETURN QUERY SELECT 'RELEASED'::text, upper(c.surname) || ', ' || c.other_names, c.jamb_reg_no, a.application_no, c.programme, a.screening_score, a.score_released_at;
 END $$;
 COMMENT ON FUNCTION admissions.putme_result_check(text, text, text) IS 'V385, V388: what a candidate reads on the result-checking page: CLOSED while the Director''s window is not open, NOT_VERIFIED when the JAMB number and the result factor (admissions.putme_result_factor) do not name an applicant, NOT_RELEASED until the Academic Office releases the scores, else the released score.';
+
+COMMIT;
