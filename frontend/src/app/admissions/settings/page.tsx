@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { AdmissionSettings, type AdmissionPolicy, type PolicySummary } from "./AdmissionSettings";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,8 @@ export default async function AdmissionSettingsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const requested = typeof params.session === "string" ? params.session : "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
+  const requested = typeof params.session === "string" ? params.session : "";
+  const session = SESSION_PATTERN.test(requested) ? requested : await defaultSession("intake");
   const prev = previous(session);
 
   const [me, policy, previousPolicy, policies] = await Promise.all([

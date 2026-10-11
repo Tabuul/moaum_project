@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import ng.edu.moaum.portal.shared.Sessions;
 
 @Repository
 class ResultsRepository {
@@ -121,7 +122,7 @@ class ResultsRepository {
         return jdbc.sql("""
                 SELECT name FROM policy.academic_session
                  ORDER BY (state = 'CURRENT') DESC, (current_date BETWEEN starts_on AND ends_on) DESC, starts_on DESC LIMIT 1
-                """).query(String.class).optional().orElse("2026/2027");
+                """).query(String.class).optional().orElseGet(Sessions::byDate);
     }
 
     /** the offerings in scope for the period: all of them, and those with a lecturer (a sheet opens only over those) */

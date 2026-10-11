@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The accommodation lifecycle (V261) on the hostel module (V030): the inventory of halls, blocks, rooms, beds, facilities and
@@ -60,7 +61,7 @@ class HostelLifecycleController {
 
     private String session(String asked) {
         if (asked != null && !asked.isBlank()) return asked;
-        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+        return jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
     }
 
     /** the session a student stands in (V289): their entry session while it is planned, else the current one */

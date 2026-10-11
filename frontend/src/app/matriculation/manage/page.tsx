@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { IssuedRow, ManagePage, Overview, PendingRow } from "@/lib/matric-manage";
 import { Manage, type ManageFilters } from "./Manage";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,8 @@ const SESSION_PATTERN = /^\d{4}\/\d{4}$/;
 export default async function MatriculationManagePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string).slice(0, 80) : "");
-  const requested = s("session") || "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
+  const requested = s("session") || "";
+  const session = SESSION_PATTERN.test(requested) ? requested : await defaultSession();
   const filters: ManageFilters = { session, fac: s("fac").toUpperCase(), prog: s("prog").toUpperCase(), status: s("status").toUpperCase(), q: s("q"), tab: s("tab") || "faculty", batch: s("batch") };
   const qs = new URLSearchParams();
   if (filters.fac) qs.set("fac", filters.fac);

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The Dean's home, scoped to their own faculty: registration by department, the result-sheet pipeline
@@ -61,7 +62,7 @@ class DeanController {
         out.put("faculty", fac);
         out.put("facultyName", jdbc.sql("SELECT name FROM ref.faculty WHERE code = :f").param("f", fac).query(String.class).optional().orElse(fac));
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
         out.put("session", s);
 
         out.put("students", jdbc.sql("""

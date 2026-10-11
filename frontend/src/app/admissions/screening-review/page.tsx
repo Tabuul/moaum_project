@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { ReviewList } from "@/lib/screening";
 import { ScreeningReview, type ReviewFilters } from "./ScreeningReview";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,8 @@ const SESSION_PATTERN = /^\d{4}\/\d{4}$/;
 export default async function ScreeningReviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string).slice(0, 80) : "");
-  const requested = s("session") || "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
+  const requested = s("session") || "";
+  const session = SESSION_PATTERN.test(requested) ? requested : await defaultSession("intake");
   const filters: ReviewFilters = { session, state: s("state").toUpperCase(), fac: s("fac").toUpperCase(), dept: s("dept").toUpperCase(), prog: s("prog").toUpperCase(), q: s("q"), from: s("from"), to: s("to"), open: s("open") };
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) if (v && !["session", "open"].includes(k)) qs.set(k, v);

@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ResultsDesk } from "./ResultsDesk";
+import { currentSession } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function Page() {
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   const office = me.ok ? me.data.activeOffice : null;
-  const current = sessions.ok ? (sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2025/2026") : "2025/2026";
+  const current = currentSession(sessions.ok ? sessions.data : []);
   return (
     <Shell route="t/pgscores" me={me.ok ? me.data : null}>
       <ResultsDesk initialSession={current} mayEdit={EDITORS.includes(office ?? "")} />

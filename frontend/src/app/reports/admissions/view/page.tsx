@@ -5,6 +5,7 @@ import { ReportDoc } from "@/components/proto/ReportDoc";
 import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ const columns: ReportColumn[] = [
 /** the admissions return: applications, offers and acceptances by programme */
 export default async function AdmissionsReport({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
-  const session = typeof p.session === "string" ? p.session : "2026/2027";
+  const session = typeof p.session === "string" ? p.session : await defaultSession();
   const [me, cycle] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<AdmissionCycle>(`/api/v1/admissions/sessions/${session}/cycle`),

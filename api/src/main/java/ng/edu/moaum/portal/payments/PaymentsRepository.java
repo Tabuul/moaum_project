@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /** The fee references (V021) as a gateway sees them, and the one act a gateway performs: confirming one. */
 @Repository
@@ -320,7 +321,7 @@ class PaymentsRepository {
     }
 
     String currentSession() {
-        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+        return jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
     }
 
     /* ── gateway credentials (V039): set encrypted, read only into the process, config never carries the secret ── */

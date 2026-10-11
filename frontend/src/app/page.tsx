@@ -31,6 +31,7 @@ import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, PipelineView, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
+import { currentSession } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export default async function DashboardPage() {
   if (office === "ictagent") redirect("/helpdesk");
   /* an external examiner's home is their own workspace (V254) */
   if (office === "extexaminer") redirect("/examiner");
-  const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
+  const session = currentSession(sessions.ok ? sessions.data : []);
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;
   /* the semester in progress and the lecturer's latest notices, for the head of their desk */
@@ -174,7 +175,7 @@ export default async function DashboardPage() {
       ) : office === "pgsecretary" ? (
         <PgSecretaryDashboard me={me.ok ? me.data : null} home={pgSec && pgSec.ok ? pgSec.data : null} />
       ) : (
-        <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
+        <OfficeDashboard me={me.ok ? me.data : null} session={session} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}
     </Shell>
   );

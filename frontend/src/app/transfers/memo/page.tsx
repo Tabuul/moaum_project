@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import type { ReportColumn } from "@/lib/report";
 import type { TransferRow } from "../Transfers";
 import { MemoBar } from "./MemoBar";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function TransferMemoPage({ searchParams }: { searchParams:
 
   const wanted = type === "recommended" ? ["RECOMMENDED", "APPROVED", "EFFECTED"] : ["NOT_RECOMMENDED", "WITHDRAWN"];
   const cases = data.data.rows.filter((r) => wanted.includes(r.state));
-  const session = cases[0]?.session ?? "2026/2027";
+  const session = cases[0]?.session ?? (await defaultSession());
 
   const rows = cases.map((r, i) => ({
     sn: i + 1,

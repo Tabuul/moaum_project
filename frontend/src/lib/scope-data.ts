@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { api } from "./api";
 import { readScope, SCOPE_COOKIE, type Scope } from "./scope";
 import type { Ceiling, ScopeStructure } from "@/components/proto/ScopeBar";
+import { currentSession } from "./sessions";
 
 /**
  * What every scoped page needs before it can draw the bar: the scope asked for, the structure,
@@ -24,11 +25,11 @@ export async function loadScope(params: Record<string, string | string[] | undef
   } catch {
     cookie = null;
   }
-  const scope = readScope(params, cookie);
   const [structure, sessions] = await Promise.all([
     api<ScopeStructure>("/api/v1/ref/structure"),
-    api<{ name: string }[]>("/api/v1/ref/sessions"),
+    api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
+  const scope = readScope(params, cookie, currentSession(sessions.ok ? sessions.data : []));
   const struct: ScopeStructure = structure.ok ? structure.data : { faculties: [] };
 
   const ceiling: Ceiling = {};

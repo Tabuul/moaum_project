@@ -207,16 +207,18 @@ BEGIN
         END;
     END LOOP;
 
-    -- ── the lecturer's results path: five demo courses at 300 level, offered
-    --    this session, the 300-level student registered and approved, and
-    --    the examination session opened so the score sheets exist ──
+    -- ── the lecturer's results path: six demo courses at 300 level, offered
+    --    this session, the 300-level student registered and approved on all six
+    --    (18 units, within the 300-level range of 18–24), and the examination
+    --    session opened so the score sheets exist ──
     FOR c IN
         SELECT * FROM (VALUES
             ('DMO 311', 'Algorithms and Complexity (demo)', 3),
             ('DMO 321', 'Database Systems (demo)',          3),
             ('DMO 331', 'Operating Systems (demo)',         3),
             ('DMO 341', 'Software Engineering (demo)',      3),
-            ('DMO 351', 'Computer Networks (demo)',         3)
+            ('DMO 351', 'Computer Networks (demo)',         3),
+            ('DMO 361', 'Human-Computer Interaction (demo)', 3)
         ) AS t(code, title, units)
     LOOP
         IF NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = c.code) THEN

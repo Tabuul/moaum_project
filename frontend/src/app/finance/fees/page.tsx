@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem } from "./FeeSchedule";
 import type { GstFeePage } from "@/lib/gst";
+import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const explicit = typeof params.session === "string" && SESSION_PATTERN.test(params.session) ? params.session : null;
   const sessionsRes = await api<{ name: string; state: string }[]>("/api/v1/ref/sessions");
   const current = sessionsRes.ok ? sessionsRes.data.find((s) => s.state === "CURRENT")?.name ?? null : null;
-  const session = explicit ?? current ?? "2026/2027";
+  const session = explicit ?? current ?? sessionByDate();
   const [me, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Schedule>(`/api/v1/finance/sessions/${session}/schedule`),

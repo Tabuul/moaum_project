@@ -12,6 +12,7 @@ import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /** The rules are the database's (V030); this is the shape the screens read. */
 @Service
@@ -27,7 +28,7 @@ public class HostelService {
 
     private String session(String asked) {
         String s = asked == null || asked.isBlank() ? repo.currentSession() : asked;
-        return s == null ? "2026/2027" : s;
+        return s == null ? Sessions.byDate() : s;
     }
 
     /* ── the student ── */

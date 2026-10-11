@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { MigrateApplicants, type Contacts } from "./MigrateApplicants";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,8 @@ interface FeeRule { session: string; stated: boolean; applicationFee: number; po
 /** t/migrate — Migrate Old-Portal Applicants: the paid applicants brought over with their email and phone (V167, V296) */
 export default async function MigratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const requested = typeof params.session === "string" ? params.session : "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
+  const requested = typeof params.session === "string" ? params.session : "";
+  const session = SESSION_PATTERN.test(requested) ? requested : await defaultSession("intake");
   const [me, fee, contacts] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<FeeRule>(`/api/v1/admissions/sessions/${session}/applicant-fees`),

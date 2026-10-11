@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The Head of Department's home, scoped to their own department by OfficeScope:
@@ -68,7 +69,7 @@ class HodController {
         out.put("dept", dept);
         out.put("deptName", jdbc.sql("SELECT name FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(dept));
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
         out.put("session", s);
 
         part(out, unavailable, "approvals", () -> jdbc.sql("""
@@ -211,7 +212,7 @@ class HodController {
         String dept = scope.actingDept();
         if (dept == null || dept.isBlank() || "__none__".equals(dept)) return java.util.List.of();
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
         boolean cleared = "cleared".equalsIgnoreCase(which);
         return jdbc.sql("""
                 SELECT st.matric_no, st.surname, st.other_names, p.name AS programme, st.current_level AS level, st.status,

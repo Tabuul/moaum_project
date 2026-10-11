@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * What a lecturer teaches this session — the offerings the department allocated
@@ -37,7 +38,7 @@ class MeTeachingController {
     Map<String, Object> teaching(@RequestParam(required = false) String session) {
         UUID me = AuditContextHolder.required().actorId();
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
 
         List<Map<String, Object>> offerings = jdbc.sql("""
                 SELECT o.id, c.code, c.title, c.units, c.level, o.semester, o.session, o.stream,

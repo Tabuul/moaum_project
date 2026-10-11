@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /** The Bursary's desk: the schedule, the scheme, the references waiting, the confirmations. */
 @RestController
@@ -361,7 +362,7 @@ class FinanceController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> bursary(@RequestParam(required = false) String session) {
-        String s = session == null || session.isBlank() ? jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027") : session;
+        String s = session == null || session.isBlank() ? jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate) : session;
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", s);
         out.put("tiles", jdbc.sql("""

@@ -13,6 +13,7 @@ import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * What the student sees and does: the record as the register holds it, the
@@ -99,7 +100,7 @@ public class StudentPortalService {
 
     /** the current session, or the latest one the Bursar has charged for */
     public String session() {
-        return repo.currentSession().orElseGet(() -> repo.sessionsWithCharges().stream().findFirst().orElse("2026/2027"));
+        return repo.currentSession().orElseGet(() -> repo.sessionsWithCharges().stream().findFirst().orElseGet(Sessions::byDate));
     }
 
     /**

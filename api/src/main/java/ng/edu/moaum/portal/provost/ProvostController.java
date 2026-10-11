@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The Provost's home, scoped to their College: registration by department across every faculty in the
@@ -75,7 +76,7 @@ class ProvostController {
         out.put("faculty", col);
         out.put("facultyName", jdbc.sql("SELECT name FROM ref.college WHERE code = :c").param("c", col).query(String.class).optional().orElse(col));
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
         out.put("session", s);
 
         out.put("students", jdbc.sql("""

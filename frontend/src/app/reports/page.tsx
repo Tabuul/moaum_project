@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { Reports, type DueRow, type FacultyRow, type KeptRow } from "./Reports";
 import { Trends, type MonthTrend, type SessionTrend } from "./Trends";
+import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     : await api<{ name: string; state: string }[]>("/api/v1/ref/sessions");
   const session = typeof p.session === "string"
     ? p.session
-    : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? (pg ? "2025/2026" : "2026/2027");
+    : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionByDate();
   /* the enrolment by faculty shown on the desk itself (proto gReports): the return's rows, rolled up */
   const enrol = pg ? null : await api<{ rows: EnrolmentRow[] }>(`/api/v1/reports/enrolment?session=${encodeURIComponent(session)}`);
   /* the due register and the copies kept (V229) */

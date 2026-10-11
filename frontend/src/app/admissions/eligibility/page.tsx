@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { ChangeRequest, ListRow, Stats } from "@/lib/eligibility";
 import { EligibilityDesk, type DeskFilters } from "./Eligibility";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,8 @@ export interface EligibilityList {
 export default async function EligibilityPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string).slice(0, 60) : "");
-  const requested = s("session") || "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
+  const requested = s("session") || "";
+  const session = SESSION_PATTERN.test(requested) ? requested : await defaultSession("intake");
   const filters: DeskFilters = { session, q: s("q"), fac: s("fac"), dept: s("dept"), prog: s("prog"), status: s("status"), recommended: s("recommended"), mode: s("mode") };
   const qs = new URLSearchParams(); for (const [k, v] of Object.entries(filters)) if (v && k !== "session") qs.set(k, v);
   const [me, list, changes] = await Promise.all([

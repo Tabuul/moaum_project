@@ -3,7 +3,7 @@ import { KvGrid, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { officeLabel, roleUnit } from "@/lib/offices";
 
 /** An office whose dashboard arrives with its module: what the portal can say, and no invented figure. */
-export function OfficeDashboard({ me, requestsOpen = null, openQueries = null }: { me: Me | null; requestsOpen?: number | null; openQueries?: number | null }) {
+export function OfficeDashboard({ me, session, requestsOpen = null, openQueries = null }: { me: Me | null; session: string; requestsOpen?: number | null; openQueries?: number | null }) {
   const label = officeLabel(me?.activeOffice);
   return (
     <>
@@ -17,7 +17,7 @@ export function OfficeDashboard({ me, requestsOpen = null, openQueries = null }:
         ["Signed in as", me?.name ?? label, null, me?.staffNumber ?? ""],
         ["Acting as", label, null, roleUnit(me?.activeOffice) || "The University"],
         ["Offices held", String(me?.offices.length ?? 0), null, "Under dated instruments"],
-        ["Session", "2026/2027", null, "As the calendar names it"],
+        ["Session", session, null, "As the calendar names it"],
       ]} />
       {requestsOpen !== null ? (
         <Note kind={requestsOpen ? "bad" : "ok"} title={requestsOpen ? `${requestsOpen} request${requestsOpen === 1 ? "" : "s"} from students waiting on this office` : "No request from a student is waiting on this office"}>

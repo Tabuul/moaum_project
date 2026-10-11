@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The Director of Human Resource Management's home: the establishment at a glance and what is waiting on
@@ -28,8 +29,8 @@ class HrController {
     @Transactional(readOnly = true)
     Map<String, Object> dashboard() {
         Map<String, Object> out = new LinkedHashMap<>();
-        String cycle = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'")
-                .query(String.class).optional().orElse("2026/2027");
+        String cycle = jdbc.sql("SELECT policy.university_current_session()")
+                .query(String.class).optional().orElseGet(Sessions::byDate);
         out.put("cycle", cycle);
 
         out.put("staffActive", jdbc.sql("SELECT count(*) FROM hrm.employment WHERE status = 'ACTIVE'").query(Long.class).single());

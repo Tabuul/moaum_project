@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Allocate, type Offering, type Lecturer, type Dept } from "./Allocate";
 import type { ImportRecord } from "./BulkUpload";
+import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
   const deptList = depts.ok ? depts.data : [];
   const sessionList = sessions.ok ? sessions.data.map((s) => s.name) : [];
   const dept = typeof p.dept === "string" ? p.dept : deptList[0]?.code ?? "";
-  const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionList[0] ?? "2026/2027";
+  const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionList[0] ?? sessionByDate();
   const semester = typeof p.sem === "string" ? Number(p.sem) || 1 : 1;
   const level = typeof p.level === "string" && /^[1-6]00$/.test(p.level) ? Number(p.level) : null;
 

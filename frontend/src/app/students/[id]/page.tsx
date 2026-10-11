@@ -6,6 +6,7 @@ import type { Me as Portal } from "@/lib/student-portal";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Student360 } from "./Student360";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function StudentPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const scope = readScope(await searchParams, (await cookies()).get(SCOPE_COOKIE)?.value);
+  const scope = readScope(await searchParams, (await cookies()).get(SCOPE_COOKIE)?.value, await defaultSession());
 
   /* V360: the student's own figures — the session's school fees (for the offices that read them) and the CGPA from the
      published results — as the student sees them, beside the record */

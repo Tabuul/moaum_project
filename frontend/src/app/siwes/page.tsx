@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Siwes, type Offering, type SiwesStudent, type Supervisor } from "./Siwes";
+import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function SiwesPage({ searchParams }: { searchParams: Promis
   ]);
   const sessionList = sessions.ok ? sessions.data.map((s) => s.name) : [];
   const session = typeof p.session === "string" ? p.session
-    : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionList[0] ?? "2025/2026";
+    : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionList[0] ?? sessionByDate();
   const semester = typeof p.sem === "string" ? Number(p.sem) || 2 : 2;
 
   const offerings = await api<Offering[]>(`/api/v1/siwes/offerings?session=${encodeURIComponent(session)}&semester=${semester}`);

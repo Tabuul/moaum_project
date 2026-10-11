@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Overview, type OverviewData } from "./Overview";
 import { StatsPanel } from "@/components/stats/StatsPanel";
 import { FinancePanel } from "@/components/stats/FinancePanel";
+import { currentSession } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   const list = sessions.ok ? sessions.data : [];
-  const session = typeof p.session === "string" ? p.session : (list.find((s) => s.state === "CURRENT")?.name ?? "2026/2027");
+  const session = typeof p.session === "string" ? p.session : currentSession(list);
   const [data, due] = await Promise.all([
     api<OverviewData>(`/api/v1/reporting/overview?session=${encodeURIComponent(session)}&semester=${semester}`),
     api<{ overdue: number; dueSoon: number }>("/api/v1/reports/due"),

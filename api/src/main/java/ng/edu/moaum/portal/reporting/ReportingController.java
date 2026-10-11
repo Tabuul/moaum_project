@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /** Institutional overview and reporting (RBI): read models over the record. */
 @RestController
@@ -31,7 +32,7 @@ class ReportingController {
     @Transactional(readOnly = true)
     Map<String, Object> overview(@RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
         String s = session == null || session.isBlank()
-                ? jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027")
+                ? jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate)
                 : session;
 
         List<Map<String, Object>> byFaculty = jdbc.sql("""

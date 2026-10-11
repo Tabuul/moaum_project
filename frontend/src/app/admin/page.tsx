@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Institution } from "./Institution";
 import type { OverviewData } from "../overview/Overview";
+import { currentSession } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   const list = sessions.ok ? sessions.data : [];
-  const session = typeof p.session === "string" ? p.session : (list.find((s) => s.state === "CURRENT")?.name ?? "2026/2027");
+  const session = typeof p.session === "string" ? p.session : currentSession(list);
   const data = await api<OverviewData>(`/api/v1/reporting/overview?session=${encodeURIComponent(session)}&semester=${semester}`);
   return (
     <Shell route="r/admin" me={me.ok ? me.data : null}>

@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import ng.edu.moaum.portal.shared.Sessions;
 
 @Repository
 class WalletRepository {
@@ -21,7 +22,7 @@ class WalletRepository {
     }
 
     String currentSession() {
-        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+        return jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
     }
 
     /* ── the student ── */

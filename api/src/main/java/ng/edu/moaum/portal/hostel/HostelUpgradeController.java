@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * The hostel upgrade (V290) on the accommodation module: the Dean of Student
@@ -71,7 +72,7 @@ class HostelUpgradeController {
     private String studentSession(UUID me, String asked) {
         if (blank(asked) != null) return asked.trim();
         return jdbc.sql("SELECT session FROM people.academic_context(:s)").param("s", me).query(String.class).optional()
-                .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027"));
+                .orElseGet(() -> jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate));
     }
 
     /* ── the student: the checklist, the rooms, the reservation ─────────── */

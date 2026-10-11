@@ -5,6 +5,7 @@ import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { money } from "@/lib/format";
 import { type ReportColumn, officeLabel, reportFor } from "@/lib/report";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ const columns: ReportColumn[] = [
 /** the expenditure return: the financial year's budget, commitments, spending and balance by cost centre (V045) */
 export default async function ExpenditureReport({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
-  const session = typeof p.session === "string" ? p.session : "2026/2027";
+  const session = typeof p.session === "string" ? p.session : await defaultSession();
   const year = /^\d{4}/.test(session) ? Number(session.slice(0, 4)) : new Date().getFullYear();
   const [me, data] = await Promise.all([
     api<Me>("/api/v1/iam/me"),

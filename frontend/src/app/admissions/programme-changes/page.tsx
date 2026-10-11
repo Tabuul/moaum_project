@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { RegisterPage, SessionOpt } from "@/lib/programme-changes";
 import { ProgrammeChanges } from "./ProgrammeChanges";
+import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function ProgrammeChangesPage({ searchParams }: { searchPar
     api<Me>("/api/v1/iam/me"),
     api<SessionOpt[]>("/api/v1/admissions/programme-changes/sessions"),
   ]);
-  const latest = sessions.ok && sessions.data.length ? sessions.data[0].name : "2026/2027";
+  const latest = sessions.ok && sessions.data.length ? sessions.data[0].name : sessionByDate();
   const session = SESSION_PATTERN.test(requested) ? requested : latest;
   const page = await api<RegisterPage>(`/api/v1/admissions/sessions/${session}/programme-changes`);
   return (

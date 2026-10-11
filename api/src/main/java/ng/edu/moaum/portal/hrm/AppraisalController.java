@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /** Appraisal and promotion eligibility (V074). */
 @RestController
@@ -43,7 +44,7 @@ class AppraisalController {
         if (asked != null && !asked.isBlank()) {
             return asked;
         }
-        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+        return jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
     }
 
     @GetMapping("/api/v1/hr/appraisal")

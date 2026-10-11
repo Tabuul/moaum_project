@@ -6,6 +6,7 @@ import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { money } from "@/lib/format";
 import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ const columns: ReportColumn[] = [
 /** the funding return: what students were funded with, by source and nature, with the wallet cash flow */
 export default async function FundingReport({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
-  const session = typeof p.session === "string" ? p.session : "2026/2027";
+  const session = typeof p.session === "string" ? p.session : await defaultSession();
   const [me, data] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<FundingReport>(`/api/v1/funding/sessions/${session}/report`),

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import ng.edu.moaum.portal.shared.Sessions;
 
 /**
  * What is actually true about this service — the same questions
@@ -104,7 +105,8 @@ class PlatformController {
     @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_ict','OFFICE_admin','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_bursar')")
     @Transactional(readOnly = true)
     Map<String, Object> readiness(@RequestParam(required = false) String session) {
-        String s = session != null && session.matches("\\d{4}/\\d{4}") ? session : "2026/2027";
+        String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
         List<Map<String, Object>> checks = new ArrayList<>();
 
         boolean fee = Boolean.TRUE.equals(jdbc.sql("SELECT stated FROM admissions.applicant_fee_rule(:s)").param("s", s).query(Boolean.class).single());

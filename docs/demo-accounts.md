@@ -83,10 +83,12 @@ reports on it under Portal Management → Admission Status Checking.
 
 ## What is already set up for the walk
 
-- Five demo courses at 300 level (DMO 311 to DMO 351), offered this session in the
+- Six demo courses at 300 level (DMO 311 to DMO 361), offered this session in the
   first semester, taught by `demo.lecturer` with `demo.exams` as second examiner.
-- The 300-level student is registered and approved on all five.
-- The examination session is open, so five score sheets sit at entry with the lecturer.
+- The 300-level student is registered and approved on all six: 18 units, within the
+  300-level range of 18 to 24. The demo courses are kept off every student's menu, so
+  Course Registration shows the approved courses rather than a list to choose from.
+- The examination session is open, so six score sheets sit at entry with the lecturer.
 - A fee schedule for the session and the recommended clearance scheme are in force,
   so the student screens have something to say.
 

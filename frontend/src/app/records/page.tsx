@@ -6,6 +6,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Records } from "./Records";
+import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function RecordsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const scope = readScope(params, (await cookies()).get(SCOPE_COOKIE)?.value);
+  const scope = readScope(params, (await cookies()).get(SCOPE_COOKIE)?.value, await defaultSession());
   const asked = typeof params.view === "string" ? params.view : "students";
   const view = RECORD_VIEWS.some((v) => v[0] === asked) ? asked : "students";
 
