@@ -56,7 +56,7 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
       <div className="card"><div className="card__body row" style={{ flexDirection: "row" }}>
         {[["open", "Open"], ["posted", "Posted"], ["all", "All"]].map(([k, l]) => <LinkBtn key={k} kind={state === k ? "primary" : "ghost"} href={`/finance/exceptions?state=${k}`}>{l}</LinkBtn>)}
       </div></div>
-      <Panel title="Bank credits" right="Recorded as they came; the bank record is never altered">
+      <Panel title="Bank credits" right="Recorded as they came">
         {credits.length ? (
           <DTable cols={["Received|mid", "Instrument", "Payer named", "Amount|num", "State", "Resolution|num"]} rows={credits.map((x) => [
             <span className="sub2 tnum" key="d">{day(x.received_on)}</span>,

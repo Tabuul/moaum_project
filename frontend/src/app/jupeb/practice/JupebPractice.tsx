@@ -308,7 +308,7 @@ function QuestionBank({ test, canWrite, onChanged, onClose }: { test: Test; canW
                 <Field id="pq-img" label={edit.id ? "Replace the image" : "Image"} hint="PNG or JPEG, up to 1 MB"><input id="pq-img" type="file" accept="image/png,image/jpeg" onChange={(e) => setEdit({ ...edit, image: e.target.files?.[0] ?? null })} /></Field>
               </div>
               <div className="grid grid--2">
-                <Field id="pq-course" label="Course" hint="Of the syllabus — so the weakest topics are seen"><select id="pq-course" className="ctl" value={edit.course} onChange={(e) => setEdit({ ...edit, course: e.target.value, topic: "" })}>
+                <Field id="pq-course" label="Course" hint="Of the syllabus"><select id="pq-course" className="ctl" value={edit.course} onChange={(e) => setEdit({ ...edit, course: e.target.value, topic: "" })}>
                   <option value="">— Not tagged —</option>{courses.map((c) => <option key={c.course} value={c.course}>{`${c.course} ${c.course_title}`}</option>)}</select></Field>
                 <Field id="pq-topic" label="Topic"><select id="pq-topic" className="ctl" value={edit.topic} disabled={!edit.course} onChange={(e) => setEdit({ ...edit, topic: e.target.value })}>
                   <option value="">— The course only —</option>{choices.filter((c) => c.course === edit.course).map((c) => <option key={c.sn} value={c.sn}>{`${c.sn}. ${c.topic}`}</option>)}</select></Field>

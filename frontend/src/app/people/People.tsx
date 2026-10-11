@@ -157,7 +157,7 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
           <div className="grid grid--3 rfgrid">
             <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: OFFICE_BOUNDS[e.target.value]?.[0] ?? o?.scope_kind ?? f.scopeKind, scopeId: "" }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
             <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value, scopeId: "" })}>{boundsFor(f.office).map((k) => <option key={k} value={k}>{BOUND[k] ?? k}</option>)}</select></Field>
-            <Field id="gr-id" label="Which one" required={NEEDS_ID.has(f.scopeKind)} hint={SCOPE_HINT[f.scopeKind] ?? "Chosen from the register, never typed."}>
+            <Field id="gr-id" label="Which one" required={NEEDS_ID.has(f.scopeKind)} hint={SCOPE_HINT[f.scopeKind] ?? "Chosen from the register."}>
               {NEEDS_ID.has(f.scopeKind) ? (
                 SCOPE_OPTIONS[f.scopeKind]?.length
                   ? <SearchSelect id="gr-id" value={f.scopeId} onChange={(v) => setF({ ...f, scopeId: v })} options={SCOPE_OPTIONS[f.scopeKind]} placeholder={`Type to search the ${f.scopeKind === "level" ? "levels" : f.scopeKind + "s"}…`} />

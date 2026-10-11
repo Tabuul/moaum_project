@@ -177,7 +177,7 @@ export function Matric({ a }: { a: Application }) {
                 [<span className="tnum" key="p">{a.session.slice(2, 4)}</span>, `The session you were admitted in — ${a.session}`],
                 [<span className="tnum" key="p">NNNN</span>, "Your serial within that department and session"],
               ]} />
-              <p className="sub2 m-0">It never changes, and it is never given to anybody else.</p>
+              <p className="sub2 m-0">It never changes.</p>
             </PBody>
           </Panel>
         </div>

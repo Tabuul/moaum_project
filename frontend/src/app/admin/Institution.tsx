@@ -120,7 +120,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
         </Panel>
       </div>
 
-      <Panel title="Students by faculty" right="On the register, all levels — the shape of the University">
+      <Panel title="Students by faculty" right="On the register, all levels">
         <PBody>
           {facs.length ? <HBars items={[...facs].sort((a, b) => b.students - a.students).map((f) => ({ l: f.name, v: f.students }))} /> : <div className="sub2">Nobody is on the register yet.</div>}
         </PBody>

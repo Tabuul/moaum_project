@@ -341,7 +341,7 @@ export function ProgrammeChanges({ page, actingOffice, openApp }: { page: Regist
                         <Field id="pc-reason-c" label="Reason" required>
                           <select id="pc-reason-c" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)}>{page.reasons.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select>
                         </Field>
-                        <Field id="pc-note" label="What was found in error" hint="What the Registrar decides on; it stays on the record" required>
+                        <Field id="pc-note" label="What was found in error" hint="What the Registrar decides on" required>
                           <textarea id="pc-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Offered Computer Science on a mis-keyed UTME score; the Board's approved list names Accounting" />
                         </Field>
                         {refused && mayOverride ? (

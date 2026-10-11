@@ -136,7 +136,7 @@ export function Review({ d }: { d: ReviewData }) {
           <div className="row row--base">
             <strong>Total</strong><span className="tnum b700">{totals.sum} of {totals.max}</span><span className="sub2 tnum">{totals.pct}%</span>
             {a?.grade && totals.missing === 0 && !dirty ? <span className="sub2">Grade {a.grade} on the University&rsquo;s scheme in force</span> : null}
-            <span className="sub2">Computed from the scores; it is not typed.</span>
+            <span className="sub2">Computed from the scores.</span>
           </div>
         </PBody>
       </Panel>
