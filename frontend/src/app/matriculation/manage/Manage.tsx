@@ -161,6 +161,11 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
         actions={<><LinkBtn kind="ghost" href={`/matriculation?session=${encodeURIComponent(filters.session)}`}>Matriculation run</LinkBtn><LinkBtn kind="ghost" href="/matriculation/config">Number format</LinkBtn>
           {fv ? <><Btn kind="secondary" onClick={() => void excel(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody(), "faculty-matriculation.xlsx")} disabled={!students.length}>Excel</Btn><Btn kind="ghost" onClick={() => pdf(`Faculty Matriculation Report — ${fv.name}`, FAC_HEAD, facBody())} disabled={!students.length}>PDF</Btn></> : null}</>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {page.pgSession && page.pgSession !== filters.session && Number(page.pgWaiting ?? 0) > 0 ? (
+        <Note kind="info" title={`Postgraduate students are matriculated in ${page.pgSession}`} action={<LinkBtn kind="ghost" href={`/matriculation/manage?session=${encodeURIComponent(page.pgSession)}`}>Open {page.pgSession}</LinkBtn>}>
+          {page.pgWaiting} postgraduate student{Number(page.pgWaiting) === 1 ? "" : "s"} registered in the School of Postgraduate Studies&rsquo; session wait for a matriculation number there.
+        </Note>
+      ) : null}
       {page.separateDuties ? <Note kind="info" title="Duties are separated">The officer who generated or marked a batch ready does not issue it; another authorised officer does. The Registry switches this under Number format.</Note> : null}
 
       <div className="scope">

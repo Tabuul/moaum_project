@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 232
+\set EXPECTED 233
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9153,6 +9153,69 @@ BEGIN
     PERFORM pg_temp.assert('V390: a fee reference landing on a taken one is drawn again — the format kept, the amount the session''s, the applicant never answered with a clash',
         coalesce(v_ref IS NOT NULL AND v_ref <> v_taken AND v_ref ~ '^MOAUM-APP-000001-[0-9]{4}$' AND n_refs = 1 AND v_amount > 0, false),
         format('taken=%s drawn=%s refs=%s amount=%s', v_taken, v_ref, n_refs, v_amount));
+END $$;
+
+-- ── V391: a postgraduate student owes only the School's fee lines ──
+-- A line for every student (no level, entry mode, programme or postgraduate group) reaches the full-time student and never
+-- the postgraduate one; a line naming a postgraduate level, the POSTGRADUATE entry mode, the programme or the Postgraduate
+-- group reaches the postgraduate student and not the full-time one — read alike by the charges, the session total, the
+-- semester's due, the stated test and the Bursary's bulk positions. While only the full-time line stands, the PG student's
+-- own submission refuses on the fees not stated; once the School's lines are stated, the student registered in that
+-- session is on its matriculation list, unpaid. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9941/9942'; pa text; fac text; ug text; lvl int; pg uuid := gen_random_uuid(); ft uuid := gen_random_uuid();
+        st0 boolean; ft_lines0 int; pg_lines int; pg_total numeric; pg_due numeric; pg_bulk numeric; st1 boolean; reg uuid := gen_random_uuid(); r_submit text;
+        ft_lines int; ft_total numeric; ft_bulk numeric; m1 record; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V391', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT code, faculty_code, admissions.pg_award_level(pg_award) INTO pa, fac, lvl FROM ref.programme
+         WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) AND faculty_code IS NOT NULL ORDER BY code LIMIT 1;
+        SELECT code INTO ug FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHECK/V391/P', 'ZZFEECHECK', 'Invented', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9941-10-01', date '9942-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (pg, 'MOAUM/ADM/41/990391', 'ZZPG391', 'Fees', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED'),
+               (ft, 'MOAUM/ADM/41/990392', 'ZZFT391', 'Fees', ug, 'UTME', S, 100, 100, 'ADMITTED');
+
+        -- (1) the full-time line alone: it reaches the full-time student, never the postgraduate one
+        INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'Check: every student', 1000, NULL);
+        st0 := finance.fee_stated(pg, S);
+        SELECT count(*) INTO ft_lines0 FROM finance.charges_of_as(ft, S, ARRAY['FEE'], NULL);
+        -- the student's own submission refuses: the School's fees are not stated, and the full-time line does not stand in
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, pg, S, 1, lvl, 'DRAFT');
+        BEGIN PERFORM registration.student_submit(reg); r_submit := 'SUBMITTED';
+        EXCEPTION WHEN check_violation THEN r_submit := split_part(SQLERRM, ':', 1); END;
+
+        -- (2) the lines addressed to a postgraduate student: a level, the Postgraduate group, the entry mode, the programme
+        INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, programme_code, fee_group) VALUES
+          (S, 'Check: PG level', 2000, lvl, NULL, NULL, NULL), (S, 'Check: PG group', 300, NULL, NULL, NULL, 'PG'),
+          (S, 'Check: PG entry mode', 40, NULL, 'POSTGRADUATE', NULL, NULL), (S, 'Check: the programme', 5, NULL, NULL, pa, NULL);
+        st1 := finance.fee_stated(pg, S);
+        SELECT count(*) INTO pg_lines FROM finance.charges_of_as(pg, S, ARRAY['FEE'], NULL);
+        pg_total := finance.session_fee_total(pg, S);
+        pg_due := finance.due_for_semester(pg, S, 1);
+        SELECT due INTO pg_bulk FROM finance.session_fee_positions(S) WHERE student_id = pg;
+        SELECT count(*) INTO ft_lines FROM finance.charges_of_as(ft, S, ARRAY['FEE'], NULL);
+        ft_total := finance.session_fee_total(ft, S);
+        SELECT due INTO ft_bulk FROM finance.session_fee_positions(S) WHERE student_id = ft;
+        UPDATE registration.course_registration SET status = 'APPROVED', approved_at = now() WHERE id = reg;
+        SELECT registered, paid, eligible, reason INTO m1 FROM people.matric_candidates(S, fac) WHERE student_id = pg;
+        RAISE EXCEPTION 'the V391 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V391 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V391: a postgraduate student owes only the School''s fee lines — a line for every student reaches the full-time student and never the postgraduate one; a line naming a PG level, the Postgraduate group, the POSTGRADUATE entry mode or the programme reaches the PG student and not the full-time one, read alike by the charges, the session total, the semester''s due, the stated test and the bulk positions; with only the full-time line the PG student''s submission refuses on the fees not stated; registered in the School''s session, the student is on its matriculation list',
+        coalesce(st0 = false AND ft_lines0 = 1 AND r_submit = 'REG_FEES_NOT_STATED'
+                 AND st1 AND pg_lines = 4 AND pg_total = 2345 AND pg_due = 2345 AND pg_bulk = 2345
+                 AND ft_lines = 1 AND ft_total = 1000 AND ft_bulk = 1000
+                 AND m1.registered AND NOT m1.paid AND m1.reason LIKE '%not settled%', false),
+        format('stated0=%s ft0=%s | submit=%s | stated1=%s pg lines=%s total=%s due=%s bulk=%s | ft lines=%s total=%s bulk=%s | list1 reg=%s paid=%s reason=%s',
+               st0, ft_lines0, r_submit, st1, pg_lines, pg_total, pg_due, pg_bulk, ft_lines, ft_total, ft_bulk,
+               m1.registered, m1.paid, m1.reason));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

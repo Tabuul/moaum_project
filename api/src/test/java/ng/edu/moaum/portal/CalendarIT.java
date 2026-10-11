@@ -6,15 +6,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -26,7 +30,10 @@ import org.springframework.web.client.RestClient;
  *
  * <p>The sessions are the test's own — 2096/2097, 2097/2098 and 2098/2099 —
  * so nothing here touches the calendar the University actually runs to. The
- * whole class tolerates a re-run on the same database.
+ * whole class tolerates a re-run on the same database. Making a session of its
+ * own current closes the one that was current, and its own end closed, so each
+ * test plans its own sessions again and puts the current one back afterwards: the
+ * tests that run later read the database's calendar, not the sessions this class closed.
  *
  * <p>Needs a database the migrations have been applied to: set DATABASE_URL.
  */
@@ -44,7 +51,14 @@ class CalendarIT {
     @Value("${local.server.port}")
     int port;
 
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    PlatformTransactionManager transactions;
+
     RestClient client;
+    /** the session that was current before the test, put back after it */
+    String wasCurrent;
     final String academic = TestTokens.token(UUID.randomUUID(), List.of("academic"));
     /** the calendar's settings are the Director of ICT's alone, from Portal Management */
     final String ict = TestTokens.token(UUID.randomUUID(), List.of("ict"));
@@ -57,6 +71,20 @@ class CalendarIT {
                 .baseUrl("http://localhost:" + port)
                 .defaultStatusHandler(status -> true, (request, response) -> { })
                 .build();
+        wasCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1")
+                .query(String.class).optional().orElse(null);
+    }
+
+    /** the calendar as the test found it: the test's own sessions planned again (a closed one would read as the latest session
+     *  run), and the session that was current, if one was, current again */
+    @AfterEach
+    void restoreTheCalendar() {
+        new ItSupport(port, jdbc, transactions).db(() -> {
+            jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name IN (:own) AND name IS DISTINCT FROM :w AND state <> 'PLANNED'")
+                    .param("own", List.of(FIRST, SECOND, OVERLAPS)).param("w", wasCurrent, java.sql.Types.VARCHAR).update();
+            return wasCurrent == null ? 0
+                    : jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = :w AND state <> 'CURRENT'").param("w", wasCurrent).update();
+        });
     }
 
     ResponseEntity<Map> call(HttpMethod method, String path, Object body) {

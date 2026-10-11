@@ -29,6 +29,8 @@ export interface ProgrammeGroup { code: string; name: string; dept_code: string 
 export interface FacultyView { code: string; name: string; listState: string; kpis: Kpis; programmes: ProgrammeGroup[]; students: Candidate[]; batch: BatchDetail | null }
 export interface ManagePage {
   session: string; canViewAll: boolean; boundFaculty: string | null; separateDuties: boolean;
+  /** V391: the School of Postgraduate Studies' session, where its students register and are matriculated, and how many wait in it */
+  pgSession?: string; pgWaiting?: number;
   faculties: { code: string; name: string; matric_code: string | null; matric_series: string | null }[];
   batches: (Batch & { faculty: string })[];
   faculty?: FacultyView;

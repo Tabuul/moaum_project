@@ -426,7 +426,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
             <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
           </div>
-          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines.</div>
+          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines; postgraduate students only lines naming a postgraduate level (700, 800, 900), the Postgraduate entry mode or group, or their programme.</div>
         </PBody>
         <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
           <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,

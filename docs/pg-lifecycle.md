@@ -18,7 +18,7 @@ University's full lifecycle and changed only what was missing or wrong. This pag
 | Acceptance | Applicant | The acceptance fee accepts the offer (`pg_confirm_fee`) |
 | Physical screening | School, Secretary, Academic Office, Registry | `admissions.pg_screening_policy` per session; `POST …/screening/schedule`, `POST …/screening/decision`; the desk at `GET /api/v1/pg/screening` |
 | On the register | Automatic on clearance, or the School where the session does not screen | `admissions.pg_admit`: the student row (ADMITTED), the applicant's password as the student account, contact and address carried over |
-| School fees | Student, Bursary | The student portal and the fee engine (`finance.new_reference`), behind the PG_SCHOOL_FEES_PAYMENT window (V389) |
+| School fees | Student, Bursary | The student portal and the fee engine (`finance.new_reference`), behind the PG_SCHOOL_FEES_PAYMENT window (V389); only the lines addressed to postgraduate students (V391) |
 | Course registration | Student, the Head of Department approves | Course Registration (`/student/register`) on the School's classes, in the School's session, behind the PG_COURSE_REGISTRATION window (V389). Earlier registrations on `admissions.pg_registration` stay and are read |
 | Matriculation | Academic Office | Matriculation Management (V267): batches per faculty, generate, validate, issue; the number becomes the username |
 
@@ -111,3 +111,17 @@ where they are and are read alongside the new results.
 
 The student's menu: Course Registration, Results by semester (both sources), Academic progress, Timetable, Attendance,
 Examinations, CBT Examinations, Deferment, My Documents.
+
+## Fees and matriculation (V391)
+
+- **A PG student owes only the School's fee lines.** A line of the fee schedule that names no level, no entry mode, no
+  programme and no postgraduate fee group is the full-time students' line. Before V391 it reached postgraduate students
+  too, so a PG student was charged the undergraduate school fees and portal charge. A line now reaches a PG student
+  (entry mode POSTGRADUATE, or a programme of category POST GRADUATE) only when it names a postgraduate level (700, 800,
+  900), the POSTGRADUATE entry mode, the student's programme, or the Bursary's Postgraduate fee group. One rule
+  (`finance.pg_line`) is read by the charges, the session total, the semester's due, the stated test and the Bursary's
+  bulk positions. Until the Bursary states PG lines for a session, a PG student reads "not yet stated", and Course
+  Registration refuses on the fee gate (V361) as it does for every student. Payments already made are not touched.
+- **Matriculation.** A PG student is matriculated in the session they registered in, the School's: the candidate list
+  already counts an approved registration of the session chosen. Matriculation Management now names the School's session,
+  with how many PG students registered in it wait for a number, and opens it in one click.

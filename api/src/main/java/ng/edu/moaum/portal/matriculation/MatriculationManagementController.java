@@ -134,6 +134,16 @@ class MatriculationManagementController {
         out.put("canViewAll", canViewAll());
         out.put("boundFaculty", scope.actingFacultyOffice() ? faculty : null);
         out.put("separateDuties", jdbc.sql("SELECT separate_duties FROM people.matric_format WHERE id = 'UNIVERSITY'").query(Boolean.class).optional().orElse(false));
+        // V391: postgraduate students register in the School of Postgraduate Studies' own session and are matriculated in it;
+        // the page names that session and how many of the reader's students registered in it still wait for a number
+        String pg = jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single();
+        out.put("pgSession", pg);
+        out.put("pgWaiting", jdbc.sql("""
+                SELECT count(*) FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (s.entry_mode = 'POSTGRADUATE' OR p.category = 'POST GRADUATE') AND s.status = 'ADMITTED' AND s.matric_no IS NULL
+                   AND EXISTS (SELECT 1 FROM registration.course_registration r WHERE r.student_id = s.id AND r.session = :pg AND r.status IN ('APPROVED', 'LOCKED'))
+                   AND (:f::text IS NULL OR p.faculty_code = :f)
+                """).param("pg", pg).param("f", canViewAll() ? null : faculty, Types.VARCHAR).query(Long.class).single());
         out.put("faculties", jdbc.sql("SELECT code, name, matric_code, matric_series FROM ref.faculty" + (faculty != null && !canViewAll() ? " WHERE code = :f" : "") + " ORDER BY name")
                 .param("f", faculty, Types.VARCHAR).query().listOfRows());
         out.put("batches", jdbc.sql("""
