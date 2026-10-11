@@ -1921,3 +1921,132 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .checks__item--bad .checks__mark { color: var(--red-ink); }
 .checks__item--warn .checks__mark { color: var(--amber-ink); }
 @media (max-width: 640px) { .timeline__row { grid-template-columns: 1fr; gap: var(--s-1); } }
+
+/* ── Display density: a compact desktop (October 2026) ─────────────────────────────────────────────────────────
+   A large desktop showed the laptop layout with its panels stretched: the same padding, row heights and control
+   heights on a 2560px screen as on a 1280px one. The tokens below set the density by viewport width, from the
+   spacing first and the type only a little, so more rows and cards fit without small text. At 1920px and above that
+   is roughly the information density of a 67% browser zoom; the browser's own zoom is never touched.
+
+     below 1024px      the existing responsive layout, tablet and phone, unchanged (no rule here applies)
+     1024px-1439px     about 88% of the normal spacing
+     1440px-1919px     about 78%
+     1920px and above  about 67% of the spacing; body text 13px, nothing below the 11.5px type floor
+
+   The layer applies to the portal's own screens only: inside .shell, on screen. The CBT examination room, the
+   sign-in and applicant pages, printing and the PDFs the server writes keep their own sizes. A collapsed sidebar
+   (body.nav-slim) keeps its own width and item padding. */
+:root {
+  --app-font-body: 14px;
+  --app-content-pad-y: 22px;  --app-content-pad-x: 24px;  --app-gap: 18px;
+  --app-header-pad-y: 14px;   --app-header-pad-x: 24px;   --app-header-title: 19px;
+  --app-sidebar-width: 244px; --app-nav-item-pad-y: 10px; --app-nav-item-height: 42px; --app-nav-group-pad-y: 11px; --app-nav-group-height: 40px;
+  --app-grid-gap: 14px;
+  --app-card-head-pad-y: 13px; --app-card-head-pad-x: 16px; --app-card-padding: 16px; --app-card-gap: 12px;
+  --app-tile-pad-y: 16px; --app-tile-pad-x: 17px; --app-tile-figure: 29px;
+  --app-notice-pad-y: 14px; --app-notice-pad-x: 16px;
+  --app-cell-pad-y: 11px; --app-cell-pad-x: 12px; --app-head-pad-y: 10px; --app-cell-font: 13px;
+  --app-btn-pad-y: 13px; --app-btn-pad-x: 18px; --app-btn-height: 48px; --app-btn-font: 15px;
+  --app-btn-sm-pad-y: 8px; --app-btn-sm-pad-x: 13px; --app-btn-sm-height: 36px; --app-btn-sm-font: 13px;
+  --app-control-pad-y: 11px; --app-control-pad-x: 14px; --app-control-height: 46px; --app-control-font: 14.5px;
+  --app-scope-pad-y: 14px; --app-scope-pad-x: 16px; --app-scope-control-height: 42px;
+  --app-modal-pad-y: 16px; --app-modal-pad-x: 18px; --app-modal-gap: 14px;
+}
+@media screen and (min-width: 1024px) {
+  :root {
+    --app-content-pad-y: 18px;  --app-content-pad-x: 20px;  --app-gap: 14px;
+    --app-header-pad-y: 11px;   --app-header-pad-x: 20px;   --app-header-title: 18px;
+    --app-sidebar-width: 232px; --app-nav-item-pad-y: 8px;  --app-nav-item-height: 38px; --app-nav-group-pad-y: 9px; --app-nav-group-height: 36px;
+    --app-grid-gap: 12px;
+    --app-card-head-pad-y: 11px; --app-card-head-pad-x: 14px; --app-card-padding: 14px; --app-card-gap: 10px;
+    --app-tile-pad-y: 13px; --app-tile-pad-x: 14px; --app-tile-figure: 26px;
+    --app-notice-pad-y: 12px; --app-notice-pad-x: 14px;
+    --app-cell-pad-y: 8px; --app-cell-pad-x: 9px; --app-head-pad-y: 8px; --app-cell-font: 13px;
+    --app-btn-pad-y: 11px; --app-btn-pad-x: 16px; --app-btn-height: 42px; --app-btn-font: 14.5px;
+    --app-btn-sm-pad-y: 7px; --app-btn-sm-pad-x: 12px; --app-btn-sm-height: 34px; --app-btn-sm-font: 13px;
+    --app-control-pad-y: 9px; --app-control-pad-x: 12px; --app-control-height: 40px; --app-control-font: 14px;
+    --app-scope-pad-y: 12px; --app-scope-pad-x: 14px; --app-scope-control-height: 38px;
+    --app-modal-pad-y: 14px; --app-modal-pad-x: 16px; --app-modal-gap: 12px;
+  }
+}
+@media screen and (min-width: 1440px) {
+  :root {
+    --app-font-body: 13.5px;
+    --app-content-pad-y: 16px;  --app-content-pad-x: 20px;  --app-gap: 12px;
+    --app-header-pad-y: 9px;    --app-header-pad-x: 20px;   --app-header-title: 17px;
+    --app-sidebar-width: 224px; --app-nav-item-pad-y: 7px;  --app-nav-item-height: 36px; --app-nav-group-pad-y: 8px; --app-nav-group-height: 34px;
+    --app-grid-gap: 11px;
+    --app-card-head-pad-y: 9px; --app-card-head-pad-x: 13px; --app-card-padding: 12px; --app-card-gap: 9px;
+    --app-tile-pad-y: 11px; --app-tile-pad-x: 13px; --app-tile-figure: 24px;
+    --app-notice-pad-y: 10px; --app-notice-pad-x: 13px;
+    --app-cell-pad-y: 6.5px; --app-cell-pad-x: 9px; --app-head-pad-y: 7px; --app-cell-font: 12.75px;
+    --app-btn-pad-y: 10px; --app-btn-pad-x: 15px; --app-btn-height: 40px; --app-btn-font: 14px;
+    --app-btn-sm-pad-y: 6px; --app-btn-sm-pad-x: 11px; --app-btn-sm-height: 32px; --app-btn-sm-font: 12.75px;
+    --app-control-pad-y: 8px; --app-control-pad-x: 11px; --app-control-height: 37px; --app-control-font: 13.5px;
+    --app-scope-pad-y: 10px; --app-scope-pad-x: 13px; --app-scope-control-height: 36px;
+    --app-modal-pad-y: 12px; --app-modal-pad-x: 16px; --app-modal-gap: 11px;
+  }
+}
+@media screen and (min-width: 1920px) {
+  :root {
+    --app-font-body: 13px;
+    --app-content-pad-y: 14px;  --app-content-pad-x: 18px;  --app-gap: 10px;
+    --app-header-pad-y: 8px;    --app-header-pad-x: 18px;   --app-header-title: 16.5px;
+    --app-sidebar-width: 216px; --app-nav-item-pad-y: 6px;  --app-nav-item-height: 34px; --app-nav-group-pad-y: 7px; --app-nav-group-height: 32px;
+    --app-grid-gap: 10px;
+    --app-card-head-pad-y: 8px; --app-card-head-pad-x: 12px; --app-card-padding: 11px; --app-card-gap: 8px;
+    --app-tile-pad-y: 10px; --app-tile-pad-x: 12px; --app-tile-figure: 22px;
+    --app-notice-pad-y: 9px; --app-notice-pad-x: 12px;
+    --app-cell-pad-y: 5.5px; --app-cell-pad-x: 8px; --app-head-pad-y: 6px; --app-cell-font: 12.5px;
+    --app-btn-pad-y: 9px; --app-btn-pad-x: 14px; --app-btn-height: 38px; --app-btn-font: 13.5px;
+    --app-btn-sm-pad-y: 5px; --app-btn-sm-pad-x: 10px; --app-btn-sm-height: 30px; --app-btn-sm-font: 12.5px;
+    --app-control-pad-y: 7px; --app-control-pad-x: 10px; --app-control-height: 34px; --app-control-font: 13px;
+    --app-scope-pad-y: 9px; --app-scope-pad-x: 12px; --app-scope-control-height: 34px;
+    --app-modal-pad-y: 11px; --app-modal-pad-x: 14px; --app-modal-gap: 10px;
+  }
+}
+@media screen and (min-width: 1024px) {
+  .shell { font-size: var(--app-font-body); }
+  .shell .content { padding: var(--app-content-pad-y) var(--app-content-pad-x) calc(var(--app-content-pad-y) * 2); gap: var(--app-gap); }
+  .shell .topbar { padding: var(--app-header-pad-y) var(--app-header-pad-x); }
+  .shell .topbar h1 { font-size: var(--app-header-title); }
+
+  /* the sidebar: narrower and tighter; its hierarchy, current item and badges as they were */
+  body:not(.nav-slim) .shell .nav { width: var(--app-sidebar-width); }
+  body:not(.nav-slim) .shell .nav__brand { padding-top: calc(var(--app-nav-item-pad-y) + 6px); padding-bottom: calc(var(--app-nav-item-pad-y) + 6px); }
+  body:not(.nav-slim) .shell .nav__item { padding-top: var(--app-nav-item-pad-y); padding-bottom: var(--app-nav-item-pad-y); }
+  .shell .nav__item { min-height: var(--app-nav-item-height); }
+  body:not(.nav-slim) .shell .nav__gh { padding-top: var(--app-nav-group-pad-y); padding-bottom: var(--app-nav-group-pad-y); }
+  .shell .nav__gh { min-height: var(--app-nav-group-height); }
+  .shell .nav__slim { min-height: var(--app-nav-item-height); }
+  .shell .ws__select { min-height: var(--app-control-height); padding-top: 7px; padding-bottom: 7px; }
+
+  /* panels, tiles and notices */
+  .shell .grid { gap: var(--app-grid-gap); }
+  .shell .card__head { padding: var(--app-card-head-pad-y) var(--app-card-head-pad-x); }
+  .shell .card__body { padding: var(--app-card-padding); gap: var(--app-card-gap); }
+  .shell .tile { padding: var(--app-tile-pad-y) var(--app-tile-pad-x); }
+  .shell .tile .n { font-size: var(--app-tile-figure); }
+  .shell .notice { padding: var(--app-notice-pad-y) var(--app-notice-pad-x); }
+
+  /* tables: shorter rows; the column heads as legible as before */
+  .shell th { padding: var(--app-head-pad-y) var(--app-cell-pad-x); }
+  .shell td { padding: var(--app-cell-pad-y) var(--app-cell-pad-x); font-size: var(--app-cell-font); }
+  .shell .tsrch { padding-top: calc(var(--app-cell-pad-y) + 1px); padding-bottom: calc(var(--app-cell-pad-y) + 1px); }
+
+  /* buttons and fields: a mouse needs less than a thumb; every target stays above 24px */
+  .shell .btn { padding: var(--app-btn-pad-y) var(--app-btn-pad-x); min-height: var(--app-btn-height); font-size: var(--app-btn-font); }
+  .shell .btn--sm, .shell td .btn--sm { padding: var(--app-btn-sm-pad-y) var(--app-btn-sm-pad-x); min-height: var(--app-btn-sm-height); font-size: var(--app-btn-sm-font); }
+  .shell .btn--md { padding: var(--app-btn-pad-y) var(--app-btn-pad-x); min-height: var(--app-btn-height); font-size: var(--app-btn-font); }
+  .shell .btn--icon { padding: var(--app-btn-sm-pad-y) 8px; }
+  .shell .ctl, .shell .field input, .shell .field select, .shell .field textarea {
+    padding: var(--app-control-pad-y) var(--app-control-pad-x); min-height: var(--app-control-height); font-size: var(--app-control-font); }
+  .shell textarea.ctl { min-height: calc(var(--app-control-height) + 16px); }
+  .shell .scope__row { padding: var(--app-scope-pad-y) var(--app-scope-pad-x); }
+  .shell .scope__f .ctl, .shell .scope__f select { min-height: var(--app-scope-control-height); }
+
+  /* dialogs: tighter inside, still placed and sized against the viewport as before */
+  .shell .mdl__head { padding: var(--app-modal-pad-y) var(--app-modal-pad-x) calc(var(--app-modal-pad-y) - 3px); }
+  .shell .mdl__body { padding: var(--app-modal-pad-y) var(--app-modal-pad-x); gap: var(--app-modal-gap); }
+  .shell .mdl__foot { padding-top: var(--app-modal-pad-y); padding-bottom: var(--app-modal-pad-y); }
+}
