@@ -43,7 +43,7 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
         ["Entries on the record", d.tiles.total.toLocaleString(), null, "Since the system began"],
         ["Today", d.tiles.today.toLocaleString(), null, "State changes since midnight"],
         ["Actors today", String(d.tiles.actorsToday), null, "Distinct people and services"],
-        ["Refusals today", String(d.tiles.refusalsToday), d.tiles.refusalsToday ? "var(--chrome)" : null, "A rule doing its job"],
+        ["Refusals today", String(d.tiles.refusalsToday), d.tiles.refusalsToday ? "var(--chrome)" : null, "Changes the rules refused"],
       ]} />
 
       <div className="card"><div className="card__body row row--end">

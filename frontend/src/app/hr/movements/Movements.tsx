@@ -72,7 +72,7 @@ export function Movements({ rows, grades, actingOffice }: { rows: MovementRow[];
 
       <Tiles items={[
         ["Awaiting approval", String(count("REQUESTED")), count("REQUESTED") ? "var(--red-ink)" : null, "Requests to consider"],
-        ["Approved, no letter", String(count("APPROVED")), count("APPROVED") ? "var(--chrome)" : null, "Not yet real"],
+        ["Approved, no letter", String(count("APPROVED")), count("APPROVED") ? "var(--chrome)" : null, "Instrument not issued"],
         ["Implemented", String(count("IMPLEMENTED")), "var(--green-ink)", "Instrument issued"],
         ["Movements", String(rows.length), null, "All"],
       ]} />

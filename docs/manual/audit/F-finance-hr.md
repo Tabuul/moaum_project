@@ -2080,7 +2080,7 @@ This is a read-only audit. I read every file listed, plus the components they im
 
 **Layout:**
 - **Note** "Approved is not implemented until the instrument exists": "…Issuing the instrument is the act that changes the record from the effective date, and the portal refuses to write an office that cites no instrument."
-- **Tiles:** Awaiting approval, Approved no letter ("Not yet real"), Implemented ("Instrument issued"), Movements.
+- **Tiles:** Awaiting approval, Approved no letter ("Instrument not issued"), Implemented ("Instrument issued"), Movements.
 - **Tabs:** Awaiting, To issue (APPROVED), Implemented, All.
 - **Panel "Staff movements"** ("{n} shown"):
   - Columns: **Staff | Movement | What changes | Effective | Stage | Action**. The "What changes" cell adds the reason, "Instrument {no}" and the decision note.
