@@ -90,7 +90,9 @@ reports on it under Portal Management → Admission Status Checking.
   Course Registration shows the approved courses rather than a list to choose from.
 - The examination session is open, so six score sheets sit at entry with the lecturer.
 - A fee schedule for the session and the recommended clearance scheme are in force,
-  so the student screens have something to say.
+  so the student screens have something to say. The schedule has postgraduate lines
+  too (the Postgraduate group), so the demo PG student owes school fees and can pay
+  and register; a full-time line never reaches a PG student (V391).
 
 ## The lecturer's results path, desk by desk
 

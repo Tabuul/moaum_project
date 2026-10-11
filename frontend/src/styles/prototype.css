@@ -719,6 +719,14 @@
   /* on a laptop the title, the account, the manual's two buttons and the search did not fit one row and the bar wrapped:
      there the buttons show their icons only, as on a phone, and keep their names as tooltips and accessible names */
   @media (min-width: 901px) and (max-width: 1439px) { .topsrch span, .topsrch kbd { display: none; } .topsrch { min-width: 0; } }
+  /* on a phone and a tablet the header is one row: the menu button, the title in a column of its own (a long one
+     wraps there, onto a second line, rather than pushing the search down to a row of its own) and the icons */
+  @media (max-width: 900px) {
+    .topbar { flex-wrap: nowrap; gap: 8px; }
+    .topbar__t { flex: 1 1 0; min-width: 0; }
+    .topbar h1 { overflow-wrap: anywhere; }
+    .topbar .topman, .topbar .topsrch { flex-shrink: 0; }
+  }
 
 
   /* ── biodata ───────────────────────────────────────────────────── */

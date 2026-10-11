@@ -53,11 +53,11 @@ DECLARE
     c           record;
     elig        record;
 BEGIN
-    -- ── the session everything hangs in: the current one, else 2026/2027 ──
-    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    IF v_session IS NULL THEN
-        v_session := '2026/2027';
-    END IF;
+    -- ── the session everything hangs in: the calendar's current one (the latest run or on the calendar when none is
+    --    current), else the session the date falls in, September to August; never a year written in here ──
+    v_session := coalesce(policy.university_current_session(),
+                          CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
+                          || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END);
     v_yy := substr(v_session, 3, 2);
 
     -- ── the staff: one person per office, signing in as demo.<office> ──
@@ -270,6 +270,17 @@ BEGIN
             (v_session, 'School fees (demo schedule)', 100000, 1),
             (v_session, 'Portal and ICT charge (demo schedule)', 10000, 2);
     END IF;
+    -- the School of Postgraduate Studies' lines, in the Postgraduate group: since V391 a line for every student is the
+    -- full-time students' and never reaches a PG student, so without these the demo PG student owes nothing it can pay
+    -- and cannot register. Stated for the University's session and the School's, each once.
+    INSERT INTO finance.fee_schedule (session, item, amount, ord, fee_group)
+    SELECT x.s, l.item, l.amount, l.ord, 'PG'
+      FROM (SELECT DISTINCT unnest(ARRAY[v_session, admissions.pg_current_session()]) AS s) x
+      CROSS JOIN (VALUES ('Postgraduate school fees (demo schedule)', 150000, 1),
+                         ('Postgraduate portal and ICT charge (demo schedule)', 10000, 2)) AS l(item, amount, ord)
+     WHERE x.s IS NOT NULL
+       AND EXISTS (SELECT 1 FROM policy.academic_session a WHERE a.name = x.s)
+       AND NOT EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = x.s AND f.fee_group = 'PG' AND f.ended_at IS NULL);
     IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
         PERFORM finance.put_scheme_in_force('DEMO — BUR/DEMO/1, the recommended scheme, for demonstration', current_date);
     END IF;
@@ -633,8 +644,10 @@ END $recruit$;
 DO $appraisal$
 DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_hr uuid; em record; v_session text;
 BEGIN
-    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    v_session := coalesce(v_session, '2026/2027');
+    -- the cycle the HR screens read (policy.university_current_session()), else the session the date falls in
+    v_session := coalesce(policy.university_current_session(),
+                          CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
+                          || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END);
     SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
     PERFORM set_config('moaum.actor_id', coalesce(v_hr, v_actor)::text, true);
     PERFORM set_config('moaum.actor_office', 'hrm', true);
@@ -731,7 +744,11 @@ DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30';
         v_session text; v_rows jsonb; v_appr uuid; v_payer uuid; s_paid uuid; s_apply uuid; w record;
 BEGIN
     SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    IF v_session IS NULL THEN v_session := '2026/2027'; END IF;
+    IF v_session IS NULL THEN v_session := policy.university_current_session(); END IF;
+    IF v_session IS NULL THEN
+        v_session := CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
+                     || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END;
+    END IF;
     -- once only (CI runs demo.sql twice)
     IF EXISTS (SELECT 1 FROM finance.nelfund_batch WHERE ref = 'NLF/DEMO/0001') THEN RETURN; END IF;
 
@@ -804,7 +821,11 @@ DECLARE
     v_lecturer uuid; v_exams uuid; d record; v_rows jsonb; v_due numeric; v_ref text; st record;
 BEGIN
     SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
-    IF v_session IS NULL THEN v_session := '2026/2027'; END IF;
+    IF v_session IS NULL THEN v_session := policy.university_current_session(); END IF;
+    IF v_session IS NULL THEN
+        v_session := CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int ELSE extract(year FROM current_date)::int - 1 END
+                     || '/' || CASE WHEN extract(month FROM current_date) >= 9 THEN extract(year FROM current_date)::int + 1 ELSE extract(year FROM current_date)::int END;
+    END IF;
     v_yy := substr(v_session, 3, 2);
     v_prev := (substr(v_session, 1, 4)::int - 1)::text || '/' || substr(v_session, 1, 4);
 
