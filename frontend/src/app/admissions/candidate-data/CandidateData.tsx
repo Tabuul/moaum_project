@@ -315,7 +315,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
                 <Note kind="bad" title={`${unnamed.length} file${unnamed.length === 1 ? " carries" : "s carry"} no registration number in the name`}>
                   Nothing in {unnamed.length === 1 ? "this name" : "these names"} has the shape of a JAMB number; <b>no guess is made</b>.
                 </Note>
-                <Panel title="Named, not guessed at" right="A person has to say who these belong to">
+                <Panel title="Files with no JAMB number" right="Assign each by hand">
                   <DTable cols={["The file as it arrived", "Size|num"]} rows={unnamed.slice(0, 10).map((p) => [<span className="tnum" key="f">{p.file}</span>, <span className="sub2" key="s">{Math.round(p.size / 1024)} KB</span>])} />
                 </Panel>
               </>

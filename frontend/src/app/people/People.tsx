@@ -308,7 +308,7 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
       ) : null}
 
       {modal === "end" && grant ? (
-        <Modal title={`End ${grant.label} for ${grant.surname}, ${grant.givenNames}`} sub="It stays on the record" onClose={() => setModal(null)}
+        <Modal title={`End ${grant.label} for ${grant.surname}, ${grant.givenNames}`} onClose={() => setModal(null)}
           foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy || !f.reason.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${grant.personId}/office-assignments/${grant.id}/end`, { on: f.on || null, reason: f.reason }, `Office ended: ${f.reason}`)}>End it</Btn></>}>
           <Note kind="bad" title="Ending is not deleting">Permissions end from the date you give; the grant stays on the record, and everything approved while it was held stands.</Note>
           <div className="grid grid--2 rfgrid">

@@ -90,7 +90,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
         ["Sent on", String(past.length), "var(--green-ink)", "Past this desk"],
         ["Published", String(listing.tiles.senateApproved), null, "Of the sets in scope"],
       ]} />
-      <Panel title="What this office may do" right="Five acts, and no others">
+      <Panel title="What this office may do">
         <PBody>
           <div className="grid grid--2">
             {d.can.map((c) => <div key={c} className="row row--top"><Tick size={16} colour="var(--green-ink)" /><span className="grow t-sm" style={{ lineHeight: 1.5 }}>{c}</span></div>)}

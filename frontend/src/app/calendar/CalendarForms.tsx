@@ -114,7 +114,6 @@ export function SessionModal({
     return (
       <Modal
         title={`End ${row?.name ?? "the session"}`}
-        sub="It stays on the record"
         onClose={onClose}
         wide
         foot={

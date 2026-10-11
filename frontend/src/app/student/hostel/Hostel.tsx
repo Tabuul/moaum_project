@@ -292,7 +292,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
       </Panel>
 
       {h.events.length ? (
-        <Panel title="Trail" right="Every step kept">
+        <Panel title="Trail">
           <DTable cols={["When|mid", "What", "Note"]} rows={h.events.map((e) => [<span key="w" className="tnum sub2">{whenAt(e.at)}</span>, <span key="a">{e.action.replace(/_/g, " ").toLowerCase()}{e.to_value ? <span className="sub2"> · {e.to_value}</span> : null}</span>, <span key="n" className="sub2">{e.note ?? ""}</span>])} pageSize={10} />
         </Panel>
       ) : null}

@@ -129,7 +129,7 @@ export function Review({ d }: { d: DefermentFull }) {
         </Panel>
       </div>
 
-      <Panel title="The desks" right="Each word on the record">
+      <Panel title="The desks">
         <PBody>
           <KvGrid cls="grid--1" pairs={[
             ["Bursary", d.bursary_at ? <span key="b"><b>Approved</b> {dayOf(d.bursary_at)}{d.bursary_officer ? ` by ${d.bursary_officer}` : ""}{d.bursary_note ? <div className="sub2">{d.bursary_note}</div> : null}</span> : <span key="b" className="sub2">Awaiting</span>],

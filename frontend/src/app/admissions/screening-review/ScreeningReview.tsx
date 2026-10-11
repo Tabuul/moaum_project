@@ -178,7 +178,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
           foot={<><Btn kind="ghost" onClick={() => setDeciding(null)}>Back</Btn><Btn kind={deciding === "SUCCESSFUL" ? "go" : deciding === "UNSUCCESSFUL" ? "urgent" : "primary"} disabled={busy !== null} onClick={() => void decide()}>{deciding === "SUCCESSFUL" ? "Record: successfully screened" : deciding === "UNSUCCESSFUL" ? "Record: unsuccessful" : "Return to the applicant"}</Btn></>}>
           <p className="sub2">{deciding === "SUCCESSFUL" ? "The applicant is told they may pay school fees and commence registration; the answers go onto the student record; the form is closed." : deciding === "UNSUCCESSFUL" ? "The applicant is told the reason; the eligibility engine lists the programmes they qualify for and they may request a change of programme — the acceptance fee is not charged again." : "The form goes back to the applicant with your note; they correct it and submit again."}</p>
           {deciding !== "SUCCESSFUL" ? <Field id="dc-reason" label={deciding === "UNSUCCESSFUL" ? "Reason (required, shown to the applicant)" : "What must be corrected (required)"} required><textarea id="dc-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field> : null}
-          <Field id="dc-remarks" label="Officer's remarks" hint="Optional · on the record"><textarea id="dc-remarks" className="ctl" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></Field>
+          <Field id="dc-remarks" label="Officer's remarks" hint="Optional"><textarea id="dc-remarks" className="ctl" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></Field>
         </Modal>
       ) : null}
       {policyOpen ? (

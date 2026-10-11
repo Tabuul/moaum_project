@@ -154,7 +154,7 @@ export function CceSession({ powers, refresh }: { powers: Powers; refresh: () =>
             </select>
           </Field>
           <Field id="cs-eff" label="Effective from"><input id="cs-eff" type="date" className="ctl" value={form.effective} onChange={(e) => setForm({ ...form, effective: e.target.value })} /></Field>
-          <Field id="cs-reason" label="The reason" required hint="Kept with the change"><textarea id="cs-reason" className="ctl" rows={3} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
+          <Field id="cs-reason" label="The reason" required><textarea id="cs-reason" className="ctl" rows={3} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
           <div className="sub2">Records already filed keep their sessions.</div>
         </Modal>
       ) : null}

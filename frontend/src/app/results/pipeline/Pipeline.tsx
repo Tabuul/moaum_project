@@ -147,7 +147,7 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
               texts={view.missing.map((m) => `${m.courseCode} ${m.courseTitle} ${m.deptName} ${m.lecturer ?? ""}`)} />
           )}
         </Panel>
-        <Panel title={`Timeline · last ${view.timeline.length}`} right="Every act on the record, newest first">
+        <Panel title={`Timeline · last ${view.timeline.length}`} right="Newest first">
           {view.timeline.length === 0 ? <div className="card__body sub2">No decision has been taken on a set in this scope yet.</div> : (
             <div style={{ maxHeight: 420, overflow: "auto" }}>
               {view.timeline.map((e, i) => (

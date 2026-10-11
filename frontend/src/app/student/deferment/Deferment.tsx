@@ -272,7 +272,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
             <div className="eyebrow mb-1">Approval timeline</div>
             <ApprovalTimeline d={opened} />
             {opened.effect?.applied ? <><div className="eyebrow mt-3 mb-1">Academic effect of deferment</div><KvGrid cls="grid--3" pairs={effectPairs(opened.effect)} /></> : null}
-            <div className="eyebrow mt-3 mb-1">Every act on the record</div>
+            <div className="eyebrow mt-3 mb-1">History</div>
             <ol className="plain" style={{ display: "grid", gap: 6 }}>
               {opened.history.filter((h) => !["VIEWED", "DOCUMENT_VIEWED", "DOWNLOADED"].includes(h.action)).map((h, i) => <li key={i} className="row row--base" style={{ gap: "var(--s-3)", flexWrap: "wrap" }}><span className="tnum sub2" style={{ minWidth: 150 }}>{whenAt(h.at)}</span><span className="b600">{ACTION_WORD[h.action] ?? h.action}</span>{h.note ? <span className="sub2">{h.note}</span> : null}{h.actor_office && h.actor_office !== "student" ? <Pil kind="grey">{h.actor_office}</Pil> : null}</li>)}
             </ol>
