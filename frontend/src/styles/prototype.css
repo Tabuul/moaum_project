@@ -716,6 +716,9 @@
   .topsrch kbd { margin-left: auto; font-family: var(--mono); font-size: 10.5px;
     border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; background: var(--surface); }
   @media (max-width: 900px) { .topsrch span, .topsrch kbd { display: none; } .topsrch { min-width: 0; } }
+  /* on a laptop the title, the account, the manual's two buttons and the search did not fit one row and the bar wrapped:
+     there the buttons show their icons only, as on a phone, and keep their names as tooltips and accessible names */
+  @media (min-width: 901px) and (max-width: 1439px) { .topsrch span, .topsrch kbd { display: none; } .topsrch { min-width: 0; } }
 
 
   /* ── biodata ───────────────────────────────────────────────────── */

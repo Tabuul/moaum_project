@@ -25,9 +25,12 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
   const step = research ? nextStep(research.stage, research.degree_kind, research.supervisor ?? null) : null;
   const regWord = !reg ? "Not started" : reg.state === "ENDORSED" ? "Endorsed" : reg.state === "SUBMITTED" ? "Submitted" : reg.state.charAt(0) + reg.state.slice(1).toLowerCase();
   const modeWord = reg ? (reg.mode === "PART_TIME" ? "Part-time" : "Full-time") : null;
-  const feeLine = f.paidInFull ? `School fees settled in full for ${f.session}.`
+  // V391: nothing charged because the Bursary has not stated the School's lines is not "paid in full" (the test Screens2 reads)
+  const noCharge = f.stated === false || (f.stated === undefined && f.due === 0);
+  const feeLine = noCharge ? `The Bursary has not yet stated the school fees of ${f.session} for your programme.`
+    : f.paidInFull ? `School fees settled in full for ${f.session}.`
     : f.balance > 0 ? `${naira(f.balance)} outstanding for ${f.session}.`
-    : f.due > 0 ? `Fully paid for ${f.session}.` : `No charge stated yet for ${f.session}.`;
+    : `Fully paid for ${f.session}.`;
   const sem = pg?.semester ?? null;
   const cw = pg?.coursework ?? null;
   const elig = pg ? eligibility(pg, f) : null;
@@ -71,7 +74,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         ["Programme", awardWord(s.entryLevel), null, s.programme],
         ["Registered courses", reg ? String(reg.courses) : "0", registered ? "var(--green-ink)" : null, reg ? `${SEM[reg.semester] ?? `Semester ${reg.semester}`} · ${regWord}` : "Not yet registered", "/student/register"],
         ["CGPA", cgpaShown ? Number(pg!.cgpa).toFixed(2) : "—", pg?.standing === "PROBATION" ? "var(--red-ink)" : cgpaShown ? "var(--green-ink)" : null, pg?.standing === "PROBATION" ? "Probation · below 2.50" : cgpaShown ? "of 5.00 · good standing" : "No results yet", "/student/pg-courses"],
-        ["Outstanding fees", f.balance > 0 ? naira(f.balance) : f.due > 0 ? "₦0" : "—", f.balance > 0 ? "var(--red-ink)" : f.paidInFull ? "var(--green-ink)" : null, f.paidInFull ? `Paid in full · ${f.session}` : f.due > 0 ? f.session : "No charge stated yet", "/student/fees"],
+        ["Outstanding fees", noCharge ? "—" : f.balance > 0 ? naira(f.balance) : "₦0", f.balance > 0 ? "var(--red-ink)" : !noCharge && f.paidInFull ? "var(--green-ink)" : null, noCharge ? `Not yet stated · ${f.session}` : f.paidInFull ? `Paid in full · ${f.session}` : f.session, "/student/fees"],
         ["Research", research ? (RESEARCH_WORD[research.stage] ?? research.stage) : "—", research && research.stage !== "WITHDRAWN" ? "var(--chrome)" : null, research ? (step ? step[0] : "") : "Not started", "/student/research"],
         ["Supervisor", supervisors[0]?.name ?? "—", null, supervisors.length > 1 ? `and ${supervisors.length - 1} more` : supervisors.length ? (supervisors[0].role === "FIRST" ? "Main supervisor" : supervisors[0].role.toLowerCase()) : "Not yet assigned", "/student/research"],
         ["Pending tasks", String(deadlines.filter((d) => d[2] !== "grey").length), deadlines.some((d) => d[2] === "bad") ? "var(--red-ink)" : deadlines.some((d) => d[2] === "warn") ? "var(--amber-ink)" : null, deadlines.length ? deadlines.filter((d) => d[2] !== "grey").map((d) => d[0]).join(" · ") || "Nothing overdue" : "Nothing due"],

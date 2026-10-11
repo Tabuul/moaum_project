@@ -743,7 +743,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               </div>
             ) : null}
             {me ? <ManualHelp route={route} menu={me.menu ?? null} /> : null}
-            <button className="topsrch" aria-label="Search" onClick={() => router.push("/search")}>
+            <button className="topsrch" aria-label="Search" title="Search records (/)" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M20 20l-3.5-3.5" />

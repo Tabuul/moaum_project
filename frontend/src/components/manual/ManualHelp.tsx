@@ -26,7 +26,12 @@ export function ManualHelp({ route, menu }: { route: string; menu: string | null
     <div className="topman">
       {items.length ? (
         <details className="topman__howto">
-          <summary className="topsrch" title="How to do what this page does"><span>How to…</span></summary>
+          <summary className="topsrch" title="How to do what this page does" aria-label="How to do what this page does">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14" /><path d="M12 17h.01" />
+            </svg>
+            <span>How to…</span>
+          </summary>
           <ul className="topman__menu" role="list">
             {items.map((p) => <li key={p.id}><Link href={`/manual?p=${encodeURIComponent(p.slug)}`}>{p.title}</Link></li>)}
             <li className="topman__all"><Link href="/manual">Quick Operational Manual</Link></li>
