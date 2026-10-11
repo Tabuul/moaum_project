@@ -2154,3 +2154,125 @@ html[data-density="normal"] {
 .acct__opt.is-on { background: var(--sky-bg); }
 .acct__opt input { margin-top: 3px; accent-color: var(--chrome); }
 .acct__note { padding: 6px 6px 2px; border-top: 1px solid var(--line-2); margin-top: 6px; }
+
+/* ── the phone and tablet frame (Oct 2026) ──────────────────────────────────────────────────────────────
+   Below 900px the side navigation folds into a drawer, so a bar across the top carries the University as its
+   website heads every page (UniversityBrand: the crest, the name in navy over the place in crimson, the crimson-to-
+   amber rule beneath, round navy buttons for the search and the menu — the website's own colours, #1a2438, #c51e28,
+   #fbbf24), stays at the top while the page scrolls, and keeps clear of a phone's notch and home bar; the screen's
+   title follows under it and scrolls with the page. The drawer opens with who is signed in and closes on its own button, the
+   scrim or Escape; sign-out sits at its foot. Inputs are 16px on a phone so a tap does not zoom the page;
+   tiles sit two to a row; a modal fits the visible screen. Nothing here applies above 900px except the
+   drawer's border, which the desktop sidebar already had. */
+.nav__top { display: flex; align-items: center; border-bottom: 1px solid var(--chrome-2); }
+.nav__top .nav__brand { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+.nav__close, .nav__id, .nav__outlbl, .mbar { display: none; }
+.menu-btn { position: relative; }
+.menu-btn__badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: var(--r-pill); background: #c51e28; color: #fff; font-size: 10.5px; font-weight: 700;
+  line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
+.ubrand--plain { display: inline-flex; align-items: center; gap: 10px; }
+/* a figure's caption or a notice may hold one long unbroken token (a file name, a reference); it breaks rather than
+   widening its tile, and with it the page */
+.tile { min-width: 0; }
+.tile .c, .tile .eyebrow, .notice p, .notice__t, .card__title { overflow-wrap: anywhere; }
+.ubrand--plain .ubrand__crest { width: auto; height: 40px; object-fit: contain; }
+.ubrand--plain .ubrand__name { font-family: var(--serif); font-weight: 700; font-size: 15px; }
+
+@media (max-width: 900px) {
+  /* the University's bar */
+  .mbar {
+    display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 25;
+    padding: calc(12px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 15px max(14px, env(safe-area-inset-left));
+    background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%); border-top: 3px solid #1a2438;
+    box-shadow: 0 2px 10px rgba(26, 36, 56, .08);
+  }
+  .mbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+    background: linear-gradient(90deg, #c51e28 0%, #e2512a 45%, #fbbf24 100%); }
+  .ubrand--bar { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; color: #1a2438; text-decoration: none; border-radius: var(--r-md); }
+  .ubrand--bar .ubrand__crest { width: auto; height: 50px; object-fit: contain; flex-shrink: 0; }
+  .ubrand--bar .ubrand__name { display: flex; flex-direction: column; min-width: 0; text-transform: uppercase; line-height: 1.22; }
+  .ubrand__l1 { color: #1a2438; font-weight: 700; font-size: clamp(11.5px, 3.3vw, 17px); letter-spacing: .15px; text-wrap: balance; }
+  .ubrand__l2 { color: #c51e28; font-weight: 600; font-size: clamp(11px, 3.1vw, 16px); letter-spacing: .4px; margin-top: 2px; }
+  .mbar__btn { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; flex-shrink: 0;
+    border-radius: 50%; background: #2f3f63; color: #fff; border: 0; box-shadow: 0 4px 12px rgba(26, 36, 56, .28);
+    transition: background .14s ease, transform .1s ease; }
+  .mbar__btn:hover { background: #243250; }
+  .mbar__btn:active { transform: scale(.96); }
+  .mbar__btn:focus-visible { outline: 3px solid #fbbf24; outline-offset: 2px; }
+  /* the screen's title under the bar, with the how-to beside it; it scrolls with the page */
+  .topbar { position: static; flex-wrap: nowrap; gap: 10px; min-height: 0; box-shadow: none;
+    padding: 12px max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left)); }
+  .topbar > .topsrch { display: none; }
+  .topbar__t { min-width: 0; }
+  .topbar h1 { font-size: 18px; line-height: 1.25; letter-spacing: -.2px; overflow-wrap: anywhere; }
+  .topbar .sub { font-size: 12.5px; }
+  .topbar .topman { flex-shrink: 0; }
+
+  /* the drawer: a little wider than the desktop sidebar, never wider than the screen, clear of the notch and the home bar */
+  .nav { width: min(320px, 86vw); height: 100vh; height: 100dvh; box-shadow: none; transition: transform .22s cubic-bezier(.2, .8, .2, 1);
+    padding-top: env(safe-area-inset-top); overflow-y: auto; overscroll-behavior: contain; }
+  body.nav-open .nav { box-shadow: 0 0 40px rgba(0, 0, 0, .3); }
+  body.nav-open { overflow: hidden; }
+  body.nav-open .scrim { animation: scrim-in .2s ease; }
+  .nav__close { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-right: 8px;
+    flex-shrink: 0; border-radius: var(--r-md); color: var(--chrome-ink); }
+  .nav__close:hover, .nav__close:focus-visible { background: rgba(255, 255, 255, .1); color: #fff; }
+  .nav__id { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid var(--chrome-2); }
+  .nav__id .avatar { width: 40px; height: 40px; border-radius: 20px; font-size: 14px; }
+  .nav__id .nav__who { font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
+  .nav__id .nav__sub { font-size: 12px; white-space: normal; }
+  .nav__foot { padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .nav__foot > .avatar, .nav__foot > .nav__me { display: none; }
+  .nav__out { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px;
+    border: 1px solid var(--chrome-2); border-radius: var(--r-md); color: #fff; }
+  .nav__outlbl { display: inline; font-size: 14px; font-weight: 600; }
+  /* the role is said once, beside the person, not again under the crest */
+  .nav__top .nav__brand .s { display: none; }
+  /* the collapsed sidebar does not follow into the drawer */
+  body.nav-slim .nav__top .nav__brand > div { display: block; }
+}
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
+/* on a tablet two panels side by side leave a table a few words wide, and its headings broke inside the word
+   (UPLOAD|ED); a panel holding a table takes the full width until the desktop's columns are wide enough */
+@media (max-width: 1023px) { .grid--2:has(.tablewrap, table), .grid--3:has(.tablewrap, table) { grid-template-columns: 1fr; } }
+@media (min-width: 600px) and (max-width: 900px) {
+  .mbar { padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: 18px; gap: 14px; }
+  .ubrand--bar { gap: 16px; }
+  .ubrand--bar .ubrand__crest { height: 62px; }
+  .mbar__btn { width: 52px; height: 52px; }
+}
+
+@media (max-width: 760px) {
+  /* 16px in a field, or iOS zooms the page in on every tap and leaves it there */
+  .ctl, input.ctl, select.ctl, textarea.ctl, .field input, .field select, .field textarea,
+  .tsrch input, .scope__f .ctl, .scope__f select, .ws__select { font-size: 16px; }
+  /* a searchable dropdown's options take a thumb, a long programme or course name wraps, and the list keeps to half the screen */
+  .ss__opt { padding: 12px 12px; line-height: 1.35; overflow-wrap: anywhere; }
+  .ss__list { max-height: min(320px, 50vh); }
+  /* figures: two compact tiles to a row, whatever grid a screen put them in */
+  .grid--3:has(> .tile), .grid--2:has(> .tile) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile { padding: 12px 13px; gap: 3px; }
+  .tile .n { font-size: 22px; letter-spacing: -.5px; }
+  .tile .eyebrow { font-size: 10.5px; letter-spacing: .35px; }
+  /* a filter bar of fields (.scope with .scope__f children) stays a wrapping row: set to a column, the fields' 100%
+     basis was read as 100% of its height and each field wrapped into a new column off the right of the screen */
+  .scope:has(> .scope__f) { flex-direction: row; }
+  /* a status or a label never pushes past its row */
+  .pill { max-width: 100%; overflow-wrap: anywhere; }
+  /* a modal fits the screen that is actually visible (the browser's own bars come and go), clear of the notch and the home bar */
+  .mdl { padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)); }
+  .mdl__box, .mdl__box.is-wide { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .mdl__box.is-viewer { height: calc(100vh - 16px); height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .content { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+}
+/* two tiles to a row down to the smallest phones in use; one only below 360px */
+@media (max-width: 400px) { .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 359px) {
+  .grid--4, .grid--3:has(> .tile), .grid--2:has(> .tile) { grid-template-columns: 1fr; }
+  .mbar { gap: 8px; padding-left: 10px; padding-right: 10px; }
+  .ubrand--bar { gap: 8px; }
+  .ubrand--bar .ubrand__crest { height: 42px; }
+  .mbar__btn { width: 42px; height: 42px; }
+}
+@media print { .mbar, .menu-btn__badge { display: none !important; } }

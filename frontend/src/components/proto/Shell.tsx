@@ -19,6 +19,7 @@ import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
 import { TITLES as PROTOTYPE_TITLES } from "@/lib/titles";
 import { ShellTitle } from "./ShellTitle";
 import { ManualHelp } from "@/components/manual/ManualHelp";
+import { UniversityBrand } from "./UniversityBrand";
 
 /* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
@@ -569,8 +570,25 @@ function initials(label: string): string {
 export function Shell({ route, me, children, sub, title }: { route: string; me: Me | null; children: ReactNode; sub?: string; title?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  // the drawer (a body class the CSS reads) closes on every navigation — the Shell remounts per page, the body does not
+  // the drawer on a phone or tablet: a body class the CSS reads, mirrored here so the menu button can say whether it is open
+  const [drawer, setDrawer] = useState(false);
+  const openDrawer = () => { document.body.classList.add("nav-open"); setDrawer(true); };
+  const closeDrawer = () => { document.body.classList.remove("nav-open"); setDrawer(false); };
+  // it closes on every navigation — the Shell remounts per page, the body does not
   useEffect(() => { document.body.classList.remove("nav-open"); }, [pathname]);
+  // open, it takes the focus to its close button and gives it back to the menu button; Escape closes it
+  useEffect(() => {
+    if (!drawer) return;
+    document.querySelector<HTMLButtonElement>(".nav__close")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      document.body.classList.remove("nav-open");
+      setDrawer(false);
+      document.querySelector<HTMLButtonElement>(".menu-btn")?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
   // the collapsed state lives on the body too; the button's label follows it after mount
   const [navSlim, setNavSlim] = useState(() => typeof document !== "undefined" && document.body.classList.contains("nav-slim"));
   const [navg, setNavg] = useState<Record<string, boolean>>({});
@@ -585,6 +603,9 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
   const t1 = sub && sub.trim() ? sub : "";
   const label = me?.menu && MENUS[me.menu] ? MENUS[me.menu].label : roleLabel(office);
   const who = me?.name ?? label;
+  const whoSub = me ? (me.unit || (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`)) : "Not signed in";
+  // what waits across the whole menu, for the menu button on a phone: the counts summed, an act needed counted once
+  const waitingAll = menu.groups.reduce((n, g) => n + navWaiting(g, waiting), 0);
 
   const isOpen = (g: MenuGroup) => {
     if (Object.prototype.hasOwnProperty.call(navg, g.name)) return !!navg[g.name];
@@ -640,15 +661,21 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
 
   return (
     <>
-      <div className="scrim" onClick={() => document.body.classList.remove("nav-open")} />
+      <div className="scrim" onClick={closeDrawer} />
       <div className="shell">
-        <nav className="nav" aria-label="Main">
-          <div className="nav__brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="" className="nav__crest" />
-            <div>
-              <span className="t">MOAUM Portal</span>
-              <span className="s">{label}</span>
+        <nav className="nav" id="main-nav" aria-label="Main">
+          <div className="nav__top">
+            <UniversityBrand sub={label} />
+            <button className="nav__close" aria-label="Close the menu" onClick={() => { closeDrawer(); document.querySelector<HTMLButtonElement>(".menu-btn")?.focus(); }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          {/* who is signed in, at the top of the drawer on a phone (the foot carries it on a desktop) */}
+          <div className="nav__id">
+            <div className="avatar">{initials(who)}</div>
+            <div className="nav__me">
+              <div className="nav__who">{who}</div>
+              <div className="nav__sub">{whoSub}</div>
             </div>
           </div>
 
@@ -711,23 +738,37 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
             <div className="avatar">{initials(who)}</div>
             <div className="nav__me">
               <div className="nav__who">{who}</div>
-              <div className="nav__sub">{me ? (me.unit || (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`)) : "Not signed in"}</div>
+              <div className="nav__sub">{whoSub}</div>
             </div>
             <button className="nav__out" title="Sign out" aria-label="Sign out" onClick={() => void signOut()}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9" />
               </svg>
+              <span className="nav__outlbl" aria-hidden="true">Sign out</span>
             </button>
           </div>
         </nav>
 
         <div className="main">
-          <header className="topbar">
-            <button className="menu-btn" aria-label="Open menu" onClick={() => document.body.classList.add("nav-open")}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M4 7h16M4 12h16M4 17h16" />
+          {/* on a phone or tablet, where the side navigation folds into a drawer: the University's bar, as its website heads
+              every page — the crest and the name, the search, and the menu — held at the top while the page scrolls */}
+          <header className="mbar">
+            <UniversityBrand variant="bar" href={href(menu.home) ?? "/"} />
+            <button className="mbar__btn" aria-label="Search" title="Search records" onClick={() => router.push("/search")}>
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
               </svg>
             </button>
+            <button className="mbar__btn menu-btn" aria-controls="main-nav" aria-expanded={drawer}
+              aria-label={waitingAll ? `Open the menu: ${waitingAll} waiting` : "Open the menu"} onClick={openDrawer}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+              {waitingAll ? <span className="menu-btn__badge" aria-hidden="true">{waitingAll > 99 ? "99+" : waitingAll}</span> : null}
+            </button>
+          </header>
+          <header className="topbar">
             <div className="topbar__t">
               {crumbGroup && crumbItem && crumbItem.label !== t0 ? (
                 <nav className="crumb" aria-label="Breadcrumb"><span>{crumbGroup.name}</span><span className="crumb__s" aria-hidden="true">›</span><span>{crumbItem.label}</span></nav>

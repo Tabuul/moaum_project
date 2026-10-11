@@ -161,7 +161,7 @@
 /* the smaller actions in one row, the moves between questions large beneath them */
 .ctlSecondary { display: flex; gap: 6px; flex-wrap: wrap; }
 /* on a phone the three small actions share one row: tighter padding, a touch smaller type */
-.ctlSecondary button { flex: 1 1 auto; min-height: 38px; font-size: 12.5px; padding: 8px 7px; white-space: nowrap; }
+.ctlSecondary button { flex: 1 1 auto; min-height: 44px; font-size: 12.5px; padding: 8px 7px; white-space: nowrap; }
 .ctlPrimary { display: flex; gap: 8px; }
 .ctlPrimary button { flex: 1; min-height: 48px; font-size: 16px; }
 .navToggle { flex: 1 1 auto; }

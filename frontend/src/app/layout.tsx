@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastHost } from "@/components/proto/Toast";
 
@@ -7,6 +7,15 @@ import { ToastHost } from "@/components/proto/Toast";
 export const metadata: Metadata = {
   title: "MOAUM Portal",
   description: "MOAUM Unified University Portal — Rev. Fr. Moses Orshio Adasu University, Makurdi",
+};
+
+/* the phone's frame: the page may reach under a notch (the top bar and the drawer keep clear of it with the safe-area
+   insets), and the browser's own bar takes the University's navy. Zoom is never disabled. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0B3345",
 };
 
 /* The page is the prototype's page: #app holds the shell, and the shell is
