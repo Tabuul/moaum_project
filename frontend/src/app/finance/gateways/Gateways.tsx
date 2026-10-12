@@ -36,6 +36,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
   const mayConfigure = ["ict", "admin", "super"].includes(actingOffice ?? "");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [keyedUrl, setKeyedUrl] = useState<string | null>(null); // Oct 2026: shown once, when generated
   const [said, setSaid] = useState<string | null>(null);
   const [health, setHealth] = useState<{ checkedAt: string; online: boolean; rows: HealthRow[] } | null>(null);
   const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on && g.gateway !== "paydirect")?.gateway ?? "paystack" });
@@ -145,6 +146,22 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                         <Field id="pd-user" label="Service username"><input id="pd-user" className="ctl tnum" autoComplete="off" value={pd.user} onChange={(e) => setPd({ ...pd, user: e.target.value })} /></Field>
                         <Field id="pd-pass" label="Service password" hint="At least eight characters; pasted once, never displayed after this."><input id="pd-pass" className="ctl tnum" type="password" autoComplete="new-password" value={pd.pass} onChange={(e) => setPd({ ...pd, pass: e.target.value })} /></Field>
                       </div>
+                      <div className="sub2 mt-1">
+                        Interswitch&rsquo;s team may configure only your notification address, with no username or password. Generate a key here and give them the address
+                        that carries it: a notification posted to that address is believed by the address alone.{quickteller?.notificationKey ? " A keyed address is set." : ""}
+                      </div>
+                      <div className="row">
+                        <Btn kind="secondary" disabled={busy} onClick={async () => {
+                          if (quickteller?.notificationKey && !window.confirm("Generate a new key? The address given to Interswitch before stops being believed.")) return;
+                          const j = await send("/gateways/paydirect/notification-key", {}, "Quickteller notification key generated");
+                          if (j) setKeyedUrl(String(j.url));
+                        }}>{quickteller?.notificationKey ? "Generate a new keyed address" : "Generate the keyed address"}</Btn>
+                      </div>
+                      {keyedUrl ? (
+                        <Note kind="ok" title="Give Interswitch this notification address — it is shown once">
+                          <code className="tnum" style={{ overflowWrap: "anywhere" }}>{keyedUrl}</code>
+                        </Note>
+                      ) : null}
                       <div className="row">
                         <Btn kind="primary" disabled={busy || !pd.user.trim() || pd.pass.trim().length < 8} onClick={async () => { const j = await send("/gateways/paydirect/key", { secret: JSON.stringify({ serviceUsername: pd.user.trim(), servicePassword: pd.pass.trim() }), hash: null }, "Quickteller notification credentials set from the dashboard", "PUT"); if (j) { setSaid("Quickteller notification credentials set \u2014 username ending " + j.last4); setPd({ user: "", pass: "" }); } }}>{c.configured ? "Replace the credentials" : "Set the credentials"}</Btn>
                         {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller notification credentials? No notification is believed until they are set again; payments wait for the collections import.") && await send("/gateways/paydirect/clear-key", {}, "Quickteller notification credentials cleared", "POST")) setSaid("Quickteller notification credentials cleared"); }}>Clear</Btn> : null}

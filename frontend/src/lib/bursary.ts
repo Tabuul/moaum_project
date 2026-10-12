@@ -14,6 +14,8 @@ export interface PaydirectTestReference {
 }
 export interface PaydirectDesk {
   billers: PaydirectBiller[]; collections: PaydirectCollection[]; validations: PaydirectValidation[]; credentials: boolean;
+  /** Oct 2026: a username and password set, and a key in the notification address set */
+  credentialsPair?: boolean; notificationKey?: boolean; keyedPath?: string;
   apiBase: string; validatePath: string; notifyPath: string; /** Oct 2026: the one address for both messages */ singlePath?: string;
   testReferences: PaydirectTestReference[];
 }

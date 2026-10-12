@@ -626,12 +626,17 @@ public class PaymentsService {
     /* ── Pay on Quickteller (V299): what Interswitch asks the portal, and what it tells it ── */
 
     /** the service username and password Interswitch sends with each payment notification: set on the dashboard (encrypted) or as service variables */
-    record PayDirectCredentials(String username, String password) {
+    /** what a notification is believed by: the service username and password Interswitch sends in it, or the key carried in the
+     *  notification address Interswitch was given (Oct 2026: their team configures only the address), or both */
+    record PayDirectCredentials(String username, String password, String notificationKey) {
+        boolean hasPair() { return !username.isEmpty() && !password.isEmpty(); }
+        boolean hasKey() { return !notificationKey.isEmpty(); }
     }
 
     PayDirectCredentials paydirectCredentials() {
         String user = envPaydirectUser;
         String pass = envPaydirectPassword;
+        String key = "";
         if (!configKey.isEmpty()) {
             String db = repo.gatewaySecret("paydirect", configKey);
             if (db != null && !db.isBlank()) {
@@ -639,6 +644,7 @@ public class PaymentsService {
                     Map<String, Object> m = mapper.readValue(db, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
                     user = str(m.get("serviceUsername"));
                     pass = str(m.get("servicePassword"));
+                    key = str(m.get("notificationKey"));
                 } catch (RuntimeException notJson) {
                     // a value kept from before V299 (the query API's client id and secret) is not a notification credential
                     user = "";
@@ -646,14 +652,62 @@ public class PaymentsService {
                 }
             }
         }
-        return user.isEmpty() || pass.isEmpty() ? null : new PayDirectCredentials(user, pass);
+        PayDirectCredentials c = new PayDirectCredentials(user, pass, key);
+        return c.hasPair() || c.hasKey() ? c : null;
     }
 
-    private boolean paydirectAuthentic(String user, String pass) {
+    /** believed by the key in the address it was posted to, or by the username and password in it */
+    private boolean paydirectAuthentic(String user, String pass, String keyInAddress) {
         PayDirectCredentials c = paydirectCredentials();
-        return c != null && user != null && pass != null
+        if (c == null) {
+            return false;
+        }
+        if (keyInAddress != null && c.hasKey()
+                && java.security.MessageDigest.isEqual(c.notificationKey().getBytes(StandardCharsets.UTF_8), keyInAddress.trim().getBytes(StandardCharsets.UTF_8))) {
+            return true;
+        }
+        return c.hasPair() && user != null && pass != null
                 && java.security.MessageDigest.isEqual(c.username().getBytes(StandardCharsets.UTF_8), user.trim().getBytes(StandardCharsets.UTF_8))
                 && java.security.MessageDigest.isEqual(c.password().getBytes(StandardCharsets.UTF_8), pass.trim().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** a new key for the notification address, kept beside any username and password; the address is returned once */
+    public Map<String, Object> newPaydirectKey() {
+        if (configKey.isEmpty()) {
+            throw new DomainRuleViolation("PAY_NO_CONFIG_KEY", "The portal has no passphrase to encrypt a gateway key with.",
+                    new DomainRuleViolation.Remedy("Set MOAUM_CONFIG_KEY (or MOAUM_AUTH_HMAC_SECRET) on the API service; a key is never stored in the clear.", "Directorate of ICT"));
+        }
+        byte[] raw = new byte[24];
+        new java.security.SecureRandom().nextBytes(raw);
+        String key = java.util.HexFormat.of().formatHex(raw);
+        PayDirectCredentials c = paydirectCredentials();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("serviceUsername", c == null ? "" : c.username());
+        m.put("servicePassword", c == null ? "" : c.password());
+        m.put("notificationKey", key);
+        String stored = json(m);
+        String last4 = key.substring(key.length() - 4);
+        AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> { repo.setGatewaySecret("paydirect", stored, null, "LIVE", last4, configKey); return null; }));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("url", apiBase() + "/api/v1/payments/paydirect/interswitch/" + key);
+        out.put("last4", last4);
+        return out;
+    }
+
+    /** a username and password set after a key keep the key */
+    private String withExistingKey(String pairJson) {
+        PayDirectCredentials c = paydirectCredentials();
+        if (c == null || !c.hasKey()) {
+            return pairJson;
+        }
+        try {
+            Map<String, Object> m = new LinkedHashMap<>(mapper.readValue(pairJson, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+            m.put("notificationKey", c.notificationKey());
+            return json(m);
+        } catch (RuntimeException notJson) {
+            return pairJson;
+        }
     }
 
     /** V407: the gateway's own words for the log when it gave no ResponseDescription — its answer, compact, or "empty answer" */
@@ -733,6 +787,10 @@ public class PaymentsService {
      * neither (or cannot be read) is logged and answered as a reference not found, so nothing is ever paid on it.
      */
     public PayDirectMessages.Answer paydirectMessage(String body) {
+        return paydirectMessage(body, null);
+    }
+
+    public PayDirectMessages.Answer paydirectMessage(String body, String keyInAddress) {
         PayDirectMessages.Kind kind;
         try {
             kind = PayDirectMessages.read(body).kind();
@@ -740,7 +798,7 @@ public class PaymentsService {
             kind = PayDirectMessages.Kind.UNKNOWN;
         }
         if (kind == PayDirectMessages.Kind.PAYMENT_NOTIFICATION) {
-            return paydirectNotify(body);
+            return paydirectNotify(body, keyInAddress);
         }
         if (kind == PayDirectMessages.Kind.UNKNOWN) {
             log("paydirect", "WEBHOOK", "message", null, null, null, "unrecognised", false, "IGNORED",
@@ -752,6 +810,11 @@ public class PaymentsService {
     }
 
     public PayDirectMessages.Answer paydirectNotify(String body) {
+        return paydirectNotify(body, null);
+    }
+
+    /** @param keyInAddress the key in the address the notification was posted to, if any (Oct 2026) */
+    public PayDirectMessages.Answer paydirectNotify(String body, String keyInAddress) {
         PayDirectMessages.Message m;
         try {
             m = PayDirectMessages.read(body);
@@ -760,7 +823,7 @@ public class PaymentsService {
             boolean asJson = body != null && body.strip().startsWith("{");
             return new PayDirectMessages.Answer(asJson, PayDirectMessages.notificationAnswer(asJson, java.util.List.of()));
         }
-        boolean authentic = paydirectAuthentic(m.field("ServiceUsername"), m.field("ServicePassword"));
+        boolean authentic = paydirectAuthentic(m.field("ServiceUsername"), m.field("ServicePassword"), keyInAddress);
         java.util.List<String[]> results = new java.util.ArrayList<>();
         for (Map<String, String> p : m.payments()) {
             String logId = PayDirectMessages.get(p, "PaymentLogId");
@@ -825,11 +888,15 @@ public class PaymentsService {
         m.put("collections", repo.paydirectCollections(200));
         m.put("validations", repo.validations(50));
         m.put("testReferences", repo.gatewayTestReferences(null));
-        m.put("credentials", paydirectCredentials() != null);
+        PayDirectCredentials pc = paydirectCredentials();
+        m.put("credentials", pc != null);
+        m.put("credentialsPair", pc != null && pc.hasPair());
+        m.put("notificationKey", pc != null && pc.hasKey());
         m.put("apiBase", apiBase());
         m.put("validatePath", "/api/v1/payments/paydirect/validate");
         m.put("notifyPath", "/api/v1/payments/paydirect/notify");
         m.put("singlePath", "/api/v1/payments/paydirect/interswitch");
+        m.put("keyedPath", "/api/v1/payments/paydirect/interswitch/<key>");
         return m;
     }
 
@@ -1424,7 +1491,7 @@ public class PaymentsService {
         // the write must run inside an attributed transaction, or the V039 function
         // refuses ("a gateway key is set by a person") because moaum.actor_id is unset.
         AuditContextHolder.with(AuditContextHolder.required(),
-                () -> tx.execute(st -> { repo.setGatewaySecret(gateway, s, hashArg, mode, last4, configKey); return null; }));
+                () -> tx.execute(st -> { repo.setGatewaySecret(gateway, gateway.equals("paydirect") ? withExistingKey(s) : s, hashArg, mode, last4, configKey); return null; }));
         return java.util.Map.of("gateway", gateway, "configured", true, "mode", mode, "last4", last4);
     }
 

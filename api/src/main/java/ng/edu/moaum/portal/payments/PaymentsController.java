@@ -144,8 +144,28 @@ class PaymentsController {
         return answer(payments.paydirectMessage(body));
     }
 
+    /**
+     * Oct 2026: the same doors with a key in the address — the one thing Interswitch's team configures. A notification posted to
+     * the keyed address is believed by the key alone; the key is generated on the Gateways screen and shown once.
+     */
+    @PostMapping(value = "/paydirect/interswitch/{key}", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectMessageKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
+        return answer(payments.paydirectMessage(body, key));
+    }
+
+    @PostMapping(value = "/paydirect/notify/{key}", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectNotifyKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
+        return answer(payments.paydirectNotify(body, key));
+    }
+
+    @PostMapping(value = "/paydirect/validate/{key}", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectValidateKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
+        return answer(payments.paydirectValidate(body));
+    }
+
     /** opened in a browser, each door says what it is — so the Directorate of ICT can see it is reachable before giving it to Interswitch */
-    @GetMapping(value = { "/paydirect/validate", "/paydirect/notify", "/paydirect/interswitch" }, produces = "text/plain;charset=UTF-8")
+    @GetMapping(value = { "/paydirect/validate", "/paydirect/notify", "/paydirect/interswitch", "/paydirect/validate/{key}", "/paydirect/notify/{key}", "/paydirect/interswitch/{key}" },
+                produces = "text/plain;charset=UTF-8")
     ResponseEntity<String> paydirectDoor() {
         return ResponseEntity.ok("MOAUM portal: Quickteller (Interswitch PayDirect) may post both its customer validations and its payment notifications "
                 + "to the one address /api/v1/payments/paydirect/interswitch (or each to its own: /api/v1/payments/paydirect/validate and "
@@ -229,6 +249,13 @@ class PaymentsController {
     @PreAuthorize(BURSARY)
     Map<String, Object> health() {
         return payments.health();
+    }
+
+    /** Oct 2026: a key for the notification address, generated here and shown once with the address to give Interswitch */
+    @PostMapping("/gateways/paydirect/notification-key")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> newPaydirectKey() {
+        return payments.newPaydirectKey();
     }
 
     @PostMapping("/gateways/{gateway}/clear-key")

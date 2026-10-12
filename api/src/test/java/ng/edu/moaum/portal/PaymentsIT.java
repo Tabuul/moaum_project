@@ -361,10 +361,19 @@ class PaymentsIT {
             // the same payment again is received, not paid twice
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
                     .contains("<Status>0</Status>");
+            // Oct 2026: Interswitch's team configures only the address — a key in it is believed by itself; a wrong key is not; the pair still holds beside it
+            ResponseEntity<Map> keyed = it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/notification-key", Map.of());
+            assertThat(keyed.getStatusCode().value()).as(String.valueOf(keyed.getBody())).isEqualTo(200);
+            String keyedUrl = String.valueOf(keyed.getBody().get("url"));
+            String keyedPath = keyedUrl.substring(keyedUrl.indexOf("/api/v1/payments/paydirect/interswitch/"));
+            assertThat(postXml(keyedPath, notification("", "", reference, logId, amount.toPlainString(), true, false))).contains("<Status>0</Status>");
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch/not-the-key", notification("", "", reference, logId, amount.toPlainString(), true, false))).contains("<Status>1</Status>");
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false))).contains("<Status>0</Status>");
+            assertThat(it.get(ict, "/api/v1/payments/paydirect").getBody().get("notificationKey")).isEqualTo(true);
             List<String> outcomes = jdbc.sql("SELECT outcome FROM finance.gateway_event WHERE gateway = 'paydirect' AND reference = :r AND source = 'WEBHOOK' ORDER BY received_at")
                     .param("r", reference).query(String.class).list();
             // V407: the first came while no credentials were set at all; the second presented a wrong password
-            assertThat(outcomes).containsExactly("NO_CREDENTIALS", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED");
+            assertThat(outcomes).containsExactly("NO_CREDENTIALS", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED", "ALREADY_SETTLED", "BAD_SIGNATURE", "ALREADY_SETTLED");
 
             // a paid reference is refused when Quickteller asks again, so it is not paid twice — at either address
             assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))

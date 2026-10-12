@@ -34,6 +34,8 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
   const validateAt = q.apiBase + q.validatePath;
   const notifyAt = q.apiBase + q.notifyPath;
   const singleAt = q.apiBase + (q.singlePath ?? "/api/v1/payments/paydirect/interswitch");
+  // Oct 2026: with a key generated on Payment gateways, the address to give is the keyed one — shown once when generated
+  const keyedAt = q.apiBase + (q.keyedPath ?? "/api/v1/payments/paydirect/interswitch/<key>");
   const on = q.billers.filter((b) => b.active && b.redirect && b.pay_link);
 
   function copy(s: string) {
@@ -49,6 +51,7 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
         <KvGrid cls="grid--2" pairs={[
           ["1 · Give Interswitch this one address", <span key="a">
             <span className="blk"><b className="tnum">{singleAt}</b> <Btn kind="ghost" onClick={() => copy(singleAt)}>Copy</Btn></span>
+            <span className="blk sub2">Where Interswitch configures only the address, give the keyed one: <b className="tnum">{keyedAt}</b>{q.notificationKey ? " — a key is set; the address was shown once when it was generated on Payment gateways." : " — generate the key on Payment gateways; the address is shown once."}</span>
             <span className="sub2 blk mt-2">It takes both the customer validation (the reference check) and the payment notification &mdash; the single URL Interswitch asks for. Each message says which it is, and is answered as such. Opened in a browser, it says it is reachable.</span>
             <span className="sub2 blk mt-2">{"Should Interswitch take them separately: customer validation "}<span className="tnum">{validateAt}</span>{", payment notification "}<span className="tnum">{notifyAt}</span>.</span>
           </span>],
