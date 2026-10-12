@@ -9770,12 +9770,12 @@ BEGIN
                v_no2, v_opt2, v_twin, v_lit3, v_chg3, v_batch, again->>'unchanged', left((SELECT string_agg(x->>'status' || ':' || coalesce(x->>'message', ''), ' / ') FROM jsonb_array_elements(pv->'rows') x), 400)));
 END $$;
 
--- ── V405. A course that joins a programme's structure after a semester's classes were opened gets its class in that semester by
---          itself (and a restored course too); a semester not yet opened gets nothing; the allocation desk lists a department's
---          courses without a class and says why ──
+-- ── V405/V406. A course that joins a programme's structure after a semester's classes were opened gets its class in that semester
+--          when asked (catalogue.open_classes_for_courses, the desk's opening) — never unasked; a semester not yet opened gets
+--          nothing; the allocation desk lists a department's courses without a class and says why ──
 DO $$
 DECLARE S text := '9947/9948'; who uuid := gen_random_uuid(); dept text := 'ZZG9';
-        v_later int; v_sem2 int; v_restored int; v_missing text; v_opened int; v_after text;
+        v_unasked int; v_later int; v_sem2 int; v_ended int; v_restored int; v_missing text; v_opened int; v_after text;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V405', true);
@@ -9786,18 +9786,22 @@ BEGIN
         INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZG 101', 'Check first course', 2, 1, 100, dept, 'Core', 'LIVE');
         INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZG 101', 'C00023', 100, 'Core');
         INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZG 101', S, 1);
-        -- a course uploaded into the structure afterwards: its class opens by itself; one of the second semester waits for that semester
+        -- a course uploaded into the structure afterwards: no class until asked; asked, its class opens; one of the second semester waits for that semester
         INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
             ('MOAU-ZZG 102', 'Check later course', 2, 1, 100, dept, 'Core', 'LIVE'), ('MOAU-ZZG 103', 'Check second-semester course', 2, 2, 100, dept, 'Core', 'LIVE'),
             ('BSU-ZZG 104', 'Check course in no structure', 2, 1, 100, dept, 'Core', 'LIVE'), ('ZZG 105', 'Check restored course', 2, 1, 100, dept, 'Core', 'LIVE');
         INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
             ('MOAU-ZZG 102', 'C00023', 100, 'Core'), ('MOAU-ZZG 103', 'C00023', 100, 'Core'), ('ZZG 105', 'C00023', 100, 'Core');
+        SELECT count(*) INTO v_unasked FROM catalogue.offering WHERE course_code IN ('MOAU-ZZG 102', 'MOAU-ZZG 103', 'ZZG 105') AND session = S;
+        PERFORM catalogue.open_classes_for_courses(ARRAY['MOAU-ZZG 102', 'MOAU-ZZG 103']);
         SELECT count(*) INTO v_later FROM catalogue.offering WHERE course_code = 'MOAU-ZZG 102' AND session = S AND semester = 1 AND stream = 'REGULAR';
         SELECT count(*) INTO v_sem2 FROM catalogue.offering WHERE course_code = 'MOAU-ZZG 103' AND session = S;
-        -- an ended course restored gets its class too
-        DELETE FROM catalogue.offering WHERE course_code = 'ZZG 105';
+        -- an ended course gets none while ended; restored and asked, it gets its class
         UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = 'ZZG 105';
+        PERFORM catalogue.open_classes_for_courses(ARRAY['ZZG 105']);
+        SELECT count(*) INTO v_ended FROM catalogue.offering WHERE course_code = 'ZZG 105';
         UPDATE catalogue.course SET state = 'LIVE', ended_on = NULL WHERE code = 'ZZG 105';
+        PERFORM catalogue.open_classes_for_courses(ARRAY['ZZG 105']);
         SELECT count(*) INTO v_restored FROM catalogue.offering WHERE course_code = 'ZZG 105' AND session = S AND semester = 1;
         -- the desk: the course in no structure is listed and named as such; the second-semester course is not (its semester is not open)
         SELECT string_agg(w.code || ':' || w.reason, ',' ORDER BY w.code) INTO v_missing FROM catalogue.courses_without_class(dept, S) w;
@@ -9809,9 +9813,9 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('V405: a course that joins the structure later gets its class in every opened semester; the desk lists what has none and why',
-        v_later = 1 AND v_sem2 = 0 AND v_restored = 1 AND v_missing = 'BSU-ZZG 104:NOT_IN_STRUCTURE' AND v_opened >= 0 AND v_after = 'BSU-ZZG 104:NOT_IN_STRUCTURE',
-        format('later=%s sem2=%s restored=%s missing=%s opened_again=%s after=%s', v_later, v_sem2, v_restored, v_missing, v_opened, v_after));
+    PERFORM pg_temp.assert('V405/V406: a course that joins the structure later gets its class in every opened semester when asked, never unasked; the desk lists what has none and why',
+        v_unasked = 0 AND v_later = 1 AND v_sem2 = 0 AND v_ended = 0 AND v_restored = 1 AND v_missing = 'BSU-ZZG 104:NOT_IN_STRUCTURE' AND v_opened >= 0 AND v_after = 'BSU-ZZG 104:NOT_IN_STRUCTURE',
+        format('unasked=%s later=%s sem2=%s ended=%s restored=%s missing=%s opened_again=%s after=%s', v_unasked, v_later, v_sem2, v_ended, v_restored, v_missing, v_opened, v_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

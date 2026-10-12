@@ -228,13 +228,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       {withoutClass.length ? (
         <Note kind={withoutClass.some((w) => w.reason === "NO_CLASS") ? "bad" : "info"} title={`${withoutClass.length} course${withoutClass.length === 1 ? "" : "s"} of ${deptName} ${withoutClass.length === 1 ? "has" : "have"} no class in ${session}`}>
           <div className="sub2 mb-1">
-            A course gets its class when the semester opens and, from now, the moment it joins a programme&rsquo;s structure. One with no class cannot be allocated,
-            timetabled or registered.
+            A course gets its class when the semester opens; one added to a programme&rsquo;s structure after that has none until it is opened here. A course
+            with no class cannot be allocated, timetabled or registered.
           </div>
           <ul className="sub2" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
             {withoutClass.map((w) => (
               <li key={w.code}><b className="tnum">{w.code}</b> · {w.title} · {w.level} level, {semName(w.semester).toLowerCase()} semester —{" "}
-                {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, and its class opens by itself" : "in the structure, no class yet"}</li>
+                {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, then open the classes here" : "in the structure, no class yet"}</li>
             ))}
           </ul>
           {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
