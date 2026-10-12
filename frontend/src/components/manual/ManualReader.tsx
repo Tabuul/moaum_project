@@ -14,18 +14,23 @@ function record(kind: "PROCEDURE" | "PRINT" | "PDF", procedureId?: string) {
   void fetch("/api/bff/api/v1/manual/views", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, procedureId: procedureId ?? null }) }).catch(() => undefined);
 }
 
+/** a line of the manual — a step or an expected result — with its menu items as the portal's labels and links and its controls named */
+export function Rich({ text, menus }: { text: string; menus: string[] }) {
+  return (
+    <>
+      {pieces(text, menus, ROUTES).map((x, k) =>
+        x.kind === "text" ? <span key={k}>{x.text}</span>
+          : x.kind === "control" ? <code key={k} className="manual__ctl">{x.text}</code>
+          : x.href ? <Link key={k} href={x.href} className="manual__menu">{x.label}</Link>
+          : <b key={k} className="manual__menu" title={x.missing ? "This menu item is not on the portal" : undefined}>{x.label}</b>)}
+    </>
+  );
+}
+
 export function Steps({ p, menus }: { p: Procedure; menus: string[] }) {
   return (
     <ol className="manual__steps">
-      {p.steps.map((s, i) => (
-        <li key={i}>
-          {pieces(s, menus, ROUTES).map((x, k) =>
-            x.kind === "text" ? <span key={k}>{x.text}</span>
-              : x.kind === "control" ? <code key={k} className="manual__ctl">{x.text}</code>
-              : x.href ? <Link key={k} href={x.href} className="manual__menu">{x.label}</Link>
-              : <b key={k} className="manual__menu" title={x.missing ? "This menu item is not on the portal" : undefined}>{x.label}</b>)}
-        </li>
-      ))}
+      {p.steps.map((s, i) => <li key={i}><Rich text={s} menus={menus} /></li>)}
     </ol>
   );
 }
@@ -41,7 +46,7 @@ export function ProcedureCard({ p, menus, open, onToggle }: { p: Procedure; menu
       {open ? (
         <div className="manual__body">
           <Steps p={p} menus={menus} />
-          <div className="manual__expected"><b>Expected result:</b> {p.expected}</div>
+          <div className="manual__expected"><b>Expected result:</b> <Rich text={p.expected} menus={menus} /></div>
         </div>
       ) : null}
     </article>

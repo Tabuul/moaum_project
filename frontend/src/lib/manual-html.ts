@@ -22,7 +22,7 @@ export function manualHtml(rows: Procedure[], menus: string[], opts: { contents?
       out += `<section style="break-inside:avoid;margin:0 0 10px"><h3 style="font-size:11.5px;margin:0 0 2px">${esc(p.title)}</h3>`;
       out += `<p style="margin:0 0 4px;font-size:10.5px"><b>Purpose:</b> ${esc(p.purpose)}</p><ol style="margin:0 0 4px 18px;padding:0;font-size:10.5px">`;
       for (const s of p.steps) out += `<li>${stepHtml(s, menus)}</li>`;
-      out += `</ol><p style="margin:0;font-size:10.5px"><b>Expected result:</b> ${esc(p.expected)}</p></section>`;
+      out += `</ol><p style="margin:0;font-size:10.5px"><b>Expected result:</b> ${stepHtml(p.expected, menus)}</p></section>`;
     }
   }
   return out || `<p>No procedure is published for this office yet.</p>`;

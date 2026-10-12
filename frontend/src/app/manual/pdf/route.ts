@@ -48,7 +48,7 @@ export async function GET(req: Request) {
       pdf.heading(clean(p.title));
       pdf.paragraph(`Purpose: ${clean(p.purpose)}`, 9.5);
       p.steps.forEach((s, i) => pdf.paragraph(`${i + 1}. ${clean(paper(s, menus))}`, 9.5, 1.3));
-      pdf.paragraph(`Expected result: ${clean(p.expected)}`, 9.5);
+      pdf.paragraph(`Expected result: ${clean(paper(p.expected, menus))}`, 9.5);
     }
   }
   if (!d.procedures.length) pdf.paragraph("No procedure is published for this office yet.", 9.5);

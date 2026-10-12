@@ -9,7 +9,7 @@ import { ROUTES } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Steps } from "@/components/manual/ManualReader";
+import { Rich, Steps } from "@/components/manual/ManualReader";
 import { CATEGORIES, CATEGORY_WORD, STATE_WORD, dayOf, menuChoices, unresolved, type ManualAdminView, type ManualCategory, type ManualState, type Procedure } from "@/lib/manual";
 import { MENUS } from "@/lib/menus";
 
@@ -173,7 +173,7 @@ export function ManualAdmin({ data }: { data: ManualAdminView }) {
                   <Btn kind="ghost" size="sm" disabled={busy} onClick={() => void move(p, 1)} title="Later in its category">↓</Btn>
                 </div>
                 {reading?.id === p.id ? (
-                  <div className="manual__body mt-1"><div className="sub2"><b>Purpose:</b> {p.purpose}</div><Steps p={p} menus={p.offices.filter((o) => o !== "everyone")} /><div className="manual__expected"><b>Expected result:</b> {p.expected}</div></div>
+                  <div className="manual__body mt-1"><div className="sub2"><b>Purpose:</b> {p.purpose}</div><Steps p={p} menus={p.offices.filter((o) => o !== "everyone")} /><div className="manual__expected"><b>Expected result:</b> <Rich text={p.expected} menus={p.offices.filter((o) => o !== "everyone")} /></div></div>
                 ) : null}
               </td>
             </tr>
