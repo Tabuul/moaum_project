@@ -227,4 +227,27 @@ class CourseTwinsIT {
     private List<String> menu(UUID student) {
         return jdbc.sql("SELECT course_code FROM registration.student_menu(:s, :ses, 1)").param("s", student).param("ses", SESSION).query(String.class).list();
     }
+
+    /** V405: a course that joins the structure after the semester's classes were opened gets its class by itself; the desk lists
+     *  a course in no structure and opens what is still owed */
+    @Test
+    void aCourseAddedToTheStructureLaterGetsItsClass() {
+        String later = "MOAU-" + bsu.substring(4, 7) + " 114";   // the twins' letters, a code of its own
+        String lone = "BSU-" + bsu.substring(4, 7) + " 115";
+        it.db(() -> {
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES (:a, 'Course added later', 2, 1, 100, :d, 'LIVE'), (:b, 'Course in no structure', 2, 1, 100, :d, 'LIVE')")
+                    .param("a", later).param("b", lone).param("d", dept).update();
+            return jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:a, 'C00023', 100, 'Core')").param("a", later).update();
+        });
+        // the session's first semester has classes (the twins'), so the course added to the structure has one at once
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = 1 AND stream = 'REGULAR'")
+                .param("c", later).param("s", SESSION).query(Long.class).single()).isEqualTo(1L);
+        String hod = it.officer("hod", "department", dept);
+        List<Map<String, Object>> missing = it.getList(hod, "/api/v1/allocation/without-class?dept=" + dept + "&session=" + SESSION).getBody();
+        assertThat(missing).anySatisfy(r -> { assertThat(r.get("code")).isEqualTo(lone); assertThat(r.get("reason")).isEqualTo("NOT_IN_STRUCTURE"); });
+        assertThat(missing).noneSatisfy(r -> assertThat(r.get("code")).isEqualTo(later));
+        ResponseEntity<Map> opened = it.call(hod, HttpMethod.POST, "/api/v1/allocation/open-classes?session=" + SESSION, Map.of());
+        assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
+        assertThat((List<Integer>) opened.getBody().get("semesters")).contains(1);
+    }
 }

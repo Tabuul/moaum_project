@@ -193,6 +193,32 @@ class AllocationController {
         return rows;
     }
 
+    /** V405: the department's courses with no class in the session's opened semesters, and why — a course added to a programme's
+     *  structure after the semester opened (from V405 its class opens with the structure row; here the desk opens what is still
+     *  owed), or a course in no programme's structure at all, which no opening reaches */
+    @GetMapping("/without-class")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> withoutClass(@RequestParam String dept, @RequestParam String session) {
+        dept = scope.scopedDept(dept);
+        return jdbc.sql("SELECT * FROM catalogue.courses_without_class(:d, :s)").param("d", dept).param("s", session).query().listOfRows();
+    }
+
+    /** every structure course still without a class in the session's opened semesters gets one, as the calendar gave the others
+     *  when it opened the semester (registration.open_course_registration, idempotent); nothing is opened for a semester not yet open */
+    @PostMapping("/open-classes")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional
+    Map<String, Object> openClasses(@RequestParam String session) {
+        List<Integer> semesters = jdbc.sql("SELECT DISTINCT semester FROM catalogue.offering WHERE session = :s AND stream = 'REGULAR' ORDER BY semester")
+                .param("s", session).query(Integer.class).list();
+        int opened = 0;
+        for (Integer semester : semesters) {
+            opened += jdbc.sql("SELECT registration.open_course_registration(:s, :n)").param("s", session).param("n", semester).query(Integer.class).single();
+        }
+        return Map.of("session", session, "semesters", semesters, "opened", opened);
+    }
+
     private static final tools.jackson.databind.ObjectMapper CO = new tools.jackson.databind.ObjectMapper();
 
     /**

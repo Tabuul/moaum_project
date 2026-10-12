@@ -18,6 +18,8 @@ import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "./BulkUpload";
 
 export interface Dept { code: string; name: string; faculty_code: string }
+/** V405: a course of the department with no class in the session's opened semesters, and why */
+export interface WithoutClass { code: string; title: string; level: number; semester: number; reason: "NOT_IN_STRUCTURE" | "NO_CLASS" }
 export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
 export interface CoLecturer { id: string; name: string; programme_code?: string | null; programme?: string | null }
 export interface Offering {
@@ -32,9 +34,9 @@ const MAX_UNITS = 12;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 
-export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false }: {
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, withoutClass = [] }: {
   depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
-  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean;
+  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean; withoutClass?: WithoutClass[];
 }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -110,6 +112,23 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
     notify(reason);
     return (j ?? {}) as Record<string, unknown>;
+  }
+
+  /** V405: the session's opened semesters get a class for every structure course still without one */
+  async function openClasses() {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/allocation/open-classes?session=${encodeURIComponent(session)}`, {
+        method: "POST", headers: { "X-Reason": reasonHeader(`Classes opened in ${session} for courses added to the structure`) },
+      });
+      const j = (await r.json().catch(() => null)) as { opened?: number } | null;
+      if (!r.ok) { notifyProblem((j as Problem | null) ?? { status: r.status, title: r.statusText }); return; }
+      const n = Number(j?.opened ?? 0);
+      notify(n ? `${n} class${n === 1 ? "" : "es"} opened in ${session}` : `No class was owed in ${session}: what is listed is in no programme's structure`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function assign(overload: boolean) {
@@ -206,6 +225,23 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
         ["Lecturers", String(lecturers.length), null, "In this department"],
       ]} />
 
+      {withoutClass.length ? (
+        <Note kind={withoutClass.some((w) => w.reason === "NO_CLASS") ? "bad" : "info"} title={`${withoutClass.length} course${withoutClass.length === 1 ? "" : "s"} of ${deptName} ${withoutClass.length === 1 ? "has" : "have"} no class in ${session}`}>
+          <div className="sub2 mb-1">
+            A course gets its class when the semester opens and, from now, the moment it joins a programme&rsquo;s structure. One with no class cannot be allocated,
+            timetabled or registered.
+          </div>
+          <ul className="sub2" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
+            {withoutClass.map((w) => (
+              <li key={w.code}><b className="tnum">{w.code}</b> · {w.title} · {w.level} level, {semName(w.semester).toLowerCase()} semester —{" "}
+                {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, and its class opens by itself" : "in the structure, no class yet"}</li>
+            ))}
+          </ul>
+          {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
+            <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
+          ) : null}
+        </Note>
+      ) : null}
       <Panel title="Teaching allocation" right={`${deptName} · ${session} · ${semName(semester).toLowerCase()} semester${level ? ` · ${level} level` : ""}`}>
         {offerings.length ? (
           <DTable cols={["Course", "Level|mid", "Units|mid", "Registered|mid", "Lecturers", "Second examiner", "Action|num"]} rows={offerings.map((o) => [
