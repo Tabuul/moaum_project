@@ -496,6 +496,9 @@ class ApplicantsController {
         Map<String, Object> f = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", session + "/" + year).query().singleRow();
         Map<String, Object> out = new java.util.LinkedHashMap<>(feeMap(f));
         out.put("session", session + "/" + year);
+        // V419: the rule for an unstated session, and whether its application window is already open — the page says so while both hold
+        out.put("policy", jdbc.sql("SELECT admissions.applicant_fee_policy()").query(String.class).single());
+        out.put("windowOpen", "OPEN".equals(jdbc.sql("SELECT w.state FROM policy.window_state('POST_UTME_REGISTRATION', :s, NULL) w").param("s", session + "/" + year).query(String.class).optional().orElse(null)));
         return out;
     }
 

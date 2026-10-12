@@ -9,13 +9,13 @@
  * any payment whose notification did not arrive. V383: the test references the
  * Bursary issues for Interswitch's testers.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { Btn, KvGrid, Note, PBody, Panel, Pil } from "@/components/proto/ui";
 import { OUTCOME, when, type PaydirectBiller, type PaydirectDesk } from "@/lib/bursary";
 import { collectionRows, interswitchLink, quicktellerLink } from "@/lib/quickteller";
-import { InterswitchTestReferences } from "./InterswitchTestReferences";
+import { InterswitchTestReferences, TEST_REFERENCES_ANCHOR } from "./InterswitchTestReferences";
 
 type Send = (path: string, body: unknown, reason: string, method?: string) => Promise<Record<string, unknown> | null>;
 type Edit = { code: string; name: string; link: string; active: boolean; redirect: boolean; withAmount: boolean };
@@ -35,14 +35,14 @@ function Certification({ q }: { q: PaydirectDesk }) {
   const open = refs.filter((t) => t.state === "OPEN");
   const asked = refs.filter((t) => Number(t.checks ?? 0) > 0);
   const discarded = Number(c.discarded_since ?? 0);
-  const steps: [boolean, string, string][] = [
+  const steps: [boolean, string, ReactNode][] = [
     [!!q.notificationKey || !!q.credentialsPair, "The notification address Interswitch has",
       q.notificationKey ? "The keyed address is set: it is the only thing their team configures."
         : q.credentialsPair ? "A username and password are set; Interswitch must send them in each notification — or use the keyed address, which needs nothing of theirs."
         : "Generate the keyed address on Payment gateways and give it to Interswitch as the notification URL."],
     [open.length > 0 || asked.length > 0, "A test reference for their team to use",
       open.length ? `${open.length} open below: give one to the certification team as the reference to validate and pay. Their own references are refused as unknown.`
-        : "Issue one below and give it to the certification team; their own references are refused as unknown."],
+        : <>Issue one <a href={`#${TEST_REFERENCES_ANCHOR}`}>below</a> and give it to the certification team; their own references are refused as unknown.</>],
     [asked.length > 0 || !!c.validation_at, "Interswitch asked the portal about a reference (customer validation)",
       c.validation_at ? `Last asked ${when(c.validation_at)}; answered ${OUTCOME[c.validation_outcome ?? ""]?.[0] ?? c.validation_outcome ?? ""}.`
         : "Not yet. It shows here the moment their team posts a validation."],
@@ -153,7 +153,7 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
       </PBody>
 
       <PBody>
-        <InterswitchTestReferences refs={q.testReferences ?? []} may={may} busy={busy} send={send} say={say} />
+        <div id={TEST_REFERENCES_ANCHOR}><InterswitchTestReferences refs={q.testReferences ?? []} may={may} busy={busy} send={send} say={say} /></div>
       </PBody>
 
       <PBody>

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 253
+\set EXPECTED 254
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10365,6 +10365,35 @@ BEGIN
                  AND o5 = 'CHECKING_FEE' AND o5_amount = 3000 AND o6 = 'ACCEPTANCE_FEE' AND o6_amount = 10000 AND o7 = 0, false),
         format('current %s (%s, expected %s) | fee %s %s | paid %s | submitted %s | asked %s: %s | published %s %s | read %s %s | accepted %s',
                cur, cur_state, expected, o1, o1_amount, o2, o3, o4, o4_detail, o5, o5_amount, o6, o6_amount, o7));
+END $$;
+
+-- ── V419. When an application window opens for a session whose applicant fees are not stated, the Bursary is told once, with what
+--          the rule does meanwhile; a session whose fees are stated opens quietly ──
+DO $$
+DECLARE S text := '9945/9946'; T text := '9944/9945'; who uuid := gen_random_uuid(); bursar uuid := gen_random_uuid();
+        v_before int; v_after int; v_subject text; v_body text; v_stated_after int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V419', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (bursar, 'CHK/V419', 'CHECKBURSAR', 'Office', 'check-v419-bursar@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES (gen_random_uuid(), bursar, 'bursar', 'institution', NULL, 'CHECK V419', who, current_date - 1);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9945-10-01', date '9946-08-31'), (gen_random_uuid(), T, date '9944-10-01', date '9945-08-31') ON CONFLICT (name) DO NOTHING;
+        DELETE FROM admissions.applicant_fee WHERE session IN (S, T);
+        SELECT count(*) INTO v_before FROM platform.notice WHERE recipient = 'check-v419-bursar@example.com';
+        -- the window opened for a session with no fees stated: the Bursary is told once
+        PERFORM policy.window_act('POST_UTME_REGISTRATION', S, NULL, 'OPEN', NULL, NULL, NULL, false, 'check: window opened', who, 'ict');
+        SELECT count(*), max(subject), max(body) INTO v_after, v_subject, v_body FROM platform.notice WHERE recipient = 'check-v419-bursar@example.com';
+        -- a session whose fees are stated opens without a word
+        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee) VALUES (T, 2000, 300, 50000);
+        PERFORM policy.window_act('POST_UTME_REGISTRATION', T, NULL, 'OPEN', NULL, NULL, NULL, false, 'check: window opened', who, 'ict');
+        SELECT count(*) INTO v_stated_after FROM platform.notice WHERE recipient = 'check-v419-bursar@example.com';
+        RAISE EXCEPTION 'the V419 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V419: the Bursary is told once when an application window opens on unstated applicant fees; a stated session opens quietly',
+        v_after = v_before + 1 AND v_subject LIKE 'Applicant fees for ' || S || ' are not stated%' AND v_body LIKE '%' || S || '%' AND v_stated_after = v_after,
+        format('before=%s after=%s stated_after=%s subject=%s', v_before, v_after, v_stated_after, v_subject));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -25,6 +25,9 @@ const STATE: Record<PaydirectTestReference["state"], [string, "ok" | "info" | "g
 };
 const DAYS = Array.from({ length: 14 }, (_, i) => i + 1);
 
+/** the anchor the certification checklist points at */
+export const TEST_REFERENCES_ANCHOR = "test-references";
+
 export function InterswitchTestReferences({ refs, may, busy, send, say }: { refs: PaydirectTestReference[]; may: boolean; busy: boolean; send: Send; say: (s: string) => void }) {
   const [form, setForm] = useState({ number: "", amount: "100", days: "7" });
   const [issued, setIssued] = useState<PaydirectTestReference | null>(null);

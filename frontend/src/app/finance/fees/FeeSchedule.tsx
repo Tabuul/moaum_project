@@ -35,7 +35,11 @@ export interface Schedule {
   position: { students_paying: number; confirmed: number; references_open: number };
 }
 export interface OpenReference { id: string; reference: string; session: string; purpose: string; amount: number; generated_at: string; expires_at: string; matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; current_level: number }
-export interface ApplicantFees { session: string; stated: boolean; carriedFrom?: string | null; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number }
+export interface ApplicantFees {
+  session: string; stated: boolean; carriedFrom?: string | null; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number;
+  /** V419: the rule for an unstated session, and whether its application window is open */
+  policy?: "CARRY" | "REFUSE" | null; windowOpen?: boolean;
+}
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -602,6 +606,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>
         <PBody>
+        {applicantFees && !applicantFees.stated && applicantFees.windowOpen ? (
+          <Note kind="bad" title={`The application window for ${session} is open and its applicant fees are not stated`}>
+            {applicantFees.policy === "REFUSE" ? "Under the rule below no applicant is issued a fee reference until they are stated: state them now." : applicantFees.carriedFrom ? `Applicants are being charged the ${applicantFees.carriedFrom} amounts, carried forward: state ${session}'s so the right amounts apply.` : "Applicants are being charged the built-in amounts: state them now."}
+          </Note>
+        ) : null}
           <div className="sub2 mb-3">
             The Post-UTME screening fee (with the portal charge) and the acceptance fee, charged to applicants under <b>Applicant</b>.
           </div>

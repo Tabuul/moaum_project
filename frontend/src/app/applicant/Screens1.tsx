@@ -235,6 +235,13 @@ export function Fee({ a }: { a: Application }) {
           [<strong key="i">Total payable</strong>, <strong className="tnum t-lg" key="a">{money(total)}</strong>],
         ]} />
       </Panel>
+      {!a.fees.stated ? (
+        <Note kind={a.fees.policy === "REFUSE" ? "bad" : "info"} title={a.fees.policy === "REFUSE" ? `The ${a.session} fees are not yet published: no payment reference can be generated until the Bursary states them` : `The ${a.session} fees are not yet published`}>
+          {a.fees.policy === "REFUSE"
+            ? "Check back once the Bursary has stated them; nothing is owed until then."
+            : a.fees.carriedFrom ? `Until the Bursary states them you are charged the ${a.fees.carriedFrom} amounts shown above.` : "Until the Bursary states them you are charged the amounts shown above."}
+        </Note>
+      ) : null}
       <Panel title="Your payment reference" right="Generated for you alone">
         <PBody>
           {open ? (

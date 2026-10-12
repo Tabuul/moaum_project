@@ -353,6 +353,9 @@ public class ApplicantService {
         feeMap.put("acceptanceFee", fees.get("acceptance_fee"));
         feeMap.put("checkingFee", fees.get("checking_fee"));
         feeMap.put("stated", fees.get("stated"));
+        // V401/V419: a session whose fees are not stated — which session's amounts are carried, and whether a reference is refused until stated
+        feeMap.put("carriedFrom", fees.get("carried_from"));
+        feeMap.put("policy", repo.applicantFeePolicy());
         if (cce) {
             // V379: the CCE fees the Bursary stated — never the Post-UTME figures; V404: the CCE admission checking fee among them
             // (null while the Bursary has not stated it)

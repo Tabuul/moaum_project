@@ -185,6 +185,11 @@ class ApplicantRepository {
                 .param("id", applicationId).query().listOfRows();
     }
 
+    /** V401: the Bursary's rule for a session whose applicant fees are not stated — CARRY or REFUSE */
+    String applicantFeePolicy() {
+        return jdbc.sql("SELECT admissions.applicant_fee_policy()").query(String.class).single();
+    }
+
     Map<String, Object> fees(String session) {
         return jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", session).query().singleRow();
     }
