@@ -949,7 +949,11 @@
   .vz__vb { display: flex; gap: 10px; align-items: flex-end; height: 190px; }
   .vz__vc { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center;
     gap: 5px; height: 100%; }
-  .vz__vv { font-size: 12.5px; }
+  .vz__vv { font-size: 12.5px; white-space: nowrap; }
+  /* many bars: the figures take turns on two lines, each with two columns' width to itself */
+  .vz__vv--hi, .vz__vv--lo { font-size: 11.5px; line-height: 1.25; }
+  .vz__vv--hi { margin-bottom: 1.25em; }
+  .vz__vv--lo { margin-top: 1.25em; }
   .vz__vt { flex-grow: 1; width: 100%; display: flex; align-items: flex-end; }
   .vz__vf { width: 100%; border-radius: 4px 4px 0 0; min-height: 2px; transition: opacity .12s; }
   .vz__vb:hover .vz__vf { opacity: .5; }

@@ -12,12 +12,13 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
-import { Donut, HBars, Line, VBars, VZ, vzNum, type DonutItem } from "@/components/proto/vz";
+import { Donut, HBars, VBars, VZ, vzNice, vzNum, type DonutItem } from "@/components/proto/vz";
+import { FitLine } from "@/components/proto/vz-fit";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import {
-  PRESETS, analyticsHeading, bucketLabel, entryWord, finQuery, moduleWord, naira, presetGranularity, presetRange, sexWord,
+  PRESETS, analyticsHeading, bucketLabel, entryWord, finQuery, moduleWord, naira, nairaShort, presetGranularity, presetRange, sexWord,
   type FinCategory, type FinFigures, type FinFilters, type FinSummary,
 } from "@/lib/analytics";
 import { Classification } from "./Classification";
@@ -122,7 +123,7 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
   const orgRows = data.scope.kind === "DEPARTMENT" ? progRows : data.scope.kind === "FACULTY" ? deptRows : facRows;
   const orgWord = data.scope.kind === "DEPARTMENT" ? "Programme" : data.scope.kind === "FACULTY" ? "Department" : "Faculty";
   const donut: DonutItem[] = catRows.slice(0, 12).map((r, i) => ({ l: r.label, v: Number(r.amount), c: PALETTE[i % PALETTE.length] }));
-  const trendMax = Math.max(1, ...data.trend.map((x) => Number(x.amount)));
+  const trendMax = vzNice(Math.max(1, ...data.trend.map((x) => Number(x.amount))));
   const cmp = data.compare;
 
   const tiles: [string, string, string | null, string, string | null][] = [
@@ -232,16 +233,16 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
 
       <div className="grid grid--2">
         <Panel title="Revenue by payment type"><PBody>
-          {donut.length ? <Donut items={donut} capLabel="Revenue" capValue={naira(t.amount)} onPick={(item) => { const r = catRows.find((x) => x.label === item.l); if (r) go(r.next); }} /> : <div className="sub2">Nothing to draw.</div>}
+          {donut.length ? <Donut items={donut} capLabel="Revenue" capValue={nairaShort(t.amount)} capTitle={naira(t.amount)} fmt={naira} onPick={(item) => { const r = catRows.find((x) => x.label === item.l); if (r) go(r.next); }} /> : <div className="sub2">Nothing to draw.</div>}
         </PBody></Panel>
         <Panel title={`Revenue by ${orgWord.toLowerCase()}`}><PBody>
-          {orgRows.length ? <HBars items={orgRows.slice(0, 12).map((r) => ({ l: r.label, v: Number(r.amount) }))} colour={VZ.s1} onPick={(_, i) => go(orgRows[i].next)} /> : <div className="sub2">Nothing to draw.</div>}
+          {orgRows.length ? <HBars items={orgRows.slice(0, 12).map((r) => ({ l: r.label, v: Number(r.amount) }))} colour={VZ.s1} fmt={naira} onPick={(_, i) => go(orgRows[i].next)} /> : <div className="sub2">Nothing to draw.</div>}
         </PBody></Panel>
         <Panel title={`Revenue trend by ${f.granularity}`}><PBody>
-          {data.trend.length ? <Line series={[{ l: "Revenue", v: data.trend.map((x) => Number(x.amount)), c: VZ.s3 }]} xs={data.trend.map((x) => bucketLabel(x.bucket, f.granularity))} yMax={trendMax} yLabel="₦" /> : <div className="sub2">Nothing to draw.</div>}
+          {data.trend.length ? <FitLine series={[{ l: "Revenue", v: data.trend.map((x) => Number(x.amount)), c: VZ.s3 }]} xs={data.trend.map((x) => bucketLabel(x.bucket, f.granularity))} yMax={trendMax} yLabel="Revenue in naira" fmt={nairaShort} /> : <div className="sub2">Nothing to draw.</div>}
         </PBody></Panel>
         <Panel title="Revenue by level and by gender"><PBody>
-          {levelRows.length ? <VBars items={levelRows.map((r, i) => ({ l: r.label.replace(" Level", ""), v: Number(r.amount), c: PALETTE[i % PALETTE.length] }))} /> : <div className="sub2">Nothing to draw.</div>}
+          {levelRows.length ? <VBars items={levelRows.map((r, i) => ({ l: r.label.replace(" Level", ""), v: Number(r.amount), c: PALETTE[i % PALETTE.length] }))} fmt={nairaShort} /> : <div className="sub2">Nothing to draw.</div>}
           <div className="row mt-2">{sexRows.map((r) => <span key={r.key} className="row row--tight"><Pil kind={r.key === "M" ? "info" : r.key === "F" ? "ok" : "grey"}>{r.label}</Pil><span className="tnum">{naira(r.amount)} · {vzNum(r.payers)} payer{r.payers === 1 ? "" : "s"}</span></span>)}</div>
         </PBody></Panel>
       </div>

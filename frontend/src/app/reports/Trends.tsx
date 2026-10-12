@@ -8,6 +8,7 @@ import { Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { HBars, Line, Stack, VZ, vzNum } from "@/components/proto/vz";
 import { money } from "@/lib/format";
+import { nairaShort } from "@/lib/analytics";
 
 export interface SessionTrend {
   session: string; admitted: number; female: number; male: number; postgraduate: number;
@@ -81,7 +82,7 @@ export function Trends({ sessions, months }: { sessions: SessionTrend[]; months:
       <Panel title="The last six months" right="Fees confirmed against vouchers paid, by month">
         <PBody>
           {anyMonth ? (
-            <Line xs={mm.map((m) => m.label.slice(0, 3))} yMax={yMax} yLabel="Naira by month"
+            <Line xs={mm.map((m) => m.label.slice(0, 3))} yMax={yMax} yLabel="Naira by month" fmt={nairaShort}
               series={[{ l: "Fees in", v: mm.map((m) => m.fees), c: VZ.s3 }, { l: "Paid out", v: mm.map((m) => m.paid), c: VZ.s2 }]} />
           ) : <div className="sub2">No fee has been confirmed and no voucher paid in the last six months.</div>}
         </PBody>

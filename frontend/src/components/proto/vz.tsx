@@ -11,13 +11,27 @@ export const VZ = {
 } as const;
 
 export const vzNum = (n: number) => Number(n || 0).toLocaleString();
+/** a figure as a chart labels it; a caller passes its own (whole naira, ₦5.01bn) where the plain count would not do */
+export type VzFmt = (n: number) => string;
+
+/** the round number at or above n an axis reads well to: 7,987,179 → 8,000,000; 0.42 → 0.5 */
+export function vzNice(n: number): number {
+  if (!(n > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(n)));
+  const f = n / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
 
 export interface DonutItem { l: string; v: number; c: string; i?: ReactNode }
 
 /* part of a whole, few slices, each directly labelled */
-export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[]; capLabel: string; capValue: string; onPick?: (item: DonutItem, index: number) => void }) {
+export function Donut({ items, capLabel, capValue, capTitle, onPick, fmt = vzNum }: {
+  items: DonutItem[]; capLabel: string; capValue: string; capTitle?: string; onPick?: (item: DonutItem, index: number) => void; fmt?: VzFmt;
+}) {
   const total = items.reduce((a, i) => a + i.v, 0);
   const R = 62, W = 20, C = 2 * Math.PI * R;
+  // the centre figure sized to the hole (about 94 units across): a long figure is drawn smaller, never past the ring
+  const capSize = Math.min(27, Math.max(11, 94 / (Math.max(1, capValue.length) * 0.66)));
   const fracs = items.map((i) => (total ? i.v / total : 0));
   const offsets = fracs.map((_, k) => fracs.slice(0, k).reduce((a, f) => a + f, 0) * C);
   const arcs = items.map((i, k) => {
@@ -28,7 +42,7 @@ export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[
         strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`} strokeDashoffset={(-offsets[k]).toFixed(2)} transform="rotate(-90 90 90)"
         onClick={onPick ? () => onPick(i, k) : undefined} role={onPick ? "button" : undefined} tabIndex={onPick ? 0 : undefined}
         onKeyDown={onPick ? (e) => { if (e.key === "Enter" || e.key === " ") onPick(i, k); } : undefined}>
-        <title>{`${i.l}: ${vzNum(i.v)} (${Math.round(frac * 100)}%)`}</title>
+        <title>{`${i.l}: ${fmt(i.v)} (${Math.round(frac * 100)}%)`}</title>
       </circle>
     );
   });
@@ -37,7 +51,9 @@ export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[
       <svg viewBox="0 0 180 180" width={180} height={180} role="img" aria-label={`${capLabel}: ${items.map((i) => `${i.l} ${i.v}`).join(", ")}`}>
         <circle cx={90} cy={90} r={R} fill="none" stroke="#F1F4F6" strokeWidth={W} />
         {arcs}
-        <text x={90} y={86} textAnchor="middle" className="vz__cv">{capValue}</text>
+        <text x={90} y={86} textAnchor="middle" className="vz__cv" style={capSize < 27 ? { fontSize: `${capSize.toFixed(1)}px`, letterSpacing: "-.3px" } : undefined}>
+          {capTitle ? <title>{capTitle}</title> : null}{capValue}
+        </text>
         <text x={90} y={104} textAnchor="middle" className="vz__cl">{capLabel}</text>
       </svg>
       <div className="vz__key">
@@ -48,7 +64,7 @@ export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[
               {i.i || null}
               <span className="vz__sw" style={{ background: i.c }} />
               <span className="vz__kl">{i.l}</span>
-              <b className="tnum">{vzNum(i.v)}</b>
+              <b className="tnum">{fmt(i.v)}</b>
               <span className="vz__kp tnum">{pct}%</span>
             </div>
           );
@@ -61,16 +77,16 @@ export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[
 export interface BarItem { l: string; v: number }
 
 /* horizontal bars, one series */
-export function HBars({ items, colour, onPick }: { items: BarItem[]; colour?: string; onPick?: (item: BarItem, index: number) => void }) {
+export function HBars({ items, colour, onPick, fmt = vzNum }: { items: BarItem[]; colour?: string; onPick?: (item: BarItem, index: number) => void; fmt?: VzFmt }) {
   const max = items.reduce((a, i) => Math.max(a, i.v), 0) || 1;
   return (
     <div className="vz__hb">
       {items.map((i, k) => (
-        <div className={`vz__hr${onPick ? " vz__hr--pick" : ""}`} key={k} title={`${i.l}: ${vzNum(i.v)}`} onClick={onPick ? () => onPick(i, k) : undefined}
+        <div className={`vz__hr${onPick ? " vz__hr--pick" : ""}`} key={k} title={`${i.l}: ${fmt(i.v)}`} onClick={onPick ? () => onPick(i, k) : undefined}
           role={onPick ? "button" : undefined} tabIndex={onPick ? 0 : undefined} onKeyDown={onPick ? (e) => { if (e.key === "Enter" || e.key === " ") onPick(i, k); } : undefined}>
           <span className="vz__hl">{i.l}</span>
           <span className="vz__ht"><span className="vz__hf" style={{ width: `${((i.v / max) * 100).toFixed(1)}%`, background: colour || VZ.seq }} /></span>
-          <b className="vz__hv tnum">{vzNum(i.v)}</b>
+          <b className="vz__hv tnum">{fmt(i.v)}</b>
         </div>
       ))}
     </div>
@@ -117,10 +133,18 @@ export function Stack({ rows, keys }: { rows: { l: string; parts: number[] }[]; 
 
 export interface Series { l: string; v: number[]; c: string }
 
-/* line chart, cumulative, two series */
-export function Line({ series, xs, yMax, yLabel }: { series: Series[]; xs: string[]; yMax: number; yLabel: string }) {
-  const W = 660, H = 236, L = 52, R = 118, T = 14, B = 44;
+/* line chart, cumulative, two series; width is the drawing's own (FitLine passes the panel's, so its text is drawn at
+   its own size); a drawing narrower than 420 leaves the end figure to the points' titles */
+export function Line({ series, xs, yMax, yLabel, fmt = vzNum, width = 660 }: { series: Series[]; xs: string[]; yMax: number; yLabel: string; fmt?: VzFmt; width?: number }) {
+  const ends = width >= 420;
+  const W = width, H = 236, L = 56, R = !ends ? 16 : width < 600 ? 92 : 118, T = 14, B = 44;
   const pw = W - L - R, ph = H - T - B;
+  // as many x labels as fit side by side (a day label is "12 Oct 2026"), always the first and the last
+  const longest = xs.reduce((a, t) => Math.max(a, t.length), 1);
+  const room = Math.max(2, Math.floor(pw / (longest * 6 + 16)));
+  const step = Math.max(1, Math.ceil((xs.length - 1) / (room - 1)));
+  const labelled = (i: number) => i === xs.length - 1 || (i % step === 0 && xs.length - 1 - i >= step / 2);
+  const dot = xs.length > 60 ? 2 : xs.length > 24 ? 3 : 4;
   const x = (i: number) => L + (xs.length < 2 ? 0 : (i / (xs.length - 1)) * pw);
   const y = (v: number) => T + ph - (v / (yMax || 1)) * ph;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f, k) => {
@@ -128,7 +152,7 @@ export function Line({ series, xs, yMax, yLabel }: { series: Series[]; xs: strin
     return (
       <g key={k}>
         <line x1={L} y1={y(v)} x2={L + pw} y2={y(v)} stroke={VZ.grid} strokeWidth={1} />
-        <text x={L - 8} y={y(v) + 4} textAnchor="end" className="vz__ax">{vzNum(v)}</text>
+        <text x={L - 8} y={y(v) + 4} textAnchor="end" className="vz__ax">{fmt(v)}</text>
       </g>
     );
   });
@@ -136,7 +160,12 @@ export function Line({ series, xs, yMax, yLabel }: { series: Series[]; xs: strin
     <svg className="vz__svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={yLabel}>
       {ticks}
       <line x1={L} y1={T + ph} x2={L + pw} y2={T + ph} stroke={VZ.axis} strokeWidth={1} />
-      {xs.map((t, i) => <text key={i} x={x(i)} y={T + ph + 20} textAnchor="middle" className="vz__ax">{t}</text>)}
+      {xs.map((t, i) => {
+        if (!labelled(i)) return null;
+        // a label at either edge is held inside the drawing (about 6 units a character)
+        const half = t.length * 3, anchor = x(i) + half > W ? "end" : x(i) - half < 0 ? "start" : "middle";
+        return <text key={i} x={anchor === "end" ? W - 2 : anchor === "start" ? 2 : x(i)} y={T + ph + 20} textAnchor={anchor} className="vz__ax">{t}</text>;
+      })}
       {series.map((s, si) => {
         const pts = s.v.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
         const last = s.v.length - 1;
@@ -144,11 +173,11 @@ export function Line({ series, xs, yMax, yLabel }: { series: Series[]; xs: strin
           <g key={si}>
             <polyline points={pts} fill="none" stroke={s.c} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
             {s.v.map((v, i) => (
-              <circle key={i} cx={x(i).toFixed(1)} cy={y(v).toFixed(1)} r={4} fill={s.c} stroke="#fff" strokeWidth={2}>
-                <title>{`${s.l}, ${xs[i]}: ${vzNum(v)}`}</title>
+              <circle key={i} cx={x(i).toFixed(1)} cy={y(v).toFixed(1)} r={dot} fill={s.c} stroke="#fff" strokeWidth={dot > 2 ? 2 : 1}>
+                <title>{`${s.l}, ${xs[i]}: ${fmt(v)}`}</title>
               </circle>
             ))}
-            {last >= 0 ? <text x={x(last) + 10} y={y(s.v[last]) + 4} className="vz__end" fill={s.c}>{`${s.l} ${vzNum(s.v[last])}`}</text> : null}
+            {ends && last >= 0 ? <text x={x(last) + 10} y={y(s.v[last]) + 4} className="vz__end" fill={s.c}>{`${s.l} ${fmt(s.v[last])}`}</text> : null}
           </g>
         );
       })}
@@ -158,14 +187,16 @@ export function Line({ series, xs, yMax, yLabel }: { series: Series[]; xs: strin
 
 export interface VBarItem { l: string; v: number; c: string }
 
-/* vertical bars, ordered categories; v is a percentage */
-export function VBars({ items }: { items: VBarItem[] }) {
+/* vertical bars, ordered categories; v is a percentage unless the caller gives its own format. Past six bars the
+   figures take turns on two lines, so one bar's figure never lands on its neighbour's */
+export function VBars({ items, fmt = (v: number) => `${v}%` }: { items: VBarItem[]; fmt?: VzFmt }) {
   const max = items.reduce((a, i) => Math.max(a, i.v), 0) || 1;
+  const crowded = items.length > 6;
   return (
     <div className="vz__vb">
       {items.map((i, k) => (
-        <div className="vz__vc" key={k} title={`${i.l}: ${i.v}%`}>
-          <b className="vz__vv tnum">{i.v}%</b>
+        <div className="vz__vc" key={k} title={`${i.l}: ${fmt(i.v)}`}>
+          <b className={`vz__vv tnum${crowded ? (k % 2 ? " vz__vv--lo" : " vz__vv--hi") : ""}`}>{fmt(i.v)}</b>
           <span className="vz__vt"><span className="vz__vf" style={{ height: `${((i.v / max) * 100).toFixed(1)}%`, background: i.c }} /></span>
           <span className="vz__vl">{i.l}</span>
         </div>

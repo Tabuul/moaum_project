@@ -113,6 +113,19 @@ export function finQuery(f: Partial<FinFilters>, extra: Record<string, string | 
 /** V409: a source module as words — STUDENT_FINANCE is "Student Finance", PG "PG" */
 export const moduleWord = (m: string | null | undefined) => (m ? (m.length <= 5 ? m : m.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")) : "Not recorded");
 export const naira = (n: number | string | null | undefined) => (n == null ? "—" : "₦" + Number(n).toLocaleString("en-NG", { maximumFractionDigits: 0 }));
+/** a naira figure short enough for a chart's centre, bar or axis — ₦5.01bn, ₦457m, ₦98.2m, ₦85.5k, ₦950; the full figure
+ *  stays in the tiles and tables */
+export function nairaShort(n: number | string | null | undefined): string {
+  if (n == null) return "—";
+  const v = Number(n);
+  if (Math.abs(v) < 1000) return "₦" + Math.round(v).toLocaleString("en-NG");
+  const units: [number, string][] = [[1e3, "k"], [1e6, "m"], [1e9, "bn"], [1e12, "tn"]];
+  let k = units.findLastIndex(([d]) => Math.abs(v) >= d);
+  let r = Number((v / units[k][0]).toPrecision(3));
+  // 999.6k rounds to 1,000k: say ₦1m instead
+  if (Math.abs(r) >= 1000 && k < units.length - 1) { k += 1; r = Number((v / units[k][0]).toPrecision(3)); }
+  return "₦" + r.toLocaleString("en-NG", { maximumFractionDigits: 2 }) + units[k][1];
+}
 export const SEX_WORD: Record<string, string> = { M: "Male", F: "Female" };
 export const sexWord = (s: string | null | undefined) => (s ? SEX_WORD[s] ?? s : "Not recorded");
 export const entryWord = (e: string | null | undefined) => (e ? e.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()).replace(/^Utme$/, "UTME") : "Not recorded");
