@@ -122,7 +122,8 @@ class StudentIT {
         assertThat(record.getStatusCode().value()).as(String.valueOf(record.getBody())).isEqualTo(200);
         assertThat(((Map<?, ?>) record.getBody().get("student")).get("surname")).isEqualTo(SURNAME);
         assertThat((List<?>) record.getBody().get("biodata")).isNotEmpty();
-        assertThat((List<?>) record.getBody().get("convocationClearance")).hasSize(8);
+        // V415: final clearance is a workflow on the convocation purpose — the stages that apply, the hostel not for a student who never had one
+        assertThat((List<?>) record.getBody().get("convocationClearance")).hasSize(7);
         assertThat((List<?>) record.getBody().get("registrationClearance")).hasSize(8);
         assertThat(record.getBody().get("approvedUnits")).isEqualTo(0);
     }

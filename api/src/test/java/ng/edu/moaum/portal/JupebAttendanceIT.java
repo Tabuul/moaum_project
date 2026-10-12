@@ -230,7 +230,9 @@ class JupebAttendanceIT {
             assertThat(list).extracting(x -> x.get("topic_id").toString()).containsExactly(topics.get(0).toString(), topics.get(1).toString(), topics.get(2).toString());
             list = it.callList(lecturer, HttpMethod.PUT, path, Map.of("topicIds", List.of(topics.get(0), topics.get(1)))).getBody();
             assertThat(list).filteredOn(x -> Boolean.TRUE.equals(x.get("here"))).hasSize(2);
-            assertThat(list).filteredOn(x -> Boolean.TRUE.equals(x.get("here"))).extracting(x -> x.get("first_on")).containsOnly(LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString());
+            // first covered on the day the lecture was held — the register's own date, whatever the clock says around midnight
+            String heldOn = jdbc.sql("SELECT held_on::text FROM attendance.register WHERE id = :r").param("r", UUID.fromString(reg)).query(String.class).single();
+            assertThat(list).filteredOn(x -> Boolean.TRUE.equals(x.get("here"))).extracting(x -> x.get("first_on")).containsOnly(heldOn);
             assertThat(code(it.call(lecturer, HttpMethod.PUT, path, Map.of("topicIds", List.of(UUID.randomUUID()))))).isEqualTo("JUPEB_COVERAGE_TOPIC");
             String stranger = TestTokens.token(it.person("ZZATT-LEC2-" + tag, "ZZATTSTRANGER"), List.of("lecturer"));
             assertThat(status(it.call(stranger, HttpMethod.PUT, path, Map.of("topicIds", List.of(topics.get(2)))))).isEqualTo(404);
