@@ -476,6 +476,15 @@ class JupebOfficeController {
         return runImport("jupeb.import_results", body);
     }
 
+    /** V403: the Board's result sheet as the Board prints it — each candidate's JUPEB number, the combination and subjects the
+     *  Board graded, and the grades — previewed, then committed (jupeb.import_board_results) */
+    @PostMapping("/board-results/import")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Object importBoardResults(@Valid @RequestBody ImportIn body) {
+        return runImport("jupeb.import_board_results", body);
+    }
+
     @GetMapping("/results")
     @PreAuthorize(READ)
     @Transactional(readOnly = true)

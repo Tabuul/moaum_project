@@ -752,6 +752,10 @@ function ReminderRules({ canWrite }: { canWrite: boolean }) {
 /* ── imports: one shape for numbers, results and combinations ─────────────────────────────────── */
 
 interface Judged { row?: number; status: string; message: string; [k: string]: unknown }
+
+/** V403: the subject columns of the Board's result sheet, in the Board's own codes (jupeb.board_subject.prefix) */
+const BOARD_CODES = ["ACC", "AGR", "BIO", "BUS", "CHM", "CRS", "ECN", "FRE", "GRY", "GOV", "HST", "IGB", "ISS", "LIT", "MAT", "MUS", "PHY", "VSA", "YOR"];
+const BOARD_COLUMNS: Record<string, string> = Object.fromEntries(BOARD_CODES.map((c) => [c.toLowerCase(), `g_${c}`]));
 interface ImportResult { rows: Judged[]; invalid: number; review?: number; new?: number; corrections?: number; updated?: number; unchanged?: number; committed: boolean; ref: string | null; applied: number }
 
 function ImportBox({ title, path, aliases, template, describe, columns, cells, onDone }: {
@@ -962,11 +966,23 @@ export function JupebExamNumbers({ canWrite }: { canWrite: boolean }) {
   }, []);
   return (
     <>
-      <PageHead title="JUPEB examination numbers" description="The Board's official numbers, imported by application number." />
+      <PageHead title="JUPEB examination numbers" description="The Board's official numbers: from the Board's result sheet, or imported by application number." />
       <BoardPanel session={session} canWrite={canWrite} />
       <ClearancePanel canWrite={canWrite} />
       <ExamTimetablePanel session={session} canWrite={canWrite} />
       <BoardListPanel />
+      {canWrite ? (
+        <ImportBox title="The Board's result sheet" path="/api/v1/jupeb/office/board-results/import" onDone={() => setTick((t) => t + 1)}
+          aliases={{ "jupeb number": "examNo", "jupeb no": "examNo", "jupeb examination number": "examNo", "examination number": "examNo", "exam number": "examNo", "exam no": "examNo",
+            "surname": "surname", "other names": "otherNames", "othernames": "otherNames", "application number": "applicationNo", "application no": "applicationNo",
+            "reason": "reason", "remarks": "reason", ...BOARD_COLUMNS }}
+          template={[["S/N", "JUPEB NUMBER", "SURNAME", "OTHER Names", ...BOARD_CODES, "Application Number", "Reason"], [[1, "261120042", "ABAH", "MARY ENENOYI", ...BOARD_CODES.map((c) => (c === "CRS" ? "F" : c === "GOV" ? "C" : c === "LIT" ? "C" : "")), "", ""]]]}
+          describe={<>The Board&rsquo;s sheet as it comes: JUPEB number, surname, other names and a grade under each subject the candidate sat. Each candidate gets the <b>JUPEB number</b>, the <b>combination and subjects the Board graded</b> (the column graded decides CRS or ISS, IGB or YOR) and the <b>grades</b>, which stay unpublished until you publish them on Results. A candidate is found by the JUPEB number already on record, else by name; a name that matches no one or more than one is held for review: add an <b>Application Number</b> column for those rows and upload again. A different number or grade already recorded changes only with a <b>Reason</b>.</>}
+          columns={["JUPEB number", "On the sheet", "Candidate", "Combination", "Grades"]}
+          cells={(r) => [String(r.examNo ?? ""), String(r.sheetName ?? ""), r.applicationNo ? `${String(r.name ?? "")} · ${String(r.applicationNo)}` : "—",
+            r.combination ? `${String(r.combination)}${r.was && r.was !== r.combination ? ` (was ${String(r.was)})` : ""}` : "—", String(r.gradesText ?? "")]} />
+      ) : null}
+      {canWrite ? <Batches kind="BOARD_RESULTS" tick={tick} /> : null}
       {canWrite ? (
         <ImportBox title="Examination numbers" path="/api/v1/jupeb/office/exam-numbers/import" onDone={() => setTick((t) => t + 1)}
           aliases={{ "application number": "applicationNo", "application no": "applicationNo", "app no": "applicationNo", "appno": "applicationNo", "jupeb application number": "applicationNo",

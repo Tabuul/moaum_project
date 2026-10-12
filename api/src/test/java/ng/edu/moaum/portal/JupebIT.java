@@ -453,6 +453,12 @@ class JupebIT {
         assertThat(mine.get("state")).isEqualTo("COMPLETED");
         assertThat((List<Map<String, Object>>) mine.get("registered")).extracting(r -> r.get("grade")).containsExactlyInAnyOrder("A", "B", "C");
 
+        // ── V403: the Board's result sheet through the office's door: a column that is no subject of the Board is invalid; not the Bursary's ──
+        Map<String, Object> sheet = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/board-results/import",
+                Map.of("rows", List.of(Map.of("row", 4, "examNo", held, "surname", "ZZJUPEB", "otherNames", "Candidate", "g_ZZQ", "A")), "commit", false)));
+        assertThat(((Number) sheet.get("invalid")).intValue()).isEqualTo(1);
+        assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/board-results/import", Map.of("rows", List.of(), "commit", false)))).isEqualTo(403);
+
         // ── V343: the published statement of result verifies; a later correction marks it superseded; a revoked paper no longer verifies ──
         String statement = String.valueOf(ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/applications/" + app + "/papers", Map.of("kind", "RESULT"))).get("code"));
         assertThat(ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/papers", Map.of("kind", "RESULT"))).get("code")).isEqualTo(statement);

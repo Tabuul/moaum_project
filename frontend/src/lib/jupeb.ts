@@ -120,7 +120,7 @@ export const EVENT_LABEL: Record<string, string> = {
   CREATED: "Application started", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", SUBMITTED: "Submitted", RETURNED: "Returned for correction",
   ELIGIBLE: "Found eligible", INELIGIBLE: "Found not eligible", ADMITTED: "Admitted", NOT_ADMITTED: "Not admitted", PENDING: "Admission pending",
   SCHOOL_FEE_CONFIRMED: "School fee confirmed", STATUS_CHECKING_CONFIRMED: "Status checking fee confirmed", ACCEPTANCE_CONFIRMED: "Admission accepted", STUDENT: "Activated as a JUPEB student", SUBJECTS_REGISTERED: "Subjects registered",
-  EXAM_NO_ASSIGNED: "Examination number assigned", COMPLETED: "Results published", RESULT_CORRECTED: "Result corrected", CLASS: "Class",
+  EXAM_NO_ASSIGNED: "Examination number assigned", COMPLETED: "Results published", RESULT_CORRECTED: "Result corrected", BOARD_COMBINATION: "Combination from the Board's result", CLASS: "Class",
   DOCUMENT_VERIFIED: "Document verified", DOCUMENT_REJECTED: "Document rejected", DOCUMENT_REPLACEMENT_REQUIRED: "Document to be replaced",
   DOCUMENT_UNDER_REVIEW: "Document under review", DOCUMENT_REPLACED: "Document replaced",
   SCREENING_PENDING: "Screening opened", SCREENING_SCHEDULED: "Screening scheduled", SCREENING_IN_PROGRESS: "Screening in progress", SCREENING_CLEARED: "Cleared at screening",

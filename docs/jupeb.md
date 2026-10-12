@@ -112,6 +112,21 @@ copies of them.
   Surname, …, JUPEB Examination Number — the very columns the examination-number upload reads, so the Board's returned list
   is uploaded as it is) and **PDF** (landscape, on the letterhead, with signature lines). Students not yet registered are
   counted, not listed.
+- **The Board's result sheet (V403).** JUPEB → Examination Numbers → *The Board's result sheet*: the sheet as the Board
+  sends it (S/N, JUPEB NUMBER, SURNAME, OTHER Names, then a column per subject in the Board's codes — ACC AGR BIO BUS CHM
+  CRS ECN FRE GRY GOV HST IGB ISS LIT MAT MUS PHY VSA YOR — graded A–F, X, Q or W where the candidate sat). One upload
+  gives each candidate the **JUPEB number**, the **combination and subjects the Board graded** and the **grades**
+  (`jupeb.import_board_results`), previewed first, as every JUPEB import:
+  - the candidate is found by the JUPEB number already on record, else by name — the surname and the other names as words,
+    in any order — among the active and completed students; a name matching no one or more than one is held for review with
+    the candidates it may be, and the office adds an *Application Number* column to those rows and uploads again;
+  - the three graded subjects must be one of the Board's combinations; the Board's word stands: a registered subject the
+    Board did not examine becomes the one it did (the registration re-pointed, never deleted; continuous assessment and
+    attendance stay as history), and the column graded decides the option — CRS or ISS, IGB or YOR; a subject that already
+    has a recorded result is not turned into another (held for review);
+  - a candidate holding a different JUPEB number, or a different grade, is changed only with the row's *Reason*;
+  - the grades stay unpublished until the office publishes them on Results; nothing is written while a row is invalid,
+    and rows held for review are left as they are and listed on the batch (BOARD_RESULTS).
 - **Documents viewed in a pop-up.** On the office's record and the candidate's own pages an uploaded document opens over the
   page (previous/next, rotate and actual size for photos, download, open in a new tab, and the office's Verify / Problem).
 - **Acting on the attendance minimum (V344).** The JUPEB Office's policy (Attendance → Minimum attendance) has the minimum,

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 242
+\set EXPECTED 243
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9682,6 +9682,92 @@ BEGIN
         AND r_b = 'BSU-ZZF 101,BSU-ZZF 102,MOAU-ZZF 103'
         AND r_both = 'BSU-ZZF 101,BSU-ZZF 102,MOAU-ZZF 101,MOAU-ZZF 103',
         format('family a=%s b=%s | a sees %s | b sees %s | unstated b sees %s', v_fam_a, v_fam_b, r_a, r_b, r_both));
+END $$;
+
+-- ── V403: the Board's result sheet — numbers, combination, subjects and grades from one upload ──
+-- A row found by name gets its JUPEB number, the combination and subjects the Board graded (a registered subject the Board
+-- did not examine re-pointed, never deleted) and its grades; a name two candidates share is held for review until the row
+-- names the application; the CRS/ISS option is the column graded; a grade already recorded changes only with a reason;
+-- a row whose subjects are no combination of the Board is invalid and nothing is written; uploading again changes nothing.
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := '9963/9964'; prog text; acc uuid[] := '{}'; acc1 uuid; i int;
+        sc1 uuid; sc5 uuid; crs uuid; gov uuid; lit uuid; fre uuid; aOne uuid; aTwo uuid; aTwin uuid; aThree uuid;
+        rows jsonb; pv jsonb; r_invalid text; cm jsonb; again jsonb;
+        v_no1 text; v_comb1 text; v_regs1 int; v_fre1 int; v_opt1 text; v_res1 int; v_ev1 int; v_no2 text; v_opt2 text; v_twin text;
+        v_lit3 text; v_chg3 int; v_batch int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9963-10-01', date '9964-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+        SELECT id INTO sc1 FROM jupeb.combination WHERE code = 'SC-001';    -- CRS/ISS, GOV, LIT
+        SELECT id INTO sc5 FROM jupeb.combination WHERE code = 'SC-005';    -- CRS/ISS, FRE, GOV
+        SELECT id INTO crs FROM jupeb.subject WHERE code = 'CRS/ISS';
+        SELECT id INTO gov FROM jupeb.subject WHERE code = 'GOV';
+        SELECT id INTO lit FROM jupeb.subject WHERE code = 'LIT';
+        SELECT id INTO fre FROM jupeb.subject WHERE code = 'FRE';
+        FOR i IN 1 .. 4 LOOP
+            INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.v403.' || i || '@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc1;
+            acc := acc || acc1;
+        END LOOP;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, middle_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at)
+        VALUES (acc[1], ses, 'JUPEB/APP/9963/940301', 'ZZBOARDONE', 'Mary', 'Enenoyi', 'zz.v403.1@example.com', prog, sc5, 'Benue', 'STUDENT', now()) RETURNING id INTO aOne;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at)
+        VALUES (acc[2], ses, 'JUPEB/APP/9963/940302', 'ZZBOARDTWO', 'Peter', 'zz.v403.2@example.com', prog, sc1, 'Benue', 'STUDENT', now()) RETURNING id INTO aTwo;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at)
+        VALUES (acc[3], ses, 'JUPEB/APP/9963/940303', 'ZZBOARDTWO', 'Peter', 'zz.v403.3@example.com', prog, sc1, 'Benue', 'STUDENT', now()) RETURNING id INTO aTwin;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, combination_id, state_of_origin, state, subjects_registered_at, exam_no)
+        VALUES (acc[4], ses, 'JUPEB/APP/9963/940304', 'ZZBOARDTHREE', 'Ann', 'zz.v403.4@example.com', prog, sc1, 'Benue', 'STUDENT', now(), 'ZZ403-0003') RETURNING id INTO aThree;
+        INSERT INTO jupeb.subject_registration (application_id, subject_id, session, registered_by)
+        SELECT x.app, s, ses, who FROM (VALUES (aOne, ARRAY[crs, fre, gov]), (aTwo, ARRAY[crs, gov, lit]), (aTwin, ARRAY[crs, gov, lit]), (aThree, ARRAY[crs, gov, lit])) x(app, subs), unnest(x.subs) s;
+        INSERT INTO jupeb.result (application_id, subject_id, grade, points, batch_ref, recorded_by) VALUES (aThree, lit, 'C', jupeb.grade_points('C'), 'CHECK-V403', who);
+
+        -- (1) the preview: one found by name, one name two candidates share, one by JUPEB number with an unreasoned change, one no combination
+        rows := jsonb_build_array(
+            jsonb_build_object('row', 4, 'examNo', 'ZZ403-0001', 'surname', 'ZZBOARDONE', 'otherNames', 'MARY  ENENOYI', 'g_CRS', 'F', 'g_GOV', 'C', 'g_LIT', 'C'),
+            jsonb_build_object('row', 5, 'examNo', 'ZZ403-0002', 'surname', 'ZZBOARDTWO', 'otherNames', 'PETER', 'g_ISS', 'E', 'g_GOV', 'C', 'g_LIT', 'D'),
+            jsonb_build_object('row', 6, 'examNo', 'ZZ403-0003', 'surname', 'ZZBOARDTHREE', 'otherNames', 'ANN', 'g_CRS', 'B', 'g_GOV', 'B', 'g_LIT', 'A'),
+            jsonb_build_object('row', 7, 'examNo', 'ZZ403-0004', 'surname', 'ZZNOBODY', 'otherNames', 'X', 'g_CRS', 'A', 'g_PHY', 'B', 'g_LIT', 'C'));
+        pv := jupeb.import_board_results(rows, false, 'check.xlsx', who);
+        BEGIN PERFORM jupeb.import_board_results(rows, true, 'check.xlsx', who); r_invalid := 'COMMITTED';
+        EXCEPTION WHEN check_violation THEN r_invalid := split_part(SQLERRM, ':', 1); END;
+
+        -- (2) the office names the twin's application and gives the change its reason; the invalid row taken out
+        rows := jsonb_build_array(rows->0,
+                                  (rows->1) || jsonb_build_object('applicationNo', 'JUPEB/APP/9963/940302'),
+                                  (rows->2) || jsonb_build_object('reason', 'The Board''s corrected result'));
+        cm := jupeb.import_board_results(rows, true, 'check.xlsx', who);
+        SELECT a.exam_no, c.code INTO v_no1, v_comb1 FROM jupeb.application a JOIN jupeb.combination c ON c.id = a.combination_id WHERE a.id = aOne;
+        SELECT count(*), count(*) FILTER (WHERE subject_id = fre) INTO v_regs1, v_fre1 FROM jupeb.subject_registration WHERE application_id = aOne;
+        SELECT b.prefix INTO v_opt1 FROM jupeb.subject_registration r JOIN jupeb.board_subject b ON b.id = r.board_subject_id WHERE r.application_id = aOne AND r.subject_id = crs;
+        SELECT count(*) INTO v_res1 FROM jupeb.result WHERE application_id = aOne;
+        SELECT count(*) INTO v_ev1 FROM jupeb.application_event WHERE application_id = aOne AND kind = 'BOARD_COMBINATION';
+        SELECT exam_no INTO v_no2 FROM jupeb.application WHERE id = aTwo;
+        SELECT b.prefix INTO v_opt2 FROM jupeb.subject_registration r JOIN jupeb.board_subject b ON b.id = r.board_subject_id WHERE r.application_id = aTwo AND r.subject_id = crs;
+        SELECT coalesce(exam_no, 'none') INTO v_twin FROM jupeb.application WHERE id = aTwin;
+        SELECT grade INTO v_lit3 FROM jupeb.result WHERE application_id = aThree AND subject_id = lit;
+        SELECT count(*) INTO v_chg3 FROM jupeb.result_change WHERE application_id = aThree AND subject_id = lit AND new_grade = 'A';
+        SELECT count(*) INTO v_batch FROM jupeb.import_batch WHERE kind = 'BOARD_RESULTS' AND ref = cm->>'ref';
+
+        -- (3) the same sheet again changes nothing
+        again := jupeb.import_board_results(rows, false, 'check.xlsx', who);
+        RAISE EXCEPTION 'the V403 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V403 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V403: the Board''s result sheet — a row found by name gets its JUPEB number, the combination and subjects the Board graded (a registered subject re-pointed, never deleted) and its grades; a shared name is held for review until the row names the application; the CRS/ISS option is the column graded; a recorded grade changes only with a reason; a row that is no combination of the Board is invalid and nothing is written; the same sheet again changes nothing',
+        coalesce((pv->>'invalid')::int = 1 AND (pv->>'review')::int = 2 AND (pv->>'new')::int = 1 AND r_invalid = 'JUPEB_IMPORT_INVALID'
+                 AND (pv->'rows'->1->>'status') = 'REQUIRES_REVIEW' AND (pv->'rows'->2->>'status') = 'REQUIRES_REVIEW' AND (pv->'rows'->3->>'status') = 'INVALID'
+                 AND (cm->>'applied')::int = 3 AND (cm->>'invalid')::int = 0
+                 AND v_no1 = 'ZZ403-0001' AND v_comb1 = 'SC-001' AND v_regs1 = 3 AND v_fre1 = 0 AND v_opt1 = 'CRS' AND v_res1 = 3 AND v_ev1 = 1
+                 AND v_no2 = 'ZZ403-0002' AND v_opt2 = 'ISS' AND v_twin = 'none'
+                 AND v_lit3 = 'A' AND v_chg3 = 1 AND v_batch = 1
+                 AND (again->>'unchanged')::int = 3 AND (again->>'new')::int = 0 AND (again->>'updated')::int = 0, false),
+        format('preview invalid=%s review=%s new=%s commit-with-invalid=%s | commit applied=%s | one %s %s regs=%s fre=%s option=%s results=%s events=%s | two %s option=%s twin=%s | three lit=%s changes=%s batch=%s | again unchanged=%s | rows: %s',
+               pv->>'invalid', pv->>'review', pv->>'new', r_invalid, cm->>'applied', v_no1, v_comb1, v_regs1, v_fre1, v_opt1, v_res1, v_ev1,
+               v_no2, v_opt2, v_twin, v_lit3, v_chg3, v_batch, again->>'unchanged', left((SELECT string_agg(x->>'status' || ':' || coalesce(x->>'message', ''), ' / ') FROM jsonb_array_elements(pv->'rows') x), 400)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
