@@ -131,9 +131,12 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         </Panel>
       ) : null}
       <Panel title="Payment History" right={fees.references.length ? `${fees.references.length}` : "none yet"}>
-        <DTable cols={["Reference", "Purpose", "Amount|num", "Status", "|num"]} rows={fees.references.map((r) => [
+        <DTable cols={["S/N|num", "Reference", "Purpose", "Programme type", "Session", "Amount|num", "Status", "|num"]} rows={fees.references.map((r, i) => [
+          <span className="tnum sub2" key="sn">{i + 1}</span>,
           <span className="tnum t-xs ink-muted" key="r" style={{ letterSpacing: "-.2px" }}>{r.reference}</span>,
-          <Two key="p" a={r.purpose} b={r.confirmed_at ? `Confirmed ${when(r.confirmed_at)} · ${r.channel}` : `Generated ${when(r.generated_at)}`} />,
+          <Two key="p" a={r.purpose_label ?? r.purpose} b={r.confirmed_at ? `${r.purpose} · confirmed ${when(r.confirmed_at)} · ${r.channel}` : `${r.purpose} · generated ${when(r.generated_at)}`} />,
+          <span key="pt">{r.programme_type_label ?? "—"}</span>,
+          <span className="tnum" key="ss">{r.session}</span>,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
           r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
           r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn> : <span key="x" />,
@@ -172,6 +175,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           <div className="kv"><span className="k">Programme</span><span className="v">{r.programme} · {r.level} Level</span></div>
           <div className="kv"><span className="k">Session</span><span className="v tnum">{r.session}</span></div>
           {r.term ? <div className="kv"><span className="k">Semester</span><span className="v">{r.term}</span></div> : null}
+          {r.programme_type_label ? <div className="kv"><span className="k">Programme type</span><span className="v">{r.programme_type_label}</span></div> : null}
         </div>
         <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 400 }}>
           <thead><tr><th style={{ background: "var(--chrome)", color: "var(--surface)" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Amount</th></tr></thead>
@@ -182,7 +186,9 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
         </table></div>
         <div className="row" style={{ gap: "var(--s-6)", margin: "var(--s-5) 0" }}>
           <div className="kv"><span className="k">Channel</span><span className="v">{r.channel}</span></div>
-          <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.note ?? "—"}</span></div>
+          <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.gateway_reference ?? r.note ?? "—"}</span></div>
+          {r.purpose_label ? <div className="kv"><span className="k">Payment purpose</span><span className="v">{r.purpose_label}</span></div> : null}
+          {r.responsible_office_label ? <div className="kv"><span className="k">Responsible office</span><span className="v">{r.responsible_office_label}</span></div> : null}
         </div>
         <div className="row" style={{ gap: "var(--s-4)", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
           <div className="kv grow" style={{ minWidth: 200 }}><span className="k">Verification</span><span className="v tnum">{r.receipt_no}</span><span className="sub2">Scan the QR code or use the check code to verify this receipt.{token ? ` Check code ${token}.` : ""}</span>

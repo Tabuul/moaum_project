@@ -17,12 +17,15 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import {
-  PRESETS, analyticsHeading, bucketLabel, entryWord, finQuery, naira, presetGranularity, presetRange, sexWord,
+  PRESETS, analyticsHeading, bucketLabel, entryWord, finQuery, moduleWord, naira, presetGranularity, presetRange, sexWord,
   type FinCategory, type FinFigures, type FinFilters, type FinSummary,
 } from "@/lib/analytics";
+import { Classification } from "./Classification";
 
 const PALETTE = [VZ.s1, VZ.s3, VZ.s4, VZ.s2, VZ.s5, VZ.good, VZ.warn, VZ.crit, "#6b5bd6", "#2aa7b7", "#8a939e", "#c47f2a"];
 const SETTERS = new Set(["bursar", "ict", "admin", "super"]);
+/** V409: the catalogue of programme types, purposes and classification rules is the Bursary's */
+const FINANCE_SETTERS = new Set(["bursar", "admin", "super"]);
 const pct = (a: number, b: number) => (b ? `${a >= b ? "+" : ""}${Math.round(((a - b) / b) * 100)}%` : a ? "new" : "—");
 
 type BreakRow = FinFigures & { key: string; label: string; sub?: string; next: Partial<FinFilters> };
@@ -48,7 +51,10 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
     selected.size ? [...selected].map(catLabel).join(", ") : "all payment types",
     f.sex ? sexWord(f.sex) : null, f.fac ? faculties.find((x) => x[0] === f.fac)?.[1] : null, f.dept ? depts.find((x) => x[0] === f.dept)?.[1] : null,
     f.prog ? o.programmes.find((x) => x.programme_code === f.prog)?.programme : null, f.level ? `${f.level} Level` : null, f.entry ? entryWord(f.entry) : null,
-    f.channel ? `channel ${f.channel}` : null, f.q ? `search “${f.q}”` : null].filter(Boolean).join(" · ");
+    f.channel ? `channel ${f.channel}` : null, f.q ? `search “${f.q}”` : null,
+    f.ptype ? o.programmeTypes?.find((x) => x.code === f.ptype)?.label ?? f.ptype : null, f.purpose ? o.purposes?.find((x) => x.code === f.purpose)?.label ?? f.purpose : null,
+    f.module ? `module ${moduleWord(f.module)}` : null, f.office ? `owned by ${o.offices?.find((x) => x.code === f.office)?.label ?? f.office}` : null,
+    f.semester ? `${f.semester === "1" ? "first" : f.semester === "2" ? "second" : "third"} semester` : null].filter(Boolean).join(" · ");
 
   function go(next: Partial<FinFilters>) {
     const n: FinFilters = { ...f, ...next };
@@ -106,6 +112,13 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
   const entryRows: BreakRow[] = data.byEntry.map((x) => ({ ...x, key: String(x.entry_mode), label: entryWord(x.entry_mode), next: { entry: x.entry_mode ?? "" } }));
   const sessionRows: BreakRow[] = data.bySession.map((x) => ({ ...x, key: String(x.session), label: x.session ?? "No session", next: { session: x.session ?? "" } }));
   const channelRows: BreakRow[] = data.byChannel.map((x) => ({ ...x, key: String(x.channel), label: x.channel ?? "Not recorded", next: { channel: x.channel ?? "" } }));
+  // V409: programme type by purpose — "Sandwich school fees", "JUPEB applications" — and each dimension alone
+  const typePurposeRows: BreakRow[] = (data.byTypeAndPurpose ?? []).map((x) => ({ ...x, key: `${x.programme_type}/${x.purpose_code}`,
+    label: `${x.programme_type_label ?? x.programme_type ?? "Other"} — ${x.purpose_label ?? x.purpose_code ?? "Other"}`, next: { ptype: x.programme_type ?? "", purpose: x.purpose_code ?? "" } }));
+  const typeRows: BreakRow[] = (data.byProgrammeType ?? []).map((x) => ({ ...x, key: String(x.programme_type), label: x.programme_type_label ?? x.programme_type ?? "Other", next: { ptype: x.programme_type ?? "" } }));
+  const purposeRows: BreakRow[] = (data.byPurpose ?? []).map((x) => ({ ...x, key: String(x.purpose_code), label: x.purpose_label ?? x.purpose_code ?? "Other", next: { purpose: x.purpose_code ?? "" } }));
+  const moduleRows: BreakRow[] = (data.bySourceModule ?? []).map((x) => ({ ...x, key: String(x.source_module), label: moduleWord(x.source_module), next: { module: x.source_module ?? "" } }));
+  const officeRows: BreakRow[] = (data.byResponsibleOffice ?? []).map((x) => ({ ...x, key: String(x.responsible_office), label: x.responsible_office_label ?? x.responsible_office ?? "Not recorded", next: { office: x.responsible_office ?? "" } }));
   const orgRows = data.scope.kind === "DEPARTMENT" ? progRows : data.scope.kind === "FACULTY" ? deptRows : facRows;
   const orgWord = data.scope.kind === "DEPARTMENT" ? "Programme" : data.scope.kind === "FACULTY" ? "Department" : "Faculty";
   const donut: DonutItem[] = catRows.slice(0, 12).map((r, i) => ({ l: r.label, v: Number(r.amount), c: PALETTE[i % PALETTE.length] }));
@@ -124,7 +137,7 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
   return (
     <>
       <PageHead title={analyticsHeading(data.scope)} description={`${words}`}
-        actions={<>{canOpen ? <LinkBtn kind="primary" href={txHref()}>All transactions</LinkBtn> : null}<LinkBtn href="/stats">Student Statistics</LinkBtn><Btn kind="ghost" onClick={() => queryNav("/finance/analytics")}>Reset filters</Btn></>} />
+        actions={<>{canOpen ? <LinkBtn kind="primary" href={txHref()}>All transactions</LinkBtn> : null}{data.scope.owner ? null : <LinkBtn href="/stats">Student Statistics</LinkBtn>}<Btn kind="ghost" onClick={() => queryNav("/finance/analytics")}>Reset filters</Btn></>} />
 
       <div className="scope">
         <div className="scope__f"><Field id="fa-preset" label="Date">
@@ -179,6 +192,24 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
         <div className="scope__f"><Field id="fa-channel" label="Channel">
           <select id="fa-channel" className="ctl" value={f.channel} onChange={(e) => go({ channel: e.target.value })}><option value="">All</option>{o.channels.map((c) => <option key={c} value={c}>{c}</option>)}</select>
         </Field></div>
+        {/* V409: the classification dimensions */}
+        <div className="scope__f"><Field id="fa-ptype" label="Programme type">
+          <select id="fa-ptype" className="ctl" value={f.ptype} onChange={(e) => go({ ptype: e.target.value })}><option value="">All</option>{(o.programmeTypes ?? []).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select>
+        </Field></div>
+        <div className="scope__f"><Field id="fa-purpose" label="Purpose">
+          <select id="fa-purpose" className="ctl" value={f.purpose} onChange={(e) => go({ purpose: e.target.value })}><option value="">All</option>{(o.purposes ?? []).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select>
+        </Field></div>
+        <div className="scope__f"><Field id="fa-module" label="Source module">
+          <select id="fa-module" className="ctl" value={f.module} onChange={(e) => go({ module: e.target.value })}><option value="">All</option>{(o.sourceModules ?? []).map((m) => <option key={m} value={m}>{moduleWord(m)}</option>)}</select>
+        </Field></div>
+        {data.scope.owner ? null : (
+          <div className="scope__f"><Field id="fa-office" label="Responsible office">
+            <select id="fa-office" className="ctl" value={f.office} onChange={(e) => go({ office: e.target.value })}><option value="">All</option>{(o.offices ?? []).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select>
+          </Field></div>
+        )}
+        <div className="scope__f"><Field id="fa-semester" label="Semester">
+          <select id="fa-semester" className="ctl" value={f.semester} onChange={(e) => go({ semester: e.target.value })}><option value="">All</option><option value="1">First</option><option value="2">Second</option></select>
+        </Field></div>
         <div className="scope__f"><Field id="fa-q" label="Search">
           <input id="fa-q" className="ctl" defaultValue={f.q} placeholder="Name, number, reference, receipt" onKeyDown={(e) => { if (e.key === "Enter") go({ q: (e.target as HTMLInputElement).value }); }} onBlur={(e) => { if (e.target.value !== f.q) go({ q: e.target.value }); }} />
         </Field></div>
@@ -215,6 +246,13 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
         </PBody></Panel>
       </div>
 
+      {table("Programme type and purpose", typePurposeRows, "typepurpose")}
+      <div className="grid grid--2">
+        {table("Programme type", typeRows, "ptype")}
+        {table("Purpose", purposeRows, "purpose")}
+        {table("Source module", moduleRows, "module")}
+        {data.scope.owner ? null : table("Responsible office", officeRows, "office")}
+      </div>
       {table("Payment type", catRows, "cat")}
       {data.scope.kind === "FACULTY" || data.scope.kind === "DEPARTMENT" ? null : table("Faculty", facRows, "fac")}
       {data.scope.kind === "DEPARTMENT" ? null : table("Department", deptRows, "dept")}
@@ -240,7 +278,8 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
         ) : <PBody><div className="sub2">No payment records match the selected filters.</div></PBody>}
       </Panel>
 
-      {SETTERS.has(data.scope.office) && money ? <Categories categories={o.categories} onChanged={() => queryNav(`/finance/analytics?${finQuery(f)}`)} /> : null}
+      {SETTERS.has(data.scope.office) && money ? <Categories categories={o.categories} purposes={o.purposes ?? []} onChanged={() => queryNav(`/finance/analytics?${finQuery(f)}`)} /> : null}
+      {FINANCE_SETTERS.has(data.scope.office) ? <Classification onChanged={() => queryNav(`/finance/analytics?${finQuery(f)}`)} /> : null}
     </>
   );
 }
@@ -258,9 +297,9 @@ function periodEnd(bucket: string, granularity: string): string {
 }
 
 /** the Bursary's payment categories: stated here, they appear in every filter, chart and report at once */
-function Categories({ categories, onChanged }: { categories: FinCategory[]; onChanged: () => void }) {
+function Categories({ categories, purposes, onChanged }: { categories: FinCategory[]; purposes: { code: string; label: string }[]; onChanged: () => void }) {
   const [all, setAll] = useState<FinCategory[] | null>(null);
-  const [edit, setEdit] = useState({ code: "", label: "", pattern: "", kinds: "", ord: "100", revenue: true, active: true });
+  const [edit, setEdit] = useState({ code: "", label: "", pattern: "", kinds: "", ord: "100", revenue: true, active: true, purpose: "" });
   const [busy, setBusy] = useState(false);
   const list = all ?? categories;
   async function load() {
@@ -272,23 +311,24 @@ function Categories({ categories, onChanged }: { categories: FinCategory[]; onCh
     try {
       const r = await fetch(`/api/bff/api/v1/analytics/finance/categories/${encodeURIComponent(edit.code.trim().toUpperCase())}`, {
         method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Payment category ${edit.code} stated`) },
-        body: JSON.stringify({ label: edit.label, pattern: edit.pattern || null, kinds: edit.kinds.split(",").map((k) => k.trim()).filter(Boolean), ord: Number(edit.ord) || 100, revenue: edit.revenue, active: edit.active }),
+        body: JSON.stringify({ label: edit.label, pattern: edit.pattern || null, kinds: edit.kinds.split(",").map((k) => k.trim()).filter(Boolean), ord: Number(edit.ord) || 100, revenue: edit.revenue, active: edit.active, purpose: edit.purpose || null }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       notify(`Payment category ${edit.code.toUpperCase()} stated`);
-      setEdit({ code: "", label: "", pattern: "", kinds: "", ord: "100", revenue: true, active: true });
+      setEdit({ code: "", label: "", pattern: "", kinds: "", ord: "100", revenue: true, active: true, purpose: "" });
       await load();
       onChanged();
     } finally { setBusy(false); }
   }
   return (
     <Panel title="Payment categories" right={<span className="sub2">A payment falls in the first category, by order, whose kinds hold its reference kind or whose pattern matches its purpose</span>}>
-      <DTable pageSize={0} cols={["S/N|num", "Code", "Label", "Reference kinds", "Purpose pattern", "Order|num", "Revenue|mid", "Active|mid", "|num"]} rows={list.map((c, i) => [
+      <DTable pageSize={0} cols={["S/N|num", "Code", "Label", "Purpose", "Reference kinds", "Purpose pattern", "Order|num", "Revenue|mid", "Active|mid", "|num"]} rows={list.map((c, i) => [
         <span key="sn" className="tnum sub2">{i + 1}</span>, <span key="c" className="tnum">{c.code}</span>, <span key="l">{c.label}</span>,
+        <span key="pu" className="sub2">{purposes.find((x) => x.code === c.purpose)?.label ?? c.purpose ?? "—"}</span>,
         <span key="k" className="sub2">{(c.kinds ?? []).join(", ") || "—"}</span>, <span key="p" className="sub2 tnum">{c.pattern ?? "—"}</span>, <span key="o" className="tnum">{c.ord}</span>,
         <Pil key="r" kind={c.revenue ? "ok" : "grey"}>{c.revenue ? "Counts" : "Not revenue"}</Pil>, <Pil key="a" kind={c.active ? "ok" : "grey"}>{c.active ? "Active" : "Off"}</Pil>,
-        <Btn key="e" kind="ghost" size="sm" onClick={() => setEdit({ code: c.code, label: c.label, pattern: c.pattern ?? "", kinds: (c.kinds ?? []).join(","), ord: String(c.ord), revenue: c.revenue, active: c.active })}>Edit</Btn>,
+        <Btn key="e" kind="ghost" size="sm" onClick={() => setEdit({ code: c.code, label: c.label, pattern: c.pattern ?? "", kinds: (c.kinds ?? []).join(","), ord: String(c.ord), revenue: c.revenue, active: c.active, purpose: c.purpose ?? "" })}>Edit</Btn>,
       ])} texts={list.map((c) => `${c.code} ${c.label}`)} />
       <PBody>
         <div className="grid grid--3">
@@ -296,6 +336,9 @@ function Categories({ categories, onChanged }: { categories: FinCategory[]; onCh
           <Field id="pc-label" label="Label"><input id="pc-label" className="ctl" value={edit.label} onChange={(e) => setEdit({ ...edit, label: e.target.value })} /></Field>
           <Field id="pc-pattern" label="Purpose pattern" hint="A regular expression over the reference's purpose, case-insensitive; e.g. ^gst"><input id="pc-pattern" className="ctl tnum" value={edit.pattern} onChange={(e) => setEdit({ ...edit, pattern: e.target.value })} /></Field>
           <Field id="pc-kinds" label="Reference kinds" hint="Comma-separated: APPLICATION, CHECKING, ACCEPTANCE, PG_APPLICATION…"><input id="pc-kinds" className="ctl tnum" value={edit.kinds} onChange={(e) => setEdit({ ...edit, kinds: e.target.value })} /></Field>
+          <Field id="pc-purpose" label="Purpose" hint="What a payment of this category is for, whatever the programme">
+            <select id="pc-purpose" className="ctl" value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })}><option value="">Keep as it is</option>{purposes.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select>
+          </Field>
           <Field id="pc-ord" label="Order"><input id="pc-ord" className="ctl tnum" inputMode="numeric" value={edit.ord} onChange={(e) => setEdit({ ...edit, ord: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
           <div className="stack">
             <label className="sub2 row"><input type="checkbox" checked={edit.revenue} onChange={(e) => setEdit({ ...edit, revenue: e.target.checked })} /> Counts as revenue</label>

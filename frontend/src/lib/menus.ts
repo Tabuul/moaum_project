@@ -364,6 +364,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/housing", "icon": "bed", "label": "Housing & Welfare", "badge": "6" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1758,6 +1759,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "cce/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" }
         ]
       },
@@ -1935,6 +1937,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "jupeb/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "jupeb/reports", "icon": "chart", "label": "Reports" },
           { "id": "jupeb/announcements", "icon": "bell", "label": "Announcements" },
           { "id": "jupeb/calendar", "icon": "calendar", "label": "Calendar" }
@@ -2280,6 +2283,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/gst", "icon": "home", "label": "Dashboard" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "r/notices", "icon": "alert", "label": "Notifications" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2316,6 +2320,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/eps", "icon": "home", "label": "Dashboard" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "r/notices", "icon": "alert", "label": "Notifications" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]

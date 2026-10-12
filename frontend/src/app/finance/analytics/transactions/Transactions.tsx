@@ -12,12 +12,17 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import type { Problem } from "@/lib/api";
-import { PRESETS, entryWord, finQuery, naira, sexWord, whenAt, type FinFilters, type FinPage, type FinTransaction } from "@/lib/analytics";
+import { PRESETS, entryWord, finQuery, moduleWord, naira, sexWord, whenAt, type FinFilters, type FinPage, type FinTransaction } from "@/lib/analytics";
 
-const HEAD = ["S/N", "Payment Reference", "Student ID", "Student Name", "Gender", "Faculty", "Department", "Programme", "Level", "Entry Type", "Session", "Payment Type",
-  "Receipt No", "Amount (₦)", "Payment Date", "Payment Status", "Payment Channel", "Source"];
-const line = (r: FinTransaction, sn: number) => [sn, r.reference, r.number ?? "", `${r.surname}, ${r.other_names ?? ""}`.trim(), sexWord(r.sex), r.faculty ?? "", r.department ?? "", r.programme ?? "",
-  r.level ?? "", entryWord(r.entry_mode), r.session, r.category, r.receipt_no ?? "", Number(r.amount), whenAt(r.confirmed_at), r.status, r.channel ?? "", r.source];
+/* V409: the classification beside every payment — programme type, admission route, purpose, source module, responsible office */
+const STATUS_WORD: Record<string, string> = { PAID: "Paid", REFUNDED: "Refunded", PART_REFUNDED: "Part refunded" };
+const HEAD = ["S/N", "Payment Reference", "Gateway Reference", "Student ID", "Student Name", "Gender", "Programme Type", "Admission Route", "Faculty", "Department", "Programme", "Level",
+  "Entry Type", "Session", "Semester", "Purpose", "Payment Type", "Source Module", "Responsible Office", "Receipt No", "Amount (₦)", "Payment Date", "Payment Status", "Payment Channel",
+  "Application No", "JAMB No", "JUPEB Exam No", "Source"];
+const line = (r: FinTransaction, sn: number) => [sn, r.reference, r.gateway_reference ?? "", r.number ?? "", `${r.surname}, ${r.other_names ?? ""}`.trim(), sexWord(r.sex),
+  r.programme_type_label ?? r.programme_type ?? "", entryWord(r.admission_route), r.faculty ?? "", r.department ?? "", r.programme ?? "", r.level ?? "", entryWord(r.entry_mode), r.session,
+  r.semester ?? "", r.purpose_label ?? r.purpose_code ?? "", r.category, moduleWord(r.source_module), r.responsible_office_label ?? r.responsible_office ?? "", r.receipt_no ?? "", Number(r.amount),
+  whenAt(r.confirmed_at), STATUS_WORD[r.ledger_status ?? ""] ?? r.status, r.channel ?? "", r.application_no ?? "", r.jamb_reg_no ?? "", r.exam_no ?? "", r.source];
 
 export function Transactions({ data, filters, studentId }: { data: FinPage; filters: FinFilters; studentId: string }) {
   const queryNav = useQueryNav();
@@ -28,6 +33,8 @@ export function Transactions({ data, filters, studentId }: { data: FinPage; filt
   const words = [data.scope.label, f.from && f.to ? (f.from === f.to ? f.from : `${f.from} → ${f.to}`) : f.preset ? PRESETS.find((p) => p.key === f.preset)?.label : "any date",
     data.filters.session ? `session ${data.filters.session}` : "all sessions", f.types ? `types ${f.types}` : "all payment types", f.sex ? sexWord(f.sex) : null,
     f.fac || null, f.dept || null, f.prog || null, f.level ? `${f.level} Level` : null, f.entry ? entryWord(f.entry) : null, f.channel || null,
+    f.ptype ? `programme type ${f.ptype.toLowerCase()}` : null, f.purpose ? `purpose ${f.purpose.toLowerCase().replace(/_/g, " ")}` : null,
+    f.module ? `module ${moduleWord(f.module)}` : null, f.office ? `owned by ${f.office}` : null, f.semester ? `semester ${f.semester}` : null,
     studentId ? "one student" : null, f.q ? `search “${f.q}”` : null].filter(Boolean).join(" · ");
   const go = (extra: Record<string, string | number | undefined>) => queryNav(`/finance/analytics/transactions?${finQuery(f, { studentId: studentId || undefined, ...extra })}`);
   const sum = data.rows.reduce((s, r) => s + Number(r.amount), 0);
@@ -70,19 +77,22 @@ export function Transactions({ data, filters, studentId }: { data: FinPage; filt
       </div>
       {!data.total ? <Note kind="info" title="No payment records match the selected filters">Widen the date, the session or the payment types on the analytics page.</Note> : null}
       <Panel title={`Transactions ${data.page * data.size + 1}–${Math.min(data.total, (data.page + 1) * data.size)} of ${data.total.toLocaleString()}`} right={<span className="sub2">This page: {naira(sum)}</span>}>
-        <DTable pageSize={0} cols={["S/N|num", "Reference", "Student", "Gender|mid", "Faculty / Department", "Programme", "Level|mid", "Entry|mid", "Session|mid", "Payment type", "Amount|num", "Paid on", "Channel", "|num"]} rows={data.rows.map((r, i) => [
+        <DTable pageSize={0} cols={["S/N|num", "Reference", "Student", "Gender|mid", "Programme type", "Faculty / Department", "Programme", "Level|mid", "Entry|mid", "Session|mid", "Purpose", "Module / office", "Amount|num", "Paid on", "Status|mid", "Channel", "|num"]} rows={data.rows.map((r, i) => [
           <span key="sn" className="tnum sub2">{data.page * data.size + i + 1}</span>,
-          <span key="r" className="tnum">{r.reference}{r.receipt_no ? <div className="sub2">{r.receipt_no}</div> : null}</span>,
+          <span key="r" className="tnum">{r.reference}{r.receipt_no ? <div className="sub2">{r.receipt_no}</div> : null}{r.gateway_reference ? <div className="sub2" title="Gateway reference">{r.gateway_reference}</div> : null}</span>,
           <span key="s"><b>{r.surname}, {r.other_names}</b><div className="sub2 tnum">{r.number ?? "—"}</div></span>,
           <span key="g">{sexWord(r.sex)}</span>,
+          <span key="pt">{r.programme_type_label ?? r.programme_type ?? "—"}{r.admission_route ? <div className="sub2">{entryWord(r.admission_route)}</div> : null}</span>,
           <span key="f">{r.faculty ?? "—"}<div className="sub2">{r.department ?? ""}</div></span>,
           <span key="p">{r.programme ?? "—"}</span>,
           <span key="l" className="tnum">{r.level ?? "—"}</span>,
           <span key="e">{entryWord(r.entry_mode)}</span>,
           <span key="ss" className="tnum">{r.session}</span>,
-          <span key="c"><Pil kind="info">{r.category}</Pil>{r.purpose ? <div className="sub2">{r.purpose}</div> : null}</span>,
+          <span key="c"><Pil kind="info">{r.purpose_label ?? r.category}</Pil>{r.purpose ? <div className="sub2">{r.purpose}</div> : null}{r.semester ? <div className="sub2">{r.semester === 1 ? "First" : r.semester === 2 ? "Second" : "Third"} semester</div> : null}</span>,
+          <span key="mo">{moduleWord(r.source_module)}<div className="sub2">{r.responsible_office_label ?? r.responsible_office ?? ""}</div></span>,
           <span key="a" className="tnum b600">{naira(r.amount)}</span>,
           <span key="d" className="sub2 tnum">{whenAt(r.confirmed_at)}</span>,
+          <Pil key="st" kind={r.ledger_status === "REFUNDED" ? "grey" : r.ledger_status === "PART_REFUNDED" ? "warn" : "ok"}>{STATUS_WORD[r.ledger_status ?? ""] ?? "Paid"}</Pil>,
           <span key="ch" className="sub2">{r.channel ?? "—"}</span>,
           r.student_id ? <Link key="x" className="lnk" href={`/finance/analytics/transactions?${finQuery(f, { studentId: r.student_id })}`}>This student</Link> : <span key="x" />,
         ])} texts={data.rows.map((r) => `${r.reference} ${r.surname} ${r.number ?? ""}`)} />

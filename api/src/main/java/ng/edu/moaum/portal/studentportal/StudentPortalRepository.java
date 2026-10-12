@@ -327,19 +327,38 @@ class StudentPortalRepository {
 
     List<Map<String, Object>> references(UUID student) {
         return jdbc.sql("""
-                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no,
-                       CASE WHEN confirmed_at IS NOT NULL THEN finance.payment_term(id) END AS term
-                  FROM finance.payment_reference WHERE student_id = :s ORDER BY generated_at DESC
+                SELECT pr.id, pr.session, pr.reference, pr.purpose, pr.amount, pr.generated_at, pr.expires_at, pr.confirmed_at, pr.channel, pr.note, pr.receipt_no,
+                       CASE WHEN pr.confirmed_at IS NOT NULL THEN finance.payment_term(pr.id) END AS term,
+                       """ + CLASSIFIED + """
+                  FROM finance.payment_reference pr""" + LEDGER + """
+                 WHERE pr.student_id = :s ORDER BY pr.generated_at DESC
                 """).param("s", student).query().listOfRows();
     }
 
     Optional<Map<String, Object>> reference(UUID student, String reference) {
         return jdbc.sql("""
-                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no,
-                       CASE WHEN confirmed_at IS NOT NULL THEN finance.payment_term(id) END AS term
-                  FROM finance.payment_reference WHERE student_id = :s AND reference = upper(btrim(:r))
+                SELECT pr.id, pr.session, pr.reference, pr.purpose, pr.amount, pr.generated_at, pr.expires_at, pr.confirmed_at, pr.channel, pr.note, pr.receipt_no,
+                       CASE WHEN pr.confirmed_at IS NOT NULL THEN finance.payment_term(pr.id) END AS term,
+                       """ + CLASSIFIED + """
+                       , (SELECT e.gateway_ref FROM finance.gateway_event e WHERE e.reference = pr.reference AND e.outcome IN ('SETTLED', 'ALREADY_SETTLED')
+                           AND e.gateway_ref IS NOT NULL ORDER BY e.received_at DESC LIMIT 1) AS gateway_reference
+                  FROM finance.payment_reference pr""" + LEDGER + """
+                 WHERE pr.student_id = :s AND pr.reference = upper(btrim(:r))
                 """).param("s", student).param("r", reference).query().listOfRows().stream().findFirst();
     }
+
+    /* V409: a payment's classification, read from the one ledger (reporting.payments) — programme type, purpose, source module, responsible office */
+    private static final String CLASSIFIED = """
+            v.programme_type, coalesce(pt.label, v.programme_type) AS programme_type_label, v.purpose_code, coalesce(pu.label, v.purpose_code) AS purpose_label,
+                       v.source_module, v.responsible_office, coalesce(ro.label, v.responsible_office) AS responsible_office_label, v.semester AS ledger_semester
+            """;
+    private static final String LEDGER = """
+
+              LEFT JOIN reporting.payments v ON v.source = 'STUDENT' AND v.payment_id = pr.id
+              LEFT JOIN finance.programme_type pt ON pt.code = v.programme_type
+              LEFT JOIN finance.payment_purpose pu ON pu.code = v.purpose_code
+              LEFT JOIN ref.office ro ON ro.code = v.responsible_office
+            """;
 
     /** the level the student was at during a session — for a receipt, the level when they paid, not
      *  today's. The enrolment for that session if there is one; otherwise derived from the entry level

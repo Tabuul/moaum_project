@@ -11,27 +11,40 @@ export interface FinEntryRow extends FinFigures { entry_mode: string | null }
 export interface FinSessionRow extends FinFigures { session: string | null }
 export interface FinChannelRow extends FinFigures { channel: string | null }
 export interface FinTrendRow extends FinFigures { bucket: string }
+/** V409: the classification breakdowns — programme type, purpose, both together, source module, responsible office */
+export interface FinTypeRow extends FinFigures { programme_type: string | null; programme_type_label: string | null }
+export interface FinPurposeRow extends FinFigures { purpose_code: string | null; purpose_label: string | null }
+export interface FinTypePurposeRow extends FinTypeRow { purpose_code: string | null; purpose_label: string | null }
+export interface FinModuleRow extends FinFigures { source_module: string | null }
+export interface FinOfficeRow extends FinFigures { responsible_office: string | null; responsible_office_label: string | null }
 export interface FinTotals extends FinFigures {
   revenue: number; pending_count: number; pending_amount: number; failed_count: number; refunded_count: number; refunded_amount: number; net_revenue: number;
 }
-export interface FinCategory { code: string; label: string; ord: number; revenue: boolean; active: boolean; kinds?: string[]; pattern?: string | null; updated_at?: string }
-export interface FinScope { kind: "UNIVERSITY" | "PG_SCHOOL" | "COLLEGE" | "FACULTY" | "DEPARTMENT"; label: string; faculty: string; department: string; money: boolean; transactions: boolean; office: string }
+export interface FinCategory { code: string; label: string; ord: number; revenue: boolean; active: boolean; kinds?: string[]; pattern?: string | null; updated_at?: string; purpose?: string }
+/** owner (V409): the office that owns a purpose (JUPEB, the Centre, GST, EPS, Housing) and reads only its own payments */
+export interface FinScope { kind: "UNIVERSITY" | "PG_SCHOOL" | "COLLEGE" | "FACULTY" | "DEPARTMENT"; label: string; faculty: string; department: string; money: boolean; transactions: boolean; office: string; owner?: string }
 export interface FinProgrammeOption { faculty_code: string; faculty: string; dept_code: string; department: string; programme_code: string; programme: string }
 export interface FinOptions {
   categories: FinCategory[]; sessions: string[]; currentSession: string | null; entryModes: string[]; channels: string[]; programmes: FinProgrammeOption[];
   levels: number[]; genders: string[]; granularities: string[];
+  programmeTypes?: { code: string; label: string }[]; purposes?: { code: string; label: string }[]; sourceModules?: string[]; offices?: { code: string; label: string }[];
 }
 export interface FinCompare extends FinFigures { label: string; from: string; to: string; session: string }
 export interface FinSummary {
   scope: FinScope; filters: FinFilters & { types: string[] }; options: FinOptions; totals: FinTotals;
   byCategory: FinCategoryRow[]; byFaculty: FinFacultyRow[]; byDepartment: FinDepartmentRow[]; byProgramme: FinProgrammeRow[]; byLevel: FinLevelRow[];
   byGender: FinGenderRow[]; byEntry: FinEntryRow[]; bySession: FinSessionRow[]; byChannel: FinChannelRow[]; trend: FinTrendRow[]; compare: FinCompare | null;
+  byProgrammeType?: FinTypeRow[]; byPurpose?: FinPurposeRow[]; byTypeAndPurpose?: FinTypePurposeRow[]; bySourceModule?: FinModuleRow[]; byResponsibleOffice?: FinOfficeRow[];
 }
 export interface FinTransaction {
   source: string; reference: string; receipt_no: string | null; number: string | null; student_id: string | null; application_id: string | null; pg_application_id: string | null;
   surname: string; other_names: string | null; sex: string | null; faculty_code: string | null; faculty: string | null; dept_code: string | null; department: string | null;
   programme_code: string | null; programme: string | null; level: number | null; entry_mode: string | null; entry_session: string | null; session: string;
   category_code: string; category: string; purpose: string | null; kind: string | null; amount: number; confirmed_at: string; generated_at: string; channel: string | null; status: string;
+  /* V409: the classification and the ledger's word for the payment */
+  programme_type?: string | null; programme_type_label?: string | null; admission_route?: string | null; study_mode?: string | null; purpose_code?: string | null; purpose_label?: string | null;
+  entitlement?: string | null; source_module?: string | null; responsible_office?: string | null; responsible_office_label?: string | null; semester?: number | null;
+  jamb_reg_no?: string | null; application_no?: string | null; exam_no?: string | null; gateway_reference?: string | null; ledger_status?: string;
 }
 export interface FinPage { scope: FinScope; filters: FinFilters; total: number; page: number; size: number; rows: FinTransaction[] }
 
@@ -39,8 +52,11 @@ export interface FinPage { scope: FinScope; filters: FinFilters; total: number; 
 export interface FinFilters {
   preset: string; from: string; to: string; granularity: string; types: string; sex: string; fac: string; dept: string; prog: string; level: string;
   session: string; entry: string; channel: string; q: string;
+  /** V409: programme type, purpose, source module, responsible office, semester */
+  ptype: string; purpose: string; module: string; office: string; semester: string;
 }
-export const EMPTY_FIN: FinFilters = { preset: "", from: "", to: "", granularity: "day", types: "", sex: "", fac: "", dept: "", prog: "", level: "", session: "", entry: "", channel: "", q: "" };
+export const EMPTY_FIN: FinFilters = { preset: "", from: "", to: "", granularity: "day", types: "", sex: "", fac: "", dept: "", prog: "", level: "", session: "", entry: "", channel: "", q: "",
+  ptype: "", purpose: "", module: "", office: "", semester: "" };
 
 export const PRESETS: { key: string; label: string }[] = [
   { key: "", label: "Any date" }, { key: "today", label: "Today" }, { key: "yesterday", label: "Yesterday" }, { key: "this_week", label: "This week" },
@@ -74,7 +90,8 @@ export function presetGranularity(key: string): string {
   return key === "this_year" || key === "last_year" ? "month" : key === "this_quarter" ? "week" : "day";
 }
 
-const KEYS: (keyof FinFilters)[] = ["preset", "from", "to", "granularity", "types", "sex", "fac", "dept", "prog", "level", "session", "entry", "channel", "q"];
+const KEYS: (keyof FinFilters)[] = ["preset", "from", "to", "granularity", "types", "sex", "fac", "dept", "prog", "level", "session", "entry", "channel", "q",
+  "ptype", "purpose", "module", "office", "semester"];
 
 export function readFinFilters(p: Record<string, string | string[] | undefined>): FinFilters {
   const one = (k: string) => { const v = p[k]; return typeof v === "string" ? v : Array.isArray(v) ? v[0] ?? "" : ""; };
@@ -93,6 +110,8 @@ export function finQuery(f: Partial<FinFilters>, extra: Record<string, string | 
   return p.toString();
 }
 
+/** V409: a source module as words — STUDENT_FINANCE is "Student Finance", PG "PG" */
+export const moduleWord = (m: string | null | undefined) => (m ? (m.length <= 5 ? m : m.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")) : "Not recorded");
 export const naira = (n: number | string | null | undefined) => (n == null ? "—" : "₦" + Number(n).toLocaleString("en-NG", { maximumFractionDigits: 0 }));
 export const SEX_WORD: Record<string, string> = { M: "Male", F: "Female" };
 export const sexWord = (s: string | null | undefined) => (s ? SEX_WORD[s] ?? s : "Not recorded");
@@ -114,7 +133,10 @@ export function bucketLabel(bucket: string, granularity: string): string {
 }
 
 /** the heading a role reads the analytics under */
+/** V409: the office that owns a purpose reads its own payments: "JUPEB payments", "GST payments"… */
+const OWNER_HEADING: Record<string, string> = { jupeb: "JUPEB Payments", cce: "CCE Payments", gst: "GST Payments", eps: "EPS Payments", housing: "Hostel Payments" };
 export function analyticsHeading(scope: FinScope): string {
+  if (scope.owner) return OWNER_HEADING[scope.owner] ?? "Payments";
   switch (scope.kind) {
     case "FACULTY": return "Faculty Student & Financial Analytics";
     case "DEPARTMENT": return "Department Student & Financial Analytics";

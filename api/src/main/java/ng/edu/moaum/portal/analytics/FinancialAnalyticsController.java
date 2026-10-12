@@ -41,7 +41,10 @@ import org.springframework.web.bind.annotation.RestController;
  * transactions and the export open only to the offices that hold the purse.
  * Revenue is a confirmed reference of a category that counts as revenue — never a
  * sum of every row; a failed gateway attempt, a pending reference and a paid refund
- * are counted apart.
+ * are counted apart. V409: every payment also carries its programme type, purpose,
+ * source module and responsible office as separate dimensions — filters and
+ * breakdowns, programme type by purpose among them ("Sandwich school fees") — and the
+ * offices that own a purpose (JUPEB, the Centre, GST, EPS, Housing) read their own.
  */
 @RestController
 @RequestMapping("/api/v1/analytics")
@@ -49,10 +52,15 @@ class FinancialAnalyticsController {
 
     private static final String SUMMARY_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_provost','OFFICE_collegesecretary','OFFICE_dvc','OFFICE_vc','OFFICE_audit',"
-            + "'OFFICE_ict','OFFICE_dean','OFFICE_facultyofficer')";   // the Head of Department and the Academic Office no longer read finance (Oct 2026)
+            + "'OFFICE_ict','OFFICE_dean','OFFICE_facultyofficer',"
+            + "'OFFICE_jupeb','OFFICE_cce','OFFICE_gst','OFFICE_eps','OFFICE_housing')";   // the Head of Department and the Academic Office no longer read finance (Oct 2026)
     private static final String TRANSACTION_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_provost','OFFICE_collegesecretary','OFFICE_dvc','OFFICE_vc','OFFICE_audit',"
-            + "'OFFICE_dean','OFFICE_facultyofficer')";
+            + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_jupeb','OFFICE_cce','OFFICE_gst','OFFICE_eps','OFFICE_housing')";
+    /** V409: the offices that own a purpose read the payments they own — their own, amounts and transactions, nothing else */
+    private static final Set<String> OWNERS = Set.of("jupeb", "cce", "gst", "eps", "housing");
+    /** V409: the catalogue of programme types, purposes and classification rules is the Bursary's */
+    private static final String FINANCE_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_admin','OFFICE_super')";
     private static final String CATEGORY_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final Set<String> GRANULARITY = Set.of("day", "week", "month", "quarter", "year");
     private static final Set<String> FAILED = Set.of("NOT_SUCCESSFUL", "SHORT_PAID", "BAD_SIGNATURE", "GATEWAY_ERROR", "UNKNOWN_REFERENCE");
@@ -67,7 +75,28 @@ class FinancialAnalyticsController {
 
     /** the filters, each applied only within the bound */
     record Filters(LocalDate from, LocalDate to, String types, String sex, String fac, String dept, String prog, Integer level,
-                   String session, String entry, String channel, String q, String granularity) {
+                   String session, String entry, String channel, String q, String granularity,
+                   String ptype, String purpose, String module, String office, Integer semester) {
+        Filters(LocalDate from, LocalDate to, String types, String sex, String fac, String dept, String prog, Integer level,
+                String session, String entry, String channel, String q, String granularity) {
+            this(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, granularity, null, null, null, null, null);
+        }
+
+        /** V409: the same filters for another window or session */
+        Filters with(LocalDate from, LocalDate to, String session) {
+            return new Filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, granularity, ptype, purpose, module, office, semester);
+        }
+    }
+
+    private static String code(String v) {
+        return v == null || !v.trim().toUpperCase().matches("[A-Z][A-Z0-9_]{1,39}") ? null : v.trim().toUpperCase();
+    }
+
+    /** V409: the classification filters on top of the others */
+    private static Filters classified(Filters f, String ptype, String purpose, String module, String office, Integer semester) {
+        String off = office == null || !office.trim().matches("[A-Za-z]{2,30}") ? null : office.trim().toLowerCase();
+        return new Filters(f.from(), f.to(), f.types(), f.sex(), f.fac(), f.dept(), f.prog(), f.level(), f.session(), f.entry(), f.channel(), f.q(), f.granularity(),
+                code(ptype), code(purpose), code(module), off, semester != null && semester >= 1 && semester <= 3 ? semester : null);
     }
 
     private static String blank(String v) {
@@ -108,9 +137,20 @@ class FinancialAnalyticsController {
     /* ── the rows: the ledger within the bound and the filters ── */
 
     private static final String ROWS = """
-            SELECT v.*, coalesce(c.label, v.category_code) AS category, coalesce(c.revenue, true) AS revenue
+            SELECT v.*, coalesce(c.label, v.category_code) AS category, coalesce(c.revenue, true) AS revenue,
+                   coalesce(pt.label, v.programme_type) AS programme_type_label, coalesce(pu.label, v.purpose_code) AS purpose_label, pu.entitlement,
+                   coalesce(ro.label, v.responsible_office) AS responsible_office_label
               FROM reporting.payments v LEFT JOIN finance.payment_category c ON c.code = v.category_code
+              LEFT JOIN finance.programme_type pt ON pt.code = v.programme_type
+              LEFT JOIN finance.payment_purpose pu ON pu.code = v.purpose_code
+              LEFT JOIN ref.office ro ON ro.code = v.responsible_office
              WHERE (:pg::boolean IS NULL OR v.is_pg = :pg)
+               AND (:bo::text IS NULL OR v.responsible_office = :bo)
+               AND (:ptype::text IS NULL OR v.programme_type = :ptype)
+               AND (:purpose::text IS NULL OR v.purpose_code = :purpose)
+               AND (:module::text IS NULL OR v.source_module = :module)
+               AND (:office::text IS NULL OR v.responsible_office = :office)
+               AND (:semester::int IS NULL OR v.semester = :semester)
                AND (:chs::boolean IS NULL OR v.is_chs = :chs)
                AND (:bf::text IS NULL OR v.faculty_code = :bf)
                AND (:bd::text IS NULL OR v.dept_code = :bd)
@@ -137,7 +177,15 @@ class FinancialAnalyticsController {
                 .param("fac", f.fac(), Types.VARCHAR).param("dept", f.dept(), Types.VARCHAR).param("prog", f.prog(), Types.VARCHAR)
                 .param("level", f.level(), Types.INTEGER).param("session", f.session(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR)
                 .param("channel", f.channel(), Types.VARCHAR).param("q", f.q(), Types.VARCHAR)
-                .param("from", from, Types.DATE).param("to", to, Types.DATE);
+                .param("from", from, Types.DATE).param("to", to, Types.DATE)
+                .param("bo", owner(), Types.VARCHAR).param("ptype", f.ptype(), Types.VARCHAR).param("purpose", f.purpose(), Types.VARCHAR)
+                .param("module", f.module(), Types.VARCHAR).param("office", f.office(), Types.VARCHAR).param("semester", f.semester(), Types.INTEGER);
+    }
+
+    /** V409: the office that owns a purpose is held to the payments it owns, whatever the request says */
+    private String owner() {
+        String office = scope.office();
+        return OWNERS.contains(office) ? office : null;
     }
 
     /* ── the summary ── */
@@ -151,9 +199,12 @@ class FinancialAnalyticsController {
                                 @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                                 @RequestParam(required = false) String session, @RequestParam(required = false) String entry,
                                 @RequestParam(required = false) String channel, @RequestParam(required = false) String q,
-                                @RequestParam(required = false) String granularity, @RequestParam(defaultValue = "true") boolean compare) {
+                                @RequestParam(required = false) String granularity, @RequestParam(defaultValue = "true") boolean compare,
+                                @RequestParam(required = false) String ptype, @RequestParam(required = false) String purpose,
+                                @RequestParam(required = false) String module, @RequestParam(required = false) String office,
+                                @RequestParam(required = false) Integer semester) {
         Bound b = scope.bound();
-        Filters f = filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, granularity);
+        Filters f = classified(filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, granularity), ptype, purpose, module, office, semester);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("scope", scopeOf(b));
         out.put("filters", filterMap(f));
@@ -170,9 +221,10 @@ class FinancialAnalyticsController {
         m.put("label", b.label());
         m.put("faculty", b.faculty() == null ? "" : b.faculty());
         m.put("department", b.dept() == null ? "" : b.dept());
-        m.put("money", b.money());
-        m.put("transactions", scope.transactions());
+        m.put("money", b.money() || owner() != null);
+        m.put("transactions", scope.transactions() || owner() != null);
         m.put("office", scope.office());
+        m.put("owner", owner() == null ? "" : owner());
         return m;
     }
 
@@ -191,6 +243,11 @@ class FinancialAnalyticsController {
         m.put("channel", f.channel() == null ? "" : f.channel());
         m.put("q", f.q() == null ? "" : f.q().substring(1, f.q().length() - 1));
         m.put("granularity", f.granularity());
+        m.put("ptype", f.ptype() == null ? "" : f.ptype());
+        m.put("purpose", f.purpose() == null ? "" : f.purpose());
+        m.put("module", f.module() == null ? "" : f.module());
+        m.put("office", f.office() == null ? "" : f.office());
+        m.put("semester", f.semester() == null ? "" : String.valueOf(f.semester()));
         return m;
     }
 
@@ -202,20 +259,32 @@ class FinancialAnalyticsController {
                 ), x AS (SELECT r.*, date_trunc(:g, r.confirmed_at)::date AS bucket FROM r)
                 SELECT grouping(category_code) AS g_c, grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p,
                        grouping(level) AS g_l, grouping(sex) AS g_s, grouping(entry_mode) AS g_e, grouping(session) AS g_ss, grouping(channel) AS g_ch, grouping(bucket) AS g_b,
+                       grouping(programme_type) AS g_pt, grouping(purpose_code) AS g_pp, grouping(source_module) AS g_sm, grouping(responsible_office) AS g_ro,
                        category_code, category, faculty_code, faculty, dept_code, department, programme_code, programme, level, sex, entry_mode, session, channel, bucket,
+                       programme_type, programme_type_label, purpose_code, purpose_label, source_module, responsible_office, responsible_office_label,
                        count(*) AS transactions, count(DISTINCT payer_key) AS payers, coalesce(sum(amount), 0) AS amount
                   FROM x
                  GROUP BY GROUPING SETS ((), (category_code, category), (faculty_code, faculty), (faculty_code, faculty, dept_code, department),
                                          (faculty_code, faculty, dept_code, department, programme_code, programme),
-                                         (level), (sex), (entry_mode), (session), (channel), (bucket))
+                                         (level), (sex), (entry_mode), (session), (channel), (bucket),
+                                         (programme_type, programme_type_label), (purpose_code, purpose_label),
+                                         (programme_type, programme_type_label, purpose_code, purpose_label),
+                                         (source_module), (responsible_office, responsible_office_label))
                  ORDER BY amount DESC, category, faculty, department, programme, level, sex, entry_mode, session, channel, bucket
                 """), b, f, f.from(), f.to()).param("g", f.granularity()).query().listOfRows();
         Map<String, Object> totals = null;
         List<Map<String, Object>> byCategory = new ArrayList<>(), byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(),
-                byLevel = new ArrayList<>(), byGender = new ArrayList<>(), byEntry = new ArrayList<>(), bySession = new ArrayList<>(), byChannel = new ArrayList<>(), trend = new ArrayList<>();
+                byLevel = new ArrayList<>(), byGender = new ArrayList<>(), byEntry = new ArrayList<>(), bySession = new ArrayList<>(), byChannel = new ArrayList<>(), trend = new ArrayList<>(),
+                byProgrammeType = new ArrayList<>(), byPurpose = new ArrayList<>(), byTypeAndPurpose = new ArrayList<>(), byModule = new ArrayList<>(), byOffice = new ArrayList<>();
         for (Map<String, Object> g : rows) {
             Map<String, Object> m = figures(g);
             if (flag(g, "g_b") == 0) { m.put("bucket", String.valueOf(g.get("bucket"))); trend.add(m); }
+            // V409: programme type by purpose before either alone
+            else if (flag(g, "g_pt") == 0 && flag(g, "g_pp") == 0) { put(m, g, "programme_type", "programme_type_label", "purpose_code", "purpose_label"); byTypeAndPurpose.add(m); }
+            else if (flag(g, "g_pt") == 0) { put(m, g, "programme_type", "programme_type_label"); byProgrammeType.add(m); }
+            else if (flag(g, "g_pp") == 0) { put(m, g, "purpose_code", "purpose_label"); byPurpose.add(m); }
+            else if (flag(g, "g_sm") == 0) { m.put("source_module", g.get("source_module")); byModule.add(m); }
+            else if (flag(g, "g_ro") == 0) { put(m, g, "responsible_office", "responsible_office_label"); byOffice.add(m); }
             else if (flag(g, "g_c") == 0) { m.put("code", g.get("category_code")); m.put("label", g.get("category")); byCategory.add(m); }
             else if (flag(g, "g_p") == 0) { put(m, g, "faculty_code", "faculty", "dept_code", "department", "programme_code", "programme"); byProgramme.add(m); }
             else if (flag(g, "g_d") == 0) { put(m, g, "faculty_code", "faculty", "dept_code", "department"); byDepartment.add(m); }
@@ -242,6 +311,11 @@ class FinancialAnalyticsController {
         out.put("bySession", bySession);
         out.put("byChannel", byChannel);
         out.put("trend", trend);
+        out.put("byProgrammeType", byProgrammeType);
+        out.put("byPurpose", byPurpose);
+        out.put("byTypeAndPurpose", byTypeAndPurpose);
+        out.put("bySourceModule", byModule);
+        out.put("byResponsibleOffice", byOffice);
     }
 
     private static int flag(Map<String, Object> g, String k) {
@@ -298,12 +372,12 @@ class FinancialAnalyticsController {
         String label;
         if (from != null && to != null) {
             long days = java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1;
-            prev = new Filters(from.minusDays(days), from.minusDays(1), f.types(), f.sex(), f.fac(), f.dept(), f.prog(), f.level(), f.session(), f.entry(), f.channel(), f.q(), f.granularity());
+            prev = f.with(from.minusDays(days), from.minusDays(1), f.session());
             label = "Previous " + days + " day" + (days == 1 ? "" : "s");
         } else if (f.session() != null) {
             int y = Integer.parseInt(f.session().substring(0, 4)) - 1;
             String before = y + "/" + (y + 1);
-            prev = new Filters(null, null, f.types(), f.sex(), f.fac(), f.dept(), f.prog(), f.level(), before, f.entry(), f.channel(), f.q(), f.granularity());
+            prev = f.with(null, null, before);
             label = "Session " + before;
         } else {
             return null;
@@ -345,6 +419,13 @@ class FinancialAnalyticsController {
         o.put("levels", b.pg() ? List.of(700, 800, 900) : List.of(100, 200, 300, 400, 500, 600, 700, 800, 900));
         o.put("genders", List.of("M", "F"));
         o.put("granularities", List.of("day", "week", "month", "quarter", "year"));
+        // V409: the classification dimensions
+        o.put("programmeTypes", jdbc.sql("SELECT code, label FROM finance.programme_type WHERE active ORDER BY ord, code").query().listOfRows());
+        o.put("purposes", jdbc.sql("SELECT code, label FROM finance.payment_purpose WHERE active ORDER BY ord, code").query().listOfRows());
+        o.put("sourceModules", jdbc.sql("SELECT DISTINCT source_module FROM finance.payment_classification ORDER BY source_module").query(String.class).list());
+        o.put("offices", jdbc.sql("""
+                SELECT DISTINCT c.responsible_office AS code, o.label FROM finance.payment_classification c JOIN ref.office o ON o.code = c.responsible_office ORDER BY o.label
+                """).query().listOfRows());
         return o;
     }
 
@@ -360,9 +441,12 @@ class FinancialAnalyticsController {
                                      @RequestParam(required = false) String session, @RequestParam(required = false) String entry,
                                      @RequestParam(required = false) String channel, @RequestParam(required = false) String q,
                                      @RequestParam(required = false) String studentId,
-                                     @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+                                     @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
+                                     @RequestParam(required = false) String ptype, @RequestParam(required = false) String purpose,
+                                     @RequestParam(required = false) String module, @RequestParam(required = false) String office,
+                                     @RequestParam(required = false) Integer semester) {
         Bound b = scope.bound();
-        Filters f = filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, null);
+        Filters f = classified(filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, null), ptype, purpose, module, office, semester);
         int sz = Math.max(1, Math.min(size, 500));
         int pg = Math.max(0, page);
         java.util.UUID student = null;
@@ -374,7 +458,12 @@ class FinancialAnalyticsController {
                 )
                 SELECT count(*) OVER () AS total_rows, r.source, r.reference, r.receipt_no, r.number, r.student_id, r.application_id, r.pg_application_id,
                        r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme, r.level, r.entry_mode, r.entry_session,
-                       r.session, r.category_code, r.category, r.purpose, r.kind, r.amount, r.confirmed_at, r.generated_at, r.channel, r.status
+                       r.session, r.category_code, r.category, r.purpose, r.kind, r.amount, r.confirmed_at, r.generated_at, r.channel, r.status,
+                       r.programme_type, r.programme_type_label, r.admission_route, r.study_mode, r.purpose_code, r.purpose_label, r.entitlement,
+                       r.source_module, r.responsible_office, r.responsible_office_label, r.semester, r.jamb_reg_no, r.application_no, r.exam_no,
+                       (SELECT e.gateway_ref FROM finance.gateway_event e WHERE e.reference = r.reference AND e.outcome IN ('SETTLED', 'ALREADY_SETTLED') AND e.gateway_ref IS NOT NULL
+                         ORDER BY e.received_at DESC LIMIT 1) AS gateway_reference,
+                       (SELECT coalesce(sum(rf.amount), 0) FROM finance.refund rf WHERE rf.state = 'PAID' AND (rf.reference = r.reference OR rf.source_reference = r.reference)) AS refunded
                   FROM r
                  WHERE (:student::uuid IS NULL OR r.student_id = :student)
                  ORDER BY r.confirmed_at DESC, r.reference
@@ -386,6 +475,10 @@ class FinancialAnalyticsController {
             Map<String, Object> x = new LinkedHashMap<>(r);
             x.remove("total_rows");
             x.put("status", "CONFIRMED");
+            // V409: the ledger's word for it — paid, refunded in part or in whole
+            BigDecimal refunded = r.get("refunded") instanceof BigDecimal d ? d : BigDecimal.ZERO;
+            BigDecimal amount = r.get("amount") instanceof BigDecimal d ? d : BigDecimal.ZERO;
+            x.put("ledger_status", refunded.signum() == 0 ? "PAID" : refunded.compareTo(amount) >= 0 ? "REFUNDED" : "PART_REFUNDED");
             out.add(x);
         }
         Map<String, Object> res = new LinkedHashMap<>();
@@ -400,14 +493,16 @@ class FinancialAnalyticsController {
 
     /* ── the categories: the Bursary's, configured ── */
 
-    public record CategoryIn(@NotBlank @Size(max = 120) String label, List<String> kinds, @Size(max = 400) String pattern, Integer ord, Boolean revenue, Boolean active) {
+    /** V409: purpose — the purpose a payment of the category is for (finance.payment_purpose); left out, it stays as it was */
+    public record CategoryIn(@NotBlank @Size(max = 120) String label, List<String> kinds, @Size(max = 400) String pattern, Integer ord, Boolean revenue, Boolean active,
+                             @Size(max = 40) String purpose) {
     }
 
     @GetMapping("/finance/categories")
     @PreAuthorize(SUMMARY_READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> categories() {
-        return jdbc.sql("SELECT code, label, kinds, pattern, ord, revenue, active, updated_at FROM finance.payment_category ORDER BY ord, code").query().listOfRows()
+        return jdbc.sql("SELECT code, label, kinds, pattern, ord, revenue, active, updated_at, purpose FROM finance.payment_category ORDER BY ord, code").query().listOfRows()
                 .stream().map(r -> { Map<String, Object> m = new LinkedHashMap<>(r); m.put("kinds", kinds(r.get("kinds"))); return m; }).toList();
     }
 
@@ -430,14 +525,138 @@ class FinancialAnalyticsController {
         }
         AuditContextHolder.required();
         String[] kinds = body.kinds() == null ? new String[0] : body.kinds().stream().map(k -> k.trim().toUpperCase()).filter(k -> !k.isEmpty()).toArray(String[]::new);
+        String purpose = body.purpose() == null || body.purpose().isBlank() ? null : code(body.purpose());
+        if (body.purpose() != null && !body.purpose().isBlank()
+                && (purpose == null || !jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.payment_purpose WHERE code = :p)").param("p", purpose).query(Boolean.class).single())) {
+            throw new DomainRuleViolation("PAY_CATEGORY_PURPOSE", "That purpose is not on the catalogue.", new DomainRuleViolation.Remedy("Choose a purpose from the list, or state it first.", "Bursary"));
+        }
         try {
-            return jdbc.sql("SELECT code, label, kinds, pattern, ord, revenue, active, updated_at FROM finance.set_payment_category(:c, :l, :k::text[], :p, :o, :r, :a)")
+            Map<String, Object> out = jdbc.sql("SELECT code, label, kinds, pattern, ord, revenue, active, updated_at FROM finance.set_payment_category(:c, :l, :k::text[], :p, :o, :r, :a)")
                     .param("c", c).param("l", body.label().trim()).param("k", kinds).param("p", body.pattern(), Types.VARCHAR)
                     .param("o", body.ord(), Types.INTEGER).param("r", body.revenue(), Types.BOOLEAN).param("a", body.active(), Types.BOOLEAN)
                     .query().singleRow().entrySet().stream().collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), "kinds".equals(e.getKey()) ? kinds(e.getValue()) : e.getValue()), Map::putAll);
+            if (purpose != null) jdbc.sql("UPDATE finance.payment_category SET purpose = :p WHERE code = :c").param("p", purpose).param("c", c).update();
+            out.put("purpose", jdbc.sql("SELECT purpose FROM finance.payment_category WHERE code = :c").param("c", c).query(String.class).single());
+            return out;
         } catch (org.springframework.dao.DataAccessException e) {
             throw new DomainRuleViolation("PAY_CATEGORY_PATTERN", "The purpose pattern is not a regular expression the database accepts.",
                     new DomainRuleViolation.Remedy("Try a plain prefix such as ^gst", "Bursary"));
+        }
+    }
+
+    /* ── V409: the classification catalogue — programme types, purposes and the rules that name a payment's module and office ── */
+
+    @GetMapping("/finance/classification")
+    @PreAuthorize(SUMMARY_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> classification() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("programmeTypes", jdbc.sql("SELECT code, label, ord, active, entry_modes, programme_categories, study_mode, description, updated_at FROM finance.programme_type ORDER BY ord, code")
+                .query().listOfRows().stream().map(r -> { Map<String, Object> m = new LinkedHashMap<>(r); m.put("entry_modes", kinds(r.get("entry_modes"))); m.put("programme_categories", kinds(r.get("programme_categories"))); return m; }).toList());
+        out.put("purposes", jdbc.sql("SELECT code, label, ord, active, gl_account, entitlement, updated_at FROM finance.payment_purpose ORDER BY ord, code").query().listOfRows());
+        out.put("rules", jdbc.sql("""
+                SELECT c.id, c.purpose, pu.label AS purpose_label, c.programme_type, pt.label AS programme_type_label, c.source_module, c.responsible_office,
+                       o.label AS responsible_office_label, c.note, c.updated_at
+                  FROM finance.payment_classification c
+                  LEFT JOIN finance.payment_purpose pu ON pu.code = c.purpose
+                  LEFT JOIN finance.programme_type pt ON pt.code = c.programme_type
+                  LEFT JOIN ref.office o ON o.code = c.responsible_office
+                 ORDER BY c.purpose NULLS FIRST, c.programme_type NULLS FIRST
+                """).query().listOfRows());
+        out.put("categories", jdbc.sql("SELECT code, label, purpose FROM finance.payment_category ORDER BY ord, code").query().listOfRows());
+        out.put("offices", jdbc.sql("SELECT code, label FROM ref.office WHERE code NOT IN ('student', 'applicant', 'putmecbt', 'extexaminer') ORDER BY label").query().listOfRows());
+        out.put("entryModes", List.of("UTME", "DIRECT_ENTRY", "TRANSFER", "POSTGRADUATE", "JUPEB", "SANDWICH", "CCE"));
+        out.put("programmeCategories", jdbc.sql("SELECT DISTINCT category FROM ref.programme WHERE category IS NOT NULL ORDER BY category").query(String.class).list());
+        return out;
+    }
+
+    public record ProgrammeTypeIn(@NotBlank @Size(max = 80) String label, List<String> entryModes, List<String> programmeCategories, @Size(max = 20) String studyMode,
+                                  Integer ord, Boolean active, @Size(max = 300) String description) {
+    }
+
+    /** a programme type stated or amended: its label and the entry modes and programme categories that are of it */
+    @PutMapping("/finance/programme-types/{code}")
+    @PreAuthorize(FINANCE_SETTERS)
+    @Transactional
+    Map<String, Object> setProgrammeType(@PathVariable String code, @Valid @RequestBody ProgrammeTypeIn body) {
+        String c = code(code);
+        if (c == null) {
+            throw new DomainRuleViolation("PAY_TYPE_CODE", "A programme type code is capital letters and underscores, up to thirty characters.",
+                    new DomainRuleViolation.Remedy("For example SANDWICH or PRELIMINARY.", "Bursary"));
+        }
+        AuditContextHolder.required();
+        String mode = body.studyMode() == null || body.studyMode().isBlank() ? null : body.studyMode().trim().toUpperCase();
+        if (mode != null && !Set.of("FULL_TIME", "PART_TIME", "SANDWICH").contains(mode)) {
+            throw new DomainRuleViolation("PAY_TYPE_MODE", "A study mode is full-time, part-time or sandwich.", new DomainRuleViolation.Remedy("Choose one, or leave it blank.", "Bursary"));
+        }
+        Map<String, Object> r = jdbc.sql("SELECT code, label, ord, active, entry_modes, programme_categories, study_mode, description, updated_at FROM finance.set_programme_type(:c, :l, :e::text[], :p::text[], :m, :o, :a, :d)")
+                .param("c", c).param("l", body.label().trim())
+                .param("e", body.entryModes() == null ? new String[0] : body.entryModes().toArray(String[]::new))
+                .param("p", body.programmeCategories() == null ? new String[0] : body.programmeCategories().toArray(String[]::new))
+                .param("m", mode, Types.VARCHAR).param("o", body.ord(), Types.INTEGER).param("a", body.active(), Types.BOOLEAN).param("d", body.description(), Types.VARCHAR)
+                .query().singleRow();
+        Map<String, Object> m = new LinkedHashMap<>(r);
+        m.put("entry_modes", kinds(r.get("entry_modes")));
+        m.put("programme_categories", kinds(r.get("programme_categories")));
+        return m;
+    }
+
+    public record PurposeIn(@NotBlank @Size(max = 80) String label, Integer ord, Boolean active, @Size(max = 10) String glAccount, @Size(max = 300) String entitlement) {
+    }
+
+    /** a purpose stated or amended: its label, the income account it posts to and what it entitles */
+    @PutMapping("/finance/purposes/{code}")
+    @PreAuthorize(FINANCE_SETTERS)
+    @Transactional
+    Map<String, Object> setPurpose(@PathVariable String code, @Valid @RequestBody PurposeIn body) {
+        String c = code(code);
+        if (c == null) {
+            throw new DomainRuleViolation("PAY_PURPOSE_CODE", "A purpose code is capital letters and underscores, up to forty characters.",
+                    new DomainRuleViolation.Remedy("For example CONVOCATION_FEE.", "Bursary"));
+        }
+        if ("OTHER".equals(c) && Boolean.FALSE.equals(body.active())) {
+            throw new DomainRuleViolation("PAY_PURPOSE_OTHER", "The purpose Other stays, so every payment has one.", new DomainRuleViolation.Remedy("Rename it instead.", "Bursary"));
+        }
+        String account = body.glAccount() == null || body.glAccount().isBlank() ? "4090" : body.glAccount().trim();
+        if (!jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.gl_account WHERE code = :a AND code LIKE '4%')").param("a", account).query(Boolean.class).single()) {
+            throw new DomainRuleViolation("PAY_PURPOSE_ACCOUNT", "Account " + account + " is not an income account of the general ledger.",
+                    new DomainRuleViolation.Remedy("Choose an income account (4010–4090) from the chart of accounts.", "Bursary"));
+        }
+        java.util.UUID by = AuditContextHolder.required().actorId();
+        return jdbc.sql("""
+                INSERT INTO finance.payment_purpose (code, label, ord, active, gl_account, entitlement, updated_by, updated_at)
+                VALUES (:c, :l, coalesce(:o, 100), coalesce(:a, true), :g, nullif(btrim(coalesce(:e, '')), ''), :by, now())
+                ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label, ord = coalesce(:o, finance.payment_purpose.ord), active = EXCLUDED.active,
+                       gl_account = EXCLUDED.gl_account, entitlement = EXCLUDED.entitlement, updated_by = EXCLUDED.updated_by, updated_at = now()
+                RETURNING code, label, ord, active, gl_account, entitlement, updated_at
+                """).param("c", c).param("l", body.label().trim()).param("o", body.ord(), Types.INTEGER).param("a", body.active(), Types.BOOLEAN)
+                .param("g", account).param("e", body.entitlement(), Types.VARCHAR).param("by", by).query().singleRow();
+    }
+
+    public record RuleIn(@Size(max = 40) String purpose, @Size(max = 30) String programmeType, @NotBlank @Size(max = 30) String sourceModule,
+                         @NotBlank @Size(max = 30) String responsibleOffice, @Size(max = 300) String note) {
+    }
+
+    /** a classification rule stated or amended: for a purpose, a programme type, both or neither, the source module and the office that owns it */
+    @PutMapping("/finance/classification")
+    @PreAuthorize(FINANCE_SETTERS)
+    @Transactional
+    Map<String, Object> setRule(@Valid @RequestBody RuleIn body) {
+        AuditContextHolder.required();
+        String purpose = body.purpose() == null || body.purpose().isBlank() ? null : code(body.purpose());
+        String type = body.programmeType() == null || body.programmeType().isBlank() ? null : code(body.programmeType());
+        String module = code(body.sourceModule());
+        if ((body.purpose() != null && !body.purpose().isBlank() && purpose == null) || (body.programmeType() != null && !body.programmeType().isBlank() && type == null) || module == null) {
+            throw new DomainRuleViolation("PAY_RULE_CODE", "Purposes, programme types and source modules are written in capitals and underscores.",
+                    new DomainRuleViolation.Remedy("Choose them from the lists.", "Bursary"));
+        }
+        try {
+            return jdbc.sql("SELECT id, purpose, programme_type, source_module, responsible_office, note, updated_at FROM finance.set_payment_classification(:p, :t, :m, :o, :n)")
+                    .param("p", purpose, Types.VARCHAR).param("t", type, Types.VARCHAR).param("m", module).param("o", body.responsibleOffice().trim().toLowerCase())
+                    .param("n", body.note(), Types.VARCHAR).query().singleRow();
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new DomainRuleViolation("PAY_RULE_UNKNOWN", "That purpose, programme type or office is not on the catalogue.",
+                    new DomainRuleViolation.Remedy("State the purpose or programme type first, and choose the office from the register.", "Bursary"));
         }
     }
 }

@@ -44,6 +44,7 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   const semLabel = x.term;
   const bio: [string, string][] = [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]];
   if (semLabel) bio.push(["Semester", semLabel]);
+  if (x.programme_type_label) bio.push(["Programme type", x.programme_type_label]);   // V409
   for (const [k, v] of bio) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 130, y, v, 10.5);
@@ -62,7 +63,9 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   p.text(L + 8, y - 8, "TOTAL RECEIVED", 10.5, true);
   p.text(A4.w - L - 140, y - 8, naira(x.amount), 13, true);
   y -= 40;
-  for (const [k, v] of [["Channel", x.channel ?? "—"], ["Gateway or teller reference", x.note ?? "—"]]) {
+  // V409: the gateway's own reference beside the University's, the purpose and the office that owns it
+  for (const [k, v] of [["Channel", x.channel ?? "—"], ["Gateway or teller reference", x.gateway_reference ?? x.note ?? "—"],
+      ...(x.purpose_label ? [["Payment purpose", x.purpose_label]] : []), ...(x.responsible_office_label ? [["Responsible office", x.responsible_office_label]] : [])]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 170, y, v, 10);
     y -= 18;

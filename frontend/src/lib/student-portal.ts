@@ -10,6 +10,9 @@ export interface Charge { id: string; item: string; amount: number; ord: number 
 export interface PaymentRef {
   id: string; session: string; reference: string; purpose: string; amount: number; generated_at: string; expires_at: string;
   confirmed_at: string | null; channel: string | null; note: string | null; receipt_no: string | null;
+  /** V409: the payment's classification on the one ledger, and the gateway's own reference */
+  programme_type?: string | null; programme_type_label?: string | null; purpose_code?: string | null; purpose_label?: string | null;
+  source_module?: string | null; responsible_office?: string | null; responsible_office_label?: string | null; ledger_semester?: number | null; gateway_reference?: string | null;
 }
 /** a portal window's state now (V288): open, scheduled, closed or expired; phase NORMAL or LATE */
 export interface PortalWindow { configured: boolean; state: "OPEN" | "SCHEDULED" | "CLOSED" | "EXPIRED"; phase: "NORMAL" | "LATE" | "NONE"; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; reason: string | null }

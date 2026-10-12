@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 246
+\set EXPECTED 247
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9989,6 +9989,55 @@ BEGIN
         AND v_events = 'ALLOCATED/LECTURER/DESK/ict,REASSIGNED/LECTURER/DESK/ict/true/CHECK V408 reassigned,CO_LECTURER_ADDED/CO_LECTURER/DESK/ict,CO_LECTURER_REMOVED/CO_LECTURER/DESK/ict'
         AND v_load = 'WARNING' AND v_conflict = 'NO_TEACHING_OFFICE' AND v_import = 'IMPORT',
         format('caps=%s active=%s teach=%s cross=%s dup=%s events=%s load=%s conflict=%s import=%s', v_caps, v_active, v_teach, v_cross, v_dup, v_events, v_load, v_conflict, v_import));
+END $$;
+
+-- ── V409. Every payment classified by programme type, purpose, source module and responsible office: a payer's programme
+--          type from their entry mode, then their programme's category; the owner of a payment by the most particular rule
+--          (a GST fee is the GST office's whatever the programme); every category names its purpose; a student's payment on
+--          the one ledger carries every dimension; a type the Bursary maps reclassifies at once ──
+DO $$
+DECLARE S text := '9985/9986'; who uuid := gen_random_uuid(); st uuid; v_types text; v_routes text; v_owners text; v_cats text; v_row text; v_mapped text; ref text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V409', true);
+        -- the programme types and the admission routes
+        v_types := concat_ws(',', finance.programme_type_for('UTME', 'UNDER GRADUATE'), finance.programme_type_for('DIRECT_ENTRY', NULL),
+                                  finance.programme_type_for('POSTGRADUATE', 'POST GRADUATE'), finance.programme_type_for('CCE', NULL),
+                                  finance.programme_type_for('SANDWICH', NULL), finance.programme_type_for('JUPEB', NULL), finance.programme_type_for(NULL, 'ZZ NO SUCH'));
+        v_routes := concat_ws(',', finance.admission_route_of('UTME'), finance.admission_route_of('DIRECT_ENTRY'), finance.admission_route_of('CCE'));
+        -- who owns what: the most particular rule
+        SELECT string_agg(x.purpose || '+' || x.ptype || '=' || o.source_module || '/' || o.responsible_office, ',' ORDER BY x.n) INTO v_owners
+          FROM (VALUES (1, 'SCHOOL_FEES', 'UNDERGRADUATE'), (2, 'APPLICATION', 'UNDERGRADUATE'), (3, 'ACCEPTANCE_FEE', 'POSTGRADUATE'), (4, 'GST_FEE', 'CCE'),
+                       (5, 'SCHOOL_FEES', 'SANDWICH'), (6, 'APPLICATION', 'JUPEB'), (7, 'HOSTEL_FEE', 'UNDERGRADUATE')) x(n, purpose, ptype)
+          CROSS JOIN LATERAL finance.payment_owner(x.purpose, x.ptype) o;
+        -- every category names its purpose; JUPEB's and EPS's payments fall in theirs
+        SELECT concat_ws(',', (SELECT count(*) FROM finance.payment_category WHERE purpose IS NULL),
+                              (SELECT purpose FROM finance.payment_category WHERE code = finance.categorise('JUPEB_APPLICATION', NULL)),
+                              (SELECT purpose FROM finance.payment_category WHERE code = finance.categorise(NULL, 'EPS fee 2026/2027'))) INTO v_cats;
+        -- a Sandwich student's school fees on the one ledger, every dimension on the row
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V409', 'CHECKV409', 'Registry');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9985-10-01', date '9986-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, matriculated_at)
+        VALUES (gen_random_uuid(), 'MOAUM/ADM/85/009985', 'MOAUM/CHK/85/409', 'CHECKV409', 'Sandwich', 'F', 'C00023', 'SANDWICH', S, 100, 100, 'ACTIVE', 'FULL_TIME', now())
+        RETURNING id INTO st;
+        ref := finance.new_purpose_reference(st, S, 200000, 'School fees (full session)');
+        SELECT concat_ws('/', v.programme_type, v.admission_route, v.purpose_code, v.source_module, v.responsible_office, v.ledger_status) INTO v_row
+          FROM reporting.payments v WHERE v.reference = ref;
+        -- the Bursary maps a programme category to Preliminary: a programme of it is Preliminary at once
+        PERFORM finance.set_programme_type('PRELIMINARY', 'Preliminary', '{}', ARRAY['ZZ PRELIMINARY'], NULL, 60, true, NULL);
+        v_mapped := finance.programme_type_for(NULL, 'ZZ PRELIMINARY');
+        RAISE EXCEPTION 'the V409 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V409: every payment is classified by programme type (entry mode, then programme category), purpose, source module and responsible office (the most particular rule; a GST fee is the GST office''s whatever the programme); every category names its purpose; a student''s payment carries every dimension on the one ledger; a category the Bursary maps reclassifies at once',
+        v_types = 'UNDERGRADUATE,UNDERGRADUATE,POSTGRADUATE,CCE,SANDWICH,JUPEB,OTHER'
+        AND v_routes = 'POST_UTME,DIRECT_ENTRY,CCE'
+        AND v_owners = 'SCHOOL_FEES+UNDERGRADUATE=STUDENT_FINANCE/bursar,APPLICATION+UNDERGRADUATE=ADMISSIONS/academic,ACCEPTANCE_FEE+POSTGRADUATE=PG/pgschool,GST_FEE+CCE=GST/gst,SCHOOL_FEES+SANDWICH=SANDWICH/bursar,APPLICATION+JUPEB=JUPEB/jupeb,HOSTEL_FEE+UNDERGRADUATE=HOSTEL/housing'
+        AND v_cats = '0,APPLICATION,EPS_FEE'
+        AND v_row = 'SANDWICH/SANDWICH/SCHOOL_FEES/SANDWICH/bursar/PENDING'
+        AND v_mapped = 'PRELIMINARY',
+        format('types=%s routes=%s owners=%s cats=%s row=%s mapped=%s', v_types, v_routes, v_owners, v_cats, v_row, v_mapped));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
