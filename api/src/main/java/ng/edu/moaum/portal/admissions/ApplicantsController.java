@@ -1247,6 +1247,44 @@ class ApplicantsController {
         return Map.of("sent", sent, "skippedNoEmail", skippedNoEmail);
     }
 
+    /** V399: the applicants told of another faculty's programme before V397, or still asking for one — what they were told and
+     *  when, the programmes of their faculty suggested now, the last correction sent, and the request still open */
+    @GetMapping("/reconsiderations/cross-faculty")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> crossFacultyTold(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM admissions.cross_faculty_told(:s)").param("s", session + "/" + year).query().listOfRows();
+    }
+
+    public record CorrectIn(List<String> applicationIds) {
+    }
+
+    /** V399: the corrected list sent to each applicant told of another faculty's programme (or only to those named), and
+     *  recorded; one with nothing of another faculty named is left as it is */
+    @PostMapping("/reconsiderations/cross-faculty/correct")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> correctCrossFaculty(@PathVariable String session, @PathVariable String year, @RequestBody(required = false) CorrectIn body) {
+        String s = session + "/" + year;
+        java.util.Set<String> only = body == null || body.applicationIds() == null ? null : new java.util.HashSet<>(body.applicationIds());
+        UUID actor = AuditContextHolder.required().actorId();
+        int corrected = 0;
+        int withoutEmail = 0;
+        for (Map<String, Object> r : crossFacultyTold(session, year)) {
+            if (r.get("told_other") == null || (only != null && !only.contains(String.valueOf(r.get("application_id"))))) {
+                continue;   // only a request still open: it is decided on the change queue, not corrected here
+            }
+            String outcome = jdbc.sql("SELECT admissions.correct_suggestion(:a, :by)").param("a", r.get("application_id")).param("by", actor).query(String.class).single();
+            if ("CORRECTED".equals(outcome)) {
+                corrected++;
+                if (r.get("email") == null || String.valueOf(r.get("email")).isBlank()) {
+                    withoutEmail++;
+                }
+            }
+        }
+        return Map.of("session", s, "corrected", corrected, "withoutEmail", withoutEmail);
+    }
+
     public record SuggestOne(@NotBlank String applicationId, @NotBlank String programme) {
     }
 

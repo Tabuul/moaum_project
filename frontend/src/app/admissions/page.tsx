@@ -5,6 +5,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Admissions } from "./Admissions";
 import { ApplicantsDesk, type Desk } from "./ApplicantsDesk";
 import { Reconsiderations } from "./Reconsiderations";
+import { CrossFacultyTold } from "./CrossFacultyTold";
 import { LinkBtn, Note, Panel, Tiles } from "@/components/proto/ui";
 import type { Pipeline } from "@/lib/screening";
 import { defaultSession } from "@/lib/sessions-server";
@@ -45,6 +46,7 @@ export default async function AdmissionsPage({ searchParams }: { searchParams: P
           ]} />
         </Panel>
       ) : null}
+      <CrossFacultyTold session={session} actingOffice={office} />
       <Reconsiderations session={session} actingOffice={office} />
     </Shell>
   );

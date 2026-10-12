@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 238
+\set EXPECTED 239
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9497,6 +9497,64 @@ BEGIN
                  AND n_written = 2 AND v_b.sheet_id = shb AND v_b.exam = 48 AND v_m.sheet_id = shm AND v_m.exam = 56, false),
         format('slot=%s cand=%s count=%s mine=%s twin=%s moau=%s neither=%s written=%s bsu=%s/%s moau=%s/%s',
                v_slot, n_cand, n_count, n_mine, r_twin, r_sm, r_su, n_written, v_b.sheet_id = shb, v_b.exam, v_m.sheet_id = shm, v_m.exam));
+END $$;
+
+-- ── V399: applicants told of another faculty's programme put right; a change of programme stays in the faculty ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9939/9940'; fac text; p_app text; p_same text; p_other text; n_same text; n_other text;
+        cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid(); run uuid := gen_random_uuid(); req uuid := gen_random_uuid();
+        t1 record; t2 record; v_out text; v_again text; n_corr int; n_notice int; v_corrected text; r_app text; r_rec text; v_rej text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT faculty_code INTO fac FROM ref.programme WHERE faculty_code IS NOT NULL AND NOT archived AND name NOT LIKE '%,%'
+         GROUP BY faculty_code HAVING count(*) >= 2 ORDER BY faculty_code LIMIT 1;
+        SELECT code INTO p_app FROM ref.programme WHERE faculty_code = fac AND NOT archived AND name NOT LIKE '%,%' ORDER BY code LIMIT 1;
+        SELECT code, name INTO p_same, n_same FROM ref.programme WHERE faculty_code = fac AND NOT archived AND name NOT LIKE '%,%' AND code <> p_app ORDER BY code LIMIT 1;
+        SELECT code, name INTO p_other, n_other FROM ref.programme WHERE faculty_code IS NOT NULL AND faculty_code <> fac AND NOT archived AND name NOT LIKE '%,%'
+           AND upper(name) NOT IN (SELECT upper(name) FROM ref.programme WHERE faculty_code = fac) ORDER BY code LIMIT 1;
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand, S, '993999000001CK', 'CHECKTOLD', 'Applicant', (SELECT name FROM ref.programme WHERE code = p_app), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '993999000001CK', 'check.told.9939@example.com', '08030000000', 'SET_ON_FIRST_LOGIN');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, S, 'APP/39/999001');
+        -- the engine's current reading suggests the faculty's own programme (V397)
+        INSERT INTO admissions.eligibility_run (id, application_id, candidate_id, session, jamb_key, entry_mode, applied_programme_code, applied_programme, applied_result, trigger_kind)
+        VALUES (run, app, cand, S, '993999000001CK', 'UTME', p_app, (SELECT name FROM ref.programme WHERE code = p_app), 'NOT_ELIGIBLE', 'SYSTEM');
+        INSERT INTO admissions.eligibility_result (run_id, programme_code, programme, faculty_code, kind, result, checks, ord, suggested)
+        VALUES (run, p_same, n_same, fac, 'ALTERNATIVE', 'ELIGIBLE', '[]'::jsonb, 1, true);
+        -- before V397 the reconsiderations emailed another faculty's programme with it, and the applicant asked to move to it
+        INSERT INTO admissions.suggestion_sent (application_id, programmes, sent_at, sent_by) VALUES (app, n_other || ', ' || n_same, now() - interval '3 days', who);
+        INSERT INTO admissions.programme_change_request (id, application_id, candidate_id, session, from_programme_code, from_programme, to_programme_code, to_programme, eligibility_at_request, requested_by_kind)
+        VALUES (req, app, cand, S, p_app, (SELECT name FROM ref.programme WHERE code = p_app), p_other, n_other, 'ELIGIBLE', 'APPLICANT');
+        SELECT * INTO t1 FROM admissions.cross_faculty_told(S) t WHERE t.application_id = app;
+        -- the request is not approved, nor another faculty's programme recommended without the Registrar's override
+        BEGIN PERFORM admissions.decide_programme_change(req, 'APPROVE', 'within quota', who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_app := split_part(msg, ':', 1); END;
+        BEGIN PERFORM admissions.recommend_programme_change(app, p_other, 'OLEVEL_NOT_MET', NULL, who, 'academic', false, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_rec := split_part(msg, ':', 1); END;
+        -- the corrected list: sent, recorded, the last list now; asked again, nothing to correct
+        v_out := admissions.correct_suggestion(app, who);
+        v_again := admissions.correct_suggestion(app, who);
+        n_corr := (SELECT count(*) FROM admissions.suggestion_correction WHERE application_id = app);
+        v_corrected := (SELECT corrected_to FROM admissions.suggestion_correction WHERE application_id = app);
+        n_notice := (SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = app AND channel = 'EMAIL' AND subject LIKE '%suggested programmes corrected%');
+        -- the request rejected with its reason; the applicant leaves the list
+        v_rej := admissions.decide_programme_change(req, 'REJECT', 'Only programmes of the faculty applied to are offered as a change of programme.', who);
+        SELECT * INTO t2 FROM admissions.cross_faculty_told(S) t WHERE t.application_id = app;
+        RAISE EXCEPTION 'the V399 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V399 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V399: an applicant told of another faculty''s programme before V397 is listed with what was named and when, and sent the programmes of their own faculty once; a request for another faculty''s programme is not approved, nor recommended without the Registrar''s override, and is rejected with its reason',
+        coalesce(t1.told_other = ARRAY[n_other] AND t1.suggested_now = ARRAY[n_same] AND t1.request_id = req AND t1.corrected_at IS NULL
+                 AND r_app = 'PROGRAMME_CHANGE_OTHER_FACULTY' AND r_rec = 'PROGRAMME_CHANGE_OTHER_FACULTY'
+                 AND v_out = 'CORRECTED' AND v_again = 'NOTHING_TO_CORRECT' AND n_corr = 1 AND v_corrected = n_same AND n_notice = 1
+                 AND v_rej = 'REJECTED' AND t2.application_id IS NULL, false),
+        format('told=%s now=%s req=%s | approve=%s recommend=%s | correct=%s/%s rows=%s to=%s notices=%s | reject=%s listed_after=%s',
+               t1.told_other, t1.suggested_now, t1.request_id = req, r_app, r_rec, v_out, v_again, n_corr, v_corrected, n_notice, v_rej, t2.application_id IS NOT NULL));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

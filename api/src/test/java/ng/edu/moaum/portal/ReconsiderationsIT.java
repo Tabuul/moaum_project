@@ -86,4 +86,53 @@ class ReconsiderationsIT {
         assertThat(it.call(academic, HttpMethod.POST, path("/reconsiderations/suggest"),
                 Map.of("applicationId", app.toString(), "programme", "C00061")).getStatusCode().value()).isEqualTo(422);
     }
+
+    /** V399: an applicant emailed another faculty's programme before V397 is listed with what was named, sent the corrected
+     *  list once by the Admissions Office (no other office), and leaves the list */
+    @Test
+    @SuppressWarnings("unchecked")
+    void anApplicantToldOfAnotherFacultysProgrammeIsListedAndSentTheCorrectedList() {
+        int n = new Random().nextInt(90_000_000) + 10_000_000;
+        String jamb = "2094" + n + "CF";
+        // applied for Accounting (Management Sciences); told of Economics (Social Sciences) and Business Management (Management Sciences)
+        UUID app = it.db(() -> {
+            UUID cand = UUID.randomUUID();
+            UUID acct = UUID.randomUUID();
+            UUID appId = UUID.randomUUID();
+            jdbc.sql("INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state) "
+                    + "VALUES (:id, :s, :j, 'RECONFAC', 'Test', 'B.Sc. ACCOUNTING', 'UTME', 100, 'PROPOSED')")
+                    .param("id", cand).param("s", SESSION).param("j", jamb).update();
+            jdbc.sql("INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) "
+                    + "VALUES (:id, :s, :c, :k, :e, '08030000000', crypt('x', gen_salt('bf', 12)))")
+                    .param("id", acct).param("s", SESSION).param("c", cand).param("k", jamb.toUpperCase())
+                    .param("e", jamb.toLowerCase() + "@example.com").update();
+            jdbc.sql("INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, score_released_at) "
+                    + "VALUES (:id, :a, :c, :s, :no, now(), now())")
+                    .param("id", appId).param("a", acct).param("c", cand).param("s", SESSION)
+                    .param("no", "APP/94/" + String.format("%06d", (n + 1) % 1_000_000)).update();
+            jdbc.sql("INSERT INTO admissions.suggestion_sent (application_id, programmes, sent_at) VALUES (:a, 'B.Sc. ECONOMICS, B.Sc. BUSINESS MANAGEMENT', now() - interval '2 days')")
+                    .param("a", appId).update();
+            return appId;
+        });
+
+        java.util.function.Supplier<java.util.Optional<Map<String, Object>>> mine = () -> ((java.util.List<Map<String, Object>>) (java.util.List<?>)
+                it.getList(academic, path("/reconsiderations/cross-faculty")).getBody()).stream().filter(r -> app.toString().equals(String.valueOf(r.get("application_id")))).findFirst();
+        Map<String, Object> row = mine.get().orElseThrow();
+        assertThat((java.util.List<String>) row.get("told_other")).containsExactly("B.Sc. ECONOMICS");
+        assertThat(row.get("corrected_at")).isNull();
+
+        // only the Admissions Office sends it
+        assertThat(it.call(ItSupport.token("bursar"), HttpMethod.POST, path("/reconsiderations/cross-faculty/correct"), Map.of("applicationIds", java.util.List.of(app.toString())))
+                .getStatusCode().value()).isEqualTo(403);
+        var sent = it.call(academic, HttpMethod.POST, path("/reconsiderations/cross-faculty/correct"), Map.of("applicationIds", java.util.List.of(app.toString())));
+        assertThat(sent.getStatusCode().value()).as(String.valueOf(sent.getBody())).isEqualTo(200);
+        assertThat(((Number) sent.getBody().get("corrected")).intValue()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.suggestion_correction WHERE application_id = :a").param("a", app).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND channel = 'EMAIL' AND subject LIKE '%corrected%'")
+                .param("a", app).query(Long.class).single()).isEqualTo(1);
+        // corrected, they leave the list; asked again, nothing more is sent
+        assertThat(mine.get()).isEmpty();
+        assertThat(((Number) it.call(academic, HttpMethod.POST, path("/reconsiderations/cross-faculty/correct"), Map.of("applicationIds", java.util.List.of(app.toString())))
+                .getBody().get("corrected")).intValue()).isZero();
+    }
 }
