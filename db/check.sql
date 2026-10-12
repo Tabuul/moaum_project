@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 234
+\set EXPECTED 235
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9274,6 +9274,45 @@ BEGIN
                  AND NOT (rd->>'ready')::boolean, false),
         format('review0 due=%s paid=%s excess=%s refs=%s ft=%s unstated0=%s | review1 due=%s excess=%s unstated1=%s | readiness=%s',
                r0.due, r0.paid, r0.excess, n_refs0, n_ft0, u0, r1.due, r1.excess, u1, rd));
+END $$;
+
+-- ── V395. A student's payment reference is drawn until a free one is found: MOAUM-FEE, the end of the student's number and
+--          four random digits may repeat a reference another student took (students whose numbers end alike share the first
+--          part); both generators — school fees and every other purpose, the GST/EPS fee among them — draw again, the format
+--          unchanged, and the student is never answered with a clash ──
+DO $$
+DECLARE S text := '9955/9956'; who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); other uuid := gen_random_uuid();
+        v_first int; v_taken text; v_school text; v_purpose text; n_refs int; v_sessions text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V395', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9955-10-01', date '9956-08-31') ON CONFLICT (name) DO NOTHING;
+        -- two students whose numbers end alike: the first part of their references is the same
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/95/939501', 'MOAUM/CHK/95/9395', 'CHECKFEEREF', 'Student', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+               (other, 'MOAUM/ADM/95/939502', 'MOAUM/CKB/95/9395', 'CHECKFEEREF', 'Other', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount) VALUES (S, 'School fees (check V395)', 120000);
+        -- the draw is the session's random(): seeded, the first draw is known, so the reference the other student holds is put in its way
+        PERFORM setseed(0.5395);
+        v_first := floor(random() * 10000)::int;
+        v_taken := 'MOAUM-FEE-959395-' || lpad(v_first::text, 4, '0');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (other, S, v_taken, 'School fees ' || S, 1000, now() + interval '1 day');
+        -- school fees: the first draw is taken, the second is the student's
+        PERFORM setseed(0.5395);
+        v_school := finance.new_reference(st, S, 50000, NULL);
+        -- another purpose: the first two draws are now both taken, the third is the student's
+        PERFORM setseed(0.5395);
+        v_purpose := finance.new_purpose_reference(st, S, 6000, 'GST fee ' || S);
+        SELECT count(*), string_agg(DISTINCT session, ',') INTO n_refs, v_sessions FROM finance.payment_reference WHERE student_id = st;
+        RAISE EXCEPTION 'the V395 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V395: a student''s payment reference landing on a taken one is drawn again — school fees and every other purpose, the format kept, the student never answered with a clash',
+        coalesce(v_school ~ '^MOAUM-FEE-959395-[0-9]{4}$' AND v_purpose ~ '^MOAUM-FEE-959395-[0-9]{4}$'
+                 AND v_school <> v_taken AND v_purpose <> v_taken AND v_purpose <> v_school AND n_refs = 2 AND v_sessions = S, false),
+        format('taken=%s school=%s purpose=%s refs=%s sessions=%s', v_taken, v_school, v_purpose, n_refs, v_sessions));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
