@@ -159,6 +159,16 @@ class ProblemHandler {
 
     /* ── the title a person reads: the code's own words in plain English, never the code ── */
     private static final Map<String, String> TITLES = Map.ofEntries(
+            // V408: the course allocation desk
+            Map.entry("ALLOC_CAPABILITY", "Not in your support posting"), Map.entry("ALLOC_SCOPE", "Outside your allocation scope"),
+            Map.entry("ALLOC_REASON", "A reason is needed"), Map.entry("ALLOC_DUPLICATE", "Already allocated"),
+            Map.entry("ALLOC_TICKET", "No such ticket"), Map.entry("ALLOC_TICKET_SCOPE", "Ticket outside your scope"),
+            Map.entry("ALLOC_ACTIVE", "Not an active member of staff"), Map.entry("ALLOC_TEACHING", "Not a lecturer"),
+            Map.entry("ALLOC_OVERLOAD", "Over the approved load"), Map.entry("ALLOC_COURSE", "Course not available for allocation"),
+            Map.entry("ALLOC_OFFERED", "Course not offered here"), Map.entry("ALLOC_SESSION", "Session not on the calendar"),
+            Map.entry("ALLOC_LECTURER", "Staff member not found"), Map.entry("ALLOC_NO_LEAD", "No lead lecturer yet"),
+            Map.entry("ALLOC_SECOND_IS_LEAD", "The lecturer cannot verify their own marks"), Map.entry("ALLOC_SECOND_NOT_TEACHING", "Not an active lecturer"),
+            Map.entry("ALLOC_NOT_CO_LECTURER", "Not a co-lecturer of this class"),
             Map.entry("AUTH_BAD_CREDENTIALS", "Wrong username or password"),
             Map.entry("AUTH_LOCKED", "Account locked for now"),
             Map.entry("AUTH_THROTTLED", "Too many attempts"),

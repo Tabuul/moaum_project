@@ -206,6 +206,7 @@ export const ROUTES: Record<string, string> = {
   "t/supportstudents": "/helpdesk/students",
   "t/supportpayments": "/helpdesk/payments",
   "t/supportaudit": "/helpdesk/audit",
+  "t/allocation": "/allocation",
   "t/supportjupeb": "/helpdesk/jupeb",
   "t/helpdeskoffice": "/helpdesk/office",
   /* external examiners (V254): the examiner's workspace, and the desk */
@@ -421,6 +422,7 @@ const OVERRIDES: Record<string, string> = {
   "t/supportpayments": "Payment support",
   "t/supportjupeb": "JUPEB student support",
   "t/supportaudit": "Support action history",
+  "t/allocation": "Course allocation",
   "x/dashboard": "Examiner workspace",
   "x/projects": "My assigned projects",
   "x/pending": "Pending reviews",

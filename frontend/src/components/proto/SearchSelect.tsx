@@ -5,11 +5,13 @@
  * but you can type to filter a long list — faculties, programmes, and the like.
  * Keyboard: ↑/↓ to move, Enter to choose, Esc to close; a click outside closes
  * it. Drop-in for a <select>: pass options and an optional "All …" label for the
- * empty value.
+ * empty value. With onQuery, the list is searched on the server: each keystroke is told to the
+ * parent, which fetches the matching options (debounced) — for registers too long to send whole,
+ * like the University's lecturers; valueLabel names the chosen value once the list has moved on.
  */
 import { useEffect, useId, useRef, useState } from "react";
 
-export interface Opt { value: string; label: string }
+export interface Opt { value: string; label: string; sub?: string }
 
 export function SearchSelect({
   id,
@@ -19,6 +21,8 @@ export function SearchSelect({
   allLabel,
   placeholder,
   disabled,
+  onQuery,
+  valueLabel,
 }: {
   id?: string;
   value: string;
@@ -27,6 +31,8 @@ export function SearchSelect({
   allLabel?: string;
   placeholder?: string;
   disabled?: boolean;
+  onQuery?: (q: string) => void;
+  valueLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -35,9 +41,9 @@ export function SearchSelect({
   const listId = useId();
 
   const all: Opt[] = allLabel != null ? [{ value: "", label: allLabel }, ...options] : options;
-  const selectedLabel = all.find((o) => o.value === value)?.label ?? "";
+  const selectedLabel = all.find((o) => o.value === value)?.label ?? (value ? valueLabel ?? "" : "");
   const q = query.trim().toLowerCase();
-  const filtered = q ? all.filter((o) => o.label.toLowerCase().includes(q)) : all;
+  const filtered = q && !onQuery ? all.filter((o) => o.label.toLowerCase().includes(q) || (o.sub ?? "").toLowerCase().includes(q)) : all;
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -62,8 +68,8 @@ export function SearchSelect({
         disabled={disabled}
         value={open ? query : selectedLabel}
         placeholder={open ? (selectedLabel || placeholder || "Type to search…") : (placeholder ?? "")}
-        onFocus={() => { setOpen(true); setQuery(""); setHi(0); }}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); setHi(0); }}
+        onFocus={() => { setOpen(true); setQuery(""); setHi(0); onQuery?.(""); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); setHi(0); onQuery?.(e.target.value); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, Math.max(filtered.length - 1, 0))); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
@@ -84,6 +90,7 @@ export function SearchSelect({
               className={`ss__opt${i === hi ? " is-hi" : ""}`}
             >
               {o.label}
+              {o.sub ? <span className="ss__sub">{o.sub}</span> : null}
             </div>
           )) : <div className="ss__none">No match</div>}
         </div>

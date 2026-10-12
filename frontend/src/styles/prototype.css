@@ -1768,6 +1768,8 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .ss__opt[aria-selected="true"] { background: var(--bg); color: var(--chrome); font-weight: 600; }
 .ss__opt[aria-selected="true"].is-hi { background: var(--sky-bg); }
 .ss__none { padding: 8px 12px; font-size: 13px; color: var(--muted); }
+/* V408: a second line under an option — a lecturer's staff number and department, a course's department */
+.ss__sub { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
 .pp { gap: 14px; }
 .pp__f { min-width: 170px; margin: 0; }
 .pp__note { align-self: center; }

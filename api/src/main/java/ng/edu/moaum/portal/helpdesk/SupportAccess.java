@@ -32,7 +32,9 @@ class SupportAccess {
     static final List<String> ALL = List.of("VIEW_STUDENT", "EDIT_CONTACT", "EDIT_PERSONAL", "EDIT_FAMILY", "EDIT_PHOTO", "REQUEST_CHANGE",
             "VIEW_PAYMENTS", "VIEW_DOCUMENTS", "MANAGE_REGISTRATION", "EXPORT_STUDENTS",
             "OVERRIDE_REGISTRATION", "RESET_PASSWORD", "INVESTIGATE_PAYMENT", "VERIFY_PAYMENT", "SYNC_ENTITLEMENT",
-            "REGENERATE_RECEIPT", "CREATE_TICKET", "VIEW_SUPPORT_AUDIT");
+            "REGENERATE_RECEIPT", "CREATE_TICKET", "VIEW_SUPPORT_AUDIT",
+            // V408: course allocation, on the allocation desk within the posting's scope
+            "VIEW_ALLOCATIONS", "ALLOCATE_COURSES", "REMOVE_ALLOCATIONS", "BULK_ALLOCATE");
     static final Map<String, String> WORDS = Map.ofEntries(
             Map.entry("VIEW_STUDENT", "viewing student records"), Map.entry("EDIT_CONTACT", "editing contact details"),
             Map.entry("EDIT_PERSONAL", "editing personal details"), Map.entry("EDIT_FAMILY", "editing family and sponsor details"),
@@ -42,7 +44,9 @@ class SupportAccess {
             Map.entry("OVERRIDE_REGISTRATION", "the support override of course registration"), Map.entry("RESET_PASSWORD", "resetting student passwords"),
             Map.entry("INVESTIGATE_PAYMENT", "investigating payments"), Map.entry("VERIFY_PAYMENT", "verifying payments with the gateway"),
             Map.entry("SYNC_ENTITLEMENT", "refreshing payment entitlements"), Map.entry("REGENERATE_RECEIPT", "regenerating receipts"),
-            Map.entry("CREATE_TICKET", "raising tickets for students"), Map.entry("VIEW_SUPPORT_AUDIT", "reading the support audit"));
+            Map.entry("CREATE_TICKET", "raising tickets for students"), Map.entry("VIEW_SUPPORT_AUDIT", "reading the support audit"),
+            Map.entry("VIEW_ALLOCATIONS", "viewing course allocations"), Map.entry("ALLOCATE_COURSES", "allocating and reassigning lecturers"),
+            Map.entry("REMOVE_ALLOCATIONS", "removing a co-lecturer"), Map.entry("BULK_ALLOCATE", "bulk course allocation"));
 
     private final JdbcClient jdbc;
     private final NoticeRepository notices;

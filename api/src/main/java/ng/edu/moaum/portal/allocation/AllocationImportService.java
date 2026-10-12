@@ -75,8 +75,10 @@ public class AllocationImportService {
     private final JdbcClient jdbc;
     private final OfficeScope scope;
     private final tools.jackson.databind.ObjectMapper json;
+    private final AllocationReach reach;
 
-    AllocationImportService(JdbcClient jdbc, OfficeScope scope, tools.jackson.databind.ObjectMapper json) {
+    AllocationImportService(JdbcClient jdbc, OfficeScope scope, tools.jackson.databind.ObjectMapper json, AllocationReach reach) {
+        this.reach = reach;
         this.jdbc = jdbc;
         this.scope = scope;
         this.json = json;
@@ -307,6 +309,8 @@ public class AllocationImportService {
         String hodDept = hod ? scope.actingHodDept() : null;
         boolean facultyOffice = scope.actingFacultyOffice();
         String faculty = facultyOffice ? scope.actingFaculty() : null;
+        // V408: an ICT Support Agent imports only where a posting of theirs carries the bulk import
+        AllocationReach.Reach support = AllocationReach.agent() ? reach.require(AllocationReach.BULK) : null;
         Map<String, Integer> projected = new HashMap<>(reg.load);
         Map<String, Integer> seen = new HashMap<>();
         List<Judged> out = new ArrayList<>(rows.size());
@@ -395,6 +399,9 @@ public class AllocationImportService {
                     codes.add("OUT_OF_SCOPE"); messages.add(course.code() + " belongs to " + reg.deptName(course.dept()) + ", not your department"); action = "A Head of Department allocates only the department's own courses."; fatal = true;
                 } else if (facultyOffice && (faculty == null || !faculty.equalsIgnoreCase(reg.facultyOf(course.dept())))) {
                     codes.add("OUT_OF_SCOPE"); messages.add(course.code() + " belongs to a department outside your faculty"); fatal = true;
+                } else if (support != null && !support.covers(reg.facultyOf(course.dept()), course.dept())) {
+                    codes.add("OUT_OF_SCOPE"); messages.add(course.code() + " belongs to " + reg.deptName(course.dept()) + ", outside your support posting's scope");
+                    action = "Your posting's bulk allocation reaches " + (support.words().isBlank() ? "no department" : support.words()) + "."; fatal = true;
                 }
                 // the programme and the level: the course must be offered to the programme, at the level, on the structure
                 String prog = reg.progCode(r.programme());
@@ -517,6 +524,8 @@ public class AllocationImportService {
         }
         Options o = opts == null ? new Options(false, false) : opts;
         List<Judged> judged = judge(rows, o);
+        // V408: the allocation history says these came from the bulk import
+        jdbc.sql("SELECT set_config('moaum.allocation_source', 'IMPORT', true)").query().listOfRows();
         UUID me = scope.actorId();
         int imported = 0;
         String session = null;
@@ -619,6 +628,16 @@ public class AllocationImportService {
             where = " WHERE (i.uploaded_by = :me OR i.scope_dept IN (SELECT code FROM ref.department WHERE faculty_code = :f))";
             params.put("f", scope.actingFaculty() == null ? "__none__" : scope.actingFaculty());
             params.put("me", me);
+        } else if (AllocationReach.agent()) {
+            // V408: an agent sees their own imports and those of the departments their postings' bulk allocation reaches
+            AllocationReach.Reach r = reach.of(AllocationReach.BULK);
+            where = r.all() ? "" : " WHERE (i.uploaded_by = :me OR upper(i.scope_dept) = ANY (:reach_depts)"
+                    + " OR upper(i.scope_dept) IN (SELECT upper(code) FROM ref.department WHERE upper(faculty_code) = ANY (:reach_facs)))";
+            if (!r.all()) {
+                params.put("me", me);
+                params.put("reach_depts", AllocationReach.depts(r));
+                params.put("reach_facs", AllocationReach.facs(r));
+            }
         }
         var q = jdbc.sql("""
                 SELECT i.id, i.reference, i.file_name, i.session, i.semester, i.scope_dept, i.uploader_office, i.uploaded_at,

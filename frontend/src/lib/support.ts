@@ -20,6 +20,10 @@ export const CAPABILITIES: Record<string, [string, string]> = {
   REGENERATE_RECEIPT: ["Regenerate receipts", "Tell the student a confirmed payment's receipt is ready; the number and the amount stay the Bursary's"],
   CREATE_TICKET: ["Raise tickets for students", "Open a support ticket on the student's behalf at the desk"],
   VIEW_SUPPORT_AUDIT: ["Read the support audit", "Every support act across the students within scope"],
+  VIEW_ALLOCATIONS: ["View course allocations", "The classes of the posting's faculty or department, who teaches each, the lecturers' loads and the allocation history"],
+  ALLOCATE_COURSES: ["Allocate and reassign lecturers", "Allocate a class's lead lecturer, reassign it with a reason, add a co-lecturer, name the second examiner — through the allocation engine's checks"],
+  REMOVE_ALLOCATIONS: ["Remove a co-lecturer", "Take a co-lecturer off a class, with a reason; the history keeps that they taught it"],
+  BULK_ALLOCATE: ["Bulk course allocation", "Validate and import an allocation spreadsheet, each row held to the posting's scope"],
 };
 export const CAPABILITY_CODES = Object.keys(CAPABILITIES);
 

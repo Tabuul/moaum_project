@@ -29,6 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 class AllocationController {
 
     private static final String ALLOCATORS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    /** V408: the bulk import and the lecturers list it reads are open to the course allocation desk of the Director of ICT and the
+     *  ICT Support Desk as well — an agent's rows held to the reach of their BULK_ALLOCATE postings (AllocationImportService); the
+     *  department desk's own acts below stay the academic offices' */
+    private static final String IMPORTERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super',"
+            + "'OFFICE_ict','OFFICE_helpdeskhead','OFFICE_ictagent')";
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
@@ -47,7 +52,7 @@ class AllocationController {
 
     /** every row judged against the register; nothing written */
     @PostMapping("/import/validate")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize(IMPORTERS)
     AllocationImportService.Validation validateImport(@RequestBody ImportIn body) {
         return imports.validate(body.rows(), body.options());
     }
@@ -55,19 +60,19 @@ class AllocationController {
     /** the valid rows written in one transaction through the same allocation every desk uses; a repeated key answers
      *  with the record already made */
     @PostMapping("/import")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize(IMPORTERS)
     AllocationImportService.ImportResult doImport(@RequestBody ImportIn body) {
         return imports.importRows(body.importKey(), body.fileName(), body.rows(), body.options());
     }
 
     @GetMapping("/imports")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize(IMPORTERS)
     List<Map<String, Object>> importHistory(@RequestParam(defaultValue = "100") int limit) {
         return imports.history(limit);
     }
 
     @GetMapping("/imports/{id}")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize(IMPORTERS)
     Map<String, Object> importRecord(@PathVariable UUID id) {
         return imports.one(id);
     }
@@ -229,7 +234,7 @@ class AllocationController {
      * scores there, whatever department the course belongs to.
      */
     @GetMapping("/lecturers")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize(IMPORTERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> lecturers(@RequestParam String dept, @RequestParam String session,
                                         @RequestParam(defaultValue = "1") int semester,

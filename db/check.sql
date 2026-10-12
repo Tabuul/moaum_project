@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 245
+\set EXPECTED 246
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9927,6 +9927,68 @@ BEGIN
     PERFORM pg_temp.assert('V405/V406: a course that joins the structure later gets its class in every opened semester when asked, never unasked; the desk lists what has none and why',
         v_unasked = 0 AND v_later = 1 AND v_sem2 = 0 AND v_ended = 0 AND v_restored = 1 AND v_missing = 'BSU-ZZG 104:NOT_IN_STRUCTURE' AND v_opened >= 0 AND v_after = 'BSU-ZZG 104:NOT_IN_STRUCTURE',
         format('unasked=%s later=%s sem2=%s ended=%s restored=%s missing=%s opened_again=%s after=%s', v_unasked, v_later, v_sem2, v_ended, v_restored, v_missing, v_opened, v_after));
+END $$;
+
+-- ── V408. Course allocation from the ICT dashboards: a support posting may carry the course allocation capabilities; every
+--          allocation, by any desk, is on catalogue.allocation_event with its reason, its desk and whom it replaced, the import's
+--          as the import's; the checks say before anything is written why a person may not take a class; the conflicts list a
+--          lead who holds no lecturer office ──
+DO $$
+DECLARE S text := '9981/9982'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); n uuid := gen_random_uuid();
+        gone uuid := gen_random_uuid(); dept text := 'ZZJ9'; o uuid := gen_random_uuid(); heavy uuid := gen_random_uuid();
+        v_caps boolean; v_events text; v_dup text; v_teach text; v_active text; v_cross text; v_load text; v_conflict text; v_import text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V408', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V408', 'CHECKV408', 'Director'),
+            (a, 'CHK/V408A', 'CHECKV408A', 'Lecturer'), (b, 'CHK/V408B', 'CHECKV408B', 'Lecturer'), (n, 'CHK/V408N', 'CHECKV408N', 'Officeless');
+        INSERT INTO iam.person (id, staff_number, surname, given_names, ended_on, ended_reason) VALUES (gone, 'CHK/V408G', 'CHECKV408G', 'Retired', current_date - 1, 'Retired');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9981-10-01', date '9982-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (dept, 'Check V408', (SELECT faculty_code FROM ref.programme WHERE code = 'C00023'));
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), a, 'lecturer', 'department', dept, 'check', who, current_date),
+            (gen_random_uuid(), b, 'lecturer', 'department', 'MTC', 'check', who, current_date),
+            (gen_random_uuid(), gone, 'lecturer', 'department', dept, 'check', who, current_date);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('ZZJ 301', 'Check allocation', 3, 1, 300, dept, 'Core', 'LIVE'), ('ZZJ 302', 'Check heavy course', 10, 1, 300, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZJ 301', 'C00023', 300, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZZJ 301', S, 1), (heavy, 'ZZJ 302', S, 1);
+        -- a posting may carry the course allocation capabilities
+        v_caps := ARRAY['VIEW_ALLOCATIONS', 'ALLOCATE_COURSES', 'REMOVE_ALLOCATIONS', 'BULK_ALLOCATE'] <@ helpdesk.support_capabilities();
+        -- the checks before anything: a person who has left, one with no lecturer office, a lecturer of another department (allowed, said)
+        SELECT level INTO v_active FROM catalogue.allocation_checks(o, gone, 'LECTURER') WHERE code = 'ACTIVE';
+        SELECT level INTO v_teach FROM catalogue.allocation_checks(o, n, 'LECTURER') WHERE code = 'TEACHING';
+        SELECT level || ':' || (words LIKE '%teaching across departments%')::text INTO v_cross FROM catalogue.allocation_checks(o, b, 'CO_LECTURER') WHERE code = 'TEACHING';
+        -- allocated; the same allocation again refused in the University's words; reassigned with a reason; a co-lecturer added and removed
+        PERFORM catalogue.allocate_offering(o, a, NULL, false);
+        SELECT level || ':' || words INTO v_dup FROM catalogue.allocation_checks(o, a, 'LECTURER') WHERE code = 'DUPLICATE';
+        PERFORM set_config('moaum.reason', 'CHECK V408 reassigned', true);
+        PERFORM catalogue.allocate_offering(o, b, NULL, false);
+        INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by) VALUES (o, a, who);
+        DELETE FROM catalogue.offering_teacher WHERE offering_id = o AND lecturer_id = a;
+        SELECT string_agg(action || '/' || role || '/' || source || '/' || coalesce(actor_office, '-')
+                          || CASE WHEN action = 'REASSIGNED' THEN '/' || (previous_lecturer_id = a)::text || '/' || reason ELSE '' END, ',' ORDER BY at)
+          INTO v_events FROM catalogue.allocation_event WHERE offering_id = o;
+        -- a lead over twelve units is said before the engine refuses it
+        SELECT level INTO v_load FROM catalogue.allocation_checks(heavy, b, 'LECTURER') WHERE code = 'LOAD';
+        -- a lead who holds no lecturer office, as an old record may stand, is listed as a conflict
+        UPDATE catalogue.offering SET lecturer_id = n WHERE id = heavy;
+        SELECT string_agg(kind, ',' ORDER BY kind) INTO v_conflict FROM catalogue.allocation_conflicts(S, 1) WHERE offering_id = heavy;
+        -- the bulk import's writes are the import's on the history
+        PERFORM set_config('moaum.allocation_source', 'IMPORT', true);
+        INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by) VALUES (heavy, a, who);
+        SELECT source INTO v_import FROM catalogue.allocation_event WHERE offering_id = heavy AND action = 'CO_LECTURER_ADDED';
+        PERFORM set_config('moaum.allocation_source', '', true);
+        RAISE EXCEPTION 'the V408 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V408: a support posting may carry course allocation; every allocation is on the history with its reason, its desk and whom it replaced, the import''s as the import''s; the checks refuse a person who left, one with no lecturer office and the same allocation twice, allow teaching across departments and warn of an overload; a lead with no lecturer office is a conflict',
+        v_caps AND v_active = 'ERROR' AND v_teach = 'ERROR' AND v_cross = 'OK:true'
+        AND v_dup = 'ERROR:Course already allocated to this lecturer for the selected session and semester.'
+        AND v_events = 'ALLOCATED/LECTURER/DESK/ict,REASSIGNED/LECTURER/DESK/ict/true/CHECK V408 reassigned,CO_LECTURER_ADDED/CO_LECTURER/DESK/ict,CO_LECTURER_REMOVED/CO_LECTURER/DESK/ict'
+        AND v_load = 'WARNING' AND v_conflict = 'NO_TEACHING_OFFICE' AND v_import = 'IMPORT',
+        format('caps=%s active=%s teach=%s cross=%s dup=%s events=%s load=%s conflict=%s import=%s', v_caps, v_active, v_teach, v_cross, v_dup, v_events, v_load, v_conflict, v_import));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

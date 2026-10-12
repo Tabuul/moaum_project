@@ -1145,6 +1145,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/users", "icon": "user", "label": "Users & Roles" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
@@ -1286,6 +1287,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmeupload", "icon": "book", "label": "Upload or Create Programmes" },
           { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
+          { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" }
         ]
       },
@@ -1450,6 +1452,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
         ]
       },
       {
@@ -2352,6 +2355,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
 { "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
+{ "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -2379,6 +2383,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
 { "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
+{ "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
