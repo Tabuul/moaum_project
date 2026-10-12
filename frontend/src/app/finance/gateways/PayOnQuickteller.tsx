@@ -27,6 +27,45 @@ function editOf(b: PaydirectBiller): Edit {
   return { code: b.biller_code, name: b.name, link: b.pay_link ?? "", active: b.active, redirect: b.redirect, withAmount: b.with_amount };
 }
 
+/** Oct 2026: Interswitch's certification, step by step, each read off what the portal has — and what to tell their team next */
+function Certification({ q }: { q: PaydirectDesk }) {
+  const c = q.certification;
+  if (!c) return null;
+  const refs = q.testReferences ?? [];
+  const open = refs.filter((t) => t.state === "OPEN");
+  const asked = refs.filter((t) => Number(t.checks ?? 0) > 0);
+  const discarded = Number(c.discarded_since ?? 0);
+  const steps: [boolean, string, string][] = [
+    [!!q.notificationKey || !!q.credentialsPair, "The notification address Interswitch has",
+      q.notificationKey ? "The keyed address is set: it is the only thing their team configures."
+        : q.credentialsPair ? "A username and password are set; Interswitch must send them in each notification — or use the keyed address, which needs nothing of theirs."
+        : "Generate the keyed address on Payment gateways and give it to Interswitch as the notification URL."],
+    [open.length > 0 || asked.length > 0, "A test reference for their team to use",
+      open.length ? `${open.length} open below: give one to the certification team as the reference to validate and pay. Their own references are refused as unknown.`
+        : "Issue one below and give it to the certification team; their own references are refused as unknown."],
+    [asked.length > 0 || !!c.validation_at, "Interswitch asked the portal about a reference (customer validation)",
+      c.validation_at ? `Last asked ${when(c.validation_at)}; answered ${OUTCOME[c.validation_outcome ?? ""]?.[0] ?? c.validation_outcome ?? ""}.`
+        : "Not yet. It shows here the moment their team posts a validation."],
+    [!!c.believed_at, "A payment notification was believed",
+      c.believed_at ? `${when(c.believed_at)}: ${OUTCOME[c.believed_outcome ?? ""]?.[0] ?? c.believed_outcome ?? ""}${c.believed_outcome === "UNKNOWN_REFERENCE" ? " (their own reference; ask them to pay the test reference)" : ""}.`
+        : discarded ? `${discarded} notification${discarded === 1 ? " was" : "s were"} discarded (last ${when(c.discarded_at)}): they were posted to an address without the key. Give their team the keyed address and ask for a resend.`
+        : "Not yet."],
+    [!!c.reversal_at, "A reversal was believed",
+      c.reversal_at ? `${when(c.reversal_at)} on ${c.reversal_reference ?? "—"}; left for the Bursary, as every reversal is.` : "Not yet. Their reversal test shows here."],
+  ];
+  const done = steps.filter((s) => s[0]).length;
+  return (
+    <div>
+      <div className="row row--between"><div className="b700">Interswitch certification</div><Pil kind={done === steps.length ? "ok" : "info"}>{done} of {steps.length}</Pil></div>
+      <ol className="sub2" style={{ paddingLeft: 20, margin: "6px 0 0" }}>
+        {steps.map(([ok, title, what], i) => (
+          <li key={i} style={{ marginBottom: 6 }}><Pil kind={ok ? "ok" : "grey"}>{ok ? "Done" : "Pending"}</Pil> <b>{title}</b><div>{what}</div></li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk; may: boolean; busy: boolean; send: Send; say: (s: string) => void }) {
   const [edit, setEdit] = useState<Record<string, Edit>>({});
   const [text, setText] = useState("");
@@ -107,6 +146,10 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
             })}
           </div>
         ) : null}
+      </PBody>
+
+      <PBody>
+        <Certification q={q} />
       </PBody>
 
       <PBody>

@@ -267,5 +267,13 @@ class CourseTwinsIT {
         List<Map<String, Object>> after = it.getList(hod, "/api/v1/allocation/without-class?dept=" + dept + "&session=" + SESSION).getBody();
         assertThat(after).noneSatisfy(r -> assertThat(r.get("code")).isEqualTo(later));
         assertThat(after).anySatisfy(r -> assertThat(r.get("code")).isEqualTo(lone));
+        // the structure upload opens the classes of what it uploads, by its own act: a course of the programme uploaded now has its class at once
+        String uploaded = "MOAU-" + letters + " 116";
+        ResponseEntity<Map> up = it.call(ItSupport.token("ict"), HttpMethod.POST, "/api/v1/catalogue/import", Map.of("programme", "C00023", "rows", List.of(
+                Map.of("code", uploaded, "title", "Course uploaded mid-session", "units", "2", "level", "100", "semester", "1", "status", "C"))));
+        assertThat(up.getStatusCode().value()).as(String.valueOf(up.getBody())).isEqualTo(200);
+        assertThat(((Number) up.getBody().get("classes_opened")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = 1 AND stream = 'REGULAR'")
+                .param("c", uploaded).param("s", SESSION).query(Long.class).single()).isEqualTo(1L);
     }
 }

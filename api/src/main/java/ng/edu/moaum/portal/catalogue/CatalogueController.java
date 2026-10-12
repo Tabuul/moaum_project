@@ -245,10 +245,19 @@ class CatalogueController {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_ROWS", "The structure has no rows to read.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Upload the department's course document.", "Directorate of ICT"));
         }
-        return jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb, :curr)")
+        Map<String, Object> out = new java.util.LinkedHashMap<>(jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb, :curr)")
                 .param("p", body.programme()).param("j", json.writeValueAsString(body.rows()))
                 .param("curr", body.curriculum() == null || body.curriculum().isBlank() ? null : body.curriculum().trim().toUpperCase(), java.sql.Types.VARCHAR)
-                .query().singleRow();
+                .query().singleRow());
+        // V405/V406: a course uploaded while a semester's classes are already open gets its class now, by the upload's own act —
+        // the codes as the pool holds them (an alias or another spelling resolves to the course), nothing by a trigger
+        String[] codes = body.rows().stream().map(r -> r.get("code")).filter(c -> c != null && !String.valueOf(c).isBlank()).map(String::valueOf).distinct().toArray(String[]::new);
+        int opened = codes.length == 0 ? 0 : jdbc.sql("""
+                SELECT catalogue.open_classes_for_courses(ARRAY(SELECT DISTINCT catalogue.resolve_course_code(x) FROM unnest(:c::text[]) x
+                                                                WHERE catalogue.resolve_course_code(x) IS NOT NULL))
+                """).param("c", codes).query(Integer.class).single();
+        out.put("classes_opened", opened);
+        return out;
     }
 
     public record PlacementsIn(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max = 2000) List<Map<String, Object>> groups) {

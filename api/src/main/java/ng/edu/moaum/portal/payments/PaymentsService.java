@@ -897,6 +897,7 @@ public class PaymentsService {
         m.put("notifyPath", "/api/v1/payments/paydirect/notify");
         m.put("singlePath", "/api/v1/payments/paydirect/interswitch");
         m.put("keyedPath", "/api/v1/payments/paydirect/interswitch/<key>");
+        m.put("certification", repo.paydirectCertification());
         return m;
     }
 

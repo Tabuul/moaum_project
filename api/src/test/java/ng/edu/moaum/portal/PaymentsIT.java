@@ -370,10 +370,17 @@ class PaymentsIT {
             assertThat(postXml("/api/v1/payments/paydirect/interswitch/not-the-key", notification("", "", reference, logId, amount.toPlainString(), true, false))).contains("<Status>1</Status>");
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false))).contains("<Status>0</Status>");
             assertThat(it.get(ict, "/api/v1/payments/paydirect").getBody().get("notificationKey")).isEqualTo(true);
+            // a reversal at the keyed address is believed and left for the Bursary; the certification checklist reads every step off the log
+            assertThat(postXml(keyedPath, notification("", "", reference, String.valueOf(Long.parseLong(logId) + 5), amount.toPlainString(), false, true))).contains("<Status>0</Status>");
+            Map<String, Object> cert = (Map<String, Object>) it.get(ict, "/api/v1/payments/paydirect").getBody().get("certification");
+            assertThat(cert.get("validation_at")).isNotNull();
+            assertThat(cert.get("believed_at")).isNotNull();
+            assertThat(cert.get("reversal_at")).isNotNull();
+            assertThat(cert.get("reversal_reference")).isEqualTo(reference);
             List<String> outcomes = jdbc.sql("SELECT outcome FROM finance.gateway_event WHERE gateway = 'paydirect' AND reference = :r AND source = 'WEBHOOK' ORDER BY received_at")
                     .param("r", reference).query(String.class).list();
             // V407: the first came while no credentials were set at all; the second presented a wrong password
-            assertThat(outcomes).containsExactly("NO_CREDENTIALS", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED", "ALREADY_SETTLED", "BAD_SIGNATURE", "ALREADY_SETTLED");
+            assertThat(outcomes).containsExactly("NO_CREDENTIALS", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED", "ALREADY_SETTLED", "BAD_SIGNATURE", "ALREADY_SETTLED", "REVERSED");
 
             // a paid reference is refused when Quickteller asks again, so it is not paid twice — at either address
             assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))

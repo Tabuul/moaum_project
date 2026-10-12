@@ -7,6 +7,10 @@ export interface PaydirectBiller { scope: string; biller_code: string; name: str
 export interface PaydirectCollection { biller_code?: string | null; prn: string; amount?: number | null; paid_at?: string | null; channel?: string | null; rrn?: string | null; payer?: string | null; state: string; reference?: string | null; why?: string | null; imported_at: string }
 export interface PaydirectValidation { id: string; reference?: string | null; merchant_reference?: string | null; amount?: number | null; outcome: string; received_at: string; why?: string | null }
 /** V383: a test reference the Bursary issued for Interswitch's testers, payable for the days chosen */
+export interface PaydirectCertification {
+  validation_at: string | null; validation_outcome: string | null; believed_at: string | null; believed_outcome: string | null; believed_reference: string | null;
+  discarded_since: number | null; discarded_at: string | null; reversal_at: string | null; reversal_reference: string | null;
+}
 export interface PaydirectTestReference {
   reference: string; amount: number; session: string; generated_at: string; expires_at: string; days: number; state: "OPEN" | "PAID" | "EXPIRED" | "WITHDRAWN";
   payer: string; number: string; confirmed_at?: string | null; receipt_no?: string | null; channel?: string | null; withdrawn_at?: string | null;
@@ -16,6 +20,8 @@ export interface PaydirectDesk {
   billers: PaydirectBiller[]; collections: PaydirectCollection[]; validations: PaydirectValidation[]; credentials: boolean;
   /** Oct 2026: a username and password set, and a key in the notification address set */
   credentialsPair?: boolean; notificationKey?: boolean; keyedPath?: string;
+  /** Oct 2026: the facts the Interswitch certification checklist is read from */
+  certification?: PaydirectCertification;
   apiBase: string; validatePath: string; notifyPath: string; /** Oct 2026: the one address for both messages */ singlePath?: string;
   testReferences: PaydirectTestReference[];
 }

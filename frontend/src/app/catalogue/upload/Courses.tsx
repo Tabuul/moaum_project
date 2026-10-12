@@ -204,7 +204,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setUnregistered([]);
     try {
       const groups = groupsOf(preview, programme);
-      const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0, existing: 0 };
+      const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0, existing: 0, classes_opened: 0 };
       let firstErr: string | null = null;
       let done = 0;
       const notRegistered: { programme: string; rows: number }[] = [];
@@ -224,15 +224,16 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           setUnregistered(notRegistered);
           return;
         }
-        const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null; existing?: number };
+        const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null; existing?: number; classes_opened?: number };
         totals.courses += Number(c.courses ?? 0); totals.offers += Number(c.offers ?? 0); totals.existing += Number(c.existing ?? 0);
+        totals.classes_opened += Number(c.classes_opened ?? 0); // V405/V406: the classes the upload opened in semesters already open
         totals.bad_code += Number(c.bad_code ?? 0); totals.skipped += Number(c.skipped ?? 0);
         if (!firstErr && c.first_error) firstErr = c.first_error;
         done += 1;
       }
       setUnregistered(notRegistered);
       const skippedRows = notRegistered.reduce((s, x) => s + x.rows, 0);
-      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} bound another department's course` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
+      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.existing ? ` · ${totals.existing} row${totals.existing === 1 ? "" : "s"} bound another department's course` : ""}${totals.classes_opened ? ` · ${totals.classes_opened} class${totals.classes_opened === 1 ? "" : "es"} opened in the semesters already running, ready to allocate` : ""}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
       notify(`Course structure loaded · ${totals.courses} courses`);
       setPreview(null);
       setPlacements(null);

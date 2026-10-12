@@ -239,6 +239,29 @@ class PaymentsRepository {
     }
 
     /** Quickteller's reference checks, newest first */
+    /** Oct 2026: the facts the Interswitch certification checklist is read from — the latest validation, the latest believed
+     *  notification, what was discarded since, the latest reversal */
+    Map<String, Object> paydirectCertification() {
+        return jdbc.sql("""
+                SELECT (SELECT max(e.received_at) FROM finance.gateway_event e WHERE e.gateway = 'paydirect' AND e.source = 'VALIDATE') AS validation_at,
+                       (SELECT e.outcome FROM finance.gateway_event e WHERE e.gateway = 'paydirect' AND e.source = 'VALIDATE' ORDER BY e.received_at DESC LIMIT 1) AS validation_outcome,
+                       b.received_at AS believed_at, b.outcome AS believed_outcome, b.reference AS believed_reference,
+                       (SELECT count(*) FROM finance.gateway_event e
+                         WHERE e.gateway = 'paydirect' AND e.source = 'WEBHOOK' AND e.event = 'notification' AND e.outcome IN ('NO_CREDENTIALS', 'BAD_SIGNATURE')
+                           AND e.received_at > coalesce(b.received_at, now() - interval '30 days')) AS discarded_since,
+                       (SELECT max(e.received_at) FROM finance.gateway_event e
+                         WHERE e.gateway = 'paydirect' AND e.source = 'WEBHOOK' AND e.event = 'notification' AND e.outcome IN ('NO_CREDENTIALS', 'BAD_SIGNATURE')) AS discarded_at,
+                       r.received_at AS reversal_at, r.reference AS reversal_reference
+                  FROM (SELECT 1) one
+                  LEFT JOIN LATERAL (SELECT e.received_at, e.outcome, e.reference FROM finance.gateway_event e
+                                      WHERE e.gateway = 'paydirect' AND e.source = 'WEBHOOK' AND e.event = 'notification' AND e.signature_ok
+                                      ORDER BY e.received_at DESC LIMIT 1) b ON true
+                  LEFT JOIN LATERAL (SELECT e.received_at, e.reference FROM finance.gateway_event e
+                                      WHERE e.gateway = 'paydirect' AND e.source = 'WEBHOOK' AND e.event = 'reversal'
+                                      ORDER BY e.received_at DESC LIMIT 1) r ON true
+                """).query().singleRow();
+    }
+
     List<Map<String, Object>> validations(int limit) {
         return jdbc.sql("""
                 SELECT e.id, e.reference, e.gateway_ref AS merchant_reference, e.amount, e.outcome, e.received_at, e.payload->>'why' AS why
