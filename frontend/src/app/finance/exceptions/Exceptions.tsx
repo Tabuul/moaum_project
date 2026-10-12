@@ -103,6 +103,77 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
           </Gates>
         </PBody>
       </Panel>
+      {may ? <FeeReversal /> : null}
     </>
+  );
+}
+
+/* ── V420: an applicant fee confirmed by hand in error, reversed ─────────────────────────────────────────────────────── */
+
+interface FeeRef {
+  reference: string; kind: string; amount: number; application_no: string; applicant: string; route: string | null; session: string;
+  confirmed_at: string | null; channel: string | null; receipt_no: string | null; reversible: boolean; why_not: string | null;
+  reversals: { reversed_at: string; reason: string; amount: number; receipt_no: string | null; reversed_by_name: string | null }[];
+}
+const FEE_KIND: Record<string, string> = { APPLICATION: "Application fee", CHECKING: "Admission checking fee", ACCEPTANCE: "Acceptance fee" };
+
+function FeeReversal() {
+  const [ref, setRef] = useState("");
+  const [v, setV] = useState<FeeRef | null>(null);
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function call(path: string, method: "GET" | "POST", body?: unknown, reason?: string) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/fee-references/${path}`, {
+        method, headers: { "Content-Type": "application/json", ...(reason ? { "X-Reason": reasonHeader(reason) } : {}) }, body: body ? JSON.stringify(body) : undefined,
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return null; }
+      return j as FeeRef & { reversed?: { ledgerReversed: boolean } };
+    } finally { setBusy(false); }
+  }
+  async function look() {
+    const reference = ref.trim().toUpperCase();
+    if (!reference) return;
+    setV(null); setWhy("");
+    const out = await call(encodeURIComponent(reference), "GET");
+    if (out) setV(out);
+  }
+  async function reverse() {
+    if (!v || why.trim().length < 10) return;
+    if (!window.confirm(`Reverse the confirmation of ${v.reference} (${money(Number(v.amount))}, ${v.applicant})? The applicant is told and the fee is owed again.`)) return;
+    const out = await call(`${encodeURIComponent(v.reference)}/reverse`, "POST", { reason: why.trim() }, `Applicant fee confirmation reversed: ${v.reference}`);
+    if (out) { setV(out); setWhy(""); notify(`${v.reference} reversed${out.reversed?.ledgerReversed ? "; the ledger entry reversed too" : ""}`); }
+  }
+  return (
+    <Panel title="An applicant fee confirmed in error" right="Reverse a confirmation made by hand">
+      <PBody>
+        <div className="sub2 mb-2">For a bank payment confirmed against the wrong applicant&rsquo;s reference. A payment the gateway settled is refunded, never reversed; a fee the application already relied on (submitted, the status read, the offer accepted) cannot be reversed.</div>
+        <form className="row row--inline row--tight" onSubmit={(e) => { e.preventDefault(); void look(); }}>
+          <input className="ctl tnum" style={{ width: 260 }} aria-label="The applicant fee reference" placeholder="MOAUM-APP-…" value={ref} onChange={(e) => setRef(e.target.value)} />
+          <Btn kind="secondary" disabled={busy || !ref.trim()} type="submit">Look it up</Btn>
+        </form>
+        {v ? (
+          <div className="mt-2">
+            <Two a={`${FEE_KIND[v.kind] ?? v.kind} · ${money(Number(v.amount))}${v.route === "CCE" ? " · CCE" : ""}`} b={`${v.applicant} · ${v.application_no} · ${v.session}`} />
+            <div className="sub2 mt-1">{v.confirmed_at ? `Confirmed ${day(v.confirmed_at)} · ${v.channel ?? "—"} · receipt ${v.receipt_no ?? "—"}` : "Not confirmed"}</div>
+            {v.reversible ? (
+              <div className="mt-2">
+                <Field id="fee-rev-why" label="Why the confirmation was wrong (kept on the record)" required>
+                  <textarea id="fee-rev-why" className="ctl" rows={2} value={why} onChange={(e) => setWhy(e.target.value)} />
+                </Field>
+                <Btn kind="urgent" disabled={busy || why.trim().length < 10} onClick={() => void reverse()}>{busy ? "Reversing…" : "Reverse the confirmation"}</Btn>
+              </div>
+            ) : <Note kind="info" title="This confirmation cannot be reversed">{v.why_not}.</Note>}
+            {v.reversals.length ? (
+              <DTable noPrint pageSize={0} cols={["Reversed", "Amount|num", "Receipt", "Why", "By"]} rows={v.reversals.map((x) => [
+                <span key="w" className="tnum">{day(x.reversed_at)}</span>, money(Number(x.amount)), x.receipt_no ?? "—", x.reason, x.reversed_by_name ?? "—",
+              ])} />
+            ) : null}
+          </div>
+        ) : null}
+      </PBody>
+    </Panel>
   );
 }

@@ -402,6 +402,7 @@ class CceDeskController {
                    acc.email, acc.phone, s.admission_no, s.matric_no, s.id AS student_id, a.created_at,
                    (SELECT count(*) FROM admissions.application_document x WHERE x.application_id = a.id AND x.superseded_at IS NULL AND x.status = 'PENDING') AS documents_pending,
                    array_to_string(admissions.cce_missing_documents(a.id), ',') AS documents_missing,
+                   (SELECT string_agg(o.item, ',') FROM admissions.cce_outstanding(a.id) o) AS outstanding,
                    count(*) OVER () AS total_rows
               FROM admissions.cce_review r
               JOIN admissions.application a ON a.id = r.application_id
@@ -419,16 +420,19 @@ class CceDeskController {
     @Transactional(readOnly = true)
     Map<String, Object> applications(@RequestParam(required = false) String session, @RequestParam(required = false) String state,
                                      @RequestParam(required = false) String programme, @RequestParam(required = false) String q,
+                                     @RequestParam(required = false) String waiting,
                                      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
         String s = sessionOr(session);
         int n = Math.max(1, Math.min(size, 5000));
+        // V420: waiting on the applicant — ANY, or one step of admissions.cce_outstanding (APPLICATION_FEE, FORM, CENTRE_ASKED, ...)
         List<Map<String, Object>> rows = jdbc.sql(APPS + """
                  WHERE a.session = :s AND (:st = '' OR r.state = ANY (string_to_array(:st, ','))) AND (:prog = '' OR l.programme_code = :prog)
                    AND (:q = '' OR c.jamb_reg_no ILIKE '%' || :q || '%' OR a.application_no ILIKE '%' || :q || '%'
                         OR (l.surname || ' ' || l.first_name || ' ' || coalesce(l.middle_name, '')) ILIKE '%' || :q || '%'
                         OR acc.email ILIKE '%' || :q || '%' OR acc.phone LIKE '%' || :q || '%' OR coalesce(s.matric_no, '') ILIKE '%' || :q || '%')
+                   AND (:w = '' OR EXISTS (SELECT 1 FROM admissions.cce_outstanding(a.id) o WHERE :w = 'ANY' OR o.item = :w))
                  ORDER BY r.submitted_at NULLS LAST, a.application_no LIMIT :n OFFSET :o
-                """).param("s", s).param("st", up(state)).param("prog", up(programme)).param("q", q(q)).param("n", n).param("o", Math.max(0, page) * n)
+                """).param("s", s).param("st", up(state)).param("prog", up(programme)).param("q", q(q)).param("w", up(waiting)).param("n", n).param("o", Math.max(0, page) * n)
                 .query().listOfRows();
         return paged(s, rows, page, n);
     }
@@ -454,6 +458,13 @@ class CceDeskController {
                  WHERE a.id = :a
                 """).param("a", id).query().singleRow());
         out.put("biodata", jdbc.sql("SELECT field, value FROM admissions.screening_answer WHERE application_id = :a ORDER BY field").param("a", id).query().listOfRows());
+        // V420: what the applicant still has to do, as they see it (admissions.cce_outstanding), with the reminders sent for it
+        out.put("outstandingSteps", jdbc.sql("""
+                SELECT o.item, o.label, o.detail, o.amount,
+                       (SELECT count(*) FROM admissions.cce_reminder_log g WHERE g.application_id = :a AND g.item = o.item) AS reminded,
+                       (SELECT max(g.sent_at) FROM admissions.cce_reminder_log g WHERE g.application_id = :a AND g.item = o.item) AS last_reminded
+                  FROM admissions.cce_outstanding(:a) o
+                """).param("a", id).query().listOfRows());
         out.put("olevel", jdbc.sql("""
                 SELECT sitting, exam_body, exam_number, exam_year, subject, grade FROM admissions.screening_olevel
                  WHERE application_id = :a AND active ORDER BY sitting, ord

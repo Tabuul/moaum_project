@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 256
+\set EXPECTED 257
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10556,6 +10556,90 @@ BEGIN
                  AND r_office = 'CCE_OFFICE' AND r_rule_office = 'CCE_OFFICE' AND r_item = 'CCE_REMINDER_ITEM', false),
         format('day0 %s | due %s | off %s | sent %s mail %s sms %s link %s | same day %s soon %s later %s capped %s | closed %s | paid %s | office %s rule-office %s item %s',
                due0, due2, off_due, r1, mail, sms, link, again_day, again_soon, again_later, capped, closed, form_item, r_office, r_rule_office, r_item));
+END $$;
+
+-- ── V420: an applicant fee confirmed by hand in error, reversed by the Bursary ──
+-- A confirmation made by hand, posted to the ledger, is reversed by the Bursary with its reason: the reference loses its
+-- confirmation and receipt and is no longer payable, the application is unpaid again, the ledger journal is reversed by one of
+-- its own, the reversal is kept and the applicant told. Another office, a short reason, a payment the gateway settled, a fee
+-- already relied upon (the application submitted) and an unknown reference are refused. The block undoes its writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); burs uuid := gen_random_uuid(); S text := '9939/9940'; pa text := 'C00023';
+        b uuid; acct uuid; app1 uuid; app2 uuid; ref1 text; ref2 text; ref3 text; jr uuid; pre record; rev jsonb;
+        r_office text; r_reason text; r_gateway text; r_in_use text; r_unknown text; why_gw text;
+        f_conf timestamptz; f_receipt text; f_expired boolean; a_fee timestamptz; j_status text; j_new int; kept int; told int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V420', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9939-10-01', date '9940-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        b := admissions.cce_preview(S, 'cce-420.xlsx', repeat('6', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99390000020CC', 'surname', 'Zztwenty', 'first_name', 'Wrong', 'date_of_birth', '1990-04-04', 'sex', 'F', 'phone', '08035550920', 'email', 'v420a@example.com', 'programme_code', pa),
+            jsonb_build_object('jamb_reg_no', '99390000021CC', 'surname', 'Zztwenty', 'first_name', 'Gateway', 'date_of_birth', '1990-05-05', 'sex', 'M', 'phone', '08035550921', 'email', 'v420b@example.com', 'programme_code', pa)));
+        PERFORM admissions.cce_commit(b);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        acct := admissions.cce_register('99390000020CC', date '1990-04-04', 'zz.v420a@example.com', '08035550920', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app1 FROM admissions.application WHERE account_id = acct;
+        acct := admissions.cce_register('99390000021CC', date '1990-05-05', 'zz.v420b@example.com', '08035550921', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app2 FROM admissions.application WHERE account_id = acct;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000);
+
+        -- (1) confirmed by hand and posted to the ledger: reversible; another office and a short reason refused; reversed
+        ref1 := admissions.new_fee_reference(app1, 'APPLICATION');
+        PERFORM admissions.confirm_fee(ref1, 'BANK', 'check');
+        jr := finance.gl_post(current_date, 'check V420 payment', 'MANUAL', 'PAYMENT', ref1,
+                              '[{"account": "1010", "debit": 10000, "credit": 0}, {"account": "4030", "debit": 0, "credit": 10000}]'::jsonb);
+        SELECT * INTO pre FROM admissions.fee_reversal_check(ref1);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM admissions.reverse_fee_confirmation(ref1, 'Confirmed against the wrong reference'); r_office := 'REVERSED';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM admissions.reverse_fee_confirmation(ref1, 'wrong'); r_reason := 'REVERSED';
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        rev := admissions.reverse_fee_confirmation(lower(ref1), 'Confirmed against the wrong applicant''s reference');
+        SELECT confirmed_at, receipt_no, expires_at <= now() INTO f_conf, f_receipt, f_expired FROM admissions.fee_reference WHERE reference = ref1;
+        SELECT fee_confirmed_at INTO a_fee FROM admissions.application WHERE id = app1;
+        SELECT status INTO j_status FROM finance.gl_journal WHERE id = jr;
+        SELECT count(*) INTO j_new FROM finance.gl_journal WHERE reverses = jr;
+        SELECT count(*) INTO kept FROM admissions.fee_reversal WHERE reference = ref1 AND reversed_by = burs AND reversed_office = 'bursar' AND receipt_no IS NOT NULL;
+        SELECT count(*) INTO told FROM platform.notice WHERE about_id = app1 AND channel = 'EMAIL' AND subject = 'A payment recorded on your application was reversed';
+
+        -- (2) relied upon: paid again, the application submitted — no reversal
+        ref2 := admissions.new_fee_reference(app1, 'APPLICATION');
+        PERFORM admissions.confirm_fee(ref2, 'BANK', 'check');
+        UPDATE admissions.application SET submitted_at = now() WHERE id = app1;
+        BEGIN PERFORM admissions.reverse_fee_confirmation(ref2, 'Confirmed against the wrong applicant''s reference'); r_in_use := 'REVERSED';
+        EXCEPTION WHEN check_violation THEN r_in_use := split_part(SQLERRM, ':', 1); END;
+
+        -- (3) settled by the gateway: refunded, never reversed
+        ref3 := admissions.new_fee_reference(app2, 'APPLICATION');
+        PERFORM admissions.confirm_fee(ref3, 'Card · Quickteller', 'check');
+        INSERT INTO finance.gateway_event (gateway, source, reference, amount, status, signature_ok, outcome)
+        VALUES ('quickteller', 'WEBHOOK', ref3, 10000, 'success', true, 'SETTLED');
+        SELECT why_not INTO why_gw FROM admissions.fee_reversal_check(ref3);
+        BEGIN PERFORM admissions.reverse_fee_confirmation(ref3, 'Confirmed against the wrong applicant''s reference'); r_gateway := 'REVERSED';
+        EXCEPTION WHEN check_violation THEN r_gateway := split_part(SQLERRM, ':', 1); END;
+
+        -- (4) a reference this portal never generated
+        BEGIN PERFORM admissions.reverse_fee_confirmation('MOAUM-APP-000000-0000', 'Confirmed against the wrong applicant''s reference'); r_unknown := 'REVERSED';
+        EXCEPTION WHEN check_violation THEN r_unknown := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V420 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V420 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V420: an applicant fee confirmed by hand in error is reversed by the Bursary with its reason — confirmation and receipt gone, unpayable, the application unpaid, the ledger reversed, the reversal kept, the applicant told; another office, a short reason, a fee relied upon, a gateway settlement and an unknown reference are refused',
+        coalesce(pre.reversible AND r_office = 'FEE_REVERSAL_OFFICE' AND r_reason = 'FEE_REVERSAL_REASON' AND (rev->>'ledgerReversed')::boolean
+                 AND f_conf IS NULL AND f_receipt IS NULL AND f_expired AND a_fee IS NULL AND j_status = 'REVERSED' AND j_new = 1 AND kept = 1 AND told = 1
+                 AND r_in_use = 'FEE_REVERSAL_IN_USE' AND r_gateway = 'FEE_REVERSAL_GATEWAY' AND why_gw LIKE 'The payment gateway settled it%'
+                 AND r_unknown = 'FEE_REVERSAL_UNKNOWN', false),
+        format('check %s | office %s reason %s | reversed %s: confirmed %s receipt %s expired %s app fee %s journal %s reversals %s kept %s told %s | in use %s | gateway %s (%s) | unknown %s',
+               pre.reversible, r_office, r_reason, rev, f_conf, f_receipt, f_expired, a_fee, j_status, j_new, kept, told, r_in_use, r_gateway, why_gw, r_unknown));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

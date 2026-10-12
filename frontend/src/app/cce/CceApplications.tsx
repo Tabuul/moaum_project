@@ -26,6 +26,12 @@ import { Pager, type TabProps } from "./CceList";
 
 /* ── the list, and the processing queue ─────────────────────────────────────────────────────────────────────────── */
 
+/** V420: the steps an applicant may still owe the Centre (admissions.cce_outstanding), as the Centre reads them */
+const WAITING_ON: Record<string, string> = {
+  APPLICATION_FEE: "The application fee", FORM: "The form", CENTRE_ASKED: "What the Centre asked for",
+  CHECKING_FEE: "The checking fee (outcome unread)", ACCEPTANCE_FEE: "The acceptance fee",
+};
+
 /** V412: the documents an application lacks (not uploaded, or rejected) */
 const missingOf = (a: { documents_missing?: string | null }) => (a.documents_missing ? a.documents_missing.split(",").filter(Boolean) : []);
 /** an application the Centre may still ask for documents (the review's REQUEST_DOCUMENTS step) */
@@ -35,16 +41,17 @@ export function CceApplications({ session, pick, processing, initialState, power
   const [state, setState] = useState(initialState ?? (processing ? PROCESSING_STATES.join(",") : ""));
   const [tick, setTick] = useState(0);
   const [asking, setAsking] = useState(false);
+  const [waiting, setWaiting] = useState("");
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [data, setData] = useState<Paged<AppRow> | null>(null);
   useEffect(() => {
     let live = true;
-    void ccall<Paged<AppRow>>(`/api/v1/cce/applications?session=${encodeURIComponent(session)}&state=${encodeURIComponent(state)}&q=${encodeURIComponent(query)}&page=${page}&size=50`)
+    void ccall<Paged<AppRow>>(`/api/v1/cce/applications?session=${encodeURIComponent(session)}&state=${encodeURIComponent(state)}&q=${encodeURIComponent(query)}&waiting=${encodeURIComponent(waiting)}&page=${page}&size=50`)
       .then((r) => { if (!live) return; if (r.ok) setData(r.data); else notifyProblem(r.problem); });
     return () => { live = false; };
-  }, [session, state, query, page, tick]);
+  }, [session, state, query, page, tick, waiting]);
   const states = processing ? PROCESSING_STATES : REVIEW_STATES;
   /* V412: every submitted or reviewed application of the session that lacks documents is asked for exactly those, in one go */
   async function askAll() {
@@ -64,6 +71,11 @@ export function CceApplications({ session, pick, processing, initialState, power
       <Panel title={processing ? "To act on" : "Applications"} right={<span className="row row--inline row--tight">
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); setPage(0); }}><input className="ctl" style={{ width: 230 }} placeholder="JAMB, application no, name, phone…" aria-label="Search the applications" value={q} onChange={(e) => setQ(e.target.value)} /></form>
         {powers.centre ? <Btn kind="secondary" disabled={asking} onClick={() => void askAll()} title="Every submitted or reviewed application that lacks a document is sent back to the applicant, asking for exactly those">{asking ? "Asking…" : "Ask for missing documents"}</Btn> : null}
+        <select className="ctl" aria-label="Waiting on the applicant" value={waiting} onChange={(e) => { setWaiting(e.target.value); setPage(0); }}>
+          <option value="">Waiting on anyone</option>
+          <option value="ANY">Waiting on the applicant</option>
+          {Object.entries(WAITING_ON).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
         <select className="ctl" aria-label="State" value={state} onChange={(e) => { setState(e.target.value); setPage(0); }}>
           <option value={processing ? PROCESSING_STATES.join(",") : ""}>{processing ? "Everything to act on" : "Every state"}</option>
           {states.map((s) => <option key={s} value={s}>{REVIEW_LABEL[s][0]}</option>)}
@@ -71,11 +83,12 @@ export function CceApplications({ session, pick, processing, initialState, power
       </span>}>
         {data === null ? <PBody><div className="sub2">Reading…</div></PBody> : data.rows.length ? (
           <>
-            <DTable pageSize={0} cols={["Application", "Name", "Programme", "State", "Submitted", "Documents"]} rows={data.rows.map((a) => [
+            <DTable pageSize={0} cols={["Application", "Name", "Programme", "State", "Waiting on the applicant", "Submitted", "Documents"]} rows={data.rows.map((a) => [
               <Link key="a" href={`/cce/applications/${a.id}`} className="tnum">{a.application_no}<div className="sub2">{a.jamb_reg_no}</div></Link>,
               <span key="n">{a.name}<div className="sub2">{[a.phone, a.email].filter(Boolean).join(" · ")}</div></span>,
               <span key="p">{a.programme}<div className="sub2">{a.department ?? ""}</div></span>,
               <Pil key="s" kind={labelOf(REVIEW_LABEL, a.state)[1]}>{labelOf(REVIEW_LABEL, a.state)[0]}</Pil>,
+              <span key="w">{a.outstanding ? a.outstanding.split(",").map((k) => WAITING_ON[k] ?? k).join("; ") : <span className="sub2">—</span>}</span>,
               <span key="d">{a.submitted_at ? when(a.submitted_at) : <span className="sub2">not yet</span>}</span>,
               <span key="x">{a.state !== "DRAFT" && missingOf(a).length ? <Pil kind="warn">{missingOf(a).length} missing</Pil> : null}
                 {a.documents_pending ? <div className="sub2">{a.documents_pending} to check</div> : null}
@@ -191,6 +204,15 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
       {r.decision_note && ["APPROVED", "ADMITTED", "NOT_ADMITTED", "REJECTED"].includes(r.state) ? <Note kind={r.state === "NOT_ADMITTED" || r.state === "REJECTED" ? "bad" : "ok"} title={`${labelOf(REVIEW_LABEL, r.state)[0]} — ${r.decided_by_name ?? ""} (${r.decided_office ?? ""})`}>{r.decision_note}</Note> : null}
       {r.recommended_at ? <div className="sub2 mb-2">Recommended {when(r.recommended_at)} by {r.recommended_by_name ?? "—"}{r.recommendation_note ? `: ${r.recommendation_note}` : ""}</div> : null}
       {a.problems.length && r.state === "DRAFT" ? <Note kind="info" title="The applicant still has to">{a.problems.map((p) => p.message).join("; ")}.</Note> : null}
+      {a.outstandingSteps && a.outstandingSteps.length ? (
+        <Panel title="What the applicant still has to do" right={<span className="sub2">{a.phone} · {a.email}</span>}>
+          <DTable noPrint pageSize={0} cols={["Step", "Amount|num", "Reminded"]} rows={a.outstandingSteps.map((o) => [
+            <span key="s"><b>{o.label}</b>{o.detail ? <div className="sub2">{o.detail}</div> : null}</span>,
+            o.amount != null ? naira(o.amount) : "—",
+            <span key="r" className="sub2">{o.reminded ? `${o.reminded} time${o.reminded === 1 ? "" : "s"} · last ${when(o.last_reminded)}` : "not yet"}</span>,
+          ])} />
+        </Panel>
+      ) : null}
 
       {steps.length || (!published && DECLINABLE.has(r.state) && powers.decide) ? (
         <Panel title="The next step">

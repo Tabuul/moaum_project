@@ -63,6 +63,7 @@ What a payment costs, and what it releases.
 - [ ] Upload the Council-approved fee structure for the session — `/finance/fees`
 - [ ] Put the clearance scheme in force under a minute — `/finance/fees` · **[critical]** · **done when** a payment actually releases registration, the exam and results
 - [ ] State the applicant and Post-UTME fees (screening, portal charge, acceptance, checking) — `/finance/fees`
+- [ ] State the CCE applicant fees for the CCE session (application, admission checking, acceptance) — `/cce/fees` · **done when** the readiness screen's *CCE admission* panel reads "CCE applicant fees set" (it is blocking once a CCE list is loaded, the CCE window is open or CCE applications exist — V412)
 - [ ] Set the inter-departmental transfer processing fee — there is no default — `/finance/fees` · **done when** the panel reads "Set by the Bursary", not "Not set yet"
 - [ ] Wire and test the payment gateway — `/finance/gateways` · **done when** a card / USSD checkout opens against a live reference
 

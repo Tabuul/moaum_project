@@ -383,3 +383,16 @@ due reminders now*. API: `GET /api/v1/cce/reminders`, `PUT /api/v1/cce/reminders
 
 **Tests.** check.sql — the V418 property (due after the days, email and SMS with the link, not twice a day, not before the
 interval, not beyond the times, not while off or the window closed, the form once paid, the offices); `CceIT`.
+
+---
+
+## L. Who is waiting on the applicant; a payment confirmed in error (V420)
+
+**The Centre's list** has a *Waiting on the applicant* column and filter (`?waiting=ANY` or a step — `APPLICATION_FEE`,
+`FORM`, `CENTRE_ASKED`, `CHECKING_FEE`, `ACCEPTANCE_FEE`): the same `admissions.cce_outstanding` the applicant reads, so the
+Centre can telephone those the reminders have not moved. An application shows *What the applicant still has to do*, each
+step with how often and when the applicant was last reminded of it, beside their phone and email.
+
+**A payment confirmed in error** (a bank payment confirmed against the wrong applicant's reference) is reversed by the
+Bursary on Payment Investigation — see [applicant-fee-reversal.md](applicant-fee-reversal.md). A CCE applicant whose
+application fee is reversed finds the form shut again until the fee is paid.

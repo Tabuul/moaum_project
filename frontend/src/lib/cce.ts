@@ -50,6 +50,8 @@ export interface AppRow {
   fee_confirmed_at: string | null; accepted_at: string | null; email: string; phone: string; admission_no: string | null; matric_no: string | null;
   /** V412: the documents the application lacks (not uploaded, or rejected), comma-separated kinds */
   documents_missing?: string | null;
+  /** V420: the steps the applicant still has to do (admissions.cce_outstanding), comma-separated */
+  outstanding?: string | null;
   student_id: string | null; created_at: string; documents_pending: number;
 }
 export interface Olevel { sitting: number; exam_body: string; exam_number: string; exam_year: number; subject: string; grade: string }
@@ -58,6 +60,8 @@ export interface DeskDoc {
   reviewed_at: string | null; review_note: string | null; reviewed_by_name: string | null;
 }
 export interface AppDetail extends AppRow {
+  /** V420: what the applicant still has to do, with the reminders sent for each step */
+  outstandingSteps?: { item: string; label: string; detail: string | null; amount: number | null; reminded: number; last_reminded: string | null }[];
   listed: { session: string; jamb_reg_no: string; surname: string; first_name: string; middle_name: string | null; date_of_birth: string; sex: string | null; phone: string | null;
             email: string | null; state_of_origin: string | null; lga: string | null; nationality: string | null; olevel_note: string | null; remarks: string | null;
             extra: string | null; standing: string; list_file: string; listed_at: string | null };

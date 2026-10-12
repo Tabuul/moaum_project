@@ -143,6 +143,19 @@ class CceIT {
         assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", ref).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("6500");
         assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")))).isEqualTo("ADMISSION_CHECKING_NOT_ELIGIBLE");
         confirm(ref);
+        // V420: confirmed in error — the Bursary reverses it with a reason (a lecturer cannot; a short reason is refused); the form
+        // shuts again; the fee is paid again on a new reference
+        assertThat(ok(it.get(bursar, "/api/v1/admissions/fee-references/" + ref)).get("reversible")).isEqualTo(true);
+        assertThat(it.get(lecturer, "/api/v1/admissions/fee-references/" + ref).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/admissions/fee-references/" + ref + "/reverse", Map.of("reason", "short")).getStatusCode().value()).isEqualTo(400);
+        Map<String, Object> reversed = ok(it.call(bursar, HttpMethod.POST, "/api/v1/admissions/fee-references/" + ref + "/reverse",
+                Map.of("reason", "Confirmed against the wrong applicant's reference")));
+        assertThat(((Map) reversed.get("reversed")).get("kind")).isEqualTo("APPLICATION");
+        assertThat(reversed.get("reversible")).isEqualTo(false);
+        assertThat(code(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/cce/biodata", Map.of("fields", Map.of("home_address", "4 Railway Road, Makurdi"))))).isEqualTo("CCE_FEE_FIRST");
+        String repaid = String.valueOf(ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION"))).get("reference"));
+        assertThat(repaid).isNotEqualTo(ref);
+        confirm(repaid);
         ok(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/cce/biodata", Map.of("fields", Map.of("date_of_birth", "1988-02-14", "home_address", "4 Railway Road, Makurdi",
                 "state_of_origin", "Benue", "lga", "Gboko", "nationality", "Nigeria", "mobile", "08061234567", "kin_name", "Terhemba Iorliam", "kin_relationship", "Husband",
                 "kin_mobile", "08069876543"))));
@@ -190,6 +203,11 @@ class CceIT {
         assertThat(it.call(centre, HttpMethod.POST, "/api/v1/cce/publish", Map.of("session", SESSION)).getStatusCode().value()).isEqualTo(403);
         Map<String, Object> published = ok(it.call(academic, HttpMethod.POST, "/api/v1/cce/publish", Map.of("session", SESSION, "applicationIds", List.of(app))));
         assertThat(((Map) published.get("published")).get("admitted")).isEqualTo(1);
+        // V420: the Centre sees who is waiting on the applicant — the outcome unread, the checking fee unpaid
+        Map<String, Object> waiting = ok(it.get(centre, "/api/v1/cce/applications?session=" + SESSION + "&q=" + jamb + "&waiting=CHECKING_FEE"));
+        assertThat(((Number) waiting.get("total")).intValue()).isEqualTo(1);
+        assertThat(((Map) ((List) ok(it.get(centre, "/api/v1/cce/applications/" + app)).get("outstandingSteps")).get(0)).get("item")).isEqualTo("CHECKING_FEE");
+        assertThat(((Number) ok(it.get(centre, "/api/v1/cce/applications?session=" + SESSION + "&q=" + jamb + "&waiting=FORM")).get("total")).intValue()).isZero();
 
         // (6) published: the applicant pays the CCE admission checking fee (V404), reads the offer, accepts, pays the CCE acceptance
         // fee: on the register
