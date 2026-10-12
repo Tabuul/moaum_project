@@ -6,7 +6,7 @@
  *  with their diagnosis, the documents, the Support Action History and the tickets. Every change takes a reason; the ticket
  *  opened from is carried on every act; what the postings do not carry is not offered, and the server refuses it anyway. */
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
@@ -23,8 +23,8 @@ import type { RegistrationView } from "@/lib/student-portal";
 import type { GstEpsExplain } from "@/lib/gst";
 import { GstEligibilityView } from "@/components/gst/GstEligibilityView";
 
-type Tab = "profile" | "registration" | "payments" | "documents" | "history" | "tickets";
-const TABS: Tab[] = ["profile", "registration", "payments", "documents", "history", "tickets"];
+type Tab = "profile" | "registration" | "payments" | "documents" | "clearance" | "history" | "tickets";
+const TABS: Tab[] = ["profile", "registration", "payments", "documents", "clearance", "history", "tickets"];
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const naira = (v: unknown) => (v == null || v === "" ? "—" : `₦${Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`);
@@ -49,7 +49,8 @@ function RulesTable({ rules }: { rules: Rule[] }) {
   );
 }
 
-export function SupportProfile({ id, data, tab }: { id: string; data: Profile; tab: string }) {
+/** clearance (V415): the student's clearance read-only, drawn by the page when that tab is open */
+export function SupportProfile({ id, data, tab, clearance }: { id: string; data: Profile; tab: string; clearance?: ReactNode }) {
   const router = useRouter();
   const go = useQueryNav();
   const s = data.record.student;
@@ -256,6 +257,7 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
         { id: "profile", label: "Profile" }, { id: "registration", label: "Course registration" },
         ...(caps.has("VIEW_PAYMENTS") || caps.has("INVESTIGATE_PAYMENT") ? [{ id: "payments" as Tab, label: "Payments" }] : []),
         ...(caps.has("VIEW_DOCUMENTS") ? [{ id: "documents" as Tab, label: "Documents" }] : []),
+        { id: "clearance" as Tab, label: "Clearance" },
         { id: "history", label: "Support history", count: data.actions.length }, { id: "tickets", label: "Tickets", count: data.tickets.length },
       ]} />
 
@@ -433,6 +435,7 @@ export function SupportProfile({ id, data, tab }: { id: string; data: Profile; t
         </div>
       ) : null}
 
+      {tabNow === "clearance" ? clearance ?? null : null}
       {tabNow === "history" ? (
         <>
           <Panel title="Support action history" right="The support audit trail — not the student's academic history">

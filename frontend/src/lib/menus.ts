@@ -392,6 +392,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-accountability", "icon": "chart", "label": "Occupancy Accountability" },
           { "id": "t/hostel-import", "icon": "upload", "label": "Import Hostels & Rooms" },
           { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout & Clearance" },
+          { "id": "t/clearance", "icon": "check", "label": "Student Clearance" },
           { "id": "t/hostel-discipline", "icon": "doc", "label": "Discipline & Room Swaps" }
         ]
       },
@@ -601,6 +602,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
+          { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" }
@@ -882,6 +884,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
@@ -1002,6 +1005,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
+          { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
@@ -1120,6 +1124,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
@@ -1218,6 +1223,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
+          { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" }
         ]
@@ -1376,6 +1382,27 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "alumni": {
+    "label": "Alumni Relations Office",
+    "home": "t/clearance",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "t/clearance", "icon": "check", "label": "Final Student Clearance" },
+          { "id": "t/alumni", "icon": "cap", "label": "Alumni Register" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
   "services": {
     "label": "Support Services",
     "home": "t/clinic",
@@ -1450,6 +1477,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
+          { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
@@ -1595,7 +1623,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/query", "icon": "alert", "label": "Result Query" },
           { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
           { "id": "s/transfer", "icon": "swap", "label": "Inter-Departmental Transfer" },
-          { "id": "s/documents", "icon": "doc", "label": "My Documents" }
+          { "id": "s/documents", "icon": "doc", "label": "My Documents" },
+          { "id": "s/clearance", "icon": "check", "label": "My Clearance" }
         ]
       },
       {

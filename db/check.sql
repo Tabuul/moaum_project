@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 254
+\set EXPECTED 255
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 41, n || ' offices (38 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339 and the Centre for Continuing Education V379; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 42, n || ' offices (39 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379 and the Alumni Relations Office V415; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -2257,9 +2257,10 @@ BEGIN
     SELECT count(*) INTO v_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
     SELECT * INTO g FROM records.student_graduation(st);
     PERFORM pg_temp.assert('Senate''s approval of the list changes the status on the minute, tells the graduand, and the student sees the class and the units still holding',
-        -- four notices: Senate's approval by email and SMS, and the change of status on the register by email and SMS
+        -- four notices: Senate's approval by email and SMS, and the change of status on the register by email and SMS;
+        -- seven units holding: final clearance (V415) is not held by a hostel the graduand never had
         n >= 1 AND v_status = 'GRADUATED' AND v_notices = 4 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
-        AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 8 AND g.certificate_no IS NULL
+        AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 7 AND g.certificate_no IS NULL
         AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
         format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
 END $$;
@@ -10285,6 +10286,85 @@ BEGIN
     PERFORM pg_temp.assert('V417: a stored gateway secret shown to a person is a row on the record — by a person, with a reason — carried by the audit spine',
         r_nobody = 'SECRET_VIEW_ACTOR' AND r_why = 'SECRET_VIEW_REASON' AND v IS NOT NULL AND v_audited >= 1,
         format('nobody=%s why=%s noted=%s audited=%s', r_nobody, r_why, v IS NOT NULL, v_audited));
+END $$;
+
+-- ── V415. Fresh and final clearance as workflows on the one clearance engine: a student who is not eligible is started
+--          only by an override with a reason; a process carries a public reference; the hostel stage does not apply to a
+--          student with no hostel and does to one who applied; a sequential stage waits for the earlier ones; the Bursary
+--          and the Library clear only against the record (fees stated and paid, nothing on loan) unless overridden with a
+--          reason, kept with the state it replaced; a hold needs a reason; the clearance completes when every required stage that applies is cleared, the
+--          student told at each word; the final clearance is the convocation gate, held only by the stages that apply;
+--          the workflow purposes are not gates of the Bursar's scheme ──
+DO $$
+DECLARE S text := '9979/9980'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); fin uuid := gen_random_uuid();
+        pa uuid; pb uuid; pf uuid; v_elig text; v_refused text := 'accepted'; v_ref text; v_stages text; v_wait text := 'accepted'; v_bursary text := 'accepted';
+        v_reason text := 'accepted'; v_override text; v_overall text; v_done boolean; v_hostel text; v_told int; v_gate text; v_gate_clear boolean;
+        v_alumni text; v_gates text; v_owed text; v_unstated text; v_loan text := 'accepted'; itm uuid := gen_random_uuid(); ln uuid := gen_random_uuid();
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V415', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V415', 'CHECKV415', 'Registry');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9979-10-01', date '9980-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/79/009971', 'CHECKV415', 'Fresh', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/79/009972', 'CHECKV415', 'Hostel', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, matriculated_at)
+        VALUES (fin, 'MOAUM/ADM/79/009973', 'MOAUM/CHK/79/415', 'CHECKV415', 'Finalist', 'F', 'C00023', 'UTME', S, 100, 400, 'ACTIVE', 'FULL_TIME', now());
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000000415', 'v415@example.test');
+        INSERT INTO hostel.application (id, student_id, session, applied_at, state) VALUES (gen_random_uuid(), b, S, now(), 'APPLIED');
+        -- not eligible (no admission on the portal): refused, unless an override with a reason
+        SELECT array_to_string(reasons, ';') INTO v_elig FROM clearance.eligibility_rows('FRESH', S, ARRAY[a]);
+        BEGIN PERFORM clearance.start('FRESH', a, S, 'MANUAL', NULL, who, 'registrar'); EXCEPTION WHEN check_violation THEN v_refused := split_part(SQLERRM, ':', 1); END;
+        pa := clearance.start('FRESH', a, S, 'OVERRIDE', 'CHECK: admitted before the portal kept admissions', who, 'registrar');
+        pb := clearance.start('FRESH', b, S, 'OVERRIDE', 'CHECK: admitted before the portal kept admissions', who, 'registrar');
+        SELECT reference INTO v_ref FROM clearance.process WHERE id = pa;
+        SELECT string_agg(unit || '=' || state, ',' ORDER BY ord) INTO v_stages FROM clearance.stage_rows('FRESH', S, ARRAY[a]);
+        SELECT state INTO v_hostel FROM clearance.stage_rows('FRESH', S, ARRAY[b]) WHERE unit = 'HOSTEL';
+        -- a sequential stage waits; the Bursary clears only against the record; a hold names its reason
+        BEGIN PERFORM clearance.decide(pa, 'DEPARTMENT', 'CLEARED', NULL, NULL, NULL, false, who, 'registrar'); EXCEPTION WHEN check_violation THEN v_wait := split_part(SQLERRM, ':', 1); END;
+        v_owed := clearance.blocker(pa, 'BURSARY', '{"stated": true, "outstanding": 5000}'::jsonb);
+        v_unstated := clearance.blocker(pa, 'BURSARY', '{"stated": false}'::jsonb);
+        BEGIN PERFORM clearance.decide(pa, 'BURSARY', 'NOT_CLEARED', NULL, NULL, NULL, false, who, 'bursar'); EXCEPTION WHEN check_violation THEN v_reason := split_part(SQLERRM, ':', 1); END;
+        PERFORM clearance.decide(pa, 'BURSARY', 'CLEARED', 'CHECK: paid on the old ledger, verified by the Bursar', NULL, NULL, true, who, 'registrar');
+        SELECT override || '/' || previous_state INTO v_override FROM clearance.item WHERE process_id = pa AND unit = 'BURSARY' ORDER BY decided_at DESC LIMIT 1;
+        PERFORM clearance.decide(pa, 'DEPARTMENT', 'CLEARED', NULL, NULL, NULL, false, who, 'hod');
+        PERFORM clearance.decide(pa, 'FACULTY', 'CLEARED', NULL, NULL, NULL, false, who, 'dean');
+        -- the Library clears against its loans: refused while a book is out, cleared once it is back
+        INSERT INTO library.item (id, title) VALUES (itm, 'CHECK V415 book');
+        INSERT INTO library.copy (accession, item_id, state) VALUES ('CHK/9415', itm, 'ON_LOAN');
+        INSERT INTO library.loan (id, accession, student_id, due_on) VALUES (ln, 'CHK/9415', a, current_date + 7);
+        BEGIN PERFORM clearance.decide(pa, 'LIBRARY', 'CLEARED', NULL, NULL, NULL, false, who, 'library'); EXCEPTION WHEN check_violation THEN v_loan := split_part(SQLERRM, ':', 2); END;
+        UPDATE library.loan SET returned_at = now() WHERE id = ln;
+        PERFORM clearance.decide(pa, 'LIBRARY', 'CLEARED', NULL, NULL, NULL, false, who, 'library');
+        v_overall := clearance.decide(pa, 'HEALTH', 'CLEARED', NULL, NULL, NULL, false, who, 'services');
+        SELECT completed_at IS NOT NULL INTO v_done FROM clearance.process WHERE id = pa;
+        SELECT count(*) INTO v_told FROM platform.notice WHERE about_id = a;
+        -- final clearance is the convocation gate: held by the stages that apply, never by a hostel the student never had
+        pf := clearance.start('FINAL', fin, S, 'MANUAL', NULL, who, 'registrar');
+        SELECT string_agg(unit, ',' ORDER BY ord) INTO v_gate FROM clearance.position(fin, 'CONVOCATION');
+        v_gate_clear := clearance.is_clear(fin, 'CONVOCATION');
+        v_alumni := clearance.blocker(pf, 'ALUMNI', clearance.evidence(pf, 'ALUMNI'));
+        SELECT string_agg(code, ',' ORDER BY code) INTO v_gates FROM ref.clearance_purpose WHERE NOT gate;
+        RAISE EXCEPTION 'the V415 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V415: fresh and final clearance as workflows — an ineligible student only by an override with a reason; a public reference; the hostel stage only for a student who applied; a sequential stage waits; the Bursary clears only against the record unless overridden (kept with the state it replaced); a hold needs a reason; complete when every required stage that applies is cleared, the student told; final clearance is the convocation gate held only by the stages that apply; the workflows are not gates of the Bursar''s scheme',
+        v_elig = 'No admission on the portal: start by hand'
+        AND v_refused = 'CLR_NOT_ELIGIBLE'
+        AND v_ref ~ '^CLR/[0-9]{4}/[0-9]{6}$'
+        AND v_stages = 'BURSARY=PENDING,DEPARTMENT=WAITING,FACULTY=WAITING,LIBRARY=WAITING,HEALTH=WAITING,HOSTEL=NOT_APPLICABLE'
+        AND v_hostel = 'WAITING'
+        AND v_wait = 'CLR_STAGE_WAITING' AND v_reason = 'CLR_REASON'
+        AND v_owed = 'Outstanding fees: ₦5,000 for 9979/9980' AND v_unstated LIKE 'The 9979/9980 fees are not stated%'
+        AND btrim(v_loan) = '1 item(s) on loan not returned'
+        AND v_override = 'true/PENDING'
+        AND v_overall = 'CLEARED' AND v_done AND v_told >= 6
+        AND v_gate = 'BURSARY,DEPARTMENT,FACULTY,LIBRARY,HEALTH,WORKS,ALUMNI' AND NOT v_gate_clear
+        AND v_alumni = 'The student has not confirmed their alumni details'
+        AND v_gates = 'FRESH,RETURNING',
+        format('elig=%s refused=%s ref=%s stages=%s hostel=%s wait=%s owed=%s unstated=%s loan=%s reason=%s override=%s overall=%s done=%s told=%s gate=%s/%s alumni=%s gates=%s',
+               v_elig, v_refused, v_ref, v_stages, v_hostel, v_wait, v_owed, v_unstated, v_loan, v_reason, v_override, v_overall, v_done, v_told, v_gate, v_gate_clear, v_alumni, v_gates));
 END $$;
 
 -- ── V414: the current session is never a draft or cancelled one; what a CCE applicant still has to do ──

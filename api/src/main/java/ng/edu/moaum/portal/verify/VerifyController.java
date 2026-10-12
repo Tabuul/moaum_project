@@ -486,6 +486,36 @@ class VerifyController {
         return out;
     }
 
+    /**
+     * V415: a clearance certificate — fresh or final — by its reference (a query value: it holds slashes) and the check code its QR carries. Without the code,
+     * or with another, nothing is said, not even whether the reference exists; with it, only the reference, the clearance,
+     * the session, its status and the student's name, number and programme.
+     */
+    @GetMapping("/clearance")
+    @Transactional(readOnly = true)
+    Map<String, Object> clearance(@RequestParam(required = false) String ref, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> clearanceAnswer(ref, c));
+    }
+
+    private Map<String, Object> clearanceAnswer(String ref, String c) {
+        String r = ref == null ? "" : ref.trim().toUpperCase().replaceAll("[^A-Z0-9/]", "");
+        String code = c == null ? "" : c.trim().toLowerCase().replaceAll("[^0-9a-f]", "");
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (code.isEmpty()) {
+            out.put("genuine", false);
+            out.put("codeMissing", true);
+            return out;
+        }
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM clearance.verify(:r, :c)").param("r", r).param("c", code).query().listOfRows();
+        if (r.isEmpty() || rows.isEmpty()) {
+            out.put("genuine", false);
+            return out;
+        }
+        out.put("genuine", true);
+        out.putAll(rows.get(0));
+        return out;
+    }
+
     /* ── V286 · the two printed QR codes that led nowhere ── */
 
     /** the deferment approval letter: the University's record of the deferment, by its reference */

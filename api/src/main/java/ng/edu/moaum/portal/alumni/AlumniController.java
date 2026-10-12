@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class AlumniController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_vc','OFFICE_dvc','OFFICE_audit','OFFICE_deputyaudit','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_alumni','OFFICE_academic','OFFICE_records','OFFICE_vc','OFFICE_dvc','OFFICE_audit','OFFICE_deputyaudit','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
 

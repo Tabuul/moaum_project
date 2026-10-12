@@ -2,6 +2,7 @@ package ng.edu.moaum.portal.clearance;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -22,10 +23,10 @@ class ClearanceController {
     private static final String READERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records',"
             + "'OFFICE_dean','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_bursar',"
-            + "'OFFICE_library','OFFICE_services','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_library','OFFICE_services','OFFICE_housing','OFFICE_alumni','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String SIGNERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dean','OFFICE_hod','OFFICE_bursar',"
-            + "'OFFICE_library','OFFICE_services','OFFICE_housing')";
+            + "'OFFICE_library','OFFICE_services','OFFICE_housing','OFFICE_alumni')";
 
     private final ClearanceService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
@@ -83,7 +84,10 @@ class ClearanceController {
             for (Object o : l) {
                 UUID id;
                 try { id = UUID.fromString(String.valueOf(o)); } catch (IllegalArgumentException e) { continue; }
-                List<Clearance.Position> holds = service.position(id, purpose).stream().filter(p -> "HELD".equalsIgnoreCase(p.state())).toList();
+                // a hold is a word that names something outstanding (V415: on a workflow, not cleared, action required or
+                // rejected); a stage that is only waiting or pending holds nobody
+                List<Clearance.Position> holds = service.position(id, purpose).stream()
+                        .filter(p -> Set.of("HELD", "NOT_CLEARED", "REQUIRES_ACTION", "REJECTED").contains(String.valueOf(p.state()).toUpperCase())).toList();
                 if (holds.isEmpty()) { none++; continue; }
                 StringBuilder lines = new StringBuilder();
                 for (Clearance.Position p : holds) lines.append("\n- ").append(p.label()).append(": ").append(p.item() == null ? "outstanding" : p.item()).append(p.note() == null ? "" : " (" + p.note() + ")");

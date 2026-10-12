@@ -111,7 +111,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
           cols={["", "Matriculation number", "Name", ...listing.units.map((u) => `${shortUnit(u.label)}|mid`), "Status|num"]}
           rows={listing.candidates.map((c) => [
             <input type="checkbox" className="chk" key="x" checked={selected.has(c.id)} onChange={(e) => { const n = new Set(selected); if (e.target.checked) n.add(c.id); else n.delete(c.id); setSelected(n); }} aria-label={`Select ${c.surname}`} />,
-            <a key="m" href={`/clearance?${new URLSearchParams({ student: c.id }).toString()}`} className="tnum">{c.number}</a>,
+            <a key="m" href={`/clearance/units?${new URLSearchParams({ student: c.id, purpose: listing.purpose }).toString()}`} className="tnum">{c.number}</a>,
             <Two key="n" a={`${c.surname}, ${c.otherNames}`} b={c.programmeName} />,
             ...c.states.map((s, i) => (s === "CLEARED" ? <span key={i} className="ink-green b700">✓</span> : <span key={i} className="ink-red b700">✗</span>)),
             c.cleared ? <Pil kind="ok" key="s">Cleared</Pil> : <Pil kind="bad" key="s">Held</Pil>,

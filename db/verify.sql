@@ -58,11 +58,11 @@ BEGIN
     -- 4 · the offices are seeded
     -- thirty-three staff offices (incl. the SIWES Coordinator V156, the School of Postgraduate
     -- Studies' Dean and Secretary V201, the College Finance Controller V227, the MBBS
-    -- Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the Head of ICT Support Desk V328, the JUPEB Office V339 and the Centre for Continuing Education V379), the applicant (V021), the student (V026) and the Post-UTME CBT candidate (V385)
+    -- Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379 and the Alumni Relations Office V415), the applicant (V021), the student (V026) and the Post-UTME CBT candidate (V385)
     SELECT count(*) INTO n FROM ref.office;
-    IF n <> 41 THEN
+    IF n <> 42 THEN
         RAISE EXCEPTION 'deployment verification failed: % offices in the register, '
-                        'expected 41 (38 staff offices — with the GST and EPS offices of V314, the Head of ICT Support Desk of V328, the JUPEB Office of V339 and the Centre for Continuing Education of V379 — the applicant, the student and the Post-UTME CBT candidate of V385).', n;
+                        'expected 42 (39 staff offices — with the GST and EPS offices of V314, the Head of ICT Support Desk of V328, the JUPEB Office of V339, the Centre for Continuing Education of V379 and the Alumni Relations Office of V415 — the applicant, the student and the Post-UTME CBT candidate of V385).', n;
     END IF;
 
     -- 5 · the University's programme table is loaded

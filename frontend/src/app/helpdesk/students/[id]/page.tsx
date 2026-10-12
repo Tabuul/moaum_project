@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { SupportProfile as Profile } from "@/lib/support";
 import { SupportProfile } from "./SupportProfile";
+import { SupportClearance, type SupportClearanceData } from "./SupportClearance";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,12 @@ export default async function SupportStudentPage({ params, searchParams }: { par
     api<Me>("/api/v1/iam/me"),
     api<Profile>(`/api/v1/helpdesk/support/students/${id}${ticket ? `?ticket=${encodeURIComponent(ticket)}` : ""}`),
   ]);
+  // V415: the clearance, read-only, only when its tab is open
+  const clearance = tab === "clearance" ? await api<SupportClearanceData>(`/api/v1/clearance/support/students/${id}`) : null;
   return (
     <Shell route="t/supportstudents" me={me.ok ? me.data : null}>
-      {!profile.ok ? <ProblemNotice problem={profile.problem} /> : <SupportProfile id={id} data={profile.data} tab={tab} />}
+      {!profile.ok ? <ProblemNotice problem={profile.problem} /> : <SupportProfile id={id} data={profile.data} tab={tab}
+        clearance={clearance ? (clearance.ok ? <SupportClearance data={clearance.data} /> : <ProblemNotice problem={clearance.problem} />) : null} />}
     </Shell>
   );
 }
