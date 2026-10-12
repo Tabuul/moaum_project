@@ -56,11 +56,28 @@ class StudentPortalIT {
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();
         it.session(SESSION, 2090);
         wasCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1").query(String.class).optional().orElse(null);
+        clean();
+    }
+
+    /** the test's own residue, taken away before and after each test: the fee lines it states for its session (they apply to
+     *  every student at 100 level, so on a reused database a later run's student owed them at once, and any later test's
+     *  student carried them as arrears, with results withheld), the clearance scheme it puts in force, and the slots it gives
+     *  its classes (the student's timetable counts them) */
+    void clean() {
+        it.db(() -> {
+            jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();
+            jdbc.sql("DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/IT/2090')").update();
+            jdbc.sql("DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/IT/2090')").update();
+            jdbc.sql("DELETE FROM policy.version WHERE instrument = 'BUR/IT/2090'").update();
+            return jdbc.sql("UPDATE catalogue.class_slot SET ended_at = now() WHERE ended_at IS NULL AND offering_id IN (SELECT id FROM catalogue.offering WHERE session = :s AND course_code IN ('ITP 101', 'ITP 102'))")
+                    .param("s", SESSION).update();
+        });
     }
 
     /** the calendar as the test found it: the test's session planned again, the one that was current current again */
     @AfterEach
     void restoreTheCalendar() {
+        clean();
         it.db(() -> {
             jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :s AND name IS DISTINCT FROM :w AND state <> 'PLANNED'")
                     .param("s", SESSION).param("w", wasCurrent, java.sql.Types.VARCHAR).update();

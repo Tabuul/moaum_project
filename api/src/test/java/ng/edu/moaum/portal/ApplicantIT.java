@@ -53,6 +53,9 @@ class ApplicantIT {
         // V295: the session's applicants pay the checking fee and check their status while the Director of ICT has it open
         it.session(SESSION, 2093);
         it.openChecking(SESSION);
+        // the residue of an earlier run on the same database: the list it loaded is withdrawn, so this run starts with none
+        it.db(() -> jdbc.sql("SELECT admissions.withdraw_batch(id, 'ApplicantIT: the list of an earlier run') FROM admissions.caps_batch WHERE session = :s AND filename = 'CAPS-DE-it.xlsx' AND withdrawn_at IS NULL")
+                .param("s", SESSION).query().listOfRows());
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();
     }
 

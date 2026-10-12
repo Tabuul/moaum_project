@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 237
+\set EXPECTED 238
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9432,6 +9432,71 @@ BEGIN
                  AND r_reason = 'COURSE_TWIN_REASON' AND fam_after = 1, false),
         format('sugg=%s mismatch=%s linked=%s taken=%s twin_lec=%s/%s load=%s co=%s/%s later=%s slots=%s/%s att=%s reason=%s family_after=%s',
                n_sugg, r_mismatch, tw IS NOT NULL, r_taken, m_lec = lec, m_sec = sec, r_load, co_on_b, co_gone, later_lec = lec, slots_m, slots_b, att, r_reason, fam_after));
+END $$;
+
+-- ── V398. A BSU- course and its MOAU- twin are examined once: a CBT examination on either class seats both codes' candidates
+--          (the list, its count, the student's own examinations, the registration check), a second examination of the kind
+--          on the twin is refused, each score goes to the sheet of the code the candidate registered on, by that course's CA
+--          maximum, and linking copies the paper's slot ──
+DO $$
+DECLARE S text := '9952/9953'; who uuid := gen_random_uuid(); ob uuid := gen_random_uuid(); om uuid := gen_random_uuid();
+        sb uuid := gen_random_uuid(); sm uuid := gen_random_uuid(); su uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rm uuid := gen_random_uuid();
+        shb uuid := gen_random_uuid(); shm uuid := gen_random_uuid(); ex assessment.cbt_exam;
+        n_cand int; n_count int; n_mine int; r_twin text; r_sm text; r_su text; n_written int; v_b record; v_m record; v_slot date;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V398', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9952-10-01', date '9953-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZEXTWIN', 'EXAMTWIN', 'Check');
+        -- two codes of one course, CBT courses; the MOAU- code keeps a different continuous-assessment maximum
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state, ca_max) VALUES
+          ('BSU-ZZU 113', 'Examined Twin Check', 3, 1, 100, 'MTC', 'LIVE', 40), ('MOAU-ZZU 113', 'Examined Twin Check', 3, 1, 100, 'MTC', 'LIVE', 30);
+        UPDATE catalogue.course SET cbt_enabled = true WHERE code IN ('BSU-ZZU 113', 'MOAU-ZZU 113');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (ob, 'BSU-ZZU 113', S, 1), (om, 'MOAU-ZZU 113', S, 1);
+        -- the paper's slot set on the BSU- class before the pair is linked: linking copies it
+        INSERT INTO assessment.exam_timetable (offering_id, held_on, starts_at, ends_at, venue) VALUES (ob, date '9953-02-10', '09:00', '11:00', 'CBT Hall A');
+        PERFORM catalogue.link_twin('BSU-ZZU 113', 'MOAU-ZZU 113');
+        v_slot := (SELECT held_on FROM assessment.exam_timetable WHERE offering_id = om);
+        -- a student on each code, and one on neither
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (sb, 'MOAUM/ADM/52/952001', 'MOAUM/CHK/52/9521', 'CHECKEXTWIN', 'Bsu', 'C00023', 'UTME', S, 300, 300, 'ACTIVE', now()),
+               (sm, 'MOAUM/ADM/52/952002', 'MOAUM/CHK/52/9522', 'CHECKEXTWIN', 'Moau', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+               (su, 'MOAUM/ADM/52/952003', 'MOAUM/CHK/52/9523', 'CHECKEXTWIN', 'Neither', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
+        VALUES (rb, sb, S, 1, 300, 'APPROVED', now()), (rm, sm, S, 1, 100, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rb, ob, 3, 'APPROVED'), (rm, om, 3, 'APPROVED');
+        -- one examination, set on the BSU- class, seats both codes' candidates
+        ex := assessment.cbt_new_exam('EXAMS', ob, 'Twin examination', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'TERMINATE', 'CONTINUE',
+                                      now() - interval '1 minute', now() + interval '1 hour');
+        n_cand := (SELECT count(*) FROM assessment.cbt_candidates(ex.id) c WHERE c.student_id IN (sb, sm));
+        n_count := (SELECT assessment.cbt_candidate_count(x) FROM assessment.cbt_exam x WHERE x.id = ex.id);
+        -- a second examination of the kind on the twin class is refused
+        BEGIN PERFORM assessment.cbt_new_exam('EXAMS', om, 'Twin examination again', NULL, 30, 0, 'FIXED', false, false, 50, 1, 'STANDARD', 'REMOTE', 1, 'TERMINATE', 'CONTINUE', NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_twin := split_part(SQLERRM, ':', 1); END;
+        -- open, the MOAU- student is past the registration check (the next gate is the fees); a student on neither code is not
+        UPDATE assessment.cbt_exam SET state = 'PUBLISHED' WHERE id = ex.id;
+        -- the MOAU- student's own list of examinations carries it
+        n_mine := (SELECT count(*) FROM assessment.cbt_student_exams(sm, S) m WHERE m.exam_id = ex.id);
+        r_sm := split_part(coalesce(assessment.cbt_eligibility(ex.id, sm), 'ELIGIBLE'), ':', 1);
+        r_su := split_part(coalesce(assessment.cbt_eligibility(ex.id, su), 'ELIGIBLE'), ':', 1);
+        -- both sat; approved, each score goes to the sheet of their own code, by that course's CA maximum
+        INSERT INTO assessment.score_sheet (id, offering_id, stage) VALUES (shb, ob, 'ENTRY'), (shm, om, 'ENTRY');
+        INSERT INTO assessment.cbt_attempt (exam_id, student_id, ends_at, status, question_ids, question_versions, question_marks, seed, max_marks, percentage)
+        VALUES (ex.id, sb, now(), 'SUBMITTED', '{}', '{}', '{}', 1, 10, 80), (ex.id, sm, now(), 'SUBMITTED', '{}', '{}', '{}', 1, 10, 80);
+        UPDATE assessment.cbt_exam SET state = 'COMPLETED', results_state = 'APPROVED', sheet_component = 'EXAM' WHERE id = ex.id;
+        n_written := assessment.cbt_to_sheet(ex.id);
+        SELECT s.sheet_id, s.exam INTO v_b FROM assessment.score s WHERE s.student_id = sb ORDER BY s.version DESC LIMIT 1;
+        SELECT s.sheet_id, s.exam INTO v_m FROM assessment.score s WHERE s.student_id = sm ORDER BY s.version DESC LIMIT 1;
+        RAISE EXCEPTION 'the V398 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V398: a BSU- course and its MOAU- twin are examined once — one CBT examination seats both codes, scores to each code''s own sheet, the slot shared',
+        coalesce(v_slot = date '9953-02-10' AND n_cand = 2 AND n_count = 2 AND n_mine = 1 AND r_twin = 'CBT_TWIN_EXAMINED'
+                 AND r_sm <> 'CBT_COURSE_NOT_REGISTERED' AND r_su = 'CBT_COURSE_NOT_REGISTERED'
+                 AND n_written = 2 AND v_b.sheet_id = shb AND v_b.exam = 48 AND v_m.sheet_id = shm AND v_m.exam = 56, false),
+        format('slot=%s cand=%s count=%s mine=%s twin=%s moau=%s neither=%s written=%s bsu=%s/%s moau=%s/%s',
+               v_slot, n_cand, n_count, n_mine, r_twin, r_sm, r_su, n_written, v_b.sheet_id = shb, v_b.exam, v_m.sheet_id = shm, v_m.exam));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

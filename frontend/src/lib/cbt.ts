@@ -19,6 +19,8 @@ export type AttemptStatus = "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "TIME_
 export interface CbtExamRow {
   id: string; reference: string; title: string; course_code: string; course_title: string; session: string; semester: number; state: ExamState; results_state: ResultsState;
   live_state: LiveState; starts_at: string | null; ends_at: string | null; duration_minutes: number; selection: "FIXED" | "RANDOM"; total_questions: number;
+  /** V398: the code examined with this one (a linked BSU-/MOAU- pair) */
+  twin_code?: string | null;
   security_mode: "STANDARD" | "SECURE"; venue: "REMOTE" | "LAB"; pass_mark: number; published_at: string | null; completed_at: string | null;
   pool_size: number; candidates: number; started: number; writing: number; scored: number;
   /** V385: the admission session a Post-UTME examination examines */

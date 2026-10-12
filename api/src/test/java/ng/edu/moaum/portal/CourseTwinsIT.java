@@ -127,6 +127,12 @@ class CourseTwinsIT {
         assertThat(jdbc.sql("SELECT count(*) FROM registration.student_timetable(:s, :ses, 1)").param("s", sm).param("ses", SESSION).query(Long.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM registration.student_timetable(:s, :ses, 1)").param("s", sb).param("ses", SESSION).query(Long.class).single()).isEqualTo(1);
 
+        // V398: the paper's slot the Examinations Office sets on the BSU- class is the slot of both
+        String exams = ItSupport.token("exams");
+        ResponseEntity<Map> slotSet = it.call(exams, HttpMethod.PUT, "/api/v1/results/offerings/" + ob + "/exam-slot", Map.of("heldOn", "2026-12-10", "startsAt", "09:00", "endsAt", "11:00", "venue", "CBT Hall T"));
+        assertThat(slotSet.getStatusCode().value()).as(String.valueOf(slotSet.getBody())).isEqualTo(200);
+        assertThat(it.get(hod, "/api/v1/registration/offerings/" + om + "/exam-slot").getBody().get("venue")).isEqualTo("CBT Hall T");
+
         // the desk names the twin class, and one register marks both codes' students, each on their own class
         assertThat(it.get(hod, "/api/v1/registration/offerings/" + ob + "/twin").getBody().get("course_code")).isEqualTo(moau);
         ResponseEntity<Map> marked = it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + ob + "/attendance",

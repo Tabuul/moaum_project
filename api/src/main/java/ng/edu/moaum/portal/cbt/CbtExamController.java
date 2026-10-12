@@ -155,7 +155,9 @@ class CbtExamController {
                        assessment.cbt_paper_ready(e.id) AS paper_problem,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS created_by_name,
                        (SELECT count(*) FROM assessment.score_sheet s WHERE s.offering_id = e.offering_id) > 0 AS has_sheet,
-                       (SELECT s.stage FROM assessment.score_sheet s WHERE s.offering_id = e.offering_id) AS sheet_stage
+                       (SELECT s.stage FROM assessment.score_sheet s WHERE s.offering_id = e.offering_id) AS sheet_stage,
+                       -- V398: the code examined with this one (a linked BSU-/MOAU- pair), whose candidates this examination seats too
+                       catalogue.twin_code(e.course_code) AS twin_code
                   FROM assessment.cbt_exam e LEFT JOIN catalogue.course c ON c.code = e.course_code LEFT JOIN jupeb.subject js ON js.id = e.jupeb_subject_id
                   LEFT JOIN iam.person p ON p.id = e.created_by
                  WHERE e.id = :id

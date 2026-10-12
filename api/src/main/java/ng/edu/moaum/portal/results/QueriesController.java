@@ -95,8 +95,10 @@ class QueriesController {
     @PreAuthorize(EXAMS)
     @Transactional
     Map<String, Object> examSlot(@PathVariable UUID offeringId, @Valid @RequestBody Slot body) {
+        // V398: the paper of a linked BSU-/MOAU- pair is sat once — its slot is the slot of both classes
         jdbc.sql("""
-                INSERT INTO assessment.exam_timetable (offering_id, held_on, starts_at, ends_at, venue) VALUES (:o, :d, :s, :e, :v)
+                INSERT INTO assessment.exam_timetable (offering_id, held_on, starts_at, ends_at, venue)
+                SELECT f, :d, :s, :e, :v FROM catalogue.offering_family(:o) f
                 ON CONFLICT (offering_id) DO UPDATE SET held_on = EXCLUDED.held_on, starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, venue = EXCLUDED.venue
                 """).param("o", offeringId).param("d", body.heldOn()).param("s", body.startsAt()).param("e", body.endsAt()).param("v", body.venue().trim()).update();
         return Map.of("offeringId", offeringId, "heldOn", body.heldOn(), "venue", body.venue());
