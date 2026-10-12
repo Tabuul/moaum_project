@@ -53,9 +53,15 @@ class ApplicantIT {
         // V295: the session's applicants pay the checking fee and check their status while the Director of ICT has it open
         it.session(SESSION, 2093);
         it.openChecking(SESSION);
-        // the residue of an earlier run on the same database: the list it loaded is withdrawn, so this run starts with none
-        it.db(() -> jdbc.sql("SELECT admissions.withdraw_batch(id, 'ApplicantIT: the list of an earlier run') FROM admissions.caps_batch WHERE session = :s AND filename = 'CAPS-DE-it.xlsx' AND withdrawn_at IS NULL")
-                .param("s", SESSION).query().listOfRows());
+        // the residue of an earlier run on the same database: the list it loaded is taken off the live list, so this run starts
+        // with none (admissions.withdraw_batch refuses once a student admitted from the list is on the register, as this
+        // test's is by its end; the rows and the batch are marked directly, as that function marks them)
+        it.db(() -> {
+            jdbc.sql("UPDATE admissions.caps_row SET withdrawn = true WHERE NOT withdrawn AND batch_id IN (SELECT id FROM admissions.caps_batch WHERE session = :s AND filename = 'CAPS-DE-it.xlsx')")
+                    .param("s", SESSION).update();
+            return jdbc.sql("UPDATE admissions.caps_batch SET withdrawn_at = now(), withdrawn_by = gen_random_uuid(), withdrawn_reason = 'ApplicantIT: the list of an earlier run' WHERE session = :s AND filename = 'CAPS-DE-it.xlsx' AND withdrawn_at IS NULL")
+                    .param("s", SESSION).update();
+        });
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();
     }
 
@@ -68,6 +74,8 @@ class ApplicantIT {
     @SuppressWarnings("unchecked")
     void fromTheJambNumberToAnAcceptedOffer() {
         String jamb = "2026" + String.format("%08d", new Random().nextInt(100_000_000)) + "AP";
+        // the screening batch's label is unique within the session, so each run names its own
+        String label = "C" + jamb.substring(4, 10);
 
         // nobody is verified while no list is loaded
         assertThat(post("/api/v1/applicant/lookup", Map.of("session", SESSION, "jambKey", jamb)).getBody().get("state")).isEqualTo("nolist");
@@ -147,15 +155,15 @@ class ApplicantIT {
                 .header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + academic)
                 .header("X-Reason", "integration test")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("label", "C", "heldOn", "2026-09-22", "startsAt", "11:00", "endsAt", "12:00", "venue", "CBT Hall B, ICT Directorate", "capacity", 120))
+                .body(Map.of("label", label, "heldOn", "2026-09-22", "startsAt", "11:00", "endsAt", "12:00", "venue", "CBT Hall B, ICT Directorate", "capacity", 120))
                 .retrieve().toEntity(List.class);
         assertThat(batches.getStatusCode().value()).as(String.valueOf(batches.getBody())).isEqualTo(200);
-        String batchId = String.valueOf(((Map<?, ?>) batches.getBody().stream().filter(b -> "C".equals(((Map<?, ?>) b).get("label"))).findFirst().orElseThrow()).get("id"));
+        String batchId = String.valueOf(((Map<?, ?>) batches.getBody().stream().filter(b -> label.equals(((Map<?, ?>) b).get("label"))).findFirst().orElseThrow()).get("id"));
         ResponseEntity<Map> seated = it.call(academic, HttpMethod.POST, PATH + "/screening-batches/" + batchId + "/assign", Map.of());
         assertThat(((Number) seated.getBody().get("seated")).intValue()).isGreaterThanOrEqualTo(1);
         Map<String, Object> slip = (Map<String, Object>) it.get(token, "/api/v1/applicant/me").getBody().get("screeningSlip");
         assertThat(slip).isNotNull();
-        assertThat(String.valueOf(slip.get("seat"))).startsWith("C-");
+        assertThat(String.valueOf(slip.get("seat"))).startsWith(label + "-");
 
         // the CBT score is entered and released together; the applicant sees it only then
         ResponseEntity<Map> scored = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + appId + "/screening-score", Map.of("score", 68.5));
