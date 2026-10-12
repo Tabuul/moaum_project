@@ -119,6 +119,11 @@ class PaymentsRepository {
                 .query(UUID.class).single();
     }
 
+    /** V417: a stored secret shown to the person acting, with their reason, as a row the audit spine carries */
+    UUID noteSecretView(String gateway, String what, String reason) {
+        return jdbc.sql("SELECT finance.note_secret_view(:g, :w, :r)").param("g", gateway).param("w", what).param("r", reason).query(UUID.class).single();
+    }
+
     /** V413: true when the sweep's answer repeated the open row's for the reference and was counted on it */
     boolean collapseSweepRepeat(String gateway, String reference, String status, String payloadJson) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.collapse_sweep_repeat(:g, :r, :st, :p::jsonb)")

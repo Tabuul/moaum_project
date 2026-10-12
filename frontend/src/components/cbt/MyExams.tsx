@@ -121,7 +121,9 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
 
       {open ? (
         <Modal title="EXAM INSTRUCTIONS" sub={`${open.course_code} · ${open.title}`} wide onClose={() => setOpen(null)}
-          foot={<span className="row row--inline row--tight">
+          foot={<span className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
+            {/* the agreement sits beside Start, so a phone never shows a dead button with its reason out of sight */}
+            <label className="row row--inline row--tight" style={{ flex: "1 1 100%" }}><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the instructions and I am {person.name} ({person.number}).</label>
             <Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
             {open.attempt_status === "IN_PROGRESS" || (!open.eligibility && open.live_state === "OPEN") ? (
               <Btn kind="go" disabled={busy || !agreed} onClick={() => { const x = open; setOpen(null); void start(x); }}>{busy ? "Opening…" : open.attempt_status === "IN_PROGRESS" ? "CONTINUE EXAM" : "START EXAM"}</Btn>
@@ -146,7 +148,6 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
             <li>The examination ends at the end of your time, or at the close of the window, whichever is earlier; whatever you have answered is submitted and scored.</li>
           </ul>
           {open.instructions ? <Note kind="info" title={open.office === "EXAMS" ? "From the examining office" : open.office === "JUPEB" ? "From the JUPEB Office" : `From the ${open.office} office`}>{open.instructions}</Note> : null}
-          <label className="row row--inline row--tight mt-2"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the instructions and I am {person.name} ({person.number}).</label>
         </Modal>
       ) : null}
     </>

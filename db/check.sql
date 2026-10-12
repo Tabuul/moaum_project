@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 251
+\set EXPECTED 252
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10263,6 +10263,28 @@ BEGIN
         v_listed = 'MOAU-ZZH 301>BSU-ZZH 301:no class/false' AND v_moved IS NOT NULL AND v_entry = 'BSU-ZZH 301' AND v_after = ''
         AND r_scored = 'CODE_FAMILY_SCORED' AND v_first AND NOT v_second AND v_times = 2,
         format('listed=%s moved=%s entry=%s after=%s scored=%s first=%s second=%s times=%s', v_listed, v_moved IS NOT NULL, v_entry, v_after, r_scored, v_first, v_second, v_times));
+END $$;
+
+-- ── V417. A stored gateway secret shown to a person is a row on the record, by a person with a reason, carried by the audit spine ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v uuid; r_nobody text; r_why text; v_audited int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '', true); PERFORM set_config('moaum.actor_office', '', true);
+        BEGIN PERFORM finance.note_secret_view('paydirect', 'notification key', 'certification'); r_nobody := 'NOTED';
+        EXCEPTION WHEN check_violation THEN r_nobody := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V417', true);
+        BEGIN PERFORM finance.note_secret_view('paydirect', 'notification key', '  '); r_why := 'NOTED';
+        EXCEPTION WHEN check_violation THEN r_why := split_part(SQLERRM, ':', 1); END;
+        v := finance.note_secret_view('paydirect', 'notification key', 'given to Interswitch again');
+        SELECT count(*) INTO v_audited FROM audit.entries e WHERE e.subject_type = 'finance.gateway_secret_view' AND e.subject_id = v;
+        RAISE EXCEPTION 'the V417 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V417: a stored gateway secret shown to a person is a row on the record — by a person, with a reason — carried by the audit spine',
+        r_nobody = 'SECRET_VIEW_ACTOR' AND r_why = 'SECRET_VIEW_REASON' AND v IS NOT NULL AND v_audited >= 1,
+        format('nobody=%s why=%s noted=%s audited=%s', r_nobody, r_why, v IS NOT NULL, v_audited));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

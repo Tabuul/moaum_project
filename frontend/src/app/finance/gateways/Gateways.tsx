@@ -156,6 +156,14 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                           const j = await send("/gateways/paydirect/notification-key", {}, "Quickteller notification key generated");
                           if (j) setKeyedUrl(String(j.url));
                         }}>{quickteller?.notificationKey ? "Generate a new keyed address" : "Generate the keyed address"}</Btn>
+                        {quickteller?.notificationKey ? (
+                          <Btn kind="ghost" disabled={busy} onClick={async () => {
+                            const why = window.prompt("The address is shown again, on the record. Say why:");
+                            if (!why || !why.trim()) return;
+                            const j = await send("/gateways/paydirect/notification-key/show", {}, `Keyed notification address shown: ${why.trim()}`);
+                            if (j) setKeyedUrl(String(j.url));
+                          }}>Show the address</Btn>
+                        ) : null}
                       </div>
                       {keyedUrl ? (
                         <Note kind="ok" title="Give Interswitch this notification address — it is shown once">

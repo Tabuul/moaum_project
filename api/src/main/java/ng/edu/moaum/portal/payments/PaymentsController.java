@@ -258,6 +258,13 @@ class PaymentsController {
         return payments.newPaydirectKey();
     }
 
+    /** V417: the keyed address shown again — to the Directorate of ICT, with a reason, each viewing on the record */
+    @PostMapping("/gateways/paydirect/notification-key/show")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> showPaydirectKey() {
+        return payments.showPaydirectKey();
+    }
+
     @PostMapping("/gateways/{gateway}/clear-key")
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> clearKey(@PathVariable String gateway) {

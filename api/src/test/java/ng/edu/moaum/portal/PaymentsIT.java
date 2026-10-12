@@ -366,6 +366,11 @@ class PaymentsIT {
             assertThat(keyed.getStatusCode().value()).as(String.valueOf(keyed.getBody())).isEqualTo(200);
             String keyedUrl = String.valueOf(keyed.getBody().get("url"));
             String keyedPath = keyedUrl.substring(keyedUrl.indexOf("/api/v1/payments/paydirect/interswitch/"));
+            // V417: shown again to the Directorate of ICT, the viewing on the record
+            ResponseEntity<Map> shown = it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/notification-key/show", Map.of());
+            assertThat(shown.getStatusCode().value()).as(String.valueOf(shown.getBody())).isEqualTo(200);
+            assertThat(shown.getBody().get("url")).isEqualTo(keyedUrl);
+            assertThat(jdbc.sql("SELECT count(*) FROM finance.gateway_secret_view WHERE gateway = 'paydirect' AND viewed_at > now() - interval '1 minute'").query(Long.class).single()).isGreaterThanOrEqualTo(1L);
             assertThat(postXml(keyedPath, notification("", "", reference, logId, amount.toPlainString(), true, false))).contains("<Status>0</Status>");
             assertThat(postXml("/api/v1/payments/paydirect/interswitch/not-the-key", notification("", "", reference, logId, amount.toPlainString(), true, false))).contains("<Status>1</Status>");
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false))).contains("<Status>0</Status>");

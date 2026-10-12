@@ -695,6 +695,21 @@ public class PaymentsService {
         return out;
     }
 
+    /** V417: the keyed address shown again to the Directorate of ICT; the viewing is a row on the record, with the reason given */
+    public Map<String, Object> showPaydirectKey() {
+        PayDirectCredentials c = paydirectCredentials();
+        if (c == null || !c.hasKey()) {
+            throw new DomainRuleViolation("PAY_PD_NO_KEY", "No keyed notification address is set.",
+                    new DomainRuleViolation.Remedy("Generate one; it is shown when generated.", "Directorate of ICT"));
+        }
+        AuditContext ctx = AuditContextHolder.required();
+        AuditContextHolder.with(ctx, () -> tx.execute(st -> repo.noteSecretView("paydirect", "notification key", ctx.reason())));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("url", apiBase() + "/api/v1/payments/paydirect/interswitch/" + c.notificationKey());
+        out.put("last4", c.notificationKey().substring(c.notificationKey().length() - 4));
+        return out;
+    }
+
     /** a username and password set after a key keep the key */
     private String withExistingKey(String pairJson) {
         PayDirectCredentials c = paydirectCredentials();
