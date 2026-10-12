@@ -44,6 +44,7 @@ class CourseTwinsIT {
     String other;
     String bsu;
     String moau;
+    String letters;
     UUID ob;
     UUID om;
 
@@ -55,7 +56,8 @@ class CourseTwinsIT {
         String tag = Long.toString(Math.abs(new Random().nextLong()), 36).toUpperCase().replaceAll("[^A-Z]", "") + "QWERTY";
         dept = "Z" + tag.substring(0, 4);
         other = "Z" + tag.substring(1, 5) + "B";
-        String letters = "Z" + tag.substring(0, 2);
+        // four letters of the run's own: two collided on CI once in four set-ups of one run
+        letters = "Z" + tag.substring(0, 4);
         bsu = "BSU-" + letters + " 113";
         moau = "MOAU-" + letters + " 113";
         ob = UUID.randomUUID();
@@ -232,8 +234,8 @@ class CourseTwinsIT {
      *  the desk lists it (and a course in no structure, as such) and opens what is owed */
     @Test
     void aCourseAddedToTheStructureLaterGetsItsClass() {
-        String later = "MOAU-" + bsu.substring(4, 7) + " 114";   // the twins' letters, a code of its own
-        String lone = "BSU-" + bsu.substring(4, 7) + " 115";
+        String later = "MOAU-" + letters + " 114";   // the twins' letters, a code of its own
+        String lone = "BSU-" + letters + " 115";
         it.db(() -> {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES (:a, 'Course added later', 2, 1, 100, :d, 'LIVE'), (:b, 'Course in no structure', 2, 1, 100, :d, 'LIVE')")
                     .param("a", later).param("b", lone).param("d", dept).update();
