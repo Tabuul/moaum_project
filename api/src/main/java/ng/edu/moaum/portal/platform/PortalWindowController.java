@@ -334,6 +334,8 @@ class PortalWindowController {
         w.put("type", CHECKING);
         out.put("window", w);
         out.put("summary", jdbc.sql("SELECT * FROM admissions.status_checking_summary(:s)").param("s", s).query().singleRow());
+        // V412: the CCE applicants of the session are not in this report (their checking opens when the Centre publishes)
+        out.put("cceApplicants", jdbc.sql("SELECT count(*) FROM admissions.status_checking_rows(:s, true)").param("s", s).query(Long.class).single());
         out.put("fee", jdbc.sql("SELECT f.checking_fee, f.stated FROM admissions.applicant_fee_rule(:s) f").param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         out.put("events", history(s, CHECKING, 200));
         out.put("now", OffsetDateTime.now());

@@ -150,7 +150,8 @@ public class AdmissionDocuments {
     public Map<String, Object> receipt(UUID app, String reference) {
         return jdbc.sql("""
                 SELECT fr.reference, fr.kind, fr.amount, fr.confirmed_at, fr.receipt_no, fr.channel, fr.generated_at,
-                       a.application_no, a.session, c.surname, c.other_names, c.jamb_reg_no, c.programme
+                       a.application_no, a.session, c.surname, c.other_names, c.jamb_reg_no, c.programme,
+                       c.entry_mode AS route   -- V412: a CCE applicant's receipt names the CCE fee
                   FROM admissions.fee_reference fr JOIN admissions.application a ON a.id = fr.application_id JOIN admissions.candidate c ON c.id = a.candidate_id
                  WHERE fr.application_id = :a AND fr.reference = :r AND fr.confirmed_at IS NOT NULL
                 """).param("a", app).param("r", reference).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("receipt", reference));

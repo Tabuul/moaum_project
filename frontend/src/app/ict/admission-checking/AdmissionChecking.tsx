@@ -24,6 +24,8 @@ export interface CheckingSummary { applicants: number; eligible: number; paid: n
 export interface CheckingPage {
   session: string; sessions: { name: string; state: string; applicants: number }[]; window: CheckingWindow; summary: CheckingSummary;
   fee?: { checking_fee?: number | null; stated?: boolean } | null; events: WindowEvent[]; now: string;
+  /** V412: CCE applications of the session, kept out of this report */
+  cceApplicants?: number;
 }
 export interface CheckingRow {
   application_no: string; jamb_reg_no: string; name: string; sex?: string | null; programme?: string | null; faculty?: string | null; department?: string | null;
@@ -122,6 +124,7 @@ export function AdmissionChecking({ page, report, filters, actingOffice }: { pag
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">Opened and closed by the Director of ICT alone.</Note> : null}
       {!w.configured ? <Note kind="bad" title={`Admission status checking has not been opened for ${session}`}>No applicant of the session can pay the checking fee or check their status.</Note> : null}
+      {page.cceApplicants ? <Note kind="info" title={`${page.cceApplicants} CCE application${page.cceApplicants === 1 ? "" : "s"} of ${session} not counted here`}>A CCE applicant&rsquo;s checking is not this window&rsquo;s: it opens when the Centre for Continuing Education publishes the outcome, at the CCE checking fee the Bursary states. This report and its totals are the Post-UTME, Direct Entry and transfer applicants&rsquo;.</Note> : null}
       <Tiles items={[
         ["STATUS", word, w.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", w.state === "OPEN" ? (w.closes_at ? `Closes ${when(w.closes_at)}` : "No closing date") : w.state === "SCHEDULED" ? `Opens ${when(w.opens_at)}` : w.configured ? "Closed by the Director" : "Closed until first opened"],
         ["CHECKING FEE", fee ? money(fee) : "—", null, page.fee?.stated ? "As the Bursary stated it for the session" : fee ? "The standing amount" : "No fee stated: checking is free"],

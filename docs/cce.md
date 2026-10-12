@@ -309,3 +309,28 @@ submitted before V404 keep what they have; one the Centre sends back is complete
 **Tests.** check.sql — the V379 property restated (fee first, the two certificates, checking closed until published, the
 checking fee paid to read), and the V404 property (the three fees and their refusals, fee-first, the documents asked, a fee of
 nothing, a checking fee never stated; 244). `CceIT` follows the same path through the API.
+
+---
+
+## I. Readiness, missing documents and the checking fee named (V412)
+
+**Go-live readiness.** A *CCE admission* panel for the CCE session (`admissions.cce_readiness`): the three CCE applicant fees
+stated by the Bursary (application, admission checking, acceptance), the CCE list loaded, programmes offered to CCE, and the
+CCE application window. Fees not stated are *blocking* once CCE is in use (a list loaded, the window open or applications
+filed) and a warning before that. `/api/v1/platform/status` carries `cce` (session and yes/no answers only).
+
+**Missing documents.** The Centre's applications list has a *Documents* column: how many required documents an application
+lacks (`admissions.cce_missing_documents`: not uploaded, or rejected) and how many wait to be checked. On an application,
+*Ask for the missing documents* sends it back to the applicant naming exactly those (`admissions.cce_ask_missing`, the
+review's own REQUEST_DOCUMENTS step: the Centre only; `CCE_NOTHING_MISSING` when nothing is). *Ask for missing documents* on
+the list does it for every submitted or reviewed application of the session (`cce_ask_missing_all`); a recommended one is
+left for the Centre to ask on the application itself, so no recommendation is undone in bulk. This is how applications
+submitted before V404 are asked for the birth certificate and the certificate of state of origin.
+
+**Wording.** A CCE applicant's checking receipt, email and SMS say "CCE admission checking" (`confirm_fee`), and the receipt
+PDF names the CCE fee. The Director of ICT's admission checking report and totals are the Post-UTME, Direct Entry and transfer
+applicants' (`status_checking_rows(session)`; the CCE ones with `status_checking_rows(session, true)`); the page says how many
+CCE applications of the session are left out.
+
+**Tests.** check.sql — the V412 property; `CceIT` (nothing missing is refused, the session ask asks nobody, a lecturer is
+refused, readiness reads the CCE fees).

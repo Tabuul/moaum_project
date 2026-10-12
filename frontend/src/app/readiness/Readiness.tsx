@@ -7,8 +7,8 @@ import { useQueryNav } from "@/lib/query-nav";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 
-export interface Check { group?: "intake" | "running" | "institution"; key: string; label: string; status: "ok" | "warn" | "bad"; detail: string; fix: string | null }
-export interface Readiness { session: string; intakeSession?: string; ready: boolean; blocking: number; warnings: number; checks: Check[] }
+export interface Check { group?: "intake" | "running" | "institution" | "cce"; key: string; label: string; status: "ok" | "warn" | "bad"; detail: string; fix: string | null }
+export interface Readiness { session: string; intakeSession?: string; cceSession?: string | null; ready: boolean; blocking: number; warnings: number; checks: Check[] }
 
 const PILL: Record<string, "ok" | "warn" | "bad"> = { ok: "ok", warn: "warn", bad: "bad" };
 const WORD: Record<string, string> = { ok: "Ready", warn: "Check", bad: "Blocking" };
@@ -48,7 +48,7 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
         title={data.blocking ? `${data.blocking} thing${data.blocking === 1 ? "" : "s"} to fix before launch`
           : data.warnings ? `No blockers; ${data.warnings} thing${data.warnings === 1 ? "" : "s"} to review`
           : "Ready to go live"}>
-        Admissions are checked for {intake}; registration, school fees and clearance for {data.session}.
+        Admissions are checked for {intake}; registration, school fees and clearance for {data.session}{data.cceSession ? <>; CCE admission for {data.cceSession}</> : null}.
       </Note>
 
       <div className="card"><div className="card__body row row--end" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
@@ -73,6 +73,7 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
 
       <Gates title={`Admission exercise · ${intake}`} checks={data.checks.filter((c) => c.group === "intake")} />
       <Gates title={`Running session · ${data.session}`} checks={data.checks.filter((c) => c.group === "running")} />
+      <Gates title={`CCE admission · ${data.cceSession ?? "the CCE session"}`} checks={data.checks.filter((c) => c.group === "cce")} />
       <Gates title="Across the University" checks={data.checks.filter((c) => c.group === "institution" || !c.group)} />
     </>
   );

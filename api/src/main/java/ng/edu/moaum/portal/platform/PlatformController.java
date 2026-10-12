@@ -98,6 +98,8 @@ class PlatformController {
     static final String INTAKE = "intake";
     static final String RUNNING = "running";
     static final String INSTITUTION = "institution";
+    /** V412: CCE admission, in the CCE session */
+    static final String CCE = "cce";
 
     private static Map<String, Object> chk(String group, String key, String label, String status, String detail, String fix) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -226,11 +228,35 @@ class PlatformController {
                 pgReady ? "The School's session " + pg.get("session") + " is ready for course registration"
                         : pg.get("session") + ": " + String.join("; ", pgMissing), pgFix));
 
+        // V412: CCE admission, in the CCE session — blocking only where CCE is in use (a list, an open window or applications)
+        Map<String, Object> cce = cceReadiness();
+        String cs = String.valueOf(cce.get("session"));
+        boolean cceInUse = Boolean.TRUE.equals(cce.get("inUse"));
+        String cceFees = "application ₦" + naira(cce.get("applicationFee")) + ", admission checking ₦" + naira(cce.get("checkingFee"))
+                + ", acceptance ₦" + naira(cce.get("acceptanceFee"));
+        checks.add(chk(CCE, "cce_fees", "CCE applicant fees set", Boolean.TRUE.equals(cce.get("feesStated")) ? "ok" : cceInUse ? "bad" : "warn",
+                Boolean.TRUE.equals(cce.get("feesStated")) ? "Set for " + cs + ": " + cceFees
+                        : cce.get("applicationFee") == null ? "Not set for " + cs + ": CCE applicants cannot pay the application fee"
+                        : !Boolean.TRUE.equals(cce.get("checkingStated")) ? "No admission checking fee set for " + cs + ": CCE applicants cannot read their published outcome"
+                        : "Not set for " + cs + ": CCE applicants are charged " + cce.get("feesCarriedFrom") + "'s amounts (" + cceFees + ")",
+                "/cce/fees?session=" + cs));
+        long cceListed = ((Number) cce.get("listed")).longValue();
+        checks.add(chk(CCE, "cce_list", "CCE list loaded", cceListed > 0 ? "ok" : "warn",
+                cceListed > 0 ? String.format(java.util.Locale.ENGLISH, "%,d", cceListed) + " candidates on the CCE list for " + cs
+                        : "No CCE list for " + cs + ": no CCE candidate can register", "/cce/upload?session=" + cs));
+        long cceProgrammes = ((Number) cce.get("programmes")).longValue();
+        checks.add(chk(CCE, "cce_programmes", "Programmes offered to CCE", cceProgrammes > 0 ? "ok" : "warn",
+                cceProgrammes > 0 ? cceProgrammes + " programme(s) offered to CCE" : "No programme is offered to CCE", "/cce/programmes"));
+        checks.add(chk(CCE, "cce_window", "CCE applications open", "OPEN".equals(cce.get("window")) ? "ok" : "warn",
+                "OPEN".equals(cce.get("window")) ? "Open for " + cs : "The CCE application window is " + String.valueOf(cce.get("window")).toLowerCase() + " for " + cs,
+                "/ict/applications?session=" + cs));
+
         long bad = checks.stream().filter(c -> "bad".equals(c.get("status"))).count();
         long warn = checks.stream().filter(c -> "warn".equals(c.get("status"))).count();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);              // the running session
         out.put("intakeSession", in);       // the admission exercise's
+        out.put("cceSession", cce.get("session"));   // CCE's own (V412)
         out.put("ready", bad == 0);
         out.put("blocking", bad);
         out.put("warnings", warn);
@@ -270,7 +296,28 @@ class PlatformController {
         } catch (RuntimeException e) {
             body.put("postgraduate", null);
         }
+        // V412: whether CCE admission can run — the CCE session and yes/no answers only
+        try {
+            Map<String, Object> cce = cceReadiness();
+            Map<String, Object> pub = new LinkedHashMap<>();
+            pub.put("session", cce.get("session"));
+            pub.put("feesStated", cce.get("feesStated"));
+            pub.put("checkingFeeStated", cce.get("checkingStated"));
+            pub.put("listLoaded", ((Number) cce.get("listed")).longValue() > 0);
+            pub.put("programmesOffered", ((Number) cce.get("programmes")).longValue() > 0);
+            pub.put("windowOpen", "OPEN".equals(cce.get("window")));
+            pub.put("ready", cce.get("ready"));
+            body.put("cce", pub);
+        } catch (RuntimeException e) {
+            body.put("cce", null);
+        }
         return body;
+    }
+
+    /** V412: admissions.cce_readiness(), read */
+    private Map<String, Object> cceReadiness() {
+        String text = jdbc.sql("SELECT admissions.cce_readiness()::text").query(String.class).single();
+        return this.json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     /** V393: admissions.pg_readiness(), read */

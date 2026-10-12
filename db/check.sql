@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 249
+\set EXPECTED 250
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10115,6 +10115,101 @@ BEGIN
         AND v_kept = 'bursar-books=2/1,hod-allocate=2/1,jupeb-idcards-import=2/1'
         AND v_edition >= 2,
         format('ict=%s agent=%s owner=%s bursar=%s kept=%s edition=%s', v_ict, v_agent, v_owner, v_bursar, v_kept, v_edition));
+END $$;
+
+-- ── V412: CCE — the readiness read, the documents an application lacks asked for in one click, the CCE checking fee named ──
+-- The readiness of a CCE session in use is not ready until the Bursary states its three fees; an application's missing
+-- documents are the ones not uploaded or rejected; asking sends it back for exactly those (the Centre only); nothing missing
+-- is refused; asking a whole session leaves a recommended application alone; a CCE applicant's checking receipt says "CCE
+-- admission checking"; the Director of ICT's checking rows leave CCE out. The block undoes its writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); burs uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); S text := '9945/9946'; pa text := 'C00023';
+        b uuid; acct uuid; apps uuid[] := '{}'; i int; r0 jsonb; r1 jsonb; miss1 text; miss2 text; miss4 text; note1 text; st1 text;
+        r_none text; r_office text; r_bulk_office text; bulk jsonb; st3 text; st4 text; ref text; receipt int; ict_rows int; cce_rows int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V412', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9945-10-01', date '9946-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        b := admissions.cce_preview(S, 'cce-412.xlsx', repeat('f', 64), (SELECT jsonb_agg(jsonb_build_object('jamb_reg_no', '994500000' || n || '0CC', 'surname', 'Zzfour', 'first_name', 'Twelve' || n,
+                     'date_of_birth', '1990-01-0' || n, 'sex', 'F', 'phone', '0803555040' || n, 'email', 'v412.' || n || '@example.com', 'programme_code', pa)) FROM generate_series(1, 4) n));
+        PERFORM admissions.cce_commit(b);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        FOR i IN 1 .. 4 LOOP
+            acct := admissions.cce_register('994500000' || i || '0CC', ('1990-01-0' || i)::date, 'zz.v412.' || i || '@example.com', '0803555040' || i, '$2a$12$' || repeat('x', 53));
+            apps := apps || (SELECT id FROM admissions.application WHERE account_id = acct);
+        END LOOP;
+
+        -- (1) the readiness: in use (a list), not ready until the Bursary states the three fees
+        r0 := admissions.cce_readiness(S);
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000);
+        r1 := admissions.cce_readiness(S);
+
+        -- (2) four submitted applications: two documents of four; all four; recommended with two; under review with one rejected
+        UPDATE admissions.application SET fee_confirmed_at = now(), submitted_at = now() WHERE id = ANY (apps);
+        UPDATE admissions.cce_review SET state = 'SUBMITTED', submitted_at = now() WHERE application_id IN (apps[1], apps[2]);
+        UPDATE admissions.cce_review SET state = 'RECOMMENDED', submitted_at = now(), recommended_at = now(), recommended_by = cce1 WHERE application_id = apps[3];
+        UPDATE admissions.cce_review SET state = 'UNDER_REVIEW', submitted_at = now(), review_started_at = now(), review_started_by = cce1 WHERE application_id = apps[4];
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes)
+        SELECT gen_random_uuid(), x.app, x.kind, lower(x.kind) || '.pdf', 'application/pdf', 1000
+          FROM (VALUES (apps[1], 'PASSPORT'), (apps[1], 'OLEVEL_STATEMENT'),
+                       (apps[2], 'PASSPORT'), (apps[2], 'OLEVEL_STATEMENT'), (apps[2], 'BIRTH_CERT'), (apps[2], 'STATE_OF_ORIGIN'),
+                       (apps[3], 'PASSPORT'), (apps[3], 'OLEVEL_STATEMENT'),
+                       (apps[4], 'PASSPORT'), (apps[4], 'OLEVEL_STATEMENT'), (apps[4], 'BIRTH_CERT')) x(app, kind);
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status, review_note, reviewed_at, reviewed_by)
+        VALUES (gen_random_uuid(), apps[4], 'STATE_OF_ORIGIN', 'origin.pdf', 'application/pdf', 1000, 'REJECTED', 'Not legible', now(), cce1);
+        miss1 := array_to_string(admissions.cce_missing_documents(apps[1]), ',');
+        miss2 := array_to_string(admissions.cce_missing_documents(apps[2]), ',');
+        miss4 := array_to_string(admissions.cce_missing_documents(apps[4]), ',');
+
+        -- (3) asked for exactly those: by the Centre only; nothing missing is refused; a session at once leaves the recommended one
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM admissions.cce_ask_missing(apps[1]); r_office := 'ASKED';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.cce_ask_missing_all(S); r_bulk_office := 'ASKED';
+        EXCEPTION WHEN check_violation THEN r_bulk_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        note1 := admissions.cce_ask_missing(apps[1]);
+        SELECT state INTO st1 FROM admissions.cce_review WHERE application_id = apps[1];
+        BEGIN PERFORM admissions.cce_ask_missing(apps[2]); r_none := 'ASKED';
+        EXCEPTION WHEN check_violation THEN r_none := split_part(SQLERRM, ':', 1); END;
+        bulk := admissions.cce_ask_missing_all(S);
+        SELECT state INTO st3 FROM admissions.cce_review WHERE application_id = apps[3];
+        SELECT state INTO st4 FROM admissions.cce_review WHERE application_id = apps[4];
+
+        -- (4) published, the CCE checking fee paid: the receipt says CCE admission checking; ICT's rows leave CCE out
+        UPDATE admissions.application SET decision = 'NOT_OFFERED', decided_at = now(), decision_released_at = now() WHERE id = apps[2];
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        ref := admissions.new_fee_reference(apps[2], 'CHECKING');
+        PERFORM admissions.confirm_fee(ref, 'BANK', 'check');
+        SELECT count(*) INTO receipt FROM platform.notice WHERE about_id = apps[2] AND channel = 'EMAIL' AND body LIKE '%CCE admission checking fee%'
+                                                           AND body LIKE '%read the outcome of your application%';
+        SELECT count(*) INTO ict_rows FROM admissions.status_checking_rows(S);
+        SELECT count(*) INTO cce_rows FROM admissions.status_checking_rows(S, true);
+        RAISE EXCEPTION 'the V412 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V412 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V412: CCE — a CCE session in use is not ready until the Bursary states its three fees; an application''s missing documents (not uploaded or rejected) are asked for in one click by the Centre only, nothing missing is refused, a whole session leaves a recommended one; the CCE checking receipt says so; the ICT checking rows leave CCE out',
+        coalesce((r0->>'inUse')::boolean AND NOT (r0->>'feesStated')::boolean AND NOT (r0->>'ready')::boolean AND (r0->>'listed')::int = 4
+                 AND (r1->>'feesStated')::boolean AND (r1->>'checkingStated')::boolean AND (r1->>'ready')::boolean AND (r1->>'checkingFee')::numeric = 3000
+                 AND miss1 = 'BIRTH_CERT,STATE_OF_ORIGIN' AND miss2 = '' AND miss4 = 'STATE_OF_ORIGIN'
+                 AND r_office = 'CCE_OFFICE' AND r_bulk_office = 'CCE_OFFICE'
+                 AND note1 = 'Upload your birth certificate and your certificate of state of origin, then send the application back to the Centre.'
+                 AND st1 = 'DOCUMENTS_PENDING' AND r_none = 'CCE_NOTHING_MISSING'
+                 AND (bulk->>'asked')::int = 1 AND (bulk->>'recommendedLeft')::int = 1 AND st3 = 'RECOMMENDED' AND st4 = 'DOCUMENTS_PENDING'
+                 AND receipt = 1 AND ict_rows = 0 AND cce_rows = 4, false),
+        format('before %s | after %s | missing %s / %s / %s | office %s bulk-office %s | note %s state %s none %s | bulk %s three %s four %s | receipt %s ict %s cce %s',
+               r0, r1, miss1, miss2, miss4, r_office, r_bulk_office, note1, st1, r_none, bulk, st3, st4, receipt, ict_rows, cce_rows));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import { brandHeader } from "@/lib/pdf-crest";
 export interface AdmissionReceipt {
   reference: string; kind: string; amount: number; confirmed_at: string; receipt_no: string | null; channel: string | null; generated_at: string;
   application_no: string; session: string; surname: string; other_names: string; jamb_reg_no: string; programme: string;
+  /** V412: the admission route (entry mode); a CCE applicant's receipt names the CCE fee */
+  route?: string | null;
 }
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
@@ -26,7 +28,7 @@ export function admissionReceiptPdf(r: AdmissionReceipt): Uint8Array {
     ["Application number", r.application_no],
     ["Programme", r.programme],
     ["Session", r.session],
-    ["Purpose", PURPOSE[r.kind] ?? r.kind],
+    ["Purpose", r.route === "CCE" && PURPOSE[r.kind] ? `CCE ${PURPOSE[r.kind].charAt(0).toLowerCase()}${PURPOSE[r.kind].slice(1)}` : PURPOSE[r.kind] ?? r.kind],
     ["Payment reference", r.reference],
     ["Channel", r.channel ?? "—"],
     ["Confirmed on", when(r.confirmed_at)],

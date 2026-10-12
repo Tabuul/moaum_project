@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { notifyProblem } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
@@ -26,8 +26,15 @@ import { Pager, type TabProps } from "./CceList";
 
 /* ── the list, and the processing queue ─────────────────────────────────────────────────────────────────────────── */
 
-export function CceApplications({ session, pick, processing, initialState }: TabProps & { processing?: boolean; initialState?: string | null }) {
+/** V412: the documents an application lacks (not uploaded, or rejected) */
+const missingOf = (a: { documents_missing?: string | null }) => (a.documents_missing ? a.documents_missing.split(",").filter(Boolean) : []);
+/** an application the Centre may still ask for documents (the review's REQUEST_DOCUMENTS step) */
+const ASKABLE = new Set(["SUBMITTED", "UNDER_REVIEW", "RECOMMENDED"]);
+
+export function CceApplications({ session, pick, processing, initialState, powers }: TabProps & { processing?: boolean; initialState?: string | null }) {
   const [state, setState] = useState(initialState ?? (processing ? PROCESSING_STATES.join(",") : ""));
+  const [tick, setTick] = useState(0);
+  const [asking, setAsking] = useState(false);
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -37,14 +44,26 @@ export function CceApplications({ session, pick, processing, initialState }: Tab
     void ccall<Paged<AppRow>>(`/api/v1/cce/applications?session=${encodeURIComponent(session)}&state=${encodeURIComponent(state)}&q=${encodeURIComponent(query)}&page=${page}&size=50`)
       .then((r) => { if (!live) return; if (r.ok) setData(r.data); else notifyProblem(r.problem); });
     return () => { live = false; };
-  }, [session, state, query, page]);
+  }, [session, state, query, page, tick]);
   const states = processing ? PROCESSING_STATES : REVIEW_STATES;
+  /* V412: every submitted or reviewed application of the session that lacks documents is asked for exactly those, in one go */
+  async function askAll() {
+    setAsking(true);
+    try {
+      const r = await ccall<{ asked: number; recommendedLeft: number }>("/api/v1/cce/applications/ask-missing", "POST", { session }, `Missing documents asked for: CCE ${session}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(r.data.asked ? `${r.data.asked} applicant${r.data.asked === 1 ? "" : "s"} asked for the documents they lack` : "No submitted application lacks a document"
+        + (r.data.recommendedLeft ? `; ${r.data.recommendedLeft} recommended application${r.data.recommendedLeft === 1 ? "" : "s"} left to ask one by one` : ""));
+      setTick((x) => x + 1);
+    } finally { setAsking(false); }
+  }
   return (
     <>
       <PageHead title={processing ? "Admission processing" : "CCE applications"}
         description={processing ? `${session} · oldest submission first` : session} actions={pick} />
       <Panel title={processing ? "To act on" : "Applications"} right={<span className="row row--inline row--tight">
         <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); setPage(0); }}><input className="ctl" style={{ width: 230 }} placeholder="JAMB, application no, name, phone…" aria-label="Search the applications" value={q} onChange={(e) => setQ(e.target.value)} /></form>
+        {powers.centre ? <Btn kind="secondary" disabled={asking} onClick={() => void askAll()} title="Every submitted or reviewed application that lacks a document is sent back to the applicant, asking for exactly those">{asking ? "Asking…" : "Ask for missing documents"}</Btn> : null}
         <select className="ctl" aria-label="State" value={state} onChange={(e) => { setState(e.target.value); setPage(0); }}>
           <option value={processing ? PROCESSING_STATES.join(",") : ""}>{processing ? "Everything to act on" : "Every state"}</option>
           {states.map((s) => <option key={s} value={s}>{REVIEW_LABEL[s][0]}</option>)}
@@ -52,13 +71,15 @@ export function CceApplications({ session, pick, processing, initialState }: Tab
       </span>}>
         {data === null ? <PBody><div className="sub2">Reading…</div></PBody> : data.rows.length ? (
           <>
-            <DTable pageSize={0} cols={["Application", "Name", "Programme", "State", "Submitted", "Documents to check|num"]} rows={data.rows.map((a) => [
+            <DTable pageSize={0} cols={["Application", "Name", "Programme", "State", "Submitted", "Documents"]} rows={data.rows.map((a) => [
               <Link key="a" href={`/cce/applications/${a.id}`} className="tnum">{a.application_no}<div className="sub2">{a.jamb_reg_no}</div></Link>,
               <span key="n">{a.name}<div className="sub2">{[a.phone, a.email].filter(Boolean).join(" · ")}</div></span>,
               <span key="p">{a.programme}<div className="sub2">{a.department ?? ""}</div></span>,
               <Pil key="s" kind={labelOf(REVIEW_LABEL, a.state)[1]}>{labelOf(REVIEW_LABEL, a.state)[0]}</Pil>,
               <span key="d">{a.submitted_at ? when(a.submitted_at) : <span className="sub2">not yet</span>}</span>,
-              a.documents_pending,
+              <span key="x">{a.state !== "DRAFT" && missingOf(a).length ? <Pil kind="warn">{missingOf(a).length} missing</Pil> : null}
+                {a.documents_pending ? <div className="sub2">{a.documents_pending} to check</div> : null}
+                {!(a.state !== "DRAFT" && missingOf(a).length) && !a.documents_pending ? <span className="sub2">—</span> : null}</span>,
             ])} />
             <Pager total={data.total} page={page} size={data.size} onPage={setPage} />
           </>
@@ -136,6 +157,14 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
       if (out) { setA(out); setRejecting(null); setNote(""); }
     } finally { setBusy(false); }
   }
+  /* V412: the applicant asked for exactly the documents the application lacks */
+  async function askMissing() {
+    setBusy(true);
+    try {
+      const out = await cceSend<AppDetail>(`/applications/${id}/ask-missing`, "POST", {}, `Missing documents asked for: CCE application ${a?.application_no}`);
+      if (out) setA(out);
+    } finally { setBusy(false); }
+  }
   async function view(doc: DeskDoc) {
     const res = await fetch(`/api/bff/api/v1/cce/applications/${id}/documents/${doc.id}`);
     if (!res.ok) { notifyProblem({ status: res.status, title: "The document could not be opened" }); return; }
@@ -145,6 +174,7 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
   const sittings = [1, 2].map((n) => a.olevel.filter((o) => o.sitting === n)).filter((x) => x.length);
   const bio = new Map(a.biodata.map((b) => [b.field, b.value]));
   const reviewable = ["SUBMITTED", "UNDER_REVIEW", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED", "RECOMMENDED"].includes(r.state) && !published;
+  const missing = missingOf(a);
 
   return (
     <>
@@ -213,7 +243,11 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
         ) : <PBody><div className="sub2">No O&rsquo;Level given yet.</div></PBody>}
       </Panel>
 
-      <Panel title="Documents">
+      <Panel title="Documents" right={missing.length && r.state !== "DRAFT" ? <span className="row row--inline row--tight">
+        <Pil kind="warn">{missing.length} missing</Pil>
+        {powers.centre && ASKABLE.has(r.state) && !published ? <Btn kind="secondary" disabled={busy} onClick={() => void askMissing()}>Ask for the missing documents</Btn> : null}
+      </span> : null}>
+        {missing.length && r.state !== "DRAFT" ? <PBody><div className="sub2">Missing: {missing.map((k) => DOC_LABEL[k] ?? k).join(", ")}.{ASKABLE.has(r.state) && !published ? " Asking sends the application back to the applicant for exactly these." : ""}</div></PBody> : null}
         {a.documents.length ? (
           <DTable noPrint pageSize={0} cols={["Document", "File", "Uploaded", "Status", ""]} rows={a.documents.map((d) => [
             <b key="k">{DOC_LABEL[d.kind] ?? d.kind}</b>,
@@ -232,7 +266,7 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
       <div className="grid grid--2">
         <Panel title="Payments">
           {a.payments.length ? <DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Confirmed"]} rows={a.payments.map((p) => [
-            p.kind === "APPLICATION" ? "CCE application" : p.kind === "ACCEPTANCE" ? "CCE acceptance" : p.kind, <span key="r" className="tnum">{p.reference}</span>, naira(p.amount),
+            p.kind === "APPLICATION" ? "CCE application" : p.kind === "CHECKING" ? "CCE admission checking" : p.kind === "ACCEPTANCE" ? "CCE acceptance" : p.kind, <span key="r" className="tnum">{p.reference}</span>, naira(p.amount),
             p.confirmed_at ? <span key="c">{when(p.confirmed_at)}<div className="sub2">{p.receipt_no} · {p.channel}</div></span> : <span key="c" className="sub2">not paid</span>,
           ])} /> : <PBody><div className="sub2">No payment reference yet.</div></PBody>}
         </Panel>

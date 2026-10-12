@@ -48,6 +48,8 @@ export interface AppRow {
   department: string | null; faculty: string | null; state: string; submitted_at: string | null; review_started_at: string | null; recommended_at: string | null;
   decided_at: string | null; decided_office: string | null; published_at: string | null; request_note: string | null; decision_note: string | null;
   fee_confirmed_at: string | null; accepted_at: string | null; email: string; phone: string; admission_no: string | null; matric_no: string | null;
+  /** V412: the documents the application lacks (not uploaded, or rejected), comma-separated kinds */
+  documents_missing?: string | null;
   student_id: string | null; created_at: string; documents_pending: number;
 }
 export interface Olevel { sitting: number; exam_body: string; exam_number: string; exam_year: number; subject: string; grade: string }

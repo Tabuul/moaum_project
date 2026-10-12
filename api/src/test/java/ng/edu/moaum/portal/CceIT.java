@@ -167,6 +167,14 @@ class CceIT {
         String app = String.valueOf(((Map) ((List) list.get("rows")).get(0)).get("id"));
         assertThat(it.get(centre, "/api/v1/cce/applications/" + UUID.randomUUID()).getStatusCode().value()).isEqualTo(404);
         ok(it.call(centre, HttpMethod.POST, "/api/v1/cce/applications/" + app + "/act", Map.of("action", "START")));
+        // V412: nothing is missing, so nothing is asked; the session at once asks nobody; a lecturer cannot ask; readiness reads the CCE fees
+        assertThat(String.valueOf(((Map) ((List) list.get("rows")).get(0)).get("documents_missing"))).isEmpty();
+        assertThat(code(it.call(centre, HttpMethod.POST, "/api/v1/cce/applications/" + app + "/ask-missing", null))).isEqualTo("CCE_NOTHING_MISSING");
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/cce/applications/" + app + "/ask-missing", null).getStatusCode().value()).isEqualTo(403);
+        assertThat(((Number) ok(it.call(centre, HttpMethod.POST, "/api/v1/cce/applications/ask-missing", Map.of("session", SESSION))).get("asked")).intValue()).isZero();
+        Map<String, Object> readiness = ok(it.get(academic, "/api/v1/platform/readiness"));
+        assertThat(readiness.get("cceSession")).isEqualTo(SESSION);
+        assertThat(((List<Map<String, Object>>) readiness.get("checks")).stream().filter(c -> "cce_fees".equals(c.get("key"))).findFirst().orElseThrow().get("status")).isEqualTo("ok");
         Map<String, Object> detail = ok(it.get(centre, "/api/v1/cce/applications/" + app));
         for (Object d : (List) detail.get("documents")) {
             assertThat(it.getBytes(centre, "/api/v1/cce/applications/" + app + "/documents/" + ((Map) d).get("id")).getStatusCode().value()).isEqualTo(200);

@@ -399,6 +399,7 @@ class CceDeskController {
                    r.recommended_at, r.decided_at, r.decided_office, r.published_at, r.request_note, r.decision_note, a.fee_confirmed_at, a.accepted_at,
                    acc.email, acc.phone, s.admission_no, s.matric_no, s.id AS student_id, a.created_at,
                    (SELECT count(*) FROM admissions.application_document x WHERE x.application_id = a.id AND x.superseded_at IS NULL AND x.status = 'PENDING') AS documents_pending,
+                   array_to_string(admissions.cce_missing_documents(a.id), ',') AS documents_missing,
                    count(*) OVER () AS total_rows
               FROM admissions.cce_review r
               JOIN admissions.application a ON a.id = r.application_id
@@ -534,6 +535,30 @@ class CceDeskController {
         requireCce(id);
         jdbc.sql("SELECT admissions.cce_act(:a, :x, :n)").param("a", id).param("x", body.action()).param("n", body.note()).query(String.class).single();
         return application(id);
+    }
+
+    /** V412: the applicant is asked for exactly the documents the application lacks (the review's REQUEST_DOCUMENTS step) */
+    @PostMapping("/applications/{id}/ask-missing")
+    @PreAuthorize(CENTRE)
+    @Transactional
+    Map<String, Object> askMissing(@PathVariable UUID id) {
+        requireCce(id);
+        jdbc.sql("SELECT admissions.cce_ask_missing(:a)").param("a", id).query(String.class).single();
+        return application(id);
+    }
+
+    public record AskAll(@NotBlank @Pattern(regexp = "\\d{4}/\\d{4}") String session) {
+    }
+
+    /** V412: every submitted or reviewed application of the session that lacks documents is asked for them; a recommended one is left */
+    @PostMapping("/applications/ask-missing")
+    @PreAuthorize(CENTRE)
+    @Transactional
+    Map<String, Object> askMissingAll(@Valid @RequestBody AskAll body) {
+        String text = jdbc.sql("SELECT admissions.cce_ask_missing_all(:s)::text").param("s", body.session()).query(String.class).single();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = json.readValue(text, Map.class);
+        return out;
     }
 
     /* ── the admission list ── */
