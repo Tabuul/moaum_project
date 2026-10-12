@@ -577,6 +577,56 @@ class JupebIT {
                 .param("a", created).query(Integer.class).single()).isZero();
     }
 
+    /** the old portal's passport photographs, each named by the App No however it is punctuated: an old-portal student's
+     *  passport, verified; checked by its bytes; the same photograph twice changes nothing; one already there kept unless replaced */
+    @Test
+    @SuppressWarnings("unchecked")
+    void oldPortalPassportsAreMatchedByTheAppNo() {
+        String appNo = "SD" + tag + "11";
+        Map<String, Object> in = new LinkedHashMap<>();
+        in.put("rows", List.of(oldRow(2, "appNo", appNo, "firstName", "Doose", "surname", "Iorver", "sex", "F", "email", "zzpass." + tag.toLowerCase() + "@example.com")));
+        in.put("session", session);
+        in.put("dayFirst", true);
+        in.put("commit", true);
+        in.put("fileName", "old.xlsx");
+        in.put("emailLinks", false);
+        ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
+        UUID app = jdbc.sql("SELECT id FROM jupeb.application WHERE application_no = :n").param("n", appNo).query(UUID.class).single();
+
+        String png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        String jpeg = Base64.getEncoder().encodeToString(new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 16, 'J', 'F', 'I', 'F', 0, 1});
+        String text = Base64.getEncoder().encodeToString("not a photograph".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String dashed = (appNo.substring(0, 2) + "-" + appNo.substring(2)).toLowerCase();   // sd-…11.png names SD…11
+        String url = "/api/v1/jupeb/office/old-portal-passports";
+
+        assertThat(status(it.call(bursar, HttpMethod.POST, url, Map.of("items", List.of(Map.of("filename", dashed + ".png", "contentBase64", png)), "replace", false))))
+                .isEqualTo(403);
+        Map<String, Object> first = ok(it.call(office, HttpMethod.POST, url, Map.of("replace", false, "items", List.of(
+                Map.of("filename", dashed + ".png", "contentBase64", png),
+                Map.of("filename", "ZZNOSUCH" + tag + ".jpg", "contentBase64", jpeg),
+                Map.of("filename", appNo + ".jpg", "contentBase64", text)))));
+        assertThat((List<Map<String, Object>>) first.get("rows")).extracting(r -> r.get("status")).containsExactly("STORED", "NOT_FOUND", "REFUSED");
+        assertThat(jdbc.sql("SELECT status || '/' || content_type || '/' || review_note FROM jupeb.document WHERE application_id = :a AND kind = 'PASSPORT'")
+                .param("a", app).query(String.class).single()).isEqualTo("VERIFIED/image/png/From the old portal");
+
+        // the same photograph again changes nothing; another is kept out until the office asks to replace
+        Map<String, Object> png2 = Map.of("filename", appNo + ".png", "contentBase64", png);
+        Map<String, Object> jpg = Map.of("filename", appNo + "_new.jpeg", "contentBase64", jpeg);
+        assertThat(((List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, url, Map.of("replace", false, "items", List.of(png2)))).get("rows")).get(0).get("status"))
+                .isEqualTo("SAME");
+        Map<String, Object> notFound = ((List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, url, Map.of("replace", false, "items", List.of(jpg)))).get("rows")).get(0);
+        assertThat(notFound.get("status")).isEqualTo("NOT_FOUND");   // SD…11NEW is not the App No: a name says the App No and nothing else
+        Map<String, Object> jpgNamed = Map.of("filename", appNo + ".jpeg", "contentBase64", jpeg);
+        assertThat(((List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, url, Map.of("replace", false, "items", List.of(jpgNamed)))).get("rows")).get(0).get("status"))
+                .isEqualTo("KEPT");
+        assertThat(((List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, url, Map.of("replace", true, "items", List.of(jpgNamed)))).get("rows")).get(0).get("status"))
+                .isEqualTo("REPLACED");
+        assertThat(jdbc.sql("SELECT content_type FROM jupeb.document WHERE application_id = :a AND kind = 'PASSPORT'").param("a", app).query(String.class).single())
+                .isEqualTo("image/jpeg");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application_event WHERE application_id = :a AND kind = 'PASSPORT_IMPORTED'").param("a", app)
+                .query(Integer.class).single()).isEqualTo(2);
+    }
+
     /** V347: ICT Support on JUPEB records, the old portal's payments, the student's own contact details and corrections, the timetable, practice tests, the reports */
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})

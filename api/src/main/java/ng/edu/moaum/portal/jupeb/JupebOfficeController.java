@@ -964,6 +964,131 @@ class JupebOfficeController {
         return out;
     }
 
+    /* ── the old portal's passport photographs, each named by the student's App No ── */
+
+    public record PassportFile(@NotBlank @Size(max = 255) String filename, @NotBlank String contentBase64) {
+    }
+
+    public record OldPassportsIn(@NotNull @Size(min = 1, max = 20) List<@Valid PassportFile> items, boolean replace) {
+    }
+
+    /**
+     * Passport photographs exported from the old portal, each file named by the student's App No — punctuation aside, so
+     * JUP/2024/0012 is found by JUP-2024-0012.jpg, JUP_2024_0012.png or JUP20240012.jpg. Only a student uploaded from the old
+     * portal is matched. The photograph is kept as every JUPEB document is (the object store — S3 or the deployment's file
+     * store — and the database only where none is configured) and stands as the student's passport, verified, as the old portal
+     * held it. A student who already has a passport keeps it unless the office asks to replace it; the same photograph sent
+     * again changes nothing. Each file is answered on its own, so one bad file never refuses the rest.
+     */
+    @PostMapping("/old-portal-passports")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> importOldPassports(@Valid @RequestBody OldPassportsIn body) {
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        UUID by = actor();
+        for (PassportFile f : body.items()) {
+            String name = f.filename().trim().replaceAll("^.*[/\\\\]", "");
+            String stem = name.replaceAll("\\.[A-Za-z0-9]{1,5}$", "");
+            String key = stem.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("file", name);
+            String status = passport(f, name, key, body.replace(), by, r);
+            r.put("status", status);
+            counts.merge(status, 1, Integer::sum);
+            rows.add(r);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("counts", counts);
+        return out;
+    }
+
+    /** one photograph: matched, checked and kept — or the reason it was not, in r's "message" */
+    private String passport(PassportFile f, String name, String key, boolean replace, UUID by, Map<String, Object> r) {
+        if (key.isEmpty()) {
+            r.put("message", "the file name carries no App No");
+            return "NOT_FOUND";
+        }
+        List<Map<String, Object>> found = jdbc.sql("""
+                SELECT a.id, a.application_no, a.legacy_source IS NOT NULL AS legacy,
+                       a.surname || ', ' || a.first_name || coalesce(' ' || a.middle_name, '') AS name
+                  FROM jupeb.application a
+                 WHERE regexp_replace(upper(a.application_no), '[^A-Z0-9]', '', 'g') = :k
+                    OR regexp_replace(upper(coalesce(a.legacy_ref, '')), '[^A-Z0-9]', '', 'g') = :k
+                """).param("k", key).query().listOfRows();
+        List<Map<String, Object>> legacy = found.stream().filter(m -> Boolean.TRUE.equals(m.get("legacy"))).toList();
+        if (legacy.isEmpty()) {
+            r.put("message", found.isEmpty() ? "no JUPEB student has the App No " + key
+                    : found.get(0).get("application_no") + " applied on this portal and uploads their own passport");
+            return found.isEmpty() ? "NOT_FOUND" : "NOT_OLD_PORTAL";
+        }
+        if (legacy.size() > 1) {
+            r.put("message", "the name matches " + legacy.stream().map(m -> String.valueOf(m.get("application_no"))).collect(java.util.stream.Collectors.joining(", "))
+                    + " — name the file by the full App No");
+            return "AMBIGUOUS";
+        }
+        Map<String, Object> s = legacy.get(0);
+        UUID app = (UUID) s.get("id");
+        r.put("appNo", s.get("application_no"));
+        r.put("name", s.get("name"));
+        byte[] bytes;
+        try {
+            bytes = java.util.Base64.getDecoder().decode(f.contentBase64());
+        } catch (IllegalArgumentException notBase64) {
+            r.put("message", "the file did not arrive intact — send it again");
+            return "REFUSED";
+        }
+        if (bytes.length == 0 || bytes.length > JupebPortalController.MAX_DOC) {
+            r.put("message", "a passport is at most 5 MB; this one is " + (bytes.length / 1024) + " KB — reduce it and send it again");
+            return "REFUSED";
+        }
+        /* the bytes say what the file is, whatever its name or the browser claims */
+        String ct = JupebPortalController.signatureMatches("image/jpeg", bytes) ? "image/jpeg"
+                : JupebPortalController.signatureMatches("image/png", bytes) ? "image/png" : null;
+        if (ct == null) {
+            r.put("message", "not a JPEG or PNG image");
+            return "REFUSED";
+        }
+        Map<String, Object> held = jdbc.sql("""
+                SELECT d.id, d.object_id, b.bytes
+                  FROM jupeb.document d LEFT JOIN jupeb.document_blob b ON b.document_id = d.id
+                 WHERE d.application_id = :a AND d.kind = 'PASSPORT'
+                """).param("a", app).query().listOfRows().stream().findFirst().orElse(null);
+        if (held != null) {
+            UUID heldObject = (UUID) held.get("object_id");
+            if (files.holds(heldObject, bytes) || (held.get("bytes") instanceof byte[] b && java.util.Arrays.equals(b, bytes))) {
+                r.put("message", "already the student's passport");
+                return "SAME";
+            }
+            if (!replace) {
+                r.put("message", "the student already has a passport; tick “Replace” to put this one in its place");
+                return "KEPT";
+            }
+        }
+        UUID oid = files.store("jupeb.document", app, name, ct, bytes);
+        UUID doc = jdbc.sql("""
+                INSERT INTO jupeb.document (application_id, kind, filename, content_type, size_bytes, object_id, status, review_note, reviewed_by, reviewed_at)
+                VALUES (:a, 'PASSPORT', :fn, :ct, :sz, :o, 'VERIFIED', 'From the old portal', :by, now())
+                ON CONFLICT (application_id, kind, (coalesce(sitting, 0))) DO UPDATE SET filename = EXCLUDED.filename, content_type = EXCLUDED.content_type,
+                       size_bytes = EXCLUDED.size_bytes, object_id = EXCLUDED.object_id, status = 'VERIFIED', review_note = EXCLUDED.review_note,
+                       reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now(), uploaded_at = now()
+                RETURNING id
+                """).param("a", app).param("fn", name).param("ct", ct).param("sz", bytes.length).param("o", oid, Types.OTHER).param("by", by)
+                .query(UUID.class).single();
+        jdbc.sql("DELETE FROM jupeb.document_blob WHERE document_id = :d").param("d", doc).update();
+        if (oid == null) {
+            jdbc.sql("INSERT INTO jupeb.document_blob (document_id, bytes) VALUES (:d, :b)").param("d", doc).param("b", bytes, Types.BINARY).update();
+        }
+        if (held != null && held.get("object_id") instanceof UUID before && !before.equals(oid)) {
+            files.forget(before);
+        }
+        jdbc.sql("SELECT jupeb.app_event(:a, 'PASSPORT_IMPORTED', :n)").param("a", app)
+                .param("n", (held == null ? "Passport photograph" : "Passport photograph replaced") + " from the old portal (" + name + ")").query().listOfRows();
+        r.put("message", held == null ? "passport kept" : "passport replaced");
+        return held == null ? "STORED" : "REPLACED";
+    }
+
     /* ── V347: the old portal's payments, put on the record ── */
 
     public record OldPaymentsIn(@NotNull @Size(max = 500) List<Map<String, Object>> rows, boolean dayFirst, boolean commit, @Size(max = 200) String fileName) {

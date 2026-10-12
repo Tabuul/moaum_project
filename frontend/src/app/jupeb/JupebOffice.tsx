@@ -22,7 +22,7 @@ import { AdviceDialog, PracticeWatch, adviceFor, type Advice } from "./PracticeW
 import { SEMESTER, SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "./Syllabus";
 import { BoardPanel, ExamTimetablePanel } from "./examination/ExamYear";
 import {
-  DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fullName, jcall, laterSessions, naira, readSheet,
+  DOC_STATUS, EVENT_LABEL, FEE_KIND, PAPER_KIND, REQUEST_STATE, SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, laterSessions, naira, readSheet,
   stateKind, streamLabel, when, eventDates, type Candidate, type ChangeRequest, type Combination, type Doc, type Paper, type Registered, type CalendarEvent, type ClearanceCheck,
 } from "@/lib/jupeb";
 
@@ -1721,6 +1721,31 @@ const OLD_ALIASES: Record<string, string> = {
 const OLD_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
   VALID: ["Ready", "ok"], REVIEW: ["Ready — see note", "warn"], INVALID: ["To correct", "bad"], EXISTS: ["Already on the portal", "grey"],
 };
+/** the template's headings, in the order the old portal's export gives them, with what each takes */
+const OLD_TEMPLATE: [string, string][] = [
+  ["App No", "Required. The student's application number on the old portal; it becomes their username"],
+  ["First Name", "Required"],
+  ["Middle Name", "Optional"],
+  ["Surname", "Required"],
+  ["Sex", "M or F (Male and Female are read too)"],
+  ["LGA", "Local government area of origin"],
+  ["Phone No", "A Nigerian number, such as 08031234567"],
+  ["State", "State of origin"],
+  ["Date of Birth", "Day/month/year, such as 09/01/2006 (choose Month/day/year on this page when the file is written that way)"],
+  ["NIN", "Eleven digits"],
+  ["Email", "Required, one per student: their link to set a password is sent here"],
+  ["Programme", "Science or Non-Science (Arts is read as Non-Science)"],
+  ["Combination", "A combination code from the JUPEB catalogue"],
+];
+
+/** a passport photograph from the old portal, as the API answered it */
+interface PassRow { file: string; status: string; message: string; appNo?: string; name?: string }
+const PASS_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
+  STORED: ["Kept", "ok"], REPLACED: ["Replaced", "ok"], SAME: ["Already this photo", "grey"], KEPT: ["Has a passport — not replaced", "warn"],
+  NOT_FOUND: ["No such student", "bad"], NOT_OLD_PORTAL: ["Applied on this portal", "warn"], AMBIGUOUS: ["Matches several", "bad"], REFUSED: ["Refused", "bad"],
+};
+const PASS_MAX = 5 * 1024 * 1024;   // the API's limit for a JUPEB document
+const PASS_CHUNK = 4;               // photographs a request carries
 
 /** /jupeb/import — the old portal's export uploaded: judged first, then each student given an account and a temporary password */
 export function JupebOldPortalImport() {
@@ -1796,6 +1821,58 @@ export function JupebOldPortalImport() {
       { sheetName: "To correct", serial: docSerial("JUPEBFIX") });
     downloadBlob(blob, "jupeb-old-portal-rows-to-correct.xlsx");
   }
+  /** the headings to fill, with what each column takes above them and the catalogue's combination codes */
+  async function template() {
+    const c = await jcall<Combination[]>("/api/v1/jupeb/office/combinations");
+    const codes = c.ok ? c.data.filter((x) => x.offered).map((x) => x.code) : [];
+    const meta: [string, string][] = [["Session", session || "—"], ...OLD_TEMPLATE,
+      ...(codes.length ? [["Combination codes", codes.join(", ")] as [string, string]] : []),
+      ["Note", "Fill one row per student under the headings below; leave these lines as they are."]];
+    downloadBlob(await brandedXlsx("JUPEB students from the old portal", OLD_TEMPLATE.map(([h]) => h), [],
+      { sheetName: "Students", serial: docSerial("JUPEBOLDTPL"), meta, noSerialColumn: true }), "jupeb-old-portal-students-template.xlsx");
+  }
+
+  /* ── their passport photographs, each file named by the App No ── */
+  const [replace, setReplace] = useState(false);
+  const [passing, setPassing] = useState<string | null>(null);
+  const [passed, setPassed] = useState<PassRow[] | null>(null);
+  async function uploadPassports(list: File[]) {
+    if (!list.length) return;
+    setPassed(null);
+    const out: PassRow[] = [];
+    const usable = list.filter((f) => {
+      if (f.size <= PASS_MAX) return true;
+      out.push({ file: f.name, status: "REFUSED", message: `larger than 5 MB (${Math.round(f.size / 1024)} KB): reduce it and send it again` });
+      return false;
+    });
+    try {
+      for (let i = 0; i < usable.length; i += PASS_CHUNK) {
+        const slice = usable.slice(i, i + PASS_CHUNK);
+        setPassing(`Sending photographs… ${Math.min(i + PASS_CHUNK, usable.length)} of ${usable.length}`);
+        try {
+          const items = await Promise.all(slice.map(async (f) => ({ filename: f.name, contentBase64: await fileBase64(f) })));
+          const r = await jcall<{ rows: PassRow[] }>("/api/v1/jupeb/office/old-portal-passports", "POST", { items, replace },
+            `JUPEB passport photographs from the old portal: ${i + 1} to ${i + slice.length} of ${usable.length}`);
+          if (r.ok) out.push(...r.data.rows);
+          else for (const f of slice) out.push({ file: f.name, status: "REFUSED", message: r.problem.title ?? "the batch was refused" });
+        } catch {
+          for (const f of slice) out.push({ file: f.name, status: "REFUSED", message: "the file could not be read or sent" });
+        }
+      }
+    } finally { setPassing(null); }
+    setPassed(out);
+    const kept = out.filter((r) => r.status === "STORED" || r.status === "REPLACED").length;
+    notify(`${kept} passport photograph${kept === 1 ? "" : "s"} put on the record`);
+  }
+  async function exportPassportProblems() {
+    if (!passed) return;
+    const bad = passed.filter((r) => !["STORED", "REPLACED", "SAME"].includes(r.status));
+    downloadBlob(await brandedXlsx("JUPEB passport photographs not kept", ["File", "App No", "Student", "Status", "Why"],
+      bad.map((r) => [r.file, r.appNo ?? "", r.name ?? "", (PASS_STATUS[r.status] ?? [r.status])[0], r.message]),
+      { sheetName: "Not kept", serial: docSerial("JUPEBPASS") }), "jupeb-passports-not-kept.xlsx");
+  }
+  const passCount = (s: string[]) => (passed ?? []).filter((r) => s.includes(r.status)).length;
+
   const ready = preview ? preview.valid + preview.review : 0;
   return (
     <>
@@ -1822,6 +1899,7 @@ export function JupebOldPortalImport() {
           <div className="row mt-2">
             <label className="btn btn--primary btn--sm" style={{ cursor: busy ? "wait" : "pointer" }}>Choose the export (Excel or CSV)
               <input type="file" hidden accept=".xlsx,.csv" disabled={!!busy || !session} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} /></label>
+            <Btn kind="ghost" onClick={() => void template()}>Download the template</Btn>
             {file ? <span className="sub2">{file} · {rows.length} rows</span> : null}
             {busy ? <span className="sub2">{busy}</span> : null}
           </div>
@@ -1845,6 +1923,33 @@ export function JupebOldPortalImport() {
           </PBody>
         </Panel>
       ) : null}
+      <Panel title="Passport photographs from the old portal" right="After the students are uploaded">
+        <PBody>
+          <p className="sub2">Name each photograph by the student&rsquo;s App No. A file name cannot hold a slash, so <b>JUP/2024/0012</b> is
+            found by <code>JUP-2024-0012.jpg</code>, <code>JUP_2024_0012.png</code> or <code>JUP20240012.jpg</code>. JPEG or PNG, at most 5&nbsp;MB each.
+            Only students uploaded from the old portal are matched; an applicant of this portal uploads their own. Select every photograph in the folder at once
+            (Ctrl+A in the file window); sending the same photographs again changes nothing.</p>
+          <div className="row mt-2">
+            <label className="btn btn--primary btn--sm" style={{ cursor: passing ? "wait" : "pointer" }}>Choose the photographs
+              <input type="file" hidden multiple accept="image/jpeg,image/png,.jpg,.jpeg,.png" disabled={!!passing}
+                onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void uploadPassports(fs); }} /></label>
+            <label className="row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={replace} disabled={!!passing} onChange={(e) => setReplace(e.target.checked)} />
+              Replace a passport a student already has</label>
+            {passing ? <span className="sub2">{passing}</span> : null}
+          </div>
+          {passed ? (
+            <>
+              <Tiles cls="grid--4 mt-2" items={[["Kept", passCount(["STORED", "REPLACED"]), null, "on the record"], ["Already there", passCount(["SAME", "KEPT"]), null, "unchanged"],
+                ["No student found", passCount(["NOT_FOUND", "AMBIGUOUS", "NOT_OLD_PORTAL"]), null, "check the file name"], ["Refused", passCount(["REFUSED"]), null, "type, size or sending"]]} />
+              {passed.some((r) => !["STORED", "REPLACED", "SAME"].includes(r.status))
+                ? <div className="row mt-2"><Btn kind="ghost" onClick={() => void exportPassportProblems()}>Photographs not kept (Excel)</Btn></div> : null}
+              <DTable pageSize={50} cols={["File", "App No", "Student", "Status", "Note"]} texts={passed.map((r) => `${r.file} ${r.appNo ?? ""} ${r.name ?? ""} ${r.message}`)}
+                rows={passed.map((r) => [r.file, r.appNo ?? "—", r.name ?? "—",
+                  <Pil key="s" kind={(PASS_STATUS[r.status] ?? [r.status, "grey"])[1]}>{(PASS_STATUS[r.status] ?? [r.status])[0]}</Pil>, r.message || "—"])} />
+            </>
+          ) : null}
+        </PBody>
+      </Panel>
     </>
   );
 }
