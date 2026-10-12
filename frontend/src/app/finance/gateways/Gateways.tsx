@@ -216,6 +216,13 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
           </PBody>
         </Panel>
       ) : null}
+      {quickteller && !quickteller.credentials && d.events.some((e) => e.outcome === "NO_CREDENTIALS") ? (
+        <Note kind="bad" title="Interswitch's payment notifications are being discarded: no service credentials are set">
+          Choose a service username and password, set them on the Pay on Quickteller panel above, and give the same pair to Interswitch for the
+          notification address. Until then every notification &mdash; Interswitch&rsquo;s certification run included &mdash; is kept here and not believed,
+          and no payment reported this way is confirmed.
+        </Note>
+      ) : null}
       <Panel title="Webhook and verification log" right="Every event the portal received, signature good or bad">
         {d.events.length ? (
           <DTable cols={["When|mid", "Gateway", "Event", "Reference", "Amount|num", "Signature|mid", "Result|num"]} rows={d.events.map((e) => [

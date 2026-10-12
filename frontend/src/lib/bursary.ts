@@ -38,11 +38,12 @@ export interface BankCredit {
 }
 export const OUTCOME: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = {
   SETTLED: ["Settled", "ok"], ALREADY_SETTLED: ["Already settled — no-op", "ok"], UNKNOWN_REFERENCE: ["Unknown reference", "bad"], SHORT_PAID: ["Short paid", "bad"],
-  NOT_SUCCESSFUL: ["Not successful", "grey"], IGNORED: ["Ignored", "grey"], BAD_SIGNATURE: ["Bad signature — discarded", "bad"], GATEWAY_ERROR: ["Gateway did not answer", "bad"],
+  NOT_SUCCESSFUL: ["Not successful", "grey"], IGNORED: ["Ignored", "grey"], BAD_SIGNATURE: ["Bad signature — discarded", "bad"], GATEWAY_ERROR: ["Gateway gave no usable answer", "bad"],
+  NO_CREDENTIALS: ["Not believed — no service credentials set", "bad"],
   REVERSED: ["Reversed by Interswitch — for the Bursary", "bad"], VALID: ["Reference valid", "ok"], INVALID: ["Reference refused", "grey"],
 };
 /** the events the Bursary resolves by hand, with a reason on the record */
-export const EXCEPTIONS = ["UNKNOWN_REFERENCE", "SHORT_PAID", "BAD_SIGNATURE", "GATEWAY_ERROR", "REVERSED"];
+export const EXCEPTIONS = ["UNKNOWN_REFERENCE", "SHORT_PAID", "BAD_SIGNATURE", "NO_CREDENTIALS", "GATEWAY_ERROR", "REVERSED"];
 export function when(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);

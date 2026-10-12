@@ -656,6 +656,18 @@ public class PaymentsService {
                 && java.security.MessageDigest.isEqual(c.password().getBytes(StandardCharsets.UTF_8), pass.trim().getBytes(StandardCharsets.UTF_8));
     }
 
+    /** V407: the gateway's own words for the log when it gave no ResponseDescription — its answer, compact, or "empty answer" */
+    private String gatewaySaid(Map<String, Object> a) {
+        if (a.get("ResponseDescription") != null) {
+            return String.valueOf(a.get("ResponseDescription"));
+        }
+        if (a.isEmpty()) {
+            return "empty answer";
+        }
+        String s = json(a);
+        return s == null ? "no answer" : s.length() > 180 ? s.substring(0, 180) + "…" : s;
+    }
+
     private String json(Map<String, ?> m) {
         try {
             return mapper.writeValueAsString(m);
@@ -787,7 +799,9 @@ public class PaymentsService {
         String payload = json(said);
         String ref = reference.isEmpty() ? null : reference;
         if (!authentic) {
-            log("paydirect", "WEBHOOK", "notification", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, false, "BAD_SIGNATURE", payload);
+            // V407: with no service credentials set there is nothing to check against — a different thing from a wrong secret, with a different remedy
+            log("paydirect", "WEBHOOK", "notification", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, false,
+                paydirectCredentials() == null ? "NO_CREDENTIALS" : "BAD_SIGNATURE", payload);
             return false;
         }
         if (PayDirectMessages.yes(PayDirectMessages.get(p, "IsReversal"))) {
@@ -1090,9 +1104,9 @@ public class PaymentsService {
                 }
             }
             if (last.get("ResponseCode") == null) {
-                log("quickteller", source, "verify", reference, null, null, String.valueOf(last.getOrDefault("ResponseDescription", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(last));
+                log("quickteller", source, "verify", reference, null, null, gatewaySaid(last), true, "GATEWAY_ERROR", mapper.writeValueAsString(last));
                 if ("no gateway".equals(out.get("outcome"))) {
-                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "quickteller", "said", String.valueOf(last.getOrDefault("ResponseDescription", "")));
+                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "quickteller", "said", gatewaySaid(last));
                 }
             }
         }

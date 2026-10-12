@@ -363,7 +363,8 @@ class PaymentsIT {
                     .contains("<Status>0</Status>");
             List<String> outcomes = jdbc.sql("SELECT outcome FROM finance.gateway_event WHERE gateway = 'paydirect' AND reference = :r AND source = 'WEBHOOK' ORDER BY received_at")
                     .param("r", reference).query(String.class).list();
-            assertThat(outcomes).containsExactly("BAD_SIGNATURE", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED");
+            // V407: the first came while no credentials were set at all; the second presented a wrong password
+            assertThat(outcomes).containsExactly("NO_CREDENTIALS", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED");
 
             // a paid reference is refused when Quickteller asks again, so it is not paid twice — at either address
             assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))
