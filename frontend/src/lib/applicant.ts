@@ -9,7 +9,7 @@ import type { StatusChecking } from "@/lib/screening";
 
 export interface OlGrade { subject: string; grade: string }
 export interface OlSitting { body: string; type: string | null; year: string | null; examNumber: string | null; subjects: OlGrade[] }
-export interface FeeReference { id: string; kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"; reference: string; amount: number; generatedAt: string; expiresAt: string; confirmedAt: string | null; channel: string | null }
+export interface FeeReference { id: string; kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"; reference: string; amount: number; generatedAt: string; expiresAt: string; confirmedAt: string | null; receiptNo?: string | null; channel: string | null }
 export interface ApplicationDocument { id: string; kind: string; filename: string; contentType: string; bytes: number; uploadedAt: string; status: "PENDING" | "ACCEPTED" | "REJECTED"; reviewedAt: string | null; reviewNote: string | null }
 export interface ScreeningSlip {
   batch: string; heldOn: string; startsAt: string; endsAt: string; venue: string; seat: string;

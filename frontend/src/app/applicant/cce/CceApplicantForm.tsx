@@ -28,7 +28,9 @@ interface Listed {
 interface Olevel { sitting: number; exam_body: string; exam_number: string; exam_year: number; subject: string; grade: string }
 interface CceView extends Application {
   cce: { listed: Listed; fields: { field: string; required: boolean; label: string | null; value: string | null }[]; olevel: Olevel[];
-         problems: { step: string; field: string; message: string }[]; events: { at: string; action: string; to_state: string | null; note: string | null }[] };
+         problems: { step: string; field: string; message: string }[]; events: { at: string; action: string; to_state: string | null; note: string | null }[];
+         /** V413: what the applicant still has to do, in order (admissions.cce_outstanding) */
+         outstanding?: { item: string; label: string; detail: string | null; amount: number | null; href: string }[] };
 }
 interface Sitting { exam_body: string; exam_number: string; exam_year: string; subjects: { subject: string; grade: string }[] }
 
@@ -38,6 +40,7 @@ const SUBJECTS = ["English Language", "Mathematics", "Biology", "Chemistry", "Ph
   "Christian Religious Studies", "Islamic Religious Studies", "Civic Education", "Commerce", "Financial Accounting", "Further Mathematics", "Technical Drawing", "Data Processing",
   "Computer Studies", "History", "Tiv", "Hausa", "Yoruba", "Igbo", "French", "Fine Art", "Food and Nutrition", "Home Management", "Marketing", "Office Practice"];
 const EDITABLE = new Set(["DRAFT", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED"]);
+const FEE_WORD: Record<string, string> = { APPLICATION: "CCE application fee", CHECKING: "CCE admission checking fee", ACCEPTANCE: "CCE acceptance fee" };
 
 function sittingsOf(rows: Olevel[]): Sitting[] {
   const out: Sitting[] = [];
@@ -107,7 +110,10 @@ export function CceApplicantForm() {
       ["Application number", v.applicationNo], ["JAMB number", l.jamb_reg_no], ["Name", `${l.surname}, ${l.first_name}${l.middle_name ? " " + l.middle_name : ""}`],
       ["Date of birth", day(l.date_of_birth)], ["Programme", l.programme], ["Faculty / department", `${l.faculty ?? "—"} / ${l.department ?? "—"}`],
       ["Centre", l.centre ?? "Centre for Continuing Education"], ["Study mode", "Part-time"], ["Session", l.session],
-      ["Submitted", l.submitted_at ? when(l.submitted_at) : "not yet submitted"], ["Application fee", paid ? `${naira(paid.amount)} · ${paid.reference}` : "not paid"],
+      ["Submitted", l.submitted_at ? when(l.submitted_at) : "not yet submitted"],
+      /* V413: every fee paid, with its receipt; every document, with where the Centre has it */
+      ["Payments", v.feeReferences.filter((r) => r.confirmedAt).map((r) => `${FEE_WORD[r.kind] ?? r.kind} ${naira(r.amount)} · receipt ${r.receiptNo ?? "—"} · ${r.reference} · ${day(r.confirmedAt)}`).join(" | ") || "none yet"],
+      ["Documents", v.documents.map((d) => `${DOC_LABEL[d.kind] ?? d.kind} (${d.status === "ACCEPTED" ? "accepted" : d.status === "REJECTED" ? "rejected — to replace" : "uploaded, not yet checked"})`).join(" | ") || "none yet"],
       ["O'Level", sittings!.map((s, i) => `Sitting ${i + 1}: ${s.exam_body} ${s.exam_year} ${s.exam_number} — ${s.subjects.map((x) => `${x.subject} ${x.grade}`).join(", ")}`).join(" | ")],
     ];
     void printDocument("FORM", {
@@ -125,6 +131,22 @@ export function CceApplicantForm() {
         ["PROGRAMME", l.programme_code, null, `${l.programme} · part-time`],
         ["STILL NEEDED", editable ? problems.length : 0, editable && problems.length ? "var(--amber-ink)" : null, editable ? (problems.length ? "before you can submit" : "ready to submit") : "with the Centre"],
       ]} />
+      {v.cce.outstanding ? (
+        <Panel title="What you still have to do" right={v.cce.outstanding.length ? <Pil kind="warn">{v.cce.outstanding.length}</Pil> : <Pil kind="ok">Nothing</Pil>}>
+          <PBody>
+            {v.cce.outstanding.length ? (
+              <ol className="plain stack">
+                {v.cce.outstanding.map((o, i) => (
+                  <li key={o.item} className="row row--between" style={{ gap: 12, alignItems: "center" }}>
+                    <span><b>{i + 1}. {o.label}</b>{o.amount != null ? <> · <b className="tnum">{naira(o.amount)}</b></> : null}{o.detail ? <div className="sub2">{o.detail}</div> : null}</span>
+                    {o.href !== "/applicant/cce" ? <LinkBtn kind="primary" size="sm" href={o.href}>Open</LinkBtn> : null}
+                  </li>
+                ))}
+              </ol>
+            ) : <div className="sub2">{l.published_at ? "Nothing is owed or missing." : l.submitted_at ? "Nothing is owed or missing: the Centre is reviewing your application, and you are told by email and SMS when anything more is needed or the outcome is published." : "Nothing is owed or missing."}</div>}
+          </PBody>
+        </Panel>
+      ) : null}
       {asked ? (
         <Note kind="info" title={state === "DOCUMENTS_PENDING" ? "The Centre asks for documents" : "The Centre asks for verification"}>
           {l.request_note} Provide it below, then send the application back to the Centre.

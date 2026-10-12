@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 252
+\set EXPECTED 253
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10285,6 +10285,86 @@ BEGIN
     PERFORM pg_temp.assert('V417: a stored gateway secret shown to a person is a row on the record — by a person, with a reason — carried by the audit spine',
         r_nobody = 'SECRET_VIEW_ACTOR' AND r_why = 'SECRET_VIEW_REASON' AND v IS NOT NULL AND v_audited >= 1,
         format('nobody=%s why=%s noted=%s audited=%s', r_nobody, r_why, v IS NOT NULL, v_audited));
+END $$;
+
+-- ── V414: the current session is never a draft or cancelled one; what a CCE applicant still has to do ──
+-- With a newer DRAFT and a newer CANCELLED session on the calendar, policy.university_current_session() answers the CURRENT
+-- session, else the latest that ran, else a PLANNED one — never the draft or the cancelled. A CCE applicant's outstanding list
+-- follows the application: the fee first, then the form, nothing while the Centre reviews, what the Centre asks for, the
+-- checking fee once the outcome is published, the acceptance fee once the offer is read, nothing once accepted.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); burs uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); S text := '9943/9944'; pa text := 'C00023';
+        b uuid; acct uuid; app uuid; cur text; cur_state text; expected text; o1 text; o1_amount numeric; o2 text; o3 int; o4 text; o4_detail text;
+        o5 text; o5_amount numeric; o6 text; o6_amount numeric; o7 int; ref text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V414', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        -- (1) a newer draft and a newer cancelled session never become the University's current one
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9998/9999', date '9998-10-01', date '9999-08-31', 'DRAFT')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, merged_reason) VALUES (gen_random_uuid(), '9996/9997', date '9996-10-01', date '9997-08-31', 'CANCELLED', 'the check')
+        ON CONFLICT (name) DO NOTHING;
+        cur := policy.university_current_session();
+        SELECT state INTO cur_state FROM policy.academic_session WHERE name = cur;
+        expected := coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1),
+                             (SELECT max(name) FROM policy.academic_session WHERE state IN ('CLOSED', 'ARCHIVED')),
+                             (SELECT max(name) FROM policy.academic_session WHERE state = 'PLANNED' AND (now() AT TIME ZONE 'Africa/Lagos')::date BETWEEN starts_on AND ends_on),
+                             (SELECT max(name) FROM policy.academic_session WHERE state = 'PLANNED'));
+
+        -- (2) a CCE applicant, the fees stated: the fee first
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9943-10-01', date '9944-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        b := admissions.cce_preview(S, 'cce-413.xlsx', repeat('7', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99430000013CC', 'surname', 'Zzthirteen', 'first_name', 'Owed', 'date_of_birth', '1990-02-02', 'sex', 'F',
+                               'phone', '08035550613', 'email', 'v413@example.com', 'programme_code', pa)));
+        PERFORM admissions.cce_commit(b);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        acct := admissions.cce_register('99430000013CC', date '1990-02-02', 'zz.v413@example.com', '08035550613', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app FROM admissions.application WHERE account_id = acct;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000);
+        SELECT string_agg(item, ','), max(amount) INTO o1, o1_amount FROM admissions.cce_outstanding(app);
+        -- (3) paid: the form; (4) submitted: nothing while the Centre reviews; (5) the Centre asks: what it asked
+        ref := admissions.new_fee_reference(app, 'APPLICATION');
+        PERFORM admissions.confirm_fee(ref, 'BANK', 'check');
+        SELECT string_agg(item, ',') INTO o2 FROM admissions.cce_outstanding(app);
+        UPDATE admissions.application SET submitted_at = now() WHERE id = app;
+        UPDATE admissions.cce_review SET state = 'SUBMITTED', submitted_at = now() WHERE application_id = app;
+        SELECT count(*) INTO o3 FROM admissions.cce_outstanding(app);
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM admissions.cce_ask_missing(app);
+        SELECT string_agg(item, ','), max(detail) INTO o4, o4_detail FROM admissions.cce_outstanding(app);
+        -- (6) published: the checking fee; (7) paid and read: the acceptance fee; (8) accepted: nothing
+        UPDATE admissions.cce_review SET state = 'UNDER_REVIEW' WHERE application_id = app;   -- the review's own path is V379's; here only the release matters
+        UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'OTHER', decided_at = now(), decision_released_at = now() WHERE id = app;
+        SELECT string_agg(item, ','), max(amount) INTO o5, o5_amount FROM admissions.cce_outstanding(app);
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        ref := admissions.new_fee_reference(app, 'CHECKING');
+        PERFORM admissions.confirm_fee(ref, 'BANK', 'check');
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(app);
+        SELECT string_agg(item, ','), max(amount) INTO o6, o6_amount FROM admissions.cce_outstanding(app);
+        UPDATE admissions.application SET accepted_at = now(), acceptance_confirmed_at = now() WHERE id = app;
+        SELECT count(*) INTO o7 FROM admissions.cce_outstanding(app);
+        RAISE EXCEPTION 'the V414 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V414 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V414: the University''s current session is the CURRENT one, else the latest that ran, else a PLANNED one — never a draft or a cancelled session; a CCE applicant''s outstanding list follows the application: the fee first, the form, nothing under review, what the Centre asks, the checking fee once published, the acceptance fee once the offer is read, nothing once accepted',
+        coalesce(cur = expected AND cur_state NOT IN ('DRAFT', 'CANCELLED') AND cur NOT IN ('9998/9999', '9996/9997')
+                 AND o1 = 'APPLICATION_FEE' AND o1_amount = 10000 AND o2 = 'FORM' AND o3 = 0
+                 AND o4 = 'CENTRE_ASKED' AND o4_detail LIKE 'Upload your passport photograph%'
+                 AND o5 = 'CHECKING_FEE' AND o5_amount = 3000 AND o6 = 'ACCEPTANCE_FEE' AND o6_amount = 10000 AND o7 = 0, false),
+        format('current %s (%s, expected %s) | fee %s %s | paid %s | submitted %s | asked %s: %s | published %s %s | read %s %s | accepted %s',
+               cur, cur_state, expected, o1, o1_amount, o2, o3, o4, o4_detail, o5, o5_amount, o6, o6_amount, o7));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

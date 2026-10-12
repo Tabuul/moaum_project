@@ -653,6 +653,7 @@ public class ApplicantService {
         c.put("olevel", repo.cceOlevel(app));
         c.put("problems", repo.cceProblems(app));
         c.put("events", repo.cceEvents(app));
+        c.put("outstanding", repo.cceOutstanding(app));   // V413
         v.put("cce", c);
         return v;
     }

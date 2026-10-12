@@ -156,7 +156,7 @@ class ApplicantRepository {
         // otherwise a just-generated reference is never shown (its expiresAt reads as undefined).
         return jdbc.sql("""
                 SELECT id, kind, reference, amount,
-                       generated_at AS "generatedAt", expires_at AS "expiresAt", confirmed_at AS "confirmedAt", channel
+                       generated_at AS "generatedAt", expires_at AS "expiresAt", confirmed_at AS "confirmedAt", channel, receipt_no AS "receiptNo"
                   FROM admissions.fee_reference WHERE application_id = :id ORDER BY generated_at DESC
                 """).param("id", applicationId).query().listOfRows();
     }
@@ -349,6 +349,11 @@ class ApplicantRepository {
     /** V404: the CCE application fee is paid and confirmed, or nothing is charged: the form and the documents are open */
     boolean cceFeeSettled(UUID applicationId) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT admissions.cce_fee_settled(:a)").param("a", applicationId).query(Boolean.class).single());
+    }
+
+    /** V413: what the CCE applicant still has to do, in order (admissions.cce_outstanding) */
+    List<Map<String, Object>> cceOutstanding(UUID applicationId) {
+        return jdbc.sql("SELECT item, label, detail, amount, href FROM admissions.cce_outstanding(:a)").param("a", applicationId).query().listOfRows();
     }
 
     Map<String, Object> cceFees(String session) {

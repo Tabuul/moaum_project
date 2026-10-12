@@ -9,9 +9,17 @@ import { Bar } from "@/components/proto/blocks";
 import { money } from "@/lib/format";
 import { when } from "@/lib/bursary";
 
+/** the CCE applicant fees as the Bursary's dashboard reads them (V414): the CCE session's fees and whether CCE is in use */
+interface CceFeesRead {
+  session: string;
+  readiness?: { session: string; inUse: boolean; feesStated: boolean; checkingStated: boolean; feesCarriedFrom: string | null;
+                applicationFee: number | null; checkingFee: number | null; acceptanceFee: number | null } | null;
+}
+
 /** rBursar — proto/part17.html, with the ledger's own figures (V037). */
 export async function BursarDashboard({ session }: { session: string }) {
-  const [v, p] = await Promise.all([api<BursaryView>(`/api/v1/finance/bursary?session=${encodeURIComponent(session)}`), api<PaymentsDesk>("/api/v1/payments/bursary")]);
+  const [v, p, cf] = await Promise.all([api<BursaryView>(`/api/v1/finance/bursary?session=${encodeURIComponent(session)}`), api<PaymentsDesk>("/api/v1/payments/bursary"),
+    api<CceFeesRead>("/api/v1/cce/fees")]);
   if (!v.ok) {
     return <Note kind="bad" title="The Bursary's figures could not be read">{v.problem.detail ?? v.problem.title}</Note>;
   }
@@ -19,8 +27,21 @@ export async function BursarDashboard({ session }: { session: string }) {
   const exceptions = Number(t.credits_open) + Number(t.gateway_exceptions);
   const gateways = p.ok ? p.data.gateways : [];
   const on = gateways.filter((g) => g.on);
+  /* V414: the CCE applicant fees — application, admission checking, acceptance — are the Bursary's to state for the CCE session */
+  const cce = cf.ok ? cf.data.readiness ?? null : null;
+  const cceWord = !cce ? null
+    : cce.feesStated ? `Application ${money(Number(cce.applicationFee))} · checking ${money(Number(cce.checkingFee))} · acceptance ${money(Number(cce.acceptanceFee))}`
+    : cce.applicationFee == null ? `Not set for ${cce.session}`
+    : !cce.checkingStated ? `No admission checking fee set for ${cce.session}`
+    : `Carried from ${cce.feesCarriedFrom}: not set for ${cce.session}`;
   return (
     <>
+      {cce && cce.inUse && !cce.feesStated ? (
+        <Note kind="bad" title={cce.applicationFee != null && !cce.checkingStated ? `No CCE admission checking fee is set for ${cce.session}` : `The CCE applicant fees for ${cce.session} are not set`}
+          action={<LinkBtn kind="urgent" href={`/cce/fees?session=${encodeURIComponent(cce.session)}`}>State the CCE fees</LinkBtn>}>
+          {cce.applicationFee != null && !cce.checkingStated ? "CCE applicants cannot pay to read their published outcome until it is set." : "CCE applicants are on the list; they cannot pay the fees the Bursary has not set."}
+        </Note>
+      ) : null}
       {exceptions ? (
         <Note kind="bad" title={`${exceptions} settlement exception${exceptions === 1 ? " is" : "s are"} open`} action={<><LinkBtn kind="urgent" href="/finance/exceptions">Open the investigation</LinkBtn> <LinkBtn kind="ghost" href="/finance/reconcile">Reconciliation</LinkBtn></>}>
           {Number(t.credits_open) ? `${t.credits_open} bank credit${Number(t.credits_open) === 1 ? "" : "s"} (${money(Number(t.credits_open_amount))}) with no reference quoted. ` : ""}{Number(t.gateway_exceptions) ? `${t.gateway_exceptions} gateway event${Number(t.gateway_exceptions) === 1 ? "" : "s"} the portal could not post. ` : ""}Until each is attributed, a student who has paid may be blocked from registering.
@@ -53,6 +74,8 @@ export async function BursarDashboard({ session }: { session: string }) {
             [<Two key="a" a="References awaiting confirmation" b="Bank transfers the Bursary confirms by hand" />, <Link key="l" href="/finance/fees">Confirm</Link>, <Pil kind={Number(t.references_open) ? "info" : "ok"} key="s">{t.references_open} open</Pil>],
             [<Two key="a" a="Hanging at a gateway" b="Checkouts opened, nothing confirmed" />, <Link key="l" href="/finance/hanging">Hanging payments</Link>, <Pil kind={Number(t.hanging) ? "bad" : "ok"} key="s">{t.hanging}</Pil>],
             [<Two key="a" a="Bank credits" b="No reference quoted" />, <Link key="l" href="/finance/exceptions">Investigate</Link>, <Pil kind={Number(t.credits_open) ? "bad" : "ok"} key="s">{t.credits_open} open</Pil>],
+            ...(cce ? [[<Two key="a" a={`CCE applicant fees · ${cce.session}`} b={cceWord ?? ""} />, <Link key="l" href={`/cce/fees?session=${encodeURIComponent(cce.session)}`}>CCE applicant fees</Link>,
+              <Pil key="s" kind={cce.feesStated ? "ok" : cce.inUse ? "bad" : "info"}>{cce.feesStated ? "Set" : cce.inUse ? "Not set" : "Not set yet"}</Pil>]] : []),
             [<Two key="a" a="NELFUND" b="Remittances and suspense" />, <Link key="l" href="/finance/nelfund">NELFUND desk</Link>, <Pil kind="info" key="s">Open</Pil>],
             [<Two key="a" a="Held scripts" b="Students who sat a paper unregistered; the mark waits on their fees" />, <Link key="l" href="/finance/held-scripts">Who owes</Link>, <Pil kind="info" key="s">Open</Pil>],
           ]} />

@@ -131,6 +131,8 @@ class CceIT {
         assertThat(view.get("route")).isEqualTo("CCE");
         assertThat(((Map) ((Map) view.get("cce")).get("listed")).get("session")).isEqualTo(SESSION);
         assertThat(((Number) ((Map) view.get("fees")).get("checkingFee")).intValue()).isEqualTo(2000);
+        // V414: what is outstanding comes first on the applicant's page — the application fee
+        assertThat(((Map) ((List) ((Map) view.get("cce")).get("outstanding")).get(0)).get("item")).isEqualTo("APPLICATION_FEE");
         assertThat(code(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/cce/biodata", Map.of("fields", Map.of("home_address", "4 Railway Road, Makurdi"))))).isEqualTo("CCE_FEE_FIRST");
         assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT", "filename", "me.png", "contentType", "image/png", "contentBase64", PIXEL))))
                 .isEqualTo("CCE_FEE_FIRST");
@@ -200,6 +202,17 @@ class CceIT {
         String acc = String.valueOf(ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE"))).get("reference"));
         assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", acc).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("25000");
         confirm(acc);
+        // V414: the Centre's fees collected — one of each, at the stated amounts; the receipts reach the applicant; nothing outstanding
+        Map<String, Object> collected = (Map<String, Object>) ok(it.get(centre, "/api/v1/cce/reports/fees?session=" + SESSION)).get("totals");
+        assertThat(((Number) collected.get("application_paid")).intValue()).isEqualTo(1);
+        assertThat(((Number) collected.get("checking_paid")).intValue()).isEqualTo(1);
+        assertThat(((Number) collected.get("acceptance_paid")).intValue()).isEqualTo(1);
+        assertThat(new java.math.BigDecimal(String.valueOf(collected.get("total")))).isEqualByComparingTo("33500");
+        assertThat(it.get(lecturer, "/api/v1/cce/reports/fees?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
+        assertThat(((Map) ok(it.get(bursar, "/api/v1/cce/fees?session=" + SESSION)).get("readiness")).get("feesStated")).isEqualTo(true);
+        Map<String, Object> after = ok(it.get(applicant, "/api/v1/applicant/me/cce"));
+        assertThat(((List<Map<String, Object>>) after.get("feeReferences")).stream().filter(r -> r.get("confirmedAt") != null).allMatch(r -> r.get("receiptNo") != null)).isTrue();
+        assertThat((List) ((Map) after.get("cce")).get("outstanding")).isEmpty();
         Map<String, Object> student = jdbc.sql("SELECT s.id, s.entry_mode, s.study_mode, s.entry_session FROM people.student s JOIN admissions.candidate c ON c.id = s.candidate_id WHERE c.jamb_reg_no = :j")
                 .param("j", jamb).query().singleRow();
         assertThat(student.get("entry_mode")).isEqualTo("CCE");

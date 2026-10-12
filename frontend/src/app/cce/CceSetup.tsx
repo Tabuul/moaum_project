@@ -296,9 +296,71 @@ export function CceReports({ session, pick, overview }: TabProps & { overview: O
 
         </PBody>
       </Panel>
+      <CceFeesCollected session={session} />
       <Panel title="By programme">
         <DTable cols={["Programme", "Faculty", "Listed|num", "Applied|num", "Admitted|num", "Students|num"]} rows={overview.byProgramme.map((r) => [r.programme, r.faculty ?? "—", r.listed, r.applied, r.admitted, r.students])} />
       </Panel>
     </>
+  );
+}
+
+/* ── V414: the CCE applicant fees collected, by programme and by day ─────────────────────────────────────────────────── */
+
+interface Collected { application_paid: number; application_amount: number; checking_paid: number; checking_amount: number; acceptance_paid: number; acceptance_amount: number; total: number }
+interface FeesCollected {
+  session: string; totals: Collected;
+  byProgramme: (Collected & { programme_code: string; programme: string; faculty: string | null })[];
+  byDay: (Collected & { day: string })[];
+}
+
+function CceFeesCollected({ session }: { session: string }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [v, setV] = useState<FeesCollected | null>(null);
+  useEffect(() => {
+    let live = true;
+    const q = new URLSearchParams({ session });
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    void ccall<FeesCollected>(`/api/v1/cce/reports/fees?${q}`).then((r) => { if (!live) return; if (r.ok) setV(r.data); else notifyProblem(r.problem); });
+    return () => { live = false; };
+  }, [session, from, to]);
+  const cells = (c: Collected) => [c.application_paid, naira(c.application_amount), c.checking_paid, naira(c.checking_amount), c.acceptance_paid, naira(c.acceptance_amount), naira(c.total)];
+  const HEAD = ["Application paid|num", "Application ₦|num", "Checking paid|num", "Checking ₦|num", "Acceptance paid|num", "Acceptance ₦|num", "Total ₦|num"];
+  function exportXlsx() {
+    if (!v) return;
+    const nums = (c: Collected) => [Number(c.application_paid), Number(c.application_amount), Number(c.checking_paid), Number(c.checking_amount), Number(c.acceptance_paid), Number(c.acceptance_amount), Number(c.total)];
+    const head = ["Programme code", "Programme", "Faculty", "Application paid", "Application (NGN)", "Checking paid", "Checking (NGN)", "Acceptance paid", "Acceptance (NGN)", "Total (NGN)"];
+    const body: (string | number | null)[][] = v.byProgramme.map((r) => [r.programme_code, r.programme, r.faculty, ...nums(r)]);
+    body.push(["", "Total", "", ...nums(v.totals)], [], ["Day", "", "", "Application paid", "Application (NGN)", "Checking paid", "Checking (NGN)", "Acceptance paid", "Acceptance (NGN)", "Total (NGN)"]);
+    for (const d of v.byDay) body.push([d.day, "", "", ...nums(d)]);
+    downloadBlob(buildXlsx(head, body, "CCE fees collected"), `cce-fees-collected-${session.replace("/", "-")}${from ? `-from-${from}` : ""}${to ? `-to-${to}` : ""}.xlsx`);
+  }
+  const t = v?.totals;
+  return (
+    <Panel title="CCE applicant fees collected" right={<span className="row row--inline row--tight">
+      <label className="sub2" htmlFor="cce-fc-from">From</label><input id="cce-fc-from" type="date" className="ctl" value={from} onChange={(e) => setFrom(e.target.value)} />
+      <label className="sub2" htmlFor="cce-fc-to">to</label><input id="cce-fc-to" type="date" className="ctl" value={to} onChange={(e) => setTo(e.target.value)} />
+      <Btn kind="secondary" disabled={!v} onClick={exportXlsx}>Excel</Btn>
+    </span>}>
+      {!v ? <PBody><div className="sub2">Reading…</div></PBody> : (
+        <>
+          <PBody>
+            <Tiles cls="grid--4" items={[
+              ["APPLICATION", naira(t?.application_amount ?? 0), null, `${t?.application_paid ?? 0} paid`],
+              ["ADMISSION CHECKING", naira(t?.checking_amount ?? 0), null, `${t?.checking_paid ?? 0} paid`],
+              ["ACCEPTANCE", naira(t?.acceptance_amount ?? 0), null, `${t?.acceptance_paid ?? 0} paid`],
+              ["TOTAL", naira(t?.total ?? 0), "var(--green-ink)", `${session}${from || to ? ` · ${from || "…"} to ${to || "…"}` : ""}`],
+            ]} />
+          </PBody>
+          {v.byProgramme.length ? (
+            <>
+              <DTable noPrint pageSize={0} cols={["Programme", "Faculty", ...HEAD]} rows={v.byProgramme.map((r) => [<span key="p">{r.programme}<div className="sub2">{r.programme_code}</div></span>, r.faculty ?? "—", ...cells(r)])} />
+              <DTable noPrint pageSize={14} cols={["Day", ...HEAD]} rows={v.byDay.map((d) => [day(d.day), ...cells(d)])} />
+            </>
+          ) : <PBody><div className="sub2">Nothing collected{from || to ? " in these dates" : " yet"} for {session}.</div></PBody>}
+        </>
+      )}
+    </Panel>
   );
 }

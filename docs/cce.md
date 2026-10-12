@@ -334,3 +334,28 @@ CCE applications of the session are left out.
 
 **Tests.** check.sql — the V412 property; `CceIT` (nothing missing is refused, the session ask asks nobody, a lecturer is
 refused, readiness reads the CCE fees).
+
+---
+
+## J. What is owed, collected and outstanding; the current session (V414)
+
+**The applicant's page** opens with *What you still have to do* (`admissions.cce_outstanding`), in order: the application fee
+(until it is settled), the form (while it is their draft), what the Centre asked for, the CCE admission checking fee (once the
+outcome is published; owed and not payable while the Bursary has not stated it), the acceptance fee (once the offer is read,
+unless declined or lapsed). Nothing outstanding says so, and why. The printed acknowledgement lists every fee paid with its
+receipt number and reference, and every document with where the Centre has it (accepted, to replace, not yet checked).
+
+**The Bursary's dashboard** shows the CCE applicant fees of the CCE session on its desk (set, not set, carried), and a warning
+when CCE is in use and the fees — or the checking fee alone — are not set, with *State the CCE fees*. `/api/v1/cce/fees`
+carries `readiness` (V412's `cce_readiness`).
+
+**The Centre's reports** carry *CCE applicant fees collected*: application, admission checking and acceptance, how many paid
+and how much, by programme and by day, between two dates if given, with an Excel export (`GET /api/v1/cce/reports/fees`; the
+Centre, the Academic Office, the Registry and the Bursary read it).
+
+**The current session.** `policy.university_current_session()` is the CURRENT session; else the latest CLOSED or ARCHIVED;
+else the PLANNED session whose dates hold today; else the latest PLANNED — never a DRAFT or CANCELLED one. The CCE session
+(`policy.route_session`) follows it.
+
+**Tests.** check.sql — the V414 property; `CceIT` (outstanding first and last, fees collected, receipts, the fee screen's
+readiness).

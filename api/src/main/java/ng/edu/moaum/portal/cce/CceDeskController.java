@@ -676,6 +676,48 @@ class CceDeskController {
                  WHERE a.session = :s AND r.confirmed_at IS NOT NULL GROUP BY r.kind ORDER BY r.kind
                 """).param("s", s).query().listOfRows());
         out.put("sessions", jdbc.sql("SELECT name AS session, state FROM policy.academic_session WHERE state <> 'CANCELLED' ORDER BY name DESC LIMIT 12").query().listOfRows());
+        // V414: whether CCE is in use and its fees stated, for the Bursary's dashboard (admissions.cce_readiness, V412)
+        out.put("readiness", json.readValue(jdbc.sql("SELECT admissions.cce_readiness(:s)::text").param("s", s).query(String.class).single(), Map.class));
+        return out;
+    }
+
+    /* ── V414: the CCE applicant fees collected, by programme and by day ── */
+
+    private static final String COLLECTED = """
+            FROM admissions.fee_reference r
+            JOIN admissions.application a ON a.id = r.application_id
+            JOIN admissions.candidate c ON c.id = a.candidate_id AND c.entry_mode = 'CCE'
+            JOIN admissions.cce_candidate l ON l.id = c.cce_candidate_id
+            JOIN ref.programme p ON p.code = l.programme_code
+            LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+           WHERE a.session = :s AND r.confirmed_at IS NOT NULL
+             AND (:from::date IS NULL OR r.confirmed_at >= (:from::date)::timestamp AT TIME ZONE 'Africa/Lagos')
+             AND (:to::date IS NULL OR r.confirmed_at < ((:to::date) + 1)::timestamp AT TIME ZONE 'Africa/Lagos')
+            """;
+    private static final String KINDS = """
+            count(*) FILTER (WHERE r.kind = 'APPLICATION') AS application_paid, coalesce(sum(r.amount) FILTER (WHERE r.kind = 'APPLICATION'), 0) AS application_amount,
+            count(*) FILTER (WHERE r.kind = 'CHECKING') AS checking_paid, coalesce(sum(r.amount) FILTER (WHERE r.kind = 'CHECKING'), 0) AS checking_amount,
+            count(*) FILTER (WHERE r.kind = 'ACCEPTANCE') AS acceptance_paid, coalesce(sum(r.amount) FILTER (WHERE r.kind = 'ACCEPTANCE'), 0) AS acceptance_amount,
+            coalesce(sum(r.amount), 0) AS total
+            """;
+
+    @GetMapping("/reports/fees")
+    @PreAuthorize(FEES_READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> feesCollected(@RequestParam(required = false) String session, @RequestParam(required = false) java.time.LocalDate from,
+                                      @RequestParam(required = false) java.time.LocalDate to) {
+        String s = sessionOr(session);
+        java.util.function.Function<String, JdbcClient.StatementSpec> q = sql -> jdbc.sql(sql).param("s", s)
+                .param("from", from, java.sql.Types.DATE).param("to", to, java.sql.Types.DATE);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("from", from);
+        out.put("to", to);
+        out.put("totals", q.apply("SELECT " + KINDS + COLLECTED).query().singleRow());
+        out.put("byProgramme", q.apply("SELECT l.programme_code, p.name AS programme, f.name AS faculty, " + KINDS + COLLECTED
+                + " GROUP BY l.programme_code, p.name, f.name ORDER BY f.name NULLS LAST, p.name").query().listOfRows());
+        out.put("byDay", q.apply("SELECT (r.confirmed_at AT TIME ZONE 'Africa/Lagos')::date AS day, " + KINDS + COLLECTED
+                + " GROUP BY 1 ORDER BY 1 DESC").query().listOfRows());
         return out;
     }
 
