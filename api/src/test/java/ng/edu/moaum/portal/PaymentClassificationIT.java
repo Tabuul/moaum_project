@@ -150,8 +150,20 @@ class PaymentClassificationIT {
         Map<String, Object> receipt = it.get(TestTokens.token(sandwich, List.of("student")), "/api/v1/me/fees/receipts/" + sandwichRef).getBody();
         assertThat(receipt).containsEntry("programme_type_label", "Sandwich").containsEntry("purpose_label", "School fees").containsEntry("responsible_office", "bursar");
 
-        // the general ledger posts JUPEB's payment, to the income account of its purpose
-        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync", Map.of()).getStatusCode().value()).isEqualTo(200);
+        // the general ledger posts JUPEB's payment, to the income account of its purpose — in batches (V410): one at a
+        // time says how many remain, and the screen's loop carries on until none do; a batch of nothing is refused
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=0", Map.of()).getStatusCode().is4xxClientError()).isTrue();
+        long before = jdbc.sql("SELECT payments + refunds + vouchers FROM finance.gl_unposted()").query(Long.class).single();
+        Map<String, Object> one = it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=1", Map.of()).getBody();
+        assertThat(((Number) one.get("payments")).intValue() + ((Number) one.get("refunds")).intValue() + ((Number) one.get("vouchers")).intValue())
+                .isEqualTo(before > 0 ? 1 : 0);
+        assertThat(((Number) one.get("remaining")).longValue()).isEqualTo(Math.max(before - 1, 0));
+        long remaining = ((Number) one.get("remaining")).longValue();
+        for (int round = 0; remaining > 0 && round < 100; round++)
+            remaining = ((Number) it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync", Map.of()).getBody().get("remaining")).longValue();
+        assertThat(remaining).isZero();
+        assertThat(((Map<String, Object>) it.get(bursar, "/api/v1/finance/accounting/overview").getBody().get("unposted")).values())
+                .allSatisfy(n -> assertThat(((Number) n).longValue()).isZero());
         assertThat(jdbc.sql("""
                 SELECT p.account FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id
                  WHERE j.source_type = 'PAYMENT' AND j.source_ref = :r AND p.credit > 0

@@ -80,14 +80,8 @@ class AccountingController {
                 """).query(BigDecimal.class).single());
         out.put("ie", jdbc.sql("SELECT * FROM finance.income_expenditure(:f, :t) WHERE section IN ('INCOME_TOTAL','EXPENSE_TOTAL','SURPLUS')")
                 .param("f", yearStart).param("t", LocalDate.now()).query().listOfRows());
-        out.put("unposted", jdbc.sql("""
-                SELECT (SELECT count(*) FROM finance.payment_reference pr WHERE pr.confirmed_at IS NOT NULL
-                          AND NOT EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_type='PAYMENT' AND j.source_ref=pr.reference)) AS payments,
-                       (SELECT count(*) FROM finance.refund rf WHERE rf.state='PAID' AND rf.paid_at IS NOT NULL
-                          AND NOT EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_type='REFUND' AND j.source_ref=rf.reference)) AS refunds,
-                       (SELECT count(*) FROM expenditure.voucher v WHERE v.stage='PAID' AND v.paid_at IS NOT NULL
-                          AND NOT EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_type='VOUCHER' AND j.source_ref=v.reference)) AS vouchers
-                """).query().singleRow());
+        // V410: every payment of the one ledger, not only a student's, on the terms the sync posts them
+        out.put("unposted", jdbc.sql("SELECT payments, refunds, vouchers FROM finance.gl_unposted()").query().singleRow());
         out.put("journals", jdbc.sql("SELECT count(*) FROM finance.gl_journal").query(Long.class).single());
         out.put("yearStart", yearStart);
         return out;
@@ -162,13 +156,23 @@ class AccountingController {
 
     /* ── posting ── */
 
-    /** sweep every confirmed payment, paid refund and paid voucher not yet on the books into balanced journals */
+    /**
+     * sweep confirmed payments, paid refunds and paid vouchers not yet on the books into balanced journals — at most
+     * {@code limit} of them, oldest first (V410), so a register with tens of thousands unposted is posted in batches that
+     * each commit whole; the answer says how many remain, and the screen calls again until none do
+     */
     @PostMapping("/sync")
     @PreAuthorize(BURSARY)
     @Transactional
-    Map<String, Object> sync() {
-        return jdbc.sql("SELECT * FROM finance.gl_sync()").query().singleRow();
+    Map<String, Object> sync(@RequestParam(defaultValue = "" + SYNC_BATCH) int limit) {
+        if (limit < 1 || limit > SYNC_BATCH_MAX)
+            throw new DomainRuleViolation("SYNC_LIMIT", "A ledger sync posts between 1 and " + SYNC_BATCH_MAX + " transactions at a time.");
+        return jdbc.sql("SELECT payments, refunds, vouchers, remaining FROM finance.gl_sync(:lim)").param("lim", limit).query().singleRow();
     }
+
+    /** the batch the screen posts at a time, and the most one call may post */
+    static final int SYNC_BATCH = 2000;
+    static final int SYNC_BATCH_MAX = 10000;
 
     /** a hand-entered balanced journal — opening balances, adjustments, corrections */
     @PostMapping("/journals")

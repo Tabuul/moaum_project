@@ -51,25 +51,40 @@ test("the printed sheet carries purpose, numbered steps with the portal's labels
   assert.match(html, /Expected result:<\/b> E/);
 });
 
-test("every {menu:…} of the first edition (V387) names a menu item the bound offices carry, and every office named is one the portal knows", () => {
+test("every {menu:…} the manual's migrations seed (V387, V411…) or revise names a menu item the bound offices carry, and every office named is one the portal knows", () => {
   const dbDir = join(here, "../../../db");
-  const file = readdirSync(dbDir).find((f) => f.startsWith("V387__"));
-  assert.ok(file, "the V387 migration is in db/");
-  const sql = readFileSync(join(dbDir, file as string), "utf8");
-  const calls = [...sql.matchAll(/SELECT manual\.seed\('([^']+)', '(?:[^']|'')*', '[A-Z]+', ARRAY\[([^\]]+)\]::text\[\], (NULL|'[^']+'), (NULL|'[^']+'),\s*'(?:[^']|'')*',\s*ARRAY\[([\s\S]*?)\],\s*'(?:[^']|'')*'/g)];
-  assert.ok(calls.length >= 200, `the seed has ${calls.length} procedures`);
+  const files = readdirSync(dbDir).filter((f) => /^V\d+__.*\.sql$/.test(f)).sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+  assert.ok(files.some((f) => f.startsWith("V387__")), "the V387 migration is in db/");
+  const SEED = /SELECT manual\.seed\('([^']+)', '(?:[^']|'')*', '[A-Z]+', ARRAY\[([^\]]+)\]::text\[\], (NULL|'[^']+'), (NULL|'[^']+'),\s*'(?:[^']|'')*',\s*ARRAY\[([\s\S]*?)\],\s*'(?:[^']|'')*'/g;
+  // V411: a first-edition procedure revised in place keeps its offices; its new steps are checked against them
+  const REVISE = /SELECT pg_temp\.manual_revise\('([^']+)', '(?:[^']|'')*',\s*'(?:[^']|'')*',\s*ARRAY\[([\s\S]*?)\],\s*'(?:[^']|'')*'\);/g;
+  const offices = new Map<string, string[]>();
+  const refs: { slug: string; ids: Set<string> }[] = [];
+  let first = 0;
+  for (const f of files) {
+    const sql = readFileSync(join(dbDir, f), "utf8");
+    if (!sql.includes("manual.seed(") && !sql.includes("pg_temp.manual_revise(")) continue;
+    for (const c of sql.matchAll(SEED)) {
+      if (f.startsWith("V387__")) first++;
+      if (!offices.has(c[1])) offices.set(c[1], [...c[2].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+      const ids = new Set<string>();
+      if (c[3] !== "NULL") ids.add(c[3].slice(1, -1));
+      if (c[4] !== "NULL") ids.add(c[4].slice(1, -1));
+      for (const m of c[5].matchAll(/\{menu:([^}]+)\}/g)) ids.add(m[1].trim());
+      refs.push({ slug: c[1], ids });
+    }
+    for (const c of sql.matchAll(REVISE)) {
+      assert.ok(offices.has(c[1]), `${f}: ${c[1]} revises a procedure no earlier migration seeds`);
+      refs.push({ slug: c[1], ids: new Set([...c[2].matchAll(/\{menu:([^}]+)\}/g)].map((m) => m[1].trim())) });
+    }
+  }
+  assert.ok(first >= 200, `the first edition has ${first} procedures`);
   const sidebars = new Set(Object.keys(MENUS));
   const problems: string[] = [];
-  for (const c of calls) {
-    const slug = c[1];
-    const offices = [...c[2].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    const ids = new Set<string>();
-    if (c[3] !== "NULL") ids.add(c[3].slice(1, -1));
-    if (c[4] !== "NULL") ids.add(c[4].slice(1, -1));
-    for (const m of c[5].matchAll(/\{menu:([^}]+)\}/g)) ids.add(m[1].trim());
+  for (const { slug, ids } of refs) {
     for (const id of ids) {
       if (!ROUTES[id]) problems.push(`${slug}: ${id} has no page`);
-      for (const o of offices) {
+      for (const o of offices.get(slug) ?? []) {
         if (o === "everyone" || !sidebars.has(o)) continue;
         if (!MENUS[o].groups.some((g) => g.items.some((it) => it.id === id))) problems.push(`${slug}: ${id} is not on the ${o} menu`);
       }

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 247
+\set EXPECTED 249
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9011,9 +9011,9 @@ BEGIN
     PERFORM pg_temp.assert('V387: the Quick Operational Manual — seeded and published for every office; read by the keys a person acts under and a posting''s capability; a draft unseen until published; an edit versioned; the edition stepping; an archived procedure restored before edited; unknown office, empty step and taken key refused; readings and acts recorded',
         coalesce(n_seed >= 200 AND n_unpub = 0 AND n_bad_office = 0
                  AND n_student >= 20 AND n_student_leak = 0 AND n_bursar_sign = 1 AND n_agent = 0 AND n_agent_caps = 1 AND n_ctx = 1 AND n_search = 1 AND n_pg = 1
-                 AND ed0 = '1.0' AND v_seen = 0 AND v_seen2 = 1 AND ed1 = '1.1' AND v_ver = 2 AND v_snap = 1 AND v_old_title = 'Check' AND r_state = 'DRAFT'
+                 AND ed0 ~ '^[0-9]+\.[0-9]+$' AND v_seen = 0 AND v_seen2 = 1 AND ed1 = split_part(ed0, '.', 1) || '.' || (split_part(ed0, '.', 2)::int + 1) AND v_ver = 2 AND v_snap = 1 AND v_old_title = 'Check' AND r_state = 'DRAFT'
                  AND r_arch = 'MANUAL_ARCHIVED' AND r_unknown = 'MANUAL_OFFICE_UNKNOWN' AND r_empty = 'MANUAL_STEP_EMPTY' AND r_taken = 'MANUAL_SLUG_TAKEN'
-                 AND ed2 = '1.5' AND ed3 = '2.0' AND n_reorder = 3 AND n_views = 2 AND n_audit >= 3, false),
+                 AND ed2 = split_part(ed0, '.', 1) || '.' || (split_part(ed0, '.', 2)::int + 5) AND ed3 = (split_part(ed0, '.', 1)::int + 1) || '.0' AND n_reorder = 3 AND n_views = 2 AND n_audit >= 3, false),
         format('seed=%s unpublished=%s bad_office=%s | student=%s leaks=%s bursar_signin=%s agent=%s/%s ctx=%s search=%s pg=%s | edition %s→%s→%s→%s seen=%s/%s ver=%s snap=%s/%s state=%s | arch=%s unknown=%s empty=%s taken=%s | reorder=%s views=%s audit=%s',
                n_seed, n_unpub, n_bad_office, n_student, n_student_leak, n_bursar_sign, n_agent, n_agent_caps, n_ctx, n_search, n_pg, ed0, ed1, ed2, ed3, v_seen, v_seen2, v_ver, v_snap, v_old_title, r_state,
                r_arch, r_unknown, r_empty, r_taken, n_reorder, n_views, n_audit));
@@ -10038,6 +10038,83 @@ BEGIN
         AND v_row = 'SANDWICH/SANDWICH/SCHOOL_FEES/SANDWICH/bursar/PENDING'
         AND v_mapped = 'PRELIMINARY',
         format('types=%s routes=%s owners=%s cats=%s row=%s mapped=%s', v_types, v_routes, v_owners, v_cats, v_row, v_mapped));
+END $$;
+
+-- ── V410. The general-ledger sync posts in batches: at most the limit asked, oldest first, saying how many remain; what
+--          remains is counted on the terms it is posted (every payment of the one ledger, paid refunds, paid vouchers);
+--          every transaction is posted once whatever the batches; a sync of nothing at a time is refused; the sync without
+--          a limit posts everything as before ──
+DO $$
+DECLARE S text := '9984/9985'; who uuid := gen_random_uuid(); st uuid; u0 bigint; u1 bigint; b1 record; b2 record; v_first text; v_after bigint;
+        v_once text; v_zero text := 'accepted';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V410', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V410', 'CHECKV410', 'Bursary');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9984-10-01', date '9985-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, matriculated_at)
+        VALUES (gen_random_uuid(), 'MOAUM/ADM/84/009984', 'MOAUM/CHK/84/410', 'CHECKV410', 'Ledger', 'M', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', 'FULL_TIME', now())
+        RETURNING id INTO st;
+        SELECT payments + refunds + vouchers INTO u0 FROM finance.gl_unposted();
+        -- three confirmed school-fee payments, older than anything else on the register
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        SELECT st, S, 'MOAUM-FEE-V410-000' || n, 'School fees ' || S, 1000 * n, now() + interval '1 day', timestamptz '1901-01-01' + n * interval '1 day', who, 'Card', 'RCPT-V410-000' || n
+          FROM generate_series(1, 3) n;
+        SELECT payments + refunds + vouchers INTO u1 FROM finance.gl_unposted();
+        -- one at a time: the oldest first, the rest counted
+        SELECT * INTO b1 FROM finance.gl_sync(1);
+        SELECT source_ref INTO v_first FROM finance.gl_journal WHERE source_type = 'PAYMENT' AND source_ref LIKE 'MOAUM-FEE-V410-%';
+        -- two more, then everything without a limit, as before
+        SELECT * INTO b2 FROM finance.gl_sync(2);
+        PERFORM finance.gl_sync();
+        SELECT payments + refunds + vouchers INTO v_after FROM finance.gl_unposted();
+        -- every one posted once, balanced, whatever the batches
+        SELECT string_agg(j.source_ref || '=' || (SELECT count(*) FROM finance.gl_posting p WHERE p.journal_id = j.id)
+                          || '/' || (SELECT sum(p.debit) - sum(p.credit) FROM finance.gl_posting p WHERE p.journal_id = j.id), ',' ORDER BY j.source_ref) INTO v_once
+          FROM finance.gl_journal j WHERE j.source_type = 'PAYMENT' AND j.source_ref LIKE 'MOAUM-FEE-V410-%';
+        BEGIN
+            PERFORM finance.gl_sync(0);
+        EXCEPTION WHEN invalid_parameter_value THEN v_zero := 'refused';
+        END;
+        RAISE EXCEPTION 'the V410 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V410: the general-ledger sync posts at most the limit asked, oldest first, and says how many remain; what remains is counted on the terms it is posted; every transaction posts once, balanced, whatever the batches; a sync of nothing at a time is refused; the sync without a limit posts everything as before',
+        u1 = u0 + 3
+        AND b1.payments + b1.refunds + b1.vouchers = 1 AND b1.remaining = u1 - 1
+        AND v_first = 'MOAUM-FEE-V410-0001'
+        AND b2.payments + b2.refunds + b2.vouchers = 2 AND b2.remaining = u1 - 3
+        AND v_after = 0
+        AND v_once = 'MOAUM-FEE-V410-0001=2/0.00,MOAUM-FEE-V410-0002=2/0.00,MOAUM-FEE-V410-0003=2/0.00'
+        AND v_zero = 'refused',
+        format('u0=%s u1=%s b1=%s b2=%s first=%s after=%s once=%s zero=%s', u0, u1, b1, b2, v_first, v_after, v_once, v_zero));
+END $$;
+
+-- ── V411. The manual's new edition: the allocation desk's procedures read by the desks, an agent's only with the
+--          posting's capability; the Payments Report by the offices that own a purpose; the Bursary's classification;
+--          a first-edition procedure revised keeps its earlier wording as a version; the edition took its major step ──
+DO $$
+DECLARE v_ict text; v_agent text; v_owner text; v_bursar text; v_kept text; v_edition int;
+BEGIN
+    SELECT string_agg(slug, ',' ORDER BY slug) INTO v_ict FROM manual.procedures_for(ARRAY['ict'], '{}') WHERE slug LIKE 'alloc-desk-%';
+    SELECT string_agg(slug, ',' ORDER BY slug) INTO v_agent FROM manual.procedures_for(ARRAY['ictagent'], ARRAY['VIEW_ALLOCATIONS']) WHERE slug LIKE 'cpo-allocat%';
+    SELECT string_agg(o, ',' ORDER BY o) INTO v_owner FROM unnest(ARRAY['jupeb', 'cce', 'gst', 'eps', 'housing', 'student']) o
+     WHERE EXISTS (SELECT 1 FROM manual.procedures_for(ARRAY[o], '{}') p WHERE p.slug = 'office-payments-report');
+    SELECT string_agg(slug, ',' ORDER BY slug) INTO v_bursar FROM manual.procedures_for(ARRAY['bursar'], '{}') WHERE slug IN ('bursar-classification', 'bursar-books');
+    -- the revision kept what the first edition said (where Manual Management had not edited it first)
+    SELECT string_agg(p.slug || '=' || p.version || '/' || (SELECT count(*) FROM manual.procedure_version v WHERE v.procedure_id = p.id AND v.version = 1), ',' ORDER BY p.slug) INTO v_kept
+      FROM manual.procedure p WHERE p.slug IN ('hod-allocate', 'bursar-books', 'jupeb-idcards-import') AND p.seeded;
+    SELECT major INTO v_edition FROM manual.edition;
+    PERFORM pg_temp.assert('V411: the manual''s new edition — the allocation desk''s procedures for the desks, an agent''s only with the posting''s capability; the Payments Report for the offices that own a purpose; the Bursary''s classification and batched sync; a revised procedure keeps its first wording as a version; the edition took its major step',
+        v_ict = 'alloc-desk-allocate,alloc-desk-bulk,alloc-desk-lists,alloc-desk-reassign'
+        AND v_agent = 'cpo-allocation-view'
+        AND v_owner = 'cce,eps,gst,housing,jupeb'
+        AND v_bursar = 'bursar-books,bursar-classification'
+        AND (SELECT steps[2] LIKE '%2,000 at a time%' FROM manual.procedure WHERE slug = 'bursar-books')
+        AND v_kept = 'bursar-books=2/1,hod-allocate=2/1,jupeb-idcards-import=2/1'
+        AND v_edition >= 2,
+        format('ict=%s agent=%s owner=%s bursar=%s kept=%s edition=%s', v_ict, v_agent, v_owner, v_bursar, v_kept, v_edition));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

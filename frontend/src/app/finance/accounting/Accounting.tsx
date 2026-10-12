@@ -34,6 +34,10 @@ type Tab = "overview" | "trial" | "ie" | "bs" | "journals" | "ledger";
 const TABS: [Tab, string][] = [["overview", "Overview"], ["trial", "Trial balance"], ["ie", "Income & expenditure"], ["bs", "Balance sheet"], ["journals", "Journal book"], ["ledger", "Account ledger"]];
 
 interface DraftLine { account: string; debit: string; credit: string; narration: string }
+/** V410: one batch of the ledger sync — what it posted and how many remain */
+interface SyncBatch { payments: number; refunds: number; vouchers: number; remaining: number }
+/** the transactions one sync request posts; the screen carries on until none remain */
+const SYNC_BATCH = 2000;
 const emptyLine = (): DraftLine => ({ account: "", debit: "", credit: "", narration: "" });
 
 export function Accounting({ overview, chart, trial, ie, bs, journals, actingOffice }: {
@@ -47,6 +51,8 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
   const [posting, setPosting] = useState(false);
   const [reversing, setReversing] = useState<Journal | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  /** V410: how many remain while the sync posts batch after batch */
+  const [left, setLeft] = useState<number | null>(null);
 
   // manual journal draft
   const [jDate, setJDate] = useState(today());
@@ -78,6 +84,40 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
     } catch { setProblem({ status: 0, title: "The network dropped the request." }); notifyProblem({ status: 0, title: "The network dropped the request." }); return false; }
     finally { setBusy(null); }
   }
+
+  /**
+   * V410: the ledger sync in batches — each request posts at most SYNC_BATCH transactions, oldest first, and commits them
+   * whole; the screen calls again until none remain, so a first sync over tens of thousands is never half-posted, and an
+   * interrupted one is carried on by pressing again
+   */
+  async function syncAll(reasonText: string) {
+    setBusy("sync"); setProblem(null); setLeft(null);
+    let posted = 0;
+    try {
+      for (;;) {
+        const r = await fetch(`/api/bff/api/v1/finance/accounting/sync?limit=${SYNC_BATCH}`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reasonText) }, body: "{}",
+        });
+        if (!r.ok) {
+          const p = await r.json().catch(() => ({ status: r.status, title: "The request was refused." }));
+          if (posted > 0) p.detail = `${posted.toLocaleString()} transaction${posted === 1 ? " was" : "s were"} posted before this; press again to carry on.${p.detail ? " " + p.detail : ""}`;
+          setProblem(p); notifyProblem(p);
+          return;
+        }
+        const b = (await r.json()) as SyncBatch;
+        const n = b.payments + b.refunds + b.vouchers;
+        posted += n;
+        setLeft(b.remaining);
+        // none left — or none of what is left could be posted by this sync, which the books then still show
+        if (b.remaining <= 0 || n === 0) break;
+      }
+      notify(posted === 0 ? "Nothing was waiting to be posted" : `${posted.toLocaleString()} transaction${posted === 1 ? "" : "s"} posted to the books`);
+    } catch {
+      const p: Problem = { status: 0, title: "The network dropped the request.", detail: posted > 0 ? `${posted.toLocaleString()} transactions were posted before this; press again to carry on.` : undefined };
+      setProblem(p); notifyProblem(p);
+    } finally { setBusy(null); setLeft(null); router.refresh(); }
+  }
+  const syncWord = (idle: string, going: string) => busy === "sync" ? (left != null && left > 0 ? `${going} ${left.toLocaleString()} left` : `${going}`) : idle;
 
   async function loadLedger() {
     if (!ledAccount) return;
@@ -111,9 +151,9 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       ]} />
 
       {unposted > 0 ? (
-        <Note kind="info" title={`${unposted} transaction${unposted === 1 ? "" : "s"} not yet on the books`}
-          action={<Btn kind="primary" disabled={!may || busy !== null} onClick={() => void call("sync", "/sync", {}, "Ledger sync: posted confirmed payments, paid refunds and paid vouchers")}>{busy === "sync" ? "Posting…" : "Post them now"}</Btn>}>
-          {overview.unposted.payments} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers} voucher{overview.unposted.vouchers === 1 ? "" : "s"} not yet posted. Each transaction posts once.
+        <Note kind="info" title={`${unposted.toLocaleString()} transaction${unposted === 1 ? "" : "s"} not yet on the books`}
+          action={<Btn kind="primary" disabled={!may || busy !== null} onClick={() => void syncAll("Ledger sync: posted confirmed payments, paid refunds and paid vouchers")}>{syncWord("Post them now", "Posting…")}</Btn>}>
+          {overview.unposted.payments.toLocaleString()} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds.toLocaleString()} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers.toLocaleString()} voucher{overview.unposted.vouchers === 1 ? "" : "s"} not yet posted. Each transaction posts once, {SYNC_BATCH.toLocaleString()} at a time, oldest first, until none remain; if it stops, press again to carry on.
         </Note>
       ) : (
         <Note kind="ok" title="The books are up to date" />
@@ -123,7 +163,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
         <Tabs items={TABS.map(([t, label]) => ({ id: t, label }))} value={tab} onChange={setTab} label="The books" />
         <span className="grow" />
         {may ? <Btn kind="go" disabled={busy !== null} onClick={() => { setJDate(today()); setJMemo(""); setJLines([emptyLine(), emptyLine()]); setPosting(true); }}>New journal</Btn> : null}
-        {may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void call("sync", "/sync", {}, "Ledger sync from the accounting screen")}>{busy === "sync" ? "Syncing…" : "Sync"}</Btn> : null}
+        {may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void syncAll("Ledger sync from the accounting screen")}>{syncWord("Sync", "Syncing…")}</Btn> : null}
       </div>
 
       {tab === "overview" ? (
