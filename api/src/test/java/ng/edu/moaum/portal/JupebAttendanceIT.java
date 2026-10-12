@@ -361,8 +361,11 @@ class JupebAttendanceIT {
         assertThat(new java.math.BigDecimal(String.valueOf(opts.get("warnBand")))).isEqualByComparingTo("10");
         assertThat(((Number) opts.get("minClasses")).intValue()).isEqualTo(1);
         Map<String, Object> standing = ok(it.get(office, ub -> ub.path("/api/v1/attendance/jupeb/standing").queryParam("session", session).queryParam("only", "below").build()));
-        assertThat((List<Map<String, Object>>) standing.get("rows")).extracting(r -> r.get("member_ref")).containsOnly(studentB.toString());
-        assertThat((List<Map<String, Object>>) standing.get("rows")).allMatch(r -> Boolean.TRUE.equals(r.get("warnable")));
+        // among this run's two students only (an earlier run on the same database left its own below the minimum)
+        List<Map<String, Object>> ours = ((List<Map<String, Object>>) standing.get("rows")).stream()
+                .filter(r -> List.of(studentA.toString(), studentB.toString()).contains(String.valueOf(r.get("member_ref")))).toList();
+        assertThat(ours).extracting(r -> r.get("member_ref")).containsOnly(studentB.toString());
+        assertThat(ours).allMatch(r -> Boolean.TRUE.equals(r.get("warnable")));
         assertThat(status(it.get(lecturer, ub -> ub.path("/api/v1/attendance/jupeb/standing").queryParam("session", session).build()))).isEqualTo(403);
         assertThat(status(it.call(lecturer, HttpMethod.POST, "/api/v1/attendance/jupeb/warn", null))).isEqualTo(403);
         Map<String, Object> warned = ok(it.call(office, HttpMethod.POST, "/api/v1/attendance/jupeb/warn", null));

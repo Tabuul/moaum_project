@@ -45,6 +45,8 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
 }) {
   const preview = !!previewExamId;
   const [phase, setPhase] = useState<Phase>("loading");
+  // once the paper scrolls the bar gives back a little height — on a phone most of all — and takes it again at the top
+  const [scrolled, setScrolled] = useState(false);
   const [previewNotes, setPreviewNotes] = useState<PreviewNotes | null>(null);
   const [restoredCount, setRestoredCount] = useState(0);
   const [navFilter, setNavFilter] = useState<NavFilter>("ALL");
@@ -97,6 +99,17 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   useEffect(() => { offsetRef.current = offset; }, [offset]);
   useEffect(() => { currentRef.current = current; }, [current]);
   // the current question's number kept in view inside the navigator (which scrolls on its own on a wide screen) — never the page
+  useEffect(() => {
+    let compact = false;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const next = compact ? y > 8 : y > 40; // a band between, so the bar does not flicker as its own height changes the scroll
+      if (next !== compact) { compact = next; setScrolled(next); }
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const navGridRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const grid = navGridRef.current;
@@ -614,7 +627,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const last = current >= questions.length - 1;
 
   return (
-    <div className={css.room}>
+    <div className={`${css.room}${scrolled ? ` ${css.roomScrolled}` : ""}`}>
       <header className={css.bar}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={css.crest} src="/crest.png" alt="" />

@@ -158,7 +158,7 @@ function parseFeeFlat(grid: (string | number | null)[][], cce = false): Record<s
   return rows;
 }
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null }: { gstFee?: GstFeePage | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -300,6 +300,25 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setPgfStated(true);
     } finally { setBusy(null); }
+  }
+
+  // V401: the Bursary's rule for a session whose applicant fees are not stated
+  const [policy, setPolicy] = useState<"CARRY" | "REFUSE">(feePolicy ?? "CARRY");
+  async function savePolicy(): Promise<void> {
+    setBusy("pol");
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/finance/applicant-fee-policy", {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(policy === "REFUSE" ? "Applicant fees not stated: refused until stated" : "Applicant fees not stated: the last stated session's carried forward") },
+        body: JSON.stringify({ policy }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
+      notify(policy === "REFUSE" ? "No fee reference until a session's applicant fees are stated" : "The last stated session's fees apply until a session's are stated");
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function saveApplicantFees(): Promise<void> {
@@ -595,6 +614,15 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="row mt-2">
             <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
             <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
+          </div>
+          <div className="row row--end mt-3" style={{ borderTop: "1px solid var(--line-2)", paddingTop: 10 }}>
+            <Field id="af-policy" label="A session whose applicant fees are not stated" hint="The Bursary's rule, for the University; the go-live readiness names the sessions it applies to">
+              <select id="af-policy" className="ctl" value={policy} onChange={(e) => setPolicy(e.target.value as "CARRY" | "REFUSE")} disabled={!may}>
+                <option value="CARRY">Charge the last stated session&rsquo;s amounts until stated</option>
+                <option value="REFUSE">Refuse a fee reference until stated</option>
+              </select>
+            </Field>
+            <Btn kind="secondary" disabled={!may || busy !== null || policy === (feePolicy ?? "CARRY")} onClick={() => void savePolicy()}>{busy === "pol" ? "Saving…" : "Set the rule"}</Btn>
           </div>
         </PBody>
       </Panel>

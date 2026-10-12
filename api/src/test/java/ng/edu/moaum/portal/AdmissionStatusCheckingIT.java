@@ -263,9 +263,11 @@ class AdmissionStatusCheckingIT {
         assertThat(rows.stream().filter(x -> incomplete.jamb().equals(x.get("jamb_reg_no"))).findFirst().orElseThrow().get("valid")).isEqualTo(false);
         assertThat(l(m(it.get(registrar, DESK + "/report?session=" + SESSION + "&payment=PAID").getBody()).get("rows")).stream().map(x -> x.get("jamb_reg_no")))
                 .contains(admitted.jamb(), refused.jamb(), pending.jamb()).doesNotContain(late.jamb(), incomplete.jamb());
-        assertThat(l(m(it.get(academic, DESK + "/report?session=" + SESSION + "&result=NOT_ADMITTED").getBody()).get("rows")).stream().map(x -> x.get("jamb_reg_no")))
+        // among this run's applicants only (an earlier run on the same database left its own in the session)
+        java.util.Set<String> mine = java.util.Set.of(admitted.jamb(), refused.jamb(), pending.jamb(), late.jamb(), incomplete.jamb());
+        assertThat(l(m(it.get(academic, DESK + "/report?session=" + SESSION + "&result=NOT_ADMITTED").getBody()).get("rows")).stream().map(x -> String.valueOf(x.get("jamb_reg_no"))).filter(mine::contains))
                 .containsExactly(refused.jamb());
-        assertThat(l(m(it.get(ict, DESK + "/report?session=" + SESSION + "&payment=NOT_ELIGIBLE").getBody()).get("rows")).stream().map(x -> x.get("jamb_reg_no")))
+        assertThat(l(m(it.get(ict, DESK + "/report?session=" + SESSION + "&payment=NOT_ELIGIBLE").getBody()).get("rows")).stream().map(x -> String.valueOf(x.get("jamb_reg_no"))).filter(mine::contains))
                 .containsExactly(incomplete.jamb());
         assertThat(l(m(it.get(ict, DESK + "/report?session=" + SESSION + "&sex=F&checked=CHECKED").getBody()).get("rows")).stream().map(x -> x.get("jamb_reg_no")))
                 .contains(admitted.jamb(), pending.jamb()).doesNotContain(refused.jamb());

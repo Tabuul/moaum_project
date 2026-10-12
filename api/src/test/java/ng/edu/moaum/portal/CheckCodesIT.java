@@ -58,6 +58,8 @@ class CheckCodesIT {
         String receiptNo = "RCT/79/" + tag;
         String m = matric;
         it.db(() -> {
+            // an earlier run on the same database left its examination session (cards released before the cut-over): the old code would be honoured before this run releases any
+            jdbc.sql("DELETE FROM assessment.exam_session WHERE session = :ses AND NOT EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.exam_session_id = assessment.exam_session.id)").param("ses", SESSION).update();
             jdbc.sql("""
                     INSERT INTO finance.payment_reference (id, student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
                     VALUES (gen_random_uuid(), :s, :ses, :r, 'School fees (full session)', 1000, now() + interval '30 days', now(), :s, 'BANK', :rc)

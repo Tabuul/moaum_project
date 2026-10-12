@@ -306,6 +306,27 @@ class FinanceController {
         return Map.of("amount", body.amount(), "stated", true);
     }
 
+    /* ── V401: the Bursary's rule for a session whose applicant fees are not stated: CARRY the last stated session's forward, or
+          REFUSE a fee reference until they are stated ── */
+
+    public record FeePolicy(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "CARRY|REFUSE") String policy) {
+    }
+
+    @GetMapping("/applicant-fee-policy")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> applicantFeePolicy() {
+        return Map.of("policy", jdbc.sql("SELECT admissions.applicant_fee_policy()").query(String.class).single());
+    }
+
+    @PutMapping("/applicant-fee-policy")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setApplicantFeePolicy(@Valid @RequestBody FeePolicy body) {
+        jdbc.sql("UPDATE finance.fee_setting SET applicant_fee_unstated = :p WHERE id = 1").param("p", body.policy()).update();
+        return Map.of("policy", body.policy());
+    }
+
     /* ── the scheme ── */
 
     @PostMapping("/clearance-scheme")

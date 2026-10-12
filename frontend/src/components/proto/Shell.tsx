@@ -575,6 +575,19 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
   const openDrawer = () => { document.body.classList.add("nav-open"); setDrawer(true); };
   const closeDrawer = () => { document.body.classList.remove("nav-open"); setDrawer(false); };
   // it closes on every navigation — the Shell remounts per page, the body does not
+  // the phone's University bar gives back a little height once the page scrolls, and takes it again at the top
+  const [compactBar, setCompactBar] = useState(false);
+  useEffect(() => {
+    let compact = false;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const next = compact ? y > 8 : y > 48; // a band between, so the bar does not flicker as its own height changes the scroll
+      if (next !== compact) { compact = next; setCompactBar(next); }
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   useEffect(() => { document.body.classList.remove("nav-open"); }, [pathname]);
   // open, it takes the focus to its close button and gives it back to the menu button; Escape closes it
   useEffect(() => {
@@ -752,7 +765,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
         <div className="main">
           {/* on a phone or tablet, where the side navigation folds into a drawer: the University's bar, as its website heads
               every page — the crest and the name, the search, and the menu — held at the top while the page scrolls */}
-          <header className="mbar">
+          <header className={`mbar${compactBar ? " mbar--compact" : ""}`}>
             <UniversityBrand variant="bar" href={href(menu.home) ?? "/"} />
             <button className="mbar__btn" aria-label="Search" title="Search records" onClick={() => router.push("/search")}>
               <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">

@@ -211,8 +211,10 @@ class AllocationController {
         dept = scope.scopedDept(dept);                      // an HOD's own-department list stays within their department
         String live = "a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department'"
                 + " AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)";
+        // V396: a linked BSU-/MOAU- pair the lecturer teaches is one class, counted once (as catalogue.allocate_offering counts it)
         String load = "coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code"
-                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester AND o.stream IN ('REGULAR', 'PG')), 0) AS load";
+                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester AND o.stream IN ('REGULAR', 'PG')"
+                + " AND NOT (c.code ~ '^MOAU-' AND EXISTS (SELECT 1 FROM catalogue.offering_family(o.id) f JOIN catalogue.offering o2 ON o2.id = f WHERE f <> o.id AND o2.lecturer_id = p.id))), 0) AS load";
         if (all) {
             return jdbc.sql("""
                     SELECT p.id, concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS name, p.staff_number,

@@ -2189,6 +2189,14 @@ html[data-density="normal"] {
   }
   .mbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
     background: linear-gradient(90deg, #c51e28 0%, #e2512a 45%, #fbbf24 100%); }
+  /* once the page scrolls the bar is a little lower: the crest, the name and the buttons shrink with it, and grow back at the top */
+  .mbar, .ubrand--bar .ubrand__crest, .ubrand__l1, .ubrand__l2, .mbar__btn { transition: padding .18s ease, height .18s ease, width .18s ease, font-size .18s ease, margin .18s ease; }
+  .mbar--compact { padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 9px; box-shadow: 0 2px 12px rgba(26, 36, 56, .14); }
+  .mbar--compact .ubrand--bar .ubrand__crest { height: 36px; }
+  .mbar--compact .ubrand__l1 { font-size: clamp(10.5px, 2.9vw, 15px); }
+  .mbar--compact .ubrand__l2 { font-size: clamp(10px, 2.7vw, 14px); margin-top: 0; }
+  .mbar--compact .mbar__btn { width: 40px; height: 40px; }
+  @media (prefers-reduced-motion: reduce) { .mbar, .ubrand--bar .ubrand__crest, .ubrand__l1, .ubrand__l2, .mbar__btn { transition: none; } }
   .ubrand--bar { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; color: #1a2438; text-decoration: none; border-radius: var(--r-md); }
   .ubrand--bar .ubrand__crest { width: auto; height: 50px; object-fit: contain; flex-shrink: 0; }
   .ubrand--bar .ubrand__name { display: flex; flex-direction: column; min-width: 0; text-transform: uppercase; line-height: 1.22; }

@@ -641,6 +641,80 @@ class CatalogueController {
         return twins(dept);
     }
 
+    private static final String CENTRAL = "hasAnyAuthority('OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+
+    public record TwinsIn(@NotNull @Size(max = 500) List<@Valid TwinIn> pairs) {
+    }
+
+    /** every department's pairs at once, for the central offices before a session: the pairs the duplicates rule suggests, by
+     *  department, and the linked pairs with how each stands in the University's current session */
+    @GetMapping("/twins/all")
+    @PreAuthorize(CENTRAL)
+    @Transactional(readOnly = true)
+    /** @param session the session whose classes say whether a linked pair is allocated together; the University's current one when not named */
+    Map<String, Object> twinsAll(@RequestParam(required = false) String session) {
+        String s = session == null || session.isBlank() ? jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElse(null) : session.trim();
+        List<Map<String, Object>> suggested = jdbc.sql("""
+                SELECT d.code AS dept, d.name AS dept_name, s.bsu_code, s.bsu_title, s.moau_code, s.moau_title, s.level, s.semester
+                  FROM ref.department d CROSS JOIN LATERAL catalogue.twin_suggestions(d.code) s
+                 ORDER BY d.name, s.level, s.semester, s.bsu_code
+                """).query().listOfRows();
+        List<Map<String, Object>> linked = jdbc.sql("""
+                SELECT t.id, b.dept_code AS dept, d.name AS dept_name, t.bsu_code, b.title AS bsu_title, t.moau_code, b.level, b.semester, t.linked_at,
+                       CASE WHEN ob.id IS NULL OR om.id IS NULL THEN 'NO_CLASSES'
+                            WHEN ob.lecturer_id IS NULL AND om.lecturer_id IS NULL THEN 'UNALLOCATED'
+                            WHEN ob.lecturer_id IS NOT DISTINCT FROM om.lecturer_id THEN 'TOGETHER'
+                            ELSE 'DIFFERENT' END AS allocation,
+                       nullif(btrim(coalesce(lb.surname, '') || ', ' || coalesce(lb.given_names, '')), ',') AS lecturer
+                  FROM catalogue.course_twin t
+                  JOIN catalogue.course b ON b.code = t.bsu_code
+                  JOIN ref.department d ON d.code = b.dept_code
+                  LEFT JOIN catalogue.offering ob ON ob.course_code = t.bsu_code AND ob.session = :s AND ob.semester = b.semester AND ob.stream = 'REGULAR'
+                  LEFT JOIN catalogue.offering om ON om.course_code = t.moau_code AND om.session = :s AND om.semester = b.semester AND om.stream = 'REGULAR'
+                  LEFT JOIN iam.person lb ON lb.id = coalesce(ob.lecturer_id, om.lecturer_id)
+                 WHERE t.unlinked_at IS NULL
+                 ORDER BY d.name, b.level, b.semester, t.bsu_code
+                """).param("s", s, java.sql.Types.VARCHAR).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("suggested", suggested);
+        out.put("linked", linked);
+        return out;
+    }
+
+    /** many pairs linked in one act by a central office; a pair the rule refuses (not one course, already linked) is reported
+     *  by its code and the rest are linked all the same */
+    @PostMapping("/twins/link-all")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> linkAll(@Valid @RequestBody TwinsIn body) {
+        int linked = 0;
+        List<Map<String, Object>> refused = new java.util.ArrayList<>();
+        int i = 0;
+        for (TwinIn p : body.pairs()) {
+            String sp = "twin_" + (i++);
+            jdbc.sql("SAVEPOINT " + sp).update();
+            try {
+                jdbc.sql("SELECT catalogue.link_twin(:b, :m)").param("b", p.bsuCode()).param("m", p.moauCode()).query().listOfRows();
+                jdbc.sql("RELEASE SAVEPOINT " + sp).update();
+                linked++;
+            } catch (org.springframework.dao.DataAccessException e) {
+                jdbc.sql("ROLLBACK TO SAVEPOINT " + sp).update();
+                Throwable root = e.getMostSpecificCause();
+                // the server's own message ("COURSE_TWIN_TAKEN: ..."), not the driver's, which prefixes "ERROR: " and appends where it arose
+                String message = root instanceof org.postgresql.util.PSQLException pg && pg.getServerErrorMessage() != null && pg.getServerErrorMessage().getMessage() != null
+                        ? pg.getServerErrorMessage().getMessage() : root == null || root.getMessage() == null ? "refused" : root.getMessage();
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([A-Z][A-Z0-9_]{3,60}): (.+)$", java.util.regex.Pattern.DOTALL).matcher(message.trim());
+                refused.add(Map.of("bsuCode", p.bsuCode(), "moauCode", p.moauCode(),
+                        "code", m.matches() ? m.group(1) : "REFUSED", "detail", m.matches() ? m.group(2).trim() : message.trim()));
+            }
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(twinsAll(null));
+        out.put("linkedNow", linked);
+        out.put("refused", refused);
+        return out;
+    }
+
     /** every course offered to a programme, level by level — the view for the course-upload desk */
     @GetMapping("/offered")
     @PreAuthorize(READERS)

@@ -161,6 +161,19 @@ class IntakeJourneyIT {
         UUID appId = jdbc.sql("SELECT id FROM admissions.application WHERE application_no = :no").param("no", appNo).query(UUID.class).single();
         assertThat(jdbc.sql("SELECT session FROM admissions.application WHERE id = :a").param("a", appId).query(String.class).single()).isEqualTo(INTAKE);
 
+        // 4b · V401: under the Bursary's rule REFUSE, a session whose applicant fees are not stated issues no fee reference; the
+        //      fees stated again (and the rule put back), the reference follows
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/finance/applicant-fee-policy", Map.of("policy", "REFUSE")));
+        it.db(() -> jdbc.sql("DELETE FROM admissions.applicant_fee WHERE session = :s").param("s", INTAKE).update());
+        try {
+            ResponseEntity<Map> unstated = it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION"));
+            assertThat(unstated.getStatusCode().value()).isEqualTo(422);
+            assertThat(unstated.getBody().get("code")).isEqualTo("APPLICANT_FEE_NOT_STATED");
+        } finally {
+            ok(it.call(bursar, HttpMethod.PUT, "/api/v1/finance/applicant-fee-policy", Map.of("policy", "CARRY")));
+        }
+        ok(it.call(academic, HttpMethod.PUT, PATH + "/applicant-fees", Map.of("applicationFee", 2500, "portalCharge", 0, "acceptanceFee", 30000, "checkingFee", 3500)));
+
         // 5 · the application fee at the intake session's amount, confirmed by the Bursary; the form and its documents
         String appRef = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION"))).getBody().get("reference"));
         Map<String, Object> appFee = jdbc.sql("SELECT a.session, f.amount FROM admissions.fee_reference f JOIN admissions.application a ON a.id = f.application_id WHERE f.reference = :r")

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 239
+\set EXPECTED 241
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9555,6 +9555,87 @@ BEGIN
                  AND v_rej = 'REJECTED' AND t2.application_id IS NULL, false),
         format('told=%s now=%s req=%s | approve=%s recommend=%s | correct=%s/%s rows=%s to=%s notices=%s | reject=%s listed_after=%s',
                t1.told_other, t1.suggested_now, t1.request_id = req, r_app, r_rec, v_out, v_again, n_corr, v_corrected, n_notice, v_rej, t2.application_id IS NOT NULL));
+END $$;
+
+-- ── V400. Two sessions overlapping, followed up: the session current on a day comes from the transition log, else the one
+--          already running; the transition checks say what is still open in the session being completed, without blocking;
+--          the offices are reminded once a day once the current session has run past its end date ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); A text := '9950/9951'; B text := '9951/9952'; r_nolog text; r_outside text; r_before text; r_after text;
+        open_txt text; informative boolean; n_remind int; n_again int; v_subject text; v_days int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V400', true);
+        -- A, and B beginning inside it (V377)
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+        VALUES (gen_random_uuid(), A, date '9950-10-01', date '9951-12-31'), (gen_random_uuid(), B, date '9951-09-01', date '9952-08-31') ON CONFLICT (name) DO NOTHING;
+        -- no transition logged: a day in the overlap belongs to the session already running; a day outside it to the one that holds it
+        r_nolog := policy.session_current_on(date '9951-10-15');
+        r_outside := policy.session_current_on(date '9952-03-01');
+        -- the transition into B logged on 1 Nov 9951: before it A was current, after it B
+        INSERT INTO policy.session_transition (from_session, to_session, outcome, mode, reason, at) VALUES (A, B, 'DONE', 'MANUAL', 'check', timestamptz '9951-11-01 10:00+01');
+        r_before := policy.session_current_on(date '9951-10-15');
+        r_after := policy.session_current_on(date '9951-11-20');
+        DELETE FROM policy.session_transition WHERE to_session = B;
+        -- A current and past its end date, a semester of it open: the readiness of B says so and does not block; the reminder, once a day
+        UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+        UPDATE policy.academic_session SET starts_on = current_date - 400, ends_on = current_date - 3, state = 'CURRENT', senate_minute = 'SEN/9950/1' WHERE name = A;
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), A, 1, 'OPEN') ON CONFLICT (session, number) DO UPDATE SET state = 'OPEN';
+        SELECT detail INTO open_txt FROM policy.transition_readiness(B) WHERE code = 'CURRENT_SEMESTERS_OPEN';
+        SELECT bool_and(ok AND NOT blocking) INTO informative FROM policy.transition_readiness(B) WHERE code IN ('CURRENT_SEMESTERS_OPEN', 'CURRENT_SHEETS_PENDING', 'CURRENT_REGISTRATIONS_PENDING');
+        SELECT count(*), max(subject), max(days_over) INTO n_remind, v_subject, v_days FROM policy.remind_session_overrun();
+        SELECT count(*) INTO n_again FROM policy.remind_session_overrun();
+        RAISE EXCEPTION 'the V400 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V400: overlapping sessions followed up — the session current on a day, what is still open in the session being completed, a daily reminder once the current session has run past its end',
+        coalesce(r_nolog = A AND r_outside = B AND r_before = A AND r_after = B AND open_txt LIKE '1 semester of ' || A || ' still open%' AND informative
+                 AND n_remind = 1 AND v_days = 3 AND v_subject LIKE 'Academic session ' || A || ' is still current 3 days%' AND n_again = 0, false),
+        format('nolog=%s outside=%s before=%s after=%s open=%s informative=%s remind=%s days=%s subject=%s again=%s',
+               r_nolog, r_outside, r_before, r_after, open_txt, informative, n_remind, v_days, v_subject, n_again));
+END $$;
+
+-- ── V401. A session whose applicant fees are not stated: under the Bursary's rule CARRY the last stated session's amounts apply,
+--          as before; under REFUSE no fee reference is issued until they are stated, and stating them opens the door ──
+DO $$
+DECLARE S text := '9949/9950'; who uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        cr uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); v_default text; v_policy text; r_refused text; r_stated text; r_carry text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V401', true);
+        v_default := admissions.applicant_fee_policy();
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9949-10-01', date '9950-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (batch, S, 'CAPS_DOWNLOAD', 'UTME', '\xB401'::bytea, 1, current_date, who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        VALUES (cr, batch, S, '20494910001', '{}'::jsonb, 'CHECKFEEPOLICY', 'Cand', 'C00066', 250, 'UTME', 'F', 'Benue', 'Makurdi');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (cand, S, '20494910001', 'CHECKFEEPOLICY', 'Cand', (SELECT name FROM ref.programme WHERE code = 'C00066'), 'UTME', 100, 'PROPOSED', cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '20494910001', 'checkfeepolicy@example.com', '08031234567', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, S, 'APP/49/000001');
+        DELETE FROM admissions.applicant_fee WHERE session = S;
+        -- REFUSE: nothing is paid for a session whose fees are not stated
+        UPDATE finance.fee_setting SET applicant_fee_unstated = 'REFUSE' WHERE id = 1;
+        v_policy := admissions.applicant_fee_policy();
+        BEGIN PERFORM admissions.new_fee_reference(app, 'APPLICATION'); r_refused := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_refused := split_part(SQLERRM, ':', 1); msg := SQLERRM; END;
+        -- stated for the session: issued
+        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee) VALUES (S, 2500, 0, 25000, 3000);
+        r_stated := left(admissions.new_fee_reference(app, 'APPLICATION'), 10);
+        -- CARRY: an unstated session's reference is issued at the carried amounts, as before
+        DELETE FROM admissions.fee_reference WHERE application_id = app;
+        DELETE FROM admissions.applicant_fee WHERE session = S;
+        UPDATE finance.fee_setting SET applicant_fee_unstated = 'CARRY' WHERE id = 1;
+        r_carry := left(admissions.new_fee_reference(app, 'APPLICATION'), 10);
+        RAISE EXCEPTION 'the V401 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V401: a session whose applicant fees are not stated — carried forward by default, refused under the Bursary''s rule until stated, issued once stated',
+        coalesce(v_default = 'CARRY' AND v_policy = 'REFUSE' AND r_refused = 'APPLICANT_FEE_NOT_STATED' AND r_stated = 'MOAUM-APP-' AND r_carry = 'MOAUM-APP-', false),
+        format('default=%s policy=%s refused=%s stated=%s carry=%s %s', v_default, v_policy, r_refused, r_stated, r_carry, coalesce(msg, '')));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

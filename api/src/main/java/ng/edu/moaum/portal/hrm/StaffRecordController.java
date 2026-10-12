@@ -105,12 +105,16 @@ class StaffRecordController {
 
         List<Map<String, Object>> teaching = jdbc.sql("""
                 SELECT o.session, o.semester, o.course_code, c.title, c.units,
+                       -- V396: a linked BSU-/MOAU- pair is one class: listed once, under its BSU- code, the twin beside it, both codes' students
+                       catalogue.twin_code(o.course_code) AS twin,
                        CASE WHEN o.lecturer_id = :id THEN 'Lecturer' ELSE 'Co-lecturer' END AS role,
                        (SELECT count(*) FROM registration.entry en JOIN registration.course_registration r ON r.id = en.registration_id
-                         WHERE en.offering_id = o.id AND en.status IN ('REGISTERED','APPROVED') AND r.status IN ('APPROVED','LOCKED')) AS students
+                         WHERE en.offering_id IN (SELECT catalogue.offering_family(o.id)) AND en.status IN ('REGISTERED','APPROVED') AND r.status IN ('APPROVED','LOCKED')) AS students
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE o.lecturer_id = :id
-                    OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :id)
+                 WHERE (o.lecturer_id = :id
+                    OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :id))
+                   AND NOT (o.course_code ~ '^MOAU-' AND EXISTS (SELECT 1 FROM catalogue.offering_family(o.id) f JOIN catalogue.offering o2 ON o2.id = f
+                                                                   WHERE f <> o.id AND (o2.lecturer_id = :id OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t2 WHERE t2.offering_id = o2.id AND t2.lecturer_id = :id))))
                  ORDER BY o.session DESC, o.semester DESC, o.course_code
                  LIMIT 40
                 """).param("id", id).query().listOfRows();

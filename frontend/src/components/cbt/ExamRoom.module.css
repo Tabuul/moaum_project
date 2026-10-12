@@ -49,6 +49,14 @@
 .low { background: #b3261e; }
 .finishTop { display: none; }
 
+/* the bar once the paper has scrolled: a little lower, the clock a little smaller, the crest with it; back in full at the top */
+.bar, .crest, .timer { transition: padding 0.18s ease, width 0.18s ease, height 0.18s ease, font-size 0.18s ease; }
+.roomScrolled .bar { padding: 4px 12px; }
+.roomScrolled .crest { width: 30px; height: 32px; }
+.roomScrolled .timer { font-size: 18px; padding: 3px 9px; }
+.roomScrolled .timerLabel { font-size: 9px; }
+@media (prefers-reduced-motion: reduce) { .bar, .crest, .timer { transition: none; } }
+
 .progress { height: 4px; background: #d9dee5; }
 .progress > div { height: 100%; background: #1b7f3b; transition: width 0.3s ease; }
 
@@ -206,6 +214,14 @@
   .idStrip { display: none; }
   .idGrid { grid-template-columns: 2fr 1.4fr 1fr; }
   .timer { font-size: 24px; padding: 4px 12px; }
+  .roomScrolled { --barh: 66px; }
+  .roomScrolled .bar { padding: 6px 18px; }
+  .roomScrolled .crest { width: 28px; height: 30px; }
+  .roomScrolled .uni { font-size: 10px; }
+  .roomScrolled .exam { font-size: 14px; }
+  .roomScrolled .cand { display: none; }
+  .roomScrolled .timer { font-size: 20px; padding: 3px 10px; }
+  .roomScrolled .timerLabel { display: block; font-size: 9px; }
   .finishTop { display: inline-flex; }
   .body { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) var(--navw); gap: 16px; padding: 16px; align-items: start; }
   .paper { padding: 22px; }
@@ -232,4 +248,22 @@
   .ctlPrimary button { flex: 0 0 auto; min-width: 140px; }
   .summaryGrid { grid-template-columns: repeat(4, 1fr); }
   .preview { bottom: calc(var(--ctlh) + 8px); width: 128px; height: 96px; }
+}
+
+/* A phone held sideways is wide but short (812×375): the bar and the controls take less of the height, the University line goes
+   (the exam and the candidate stay), and the navigator flows beside the paper and scrolls with the page instead of being capped to
+   a screen that has no height to give — capped, its numbers were squeezed to nothing. */
+@media (min-width: 720px) and (max-height: 520px) {
+  .room { --barh: 58px; --ctlh: 62px; }
+  .bar { padding: 5px 14px; gap: 10px; }
+  .uni { display: none; }
+  .crest { width: 28px; height: 30px; }
+  .timer { font-size: 18px; padding: 2px 10px; }
+  .body { padding: 10px 14px; gap: 12px; }
+  .paper { padding: 14px 16px; }
+  .nav, .navOpen { position: static; max-height: none; }
+  .navGrid { max-height: 44vh; }
+  .controls { padding: 6px 14px; }
+  .ctlSecondary button { min-height: 38px; }
+  .ctlPrimary button { min-height: 40px; font-size: 15px; }
 }

@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import type { CourseList, Directory, DuplicatePair } from "@/lib/catalogue";
 import { AllCourses, type Filters } from "./AllCourses";
 import { GstTransfers, type ChaseSettings, type GeneralTransfer } from "@/components/gst/GstTransfers";
+import { TwinsAcross, type TwinsAcrossData } from "./TwinsAcross";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,12 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
         api<ChaseSettings>("/api/v1/gst/transfers/settings").then((r) => (r.ok ? r.data : null)).catch(() => null),
       ])
     : [[] as GeneralTransfer[], null];
+  // V396: the central offices (and the Registry) confirm every department's BSU-/MOAU- pairs at once
+  const twinsCentral = ["academic", "dregistrar", "registrar", "admin", "super"].includes(acting ?? "");
+  const twins = twinsCentral ? await api<TwinsAcrossData>("/api/v1/catalogue/twins/all").then((r) => (r.ok ? r.data : null)).catch(() => null) : null;
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
+      {twins ? <TwinsAcross data={twins} /> : null}
       {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
         <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null}

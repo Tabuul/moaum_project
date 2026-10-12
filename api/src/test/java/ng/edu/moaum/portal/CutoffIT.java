@@ -128,6 +128,10 @@ class CutoffIT {
 
     @Test
     void aSessionWithNoLoadCutOffStatedLoadsNothing() {
+        // PutmeCbtIT states a cut-off for 2098/2099 in its set-up; on a reused database that earlier run's stands, and this test needs none
+        TransactionTemplate tx = new TransactionTemplate(transactions);
+        AuditContext context = new AuditContext(academic, "academic", "CutoffIT: no cut-off stated for 2098/2099", null, null);
+        AuditContextHolder.with(context, () -> tx.execute(status -> jdbc.sql("DELETE FROM admissions.load_cutoff WHERE session = '2098/2099'").update()));
         ResponseEntity<Map> r = load("2098/2099", row("UTME", 350, "C00061"));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
         assertThat(r.getBody().get("code")).isEqualTo("ADM_LOAD_CUTOFF_NOT_STATED");

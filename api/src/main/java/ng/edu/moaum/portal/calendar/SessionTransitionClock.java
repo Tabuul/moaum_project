@@ -59,6 +59,27 @@ public class SessionTransitionClock {
         } catch (RuntimeException e) {
             LOG.warn("session clock: did not run: {}", e.getMessage());
         }
+        try {
+            remindOverrun();
+        } catch (RuntimeException e) {
+            LOG.warn("session clock: the overrun reminder did not run: {}", e.getMessage());
+        }
+    }
+
+    /** V400: once the current session's end date has passed and it is still current, the Registry, the Academic Office and the
+     *  Directorate of ICT are reminded once a day (policy.remind_session_overrun says what to tell, and nothing twice in a day) */
+    public int remindOverrun() {
+        return AuditContextHolder.with(new AuditContext(NOBODY, "registrar", "session clock: overrun reminder", null, null), () -> tx.execute(st -> {
+            List<Map<String, Object>> due = jdbc.sql("SELECT subject, body FROM policy.remind_session_overrun()").query().listOfRows();
+            int told = 0;
+            for (Map<String, Object> d : due) {
+                for (String office : List.of("registrar", "academic", "ict")) {
+                    jdbc.sql("SELECT admissions.tell_office(:o, :s, :b, NULL)").param("o", office).param("s", d.get("subject")).param("b", d.get("body")).query().listOfRows();
+                    told++;
+                }
+            }
+            return told;
+        }));
     }
 
     /** every planned session due today, transitioned in turn; each attempt's outcome is returned as the log holds it */

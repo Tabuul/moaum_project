@@ -176,7 +176,8 @@ class PutmeCbtIT {
         assertThat(verified.getStatusCode().value()).as(String.valueOf(verified.getBody())).isEqualTo(200);
         String candidate = String.valueOf(verified.getBody().get("token"));
         assertThat(((Map<String, Object>) verified.getBody().get("candidate")).get("jambRegNo")).isEqualTo(c[2]);
-        assertThat((List<?>) verified.getBody().get("exams")).hasSize(1);
+        // every Post-UTME examination of the session is listed, an earlier run's on the same database too: this run's among them, once
+        assertThat(((List<Map<String, Object>>) verified.getBody().get("exams")).stream().filter(e -> exam.equals(String.valueOf(e.get("exam_id"))))).hasSize(1);
         // the examination token opens no dashboard; the applicant's own sign-in opens no examination
         assertThat(it.get(candidate, "/api/v1/applicant/me").getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(candidate, "/api/v1/me").getStatusCode().value()).isIn(403, 404);
@@ -184,7 +185,7 @@ class PutmeCbtIT {
 
         // ── 3 · the room: the paper without its keys, the answers, the reports, the submission — and no score anywhere ──
         Map<String, Object> mine = it.get(candidate, "/api/v1/putme/cbt").getBody();
-        Map<String, Object> listed = ((List<Map<String, Object>>) mine.get("rows")).get(0);
+        Map<String, Object> listed = ((List<Map<String, Object>>) mine.get("rows")).stream().filter(r -> exam.equals(String.valueOf(r.get("exam_id")))).findFirst().orElseThrow();
         assertThat(listed.get("exam_id")).isEqualTo(exam);
         assertThat(listed.get("eligibility")).isNull();
         ResponseEntity<Map> started = it.call(candidate, HttpMethod.POST, "/api/v1/putme/cbt/exams/" + exam + "/start", Map.of());
@@ -214,7 +215,7 @@ class PutmeCbtIT {
         ResponseEntity<Map> result = it.get(candidate, "/api/v1/putme/cbt/attempts/" + attempt + "/result");
         assertThat(result.getStatusCode().value()).isEqualTo(422);
         assertThat(String.valueOf(result.getBody())).contains("CBT_PUTME_NO_RESULT_HERE");
-        Map<String, Object> after = ((List<Map<String, Object>>) it.get(candidate, "/api/v1/putme/cbt").getBody().get("rows")).get(0);
+        Map<String, Object> after = ((List<Map<String, Object>>) it.get(candidate, "/api/v1/putme/cbt").getBody().get("rows")).stream().filter(r -> exam.equals(String.valueOf(r.get("exam_id")))).findFirst().orElseThrow();
         assertThat(after.get("attempt_status")).isEqualTo("SUBMITTED");
         assertThat(after.get("score")).isNull();
         assertThat(after.get("percentage")).isNull();
@@ -268,7 +269,7 @@ class PutmeCbtIT {
         assertThat(it.call(academic, HttpMethod.POST, SCORES + "/exports/" + file + "/import", Map.of("mode", "REPLACE")).getStatusCode().value()).isEqualTo(422);
         assertThat(it.getList(academic, SCORES + "/history/" + c[3]).getBody()).hasSize(1);
         // the candidate is now scored on the record: a second sitting is refused on that ground
-        assertThat(String.valueOf(((List<Map<String, Object>>) it.get(candidate, "/api/v1/putme/cbt").getBody().get("rows")).get(0).get("eligibility"))).startsWith("CBT_");
+        assertThat(String.valueOf(((List<Map<String, Object>>) it.get(candidate, "/api/v1/putme/cbt").getBody().get("rows")).stream().filter(r -> exam.equals(String.valueOf(r.get("exam_id")))).findFirst().orElseThrow().get("eligibility"))).startsWith("CBT_");
 
         // ── 6 · the result-checking door: closed; open but unreleased; released by the Academic Office ──
         ResponseEntity<Map> closed = post("/api/v1/putme/results/check", Map.of("session", SESSION, "jambRegNo", c[2], "proof", c[1]));

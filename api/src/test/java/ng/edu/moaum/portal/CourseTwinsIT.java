@@ -110,7 +110,7 @@ class CourseTwinsIT {
         assertThat((List<Map<String, Object>>) linked.getBody().get("suggested")).noneSatisfy(s -> assertThat(s.get("bsu_code")).isEqualTo(bsu));
 
         // allocating the MOAU- class allocates the BSU- class too
-        UUID lecturer = it.person("ZZTWINS-LEC", "ZZTWINSLECTURER");
+        UUID lecturer = it.person("ZZTWINS-LEC-" + dept, "ZZTWINSLECTURER");
         ResponseEntity<Map> assigned = it.call(academic, HttpMethod.POST, "/api/v1/allocation/" + om, Map.of("lecturer", lecturer.toString()));
         assertThat(assigned.getStatusCode().value()).as(String.valueOf(assigned.getBody())).isEqualTo(200);
         assertThat(jdbc.sql("SELECT lecturer_id FROM catalogue.offering WHERE id = :o").param("o", ob).query(UUID.class).single()).isEqualTo(lecturer);
@@ -150,5 +150,40 @@ class CourseTwinsIT {
         assertThat((List<Map<String, Object>>) unlinked.getBody().get("linked")).isEmpty();
         assertThat(it.get(hod, "/api/v1/registration/offerings/" + ob + "/twin").getBody()).isEmpty();
         assertThat(jdbc.sql("SELECT lecturer_id FROM catalogue.offering WHERE id = :o").param("o", ob).query(UUID.class).single()).isEqualTo(lecturer);
+    }
+
+    @Test
+    void aCentralOfficeSeesEveryDepartmentsTwinsAndLinksThemInBulk() {
+        // the Head of a department reads their own department's; the whole University's list is a central office's
+        String hod = it.officer("hod", "department", dept);
+        assertThat(it.get(hod, "/api/v1/catalogue/twins/all").getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> all = it.get(academic, "/api/v1/catalogue/twins/all");
+        assertThat(all.getStatusCode().value()).as(String.valueOf(all.getBody())).isEqualTo(200);
+        assertThat(all.getBody().get("session")).isNotNull(); // the University's current session, whichever the suite has left current
+        assertThat((List<Map<String, Object>>) all.getBody().get("suggested"))
+                .anySatisfy(s -> { assertThat(s.get("dept")).isEqualTo(dept); assertThat(s.get("bsu_code")).isEqualTo(bsu); assertThat(s.get("moau_code")).isEqualTo(moau); });
+
+        // linked in bulk: the pair once; the same pair again in the one act is refused by its code, and the rest stand linked
+        ResponseEntity<Map> bulk = it.call(academic, HttpMethod.POST, "/api/v1/catalogue/twins/link-all", Map.of("pairs", List.of(
+                Map.of("bsuCode", bsu, "moauCode", moau), Map.of("bsuCode", bsu, "moauCode", moau))));
+        assertThat(bulk.getStatusCode().value()).as(String.valueOf(bulk.getBody())).isEqualTo(200);
+        assertThat(((Number) bulk.getBody().get("linkedNow")).intValue()).isEqualTo(1);
+        assertThat((List<Map<String, Object>>) bulk.getBody().get("refused"))
+                .singleElement().satisfies(r -> { assertThat(r.get("bsuCode")).isEqualTo(bsu); assertThat(String.valueOf(r.get("code"))).startsWith("COURSE_TWIN_"); });
+        List<Map<String, Object>> linked = (List<Map<String, Object>>) bulk.getBody().get("linked");
+        assertThat(linked).anySatisfy(t -> { assertThat(t.get("dept")).isEqualTo(dept); assertThat(t.get("bsu_code")).isEqualTo(bsu); });
+        // the allocation is read off a session's classes — this test's session, whatever the suite has left current
+        List<Map<String, Object>> inSession = (List<Map<String, Object>>) it.get(academic, "/api/v1/catalogue/twins/all?session=" + SESSION).getBody().get("linked");
+        assertThat(inSession).anySatisfy(t -> { assertThat(t.get("bsu_code")).isEqualTo(bsu); assertThat(t.get("allocation")).isEqualTo("UNALLOCATED"); });
+        assertThat((List<Map<String, Object>>) bulk.getBody().get("suggested")).noneSatisfy(s -> assertThat(s.get("bsu_code")).isEqualTo(bsu));
+
+        // once allocated (the twin's class with it), the list says the pair is taught together and by whom
+        UUID lecturer = it.person("ZZTWINS-LEC-" + dept, "ZZTWINSLECTURER");
+        assertThat(it.call(academic, HttpMethod.POST, "/api/v1/allocation/" + ob, Map.of("lecturer", lecturer.toString())).getStatusCode().value()).isEqualTo(200);
+        List<Map<String, Object>> again = (List<Map<String, Object>>) it.get(academic, "/api/v1/catalogue/twins/all?session=" + SESSION).getBody().get("linked");
+        assertThat(again).anySatisfy(t -> { assertThat(t.get("bsu_code")).isEqualTo(bsu); assertThat(t.get("allocation")).isEqualTo("TOGETHER"); assertThat(String.valueOf(t.get("lecturer"))).contains("ZZTWINSLECTURER"); });
+
+        // the Head of the department links nothing in bulk
+        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/catalogue/twins/link-all", Map.of("pairs", List.of(Map.of("bsuCode", bsu, "moauCode", moau)))).getStatusCode().value()).isEqualTo(403);
     }
 }

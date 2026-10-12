@@ -137,11 +137,14 @@ class PlatformController {
         Map<String, Object> fee = jdbc.sql("SELECT stated, application_fee, acceptance_fee, carried_from FROM admissions.applicant_fee_rule(:s)")
                 .param("s", in).query().singleRow();
         boolean feeStated = Boolean.TRUE.equals(fee.get("stated"));
+        // V401: the Bursary's rule for a session whose applicant fees are not stated — carried forward, or refused until stated
+        boolean refuse = "REFUSE".equals(jdbc.sql("SELECT admissions.applicant_fee_policy()").query(String.class).optional().orElse("CARRY"));
         checks.add(chk(INTAKE, "applicant_fee", "Applicant fees set", feeStated ? "ok" : "bad",
                 feeStated ? "Application, acceptance and checking fees are set for " + in
+                        : refuse ? "Not set for " + in + ": candidates are refused a fee reference until the Bursary states them (the Bursary's rule)"
                         : "Not set for " + in + ": candidates would be charged " + (fee.get("carried_from") == null ? "the built-in amounts" : fee.get("carried_from") + "'s amounts")
                                 + " (application ₦" + naira(fee.get("application_fee")) + ", acceptance ₦" + naira(fee.get("acceptance_fee")) + ")",
-                "/admissions/settings?session=" + in));
+                "/finance/fees?session=" + in));
 
         boolean policy = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM admissions.session_policy WHERE session=:s AND state='IN_FORCE')").param("s", in).query(Boolean.class).single());
         checks.add(chk(INTAKE, "admission_policy", "Admission policy in force", policy ? "ok" : "bad",

@@ -55,6 +55,11 @@ class CceIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2113);
+        // the residue of an earlier run on the same database: the Centre's application window closed again, as it is until opened
+        it.db(() -> {
+            jdbc.sql("DELETE FROM policy.portal_window_event WHERE session = :s AND window_type = 'CCE_APPLICATION'").param("s", SESSION).update();
+            return jdbc.sql("DELETE FROM policy.portal_window WHERE session = :s AND window_type = 'CCE_APPLICATION'").param("s", SESSION).update();
+        });
     }
 
     @AfterEach
