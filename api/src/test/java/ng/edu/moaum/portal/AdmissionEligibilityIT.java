@@ -50,6 +50,10 @@ class AdmissionEligibilityIT {
     static final String SESSION = "2086/2087";
     static final String PATH = "/api/v1/admissions/sessions/2086/2087";
     static final String CS = "C00023", ACC = "C00019", ECO = "C00024", MBBS = "C00061", THE = "C00066";
+    /** V397: a refused candidate is suggested programmes of the faculty they applied to only. The refused commercial candidates
+     *  apply to Taxation (Management Sciences, a Further Mathematics credit required); Accounting and Business Management, of
+     *  the same faculty, are suggested; Economics (Social Sciences) is evaluated eligible but never suggested */
+    static final String TAX = "C44829", BUS = "C00021";
     static final UUID POLICY = UUID.fromString("e1191b1e-0000-4000-8000-000000002086");
 
     @Value("${local.server.port}")
@@ -81,7 +85,7 @@ class AdmissionEligibilityIT {
             jdbc.sql("INSERT INTO admissions.load_cutoff (session, cutoff) VALUES (:s, 140) ON CONFLICT (session) DO UPDATE SET cutoff = 140").param("s", SESSION).update();
             jdbc.sql("INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff) SELECT :id, code, 100, 150 FROM ref.faculty ON CONFLICT DO NOTHING").param("id", POLICY).update();
             // Computer Science 200 · Accounting 180 · Economics 160 · MBBS stated but closed; every other programme has no rule this session
-            for (String[] r : new String[][] {{CS, "200"}, {ACC, "180"}, {ECO, "160"}, {MBBS, "250"}}) {
+            for (String[] r : new String[][] {{CS, "200"}, {ACC, "180"}, {ECO, "160"}, {MBBS, "250"}, {TAX, "170"}, {BUS, "170"}}) {
                 jdbc.sql("""
                         INSERT INTO admissions.programme_rule (policy_id, programme_code, cutoff, quota, olevel_text, utme_text, de_text, olevel_credits, olevel_sittings)
                         VALUES (:id, :c, :k, 50, 'Five credits (test)', 'As configured (test)', 'A-Level (test)', 5, 2) ON CONFLICT (policy_id, programme_code) DO UPDATE SET cutoff = EXCLUDED.cutoff, olevel_sittings = 2
@@ -99,6 +103,10 @@ class AdmissionEligibilityIT {
             group(ACC, "UTME", null, "Economics");
             group(ECO, "OLEVEL_REQUIRED", "C6", "Economics");
             group(ECO, "UTME", null, "Economics");
+            group(TAX, "OLEVEL_REQUIRED", "C6", "Further Mathematics");
+            group(TAX, "UTME", null, "Further Mathematics");
+            group(BUS, "OLEVEL_REQUIRED", "C6", "Economics");
+            group(BUS, "UTME", null, "Economics");
             group(MBBS, "OLEVEL_REQUIRED", "C6", "Physics", "Chemistry", "Biology");
             // no equivalence stands at the start; the test states one later
             jdbc.sql("DELETE FROM admissions.subject_equivalence WHERE policy_id = :id").param("id", POLICY).update();
@@ -198,8 +206,8 @@ class AdmissionEligibilityIT {
     @SuppressWarnings("unchecked")
     void theVerdictsAreReadFromTheSettingsAndExplained() {
         Applicant eligible = applicant(CS, 210, UTME_SCIENCE, SCIENCE);
-        Applicant notEligible = applicant(CS, 210, UTME_COMMERCIAL, COMMERCIAL);
-        Applicant hopeless = applicant(CS, 120, UTME_COMMERCIAL, COMMERCIAL);
+        Applicant notEligible = applicant(TAX, 210, UTME_COMMERCIAL, COMMERCIAL);
+        Applicant hopeless = applicant(TAX, 120, UTME_COMMERCIAL, COMMERCIAL);
 
         // submitted, not yet evaluated: the Office evaluates the unevaluated in one act
         ResponseEntity<Map> all = it.call(academic, HttpMethod.POST, PATH + "/eligibility/recalculate-all?onlyMissing=true&notify=true&limit=500", Map.of());
@@ -220,11 +228,13 @@ class AdmissionEligibilityIT {
         Map<String, Object> d2 = detail(academic, notEligible.app());
         assertThat(run(d2).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
         Map<String, Object> applied2 = (Map<String, Object>) d2.get("applied");
-        assertThat(reasons(applied2)).anyMatch(x -> x.contains("Physics")).anyMatch(x -> x.contains("UTME subject"));
+        assertThat(reasons(applied2)).anyMatch(x -> x.contains("Further Mathematics")).anyMatch(x -> x.contains("UTME subject"));
         List<Map<String, Object>> alts = alternatives(d2);
         assertThat(alts).isNotEmpty();
         List<String> eligibleCodes = alts.stream().filter(a -> "ELIGIBLE".equals(a.get("result"))).map(a -> String.valueOf(a.get("programme_code"))).toList();
-        assertThat(eligibleCodes).containsExactlyInAnyOrder(ACC, ECO);
+        assertThat(eligibleCodes).containsExactlyInAnyOrder(ACC, BUS, ECO);
+        // V397: only the applicant's own faculty is suggested — Accounting and Business Management; Economics, another faculty's, never
+        assertThat(alts.stream().filter(a -> Boolean.TRUE.equals(a.get("suggested"))).map(a -> String.valueOf(a.get("programme_code")))).containsExactlyInAnyOrder(ACC, BUS);
         assertThat(((Number) run(d2).get("alternatives")).intValue()).isEqualTo(2);
         // the eligible come first; a closed programme and one without a rule are never among the suggestions
         assertThat(alts.get(0).get("result")).isEqualTo("ELIGIBLE");
@@ -233,7 +243,7 @@ class AdmissionEligibilityIT {
         ResponseEntity<Map> template = it.get(academic, PATH + "/jamb-template");
         assertThat(template.getStatusCode().value()).as(String.valueOf(template.getBody())).isEqualTo(200);
         Map<String, Object> templateRow = ((List<Map<String, Object>>) template.getBody().get("rows")).stream().filter(x -> notEligible.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
-        assertThat(((List<Map<String, Object>>) templateRow.get("suggestions")).stream().map(x -> String.valueOf(x.get("code")))).containsExactlyInAnyOrder(ACC, ECO);
+        assertThat(((List<Map<String, Object>>) templateRow.get("suggestions")).stream().map(x -> String.valueOf(x.get("code")))).containsExactlyInAnyOrder(ACC, BUS);
         assertThat(String.valueOf(templateRow.get("olRemark"))).contains("Suggested");
         // the suggestions are capped on the session's settings (V281): one allowed → one suggested, the other eligible programme kept on the full view
         it.db(() -> jdbc.sql("UPDATE admissions.session_policy SET max_alternatives = 1 WHERE session = :s").param("s", SESSION).update());
@@ -243,8 +253,8 @@ class AdmissionEligibilityIT {
         assertThat(suggested).hasSize(1);
         assertThat(suggested.get(0).get("result")).isEqualTo("ELIGIBLE");
         assertThat(((Number) run(capped).get("alternatives")).intValue()).isEqualTo(1);
-        // the desk still sees both eligible programmes on its full view; the list that goes back to JAMB carries the one suggestion
-        assertThat(alternatives(capped).stream().filter(a -> "ELIGIBLE".equals(a.get("result"))).count()).isEqualTo(2);
+        // the desk still sees every eligible programme on its full view (another faculty's too); the list that goes back to JAMB carries the one suggestion
+        assertThat(alternatives(capped).stream().filter(a -> "ELIGIBLE".equals(a.get("result"))).count()).isEqualTo(3);
         Map<String, Object> cappedRow = ((List<Map<String, Object>>) it.get(academic, PATH + "/jamb-template").getBody().get("rows")).stream().filter(x -> notEligible.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
         assertThat((List<Map<String, Object>>) cappedRow.get("suggestions")).hasSize(1);
         it.db(() -> jdbc.sql("UPDATE admissions.session_policy SET max_alternatives = 3 WHERE session = :s").param("s", SESSION).update());
@@ -253,7 +263,7 @@ class AdmissionEligibilityIT {
 
         // 3 · explained check by check: requirement · candidate · result
         String checks = String.valueOf(applied2.get("checks"));
-        assertThat(checks).contains("\"status\": \"NOT_MET\"").contains("\"label\": \"Physics\"").contains("\"requirement\"").contains("\"candidate\"");
+        assertThat(checks).contains("\"status\": \"NOT_MET\"").contains("\"label\": \"Further Mathematics\"").contains("\"requirement\"").contains("\"candidate\"");
 
         // 4 · a score under every minimum qualifies for nothing, and the verdict says so
         Map<String, Object> d3 = detail(academic, hopeless.app());
@@ -338,22 +348,23 @@ class AdmissionEligibilityIT {
     @Order(4)
     @SuppressWarnings("unchecked")
     void theRegisterIsSearchedAndFilteredOnTheServer() {
-        Applicant b = applicant(CS, 190, UTME_COMMERCIAL, COMMERCIAL);
+        Applicant b = applicant(TAX, 190, UTME_COMMERCIAL, COMMERCIAL);
         detail(academic, b.app());
 
         Map<String, Object> notEligible = it.get(academic, PATH + "/eligibility?status=NOT_ELIGIBLE&q=" + b.surname()).getBody();
         List<Map<String, Object>> rows = (List<Map<String, Object>>) notEligible.get("rows");
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
-        assertThat(String.valueOf(rows.get(0).get("top_alternatives"))).contains("ACCOUNTING").contains("ECONOMICS");
+        assertThat(String.valueOf(rows.get(0).get("top_alternatives"))).contains("ACCOUNTING").contains("BUSINESS MANAGEMENT").doesNotContain("ECONOMICS");
         assertThat((List<String>) rows.get(0).get("reasons")).isNotEmpty();
 
         // the recommended-programme filter: found under Accounting, not under MBBS
         assertThat((List<?>) it.get(academic, PATH + "/eligibility?recommended=" + ACC + "&q=" + b.surname()).getBody().get("rows")).hasSize(1);
         assertThat((List<?>) it.get(academic, PATH + "/eligibility?recommended=" + MBBS + "&q=" + b.surname()).getBody().get("rows")).isEmpty();
+        assertThat((List<?>) it.get(academic, PATH + "/eligibility?recommended=" + ECO + "&q=" + b.surname()).getBody().get("rows")).isEmpty();   // V397: another faculty's
         assertThat((List<?>) it.get(academic, PATH + "/eligibility?status=ELIGIBLE&q=" + b.surname()).getBody().get("rows")).isEmpty();
-        assertThat((List<?>) it.get(academic, PATH + "/eligibility?fac=SC&status=ALTERNATIVES&q=" + b.surname()).getBody().get("rows")).hasSize(1);
-        assertThat((List<?>) it.get(academic, PATH + "/eligibility?fac=MS&q=" + b.surname()).getBody().get("rows")).isEmpty();
+        assertThat((List<?>) it.get(academic, PATH + "/eligibility?fac=MS&status=ALTERNATIVES&q=" + b.surname()).getBody().get("rows")).hasSize(1);
+        assertThat((List<?>) it.get(academic, PATH + "/eligibility?fac=SC&q=" + b.surname()).getBody().get("rows")).isEmpty();
 
         Map<String, Object> stats = (Map<String, Object>) notEligible.get("stats");
         assertThat(((Number) stats.get("evaluated")).intValue()).isGreaterThanOrEqualTo(4);
@@ -361,7 +372,7 @@ class AdmissionEligibilityIT {
         assertThat(((Number) stats.get("without_alternatives")).intValue()).isGreaterThanOrEqualTo(1);
         assertThat(((Number) stats.get("eligible")).intValue()).isGreaterThanOrEqualTo(1);
         List<Map<String, Object>> recommendable = (List<Map<String, Object>>) notEligible.get("recommendable");
-        assertThat(recommendable.stream().map(r -> r.get("programme_code"))).contains(ACC, ECO);
+        assertThat(recommendable.stream().map(r -> r.get("programme_code"))).contains(ACC, BUS);
     }
 
     /* ── 8 · the applicant: their own verdict, a request for a suggested programme only, the Office's decision ── */
@@ -369,7 +380,7 @@ class AdmissionEligibilityIT {
     @Order(5)
     @SuppressWarnings("unchecked")
     void theApplicantMayAskOnlyForASuggestedProgrammeAndTheOfficeDecides() {
-        Applicant b = applicant(CS, 195, UTME_COMMERCIAL, COMMERCIAL);
+        Applicant b = applicant(TAX, 195, UTME_COMMERCIAL, COMMERCIAL);
         String me = applicantToken(b);
 
         ResponseEntity<Map> mine = it.get(me, "/api/v1/applicant/me/eligibility");
@@ -387,15 +398,20 @@ class AdmissionEligibilityIT {
         assertThat(refused.getStatusCode().value()).isEqualTo(422);
         assertThat(String.valueOf(refused.getBody())).contains("ELIG_NOT_SUGGESTED");
 
+        // V397: nor is an eligible programme of another faculty — never suggested, so never asked for
+        ResponseEntity<Map> otherFaculty = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ECO, "note", "Economics"));
+        assertThat(otherFaculty.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(otherFaculty.getBody())).contains("ELIG_NOT_SUGGESTED");
+
         // a suggested one is requested — and nothing changes yet
-        ResponseEntity<Map> asked = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ECO, "note", "I would like Economics"));
+        ResponseEntity<Map> asked = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", BUS, "note", "I would like Business Management"));
         assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
         assertThat(asked.getBody().get("canRequestChange")).isEqualTo(false);
         List<Map<String, Object>> changes = (List<Map<String, Object>>) asked.getBody().get("changes");
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).get("state")).isEqualTo("REQUESTED");
         String reqId = String.valueOf(changes.get(0).get("id"));
-        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("B.Sc. COMPUTER SCIENCE");
+        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("B.Sc. TAXATION");
         // a second open request is refused
         assertThat(it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ACC)).getStatusCode().value()).isIn(409, 422);
 
@@ -407,10 +423,10 @@ class AdmissionEligibilityIT {
         // approved: the programme changes on the record, the evaluation is re-run under PROGRAMME_CHANGE, the applicant is told
         ResponseEntity<Map> ok = it.call(academic, HttpMethod.POST, PATH + "/eligibility/changes/" + reqId + "/approve", Map.of("note", "Within quota"));
         assertThat(ok.getStatusCode().value()).as(String.valueOf(ok.getBody())).isEqualTo(200);
-        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("B.Sc. ECONOMICS");
+        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("B.Sc. BUSINESS MANAGEMENT");
         Map<String, Object> after = detail(academic, b.app());
         assertThat(run(after).get("applied_result")).isEqualTo("ELIGIBLE");
-        assertThat(run(after).get("applied_programme_code")).isEqualTo(ECO);
+        assertThat(run(after).get("applied_programme_code")).isEqualTo(BUS);
         assertThat(run(after).get("trigger_kind")).isEqualTo("PROGRAMME_CHANGE");
         assertThat(((List<Map<String, Object>>) after.get("changes")).get(0).get("state")).isEqualTo("APPROVED");
         assertThat(((List<Map<String, Object>>) after.get("events")).stream().map(e -> e.get("action"))).contains("PROGRAMME_CHANGE_REQUESTED", "PROGRAMME_CHANGE_APPROVED");

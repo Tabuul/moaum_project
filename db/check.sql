@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 236
+\set EXPECTED 237
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9274,6 +9274,45 @@ BEGIN
                  AND NOT (rd->>'ready')::boolean, false),
         format('review0 due=%s paid=%s excess=%s refs=%s ft=%s unstated0=%s | review1 due=%s excess=%s unstated1=%s | readiness=%s',
                r0.due, r0.paid, r0.excess, n_refs0, n_ft0, u0, r1.due, r1.excess, u1, rd));
+END $$;
+
+-- ── V397: a refused candidate is suggested programmes of the faculty they applied to only ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); fac text; other text; p_app text; p_same text; p_other text;
+        cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid(); run uuid := gen_random_uuid();
+        n int; v_same boolean; v_other boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        -- a faculty with two programmes, and a programme of another faculty
+        SELECT faculty_code INTO fac FROM ref.programme WHERE faculty_code IS NOT NULL AND NOT archived
+         GROUP BY faculty_code HAVING count(*) >= 2 ORDER BY faculty_code LIMIT 1;
+        SELECT code INTO p_app FROM ref.programme WHERE faculty_code = fac AND NOT archived ORDER BY code LIMIT 1;
+        SELECT code INTO p_same FROM ref.programme WHERE faculty_code = fac AND NOT archived AND code <> p_app ORDER BY code LIMIT 1;
+        SELECT code, faculty_code INTO p_other, other FROM ref.programme WHERE faculty_code IS NOT NULL AND faculty_code <> fac AND NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand, '9940/9941', '994099000001CK', 'CHECKFACULTY', 'Candidate', (SELECT name FROM ref.programme WHERE code = p_app), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, '9940/9941', cand, '994099000001CK', 'check.faculty.9940@example.com', '08030000000', 'SET_ON_FIRST_LOGIN');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, '9940/9941', 'APP/40/999001');
+        INSERT INTO admissions.eligibility_run (id, application_id, candidate_id, session, jamb_key, entry_mode, applied_programme_code, applied_programme, applied_result, trigger_kind)
+        VALUES (run, app, cand, '9940/9941', '994099000001CK', 'UTME', p_app, (SELECT name FROM ref.programme WHERE code = p_app), 'NOT_ELIGIBLE', 'SYSTEM');
+        -- both eligible; the other faculty's ranked first
+        INSERT INTO admissions.eligibility_result (run_id, programme_code, programme, faculty_code, kind, result, checks, ord) VALUES
+          (run, p_other, 'another faculty''s programme', other, 'ALTERNATIVE', 'ELIGIBLE', '[]'::jsonb, 1),
+          (run, p_same, 'a programme of the same faculty', fac, 'ALTERNATIVE', 'ELIGIBLE', '[]'::jsonb, 2);
+        n := admissions.rank_alternatives(run, 3);
+        SELECT suggested INTO v_same FROM admissions.eligibility_result WHERE run_id = run AND programme_code = p_same;
+        SELECT suggested INTO v_other FROM admissions.eligibility_result WHERE run_id = run AND programme_code = p_other;
+        RAISE EXCEPTION 'the V397 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V397 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V397: a refused candidate is suggested programmes of the faculty they applied to only — an eligible programme of another faculty, though ranked first, is kept for the desk but never suggested',
+        coalesce(n = 1 AND v_same AND NOT v_other, false),
+        format('faculty=%s applied=%s same=%s suggested=%s | other=%s (%s) suggested=%s | n=%s', fac, p_app, p_same, v_same, p_other, other, v_other, n));
 END $$;
 
 -- ── V395. A student's payment reference is drawn until a free one is found: MOAUM-FEE, the end of the student's number and

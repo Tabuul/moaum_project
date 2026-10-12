@@ -38,6 +38,9 @@ class AdmissionLifecycleIT {
     static final String SESSION = "2084/2085";
     static final String PATH = "/api/v1/admissions/sessions/2084/2085";
     static final String CS = "C00023", ACC = "C00019";
+    /** V397: a refused candidate is suggested programmes of the faculty they applied to only, so PATHS B and C apply to Taxation
+     *  (Management Sciences, a Further Mathematics credit required) and are moved to Accounting in the same faculty */
+    static final String TAX = "C44829";
     static final UUID POLICY = UUID.fromString("e1191b1e-0000-4000-8000-000000002084");
     static final String PDF = Base64.getEncoder().encodeToString("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF".getBytes());
 
@@ -67,7 +70,7 @@ class AdmissionLifecycleIT {
                     .param("id", POLICY).param("s", SESSION).update();
             jdbc.sql("INSERT INTO admissions.load_cutoff (session, cutoff) VALUES (:s, 140) ON CONFLICT (session) DO UPDATE SET cutoff = 140").param("s", SESSION).update();
             jdbc.sql("INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff) SELECT :id, code, 100, 150 FROM ref.faculty ON CONFLICT DO NOTHING").param("id", POLICY).update();
-            for (String[] r : new String[][] {{CS, "200"}, {ACC, "180"}}) {
+            for (String[] r : new String[][] {{CS, "200"}, {ACC, "180"}, {TAX, "180"}}) {
                 jdbc.sql("INSERT INTO admissions.programme_rule (policy_id, programme_code, cutoff, quota, olevel_text, utme_text, de_text, olevel_credits, olevel_sittings) VALUES (:id, :c, :k, 50, 'Five credits (test)', 'As configured (test)', 'A-Level (test)', 5, 2) ON CONFLICT (policy_id, programme_code) DO NOTHING")
                         .param("id", POLICY).param("c", r[0]).param("k", Integer.parseInt(r[1])).update();
             }
@@ -75,6 +78,8 @@ class AdmissionLifecycleIT {
             jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id").param("id", POLICY).update();
             group(CS, "OLEVEL_REQUIRED", "C6", "Physics", "Chemistry");
             group(CS, "UTME", null, "Physics", "Chemistry/Biology");
+            group(TAX, "OLEVEL_REQUIRED", "C6", "Further Mathematics");
+            group(TAX, "UTME", null, "Further Mathematics");
             group(ACC, "OLEVEL_REQUIRED", "C6", "Economics/Accounting");
             group(ACC, "UTME", null, "Economics");
             jdbc.sql("INSERT INTO admissions.screening_policy (session) VALUES (:s) ON CONFLICT (session) DO UPDATE SET enabled = true").param("s", SESSION).update();
@@ -174,7 +179,7 @@ class AdmissionLifecycleIT {
     @Test
     void theLifecycleFromTheOfferToMatriculationReadinessOnBothPaths() {
         Applicant a = offered(CS, 210, List.of("English Language", "Mathematics", "Physics", "Chemistry"), SCIENCE);                 // PATH A
-        Applicant b = offered(CS, 210, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);           // PATH B: not a science candidate
+        Applicant b = offered(TAX, 210, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);           // PATH B: no Further Mathematics for Taxation
 
         // V272: a session with no fees of its own carries the last stated session's forward — the checking fee is never silently nought
         Map<String, Object> carried = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule('1999/2000')").query().singleRow();
@@ -370,7 +375,7 @@ class AdmissionLifecycleIT {
         assertThat(m(bv.get("form")).get("state")).isEqualTo("PENDING");   // V280: awaiting the University, nothing filled
         UUID sb = intake(b);
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + b.app() + "/decide", Map.of("decision", "UNSUCCESSFUL")).getStatusCode().value()).isEqualTo(422);
-        ResponseEntity<Map> bad = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + b.app() + "/decide", Map.of("decision", "UNSUCCESSFUL", "reason", "No credit in Physics; the science combination is not met", "remarks", "Eligible for Accounting"));
+        ResponseEntity<Map> bad = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + b.app() + "/decide", Map.of("decision", "UNSUCCESSFUL", "reason", "No credit in Further Mathematics; the combination for Taxation is not met", "remarks", "Eligible for Accounting"));
         assertThat(bad.getStatusCode().value()).as(String.valueOf(bad.getBody())).isEqualTo(200);
         assertThat(m(bad.getBody().get("eligibility")).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
         assertThat(String.valueOf(m(bad.getBody().get("eligibility")).get("eligible_alternatives"))).contains("ACCOUNTING");
@@ -378,7 +383,7 @@ class AdmissionLifecycleIT {
         assertThat(bst.get("status")).isEqualTo("CHANGE_OF_PROGRAMME_REQUIRED");
         assertThat(it.get(b.token(), "/api/v1/applicant/me/screening/forms").getStatusCode().value()).isEqualTo(422);   // no forms for an unsuccessful screening
         assertThat(String.valueOf(bst.get("tracker"))).contains("\"CHANGE_OF_PROGRAMME\"").contains("\"failed\"");
-        assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'SC') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query(String.class).single()).contains("screening");
+        assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'MS') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query(String.class).single()).contains("screening");
         // the applicant asks for a listed programme; a second acceptance fee is refused; the Office approves
         Map<String, Object> el = m(it.get(b.token(), "/api/v1/applicant/me/eligibility").getBody());
         assertThat(l(el.get("alternatives")).stream().map(x -> x.get("programme_code"))).contains(ACC);
@@ -414,7 +419,7 @@ class AdmissionLifecycleIT {
         assertThat(String.valueOf(bst.get("tracker"))).contains("\"key\": \"CHANGE_APPROVAL\", \"label\": \"Approval\", \"state\": \"done\"").contains("\"key\": \"SCREENING_DECISION\", \"label\": \"Screening successful\", \"state\": \"done\"");   // V284: the approved change screens the record successful on the new programme
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%next step: school fees%'").param("a", b.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
         // ── PATH C (V284): the officer changes the programme during the screening, on the engine's word ──
-        Applicant cc = offered(CS, 215, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);
+        Applicant cc = offered(TAX, 215, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);
         check(cc); accept(cc);
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + cc.app() + "/start", Map.of()).getStatusCode().value()).isEqualTo(200);
         // the engine's verdict on the current programme, with the requirement that failed, and the alternatives it finds
@@ -428,7 +433,7 @@ class AdmissionLifecycleIT {
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "SUITABILITY")).getStatusCode().value()).isEqualTo(422);
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "SUITABILITY", "override", true, "overrideReason", "Senate directive")).getStatusCode().value()).isEqualTo(403);
         // the recommendation with its reason, while the screening is in review; the applicant is told it is under review
-        ResponseEntity<Map> rec = it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", ACC, "reasonCode", "OLEVEL_NOT_MET", "note", "No Physics credit for Computer Science"));
+        ResponseEntity<Map> rec = it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", ACC, "reasonCode", "OLEVEL_NOT_MET", "note", "No Further Mathematics credit for Taxation"));
         assertThat(rec.getStatusCode().value()).as(String.valueOf(rec.getBody())).isEqualTo(200);
         Map<String, Object> creq = l(rec.getBody().get("changes")).get(0);
         assertThat(creq.get("state")).isEqualTo("REQUESTED");
