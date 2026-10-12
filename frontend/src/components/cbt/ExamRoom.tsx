@@ -6,7 +6,7 @@
  *  for the candidate's consent before the camera is used; no video is kept. The paper arrives without its keys; the screen never has them.
  *  A standard browser cannot stop a candidate switching to another application or device, and this screen does not pretend to: it reports
  *  what it can see. */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Problem } from "@/lib/api";
 import { DEFAULT_INSTITUTION } from "@/lib/document/institution";
 import { clock, type Detector, type Room, type RoomQuestion } from "@/lib/cbt";
@@ -25,6 +25,9 @@ const HEARTBEAT_MS = 30_000;
 const SAVE_DEBOUNCE_MS = 1200;
 /** one report of the same kind in this long: a burst of blur events is one event */
 const EVENT_GAP_MS = 10_000;
+/* whether this browser can show a page in fullscreen at all — most iPhones cannot; on the server, assumed until the client says */
+const canFullscreen = () => !!document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === "function";
+const noSubscribe = () => () => undefined;
 const ALL_DETECTORS: Detector[] = ["TAB", "BLUR", "FULLSCREEN", "COPY", "PASTE", "RIGHT_CLICK", "NETWORK"];
 const FACE_EVERY_MS = 3000;
 
@@ -66,6 +69,9 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const [offline, setOffline] = useState(false);
   const [warn, setWarn] = useState<Warn | null>(null);
   const [fullscreenLost, setFullscreenLost] = useState(false);
+  // whether this browser can show a page in fullscreen at all — most iPhones cannot — read once the room is on screen;
+  // a candidate is not held to what their browser cannot do, and the office is told so with the entry
+  const fullscreenPossible = useSyncExternalStore(noSubscribe, canFullscreen, () => true);
   const [endStatus, setEndStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -84,6 +90,9 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const blurredAt = useRef<number | null>(null);
   const offlineAt = useRef<number | null>(null);
   const fullscreenOutAt = useRef<number | null>(null);
+  const fullscreenExitTimer = useRef<number | undefined>(undefined);
+  const lastHiddenAt = useRef<number | null>(null);
+  const fullscreenOutHidden = useRef(false);
   const phaseRef = useRef<Phase>("loading");
   const endsAtRef = useRef(0);
   const offsetRef = useRef(0);
@@ -127,6 +136,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   const allowBack = exam?.allow_back !== false;
   const allowReview = exam?.allow_review !== false;
   const fullscreenRequired = exam?.fullscreen_required !== false;
+  const fullscreenUnavailable = fullscreenRequired && !fullscreenPossible;
   const proctored = exam?.proctoring === "CAMERA";
 
   const headers = useCallback((): HeadersInit => ({ "Content-Type": "application/json", "X-Attempt-Token": token.current ?? "" }), []);
@@ -322,7 +332,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     if (preview || (phase !== "writing" && phase !== "summary")) return;
     const onVisibility = () => {
       if (!detectors.has("TAB")) return;
-      if (document.visibilityState === "hidden") { hiddenAt.current = Date.now(); report("TAB_SWITCH", "the examination tab was hidden"); }
+      if (document.visibilityState === "hidden") { hiddenAt.current = Date.now(); lastHiddenAt.current = hiddenAt.current; report("TAB_SWITCH", "the examination tab was hidden"); }
       else if (hiddenAt.current) { const ms = Date.now() - hiddenAt.current; hiddenAt.current = null; report("RESUMED", `back after ${Math.round(ms / 1000)}s`, ms, true); }
     };
     const onBlur = () => {
@@ -338,11 +348,22 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
         if (fullscreenRequired) setFullscreenLost(true);
-        fullscreenOutAt.current = Date.now();
-        if (detectors.has("FULLSCREEN")) report("FULLSCREEN_EXIT", "fullscreen was exited");
+        const exitAt = Date.now();
+        fullscreenOutAt.current = exitAt;
+        // a phone drops fullscreen as it hides the page (a call, the notification shade, a switch of app): that is the one
+        // interruption the hide reports, not a second violation — so the exit is judged a moment later, against the hide
+        window.clearTimeout(fullscreenExitTimer.current);
+        fullscreenExitTimer.current = window.setTimeout(() => {
+          const hid = lastHiddenAt.current;
+          fullscreenOutHidden.current = document.visibilityState === "hidden" || (hid != null && Math.abs(hid - exitAt) < 2000);
+          if (detectors.has("FULLSCREEN") && !fullscreenOutHidden.current) report("FULLSCREEN_EXIT", "fullscreen was exited");
+        }, 800);
       } else {
         setFullscreenLost(false);
-        if (fullscreenOutAt.current && detectors.has("FULLSCREEN")) { const ms = Date.now() - fullscreenOutAt.current; report("FULLSCREEN_ENTER", "back in fullscreen", ms, true); }
+        if (fullscreenOutAt.current && detectors.has("FULLSCREEN")) {
+          const ms = Date.now() - fullscreenOutAt.current;
+          report("FULLSCREEN_ENTER", fullscreenOutHidden.current ? "back in fullscreen; it was lost as the screen was hidden" : "back in fullscreen", ms, true);
+        }
         fullscreenOutAt.current = null;
       }
     };
@@ -380,6 +401,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     return () => {
       document.removeEventListener("visibilitychange", onVisibility); window.removeEventListener("blur", onBlur); window.removeEventListener("focus", onFocus);
       document.removeEventListener("fullscreenchange", onFullscreen); window.removeEventListener("offline", onOffline); window.removeEventListener("online", onOnline);
+      window.clearTimeout(fullscreenExitTimer.current);
       document.removeEventListener("copy", onCopy); document.removeEventListener("cut", onCopy); document.removeEventListener("paste", onPaste);
       document.removeEventListener("contextmenu", onContext); window.removeEventListener("pagehide", onLeave);
     };
@@ -489,9 +511,9 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
     new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
   ]).catch(() => undefined);
   async function enter() {
-    if (fullscreenRequired) await goFullscreen();
+    if (fullscreenRequired && fullscreenPossible) await goFullscreen();
     setPhase("writing");
-    report("RESUMED", "the examination screen was entered", undefined, true);
+    report("RESUMED", fullscreenUnavailable ? "the examination screen was entered; this browser cannot show a page in fullscreen, so no fullscreen exit is reported" : "the examination screen was entered", undefined, true);
   }
   const begin = async () => {
     if (preview) { setPhase("writing"); return; } // V371: no camera, no fullscreen, nothing reported
@@ -591,7 +613,9 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
         ) : null}
         <p>{room.attempt.questions} questions · {room.attempt.max_marks} marks · {preview ? <>{exam.duration_minutes} minutes for a candidate</> : <>your time ends at <b className="tnum">{new Date(room.attempt.ends_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b> ({clock(left)} left)</>}.</p>
         <ul className="sub2" style={{ margin: 0, paddingLeft: 18 }}>
-          {fullscreenRequired ? <li>The examination opens in fullscreen.</li> : null}
+          {fullscreenUnavailable
+            ? <li>This browser cannot show the examination in fullscreen (most iPhones cannot). That is not held against you: stay on this screen until you submit.</li>
+            : fullscreenRequired ? <li>The examination opens in fullscreen.</li> : null}
           {detectors.size ? <li>Leaving the examination screen is recorded; {exam.violation_limit} recorded violation{exam.violation_limit === 1 ? " is" : "s are"} allowed.</li> : null}
           {!allowBack ? <li>This paper moves forward only: once you move on, an earlier question is not changed.</li> : null}
           {Number(exam.negative_marks ?? 0) > 0 ? <li>A wrong answer costs {exam.negative_marks} mark{Number(exam.negative_marks) === 1 ? "" : "s"}; an unanswered question costs nothing.</li> : null}

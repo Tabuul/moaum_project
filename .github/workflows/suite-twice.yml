@@ -1,0 +1,83 @@
+# ════════════════════════════════════════════════════════════════════════
+#  The integration suite twice on one database, every night.
+#
+#  CI runs the suite once, on a database nobody has used. That hides a test
+#  that leaves something behind — a fee line that reaches every student, a
+#  window left open, a student found again by surname, a project that may
+#  exist once per student and session — until somebody runs the suite
+#  locally against a database it has already used and watches a dozen
+#  unrelated classes go red. Here the SECOND pass is the test: whatever the
+#  first pass left, the second must survive. A red run names the class that
+#  leaked, the morning after it was pushed, not months later.
+# ════════════════════════════════════════════════════════════════════════
+name: Suite twice
+
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 02:30 UTC — 03:30 in Makurdi, after the day's pushes and before the day's work
+  workflow_dispatch:
+
+jobs:
+  api-twice:
+    name: "API — the integration suite twice on one database"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:17   # Docker Hub's postgres through Google's mirror: no anonymous pull limit
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: moaumpp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://postgres:ci@localhost:5432/moaumpp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: api/pom.xml
+
+      - name: Install the postgresql client
+        run: |
+          # Drop the runner's Google Chrome apt source: it intermittently
+          # serves a corrupt index (Hash Sum mismatch) that fails apt-get
+          # update. postgresql-client comes from Ubuntu's own repos.
+          sudo rm -f /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      # The API never migrates. The same runner Railway uses does, first — once.
+      - name: Apply the migrations
+        run: bash db/migrate.sh
+
+      - name: First pass, on the fresh database
+        working-directory: api
+        run: chmod +x mvnw && set -o pipefail && ./mvnw -B -ntp verify 2>&1 | tee /tmp/api-pass-1.log
+
+      # Nothing is reset between the passes: the same database, with everything the first pass left in it.
+      - name: Second pass, on the same database
+        working-directory: api
+        run: set -o pipefail && ./mvnw -B -ntp verify 2>&1 | tee /tmp/api-pass-2.log
+
+      # A red run names the class and the assertion, and says which pass it was: a failure only in the second
+      # pass is residue left by the first, which is what this workflow exists to find.
+      - name: Name what failed
+        if: failure()
+        run: |
+          for pass in 1 2; do
+            log=/tmp/api-pass-$pass.log
+            [ -f "$log" ] || continue
+            grep -E '^\[ERROR\] .*(\.java:\[[0-9]+|Tests run:.*Fail|  [A-Za-z]+IT\.|  [A-Za-z]+Test\.|expected|Expect|but was|COMPILATION ERROR)' "$log" \
+              | head -40 | sed 's/^\[ERROR\] *//' | while IFS= read -r line; do echo "::error title=Suite twice, pass $pass::${line:0:900}"; done || true
+          done

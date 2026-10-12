@@ -133,7 +133,7 @@ export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", room
           <ul>
             <li>Do not leave the examination screen.</li>
             <li>Do not switch browser tabs.</li>
-            {open.fullscreen_required !== false ? <li>Do not exit fullscreen mode.</li> : null}
+            {open.fullscreen_required !== false ? <li>Do not exit fullscreen mode where your browser opens one (a phone that cannot is not held to it).</li> : null}
             <li>Do not attempt to open another window.</li>
             <li>Your activity is monitored.</li>
             <li>Violations are recorded. {open.violation_limit} {open.violation_limit === 1 ? "is" : "are"} allowed; beyond that {open.violation_action === "TERMINATE" ? "your examination is terminated" : open.violation_action === "SUBMIT" ? "your examination is submitted automatically" : "a final warning is issued and the record stands"} according to University policy.</li>
