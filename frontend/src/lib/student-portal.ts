@@ -81,6 +81,8 @@ export interface GstView {
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** V402/V413: the code family the student's cohort registers (BSU or MOAU), null while the rule is unstated */
+  codeFamily?: "BSU" | "MOAU" | null;
   /** V314: the GST fee's word on this student */
   gst?: GstEntitlement;
   /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */

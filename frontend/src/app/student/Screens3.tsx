@@ -263,6 +263,9 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
           <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
       ) : null}
+      {v.codeFamily ? (
+        <div className="sub2 mb-2">Your cohort registers <b>{v.codeFamily}-</b> course codes{v.codeFamily === "BSU" ? " until you graduate; a carry-over keeps the code it was failed under" : ""}. Where a course is listed under one code only, that is the one to take.</div>
+      ) : null}
       {v.gst && !locked && v.gst.stated && !v.gst.entitled && Number(v.gst.fee) > 0 && v.menu.some((m) => m.gstLocked) ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
           Pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} to register GST/EPS courses. One payment covers GST and EPS.

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 250
+\set EXPECTED 251
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10210,6 +10210,59 @@ BEGIN
                  AND receipt = 1 AND ict_rows = 0 AND cce_rows = 4, false),
         format('before %s | after %s | missing %s / %s / %s | office %s bulk-office %s | note %s state %s none %s | bulk %s three %s four %s | receipt %s ict %s cce %s',
                r0, r1, miss1, miss2, miss4, r_office, r_bulk_office, note1, st1, r_none, bulk, st3, st4, receipt, ict_rows, cce_rows));
+END $$;
+
+-- ── V413. A registration holding the other code family's code is listed for the session and moved to the cohort's class (opened if
+--          owed); a line with a score on it is not moved; the sweep's repeated answer for a reference is counted on its open row ──
+DO $$
+DECLARE S text := '9946/9947'; who uuid := gen_random_uuid(); dept text := 'ZZH9'; st uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+        om uuid := gen_random_uuid(); ob uuid; es uuid := gen_random_uuid(); sh uuid := gen_random_uuid();
+        v_saved text; v_listed text; v_moved uuid; v_after text; v_entry text; r_scored text; v_ev uuid; v_first boolean; v_second boolean; v_times int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V413', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V413', 'CHECKV413', 'Office');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9946-10-01', date '9947-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (dept, 'Check V413', (SELECT faculty_code FROM ref.programme WHERE code = 'C00023'));
+        -- the same course under both codes, both in the structure; the MOAU- class open, the BSU- class not yet
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('BSU-ZZH 301', 'Check code family move', 3, 1, 300, dept, 'Core', 'LIVE'), ('MOAU-ZZH 301', 'Check code family move', 3, 1, 300, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('BSU-ZZH 301', 'C00023', 300, 'Core'), ('MOAU-ZZH 301', 'C00023', 300, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (om, 'MOAU-ZZH 301', S, 1);
+        -- a 300-level student of the BSU- cohort, registered on the MOAU- class before V402
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/46/000413', 'MOAUM/CHK/46/413', 'CHECKV413', 'Invented', 'C00023', 'UTME', '9940/9941', 100, 300, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (reg, st, S, 1, 300, 'SUBMITTED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, om, 3, 'REGISTERED');
+        SELECT moau_from_entry_session INTO v_saved FROM catalogue.code_family_setting WHERE id = 1;
+        UPDATE catalogue.code_family_setting SET moau_from_entry_session = S WHERE id = 1;   -- this cohort (9940/9941) registers BSU-
+        SELECT string_agg(x.course_code || '>' || coalesce(x.own_code, '-') || ':' || CASE WHEN x.own_offering_id IS NULL THEN 'no class' ELSE 'class' END || '/' || x.scored, ',')
+          INTO v_listed FROM catalogue.other_family_registrations(S) x WHERE x.student_id = st;
+        -- moved: the BSU- class is opened (the structure offers it, the semester has classes) and the line is on it
+        v_moved := catalogue.move_entry_to_own_code(reg, om, 'registered before the cohort rule');
+        SELECT o.course_code INTO v_entry FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = reg AND e.status = 'REGISTERED';
+        SELECT coalesce(string_agg(x.course_code, ','), '') INTO v_after FROM catalogue.other_family_registrations(S) x WHERE x.student_id = st;
+        -- a line with a score on it is not moved: back on the MOAU- class with a score entered
+        UPDATE registration.entry SET offering_id = om WHERE registration_id = reg AND offering_id = v_moved;
+        INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state) VALUES (es, S, 1, 'MAIN', date '9947-01-10', date '9947-01-20', date '9947-02-10', 'OPEN') ON CONFLICT DO NOTHING;
+        INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage) VALUES (sh, om, (SELECT id FROM assessment.exam_session WHERE session = S AND semester = 1 AND kind = 'MAIN' LIMIT 1), 'ENTRY');
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st, 20, 40);
+        BEGIN PERFORM catalogue.move_entry_to_own_code(reg, om, 'again'); r_scored := 'MOVED';
+        EXCEPTION WHEN check_violation THEN r_scored := split_part(SQLERRM, ':', 1); END;
+        UPDATE catalogue.code_family_setting SET moau_from_entry_session = v_saved WHERE id = 1;
+        -- the sweep's repeats: the first answer is a row, the same answer again is counted on it, a different answer is not
+        v_ev := finance.log_gateway_event('quickteller', 'SWEEP', 'verify', 'ZZH-SWEEP-413', NULL, NULL, 'empty answer', true, 'GATEWAY_ERROR', '{}'::jsonb);
+        v_first := finance.collapse_sweep_repeat('quickteller', 'ZZH-SWEEP-413', 'empty answer', '{"again": true}'::jsonb);
+        v_second := finance.collapse_sweep_repeat('quickteller', 'ZZH-SWEEP-413', 'a different answer', '{}'::jsonb);
+        SELECT times INTO v_times FROM finance.gateway_event WHERE id = v_ev;
+        RAISE EXCEPTION 'the V413 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V413: a registration under the other code family is listed and moved to the cohort''s class, not when scored; sweep repeats are counted on one row',
+        v_listed = 'MOAU-ZZH 301>BSU-ZZH 301:no class/false' AND v_moved IS NOT NULL AND v_entry = 'BSU-ZZH 301' AND v_after = ''
+        AND r_scored = 'CODE_FAMILY_SCORED' AND v_first AND NOT v_second AND v_times = 2,
+        format('listed=%s moved=%s entry=%s after=%s scored=%s first=%s second=%s times=%s', v_listed, v_moved IS NOT NULL, v_entry, v_after, r_scored, v_first, v_second, v_times));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

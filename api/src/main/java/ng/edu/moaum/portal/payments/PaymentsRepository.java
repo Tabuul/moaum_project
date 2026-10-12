@@ -119,6 +119,12 @@ class PaymentsRepository {
                 .query(UUID.class).single();
     }
 
+    /** V413: true when the sweep's answer repeated the open row's for the reference and was counted on it */
+    boolean collapseSweepRepeat(String gateway, String reference, String status, String payloadJson) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.collapse_sweep_repeat(:g, :r, :st, :p::jsonb)")
+                .param("g", gateway).param("r", reference).param("st", status, Types.VARCHAR).param("p", payloadJson, Types.VARCHAR).query(Boolean.class).single());
+    }
+
     void attempt(String reference, String gateway, String kind, UUID account) {
         jdbc.sql("INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id) VALUES (:r, :g, :k, :a)")
                 .param("r", reference).param("g", gateway).param("k", kind).param("a", account).update();
@@ -195,7 +201,7 @@ class PaymentsRepository {
     List<Map<String, Object>> events(int limit) {
         return jdbc.sql("""
                 SELECT e.id, e.gateway, e.source, e.event, e.reference, e.gateway_ref, e.amount, e.status, e.signature_ok, e.outcome, e.received_at,
-                       e.resolved_at, e.resolution, p.surname || ', ' || p.given_names AS resolved_by_name
+                       e.resolved_at, e.resolution, p.surname || ', ' || p.given_names AS resolved_by_name, e.times, e.last_at
                   FROM finance.gateway_event e LEFT JOIN iam.person p ON p.id = e.resolved_by
                  WHERE e.source <> 'VALIDATE'
                  ORDER BY e.received_at DESC LIMIT :n

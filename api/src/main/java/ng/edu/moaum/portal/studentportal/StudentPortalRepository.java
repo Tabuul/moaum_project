@@ -397,6 +397,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM registration.student_menu(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
     }
 
+    /** V402/V413: the code family the student's cohort registers — BSU or MOAU — or null while the rule is unstated */
+    String codeFamily(UUID student) {
+        return jdbc.sql("SELECT catalogue.student_code_family(:s)").param("s", student).query(String.class).optional().orElse(null);
+    }
+
     Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,

@@ -243,7 +243,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
       <Panel title="Webhook and verification log" right="Every event the portal received, signature good or bad">
         {d.events.length ? (
           <DTable cols={["When|mid", "Gateway", "Event", "Reference", "Amount|num", "Signature|mid", "Result|num"]} rows={d.events.map((e) => [
-            <span className="sub2 tnum" key="w">{when(e.received_at)}</span>,
+            <span className="sub2 tnum" key="w">{when(e.received_at)}{Number(e.times ?? 1) > 1 ? <div className="sub2">&times; {e.times} &middot; last {when(e.last_at ?? e.received_at)}</div> : null}</span>,
             <span key="g">{DESK_LABEL[e.gateway] ?? e.gateway}<div className="sub2">{e.source.toLowerCase()}</div></span>,
             <span className="sub2" key="e">{e.event ?? "—"}{e.status ? ` · ${e.status}` : ""}</span>,
             <span className="tnum sub2" key="r">{e.reference ?? "—"}{e.gateway_ref ? <div className="sub2">{e.gateway_ref}</div> : null}</span>,

@@ -763,6 +763,28 @@ class CatalogueController {
         return codeFamilies();
     }
 
+    /** V413: the registration lines of a session holding the other family's code of a course — students registered before V402's rule */
+    @GetMapping("/code-families/mismatches")
+    @PreAuthorize(CENTRAL)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> codeFamilyMismatches(@RequestParam(required = false) String session) {
+        String s = session == null || session.isBlank() ? jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElse(null) : session.trim();
+        return jdbc.sql("SELECT * FROM catalogue.other_family_registrations(:s)").param("s", s, java.sql.Types.VARCHAR).query().listOfRows();
+    }
+
+    public record MoveIn(@NotNull java.util.UUID registrationId, @NotNull java.util.UUID offeringId, @NotBlank @Size(max = 300) String reason) {
+    }
+
+    /** one line moved to the cohort's class of the same session, semester and stream (opened if owed); refused where a score is on it */
+    @PostMapping("/code-families/mismatches/move")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> moveToOwnCode(@Valid @RequestBody MoveIn body) {
+        java.util.UUID to = jdbc.sql("SELECT catalogue.move_entry_to_own_code(:r, :o, :why)")
+                .param("r", body.registrationId()).param("o", body.offeringId()).param("why", body.reason()).query(java.util.UUID.class).single();
+        return Map.of("registrationId", body.registrationId(), "movedTo", to);
+    }
+
     /** every course offered to a programme, level by level — the view for the course-upload desk */
     @GetMapping("/offered")
     @PreAuthorize(READERS)

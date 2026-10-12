@@ -387,6 +387,7 @@ public class StudentPortalService {
             }
         }
         out.put("menu", menu);
+        out.put("codeFamily", repo.codeFamily(id));   // V402/V413: the cohort's code family, named on the screen
         out.put("gst", repo.gstEntitlement(id, session));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));

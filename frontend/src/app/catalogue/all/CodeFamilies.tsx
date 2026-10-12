@@ -14,12 +14,35 @@ export interface CodeFamilies {
   pairs: number; linked_pairs: number; current_session: string | null;
 }
 
-export function CodeFamiliesPanel({ data, sessions, maySet }: { data: CodeFamilies; sessions: string[]; maySet: boolean }) {
+/** V413: a registration line holding the other family's code of a course the student's cohort registers under its own */
+export interface CodeFamilyMismatch {
+  registration_id: string; student_id: string; matric_no: string | null; surname: string; other_names: string | null; level: number; registration_status: string;
+  semester: number; course_code: string; offering_id: string; own_code: string | null; own_offering_id: string | null; scored: boolean;
+}
+
+export function CodeFamiliesPanel({ data, sessions, maySet, mismatches = [] }: { data: CodeFamilies; sessions: string[]; maySet: boolean; mismatches?: CodeFamilyMismatch[] }) {
   const router = useRouter();
   const current = data.moau_from_entry_session ?? "";
   const [value, setValue] = useState(current);
   const [busy, setBusy] = useState(false);
   const options = [...new Set([...(current ? [current] : []), ...sessions])].sort();
+
+  async function move(m: CodeFamilyMismatch) {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/catalogue/code-families/mismatches/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${m.matric_no ?? m.surname}: ${m.course_code} moved to ${m.own_code}`) },
+        body: JSON.stringify({ registrationId: m.registration_id, offeringId: m.offering_id, reason: "Registered before the cohort rule; moved to the cohort's code" }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      notify(`${m.matric_no ?? m.surname}: ${m.course_code} moved to ${m.own_code}`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -61,6 +84,18 @@ export function CodeFamiliesPanel({ data, sessions, maySet }: { data: CodeFamili
             : current ? "Set up as the cohort now in 200 level; the Academic Office confirms or changes it here." : "Not yet stated."}
           {data.linked_pairs ? ` ${data.linked_pairs} pair${data.linked_pairs === 1 ? " is" : "s are"} still linked from before; a department unlinks its own on Department courses.` : ""}
         </div>
+        {mismatches.length ? (
+          <div className="mt-2">
+            <div className="b600">{mismatches.length} registration line{mismatches.length === 1 ? "" : "s"} in {data.current_session ?? "this session"} under the other family&rsquo;s code</div>
+            <div className="sub2 mb-1">Students registered before the rule. Each line is moved to the cohort&rsquo;s class of the same semester, opened if it is not yet; a line with a score already on it is left for the Examinations Office.</div>
+            {mismatches.map((m) => (
+              <div key={`${m.registration_id}|${m.offering_id}`} className="row row--between" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                <div className="grow"><b className="tnum">{m.matric_no ?? "\u2014"}</b> &middot; {m.surname}{m.other_names ? `, ${m.other_names}` : ""} &middot; {m.level} level &middot; <span className="tnum">{m.course_code}</span> &rarr; <span className="tnum">{m.own_code ?? "\u2014"}</span>{m.own_offering_id ? "" : " (class not yet open)"}</div>
+                {m.scored ? <span className="sub2">score entered &mdash; Examinations Office</span> : maySet ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void move(m)}>Move to {m.own_code}</Btn> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </PBody>
     </Panel>
   );

@@ -216,6 +216,21 @@ class CourseTwinsIT {
             UUID older = cohortStudent("ZZCOHORTB", "2000/2001");
             assertThat(menu(newer)).contains(moau).doesNotContain(bsu);
             assertThat(menu(older)).contains(bsu).doesNotContain(moau);
+            // V413: the older student registered on the MOAU- class before the rule: listed for the session, moved to the BSU- class
+            UUID regId = UUID.randomUUID();
+            it.db(() -> {
+                jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (:r, :s, :ses, 1, 100, 'SUBMITTED', now())")
+                        .param("r", regId).param("s", older).param("ses", SESSION).update();
+                return jdbc.sql("INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (:r, :o, 3, 'REGISTERED')").param("r", regId).param("o", om).update();
+            });
+            List<Map<String, Object>> mismatched = it.getList(academic, "/api/v1/catalogue/code-families/mismatches?session=" + SESSION).getBody();
+            assertThat(mismatched).anySatisfy(x -> { assertThat(x.get("registration_id")).isEqualTo(regId.toString()); assertThat(x.get("course_code")).isEqualTo(moau); assertThat(x.get("own_code")).isEqualTo(bsu); assertThat(x.get("scored")).isEqualTo(false); });
+            ResponseEntity<Map> moved = it.call(academic, HttpMethod.POST, "/api/v1/catalogue/code-families/mismatches/move", Map.of("registrationId", regId.toString(), "offeringId", om.toString(), "reason", "IT: registered before the rule"));
+            assertThat(moved.getStatusCode().value()).as(String.valueOf(moved.getBody())).isEqualTo(200);
+            assertThat(moved.getBody().get("movedTo")).isEqualTo(ob.toString());
+            assertThat(jdbc.sql("SELECT offering_id FROM registration.entry WHERE registration_id = :r AND status = 'REGISTERED'").param("r", regId).query(UUID.class).single()).isEqualTo(ob);
+            List<Map<String, Object>> left = it.getList(academic, "/api/v1/catalogue/code-families/mismatches?session=" + SESSION).getBody();
+            assertThat(left).noneSatisfy(x -> assertThat(x.get("registration_id")).isEqualTo(regId.toString()));
             // unstated, both codes reach both
             ResponseEntity<Map> cleared = it.call(academic, HttpMethod.PUT, "/api/v1/catalogue/code-families", java.util.Collections.singletonMap("moauFromEntrySession", null));
             assertThat(cleared.getStatusCode().value()).as(String.valueOf(cleared.getBody())).isEqualTo(200);

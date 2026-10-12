@@ -1054,7 +1054,14 @@ public class PaymentsService {
              String outcome, String payload) {
         try {
             AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " event", null, null),
-                    () -> tx.execute(st -> repo.logEvent(gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload)));
+                    () -> tx.execute(st -> {
+                        // V413: the sweep's same answer for the same reference is counted on its open row, not written again
+                        if ("SWEEP".equalsIgnoreCase(source) && "GATEWAY_ERROR".equals(outcome) && reference != null
+                                && repo.collapseSweepRepeat(gateway, reference, status, payload)) {
+                            return null;
+                        }
+                        return repo.logEvent(gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload);
+                    }));
         } catch (RuntimeException notLogged) {
             LOG.warn("payments: the {} event was not written to the log: {}", gateway, notLogged.getMessage());
         }
@@ -1227,6 +1234,16 @@ public class PaymentsService {
             // Pay on Quickteller has nothing to ask: its payments come back by Interswitch's notification or the collections report
             if (minutes.intValue() < 5 || checks.intValue() >= 12 || "paydirect".equals(h.get("gateway"))) {
                 continue;
+            }
+            // V413: the checks space out — 10 and 30 minutes after the first two, then an hour — so one reference is not asked every ten
+            // minutes for two hours; a dropped callback for a paid reference still resolves within the first half hour
+            Object checkedAt = h.get("checked_at");
+            if (checkedAt instanceof java.util.Date last) {
+                long sinceLast = java.time.Duration.between(last.toInstant(), java.time.Instant.now()).toMinutes();
+                int wait = switch (Math.min(checks.intValue(), 3)) { case 0 -> 0; case 1 -> 10; case 2 -> 30; default -> 60; };
+                if (sinceLast < wait) {
+                    continue;
+                }
             }
             try {
                 verify(String.valueOf(h.get("reference")), "SWEEP");
