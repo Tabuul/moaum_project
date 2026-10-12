@@ -141,6 +141,10 @@ class IntakeJourneyIT {
         // the intake session's fees, stated; the readiness reads them at once
         ok(it.call(academic, HttpMethod.PUT, PATH + "/applicant-fees", Map.of("applicationFee", 2500, "portalCharge", 0, "acceptanceFee", 30000, "checkingFee", 3500)));
         assertThat(check(ok(it.get(ict, "/api/v1/platform/readiness")).getBody(), "applicant_fee").get("status")).isEqualTo("ok");
+        // V402/V405/V413 on the readiness page: the code families, the lines under the other family's code, the classes of the running session
+        for (String key : List.of("code_families", "code_family_mismatches", "classes_opened")) {
+            assertThat(String.valueOf(check(ok(it.get(ict, "/api/v1/platform/readiness")).getBody(), key).get("status"))).as(key).isIn("ok", "warn");
+        }
 
         // 3 · JAMB's Direct Entry list for the session the public page names; the readiness counts it
         ResponseEntity<Map> loaded = it.call(academic, HttpMethod.POST, "/api/v1/admissions/caps-batches", Map.of(
@@ -189,7 +193,7 @@ class IntakeJourneyIT {
         assertThat(ok(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/submit", Map.of("declaration", true))).getBody().get("stage")).isEqualTo(2);
 
         // 6 · seated for the Post-UTME screening; the score, the Board's offer, both released
-        String label = "J" + (n % 100);
+        String label = "J" + (n % 100_000);   // a label of this run's own: a hundred labels collided on a reused database
         ResponseEntity<List> batches = it.callList(academic, HttpMethod.POST, PATH + "/screening-batches",
                 Map.of("label", label, "heldOn", "2196-09-22", "startsAt", "11:00", "endsAt", "12:00", "venue", "CBT Hall B, ICT Directorate", "capacity", 500));
         assertThat(batches.getStatusCode().value()).as(String.valueOf(batches.getBody())).isEqualTo(200);

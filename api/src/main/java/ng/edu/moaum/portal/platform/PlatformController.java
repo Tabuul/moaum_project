@@ -193,6 +193,35 @@ class PlatformController {
         long demoStudents = jdbc.sql("SELECT count(*) FROM people.student WHERE surname='DEMO' AND matric_no ~ '^MOAUM/[A-Z]{2,6}/[0-9]{2}/990[1-6]$'").query(Long.class).single();
         long demoCourses = jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code LIKE 'DMO %' OR code LIKE 'DMC %' OR title ILIKE 'Demo %'").query(Long.class).single();
         long demo = demoStudents + demoCourses;
+        // ── V402/V405/V413: the code families and the classes of the running session — what an office must act on before it ──
+        Map<String, Object> cf = jdbc.sql("SELECT moau_from_entry_session, stated_at FROM catalogue.code_family_setting WHERE id = 1")
+                .query().listOfRows().stream().findFirst().orElse(Map.of());
+        String cfFrom = cf.get("moau_from_entry_session") == null ? null : String.valueOf(cf.get("moau_from_entry_session"));
+        boolean cfConfirmed = cf.get("stated_at") != null;
+        checks.add(chk(RUNNING, "code_families", "BSU-/MOAU- code families stated",
+                cfFrom == null ? "warn" : cfConfirmed ? "ok" : "warn",
+                cfFrom == null ? "Not stated: both codes reach every student until it is."
+                        : (cfConfirmed ? "" : "Seeded, not yet confirmed by an office: ") + "cohorts admitted from " + cfFrom + " register MOAU- codes; earlier cohorts BSU- until they graduate.",
+                cfFrom == null || !cfConfirmed ? "Confirm or change it on All courses (BSU- and MOAU- codes)." : null));
+        long mismatched = jdbc.sql("SELECT count(*) FROM catalogue.other_family_registrations(:s)").param("s", s).query(Long.class).single();
+        checks.add(chk(RUNNING, "code_family_mismatches", "Registrations under the cohort's own code", mismatched == 0 ? "ok" : "warn",
+                mismatched == 0 ? "No registration line of " + s + " holds the other family's code."
+                        : mismatched + " registration line" + (mismatched == 1 ? "" : "s") + " of " + s + " hold" + (mismatched == 1 ? "s" : "") + " the other family's code.",
+                mismatched == 0 ? null : "Move them on All courses (BSU- and MOAU- codes); a line with a score on it goes to the Examinations Office."));
+        Map<String, Object> wc = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE w.reason = 'NO_CLASS') AS no_class, count(*) FILTER (WHERE w.reason = 'NOT_IN_STRUCTURE') AS no_structure
+                  FROM ref.department d CROSS JOIN LATERAL catalogue.courses_without_class(d.code, :s) w
+                 WHERE d.ended_on IS NULL
+                """).param("s", s).query().singleRow();
+        long noClass = ((Number) wc.get("no_class")).longValue();
+        long noStructure = ((Number) wc.get("no_structure")).longValue();
+        checks.add(chk(RUNNING, "classes_opened", "Every structure course has its class", noClass == 0 ? "ok" : "warn",
+                (noClass == 0 ? "Every course in a programme's structure has its class in " + s + "'s opened semesters."
+                        : noClass + " course" + (noClass == 1 ? " has" : "s have") + " no class in " + s + "'s opened semesters.")
+                        + (noStructure > 0 ? " " + noStructure + " live course" + (noStructure == 1 ? " is" : "s are") + " in no programme's structure." : ""),
+                noClass == 0 && noStructure == 0 ? null
+                        : "Open the classes on the allocation desk (each department sees its own); a course in no structure is added on Department courses or in the structure upload."));
+
         checks.add(chk(INSTITUTION, "demo", "Demo data removed", demo == 0 ? "ok" : "warn",
                 demo == 0 ? "No demo students or courses remain" : demoStudents + " demo student(s) and " + demoCourses + " demo course(s) still on the system", null));
 

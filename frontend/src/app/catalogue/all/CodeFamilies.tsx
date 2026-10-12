@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Btn, Panel, PBody } from "@/components/proto/ui";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { reasonHeader } from "@/lib/reason";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 
 export interface CodeFamilies {
   moau_from_entry_session: string | null; stated_at: string | null; stated_by: string | null;
@@ -43,6 +44,11 @@ export function CodeFamiliesPanel({ data, sessions, maySet, mismatches = [] }: {
       setBusy(false);
     }
   }
+
+  const MM_COLS = ["Matric no.", "Name", "Level", "Semester", "Registered code", "Cohort's code", "Class", "Score"];
+  const mmRows = () => mismatches.map((m) => [m.matric_no ?? "", `${m.surname}${m.other_names ? ", " + m.other_names : ""}`, m.level, m.semester, m.course_code, m.own_code ?? "",
+    m.own_offering_id ? "open" : "not yet open", m.scored ? "score entered" : ""]);
+  const mmTitle = `Registrations under the other code family — ${data.current_session ?? "the running session"}`;
 
   async function save() {
     setBusy(true);
@@ -86,7 +92,13 @@ export function CodeFamiliesPanel({ data, sessions, maySet, mismatches = [] }: {
         </div>
         {mismatches.length ? (
           <div className="mt-2">
-            <div className="b600">{mismatches.length} registration line{mismatches.length === 1 ? "" : "s"} in {data.current_session ?? "this session"} under the other family&rsquo;s code</div>
+            <div className="row row--between">
+              <div className="b600">{mismatches.length} registration line{mismatches.length === 1 ? "" : "s"} in {data.current_session ?? "this session"} under the other family&rsquo;s code</div>
+              <span className="row row--inline row--tight">
+                <Btn kind="ghost" size="sm" onClick={() => brandedPrint(mmTitle, `${mismatches.length} registration lines`, MM_COLS, mmRows(), docSerial("CFM"))}>Print</Btn>
+                <Btn kind="ghost" size="sm" onClick={async () => downloadBlob(await brandedXlsx(mmTitle, MM_COLS, mmRows(), { serial: docSerial("CFM") }), "Registrations under the other code family.xlsx")}>Excel</Btn>
+              </span>
+            </div>
             <div className="sub2 mb-1">Students registered before the rule. Each line is moved to the cohort&rsquo;s class of the same semester, opened if it is not yet; a line with a score already on it is left for the Examinations Office.</div>
             {mismatches.map((m) => (
               <div key={`${m.registration_id}|${m.offering_id}`} className="row row--between" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>

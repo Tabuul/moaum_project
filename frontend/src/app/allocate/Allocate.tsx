@@ -15,7 +15,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "./BulkUpload";
 import { CheckList, HistoryTable, firmError, ACTION_WORD, ROLE_WORD, byText, whenText, type AllocationChecks, type AllocationEvent } from "@/components/allocation/AllocationParts";
 
@@ -284,9 +284,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                   {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, then open the classes here" : "in the structure, no class yet"}</li>
               ))}
             </ul>
-            {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
-              <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
-            ) : null}
+            <span className="row row--inline row--tight">
+              {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
+                <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
+              ) : null}
+              <Btn kind="ghost" size="sm" onClick={() => brandedPrint(`Courses without a class — ${deptName} · ${session}`, `${withoutClass.length} courses`, ["Code", "Title", "Level", "Semester", "Why"],
+                withoutClass.map((w) => [w.code, w.title, w.level, semName(w.semester), w.reason === "NOT_IN_STRUCTURE" ? "in no programme's structure" : "in the structure, no class yet"]), docSerial("NCL"))}>Print</Btn>
+            </span>
           </>}>
           A course gets its class when the semester opens; one added to a programme&rsquo;s structure after that has none until it is opened here. A course
           with no class cannot be allocated, timetabled or registered.
