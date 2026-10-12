@@ -134,17 +134,33 @@ class DeskController {
     @Transactional(readOnly = true)
     Map<String, Object> attendanceOf(@PathVariable UUID offeringId) {
         reach(offeringId);
+        // V396: a linked BSU-/MOAU- pair keeps one register: the days and the students of both classes, each with their own code
         List<Map<String, Object>> days = jdbc.sql("""
                 SELECT held_on, count(*) AS on_roll, count(*) FILTER (WHERE present) AS present FROM registration.attendance
-                 WHERE offering_id = :o GROUP BY held_on ORDER BY held_on DESC
+                 WHERE offering_id IN (SELECT catalogue.offering_family(:o)) GROUP BY held_on ORDER BY held_on DESC
                 """).param("o", offeringId).query().listOfRows();
         List<Map<String, Object>> students = jdbc.sql("""
-                SELECT a.student_id, s.matric_no, s.surname, s.other_names, count(*) AS held, count(*) FILTER (WHERE a.present) AS attended,
+                SELECT a.student_id, s.matric_no, s.surname, s.other_names, o.course_code, count(*) AS held, count(*) FILTER (WHERE a.present) AS attended,
                        round(100.0 * count(*) FILTER (WHERE a.present) / count(*))::int AS rate
-                  FROM registration.attendance a JOIN people.student s ON s.id = a.student_id
-                 WHERE a.offering_id = :o GROUP BY a.student_id, s.matric_no, s.surname, s.other_names ORDER BY s.surname
+                  FROM registration.attendance a JOIN people.student s ON s.id = a.student_id JOIN catalogue.offering o ON o.id = a.offering_id
+                 WHERE a.offering_id IN (SELECT catalogue.offering_family(:o))
+                 GROUP BY a.student_id, s.matric_no, s.surname, s.other_names, o.course_code ORDER BY s.surname
                 """).param("o", offeringId).query().listOfRows();
         return Map.of("offeringId", offeringId, "days", days, "students", students);
+    }
+
+    /** V396: the class taught with this one (a linked BSU-/MOAU- pair) in the same session, semester and stream; none when there is none */
+    @GetMapping("/offerings/{offeringId}/twin")
+    @PreAuthorize(DEPARTMENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> twin(@PathVariable UUID offeringId) {
+        reach(offeringId);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        jdbc.sql("""
+                SELECT o.id AS offering_id, o.course_code FROM catalogue.offering_family(:o) f JOIN catalogue.offering o ON o.id = f
+                 WHERE f <> :o
+                """).param("o", offeringId).query().listOfRows().stream().findFirst().ifPresent(out::putAll);
+        return out;
     }
 
     /* ── the timetable slots ── */
@@ -153,8 +169,12 @@ class DeskController {
     @PreAuthorize(DEPARTMENT)
     List<Map<String, Object>> slots(@PathVariable UUID offeringId) {
         reach(offeringId);
-        return jdbc.sql("SELECT id, weekday, starts_at, ends_at, venue, kind FROM catalogue.class_slot WHERE offering_id = :o AND ended_at IS NULL ORDER BY weekday, starts_at")
-                .param("o", offeringId).query().listOfRows();
+        // V396: a slot entered on either class of a linked BSU-/MOAU- pair is the slot of both
+        return jdbc.sql("""
+                SELECT s.id, s.weekday, s.starts_at, s.ends_at, s.venue, s.kind, o.course_code
+                  FROM catalogue.class_slot s JOIN catalogue.offering o ON o.id = s.offering_id
+                 WHERE s.offering_id IN (SELECT catalogue.offering_family(:o)) AND s.ended_at IS NULL ORDER BY s.weekday, s.starts_at
+                """).param("o", offeringId).query().listOfRows();
     }
 
     @PostMapping("/offerings/{offeringId}/slots")
@@ -173,7 +193,8 @@ class DeskController {
     @Transactional
     List<Map<String, Object>> endSlot(@PathVariable UUID offeringId, @PathVariable UUID slotId) {
         reach(offeringId);
-        jdbc.sql("UPDATE catalogue.class_slot SET ended_at = now() WHERE id = :id AND offering_id = :o AND ended_at IS NULL").param("id", slotId).param("o", offeringId).update();
+        jdbc.sql("UPDATE catalogue.class_slot SET ended_at = now() WHERE id = :id AND offering_id IN (SELECT catalogue.offering_family(:o)) AND ended_at IS NULL")
+                .param("id", slotId).param("o", offeringId).update();
         return slots(offeringId);
     }
 

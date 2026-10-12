@@ -21,12 +21,19 @@ export default async function ClassListPage({ searchParams }: { searchParams: Pr
   let desk: DeskData | null = null;
   if (roll && roll.ok) {
     const o = roll.data.offeringId;
-    const [slots, attendance, examSlot] = await Promise.all([
+    const [slots, attendance, examSlot, twin] = await Promise.all([
       api<DeskData["slots"]>(`/api/v1/registration/offerings/${o}/slots`),
       api<DeskData["attendance"]>(`/api/v1/registration/offerings/${o}/attendance`),
       api<DeskData["examSlot"]>(`/api/v1/registration/offerings/${o}/exam-slot`),
+      api<{ offering_id?: string; course_code?: string }>(`/api/v1/registration/offerings/${o}/twin`),
     ]);
-    desk = { slots: slots.ok ? slots.data : [], attendance: attendance.ok ? attendance.data : { days: [], students: [] }, examSlot: examSlot.ok ? examSlot.data : {} };
+    /* V396: a linked BSU-/MOAU- pair keeps one register — the twin class's students join this one, each marked on their own code */
+    const twinCode = twin.ok ? twin.data.course_code : undefined;
+    const twinRoll = twinCode
+      ? await api<ClassList>(`/api/v1/registration/class-list?course=${encodeURIComponent(twinCode)}&session=${encodeURIComponent(scope.session)}&sem=${scope.sem || "1"}`)
+      : null;
+    desk = { slots: slots.ok ? slots.data : [], attendance: attendance.ok ? attendance.data : { days: [], students: [] }, examSlot: examSlot.ok ? examSlot.data : {},
+      twin: twinCode ? { code: twinCode, rows: twinRoll && twinRoll.ok ? twinRoll.data.rows : [] } : null };
   }
   return (
     <Shell route="r/classlist" me={me.ok ? me.data : null}>

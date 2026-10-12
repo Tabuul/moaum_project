@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { DeptCourses, type CodeFix, type Course, type Dept, type Duplicate, type Programme } from "./DeptCourses";
 import type { Directory, Proposal } from "@/lib/catalogue";
+import type { Twins } from "./TwinCourses";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
   ]);
   const deptList = depts.ok ? depts.data : [];
   const dept = typeof p.dept === "string" ? p.dept : deptList[0]?.code ?? "";
-  const [courses, duplicates, programmes, directory, proposals, codeFixes] = dept
+  const [courses, duplicates, programmes, directory, proposals, codeFixes, twins] = dept
     ? await Promise.all([
         api<Course[]>(`/api/v1/catalogue/courses?dept=${encodeURIComponent(dept)}`),
         api<Duplicate[]>(`/api/v1/catalogue/duplicates?dept=${encodeURIComponent(dept)}`),
@@ -23,8 +24,9 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
         api<Directory>("/api/v1/catalogue/directory"),
         api<{ toDecide: Proposal[]; mine: Proposal[] }>(`/api/v1/catalogue/offer-proposals?dept=${encodeURIComponent(dept)}&state=ALL`),
         api<CodeFix[]>(`/api/v1/catalogue/code-fixes?dept=${encodeURIComponent(dept)}`),
+        api<Twins>(`/api/v1/catalogue/twins?dept=${encodeURIComponent(dept)}`),
       ])
-    : [null, null, null, null, null, null];
+    : [null, null, null, null, null, null, null];
   return (
     <Shell route="t/deptcourses" me={me.ok ? me.data : null}>
       {!depts.ok ? (
@@ -33,6 +35,8 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
         <DeptCourses depts={deptList} dept={dept} courses={courses && courses.ok ? courses.data : []} duplicates={duplicates && duplicates.ok ? duplicates.data : []} programmes={programmes && programmes.ok ? programmes.data : []} problem={courses && !courses.ok ? courses.problem : null}
           directory={directory && directory.ok ? directory.data : null} proposals={proposals && proposals.ok ? { toDecide: proposals.data.toDecide.filter((p) => p.state === "PENDING"), mine: proposals.data.mine } : null}
           codeFixes={codeFixes && codeFixes.ok ? codeFixes.data : []}
+          twins={twins && twins.ok ? twins.data : null}
+          mayLink={["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super"].includes(me.ok ? me.data.activeOffice ?? "" : "")}
           mayMerge={["academic", "registrar", "dregistrar", "super"].includes(me.ok ? me.data.activeOffice ?? "" : "")} />
       )}
     </Shell>

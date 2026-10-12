@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 235
+\set EXPECTED 236
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9313,6 +9313,86 @@ BEGIN
         coalesce(v_school ~ '^MOAUM-FEE-959395-[0-9]{4}$' AND v_purpose ~ '^MOAUM-FEE-959395-[0-9]{4}$'
                  AND v_school <> v_taken AND v_purpose <> v_taken AND v_purpose <> v_school AND n_refs = 2 AND v_sessions = S, false),
         format('taken=%s school=%s purpose=%s refs=%s sessions=%s', v_taken, v_school, v_purpose, n_refs, v_sessions));
+END $$;
+
+-- ── V396. A BSU- course and its MOAU- twin are taught once: the pair is suggested by the duplicates rule and linked by a person
+--          (one course: same department, level and semester); allocating either class allocates both and the load counts the
+--          pair once; a co-lecturer follows; a class opened later takes the allocation; a slot on either class is on both
+--          codes' timetables once; one register marks both codes' students, each on their own class; unlinked with a reason ──
+DO $$
+DECLARE S text := '9954/9955'; S2 text := '9953/9954'; who uuid := gen_random_uuid();
+        lec uuid := gen_random_uuid(); sec uuid := gen_random_uuid(); co uuid := gen_random_uuid();
+        ob uuid := gen_random_uuid(); om uuid := gen_random_uuid(); o9 uuid := gen_random_uuid(); ob2 uuid := gen_random_uuid(); om2 uuid := gen_random_uuid();
+        sb uuid := gen_random_uuid(); sm uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rm uuid := gen_random_uuid();
+        tw uuid; n_sugg int; r_mismatch text; r_taken text; m_lec uuid; m_sec uuid; r_load text; co_on_b boolean; co_gone boolean;
+        later_lec uuid; slots_m int; slots_b int; att text; r_reason text; fam_after int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'hod', true); PERFORM set_config('moaum.reason', 'CHECK V396', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9954-10-01', date '9955-08-31'), (gen_random_uuid(), S2, date '9953-10-01', date '9954-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZTWIN-H', 'TWINHOD', 'Check'), (lec, 'ZZTWIN-L', 'TWINLECTURER', 'Check'),
+          (sec, 'ZZTWIN-S', 'TWINSECOND', 'Check'), (co, 'ZZTWIN-C', 'TWINCO', 'Check');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+          ('BSU-ZZT 113', 'Twin Check Course', 3, 1, 100, 'MTC', 'LIVE'), ('MOAU-ZZT 113', 'Twin  check course', 3, 1, 100, 'MTC', 'LIVE'),
+          ('MOAU-ZZT 213', 'Another Twin Check', 3, 1, 200, 'MTC', 'LIVE'), ('ZZT 999', 'Nine Units Of Check', 9, 1, 100, 'MTC', 'LIVE');
+        -- suggested by the duplicates rule (title compared without case or extra spaces)
+        n_sugg := (SELECT count(*) FROM catalogue.twin_suggestions('MTC') x WHERE x.bsu_code = 'BSU-ZZT 113' AND x.moau_code = 'MOAU-ZZT 113');
+        -- not one course: refused
+        BEGIN PERFORM catalogue.link_twin('BSU-ZZT 113', 'MOAU-ZZT 213');
+        EXCEPTION WHEN check_violation THEN r_mismatch := split_part(SQLERRM, ':', 1); END;
+        tw := catalogue.link_twin('bsu-zzt 113', 'MOAU-ZZT 113');
+        BEGIN PERFORM catalogue.link_twin('BSU-ZZT 113', 'MOAU-ZZT 213');
+        EXCEPTION WHEN check_violation THEN r_taken := split_part(SQLERRM, ':', 1); END;
+        -- the classes of the session; allocating one allocates both
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (ob, 'BSU-ZZT 113', S, 1), (om, 'MOAU-ZZT 113', S, 1), (o9, 'ZZT 999', S, 1);
+        PERFORM catalogue.allocate_offering(ob, lec, sec, false);
+        SELECT lecturer_id, second_examiner_id INTO m_lec, m_sec FROM catalogue.offering WHERE id = om;
+        -- the pair is 3 units, not 6: with the 9-unit class the lecturer is at 12, within the load
+        BEGIN PERFORM catalogue.allocate_offering(o9, lec, NULL, false); r_load := 'ALLOCATED';
+        EXCEPTION WHEN check_violation THEN r_load := SQLERRM; END;
+        -- a co-lecturer added to one class is on both, and removed from both
+        INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by) VALUES (om, co, who);
+        co_on_b := EXISTS (SELECT 1 FROM catalogue.offering_teacher WHERE offering_id = ob AND lecturer_id = co);
+        DELETE FROM catalogue.offering_teacher WHERE offering_id = ob AND lecturer_id = co;
+        co_gone := NOT EXISTS (SELECT 1 FROM catalogue.offering_teacher WHERE lecturer_id = co AND offering_id IN (ob, om));
+        -- a class of the twin opened later takes the allocation already made
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (ob2, 'BSU-ZZT 113', S2, 1);
+        PERFORM catalogue.allocate_offering(ob2, lec, NULL, false);
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (om2, 'MOAU-ZZT 113', S2, 1);
+        later_lec := (SELECT lecturer_id FROM catalogue.offering WHERE id = om2);
+        -- a 300-level student on the BSU- code and a 100-level student on the MOAU- code
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level)
+        VALUES (sb, 'MOAUM/ADM/54/990001', 'CHECKTWIN', 'Bsu Student', 'C00023', 'UTME', S, 300, 300),
+               (sm, 'MOAUM/ADM/54/990002', 'CHECKTWIN', 'Moau Student', 'C00023', 'UTME', S, 100, 100);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
+        VALUES (rb, sb, S, 1, 300, 'APPROVED', now()), (rm, sm, S, 1, 100, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rb, ob, 3, 'APPROVED'), (rm, om, 3, 'APPROVED');
+        -- one slot, entered on the BSU- class: both students see it, once
+        INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue, kind) VALUES (ob, 2, '10:00', '12:00', 'LT 1', 'LECTURE');
+        slots_m := (SELECT count(*) FROM registration.student_timetable(sm, S, 1) x WHERE x.course_code = 'MOAU-ZZT 113');
+        slots_b := (SELECT count(*) FROM registration.student_timetable(sb, S, 1) x WHERE x.course_code = 'BSU-ZZT 113');
+        -- one register, taken on the BSU- class, marks both students, each on their own class
+        PERFORM registration.mark_attendance(ob, date '9954-11-03', ARRAY[sm]);
+        att := (SELECT string_agg(o.course_code || '=' || a.present, ',' ORDER BY o.course_code)
+                  FROM registration.attendance a JOIN catalogue.offering o ON o.id = a.offering_id
+                 WHERE a.held_on = date '9954-11-03' AND a.student_id IN (sb, sm));
+        -- unlinked with a reason; each code is its own class again
+        BEGIN PERFORM catalogue.unlink_twin(tw, ' ');
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        PERFORM catalogue.unlink_twin(tw, 'check: the pair is taught apart from next session');
+        fam_after := (SELECT count(*) FROM catalogue.offering_family(ob));
+        RAISE EXCEPTION 'the V396 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V396: a BSU- course and its MOAU- twin are taught once — linked by a person, allocated together and counted once, one timetable, one register; results per code',
+        coalesce(n_sugg = 1 AND r_mismatch = 'COURSE_TWIN_MISMATCH' AND tw IS NOT NULL AND r_taken = 'COURSE_TWIN_TAKEN'
+                 AND m_lec = lec AND m_sec = sec AND r_load = 'ALLOCATED' AND co_on_b AND co_gone AND later_lec = lec
+                 AND slots_m = 1 AND slots_b = 1 AND att = 'BSU-ZZT 113=false,MOAU-ZZT 113=true'
+                 AND r_reason = 'COURSE_TWIN_REASON' AND fam_after = 1, false),
+        format('sugg=%s mismatch=%s linked=%s taken=%s twin_lec=%s/%s load=%s co=%s/%s later=%s slots=%s/%s att=%s reason=%s family_after=%s',
+               n_sugg, r_mismatch, tw IS NOT NULL, r_taken, m_lec = lec, m_sec = sec, r_load, co_on_b, co_gone, later_lec = lec, slots_m, slots_b, att, r_reason, fam_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

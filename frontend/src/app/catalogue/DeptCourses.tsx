@@ -14,6 +14,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
+import { TwinCourses, type Twins } from "./TwinCourses";
 import { PROPOSAL_STATE, type Directory, type Exists, type Proposal } from "@/lib/catalogue";
 import { MergeCourse } from "@/components/catalogue/MergeCourse";
 
@@ -51,7 +52,7 @@ const LEVELS = [100, 200, 300, 400, 500, 600];
 const SPLITS: [number, string][] = [[40, "CA 40 / Exam 60"], [30, "CA 30 / Exam 70"]];
 const splitLabel = (caMax: number) => `CA ${caMax} / Exam ${100 - caMax}`;
 
-export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null, codeFixes = [], mayMerge = false }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null; codeFixes?: CodeFix[]; mayMerge?: boolean }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem, directory = null, proposals = null, codeFixes = [], mayMerge = false, twins = null, mayLink = false }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null; directory?: Directory | null; proposals?: { toDecide: Proposal[]; mine: Proposal[] } | null; codeFixes?: CodeFix[]; mayMerge?: boolean; twins?: Twins | null; mayLink?: boolean }) {
   // V386: a duplicate merged into the code kept, everything on it moving with it
   const [merging, setMerging] = useState<{ keep: string; merge: string } | null>(null);
   const router = useRouter();
@@ -284,6 +285,8 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           </PBody>
         </Panel>
       ) : null}
+
+      {twins ? <TwinCourses twins={twins} mayLink={mayLink} /> : null}
 
       <Panel title="The department's catalogue" right={filtered ? `${shown.length} of ${courses.length} · filtered` : "Every course this department owns"}>
         <PBody>

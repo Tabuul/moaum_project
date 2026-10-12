@@ -570,6 +570,77 @@ class CatalogueController {
         return Map.of("dept", d, "removed", removed, "ended", ended, "outcomes", outcomes);
     }
 
+    /* ── V396: a BSU- course and its MOAU- twin, taught as one ── */
+
+    public record TwinIn(@NotBlank @Size(max = 20) String bsuCode, @NotBlank @Size(max = 20) String moauCode) {
+    }
+
+    public record UnlinkIn(@NotBlank @Size(max = 300) String reason) {
+    }
+
+    /** the department's linked pairs — with how each pair's classes stand in the University's current session — and the pairs
+     *  the duplicates rule suggests linking */
+    @GetMapping("/twins")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> twins(@RequestParam String dept) {
+        String d = scope.scopedDept(dept);
+        String session = jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElse(null);
+        List<Map<String, Object>> linked = jdbc.sql("""
+                SELECT t.id, t.bsu_code, b.title AS bsu_title, t.moau_code, m.title AS moau_title, b.level, b.semester, t.linked_at,
+                       nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.given_names, '')), ',') AS linked_by,
+                       ob.id AS bsu_offering, om.id AS moau_offering,
+                       CASE WHEN ob.id IS NULL OR om.id IS NULL THEN 'NO_CLASSES'
+                            WHEN ob.lecturer_id IS NULL AND om.lecturer_id IS NULL THEN 'UNALLOCATED'
+                            WHEN ob.lecturer_id IS NOT DISTINCT FROM om.lecturer_id THEN 'TOGETHER'
+                            ELSE 'DIFFERENT' END AS allocation,
+                       nullif(btrim(coalesce(lb.surname, '') || ', ' || coalesce(lb.given_names, '')), ',') AS lecturer
+                  FROM catalogue.course_twin t
+                  JOIN catalogue.course b ON b.code = t.bsu_code
+                  JOIN catalogue.course m ON m.code = t.moau_code
+                  LEFT JOIN iam.person p ON p.id = t.linked_by
+                  LEFT JOIN catalogue.offering ob ON ob.course_code = t.bsu_code AND ob.session = :s AND ob.semester = b.semester AND ob.stream = 'REGULAR'
+                  LEFT JOIN catalogue.offering om ON om.course_code = t.moau_code AND om.session = :s AND om.semester = m.semester AND om.stream = 'REGULAR'
+                  LEFT JOIN iam.person lb ON lb.id = coalesce(ob.lecturer_id, om.lecturer_id)
+                 WHERE t.unlinked_at IS NULL AND b.dept_code = :d
+                 ORDER BY b.level, b.semester, t.bsu_code
+                """).param("s", session, java.sql.Types.VARCHAR).param("d", d).query().listOfRows();
+        List<Map<String, Object>> suggested = jdbc.sql("SELECT * FROM catalogue.twin_suggestions(:d)").param("d", d).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("dept", d);
+        out.put("session", session);
+        out.put("linked", linked);
+        out.put("suggested", suggested);
+        return out;
+    }
+
+    /** a pair linked by the department or a central office: the classes of sessions still running are aligned at once */
+    @PostMapping("/twins")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> linkTwin(@Valid @RequestBody TwinIn body) {
+        scope.assertCourseInScope(body.bsuCode());
+        scope.assertCourseInScope(body.moauCode());
+        java.util.UUID id = jdbc.sql("SELECT catalogue.link_twin(:b, :m)").param("b", body.bsuCode()).param("m", body.moauCode()).query(java.util.UUID.class).single();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = upper(btrim(:b))").param("b", body.bsuCode()).query(String.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(twins(dept));
+        out.put("linkedId", id);
+        return out;
+    }
+
+    /** undone with a reason; each code keeps what it has and is its own class from then */
+    @PostMapping("/twins/{id}/unlink")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> unlinkTwin(@PathVariable java.util.UUID id, @Valid @RequestBody UnlinkIn body) {
+        String bsu = jdbc.sql("SELECT bsu_code FROM catalogue.course_twin WHERE id = :id").param("id", id).query(String.class).optional()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("linked pair", id));
+        scope.assertCourseInScope(bsu);
+        jdbc.sql("SELECT catalogue.unlink_twin(:id, :r)").param("id", id).param("r", body.reason()).query().listOfRows();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :b").param("b", bsu).query(String.class).single();
+        return twins(dept);
+    }
+
     /** every course offered to a programme, level by level — the view for the course-upload desk */
     @GetMapping("/offered")
     @PreAuthorize(READERS)

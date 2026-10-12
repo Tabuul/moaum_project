@@ -61,12 +61,15 @@ class MeTeachingController {
                 """).param("me", me).param("s", s).query().listOfRows();
 
         for (Map<String, Object> o : offerings) {
+            // V396: a linked BSU-/MOAU- pair's slots are entered once, on either class, and are the slots of both
             List<Map<String, Object>> slots = jdbc.sql("""
-                    SELECT weekday, starts_at, ends_at, venue, kind
-                      FROM catalogue.class_slot WHERE offering_id = :o AND ended_at IS NULL
+                    SELECT DISTINCT weekday, starts_at, ends_at, venue, kind
+                      FROM catalogue.class_slot WHERE offering_id IN (SELECT catalogue.offering_family(:o)) AND ended_at IS NULL
                      ORDER BY weekday, starts_at
                     """).param("o", o.get("id")).query().listOfRows();
             o.put("slots", slots);
+            o.put("twin", jdbc.sql("SELECT o2.course_code FROM catalogue.offering_family(:o) f JOIN catalogue.offering o2 ON o2.id = f WHERE f <> :o")
+                    .param("o", o.get("id")).query(String.class).optional().orElse(null));
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

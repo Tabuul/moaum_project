@@ -11,6 +11,8 @@ import { semesterName } from "@/lib/student-portal";
 
 interface Slot { weekday: number; starts_at: string; ends_at: string; venue: string; kind: string }
 export interface Offering { id: string; code: string; title: string; units: number; level: number; semester: number; role: string; dept_name: string; roll: number; slots: Slot[];
+  /** V396: the code taught with this one (a linked BSU-/MOAU- pair): one class, one timetable, one register */
+  twin?: string | null;
   /** V380: a class of the Centre for Continuing Education (stream CCE) studies in the CCE session */
   stream?: string; session?: string }
 export interface Teaching { session: string; offerings: Offering[] }
@@ -49,7 +51,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
               cols={["Course|mid", "Title", "Role|mid", "Level|num", "Semester|mid", "Roll|num", "Timetable"]}
               rows={data.offerings.map((o) => [
                 <Link key="c" href={`/lms/${o.id}`} className="tnum b600">{o.code}</Link>,
-                <span className="sub2" key="t">{o.title}{o.stream === "CCE" ? <> <Pil kind="info">CCE {o.session}</Pil> <Link href="/cce/teaching">Registers</Link></> : null}</span>,
+                <span className="sub2" key="t">{o.title}{o.twin ? <> <Pil kind="info">with {o.twin}</Pil></> : null}{o.stream === "CCE" ? <> <Pil kind="info">CCE {o.session}</Pil> <Link href="/cce/teaching">Registers</Link></> : null}</span>,
                 <Pil kind={ROLE[o.role] ?? "grey"} key="r">{o.role}</Pil>,
                 <span className="tnum" key="l">{o.level}</span>,
                 <span key="s">{semesterName(o.semester)}</span>,

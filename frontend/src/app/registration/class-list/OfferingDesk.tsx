@@ -18,9 +18,11 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface DeskData {
-  slots: { id: string; weekday: number; starts_at: string; ends_at: string; venue: string; kind: string }[];
-  attendance: { days: { held_on: string; on_roll: number; present: number }[]; students: { student_id: string; matric_no: string; surname: string; other_names: string; held: number; attended: number; rate: number }[] };
+  slots: { id: string; weekday: number; starts_at: string; ends_at: string; venue: string; kind: string; course_code?: string }[];
+  attendance: { days: { held_on: string; on_roll: number; present: number }[]; students: { student_id: string; matric_no: string; surname: string; other_names: string; course_code?: string; held: number; attended: number; rate: number }[] };
   examSlot: { held_on?: string; starts_at?: string; ends_at?: string; venue?: string };
+  /** V396: the twin class of a linked BSU-/MOAU- pair, whose students are on this register too */
+  twin?: { code: string; rows: ClassList["rows"] } | null;
 }
 
 const WEEKDAY = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -32,7 +34,9 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [heldOn, setHeldOn] = useState(new Date().toISOString().slice(0, 10));
-  const [present, setPresent] = useState<Set<string>>(new Set(roll.rows.map((r) => r.studentId)));
+  // the register's students: this class's, and the twin class's of a linked BSU-/MOAU- pair (V396), each with their code
+  const register = [...roll.rows.map((r) => ({ ...r, code: roll.courseCode })), ...(desk.twin?.rows ?? []).map((r) => ({ ...r, code: desk.twin!.code }))];
+  const [present, setPresent] = useState<Set<string>>(new Set(register.map((r) => r.studentId)));
   const [slot, setSlot] = useState({ weekday: "1", startsAt: "08:00", endsAt: "10:00", venue: "", kind: "LECTURE" });
   const [exam, setExam] = useState({ heldOn: desk.examSlot.held_on ?? "", startsAt: (desk.examSlot.starts_at ?? "09:00").slice(0, 5), endsAt: (desk.examSlot.ends_at ?? "12:00").slice(0, 5), venue: desk.examSlot.venue ?? "" });
 
@@ -56,25 +60,27 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
       <Panel title={`Attendance · ${roll.courseCode}`} right={desk.attendance.days.length ? `${desk.attendance.days.length} lecture${desk.attendance.days.length === 1 ? "" : "s"} recorded` : "no lecture recorded yet"}>
         <PBody>
           <div className="sub2">Unticked students are recorded absent. Marking the same day again replaces that day&rsquo;s register.</div>
+          {desk.twin ? <div className="sub2"><b>Taught with {desk.twin.code}:</b> its {desk.twin.rows.length} student{desk.twin.rows.length === 1 ? " is" : "s are"} on this register too, each recorded on their own code.</div> : null}
           <div className="row">
             <input className="ctl tnum" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} aria-label="Lecture date" style={{ width: 170 }} disabled={!teaches} />
-            <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set(roll.rows.map((r) => r.studentId)))}>All present</Btn>
+            <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set(register.map((r) => r.studentId)))}>All present</Btn>
             <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set())}>None</Btn>
-            <Btn kind="primary" disabled={!teaches || busy !== null || !heldOn} onClick={() => void send("att", "POST", `/registration/offerings/${roll.offeringId}/attendance`, { heldOn, present: [...present] }, `Attendance of ${roll.courseCode} on ${heldOn}: ${present.size} of ${roll.rows.length} present`)}>{busy === "att" ? "Recording…" : `Record ${present.size} of ${roll.rows.length} present`}</Btn>
+            <Btn kind="primary" disabled={!teaches || busy !== null || !heldOn} onClick={() => void send("att", "POST", `/registration/offerings/${roll.offeringId}/attendance`, { heldOn, present: [...present] }, `Attendance of ${roll.courseCode}${desk.twin ? ` and ${desk.twin.code}` : ""} on ${heldOn}: ${present.size} of ${register.length} present`)}>{busy === "att" ? "Recording…" : `Record ${present.size} of ${register.length} present`}</Btn>
           </div>
         </PBody>
-        <DTable cols={["Present|mid", "Matriculation number", "Name", "Rate so far|num"]} rows={roll.rows.map((r) => {
+        <DTable cols={desk.twin ? ["Present|mid", "Matriculation number", "Name", "Code", "Rate so far|num"] : ["Present|mid", "Matriculation number", "Name", "Rate so far|num"]} rows={register.map((r) => {
           const st = desk.attendance.students.find((s) => s.student_id === r.studentId);
           return [
             <input key="p" type="checkbox" className="chk" checked={present.has(r.studentId)} disabled={!teaches} onChange={(e) => { const n = new Set(present); if (e.target.checked) n.add(r.studentId); else n.delete(r.studentId); setPresent(n); }} aria-label={`Present: ${r.surname}`} />,
             <span className="tnum" key="m">{r.number}</span>,
             <span key="n"><strong>{r.surname}</strong>, {r.otherNames}</span>,
+            ...(desk.twin ? [<span key="c" className="tnum sub2">{r.code}</span>] : []),
             st ? <span key="r" className="row row--inline row--tight"><span className="tnum">{st.attended}/{st.held}</span>{st.rate < 75 ? <Pil kind="bad">{st.rate}%</Pil> : <Pil kind="ok">{st.rate}%</Pil>}</span> : <span className="sub2" key="r">—</span>,
           ];
-        })} texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames}`)} />
+        })} texts={register.map((r) => `${r.number} ${r.surname} ${r.otherNames} ${r.code}`)} />
       </Panel>
       <div className="grid grid--2">
-        <Panel title="Timetable slots" right="The department's, for this course">
+        <Panel title="Timetable slots" right={desk.twin ? `For ${roll.courseCode} and ${desk.twin.code}, entered once` : "The department's, for this course"}>
           <DTable cols={["Day", "Time|mid", "Venue", "Kind|mid", "|num"]} rows={desk.slots.map((s) => [
             WEEKDAY[s.weekday], <span className="tnum" key="t">{String(s.starts_at).slice(0, 5)}–{String(s.ends_at).slice(0, 5)}</span>, s.venue, <span className="sub2" key="k">{s.kind.toLowerCase()}</span>,
             <Btn kind="ghost" key="e" disabled={!teaches || busy !== null} onClick={() => void send(`end-${s.id}`, "POST", `/registration/offerings/${roll.offeringId}/slots/${s.id}/end`, {}, `Slot ended for ${roll.courseCode}`)}>End</Btn>,
