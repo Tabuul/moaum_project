@@ -186,4 +186,45 @@ class CourseTwinsIT {
         // the Head of the department links nothing in bulk
         assertThat(it.call(hod, HttpMethod.POST, "/api/v1/catalogue/twins/link-all", Map.of("pairs", List.of(Map.of("bsuCode", bsu, "moauCode", moau)))).getStatusCode().value()).isEqualTo(403);
     }
+
+    /** V402: both codes are offered and a student is shown their cohort's — MOAU- from the stated entry session, BSU- before it */
+    @Test
+    void aStudentIsOfferedTheirCohortsCode() {
+        it.db(() -> jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:b, 'C00023', 100, 'Core'), (:m, 'C00023', 100, 'Core') ON CONFLICT DO NOTHING")
+                .param("b", bsu).param("m", moau).update());
+        String before = jdbc.sql("SELECT moau_from_entry_session FROM catalogue.code_family_setting WHERE id = 1").query(String.class).optional().orElse(null);
+        try {
+            ResponseEntity<Map> set = it.call(academic, HttpMethod.PUT, "/api/v1/catalogue/code-families", Map.of("moauFromEntrySession", SESSION));
+            assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+            assertThat(set.getBody().get("moau_from_entry_session")).isEqualTo(SESSION);
+            assertThat(((Number) set.getBody().get("pairs")).intValue()).isGreaterThanOrEqualTo(1);
+            UUID newer = cohortStudent("ZZCOHORTM", SESSION);
+            UUID older = cohortStudent("ZZCOHORTB", "2000/2001");
+            assertThat(menu(newer)).contains(moau).doesNotContain(bsu);
+            assertThat(menu(older)).contains(bsu).doesNotContain(moau);
+            // unstated, both codes reach both
+            ResponseEntity<Map> cleared = it.call(academic, HttpMethod.PUT, "/api/v1/catalogue/code-families", java.util.Collections.singletonMap("moauFromEntrySession", null));
+            assertThat(cleared.getStatusCode().value()).as(String.valueOf(cleared.getBody())).isEqualTo(200);
+            assertThat(menu(older)).contains(bsu, moau);
+            // a Head of Department does not state the University's rule
+            assertThat(it.call(it.officer("hod", "department", dept), HttpMethod.PUT, "/api/v1/catalogue/code-families", Map.of("moauFromEntrySession", SESSION)).getStatusCode().value()).isEqualTo(403);
+        } finally {
+            it.call(academic, HttpMethod.PUT, "/api/v1/catalogue/code-families", java.util.Collections.singletonMap("moauFromEntrySession", before));
+        }
+    }
+
+    /** a 100-level student of the programme admitted in the entry session given */
+    private UUID cohortStudent(String surname, String entry) {
+        int n = new Random().nextInt(900_000) + 100_000;
+        UUID s = UUID.randomUUID();
+        it.db(() -> jdbc.sql("""
+                INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+                VALUES (:id, :adm, :mat, :s, 'Invented', 'C00023', 'UTME', :e, 100, 100, 'ACTIVE', now())
+                """).param("id", s).param("adm", "MOAUM/ADM/88/" + n).param("mat", "MOAUM/MTC/88/" + (1000 + n % 9000)).param("s", surname + n).param("e", entry).update());
+        return s;
+    }
+
+    private List<String> menu(UUID student) {
+        return jdbc.sql("SELECT course_code FROM registration.student_menu(:s, :ses, 1)").param("s", student).param("ses", SESSION).query(String.class).list();
+    }
 }

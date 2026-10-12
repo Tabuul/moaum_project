@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 241
+\set EXPECTED 242
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -9636,6 +9636,52 @@ BEGIN
     PERFORM pg_temp.assert('V401: a session whose applicant fees are not stated — carried forward by default, refused under the Bursary''s rule until stated, issued once stated',
         coalesce(v_default = 'CARRY' AND v_policy = 'REFUSE' AND r_refused = 'APPLICANT_FEE_NOT_STATED' AND r_stated = 'MOAUM-APP-' AND r_carry = 'MOAUM-APP-', false),
         format('default=%s policy=%s refused=%s stated=%s carry=%s %s', v_default, v_policy, r_refused, r_stated, r_carry, coalesce(msg, '')));
+END $$;
+
+-- ── V402. BSU- and MOAU- codes are offered by cohort, not linked: where both codes of a course reach a student, the student
+--          sees their cohort's (MOAU- from the stated entry session, BSU- before it); a code whose twin is not on offer, or the
+--          rule unstated, is shown to everyone ──
+DO $$
+DECLARE S text := '9948/9949'; who uuid := gen_random_uuid(); dept text := 'ZZF9'; a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        v_saved text; r_a text; r_b text; r_a_none text; r_b_lone text; r_both text; v_fam_a text; v_fam_b text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V402', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V402', 'CHECKV402', 'Office');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9948-10-01', date '9949-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (dept, 'Check V402', (SELECT faculty_code FROM ref.programme WHERE code = 'C00023'));
+        -- the same course under both codes; one BSU- code with no twin; one MOAU- code whose twin is held but not offered
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('BSU-ZZF 101', 'Check code families', 2, 1, 100, dept, 'Core', 'LIVE'), ('MOAU-ZZF 101', 'Check code families', 2, 1, 100, dept, 'Core', 'LIVE'),
+            ('BSU-ZZF 102', 'Check lone BSU code', 2, 1, 100, dept, 'Core', 'LIVE'),
+            ('BSU-ZZF 103', 'Check twin not offered', 2, 1, 100, dept, 'Core', 'LIVE'), ('MOAU-ZZF 103', 'Check twin not offered', 2, 1, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('BSU-ZZF 101', 'C00023', 100, 'Core'), ('MOAU-ZZF 101', 'C00023', 100, 'Core'), ('BSU-ZZF 102', 'C00023', 100, 'Core'), ('MOAU-ZZF 103', 'C00023', 100, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, S, 1 FROM unnest(ARRAY['BSU-ZZF 101', 'MOAU-ZZF 101', 'BSU-ZZF 102', 'MOAU-ZZF 103']) c;
+        -- two students of the programme at 100 level: one admitted in the stated session, one before it
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/48/000401', 'MOAUM/CHK/48/401', 'CHECKV402A', 'Invented', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/48/000402', 'MOAUM/CHK/48/402', 'CHECKV402B', 'Invented', 'C00023', 'UTME', '9940/9941', 100, 100, 'ACTIVE', now());
+        SELECT moau_from_entry_session INTO v_saved FROM catalogue.code_family_setting WHERE id = 1;
+        UPDATE catalogue.code_family_setting SET moau_from_entry_session = S, stated_by = who, stated_at = now() WHERE id = 1;
+        v_fam_a := catalogue.student_code_family(a); v_fam_b := catalogue.student_code_family(b);
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO r_a FROM registration.student_menu(a, S, 1) m WHERE m.course_code LIKE '%ZZF%';
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO r_b FROM registration.student_menu(b, S, 1) m WHERE m.course_code LIKE '%ZZF%';
+        -- the rule unstated: both codes reach both students
+        UPDATE catalogue.code_family_setting SET moau_from_entry_session = NULL WHERE id = 1;
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO r_both FROM registration.student_menu(b, S, 1) m WHERE m.course_code LIKE '%ZZF%';
+        UPDATE catalogue.code_family_setting SET moau_from_entry_session = v_saved WHERE id = 1;
+        RAISE EXCEPTION 'the V402 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V402: BSU- and MOAU- codes are offered by cohort — where both reach a student the cohort''s is shown; a lone code and a code whose twin is not offered reach everyone; unstated, both do',
+        v_fam_a = 'MOAU' AND v_fam_b = 'BSU'
+        AND r_a = 'BSU-ZZF 102,MOAU-ZZF 101,MOAU-ZZF 103'
+        AND r_b = 'BSU-ZZF 101,BSU-ZZF 102,MOAU-ZZF 103'
+        AND r_both = 'BSU-ZZF 101,BSU-ZZF 102,MOAU-ZZF 101,MOAU-ZZF 103',
+        format('family a=%s b=%s | a sees %s | b sees %s | unstated b sees %s', v_fam_a, v_fam_b, r_a, r_b, r_both));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -41,13 +41,13 @@ export function TwinCourses({ twins, mayLink }: { twins: Twins; mayLink: boolean
     }
   }
 
-  if (!twins.linked.length && !twins.suggested.length) return null;
+  if (!twins.linked.length) return null; // V402: pairs are no longer suggested; only a pair linked earlier is shown, to be unlinked
   return (
-    <Panel title="Courses taught as one" right={`${twins.linked.length} linked${twins.suggested.length ? ` · ${twins.suggested.length} to confirm` : ""}`}>
+    <Panel title="Pairs still linked" right={`${twins.linked.length} linked`}>
       <PBody>
         <div className="sub2 mb-2">
-          A <b>BSU-</b> code and its <b>MOAU-</b> twin are one course: linked, the lecturer is allocated once, a timetable slot is entered once, and one
-          register covers both. Registration, score sheets and results stay per code.
+          A <b>BSU-</b> code and its <b>MOAU-</b> twin are not linked as a rule: both stay offered, and each cohort registers its own code (the rule is
+          stated on All courses). A pair linked earlier is still allocated, timetabled and registered as one until it is unlinked here.
         </div>
         {twins.linked.map((t) => {
           const [word, kind] = STAND[t.allocation];
@@ -67,18 +67,6 @@ export function TwinCourses({ twins, mayLink }: { twins: Twins; mayLink: boolean
             </div>
           );
         })}
-        {twins.suggested.map((s) => (
-          <div key={`${s.bsu_code}|${s.moau_code}`} className="row row--between" style={{ padding: "8px 0", borderBottom: "1px solid var(--line-2)" }}>
-            <div className="grow">
-              <div className="b600 tnum">{s.bsu_code} <span className="sub2">and</span> {s.moau_code}</div>
-              <div className="sub2">{s.bsu_title} · {s.level} Level · {SEM(s.semester)} semester</div>
-            </div>
-            <Pil kind="info">Same course?</Pil>
-            {mayLink ? (
-              <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void send("/twins", { bsuCode: s.bsu_code, moauCode: s.moau_code }, `Linked ${s.bsu_code} and ${s.moau_code} as one course`)}>Link</Btn>
-            ) : null}
-          </div>
-        ))}
       </PBody>
     </Panel>
   );

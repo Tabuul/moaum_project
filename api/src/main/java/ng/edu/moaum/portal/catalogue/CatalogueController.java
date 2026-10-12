@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -713,6 +715,43 @@ class CatalogueController {
         out.put("linkedNow", linked);
         out.put("refused", refused);
         return out;
+    }
+
+    /** V402: a BSU- code and its MOAU- twin are both offered, and a student is shown their cohort's — MOAU- for the cohorts
+     *  admitted from the entry session stated here, BSU- for the cohorts before it (their carry-overs come by code). Unstated,
+     *  both reach everyone. The pairs are not linked: V396's link stays available but is no longer suggested. */
+    @GetMapping("/code-families")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> codeFamilies() {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT f.moau_from_entry_session, f.stated_at,
+                       nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.given_names, '')), ',') AS stated_by
+                  FROM catalogue.code_family_setting f
+                  LEFT JOIN iam.person p ON p.id = f.stated_by
+                 WHERE f.id = 1
+                """).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(rows.isEmpty() ? Map.of() : rows.get(0));
+        out.put("pairs", jdbc.sql("SELECT count(*) FROM catalogue.course b WHERE b.code ~ '^BSU-' AND b.state <> 'ENDED' AND catalogue.twin_by_code(b.code) IS NOT NULL").query(Long.class).single());
+        out.put("linked_pairs", jdbc.sql("SELECT count(*) FROM catalogue.course_twin WHERE unlinked_at IS NULL").query(Long.class).single());
+        out.put("current_session", jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElse(null));
+        return out;
+    }
+
+    public record CodeFamilyIn(@Pattern(regexp = "\\d{4}/\\d{4}") String moauFromEntrySession) {
+    }
+
+    /** the rule stated (or unstated, with null) by a central office; the person is on the audit row and kept here for the page */
+    @PutMapping("/code-families")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> setCodeFamilies(@Valid @RequestBody CodeFamilyIn body) {
+        jdbc.sql("""
+                UPDATE catalogue.code_family_setting
+                   SET moau_from_entry_session = :s, stated_by = nullif(current_setting('moaum.actor_id', true), '')::uuid, stated_at = now()
+                 WHERE id = 1
+                """).param("s", body.moauFromEntrySession(), java.sql.Types.VARCHAR).update();
+        return codeFamilies();
     }
 
     /** every course offered to a programme, level by level — the view for the course-upload desk */
