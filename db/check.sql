@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 255
+\set EXPECTED 256
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10474,6 +10474,88 @@ BEGIN
     PERFORM pg_temp.assert('V419: the Bursary is told once when an application window opens on unstated applicant fees; a stated session opens quietly',
         v_after = v_before + 1 AND v_subject LIKE 'Applicant fees for ' || S || ' are not stated%' AND v_body LIKE '%' || S || '%' AND v_stated_after = v_after,
         format('before=%s after=%s stated_after=%s subject=%s', v_before, v_after, v_stated_after, v_subject));
+END $$;
+
+-- ── V418: CCE applicants reminded of what is outstanding ──
+-- A CCE applicant who has not paid is reminded of the application fee once the rule's days have passed, by email and SMS, with
+-- the link to the step; not again the same day, nor before the rule's interval, nor more than the rule's times; not while the
+-- rule is off or the application window is closed; once paid, the form is what they are reminded of. The rules are the
+-- Centre's (or the Academic Office's); the Centre's "send now" needs the Centre, the Academic Office or super. Time is the
+-- functions' own clock (p_now), so nothing waits. The block undoes its writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); burs uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); S text := '9941/9942'; pa text := 'C00023';
+        b uuid; acct uuid; app uuid; t0 timestamptz; due0 int; due2 text; off_due int; r1 jsonb; mail int; sms int; link int; again_day int; again_soon int;
+        again_later text; capped int; closed int; form_item text; r_office text; r_rule_office text; r_item text; ref text; msg text; i int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V418', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9941-10-01', date '9942-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        b := admissions.cce_preview(S, 'cce-418.xlsx', repeat('8', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99410000018CC', 'surname', 'Zzeighteen', 'first_name', 'Remind', 'date_of_birth', '1990-03-03', 'sex', 'M',
+                               'phone', '08035550718', 'email', 'v418@example.com', 'programme_code', pa)));
+        PERFORM admissions.cce_commit(b);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        acct := admissions.cce_register('99410000018CC', date '1990-03-03', 'zz.v418@example.com', '08035550718', '$2a$12$' || repeat('x', 53));
+        SELECT id, created_at INTO app, t0 FROM admissions.application WHERE account_id = acct;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000);
+
+        -- (1) not yet due on the day; due after the rule's two days; not while the rule is off
+        SELECT count(*) INTO due0 FROM admissions.cce_due_reminders(t0 + interval '1 hour') d WHERE d.application_id = app;
+        SELECT d.item INTO due2 FROM admissions.cce_due_reminders(t0 + interval '2 days 1 hour') d WHERE d.application_id = app;
+        PERFORM set_config('moaum.actor_id', cce1::text, true);
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        PERFORM admissions.cce_set_reminder_rule('APPLICATION_FEE', false, NULL, NULL, NULL, NULL);
+        SELECT count(*) INTO off_due FROM admissions.cce_due_reminders(t0 + interval '2 days 1 hour') d WHERE d.application_id = app;
+        PERFORM admissions.cce_set_reminder_rule('APPLICATION_FEE', true, 2, 3, 2, true);
+
+        -- (2) sent by the schedule: an email and an SMS, each pointing at the application; logged
+        r1 := admissions.cce_send_reminders(t0 + interval '2 days 1 hour', 'https://portal.example', 500, 'SCHEDULE');
+        SELECT count(*) FILTER (WHERE channel = 'EMAIL'), count(*) FILTER (WHERE channel = 'SMS'), count(*) FILTER (WHERE body LIKE '%https://portal.example/applicant/cce%')
+          INTO mail, sms, link FROM platform.notice WHERE about_id = app AND subject = 'Your CCE application: pay the CCE application fee';
+
+        -- (3) not again the same day, nor before three days; again after; never more than the rule's two times
+        SELECT count(*) INTO again_day FROM admissions.cce_due_reminders(t0 + interval '2 days 5 hours') d WHERE d.application_id = app;
+        SELECT count(*) INTO again_soon FROM admissions.cce_due_reminders(t0 + interval '4 days 1 hour') d WHERE d.application_id = app;
+        SELECT d.item INTO again_later FROM admissions.cce_due_reminders(t0 + interval '5 days 2 hours') d WHERE d.application_id = app;
+        PERFORM admissions.cce_send_reminders(t0 + interval '5 days 2 hours', 'https://portal.example', 500, 'OFFICE');
+        SELECT count(*) INTO capped FROM admissions.cce_due_reminders(t0 + interval '30 days') d WHERE d.application_id = app;
+
+        -- (4) the window closed: no application-fee reminder; paid: the form is what is due
+        PERFORM admissions.cce_set_reminder_rule('APPLICATION_FEE', true, 2, 3, 3, true);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'CLOSE', NULL, NULL, NULL, NULL, 'the check', acad, 'ict');
+        SELECT count(*) INTO closed FROM admissions.cce_due_reminders(t0 + interval '30 days') d WHERE d.application_id = app;
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'REOPEN', NULL, NULL, NULL, NULL, 'the check', acad, 'ict');
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        ref := admissions.new_fee_reference(app, 'APPLICATION');
+        PERFORM admissions.confirm_fee(ref, 'BANK', 'check');
+        SELECT d.item INTO form_item FROM admissions.cce_due_reminders(t0 + interval '9 days') d WHERE d.application_id = app;
+
+        -- (5) the offices: the Bursary neither sends now nor sets a rule; no such step
+        BEGIN PERFORM admissions.cce_send_reminders(now(), NULL, 10, 'OFFICE'); r_office := 'SENT';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.cce_set_reminder_rule('FORM', false, NULL, NULL, NULL, NULL); r_rule_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_rule_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'cce', true);
+        BEGIN PERFORM admissions.cce_set_reminder_rule('SCHOOL_FEES', true, NULL, NULL, NULL, NULL); r_item := 'SET';
+        EXCEPTION WHEN check_violation THEN r_item := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V418 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V418 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V418: a CCE applicant is reminded of the earliest outstanding step once the rule''s days pass, by email and SMS with the link to it; not twice a day, not before the interval, not beyond the rule''s times, not while the rule is off or the window closed; once paid, the form; the rules and "send now" are the Centre''s',
+        coalesce(due0 = 0 AND due2 = 'APPLICATION_FEE' AND off_due = 0 AND (r1->>'sent')::int >= 1 AND mail = 1 AND sms = 1 AND link = 2
+                 AND again_day = 0 AND again_soon = 0 AND again_later = 'APPLICATION_FEE' AND capped = 0 AND closed = 0 AND form_item = 'FORM'
+                 AND r_office = 'CCE_OFFICE' AND r_rule_office = 'CCE_OFFICE' AND r_item = 'CCE_REMINDER_ITEM', false),
+        format('day0 %s | due %s | off %s | sent %s mail %s sms %s link %s | same day %s soon %s later %s capped %s | closed %s | paid %s | office %s rule-office %s item %s',
+               due0, due2, off_due, r1, mail, sms, link, again_day, again_soon, again_later, capped, closed, form_item, r_office, r_rule_office, r_item));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

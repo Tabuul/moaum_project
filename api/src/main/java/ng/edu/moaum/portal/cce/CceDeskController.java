@@ -58,11 +58,13 @@ class CceDeskController {
     private final JdbcClient jdbc;
     private final FileObjects files;
     private final tools.jackson.databind.ObjectMapper json;
+    private final CceReminders reminderJob;
 
-    CceDeskController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper json) {
+    CceDeskController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper json, CceReminders reminderJob) {
         this.jdbc = jdbc;
         this.files = files;
         this.json = json;
+        this.reminderJob = reminderJob;
     }
 
     /** the session asked for, else the current CCE session */
@@ -678,6 +680,62 @@ class CceDeskController {
         out.put("sessions", jdbc.sql("SELECT name AS session, state FROM policy.academic_session WHERE state <> 'CANCELLED' ORDER BY name DESC LIMIT 12").query().listOfRows());
         // V414: whether CCE is in use and its fees stated, for the Bursary's dashboard (admissions.cce_readiness, V412)
         out.put("readiness", json.readValue(jdbc.sql("SELECT admissions.cce_readiness(:s)::text").param("s", s).query(String.class).single(), Map.class));
+        return out;
+    }
+
+    /* ── V418: the reminders to CCE applicants — the rules, who is due, what was sent, send now ── */
+
+    @GetMapping("/reminders")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> reminders() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rules", jdbc.sql("""
+                SELECT r.item, r.enabled, r.first_after_days, r.every_days, r.max_count, r.sms, r.updated_at, r.updated_office,
+                       nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.given_names, '')), ',') AS updated_by_name
+                  FROM admissions.cce_reminder_rule r LEFT JOIN iam.person p ON p.id = r.updated_by ORDER BY r.ord
+                """).query().listOfRows());
+        List<Map<String, Object>> due = jdbc.sql("""
+                SELECT application_id, application_no, name, item, label, amount, sent_before, last_sent
+                  FROM admissions.cce_due_reminders(now()) LIMIT 201
+                """).query().listOfRows();
+        out.put("dueTruncated", due.size() > 200);
+        out.put("due", due.size() > 200 ? due.subList(0, 200) : due);
+        out.put("recent", jdbc.sql("""
+                SELECT g.sent_at, g.item, g.by_sms, g.trigger, a.application_no, l.surname || ', ' || l.first_name AS name
+                  FROM admissions.cce_reminder_log g JOIN admissions.application a ON a.id = g.application_id
+                  JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.cce_candidate l ON l.id = c.cce_candidate_id
+                 ORDER BY g.sent_at DESC LIMIT 100
+                """).query().listOfRows());
+        out.put("sentToday", jdbc.sql("""
+                SELECT count(*) FROM admissions.cce_reminder_log
+                 WHERE (sent_at AT TIME ZONE 'Africa/Lagos')::date = (now() AT TIME ZONE 'Africa/Lagos')::date
+                """).query(Long.class).single());
+        return out;
+    }
+
+    public record ReminderRule(Boolean enabled, @Min(0) @Max(60) Integer firstAfterDays, @Min(1) @Max(60) Integer everyDays,
+                               @Min(1) @Max(10) Integer maxCount, Boolean sms) {
+    }
+
+    @PutMapping("/reminders/{item}")
+    @PreAuthorize(DECIDE)
+    @Transactional
+    Map<String, Object> setReminderRule(@PathVariable String item, @Valid @RequestBody ReminderRule body) {
+        jdbc.sql("SELECT item FROM admissions.cce_set_reminder_rule(:i, :e, :f, :v, :m, :s)").param("i", item).param("e", body.enabled(), java.sql.Types.BOOLEAN)
+                .param("f", body.firstAfterDays(), java.sql.Types.INTEGER).param("v", body.everyDays(), java.sql.Types.INTEGER)
+                .param("m", body.maxCount(), java.sql.Types.INTEGER).param("s", body.sms(), java.sql.Types.BOOLEAN).query(String.class).single();
+        return reminders();
+    }
+
+    /** the Centre sends the reminders due now, instead of waiting for the morning */
+    @PostMapping("/reminders/send")
+    @PreAuthorize(DECIDE)
+    @Transactional
+    Map<String, Object> sendReminders() {
+        String sent = jdbc.sql("SELECT admissions.cce_send_reminders(now(), :p, 500, 'OFFICE')::text").param("p", reminderJob.portalUrl()).query(String.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(reminders());
+        out.put("sent", json.readValue(sent, Map.class));
         return out;
     }
 

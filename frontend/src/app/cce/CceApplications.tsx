@@ -85,6 +85,7 @@ export function CceApplications({ session, pick, processing, initialState, power
           </>
         ) : <PBody><div className="sub2">{processing ? "Nothing waits to be acted on." : "No CCE application yet for this session."}</div></PBody>}
       </Panel>
+      {processing ? <CceReminderDesk powers={powers} /> : null}
     </>
   );
 }
@@ -399,6 +400,94 @@ export function CceStudents({ session, pick }: TabProps) {
           </>
         ) : <PBody><div className="sub2">No CCE student on the register{all ? "" : ` for ${session}`} yet.</div></PBody>}
       </Panel>
+    </>
+  );
+}
+
+/* ── V418: the reminders to CCE applicants ─────────────────────────────────────────────────────────────────────────── */
+
+const REMINDER_STEP: Record<string, string> = {
+  APPLICATION_FEE: "The application fee", FORM: "The form", CENTRE_ASKED: "What the Centre asked for",
+  CHECKING_FEE: "The admission checking fee", ACCEPTANCE_FEE: "The acceptance fee",
+};
+interface ReminderRule { item: string; enabled: boolean; first_after_days: number; every_days: number; max_count: number; sms: boolean; updated_at: string; updated_office: string | null; updated_by_name: string | null }
+interface ReminderDesk {
+  rules: ReminderRule[]; due: { application_id: string; application_no: string; name: string; item: string; label: string; amount: number | null; sent_before: number; last_sent: string | null }[];
+  dueTruncated: boolean; recent: { sent_at: string; item: string; by_sms: boolean; trigger: string; application_no: string; name: string }[]; sentToday: number;
+  sent?: { sent: number };
+}
+
+function CceReminderDesk({ powers }: { powers: { decide: boolean } }) {
+  const [v, setV] = useState<ReminderDesk | null>(null);
+  const [edit, setEdit] = useState<ReminderRule | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void ccall<ReminderDesk>("/api/v1/cce/reminders").then((r) => { if (!live) return; if (r.ok) setV(r.data); else notifyProblem(r.problem); });
+    return () => { live = false; };
+  }, []);
+  if (!v) return null;
+  async function sendNow() {
+    setBusy(true);
+    try {
+      const r = await ccall<ReminderDesk>("/api/v1/cce/reminders/send", "POST", {}, "CCE reminders sent now");
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      setV(r.data);
+      notify(r.data.sent?.sent ? `${r.data.sent.sent} reminder${r.data.sent.sent === 1 ? "" : "s"} sent` : "Nobody was due a reminder");
+    } finally { setBusy(false); }
+  }
+  async function save() {
+    if (!edit) return;
+    setBusy(true);
+    try {
+      const out = await cceSend<ReminderDesk>(`/reminders/${edit.item}`, "PUT", { enabled: edit.enabled, firstAfterDays: Number(edit.first_after_days), everyDays: Number(edit.every_days), maxCount: Number(edit.max_count), sms: edit.sms },
+        `CCE reminder rule changed: ${REMINDER_STEP[edit.item] ?? edit.item}`);
+      if (out) { setV(out); setEdit(null); }
+    } finally { setBusy(false); }
+  }
+  const num = (k: "first_after_days" | "every_days" | "max_count", label: string, min: number, max: number) => edit ? (
+    <Field id={`rr-${k}`} label={label}><input id={`rr-${k}`} type="number" min={min} max={max} className="ctl tnum" style={{ maxWidth: 110 }} value={edit[k]}
+      onChange={(e) => setEdit({ ...edit, [k]: Number(e.target.value) })} /></Field>
+  ) : null;
+  return (
+    <>
+      <Panel title="Reminders to applicants" right={<span className="row row--inline row--tight">
+        <span className="sub2">{v.due.length}{v.dueTruncated ? "+" : ""} due now · {v.sentToday} sent today · every morning at 10:30</span>
+        {powers.decide ? <Btn kind="secondary" disabled={busy || !v.due.length} onClick={() => void sendNow()}>{busy ? "Sending…" : "Send the due reminders now"}</Btn> : null}
+      </span>}>
+        <DTable noPrint pageSize={0} cols={["Step", "On", "First after", "Then every", "At most", "By SMS too", ""]} rows={v.rules.map((r) => [
+          <b key="s">{REMINDER_STEP[r.item] ?? r.item}</b>,
+          <Pil key="o" kind={r.enabled ? "ok" : "grey"}>{r.enabled ? "On" : "Off"}</Pil>,
+          `${r.first_after_days} day${r.first_after_days === 1 ? "" : "s"}`, `${r.every_days} day${r.every_days === 1 ? "" : "s"}`, `${r.max_count} time${r.max_count === 1 ? "" : "s"}`,
+          r.sms ? "Yes" : "Email only",
+          powers.decide ? <Btn key="e" kind="ghost" onClick={() => setEdit({ ...r })}>Change</Btn> : <span key="e" />,
+        ])} />
+        <PBody><div className="sub2">An applicant is reminded of the earliest step still outstanding, at most once a day; the application fee and the form only while CCE applications are open, a fee only once the Bursary has stated it.</div></PBody>
+      </Panel>
+      <div className="grid grid--2">
+        <Panel title="Due now">
+          {v.due.length ? <DTable noPrint pageSize={10} cols={["Application", "Step", "Reminded before|num"]} rows={v.due.map((d) => [
+            <Link key="a" href={`/cce/applications/${d.application_id}`}>{d.application_no}<div className="sub2">{d.name}</div></Link>,
+            <span key="s">{REMINDER_STEP[d.item] ?? d.item}{d.amount != null ? <div className="sub2">{naira(d.amount)}</div> : null}</span>, d.sent_before,
+          ])} /> : <PBody><div className="sub2">Nobody is due a reminder now.</div></PBody>}
+        </Panel>
+        <Panel title="Sent">
+          {v.recent.length ? <DTable noPrint pageSize={10} cols={["When", "Application", "Step", "How"]} rows={v.recent.map((g) => [
+            <span key="w" className="tnum">{when(g.sent_at)}</span>, <span key="a">{g.application_no}<div className="sub2">{g.name}</div></span>,
+            REMINDER_STEP[g.item] ?? g.item, <span key="h" className="sub2">{g.by_sms ? "Email and SMS" : "Email"}{g.trigger === "OFFICE" ? " · sent by the Centre" : ""}</span>,
+          ])} /> : <PBody><div className="sub2">No reminder sent yet.</div></PBody>}
+        </Panel>
+      </div>
+      {edit ? (
+        <Modal title={REMINDER_STEP[edit.item] ?? edit.item} sub="Reminders to CCE applicants" onClose={() => setEdit(null)}
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setEdit(null)}>Back</Btn><Btn kind="primary" disabled={busy} onClick={() => void save()}>Save</Btn></span>}>
+          <label className="row row--inline row--tight mb-2"><input type="checkbox" checked={edit.enabled} onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })} /> Remind applicants of this step</label>
+          {num("first_after_days", "First reminder after (days)", 0, 60)}
+          {num("every_days", "Then every (days)", 1, 60)}
+          {num("max_count", "At most (times)", 1, 10)}
+          <label className="row row--inline row--tight mt-1"><input type="checkbox" checked={edit.sms} onChange={(e) => setEdit({ ...edit, sms: e.target.checked })} /> By SMS as well as email</label>
+        </Modal>
+      ) : null}
     </>
   );
 }

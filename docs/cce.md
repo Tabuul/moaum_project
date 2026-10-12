@@ -359,3 +359,27 @@ else the PLANNED session whose dates hold today; else the latest PLANNED — nev
 
 **Tests.** check.sql — the V414 property; `CceIT` (outstanding first and last, fees collected, receipts, the fee screen's
 readiness).
+
+---
+
+## K. Reminders to CCE applicants (V418)
+
+An applicant who stops with a step outstanding (V414's `admissions.cce_outstanding`) is reminded of the earliest one, by
+email and — where the rule says — SMS, with the link to the page for that step: the application fee and the form (the CCE
+application), what the Centre asked for, the CCE admission checking fee (Admission Status), the acceptance fee (Accept your
+offer). Each morning at 10:30 (Africa/Lagos) the API sends the reminders due (`admissions.cce_send_reminders`, job
+`CceReminders`); the Centre can also send them at once.
+
+**The rules** (`admissions.cce_reminder_rule`, the Centre's or the Academic Office's): per step, on or off, the first reminder
+so many days after the step began (the account opened; the fee settled; the Centre asked; the outcome published; the offer
+read), then every so many days, at most so many times, SMS or email only. Seeded: the fees 2 / 3 / 3, the form and what the
+Centre asked 3 / 4 / 3, all by SMS too. At most one reminder a day to anyone; the application fee and the form only while
+the CCE application window is open; a fee only once the Bursary has stated it; nobody withdrawn from the list, rejected or
+not admitted. Every reminder is logged (`admissions.cce_reminder_log`: the step, when, by SMS too, by the schedule or by the
+Centre).
+
+**Screen.** The Centre's *Admission Processing* page: the rules (and *Change*), who is due now, what was sent, and *Send the
+due reminders now*. API: `GET /api/v1/cce/reminders`, `PUT /api/v1/cce/reminders/{step}`, `POST /api/v1/cce/reminders/send`.
+
+**Tests.** check.sql — the V418 property (due after the days, email and SMS with the link, not twice a day, not before the
+interval, not beyond the times, not while off or the window closed, the form once paid, the offices); `CceIT`.

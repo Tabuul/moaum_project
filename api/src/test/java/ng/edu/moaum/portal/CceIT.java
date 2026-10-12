@@ -97,6 +97,8 @@ class CceIT {
         assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/cce/fees", Map.of("session", SESSION, "applicationFee", 6000, "portalCharge", 500, "acceptanceFee", 25000))
                 .getStatusCode().value()).isEqualTo(400);
         ok(it.call(bursar, HttpMethod.PUT, "/api/v1/cce/fees", Map.of("session", SESSION, "applicationFee", 6000, "portalCharge", 500, "acceptanceFee", 25000, "checkingFee", 2000)));
+        // V414: the fees collected before this run's payments (the suite runs twice on one database)
+        Map<String, Object> collectedBefore = (Map<String, Object>) ok(it.get(centre, "/api/v1/cce/reports/fees?session=" + SESSION)).get("totals");
         assertThat(it.get(lecturer, "/api/v1/cce/overview").getStatusCode().value()).isEqualTo(403);
 
         // (2) the list: previewed (one row new, one without a date of birth), committed; the Centre does not load lists
@@ -202,17 +204,29 @@ class CceIT {
         String acc = String.valueOf(ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE"))).get("reference"));
         assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", acc).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("25000");
         confirm(acc);
-        // V414: the Centre's fees collected — one of each, at the stated amounts; the receipts reach the applicant; nothing outstanding
+        // V414: the Centre's fees collected — this run added one of each, at the stated amounts; the receipts reach the applicant;
+        // nothing outstanding
         Map<String, Object> collected = (Map<String, Object>) ok(it.get(centre, "/api/v1/cce/reports/fees?session=" + SESSION)).get("totals");
-        assertThat(((Number) collected.get("application_paid")).intValue()).isEqualTo(1);
-        assertThat(((Number) collected.get("checking_paid")).intValue()).isEqualTo(1);
-        assertThat(((Number) collected.get("acceptance_paid")).intValue()).isEqualTo(1);
-        assertThat(new java.math.BigDecimal(String.valueOf(collected.get("total")))).isEqualByComparingTo("33500");
+        for (String k : List.of("application_paid", "checking_paid", "acceptance_paid")) {
+            assertThat(((Number) collected.get(k)).intValue() - ((Number) collectedBefore.get(k)).intValue()).as(k).isEqualTo(1);
+        }
+        assertThat(new java.math.BigDecimal(String.valueOf(collected.get("total"))).subtract(new java.math.BigDecimal(String.valueOf(collectedBefore.get("total")))))
+                .isEqualByComparingTo("33500");
         assertThat(it.get(lecturer, "/api/v1/cce/reports/fees?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
         assertThat(((Map) ok(it.get(bursar, "/api/v1/cce/fees?session=" + SESSION)).get("readiness")).get("feesStated")).isEqualTo(true);
         Map<String, Object> after = ok(it.get(applicant, "/api/v1/applicant/me/cce"));
         assertThat(((List<Map<String, Object>>) after.get("feeReferences")).stream().filter(r -> r.get("confirmedAt") != null).allMatch(r -> r.get("receiptNo") != null)).isTrue();
         assertThat((List) ((Map) after.get("cce")).get("outstanding")).isEmpty();
+        // V418: the reminders — the Centre reads and sets the rules and sends now; a lecturer does neither
+        Map<String, Object> rem = ok(it.get(centre, "/api/v1/cce/reminders"));
+        assertThat((List) rem.get("rules")).hasSize(5);
+        assertThat(it.call(lecturer, HttpMethod.PUT, "/api/v1/cce/reminders/FORM", Map.of("sms", false)).getStatusCode().value()).isEqualTo(403);
+        Map<String, Object> changed = ok(it.call(centre, HttpMethod.PUT, "/api/v1/cce/reminders/FORM", Map.of("sms", false)));
+        assertThat(((List<Map<String, Object>>) changed.get("rules")).stream().filter(r -> "FORM".equals(r.get("item"))).findFirst().orElseThrow().get("sms")).isEqualTo(false);
+        ok(it.call(centre, HttpMethod.PUT, "/api/v1/cce/reminders/FORM", Map.of("sms", true)));
+        assertThat(it.call(centre, HttpMethod.PUT, "/api/v1/cce/reminders/FORM", Map.of("everyDays", 0)).getStatusCode().value()).isEqualTo(400);
+        assertThat(ok(it.call(centre, HttpMethod.POST, "/api/v1/cce/reminders/send", null)).get("sent")).isNotNull();
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/cce/reminders/send", null).getStatusCode().value()).isEqualTo(403);
         Map<String, Object> student = jdbc.sql("SELECT s.id, s.entry_mode, s.study_mode, s.entry_session FROM people.student s JOIN admissions.candidate c ON c.id = s.candidate_id WHERE c.jamb_reg_no = :j")
                 .param("j", jamb).query().singleRow();
         assertThat(student.get("entry_mode")).isEqualTo("CCE");
