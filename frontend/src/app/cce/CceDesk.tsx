@@ -139,9 +139,9 @@ function CceOverview({ ov, pick, powers }: { ov: Overview; pick: React.ReactNode
           <PBody>
             {ov.fees ? (
               <>
-                <div>Application fee <b>{naira(ov.fees.application_fee)}</b>{Number(ov.fees.portal_charge) ? <> + portal charge {naira(ov.fees.portal_charge)}</> : null} · acceptance fee <b>{naira(ov.fees.acceptance_fee)}</b></div>
+                <div>Application fee <b>{naira(ov.fees.application_fee)}</b>{Number(ov.fees.portal_charge) ? <> + portal charge {naira(ov.fees.portal_charge)}</> : null} · admission checking fee <b>{ov.fees.checking_fee == null ? "not stated" : naira(ov.fees.checking_fee)}</b> · acceptance fee <b>{naira(ov.fees.acceptance_fee)}</b></div>
                 {!ov.fees.stated ? <div className="sub2 mt-1">Carried from {ov.fees.carried_from}: the Bursary has not stated {ov.session}&rsquo;s own.</div> : null}
-                <div className="sub2 mt-1">No admission checking fee is charged to a CCE applicant.</div>
+                <div className="sub2 mt-1">The application fee is paid before the form opens; the checking fee once the Centre&rsquo;s outcome is published.</div>
               </>
             ) : <div className="sub2">The Bursary has not stated the CCE applicant fees; applicants cannot pay until it does.</div>}
           </PBody>

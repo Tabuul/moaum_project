@@ -101,7 +101,7 @@ function offerRead(d: Admission): boolean {
   return !!o && o.decision === "OFFERED" && !!o.decision_released_at && (!d.checking || d.checking.decisionVisible);
 }
 
-const feeWord = (c: StatusChecking) => (c.feeRequired ? money(Number(c.fee)) : "Not charged this session");
+const feeWord = (c: StatusChecking) => (c.fee == null ? "Not stated yet" : c.feeRequired ? money(Number(c.fee)) : "Not charged this session");
 
 /** the dashboard's Admission Status section: always there — checking closed, open and not paid for, paid for and ready to check —
  *  and, once an offer is read, the admission under way: status, next step, tracker */
@@ -141,7 +141,9 @@ function CheckingSection({ d, c }: { d: Admission; c: StatusChecking }) {
           <>
             <div className="b600">Admission Status Checking is currently closed.</div>
             <div className="sub2">
-              {c.windowState === "SCHEDULED" && c.opensAt ? `It opens ${whenAt(c.opensAt)}.` : "Please check back later: you are told by email and SMS the moment the University opens it."}
+              {c.windowState === "SCHEDULED" && c.opensAt ? `It opens ${whenAt(c.opensAt)}.`
+                : d.offer?.entry_mode === "CCE" ? "It opens when the Centre for Continuing Education publishes the outcome of your application; you are told by email and SMS."
+                : "Please check back later: you are told by email and SMS the moment the University opens it."}
               {c.paid ? " Your admission checking fee is paid; you will not pay it again." : ""}
               {last ? ` Your last check, ${whenAt(last.checked_at)}: ${last.label}.` : ""}
             </div>
@@ -378,6 +380,8 @@ function CheckingFee({ d, c }: { d: Admission; c: StatusChecking }) {
   const [reference, setReference] = useState<string | null>(c.openReference ?? d.checkingReference ?? null);
   const [busy, setBusy] = useState(false);
   const fee = Number(c.fee ?? d.checkingFee ?? 0);
+  /* V404: a CCE applicant whose checking fee the Bursary has not stated yet: owed, and not payable until it is */
+  const unstated = c.fee == null;
   async function getReference() {
     setBusy(true);
     try {
@@ -386,6 +390,13 @@ function CheckingFee({ d, c }: { d: Admission; c: StatusChecking }) {
       if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       setReference(String((j as { reference: string }).reference));
     } finally { setBusy(false); }
+  }
+  if (unstated) {
+    return (
+      <Note kind="info" title="The admission checking fee is not stated yet">
+        {d.detail ?? "The Bursary has not yet stated the admission checking fee for your session; you can pay it, and read your outcome, once it does."}
+      </Note>
+    );
   }
   return (
     <>

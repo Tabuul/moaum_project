@@ -20,7 +20,8 @@ export interface Offer {
  *  no value for are left out of the JSON, so every optional one reads as absent. */
 export interface StatusChecking {
   applicationValid: boolean; windowState: "OPEN" | "CLOSED" | "SCHEDULED" | "EXPIRED"; windowOpen: boolean; opensAt?: string | null; closesAt?: string | null;
-  fee: number; feeRequired: boolean; paid: boolean; paidAt?: string | null; paidReference?: string | null; openReference?: string | null; openReferenceExpires?: string | null;
+  /** null for a CCE applicant while the Bursary has not stated the CCE admission checking fee (V404) */
+  fee: number | null; feeRequired: boolean; paid: boolean; paidAt?: string | null; paidReference?: string | null; openReference?: string | null; openReferenceExpires?: string | null;
   /** an offer read and its acceptance under way: the admission continues whatever the window */
   past: boolean; mayPay: boolean; mayCheck: boolean; decisionVisible: boolean;
   reason?: "APPLICATION_INCOMPLETE" | "CHECKING_CLOSED" | "CHECKING_FEE_UNPAID" | null;

@@ -346,6 +346,14 @@ BEGIN
         INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee)
         VALUES (v_session, 2000, 300, 30000, 3000);
     END IF;
+    -- V404: the CCE applicant fees as the Bursary states them — application, admission checking, acceptance — for the CCE
+    -- session (one behind the demo session; later sessions carry it until the Bursary states their own)
+    v_ref := coalesce((SELECT name FROM policy.academic_session WHERE name = policy.session_before(v_session, 1)), v_session);
+    IF NOT EXISTS (SELECT 1 FROM admissions.route_fee WHERE route = 'CCE' AND session = v_ref) THEN
+        INSERT INTO admissions.route_fee (session, route, application_fee, portal_charge, acceptance_fee, checking_fee, stated_by, stated_office)
+        VALUES (v_ref, 'CCE', 10000, 0, 10000, 3000, v_actor, 'bursar');
+    END IF;
+    v_ref := NULL;
     IF NOT EXISTS (SELECT 1 FROM admissions.caps_row WHERE session = v_session AND jamb_reg_no = '20269999DM') THEN
         v_batch := gen_random_uuid();
         INSERT INTO admissions.caps_batch (id, session, source, filename, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)

@@ -354,12 +354,13 @@ public class ApplicantService {
         feeMap.put("checkingFee", fees.get("checking_fee"));
         feeMap.put("stated", fees.get("stated"));
         if (cce) {
-            // V379: the CCE fees the Bursary stated — never the Post-UTME figures; no checking fee
+            // V379: the CCE fees the Bursary stated — never the Post-UTME figures; V404: the CCE admission checking fee among them
+            // (null while the Bursary has not stated it)
             Map<String, Object> cf = repo.cceFees(session);
             feeMap.put("applicationFee", cf == null ? null : cf.get("application_fee"));
             feeMap.put("portalCharge", cf == null ? null : cf.get("portal_charge"));
             feeMap.put("acceptanceFee", cf == null ? null : cf.get("acceptance_fee"));
-            feeMap.put("checkingFee", 0);
+            feeMap.put("checkingFee", cf == null ? null : cf.get("checking_fee"));
             feeMap.put("stated", cf != null);
         }
         v.put("fees", feeMap);
@@ -486,6 +487,11 @@ public class ApplicantService {
         if (cceState.isPresent() && !List.of("DRAFT", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED").contains(cceState.get())) {
             throw new DomainRuleViolation("CCE_NOT_EDITABLE", "The application is with the Centre for Continuing Education; documents change only when the Centre asks.",
                     new DomainRuleViolation.Remedy("If something is wrong, write to the Centre quoting your application number.", "Centre for Continuing Education"));
+        }
+        // V404: a CCE applicant pays the application fee first; the documents come with the form it opens
+        if (cceState.isPresent() && !repo.cceFeeSettled(app)) {
+            throw new DomainRuleViolation("CCE_FEE_FIRST", "Pay the CCE application fee first; the documents are uploaded once the payment is confirmed.",
+                    new DomainRuleViolation.Remedy("Generate a reference for the application fee and pay it; the form opens when it is confirmed.", "You"));
         }
         if ("OLEVEL_STATEMENT_2".equals(kind) && cceState.isEmpty()) {
             throw new DomainRuleViolation("APP_DOCUMENT_KIND", "The second sitting's result is a document of the CCE application.",

@@ -73,7 +73,8 @@ class ApplicantScreeningController {
         boolean visible = Boolean.TRUE.equals(checking.get("decisionVisible"));
         out.put("checking", checking);
         out.put("checks", jdbc.sql("SELECT checked_at, result, label FROM admissions.status_check WHERE application_id = :a ORDER BY checked_at DESC LIMIT 50").param("a", app).query().listOfRows());
-        out.put("checkingFee", jdbc.sql("SELECT coalesce((SELECT f.checking_fee FROM admissions.application a JOIN admissions.applicant_fee_rule(a.session) f ON true WHERE a.id = :a), 0)").param("a", app).query(java.math.BigDecimal.class).single());
+        // V404: the fee status checking charges this application (the CCE route's for a CCE applicant)
+        out.put("checkingFee", jdbc.sql("SELECT coalesce((SELECT k.fee FROM admissions.status_checking(:a) k), 0)").param("a", app).query(java.math.BigDecimal.class).single());
         out.put("checkingReference", jdbc.sql("SELECT reference FROM admissions.fee_reference WHERE application_id = :a AND kind = 'CHECKING' AND confirmed_at IS NULL AND expires_at > now() ORDER BY generated_at DESC LIMIT 1").param("a", app).query(String.class).optional().orElse(null));
         Map<String, Object> offer = jdbc.sql("""
                 SELECT a.application_no, a.session, a.decision, a.decision_released_at, a.decision_basis, a.accepted_at, a.undertaking_at, a.acceptance_confirmed_at, a.cleared_at,

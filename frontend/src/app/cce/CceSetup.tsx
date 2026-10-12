@@ -164,13 +164,13 @@ export function CceSession({ powers, refresh }: { powers: Powers; refresh: () =>
 
 /* ── the fees: the Bursary's ────────────────────────────────────────────────────────────────────────────────────── */
 
-interface FeesView { session: string; rule: FeeRule | null; stated: { session: string; application_fee: number; portal_charge: number; acceptance_fee: number; stated_at: string; stated_office: string; stated_by_name: string | null }[]; collected: { kind: string; paid: number; amount: number }[]; sessions: { session: string; state: string }[] }
+interface FeesView { session: string; rule: FeeRule | null; stated: { session: string; application_fee: number; portal_charge: number; acceptance_fee: number; checking_fee: number | null; stated_at: string; stated_office: string; stated_by_name: string | null }[]; collected: { kind: string; paid: number; amount: number }[]; sessions: { session: string; state: string }[] }
 
 export function CceFees({ powers, session: given }: { powers: Powers; session?: string }) {
   const [session, setSession] = useState(given ?? "");
   const [v, setV] = useState<FeesView | null>(null);
   const [tick, setTick] = useState(0);
-  const [form, setForm] = useState<{ app: string; portal: string; acc: string } | null>(null);
+  const [form, setForm] = useState<{ app: string; portal: string; chk: string; acc: string } | null>(null);
   useEffect(() => {
     let live = true;
     void ccall<FeesView>(`/api/v1/cce/fees${session ? `?session=${encodeURIComponent(session)}` : ""}`).then((r) => { if (!live) return; if (r.ok) setV(r.data); else notifyProblem(r.problem); });
@@ -179,38 +179,40 @@ export function CceFees({ powers, session: given }: { powers: Powers; session?: 
   if (!v) return <Note kind="info" title="Reading the CCE fees…">One moment.</Note>;
   async function save() {
     if (!form || !v) return;
-    const out = await cceSend("/fees", "PUT", { session: v.session, applicationFee: Number(form.app), portalCharge: Number(form.portal || 0), acceptanceFee: Number(form.acc) }, `The CCE applicant fees for ${v.session} stated`);
+    const out = await cceSend("/fees", "PUT", { session: v.session, applicationFee: Number(form.app), portalCharge: Number(form.portal || 0), checkingFee: Number(form.chk), acceptanceFee: Number(form.acc) }, `The CCE applicant fees for ${v.session} stated`);
     if (out) { setForm(null); setTick((t) => t + 1); }
   }
   const r = v.rule;
   return (
     <>
-      <PageHead title="CCE applicant fees" description="Stated by the Bursary. CCE applicants pay no admission checking fee; CCE students pay only the CCE school-fee lines."
+      <PageHead title="CCE applicant fees" description="Stated by the Bursary: the application fee (paid before the form opens), the admission checking fee (paid to read the published outcome) and the acceptance fee. CCE students pay only the CCE school-fee lines."
         actions={<select className="ctl" style={{ width: 160 }} aria-label="Session" value={v.session} onChange={(e) => setSession(e.target.value)}>{v.sessions.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}</select>} />
-      <Panel title={`${v.session}`} right={powers.bursar ? <Btn kind="primary" onClick={() => setForm({ app: r ? String(r.application_fee) : "", portal: r ? String(r.portal_charge) : "0", acc: r ? String(r.acceptance_fee) : "" })}>{r?.stated ? "Change them" : "State them"}</Btn> : null}>
+      <Panel title={`${v.session}`} right={powers.bursar ? <Btn kind="primary" onClick={() => setForm({ app: r ? String(r.application_fee) : "", portal: r ? String(r.portal_charge) : "0", chk: r && r.checking_fee != null ? String(r.checking_fee) : "", acc: r ? String(r.acceptance_fee) : "" })}>{r?.stated ? "Change them" : "State them"}</Btn> : null}>
         <PBody>
           {r ? (
-            <Tiles cls="grid--3" items={[["APPLICATION FEE", naira(r.application_fee), null, Number(r.portal_charge) ? `+ ${naira(r.portal_charge)} portal charge` : "no portal charge"], ["ACCEPTANCE FEE", naira(r.acceptance_fee), null, ""], ["STATED", r.stated ? "For this session" : `Carried from ${r.carried_from}`, r.stated ? null : "var(--amber-ink)", ""]]} />
+            <Tiles cls="grid--4" items={[["APPLICATION FEE", naira(r.application_fee), null, Number(r.portal_charge) ? `+ ${naira(r.portal_charge)} portal charge` : "no portal charge"],
+              ["ADMISSION CHECKING FEE", r.checking_fee == null ? "Not stated" : naira(r.checking_fee), r.checking_fee == null ? "var(--red-ink)" : null, r.checking_fee == null ? "applicants cannot read the outcome until it is stated" : "paid once to read the published outcome"],
+              ["ACCEPTANCE FEE", naira(r.acceptance_fee), null, ""], ["STATED", r.stated ? "For this session" : `Carried from ${r.carried_from}`, r.stated ? null : "var(--amber-ink)", ""]]} />
           ) : <Note kind="bad" title="Not stated">The Bursary has not stated the CCE applicant fees; a CCE applicant cannot pay until it does.</Note>}
         </PBody>
       </Panel>
       <div className="grid grid--2">
         <Panel title="Collected for this session">
-          {v.collected.length ? <DTable noPrint pageSize={0} cols={["Fee", "Paid|num", "Amount|num"]} rows={v.collected.map((c) => [c.kind === "APPLICATION" ? "CCE application" : c.kind === "ACCEPTANCE" ? "CCE acceptance" : c.kind, c.paid, naira(c.amount)])} />
+          {v.collected.length ? <DTable noPrint pageSize={0} cols={["Fee", "Paid|num", "Amount|num"]} rows={v.collected.map((c) => [c.kind === "APPLICATION" ? "CCE application" : c.kind === "CHECKING" ? "CCE admission checking" : c.kind === "ACCEPTANCE" ? "CCE acceptance" : c.kind, c.paid, naira(c.amount)])} />
             : <PBody><div className="sub2">Nothing collected yet.</div></PBody>}
         </Panel>
         <Panel title="Stated">
-          {v.stated.length ? <DTable noPrint pageSize={0} cols={["Session", "Application|num", "Portal|num", "Acceptance|num", "By"]} rows={v.stated.map((s) => [s.session, naira(s.application_fee), naira(s.portal_charge), naira(s.acceptance_fee), <span key="b" className="sub2">{s.stated_by_name ?? "—"} · {day(s.stated_at)}</span>])} />
+          {v.stated.length ? <DTable noPrint pageSize={0} cols={["Session", "Application|num", "Portal|num", "Checking|num", "Acceptance|num", "By"]} rows={v.stated.map((s) => [s.session, naira(s.application_fee), naira(s.portal_charge), s.checking_fee == null ? "—" : naira(s.checking_fee), naira(s.acceptance_fee), <span key="b" className="sub2">{s.stated_by_name ?? "—"} · {day(s.stated_at)}</span>])} />
             : <PBody><div className="sub2">Never stated.</div></PBody>}
         </Panel>
       </div>
       {form ? (
         <Modal title="The CCE applicant fees" sub={v.session} onClose={() => setForm(null)}
-          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setForm(null)}>Back</Btn><Btn kind="primary" disabled={form.app === "" || form.acc === ""} onClick={() => void save()}>Save</Btn></span>}>
-          {([["app", "Application fee (₦)"], ["portal", "Portal charge (₦)"], ["acc", "Acceptance fee (₦)"]] as const).map(([k, label]) => (
+          foot={<span className="row row--inline row--tight"><Btn kind="ghost" onClick={() => setForm(null)}>Back</Btn><Btn kind="primary" disabled={form.app === "" || form.chk === "" || form.acc === ""} onClick={() => void save()}>Save</Btn></span>}>
+          {([["app", "Application fee (₦)"], ["portal", "Portal charge (₦)"], ["chk", "Admission checking fee (₦)"], ["acc", "Acceptance fee (₦)"]] as const).map(([k, label]) => (
             <Field key={k} id={`cf-${k}`} label={label}><input id={`cf-${k}`} className="ctl tnum" inputMode="decimal" style={{ maxWidth: 180 }} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
           ))}
-          <div className="sub2">An application fee and portal charge of nothing opens the form without a payment.</div>
+          <div className="sub2">An application fee and portal charge of nothing opens the form without a payment; a checking fee of nothing lets the applicant read the published outcome without one.</div>
         </Modal>
       ) : null}
     </>

@@ -640,7 +640,7 @@ class CceDeskController {
         out.put("session", s);
         out.put("rule", jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, 'CCE')").param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         out.put("stated", jdbc.sql("""
-                SELECT f.session, f.application_fee, f.portal_charge, f.acceptance_fee, f.stated_at, f.stated_office,
+                SELECT f.session, f.application_fee, f.portal_charge, f.acceptance_fee, f.checking_fee, f.stated_at, f.stated_office,
                        nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.given_names, '')), ',') AS stated_by_name
                   FROM admissions.route_fee f LEFT JOIN iam.person p ON p.id = f.stated_by WHERE f.route = 'CCE' ORDER BY f.session DESC
                 """).query().listOfRows());
@@ -655,15 +655,18 @@ class CceDeskController {
     }
 
     public record Fees(@NotBlank @Pattern(regexp = "\\d{4}/\\d{4}") String session, @NotNull @DecimalMin("0") BigDecimal applicationFee,
-                       @DecimalMin("0") BigDecimal portalCharge, @NotNull @DecimalMin("0") BigDecimal acceptanceFee) {
+                       @DecimalMin("0") BigDecimal portalCharge, @NotNull @DecimalMin("0") BigDecimal acceptanceFee,
+                       @NotNull @DecimalMin("0") BigDecimal checkingFee) {
     }
 
     @PutMapping("/fees")
     @PreAuthorize(BURSAR)
     @Transactional
     Map<String, Object> setFees(@Valid @RequestBody Fees body) {
-        jdbc.sql("SELECT admissions.set_route_fee(:s, 'CCE', :a, :p, :c)").param("s", body.session()).param("a", body.applicationFee())
-                .param("p", body.portalCharge() == null ? BigDecimal.ZERO : body.portalCharge()).param("c", body.acceptanceFee()).query().singleRow();
+        // V404: the admission checking fee is stated with the others
+        jdbc.sql("SELECT admissions.set_route_fee(:s, 'CCE', :a, :p, :c, :k)").param("s", body.session()).param("a", body.applicationFee())
+                .param("p", body.portalCharge() == null ? BigDecimal.ZERO : body.portalCharge()).param("c", body.acceptanceFee())
+                .param("k", body.checkingFee()).query().singleRow();
         return fees(body.session());
     }
 }

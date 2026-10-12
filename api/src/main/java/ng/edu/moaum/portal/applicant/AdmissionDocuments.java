@@ -45,7 +45,7 @@ public class AdmissionDocuments {
         Map<String, Object> a = jdbc.sql("""
                 SELECT a.id, a.session, a.accepted_at, a.acceptance_confirmed_at, a.decision, a.decision_released_at, a.cleared_at,
                        admissions.screening_required(a.id) AS screening_required,
-                       coalesce((SELECT f.checking_fee FROM admissions.applicant_fee_rule(a.session) f), 0) AS checking_fee,
+                       coalesce((SELECT k.fee FROM admissions.status_checking(a.id) k), 0) AS checking_fee,
                        coalesce((SELECT k.decision_visible FROM admissions.status_checking(a.id) k), false) AS decision_visible,
                        s.id AS student_id, s.matric_no, sf.state AS screening_state, sf.screening_no
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id

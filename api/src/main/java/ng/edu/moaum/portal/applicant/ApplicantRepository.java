@@ -346,6 +346,11 @@ class ApplicantRepository {
                 """).param("a", applicationId).query().listOfRows();
     }
 
+    /** V404: the CCE application fee is paid and confirmed, or nothing is charged: the form and the documents are open */
+    boolean cceFeeSettled(UUID applicationId) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT admissions.cce_fee_settled(:a)").param("a", applicationId).query(Boolean.class).single());
+    }
+
     Map<String, Object> cceFees(String session) {
         return jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, 'CCE')").param("s", session).query().listOfRows().stream().findFirst().orElse(null);
     }

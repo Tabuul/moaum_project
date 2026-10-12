@@ -22,10 +22,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 /**
  * CCE — the Centre for Continuing Education (V379), through the API: the Academic Office sets the CCE session and offers a
  * programme, loads JAMB's CCE list in a preview and commits it; only a listed JAMB number with its date of birth registers, while
- * the window is open; the applicant completes the form (biodata, two O'Level sittings, the documents), pays the CCE fee and
- * submits; the Centre reviews, verifies the documents and recommends; the same officer cannot approve; the Academic Office
- * approves and publishes (the Centre cannot publish, a lecturer reads nothing); the applicant reads the outcome without a checking
- * fee, accepts, pays the CCE acceptance fee and comes onto the register CCE and part-time in the CCE session, which the student
+ * the window is open; the applicant pays the CCE application fee first (V404: the form and the documents open once it is
+ * confirmed), completes the form (biodata, two O'Level sittings, the documents with the birth certificate and the certificate
+ * of state of origin) and submits; the Centre reviews, verifies the documents and recommends; the same officer cannot approve;
+ * the Academic Office approves and publishes (the Centre cannot publish, a lecturer reads nothing); checking stays closed until
+ * the outcome is published, then the applicant pays the CCE admission checking fee the Bursary stated (V404) and reads it,
+ * accepts, pays the CCE acceptance fee and comes onto the register CCE and part-time in the CCE session, which the student
  * portal shows with the Centre and the expected completion. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -91,7 +93,10 @@ class CceIT {
                 Map.of("offset", -1, "override", SESSION, "reason", "integration test: the CCE list for " + SESSION)));
         assertThat(((Map) mapping.get("mapping")).get("route_session")).isEqualTo(SESSION);
         ok(it.call(academic, HttpMethod.PUT, "/api/v1/cce/programmes/" + PROGRAMME, Map.of("active", true)));
-        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/cce/fees", Map.of("session", SESSION, "applicationFee", 6000, "portalCharge", 500, "acceptanceFee", 25000)));
+        // V404: the admission checking fee is stated with the others, never left out
+        assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/cce/fees", Map.of("session", SESSION, "applicationFee", 6000, "portalCharge", 500, "acceptanceFee", 25000))
+                .getStatusCode().value()).isEqualTo(400);
+        ok(it.call(bursar, HttpMethod.PUT, "/api/v1/cce/fees", Map.of("session", SESSION, "applicationFee", 6000, "portalCharge", 500, "acceptanceFee", 25000, "checkingFee", 2000)));
         assertThat(it.get(lecturer, "/api/v1/cce/overview").getStatusCode().value()).isEqualTo(403);
 
         // (2) the list: previewed (one row new, one without a date of birth), committed; the Centre does not load lists
@@ -121,11 +126,19 @@ class CceIT {
         String applicant = String.valueOf(signed.get("token"));
         assertThat(code(it.anon(HttpMethod.POST, "/api/v1/applicant/cce/register", register))).isEqualTo("CCE_REGISTERED");
 
-        // (4) the form, the fee and the documents; then submitted
+        // (4) the fee first (V404): before it is paid the form and the documents are shut; then the form, the documents and submission
         Map<String, Object> view = ok(it.get(applicant, "/api/v1/applicant/me/cce"));
         assertThat(view.get("route")).isEqualTo("CCE");
         assertThat(((Map) ((Map) view.get("cce")).get("listed")).get("session")).isEqualTo(SESSION);
-        assertThat(((Map) view.get("fees")).get("checkingFee")).isEqualTo(0);
+        assertThat(((Number) ((Map) view.get("fees")).get("checkingFee")).intValue()).isEqualTo(2000);
+        assertThat(code(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/cce/biodata", Map.of("fields", Map.of("home_address", "4 Railway Road, Makurdi"))))).isEqualTo("CCE_FEE_FIRST");
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT", "filename", "me.png", "contentType", "image/png", "contentBase64", PIXEL))))
+                .isEqualTo("CCE_FEE_FIRST");
+        Map<String, Object> withRef = ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION")));
+        String ref = String.valueOf(withRef.get("reference"));
+        assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", ref).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("6500");
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")))).isEqualTo("ADMISSION_CHECKING_NOT_ELIGIBLE");
+        confirm(ref);
         ok(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/cce/biodata", Map.of("fields", Map.of("date_of_birth", "1988-02-14", "home_address", "4 Railway Road, Makurdi",
                 "state_of_origin", "Benue", "lga", "Gboko", "nationality", "Nigeria", "mobile", "08061234567", "kin_name", "Terhemba Iorliam", "kin_relationship", "Husband",
                 "kin_mobile", "08069876543"))));
@@ -136,17 +149,17 @@ class CceIT {
                        "subjects", List.of(Map.of("subject", "Mathematics", "grade", "C4"), Map.of("subject", "Physics", "grade", "C5")))))));
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/cce/programme", null));
         assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/submit", Map.of("declaration", true)))).isEqualTo("CCE_INCOMPLETE");
-        Map<String, Object> withRef = ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION")));
-        String ref = String.valueOf(withRef.get("reference"));
-        assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", ref).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("6500");
-        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")))).isEqualTo("CCE_NO_CHECKING_FEE");
-        confirm(ref);
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT", "filename", "me.png", "contentType", "image/png", "contentBase64", PIXEL)));
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "OLEVEL_STATEMENT", "filename", "waec.pdf", "contentType", "application/pdf", "contentBase64", PDF)));
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "OLEVEL_STATEMENT_2", "filename", "neco.pdf", "contentType", "application/pdf", "contentBase64", PDF)));
+        ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "BIRTH_CERT", "filename", "birth.pdf", "contentType", "application/pdf", "contentBase64", PDF)));
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/submit", Map.of("declaration", true)))).isEqualTo("CCE_INCOMPLETE");   // the certificate of state of origin
+        ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "STATE_OF_ORIGIN", "filename", "origin.pdf", "contentType", "application/pdf", "contentBase64", PDF)));
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/submit", Map.of("declaration", true)));
         assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT", "filename", "other.png", "contentType", "image/png", "contentBase64", PIXEL))))
                 .isEqualTo("CCE_NOT_EDITABLE");
+        // submitted, not yet published: checking is closed to the applicant
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")))).isEqualTo("ADMISSION_CHECKING_CLOSED");
 
         // (5) the Centre reviews; the recommender does not approve; the Academic Office approves and publishes
         Map<String, Object> list = ok(it.get(centre, "/api/v1/cce/applications?session=" + SESSION + "&q=" + jamb));
@@ -166,7 +179,12 @@ class CceIT {
         Map<String, Object> published = ok(it.call(academic, HttpMethod.POST, "/api/v1/cce/publish", Map.of("session", SESSION, "applicationIds", List.of(app))));
         assertThat(((Map) published.get("published")).get("admitted")).isEqualTo(1);
 
-        // (6) the applicant reads the offer (no window, no checking fee), accepts, pays the CCE acceptance fee: on the register
+        // (6) published: the applicant pays the CCE admission checking fee (V404), reads the offer, accepts, pays the CCE acceptance
+        // fee: on the register
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/admission/checked", null))).isEqualTo("ADMISSION_CHECKING_FEE_UNPAID");
+        String chk = String.valueOf(ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING"))).get("reference"));
+        assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", chk).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("2000");
+        confirm(chk);
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/admission/checked", null));
         Map<String, Object> me = ok(it.get(applicant, "/api/v1/applicant/me"));
         assertThat(me.get("decision")).isEqualTo("OFFERED");

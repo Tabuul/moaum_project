@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 244
+\set EXPECTED 245
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -8088,7 +8088,7 @@ DECLARE acad uuid := gen_random_uuid(); cce1 uuid := gen_random_uuid(); cce2 uui
         r_dup text; r_nodob text; r_prog text; look text; look_bad text; acct uuid; app uuid; r_again text; r_dob text; r_sit2 text; probs int;
         ref1 text; amount1 numeric; r_submit text; r_own text; r_pub_office text; pub jsonb; vis boolean; st_status text; ref2 text; amount2 numeric;
         stu people.student; ctx_session text; gate text; r_guard text; r_chk text; letter credentials.issued; stats jsonb; doc uuid; ugs text;
-        fee_total numeric; old_stated boolean;
+        fee_total numeric; old_stated boolean; ref_chk text; amount_chk numeric; r_closed text; st_closed text; st_fee text; vis_before boolean;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.reason', 'check V379', true);
@@ -8139,7 +8139,19 @@ BEGIN
         BEGIN PERFORM admissions.cce_register('99530000001CC', date '1990-04-17', 'other@example.com', '08035550199', '$2a$12$' || repeat('x', 53)); r_again := 'REGISTERED TWICE';
         EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
 
-        -- (4) the form: the date of birth is the list's; a second sitting is complete or not given
+        -- (4) the Bursary states the CCE fees (V404: the admission checking fee among them); the application fee is paid first
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 7000, 500, 30000, 2500);
+        ref1 := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT amount INTO amount1 FROM admissions.fee_reference WHERE reference = ref1;
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_chk := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_chk := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.confirm_fee(ref1, 'BANK', 'check');
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+
+        -- (5) the form: the date of birth is the list's; a second sitting is complete or not given
         BEGIN PERFORM admissions.cce_save_biodata(app, '{"date_of_birth": "1991-01-01"}'); r_dob := 'SAVED';
         EXCEPTION WHEN check_violation THEN r_dob := split_part(SQLERRM, ':', 1); END;
         PERFORM admissions.cce_save_biodata(app, '{"date_of_birth": "17/04/1990", "home_address": "12 Gboko Road, Makurdi", "state_of_origin": "Benue", "lga": "Makurdi",
@@ -8152,23 +8164,16 @@ BEGIN
                                                   {"sitting": 2, "exam_body": "NECO", "exam_number": "1003200456", "exam_year": "2009", "subjects": [
                                                     {"subject": "Mathematics", "grade": "C4"}, {"subject": "Physics", "grade": "C6"}, {"subject": "Chemistry", "grade": "B2"}]}]');
         PERFORM admissions.cce_confirm_programme(app);
-        SELECT count(*) INTO probs FROM admissions.cce_application_problems(app);   -- the fee (not stated yet), the passport, each sitting's result
-
-        -- (5) the Bursary states the CCE fees; the application fee is paid against its reference
-        PERFORM set_config('moaum.actor_id', burs::text, true);
-        PERFORM set_config('moaum.actor_office', 'bursar', true);
-        PERFORM admissions.set_route_fee(S, 'CCE', 7000, 500, 30000);
-        ref1 := admissions.new_fee_reference(app, 'APPLICATION');
-        SELECT amount INTO amount1 FROM admissions.fee_reference WHERE reference = ref1;
-        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_chk := 'ISSUED';
-        EXCEPTION WHEN check_violation THEN r_chk := split_part(SQLERRM, ':', 1); END;
-        PERFORM admissions.confirm_fee(ref1, 'BANK', 'check');
+        SELECT count(*) INTO probs FROM admissions.cce_application_problems(app);   -- the passport, each sitting's result, the birth certificate, the certificate of state of origin
         INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes)
         VALUES (gen_random_uuid(), app, 'PASSPORT', 'passport.jpg', 'image/jpeg', 1000), (gen_random_uuid(), app, 'OLEVEL_STATEMENT', 'waec.pdf', 'application/pdf', 1000),
-               (gen_random_uuid(), app, 'OLEVEL_STATEMENT_2', 'neco.pdf', 'application/pdf', 1000);
-        PERFORM set_config('moaum.actor_id', acct::text, true);
-        PERFORM set_config('moaum.actor_office', 'applicant', true);
+               (gen_random_uuid(), app, 'OLEVEL_STATEMENT_2', 'neco.pdf', 'application/pdf', 1000), (gen_random_uuid(), app, 'BIRTH_CERT', 'birth.pdf', 'application/pdf', 1000),
+               (gen_random_uuid(), app, 'STATE_OF_ORIGIN', 'origin.pdf', 'application/pdf', 1000);
         r_submit := admissions.cce_submit(app, '127.0.0.1');
+        -- submitted, not yet published: checking is closed to the applicant (V404)
+        SELECT status INTO st_closed FROM admissions.admission_status(app);
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_closed := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_closed := split_part(SQLERRM, ':', 1); END;
 
         -- (6) the Centre reviews: documents verified, recommended by one officer, approved by another; the Academic Office publishes
         PERFORM set_config('moaum.actor_id', cce1::text, true);
@@ -8185,7 +8190,17 @@ BEGIN
         PERFORM admissions.cce_act(app, 'APPROVE', NULL);
         pub := admissions.cce_publish(S, NULL);
 
-        -- (7) the applicant reads the outcome (no window, no checking fee), accepts and pays the CCE acceptance fee: on the register
+        -- (7) published: the applicant pays the CCE admission checking fee (V404), reads the outcome, accepts and pays the CCE
+        -- acceptance fee: on the register
+        SELECT decision_visible INTO vis_before FROM admissions.status_checking(app);
+        SELECT status INTO st_fee FROM admissions.admission_status(app);
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        ref_chk := admissions.new_fee_reference(app, 'CHECKING');
+        SELECT amount INTO amount_chk FROM admissions.fee_reference WHERE reference = ref_chk;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(ref_chk, 'BANK', 'check');
         SELECT decision_visible INTO vis FROM admissions.status_checking(app);
         SELECT status INTO st_status FROM admissions.admission_status(app);
         PERFORM set_config('moaum.actor_id', acct::text, true);
@@ -8215,20 +8230,21 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('V379: CCE — the route''s session follows undergraduate one behind unless the Academic Office names one with its reason; JAMB''s CCE list is read and reconciled by number (new, the same number again, no date of birth, a programme the Centre does not offer, then an update); only a listed number with its date of birth registers, once, while the window is open; a second sitting is complete or absent; the CCE fees are the Bursary''s and there is no checking fee; the officer who recommends does not approve, and the Academic Office publishes; the published offer is read without a window, accepted, and the student comes onto the register CCE, part-time, in the CCE session, with the CCE letter, course registration waiting for the Centre''s classes, charged only the fees stated for CCE, and the study mode not changed behind the Academic Office',
+    PERFORM pg_temp.assert('V379: CCE — the route''s session follows undergraduate one behind unless the Academic Office names one with its reason; JAMB''s CCE list is read and reconciled by number (new, the same number again, no date of birth, a programme the Centre does not offer, then an update); only a listed number with its date of birth registers, once, while the window is open; a second sitting is complete or absent; the CCE fees are the Bursary''s and the application fee is paid before the form; the officer who recommends does not approve, and the Academic Office publishes; checking stays closed until the outcome is published and the published offer is read once the CCE admission checking fee is paid (V404), accepted, and the student comes onto the register CCE, part-time, in the CCE session, with the CCE letter, course registration waiting for the Centre''s classes, charged only the fees stated for CCE, and the study mode not changed behind the Academic Office',
         coalesce(v_session = policy.session_before(ugs, 1) AND r_reason = 'CCE_SESSION_REASON' AND r_office = 'CCE_SESSION_OFFICE'
                  AND (cnt->>'NEW')::int = 1 AND (cnt->>'DUPLICATE')::int = 1 AND (cnt->>'INVALID')::int = 1 AND (cnt->>'REQUIRES_REVIEW')::int = 1
                  AND r_dup = 'DUPLICATE' AND r_nodob = 'INVALID' AND r_prog = 'REQUIRES_REVIEW' AND (applied->>'added')::int = 1
                  AND (cnt2->>'UPDATED')::int = 1 AND look_bad = 'nomatch' AND look = 'found' AND r_again = 'CCE_REGISTERED'
-                 AND r_dob = 'CCE_DATE_OF_BIRTH' AND r_sit2 = 'CCE_OLEVEL_NUMBER' AND probs = 4 AND amount1 = 7500 AND r_chk = 'CCE_NO_CHECKING_FEE'
+                 AND r_dob = 'CCE_DATE_OF_BIRTH' AND r_sit2 = 'CCE_OLEVEL_NUMBER' AND probs = 5 AND amount1 = 7500 AND r_chk = 'ADMISSION_CHECKING_NOT_ELIGIBLE'
+                 AND st_closed = 'CHECKING_CLOSED' AND r_closed = 'ADMISSION_CHECKING_CLOSED' AND NOT vis_before AND st_fee = 'CHECKING_FEE_PENDING' AND amount_chk = 2500
                  AND r_submit = 'submitted' AND r_own = 'CCE_APPROVE_OWN' AND r_pub_office = 'CCE_OFFICE' AND (pub->>'admitted')::int = 1
                  AND vis AND st_status = 'ADMITTED' AND amount2 = 30000 AND stu.entry_mode = 'CCE' AND stu.study_mode = 'PART_TIME' AND stu.entry_session = S
                  AND stu.date_of_birth = date '1990-04-17' AND ctx_session = S AND gate LIKE 'Course registration for the first semester of ' || S || ' opens when the Centre for Continuing Education''s classes for it are set up.'
                  AND r_guard = 'STUDENT_ROUTE_LOCKED' AND fee_total = 45000 AND NOT old_stated AND letter.statement->>'studyMode' = 'PART-TIME' AND (letter.statement->>'durationYears')::int = 6
                  AND (stats->>'admitted')::int = 1 AND (stats->>'activated')::int = 1, false),
-        format('session %s (ug %s) reason=%s office=%s | counts %s dup=%s nodob=%s prog=%s applied=%s again=%s | look %s/%s twice=%s | dob=%s sit2=%s problems=%s | fee %s chk=%s submit=%s | own=%s pub_office=%s pub=%s | visible=%s status=%s acceptance=%s | student %s %s %s dob=%s ctx=%s gate=%s guard=%s fees=%s old_stated=%s letter=%s/%s | stats %s',
+        format('session %s (ug %s) reason=%s office=%s | counts %s dup=%s nodob=%s prog=%s applied=%s again=%s | look %s/%s twice=%s | dob=%s sit2=%s problems=%s | fee %s chk=%s submit=%s | own=%s pub_office=%s pub=%s | closed %s/%s fee-pending %s/%s checking %s | visible=%s status=%s acceptance=%s | student %s %s %s dob=%s ctx=%s gate=%s guard=%s fees=%s old_stated=%s letter=%s/%s | stats %s',
                v_session, ugs, r_reason, r_office, cnt, r_dup, r_nodob, r_prog, applied, cnt2, look_bad, look, r_again, r_dob, r_sit2, probs, amount1, r_chk, r_submit,
-               r_own, r_pub_office, pub, vis, st_status, amount2, stu.entry_mode, stu.study_mode, stu.entry_session, stu.date_of_birth, ctx_session, gate, r_guard, fee_total, old_stated,
+               r_own, r_pub_office, pub, st_closed, r_closed, vis_before, st_fee, amount_chk, vis, st_status, amount2, stu.entry_mode, stu.study_mode, stu.entry_session, stu.date_of_birth, ctx_session, gate, r_guard, fee_total, old_stated,
                letter.statement->>'studyMode', letter.statement->>'durationYears', stats));
 END $$;
 
@@ -9768,6 +9784,101 @@ BEGIN
         format('preview invalid=%s review=%s new=%s commit-with-invalid=%s | commit applied=%s | one %s %s regs=%s fre=%s option=%s results=%s events=%s | two %s option=%s twin=%s | three lit=%s changes=%s batch=%s | again unchanged=%s | rows: %s',
                pv->>'invalid', pv->>'review', pv->>'new', r_invalid, cm->>'applied', v_no1, v_comb1, v_regs1, v_fre1, v_opt1, v_res1, v_ev1,
                v_no2, v_opt2, v_twin, v_lit3, v_chg3, v_batch, again->>'unchanged', left((SELECT string_agg(x->>'status' || ':' || coalesce(x->>'message', ''), ' / ') FROM jsonb_array_elements(pv->'rows') x), 400)));
+END $$;
+
+-- ── V404: CCE applicants — the checking fee the Bursary states, the application fee first, the documents the Centre needs ──
+-- The Bursary states application, admission checking and acceptance fees (none left out, no other office); a listed applicant
+-- who has not paid cannot fill the form, and is told the fee comes first; the documents asked include the birth certificate
+-- and the certificate of state of origin; paid, the form opens; checking is closed until the Centre publishes, then costs the
+-- stated checking fee; where nothing is charged for the application the form opens at once; a row stated before V404 has no
+-- checking fee: owed, refused until stated, and the applicant is told so. The block undoes its writes.
+DO $$
+DECLARE acad uuid := gen_random_uuid(); burs uuid := gen_random_uuid(); S text := '9947/9948'; pa text := 'C00023'; b uuid;
+        acct uuid; app uuid; acct2 uuid; app2 uuid; r_amount text; r_office text; r_first text; pay_msg text; doc_kinds text;
+        ref1 text; amount1 numeric; r_after text; r_early text; sc record; r_free text; fee_null numeric; req_null boolean;
+        r_unstated text; st_detail text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V404', true);
+        PERFORM set_config('moaum.actor_id', acad::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9947-10-01', date '9948-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM policy.set_route_session('CCE', -1, S, 'the check runs in a session of its own', NULL);
+        PERFORM ref.set_programme_route(pa, 'CCE', true, NULL, NULL, 'the check');
+        b := admissions.cce_preview(S, 'cce-404.xlsx', repeat('d', 64), jsonb_build_array(
+            jsonb_build_object('jamb_reg_no', '99470000001CC', 'surname', 'Ushie', 'first_name', 'Doom', 'date_of_birth', '1991-05-02', 'sex', 'F',
+                               'phone', '08035550301', 'email', 'doom@example.com', 'programme_code', pa),
+            jsonb_build_object('jamb_reg_no', '99470000002CC', 'surname', 'Agbo', 'first_name', 'Ene', 'date_of_birth', '1992-06-03', 'sex', 'F',
+                               'phone', '08035550302', 'email', 'ene@example.com', 'programme_code', pa)));
+        PERFORM admissions.cce_commit(b);
+        PERFORM policy.window_act('CCE_APPLICATION', S, NULL, 'OPEN', NULL, NULL, NULL, NULL, NULL, acad, 'ict');
+        acct := admissions.cce_register('99470000001CC', date '1991-05-02', 'doom.ushie@example.com', '08035550301', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app FROM admissions.application WHERE account_id = acct;
+        acct2 := admissions.cce_register('99470000002CC', date '1992-06-03', 'ene.agbo@example.com', '08035550302', '$2a$12$' || repeat('x', 53));
+        SELECT id INTO app2 FROM admissions.application WHERE account_id = acct2;
+
+        -- (1) the Bursary states the three fees: without the checking fee, or by another office, refused
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, NULL); r_amount := 'STATED';
+        EXCEPTION WHEN check_violation THEN r_amount := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000); r_office := 'STATED';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 10000, 0, 10000, 3000);
+
+        -- (2) not paid: the form is shut, the fee is asked for first, the documents asked include the two certificates
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        BEGIN PERFORM admissions.cce_save_biodata(app, '{"home_address": "1 Gboko Road, Makurdi"}'); r_first := 'SAVED';
+        EXCEPTION WHEN check_violation THEN r_first := split_part(SQLERRM, ':', 1); END;
+        SELECT message INTO pay_msg FROM admissions.cce_application_problems(app) WHERE step = 'PAYMENT';
+        SELECT string_agg(field, ',' ORDER BY field) INTO doc_kinds FROM admissions.cce_application_problems(app) WHERE step = 'DOCUMENTS';
+
+        -- (3) paid: the form opens; checking is closed until the Centre publishes, and costs the stated checking fee
+        ref1 := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT amount INTO amount1 FROM admissions.fee_reference WHERE reference = ref1;
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(ref1, 'BANK', 'check');
+        PERFORM set_config('moaum.actor_id', acct::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.cce_save_biodata(app, '{"home_address": "1 Gboko Road, Makurdi"}'); r_after := 'SAVED';
+        UPDATE admissions.application SET submitted_at = now() WHERE id = app;
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_early := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_early := split_part(SQLERRM, ':', 1); END;
+        SELECT * INTO sc FROM admissions.status_checking(app);
+
+        -- (4) nothing charged for the application: the form opens at once
+        PERFORM set_config('moaum.actor_id', burs::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.set_route_fee(S, 'CCE', 0, 0, 10000, 3000);
+        PERFORM set_config('moaum.actor_id', acct2::text, true);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        BEGIN PERFORM admissions.cce_save_biodata(app2, '{"home_address": "2 Otukpo Road, Makurdi"}'); r_free := 'SAVED';
+        EXCEPTION WHEN check_violation THEN r_free := split_part(SQLERRM, ':', 1); END;
+
+        -- (5) a statement from before V404 (no checking fee): owed and not payable; once published the applicant is told why
+        UPDATE admissions.route_fee SET checking_fee = NULL WHERE session = S AND route = 'CCE';
+        UPDATE admissions.application SET decision = 'NOT_OFFERED', decided_at = now(), decision_released_at = now() WHERE id = app;
+        SELECT fee, fee_required INTO fee_null, req_null FROM admissions.status_checking(app);
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); r_unstated := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN r_unstated := split_part(SQLERRM, ':', 1); END;
+        SELECT detail INTO st_detail FROM admissions.admission_status(app);
+        RAISE EXCEPTION 'the V404 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V404 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V404: CCE applicants — the Bursary states the application, admission checking and acceptance fees (none left out, no other office); the form opens once the application fee is paid (at once where nothing is charged), the fee asked for first; the birth certificate and the certificate of state of origin are asked for; checking is closed until the Centre publishes and costs the stated checking fee; a checking fee never stated is owed, refused, and the applicant told why',
+        coalesce(r_amount = 'CCE_FEE_AMOUNT' AND r_office = 'CCE_OFFICE' AND r_first = 'CCE_FEE_FIRST' AND pay_msg LIKE 'Pay the CCE application fee; the form opens%'
+                 AND doc_kinds = 'BIRTH_CERT,OLEVEL_STATEMENT,PASSPORT,STATE_OF_ORIGIN' AND amount1 = 10000 AND r_after = 'SAVED'
+                 AND r_early = 'ADMISSION_CHECKING_CLOSED' AND sc.window_state = 'CLOSED' AND sc.fee = 3000 AND sc.fee_required AND NOT sc.decision_visible
+                 AND r_free = 'SAVED' AND fee_null IS NULL AND req_null AND r_unstated = 'CCE_FEE_NOT_STATED' AND st_detail LIKE '%has not yet stated the CCE admission checking fee%', false),
+        format('amount=%s office=%s first=%s pay=%s docs=%s | paid %s after=%s | early=%s window=%s fee=%s required=%s visible=%s | free=%s | unstated fee=%s required=%s ref=%s detail=%s',
+               r_amount, r_office, r_first, pay_msg, doc_kinds, amount1, r_after, r_early, sc.window_state, sc.fee, sc.fee_required, sc.decision_visible,
+               r_free, fee_null, req_null, r_unstated, st_detail));
 END $$;
 
 -- ── V405/V406. A course that joins a programme's structure after a semester's classes were opened gets its class in that semester

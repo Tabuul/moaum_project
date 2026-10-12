@@ -122,7 +122,7 @@ expected completion).
 `CCE_PROGRAMME_NOT_UNDERGRADUATE`, `CCE_OFFICE`, `CCE_LIST_ALREADY_LOADED`, `CCE_LIST_NOT_PREVIEW`, `CCE_LIST_ADMITTED`,
 `CCE_NOT_LISTED`, `CCE_REGISTERED`, `CCE_PROGRAMME_CLOSED`, `APPLICATION_CLOSED`, `CCE_DATE_OF_BIRTH`, `CCE_OLEVEL_*`,
 `CCE_NOT_EDITABLE`, `CCE_INCOMPLETE`, `CCE_DOCUMENTS_UNVERIFIED`, `CCE_OLEVEL_CREDIT`, `CCE_APPROVE_OWN`, `CCE_PUBLISHED`,
-`CCE_NO_CHECKING_FEE`, `CCE_FEE_NOT_STATED`, `STUDENT_ROUTE_LOCKED`, `STUDENT_ROUTE_REASON`.
+`CCE_NO_CHECKING_FEE` (no longer raised since V404), `CCE_FEE_NOT_STATED`, `CCE_FEE_FIRST` (V404), `STUDENT_ROUTE_LOCKED`, `STUDENT_ROUTE_REASON`.
 
 **Fees.** A CCE student is charged only the school-fee lines the Bursary states for entry mode `CCE`: a line naming no entry
 mode is the full-time students' (the undergraduate fees of the very session CCE runs in included) and never reaches a CCE
@@ -133,8 +133,8 @@ on the old portal, never for a CCE student. The student's fees page lists only t
 **Decided by default (say if the University wants otherwise).** The applicant proves who they are with the JAMB number *and*
 the date of birth on the list (a number read off a notice board is not enough); a list row without a date of birth is not
 loaded. The approving officer is never the recommending officer; the Director of the Centre or the Academic Office approves;
-the Academic Office publishes. A CCE applicant pays no admission checking fee and needs no checking window: the published
-outcome is read at once. The Centre's review is the screening, so the online screening is not asked of a CCE applicant. The
+the Academic Office publishes. A CCE applicant needs no checking window of the Director of ICT's; since V404 they pay the CCE
+admission checking fee the Bursary states, once the Centre's outcome is published (see H). The Centre's review is the screening, so the online screening is not asked of a CCE applicant. The
 passport is a JPEG (it goes on the CCE admission letter). Course registration refuses a CCE student until phase 2 gives CCE
 its own offerings in the CCE session.
 
@@ -278,3 +278,34 @@ takes `stream`; `/api/v1/matriculation/config` lists `routes`, PUT `/routes/{cod
 **Tests.** check.sql — the V381 property (sheets by stream, the stream guard, the card, the bar, the position and spillover,
 deferment dates, the matriculation series and segment, the statement, the import; 226). `CceExamsIT` (through the API,
 rerunnable). `StudentPortalIT` now acts as the Head of the course's own department.
+
+---
+
+## H. CCE applicant fees and documents (V404)
+
+**Three fees, all the Bursary's.** Bursary → *CCE applicant fees* (`/cce/fees`) states, per CCE session, the application fee
+(with any portal charge), the **admission checking fee** and the acceptance fee (`admissions.route_fee.checking_fee`;
+`admissions.set_route_fee(session, route, application, portal, acceptance, checking)` — a statement without the checking fee is
+refused, `CCE_FEE_AMOUNT`; only the Bursar or super). A session without its own statement carries the last stated one, as
+before. Nothing in the code states an amount: for the University's figures (application ₦10,000, checking ₦3,000, acceptance
+₦10,000) the Bursary enters them once per session. A row stated before V404 has no checking fee: owed, and not payable until
+the Bursary states it — the applicant is told so on Admission Status.
+
+**The order an applicant follows.** The Academic Office loads the CCE list → the listed candidate registers with the JAMB number
+and date of birth and signs in → **pays the application fee first** → the form opens once the payment is confirmed (or at once
+where the Bursary charges nothing): details, O'Level, documents, programme → submits → the Centre reviews and the Academic
+Office publishes → **checking opens to the applicant when the outcome of their application is published**; they pay the
+admission checking fee once and read the outcome → accept and pay the acceptance fee. Before the fee, the form and the document
+upload are refused (`CCE_FEE_FIRST`, in `admissions.cce_require_editable` and the applicant API). Before publication, the
+checking fee is refused (`ADMISSION_CHECKING_CLOSED`), so nobody pays to read "not yet decided".
+
+**Documents.** The passport (JPEG), the O'Level result of each sitting, the **birth certificate** (or declaration of age) and the
+**certificate of state of origin** — all required before submission (`admissions.cce_application_problems`). Applications
+submitted before V404 keep what they have; one the Centre sends back is completed under these rules.
+
+**One engine.** CCE checking runs through the ordinary admission status checking (`admissions.status_checking`,
+`new_fee_reference` kind `CHECKING`, `confirm_fee`, `admission_status_checked`): no second payment or verification path.
+
+**Tests.** check.sql — the V379 property restated (fee first, the two certificates, checking closed until published, the
+checking fee paid to read), and the V404 property (the three fees and their refusals, fee-first, the documents asked, a fee of
+nothing, a checking fee never stated; 244). `CceIT` follows the same path through the API.

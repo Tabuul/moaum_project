@@ -19,7 +19,8 @@ export interface Mapping {
   configured_by_name: string | null; configured_office: string | null; configured_at: string | null;
 }
 export interface SessionRow { session: string; state: string; listed?: number }
-export interface FeeRule { stated: boolean; application_fee: number; portal_charge: number; acceptance_fee: number; carried_from: string | null }
+/** V404: checking_fee is null on a statement made before the Bursary stated a CCE admission checking fee */
+export interface FeeRule { stated: boolean; application_fee: number; portal_charge: number; acceptance_fee: number; carried_from: string | null; checking_fee: number | null }
 export interface Overview {
   session: string; office: string | null; mapping: Mapping; sessions: SessionRow[]; stats: Record<string, number>;
   window: { state: string; opens_at: string | null; closes_at: string | null }; fees: FeeRule | null; programmesOffered: number;
@@ -107,7 +108,7 @@ export const ACTION_LABEL: Record<string, string> = {
 
 export const DOC_LABEL: Record<string, string> = {
   PASSPORT: "Passport photograph", OLEVEL_STATEMENT: "O'Level result (first sitting)", OLEVEL_STATEMENT_2: "O'Level result (second sitting)",
-  BIRTH_CERT: "Birth certificate or declaration of age", LGA_ID: "Local government identification", OTHER: "Other document",
+  BIRTH_CERT: "Birth certificate or declaration of age", STATE_OF_ORIGIN: "Certificate of state of origin", LGA_ID: "Local government identification", OTHER: "Other document",
 };
 
 /** the CCE list's columns: the template's heading, the field it fills, whether a row needs it, an example */
