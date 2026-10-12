@@ -18,6 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { SearchSelect, type Opt } from "@/components/proto/SearchSelect";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "../allocate/BulkUpload";
+import { ACTION_WORD, ROLE_WORD, SOURCE_WORD, CheckList, HistoryTable, whenText as when, type AllocationChecks as Checks, type AllocationEvent as HistoryRow } from "@/components/allocation/AllocationParts";
 
 export interface DeskOptions {
   sessions: { name: string; state: string; semesters: number | null }[];
@@ -35,18 +36,12 @@ interface ClassRow {
   registered: number; stage: string | null; allocated_on: string | null; updated_at: string | null;
 }
 interface Person { id: string; name: string; staff_number: string | null; email: string | null; ended_on: string | null; departments: string | null }
-interface HistoryRow {
-  id: string; offering_id: string; course_code: string; session: string; semester: number; action: string; role: string; reason: string | null; source: string; actor_office: string | null;
-  at: string; lecturer: string | null; lecturer_staff_number: string | null; previous_lecturer: string | null; performed_by: string | null; ticket: string | null; department: string | null;
-}
 interface ClassView {
   id: string; course_code: string; title: string; units: number; level: number; session: string; semester: number; stream: string; dept_code: string; department: string | null;
   faculty_code: string | null; faculty: string | null; programmes: { code: string; name: string; level: number | null }[]; lecturer: Person | null; second_examiner: Person | null;
   co_lecturers: { id: string; name: string; staff_number: string | null; programme_code: string | null; programme: string | null; added_at: string }[];
   registered: number; stage: string | null; twin: string | null; conflicts: { kind: string; words: string }[]; history: HistoryRow[];
 }
-interface Check { code: string; level: "OK" | "WARNING" | "ERROR"; words: string }
-interface Checks { checks: Check[]; ok: boolean; overload: boolean }
 interface LecturerHit { id: string; name: string; staff_number: string | null; email: string | null; department: string | null; faculty: string | null; load: number }
 interface LecturerView extends Person {
   faculty: string | null; session: string; semester: number | null; load: number | null; maxUnits: number; outside: number;
@@ -58,19 +53,12 @@ type Tab = "classes" | "lecturers" | "history" | "conflicts" | "bulk";
 type Status = "" | "UNALLOCATED" | "ALLOCATED" | "SEVERAL" | "CONFLICT";
 
 const SEM = (n: number | null | undefined) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
-const ACTION_WORD: Record<string, string> = {
-  ALLOCATED: "Allocated", REASSIGNED: "Reassigned", UNALLOCATED: "Lecturer removed", CO_LECTURER_ADDED: "Co-lecturer added", CO_LECTURER_REMOVED: "Co-lecturer removed",
-  SECOND_EXAMINER_SET: "Second examiner named", SECOND_EXAMINER_REMOVED: "Second examiner removed", ON_RECORD: "On record",
-};
-const ROLE_WORD: Record<string, string> = { LECTURER: "Lead lecturer", CO_LECTURER: "Co-lecturer", SECOND_EXAMINER: "Second examiner" };
-const SOURCE_WORD: Record<string, string> = { DESK: "Desk", IMPORT: "Bulk import", SYSTEM: "System" };
 const CONFLICT_WORD: Record<string, string> = {
   LECTURER_LEFT: "Lecturer has left", NO_TEACHING_OFFICE: "No lecturer office", COURSE_ENDED: "Course ended", LEAD_ALSO_CO_LECTURER: "Lead also co-lecturer",
   OVERLOAD: "Over 12 units", TIMETABLE_CLASH: "Timetable clash",
 };
 const stageWord = (s: string | null) => (s ? s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ") : "—");
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 type Result<T> = { ok: true; data: T } | { ok: false; problem: Problem };
 async function call<T>(path: string, method = "GET", body?: unknown, reason?: string): Promise<Result<T>> {
@@ -349,7 +337,6 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
     onChanged();
   }
 
-  const mark = (l: Check["level"]) => (l === "OK" ? <span style={{ color: "var(--green, #1d7a46)" }}>✓</span> : l === "WARNING" ? <span style={{ color: "var(--amber, #a15c00)" }}>!</span> : <span style={{ color: "var(--crimson, #c51e28)" }}>✗</span>);
 
   return (
     <Modal wide title={`${view.course_code} — ${view.title}`} sub={`${view.session}, ${SEM(view.semester)} semester · ${view.units} units · ${view.level} level`} onClose={onClose}
@@ -393,11 +380,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
               <LecturerPick id="al-who" value={person?.id ?? ""} label={person?.name ?? ""} onPick={(p) => choose(p)} session={view.session} semester={view.semester} />
             </Field>
           </div>
-          {checks ? (
-            <ul className="mt-2" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {checks.checks.map((c) => <li key={c.code} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "2px 0" }}>{mark(c.level)}<span>{c.words}</span></li>)}
-            </ul>
-          ) : person && act !== "SECOND_EXAMINER" ? <p className="sub2 mt-2">Checking…</p> : null}
+          {person && act !== "SECOND_EXAMINER" ? <CheckList checks={checks} /> : null}
           {checks?.overload ? (
             <label className="row mt-2" style={{ gap: 6 }}><input type="checkbox" checked={overload} onChange={(e) => setOverload(e.target.checked)} /> Allocate as an overload (reported to the Dean)</label>
           ) : null}
@@ -428,11 +411,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
 
       <div className="mt-2">
         <b>History</b>
-        {view.history.length ? (
-          <DTable noPrint pageSize={10} cols={["S/N|num", "When", "Action", "Role", "Lecturer", "Previous", "Reason", "By", "Ticket"]}
-            rows={view.history.map((h, i) => [i + 1, when(h.at), ACTION_WORD[h.action] ?? h.action, ROLE_WORD[h.role] ?? h.role, h.lecturer || "—", h.previous_lecturer || "—", h.reason ?? "—",
-              h.performed_by ? `${h.performed_by}${h.actor_office ? ` (${roleLabel(h.actor_office)})` : ""}` : SOURCE_WORD[h.source] ?? h.source, h.ticket ?? "—"])} />
-        ) : <p className="sub2">No allocation yet.</p>}
+        <HistoryTable rows={view.history} />
       </div>
     </Modal>
   );
@@ -509,11 +488,7 @@ function History({ session, semester, dept, initialTicket, onOpen, scope }: { se
       <PBody>
         <div className="grid grid--3"><Field id="al-h-ticket" label="Support ticket" hint="Only the acts made on this ticket"><input id="al-h-ticket" className="ctl" value={ticket} onChange={(e) => setTicket(e.target.value)} placeholder="TICK-2026-00145" /></Field></div>
         {rows === null ? <p className="sub2">Loading…</p> : rows.length === 0 ? <p className="sub2">No allocation recorded for these filters.</p> : (
-          <DTable pageSize={50} cols={["S/N|num", "When", "Course", "Action", "Role", "Lecturer", "Previous", "Reason", "By", "Ticket", "|mid"]}
-            texts={rows.map((h) => `${h.course_code} ${h.lecturer ?? ""} ${h.previous_lecturer ?? ""} ${h.reason ?? ""} ${h.performed_by ?? ""} ${h.ticket ?? ""}`)}
-            rows={rows.map((h, i) => [i + 1, when(h.at), <b key="c">{h.course_code}</b>, ACTION_WORD[h.action] ?? h.action, ROLE_WORD[h.role] ?? h.role, h.lecturer || "—", h.previous_lecturer || "—", h.reason ?? "—",
-              h.performed_by ? `${h.performed_by}${h.actor_office ? ` (${roleLabel(h.actor_office)})` : ""}` : SOURCE_WORD[h.source] ?? h.source, h.ticket ?? "—",
-              <Btn key="o" kind="ghost" onClick={() => onOpen(h.offering_id)}>View</Btn>])} />
+          <HistoryTable rows={rows} showCourse onOpen={onOpen} pageSize={50} />
         )}
       </PBody>
     </Panel>

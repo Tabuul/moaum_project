@@ -2,8 +2,9 @@
 
 /** rAllocate — the department's offerings for a session, semester and level, and assigning teaching:
  *  a lead lecturer (who owns the score sheet), co-lecturers who also teach and enter scores, and the
- *  second examiner who verifies. */
-import { useState } from "react";
+ *  second examiner who verifies. V408: the checks the ICT desk reads, before saving; a reason when a lead is
+ *  replaced or a co-lecturer removed; the class's and the department's allocation history. */
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
@@ -16,6 +17,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "./BulkUpload";
+import { CheckList, HistoryTable, firmError, ACTION_WORD, ROLE_WORD, byText, whenText, type AllocationChecks, type AllocationEvent } from "@/components/allocation/AllocationParts";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 /** V405: a course of the department with no class in the session's opened semesters, and why */
@@ -34,9 +36,11 @@ const MAX_UNITS = 12;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 
-export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, withoutClass = [] }: {
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, withoutClass = [], events = [] }: {
   depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
   offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean; withoutClass?: WithoutClass[];
+  /** V408: the department's allocation history for the session and semester */
+  events?: AllocationEvent[];
 }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -54,6 +58,43 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   const [loadingPool, setLoadingPool] = useState(false);
   // the Head of Department finds a lecturer by name, staff number or department rather than scroll the register
   const [lecQ, setLecQ] = useState("");
+  // V408: the checks of the lead and of the co-lecturer chosen, the reason a change needs, the class's history
+  const [leadChecks, setLeadChecks] = useState<AllocationChecks | null>(null);
+  const [coChecks, setCoChecks] = useState<AllocationChecks | null>(null);
+  const [reason, setReason] = useState("");
+  const [removing, setRemoving] = useState<CoLecturer | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+  const [history, setHistory] = useState<AllocationEvent[] | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const openId = open?.id ?? null;
+  const openLead = open?.lecturer_id ?? null;
+  const replacing = !!openLead && !!lecturer && lecturer !== openLead;
+  useEffect(() => {
+    if (!openId || !lecturer || lecturer === openLead) return;
+    let live = true;
+    void fetch(`/api/bff/api/v1/allocation/${openId}/check?lecturer=${lecturer}&role=LECTURER`).then((r) => (r.ok ? r.json() : null)).then((j) => { if (live && j) setLeadChecks(j as AllocationChecks); });
+    return () => { live = false; };
+  }, [openId, lecturer, openLead]);
+  useEffect(() => {
+    if (!openId || !addCoId) return;
+    let live = true;
+    void fetch(`/api/bff/api/v1/allocation/${openId}/check?lecturer=${addCoId}&role=CO_LECTURER`).then((r) => (r.ok ? r.json() : null)).then((j) => { if (live && j) setCoChecks(j as AllocationChecks); });
+    return () => { live = false; };
+  }, [openId, addCoId]);
+  useEffect(() => {
+    if (!openId) return;
+    let live = true;
+    void fetch(`/api/bff/api/v1/allocation/${openId}/history`).then((r) => (r.ok ? r.json() : null)).then((j) => { if (live && Array.isArray(j)) setHistory(j as AllocationEvent[]); });
+    return () => { live = false; };
+  }, [openId, historyVersion]);
+  /* a new choice: its own checks; the lead is never also the second examiner */
+  function chooseLead(id: string) {
+    setLecturer(id); setLeadChecks(null);
+    if (second === id) setSecond("");
+  }
+  function chooseCo(id: string) {
+    setAddCoId(id); setCoChecks(null);
+  }
 
   async function toggleAllDepartments(on: boolean) {
     if (!on) { setPool(null); return; }
@@ -90,9 +131,10 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     setCo(o.co_lecturers ?? []);
     setAddCoId("");
     setErr(null);
+    setLeadChecks(null); setCoChecks(null); setReason(""); setRemoving(null); setRemoveReason(""); setHistory(null);
   }
 
-  async function call(path: string, method: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
+  async function call(path: string, method: string, body: unknown, reason: string, toast?: string): Promise<Record<string, unknown> | null> {
     // a request the portal never answers (an API restarting mid-deploy) must not lock the dialog for ever
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 30_000);
@@ -110,7 +152,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     } finally { clearTimeout(timer); }
     const j = await r.json().catch(() => null);
     if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
-    notify(reason);
+    notify(toast ?? reason);
+    setHistoryVersion((v) => v + 1);
     return (j ?? {}) as Record<string, unknown>;
   }
 
@@ -136,7 +179,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     setBusy(true);
     setErr(null);
     try {
-      const ok = await call(`/${open.id}`, "POST", { lecturer, secondExaminer: second || null, overload }, `Allocate ${open.course_code}`);
+      const ok = await call(`/${open.id}`, "POST", { lecturer, secondExaminer: second || null, overload, reason: replacing ? reason.trim() : undefined },
+        replacing ? reason.trim() : `Allocate ${open.course_code}`, replacing ? `${open.course_code} reassigned` : `Allocate ${open.course_code}`);
       if (!ok) return;
       const who = list.find((l) => l.id === lecturer)?.name ?? "the lecturer";
       setSaid(`${open.course_code} assigned to ${who}${co.length ? ` with ${co.length} co-lecturer${co.length === 1 ? "" : "s"}` : ""}`);
@@ -153,6 +197,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     try {
       const group = (open.programmes ?? []).find((p) => p.code === addCoProg) ?? null;
       const ok = await call(`/${open.id}/teachers`, "POST", { lecturer: addCoId, programme: addCoProg || null }, `Co-lecturer added to ${open.course_code}${group ? ` for ${group.name}` : ""}`);
+      setCoChecks(null);
       if (!ok) return;
       const who = list.find((l) => l.id === addCoId);
       if (who && !co.some((c) => c.id === who.id)) setCo([...co, { id: who.id, name: who.name, programme_code: group?.code ?? null, programme: group?.name ?? null }]);
@@ -163,12 +208,14 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   }
 
   async function removeCoLecturer(id: string) {
-    if (!open) return;
+    if (!open || removeReason.trim().length < 5) return;
     setBusy(true);
     try {
-      const ok = await call(`/${open.id}/teachers/${id}`, "DELETE", null, `Co-lecturer removed from ${open.course_code}`);
+      const why = removeReason.trim();
+      const ok = await call(`/${open.id}/teachers/${id}?reason=${encodeURIComponent(why)}`, "DELETE", null, why, `Co-lecturer removed from ${open.course_code}`);
       if (!ok) return;
       setCo(co.filter((c) => c.id !== id));
+      setRemoving(null); setRemoveReason("");
       router.refresh();
     } finally { setBusy(false); }
   }
@@ -181,6 +228,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   const after = open ? chosenLoad + open.units : 0;
   const overloaded = after > MAX_UNITS;
   const coCandidates = list.filter((l) => l.id !== lecturer && !co.some((c) => c.id === l.id));
+  // a new lead waits for the checks; a firm refusal, or a replacement without its reason, cannot be saved
+  const blockedLead = !!lecturer && lecturer !== openLead && (!leadChecks || firmError(leadChecks) || (replacing && reason.trim().length < 5));
 
   return (
     <>
@@ -226,20 +275,21 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       ]} />
 
       {withoutClass.length ? (
-        <Note kind={withoutClass.some((w) => w.reason === "NO_CLASS") ? "bad" : "info"} title={`${withoutClass.length} course${withoutClass.length === 1 ? "" : "s"} of ${deptName} ${withoutClass.length === 1 ? "has" : "have"} no class in ${session}`}>
-          <div className="sub2 mb-1">
-            A course gets its class when the semester opens; one added to a programme&rsquo;s structure after that has none until it is opened here. A course
-            with no class cannot be allocated, timetabled or registered.
-          </div>
-          <ul className="sub2" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
-            {withoutClass.map((w) => (
-              <li key={w.code}><b className="tnum">{w.code}</b> · {w.title} · {w.level} level, {semName(w.semester).toLowerCase()} semester —{" "}
-                {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, then open the classes here" : "in the structure, no class yet"}</li>
-            ))}
-          </ul>
-          {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
-            <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
-          ) : null}
+        <Note kind={withoutClass.some((w) => w.reason === "NO_CLASS") ? "bad" : "info"} title={`${withoutClass.length} course${withoutClass.length === 1 ? "" : "s"} of ${deptName} ${withoutClass.length === 1 ? "has" : "have"} no class in ${session}`}
+          action={<>
+            {/* the list and the button sit in the notice's action slot: a list may not stand inside the notice's paragraph */}
+            <ul className="sub2" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
+              {withoutClass.map((w) => (
+                <li key={w.code}><b className="tnum">{w.code}</b> · {w.title} · {w.level} level, {semName(w.semester).toLowerCase()} semester —{" "}
+                  {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, then open the classes here" : "in the structure, no class yet"}</li>
+              ))}
+            </ul>
+            {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
+              <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
+            ) : null}
+          </>}>
+          A course gets its class when the semester opens; one added to a programme&rsquo;s structure after that has none until it is opened here. A course
+          with no class cannot be allocated, timetabled or registered.
         </Note>
       ) : null}
       <Panel title="Teaching allocation" right={`${deptName} · ${session} · ${semName(semester).toLowerCase()} semester${level ? ` · ${level} level` : ""}`}>
@@ -274,16 +324,26 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
       <BulkUpload dept={dept} deptName={deptName} session={session} semester={semester} imports={imports} canImport={canImport} />
 
+      <Panel title="Allocation history" right={events.length ? (
+        <Btn kind="ghost" onClick={() => void brandedXlsx("Allocation history", ["When", "Course code", "Action", "Role", "Lecturer", "Previous lecturer", "Reason", "By", "Ticket"],
+          events.map((h) => [whenText(h.at), h.course_code, ACTION_WORD[h.action] ?? h.action, ROLE_WORD[h.role] ?? h.role, h.lecturer ?? "", h.previous_lecturer ?? "", h.reason ?? "", byText(h), h.ticket ?? ""]),
+          { sheetName: "History", sub: `${deptName} · ${session} · ${semName(semester)} semester`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semName(semester)} semester`]] })
+          .then((b) => downloadBlob(b, `allocation-history-${dept}-${session.replace("/", "-")}-${semester}.xlsx`))}>Download Excel</Btn>
+      ) : `${deptName} · ${session} · ${semName(semester).toLowerCase()} semester`}>
+        <PBody><HistoryTable rows={events} showCourse pageSize={20} onOpen={(id) => { const o = offerings.find((x) => x.id === id); if (o) openAssign(o); }} /></PBody>
+      </Panel>
+
 
       {open ? (
         <Modal title={`${open.lecturer_id ? "Manage" : "Assign"} teaching for ${open.course_code}`} sub={`${open.title} · ${open.level} level · ${open.units} units · ${open.registered} registered`} wide onClose={() => setOpen(null)}
           foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
             <span className={`sub2 grow${err ? " ink-red" : ""}`}>
-              {err ? `Not saved — ${err.title}` : busy ? "Saving…" : !lecturer ? "Choose the lead lecturer to save" : ""}
+              {err ? `Not saved — ${err.title}` : busy ? "Saving…" : !lecturer ? "Choose the lead lecturer to save"
+                : firmError(leadChecks) ? "This lecturer cannot take the class — see the checks" : replacing && reason.trim().length < 5 ? "Give the reason for replacing the lead" : ""}
             </span>
             {overloaded
-              ? <Btn kind="urgent" disabled={busy || !lecturer} onClick={() => void assign(true)}>{busy ? "Saving…" : `Save as an overload (${after} units)`}</Btn>
-              : <Btn kind="go" disabled={busy || !lecturer} onClick={() => void assign(false)}>{busy ? "Saving…" : "Save the lead & second examiner"}</Btn>}</>}>
+              ? <Btn kind="urgent" disabled={busy || !lecturer || blockedLead} onClick={() => void assign(true)}>{busy ? "Saving…" : `Save as an overload (${after} units)`}</Btn>
+              : <Btn kind="go" disabled={busy || !lecturer || blockedLead} onClick={() => void assign(false)}>{busy ? "Saving…" : replacing ? "Reassign the lead" : "Save the lead & second examiner"}</Btn>}</>}>
           {err ? <ProblemNotice problem={err} /> : null}
 
           <div className="eyebrow mt-1">Lead lecturer</div>
@@ -309,12 +369,19 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                 <span className="tnum" key="c">{l.load} units</span>,
                 <span className={`tnum${willBe > MAX_UNITS ? " ink-red b700" : ""}`} key="w">{willBe} units</span>,
                 <label key="p" className="row row--inline row--tight" style={{ cursor: "pointer" }}>
-                  <input type="radio" name="al-lec" checked={lecturer === l.id} onChange={() => setLecturer(l.id)} /> {lecturer === l.id ? "Lead" : "Choose"}
+                  <input type="radio" name="al-lec" checked={lecturer === l.id} onChange={() => chooseLead(l.id)} /> {lecturer === l.id ? "Lead" : "Choose"}
                 </label>,
               ];
             })} />
             ) : <div className="sub2" style={{ padding: "var(--s-2) 0" }}>No lecturer matches &ldquo;{lecQ}&rdquo;{pool === null ? " in this department — tick “Lecturers from other departments” to look further" : ""}.</div>}
           </>) : <Note kind="bad" title="No lecturer is on record for this department">Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
+
+          {lecturer && lecturer !== open.lecturer_id ? <CheckList checks={leadChecks} title={`Checks for ${list.find((l) => l.id === lecturer)?.name ?? "the lecturer"}`} /> : null}
+          {replacing ? (
+            <Field id="al-reason" label={`Reason for replacing ${open.lecturer ?? "the lead"}`} required hint="Kept on the allocation history">
+              <textarea id="al-reason" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </Field>
+          ) : null}
 
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lead. Set now so verification is not blocked later.">
             <SearchSelect id="al-second" value={second} allLabel="Not set yet" placeholder="Search a lecturer…"
@@ -329,15 +396,23 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               {co.map((c) => (
                 <span key={c.id} className="chip row row--inline" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-pill)", padding: "3px 6px 3px 12px" }}>
                   {c.name}{c.programme ? <span className="sub2"> · {c.programme}</span> : null}
-                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => void removeCoLecturer(c.id)} aria-label={`Remove ${c.name}`}>Remove</button>
+                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => { setRemoving(c); setRemoveReason(""); }} aria-label={`Remove ${c.name}`}>Remove</button>
                 </span>
               ))}
             </div>
           ) : <div className="sub2 mb-2">No co-lecturer yet — this course is taught by the lead alone.</div>}
+          {removing ? (
+            <div className="row row--end mb-2">
+              <div style={{ flex: "1 1 280px" }}><Field id="al-rm" label={`Reason for removing ${removing.name}`} required hint="Kept on the allocation history">
+                <input id="al-rm" className="ctl" value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} /></Field></div>
+              <Btn kind="ghost" disabled={busy} onClick={() => setRemoving(null)}>Cancel</Btn>
+              <Btn kind="urgent" disabled={busy || removeReason.trim().length < 5} onClick={() => void removeCoLecturer(removing.id)}>{busy ? "Removing…" : "Remove co-lecturer"}</Btn>
+            </div>
+          ) : null}
           <div className="row row--end">
             <div style={{ flex: "1 1 240px" }}><Field id="al-co" label="Add a co-lecturer">
               <SearchSelect id="al-co" value={addCoId} placeholder="Search a lecturer…"
-                options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setAddCoId} /></Field></div>
+                options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={chooseCo} /></Field></div>
             {(open.programmes ?? []).length > 1 ? (
               <div style={{ flex: "1 1 200px" }}><Field id="al-co-prog" label="Teaches" hint="One programme's group, or every programme">
                 <select id="al-co-prog" className="ctl" value={addCoProg} onChange={(e) => setAddCoProg(e.target.value)}>
@@ -345,9 +420,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                   {(open.programmes ?? []).map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
                 </select></Field></div>
             ) : null}
-            <Btn kind="primary" disabled={busy || !addCoId} onClick={() => void addCoLecturer()}>{busy ? "Adding…" : "Add co-lecturer"}</Btn>
+            <Btn kind="primary" disabled={busy || !addCoId || !coChecks || !coChecks.ok} onClick={() => void addCoLecturer()}>{busy ? "Adding…" : "Add co-lecturer"}</Btn>
           </div>
+          {addCoId ? <CheckList checks={coChecks} title={`Checks for ${list.find((l) => l.id === addCoId)?.name ?? "the co-lecturer"}`} /> : null}
           {!open.lecturer_id ? <div className="sub2 ink-muted mt-2">Tip: save the lead first, then co-lecturers are added to the same course.</div> : null}
+
+          <div className="eyebrow mt-4">History</div>
+          {history === null ? <div className="sub2">Loading…</div> : <HistoryTable rows={history} />}
         </Modal>
       ) : null}
     </>

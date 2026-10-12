@@ -42,10 +42,12 @@ class AllocationDeskController {
 
     private final JdbcClient jdbc;
     private final AllocationReach reach;
+    private final AllocationRecord record;
 
-    AllocationDeskController(JdbcClient jdbc, AllocationReach reach) {
+    AllocationDeskController(JdbcClient jdbc, AllocationReach reach, AllocationRecord record) {
         this.jdbc = jdbc;
         this.reach = reach;
+        this.record = record;
     }
 
     private static String blank(String s) {
@@ -244,7 +246,7 @@ class AllocationDeskController {
                 .param("o", offering).query(String.class).optional().orElse(null));
         c.put("conflicts", jdbc.sql("SELECT kind, words FROM catalogue.allocation_conflicts(:s, :sem) WHERE offering_id = :o")
                 .param("s", c.get("session")).param("sem", c.get("semester")).param("o", offering).query().listOfRows());
-        c.put("history", history(" WHERE ev.offering_id = :o", Map.of("o", offering), 200));
+        c.put("history", record.events(" WHERE ev.offering_id = :o", Map.of("o", offering), 200));
         return c;
     }
 
@@ -342,23 +344,12 @@ class AllocationDeskController {
     @Transactional(readOnly = true)
     Map<String, Object> check(@RequestParam UUID offering, @RequestParam UUID lecturer, @RequestParam(defaultValue = "LECTURER") String role) {
         reach.onClass(offering, AllocationReach.VIEW);
-        return checks(offering, lecturer, role);
-    }
-
-    private Map<String, Object> checks(UUID offering, UUID lecturer, String role) {
-        String rl = "CO_LECTURER".equalsIgnoreCase(role) ? "CO_LECTURER" : "LECTURER";
-        List<Map<String, Object>> list = jdbc.sql("SELECT code, level, words FROM catalogue.allocation_checks(:o, :p, :r)")
-                .param("o", offering).param("p", lecturer).param("r", rl).query().listOfRows();
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("checks", list);
-        out.put("ok", list.stream().noneMatch(c -> "ERROR".equals(c.get("level"))));
-        out.put("overload", list.stream().anyMatch(c -> "LOAD".equals(c.get("code")) && "WARNING".equals(c.get("level"))));
-        return out;
+        return record.checks(offering, lecturer, role);
     }
 
     /** the checks again on the server, as the act is made: an ERROR refuses with its own words, an overload only when meant */
     private void enforce(UUID offering, UUID lecturer, String role, boolean overloadMeant) {
-        Map<String, Object> c = checks(offering, lecturer, role);
+        Map<String, Object> c = record.checks(offering, lecturer, role);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> list = (List<Map<String, Object>>) c.get("checks");
         for (Map<String, Object> x : list) {
@@ -407,15 +398,6 @@ class AllocationDeskController {
         jdbc.sql("SELECT set_config('moaum.allocation_ticket', :t, true)").param("t", ticket == null ? "" : ticket.toString()).query().listOfRows();
     }
 
-    private static String need(String reason, String what) {
-        String r = blank(reason);
-        if (r.length() < 5) {
-            throw new DomainRuleViolation("ALLOC_REASON", "Give the reason for " + what + ".",
-                    new DomainRuleViolation.Remedy("Say why, in a few words: the history and the lecturer's notice carry it.", "You"));
-        }
-        return r;
-    }
-
     private static String semesterWord(Object n) {
         int s = n instanceof Number x ? x.intValue() : 1;
         return s == 1 ? "First" : s == 2 ? "Second" : "Third";
@@ -442,7 +424,7 @@ class AllocationDeskController {
         UUID previous = (UUID) c.get("lecturer_id");
         boolean reassign = previous != null;
         enforce(offering, body.lecturer(), "LECTURER", Boolean.TRUE.equals(body.overload()));
-        String reason = reassign ? need(body.reason(), "the reassignment") : blank(body.reason());
+        String reason = reassign ? AllocationRecord.need(body.reason(), "the reassignment") : blank(body.reason());
         UUID ticket = ticket(body.ticket());
         context(reason.isEmpty() ? "Course allocated on the allocation desk" : reason, ticket);
         jdbc.sql("SET LOCAL lock_timeout = '8s'").update();
@@ -503,7 +485,7 @@ class AllocationDeskController {
     @Transactional
     Map<String, Object> removeCoLecturer(@PathVariable UUID offering, @PathVariable UUID lecturer, @Valid @RequestBody RemoveIn body) {
         Map<String, Object> c = reach.onClass(offering, AllocationReach.REMOVE);
-        String reason = need(body.reason(), "removing the co-lecturer");
+        String reason = AllocationRecord.need(body.reason(), "removing the co-lecturer");
         UUID ticket = ticket(body.ticket());
         if (jdbc.sql("SELECT count(*) FROM catalogue.offering_teacher WHERE offering_id = :o AND lecturer_id = :p").param("o", offering).param("p", lecturer).query(Long.class).single() == 0) {
             throw new DomainRuleViolation("ALLOC_NOT_CO_LECTURER", nameOf(lecturer) + " is not a co-lecturer of " + c.get("course_code") + ".",
@@ -542,7 +524,7 @@ class AllocationDeskController {
                     new DomainRuleViolation.Remedy("Choose an active lecturer.", "You"));
         }
         UUID ticket = ticket(body.ticket());
-        String reason = c.get("second_examiner_id") == null ? blank(body.reason()) : need(body.reason(), "changing the second examiner");
+        String reason = c.get("second_examiner_id") == null ? blank(body.reason()) : AllocationRecord.need(body.reason(), "changing the second examiner");
         context(reason.isEmpty() ? "Second examiner named on the allocation desk" : reason, ticket);
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, true)").param("o", offering).param("lec", lead).param("sec", body.person(), Types.OTHER).query().listOfRows();
         String summary = (body.person() == null ? "Removed the second examiner of " : "Named " + nameOf(body.person()) + " second examiner of ") + c.get("course_code");
@@ -551,25 +533,6 @@ class AllocationDeskController {
     }
 
     /* ── the history ── */
-
-    private List<Map<String, Object>> history(String where, Map<String, Object> params, int limit) {
-        var q = jdbc.sql("""
-                SELECT ev.id, ev.offering_id, ev.course_code, ev.session, ev.semester, ev.action, ev.role, ev.reason, ev.source, ev.actor_office, ev.at,
-                       concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), '')) AS lecturer, lp.staff_number AS lecturer_staff_number,
-                       concat_ws(', ', nullif(btrim(pp.surname), ''), nullif(btrim(pp.given_names), '')) AS previous_lecturer,
-                       concat_ws(', ', nullif(btrim(ap.surname), ''), nullif(btrim(ap.given_names), '')) AS performed_by,
-                       tk.number AS ticket, c.dept_code, d.name AS department
-                  FROM catalogue.allocation_event ev
-                  JOIN catalogue.course c ON c.code = ev.course_code
-                  LEFT JOIN ref.department d ON d.code = c.dept_code
-                  LEFT JOIN iam.person lp ON lp.id = ev.lecturer_id
-                  LEFT JOIN iam.person pp ON pp.id = ev.previous_lecturer_id
-                  LEFT JOIN iam.person ap ON ap.id = ev.actor_id
-                  LEFT JOIN helpdesk.ticket tk ON tk.id = ev.ticket_id
-                """ + where + " ORDER BY ev.at DESC, ev.id LIMIT :lim").param("lim", limit);
-        for (var e : params.entrySet()) q = q.param(e.getKey(), e.getValue());
-        return q.query().listOfRows();
-    }
 
     /** the allocation history within reach: a session and semester, a department, a lecturer, a ticket's number */
     @GetMapping("/history")
@@ -590,7 +553,7 @@ class AllocationDeskController {
         String where = " WHERE " + reach.where(r, "c.dept_code", "d.faculty_code")
                 + " AND (:s = '' OR ev.session = :s) AND (:sem = 0 OR ev.semester = :sem) AND (:dept = '' OR upper(c.dept_code) = :dept)"
                 + " AND (:lec = '' OR ev.lecturer_id::text = :lec OR ev.previous_lecturer_id::text = :lec) AND (:tk = '' OR upper(tk.number) = upper(:tk))";
-        return history(where, params, Math.max(1, Math.min(limit, 5000)));
+        return record.events(where, params, limit);
     }
 
     /** what needs a look in a semester's allocations, within reach */

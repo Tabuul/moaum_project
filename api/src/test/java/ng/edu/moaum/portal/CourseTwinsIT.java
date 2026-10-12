@@ -94,6 +94,18 @@ class CourseTwinsIT {
         return r.getBody();
     }
 
+    /** a lecturer of the department: the allocation desks give a class only to a person who holds a lecturer office (V408) */
+    private UUID teacher(String dept) {
+        UUID id = it.person("ZZTWINS-LEC-" + dept, "ZZTWINSLECTURER");
+        it.db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                SELECT gen_random_uuid(), :p, 'lecturer', 'department', :d, 'integration test', :p, current_date
+                 WHERE NOT EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = :p AND a.office_code = 'lecturer' AND a.scope_id = :d
+                                     AND (a.valid_to IS NULL OR a.valid_to >= current_date))
+                """).param("p", id).param("d", dept).update());
+        return id;
+    }
+
     @Test
     void aBsuCourseAndItsMoauTwinAreAllocatedTimetabledAndRegisteredOnce() {
         // suggested from the duplicates rule
@@ -112,7 +124,7 @@ class CourseTwinsIT {
         assertThat((List<Map<String, Object>>) linked.getBody().get("suggested")).noneSatisfy(s -> assertThat(s.get("bsu_code")).isEqualTo(bsu));
 
         // allocating the MOAU- class allocates the BSU- class too
-        UUID lecturer = it.person("ZZTWINS-LEC-" + dept, "ZZTWINSLECTURER");
+        UUID lecturer = teacher(dept);
         ResponseEntity<Map> assigned = it.call(academic, HttpMethod.POST, "/api/v1/allocation/" + om, Map.of("lecturer", lecturer.toString()));
         assertThat(assigned.getStatusCode().value()).as(String.valueOf(assigned.getBody())).isEqualTo(200);
         assertThat(jdbc.sql("SELECT lecturer_id FROM catalogue.offering WHERE id = :o").param("o", ob).query(UUID.class).single()).isEqualTo(lecturer);
@@ -180,7 +192,7 @@ class CourseTwinsIT {
         assertThat((List<Map<String, Object>>) bulk.getBody().get("suggested")).noneSatisfy(s -> assertThat(s.get("bsu_code")).isEqualTo(bsu));
 
         // once allocated (the twin's class with it), the list says the pair is taught together and by whom
-        UUID lecturer = it.person("ZZTWINS-LEC-" + dept, "ZZTWINSLECTURER");
+        UUID lecturer = teacher(dept);
         assertThat(it.call(academic, HttpMethod.POST, "/api/v1/allocation/" + ob, Map.of("lecturer", lecturer.toString())).getStatusCode().value()).isEqualTo(200);
         List<Map<String, Object>> again = (List<Map<String, Object>>) it.get(academic, "/api/v1/catalogue/twins/all?session=" + SESSION).getBody().get("linked");
         assertThat(again).anySatisfy(t -> { assertThat(t.get("bsu_code")).isEqualTo(bsu); assertThat(t.get("allocation")).isEqualTo("TOGETHER"); assertThat(String.valueOf(t.get("lecturer"))).contains("ZZTWINSLECTURER"); });

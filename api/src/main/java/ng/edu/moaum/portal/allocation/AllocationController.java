@@ -38,11 +38,13 @@ class AllocationController {
     private final JdbcClient jdbc;
     private final OfficeScope scope;
     private final AllocationImportService imports;
+    private final AllocationRecord record;
 
-    AllocationController(JdbcClient jdbc, OfficeScope scope, AllocationImportService imports) {
+    AllocationController(JdbcClient jdbc, OfficeScope scope, AllocationImportService imports, AllocationRecord record) {
         this.jdbc = jdbc;
         this.scope = scope;
         this.imports = imports;
+        this.record = record;
     }
 
     /* ── V321: bulk course allocation from a spreadsheet — validated first, imported on confirmation ── */
@@ -77,7 +79,8 @@ class AllocationController {
         return imports.one(id);
     }
 
-    public record Assign(@NotNull UUID lecturer, UUID secondExaminer, Boolean overload) {
+    /** V408: a reason, required when the class's lead is replaced, goes on the allocation history */
+    public record Assign(@NotNull UUID lecturer, UUID secondExaminer, Boolean overload, String reason) {
     }
 
     private static final String HISTORY_READERS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_dean',"
@@ -306,11 +309,21 @@ class AllocationController {
     Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
+        // V408: the same checks as the ICT desk — a person who has left or holds no lecturer office takes no class, as lead or
+        // as second examiner; replacing the lead says why, and the history keeps it
+        record.refuseIneligible(offering, body.lecturer(), "LECTURER");
+        if (body.secondExaminer() != null) record.refuseIneligible(offering, body.secondExaminer(), "CO_LECTURER");
+        UUID lead = jdbc.sql("SELECT lecturer_id FROM catalogue.offering WHERE id = :o").param("o", offering).query(UUID.class).optional().orElse(null);
+        if (lead != null && !lead.equals(body.lecturer())) record.reason(AllocationRecord.need(body.reason(), "replacing the lead lecturer"));
+        else record.reason(body.reason());
         // an allocation is two small writes; if the offerings table is held by someone opening registration or
         // loading a structure, say so in seconds rather than hang the desk for the length of that work
         jdbc.sql("SET LOCAL lock_timeout = '8s'").update();
         jdbc.sql("SET LOCAL statement_timeout = '25s'").update();
         try {
+        // a co-lecturer made the lead is the lead only (as the ICT desk does)
+        jdbc.sql("DELETE FROM catalogue.offering_teacher WHERE offering_id IN (SELECT catalogue.offering_family(:o)) AND lecturer_id = :p")
+                .param("o", offering).param("p", body.lecturer()).update();
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, :ov)")
                 .param("o", offering).param("lec", body.lecturer())
                 .param("sec", body.secondExaminer(), Types.OTHER)
@@ -329,7 +342,7 @@ class AllocationController {
     }
 
     /** V332: a co-lecturer may be posted to one programme's group of the offering (the programme must carry the course) */
-    public record Teacher(@NotNull UUID lecturer, String programme) {
+    public record Teacher(@NotNull UUID lecturer, String programme, String reason) {
     }
 
     /** add a co-lecturer who also teaches the course and enters scores on the shared sheet */
@@ -339,6 +352,8 @@ class AllocationController {
     Map<String, Object> addTeacher(@PathVariable UUID offering, @RequestBody Teacher body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
+        record.refuseIneligible(offering, body.lecturer(), "CO_LECTURER");   // V408
+        record.reason(body.reason());
         String group = body.programme() == null || body.programme().isBlank() ? null : body.programme().trim().toUpperCase();
         if (group != null && jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course_offer co ON co.course_code = o.course_code
@@ -362,10 +377,42 @@ class AllocationController {
     @DeleteMapping("/{offering}/teachers/{lecturer}")
     @PreAuthorize(ALLOCATORS)
     @Transactional
-    Map<String, Object> removeTeacher(@PathVariable UUID offering, @PathVariable UUID lecturer) {
+    Map<String, Object> removeTeacher(@PathVariable UUID offering, @PathVariable UUID lecturer, @RequestParam(required = false) String reason) {
         assertHodOwnsOffering(offering);
+        record.reason(AllocationRecord.need(reason, "removing the co-lecturer"));   // V408: the history keeps that they taught it, and why they stopped
         jdbc.sql("DELETE FROM catalogue.offering_teacher WHERE offering_id = :o AND lecturer_id = :lec")
                 .param("o", offering).param("lec", lecturer).update();
         return Map.of("offering", offering, "lecturer", lecturer, "removed", true);
+    }
+
+    /* ── V408: the checks before an allocation and the history after it, as the ICT desk reads them ── */
+
+    /** whether a person may take the class as lead (LECTURER) or co-lecturer (CO_LECTURER), each check said; nothing written */
+    @GetMapping("/{offering}/check")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional(readOnly = true)
+    Map<String, Object> check(@PathVariable UUID offering, @RequestParam UUID lecturer, @RequestParam(defaultValue = "LECTURER") String role) {
+        assertHodOwnsOffering(offering);
+        return record.checks(offering, lecturer, role);
+    }
+
+    /** the class's allocation history, newest first */
+    @GetMapping("/{offering}/history")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> classHistory(@PathVariable UUID offering) {
+        assertHodOwnsOffering(offering);
+        return record.events(" WHERE ev.offering_id = :o", Map.of("o", offering), 200);
+    }
+
+    /** the department's allocation history for a session (and semester): a Head of Department's own department only */
+    @GetMapping("/events")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> events(@RequestParam String dept, @RequestParam String session, @RequestParam(required = false) Integer semester,
+                                     @RequestParam(defaultValue = "200") int limit) {
+        String d = scope.scopedDept(dept);
+        return record.events(" WHERE c.dept_code = :d AND ev.session = :s AND (:sem = 0 OR ev.semester = :sem)",
+                Map.of("d", d, "s", session, "sem", semester == null ? 0 : semester), limit);
     }
 }

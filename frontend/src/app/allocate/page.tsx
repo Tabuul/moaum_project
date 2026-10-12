@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Allocate, type Offering, type Lecturer, type Dept, type WithoutClass } from "./Allocate";
 import type { ImportRecord } from "./BulkUpload";
 import { sessionByDate } from "@/lib/sessions";
+import type { AllocationEvent } from "@/components/allocation/AllocationParts";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,9 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
   const withoutClass = dept ? await api<WithoutClass[]>(`/api/v1/allocation/without-class?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}`).then((r) => (r.ok ? r.data : [])).catch(() => [] as WithoutClass[]) : [];
   // V321: the bulk imports this desk may see
   const imports = await api<ImportRecord[]>("/api/v1/allocation/imports?limit=50");
+  // V408: the department's allocation history for the session and semester
+  const events = dept ? await api<AllocationEvent[]>(`/api/v1/allocation/events?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}&limit=300`)
+    .then((r) => (r.ok ? r.data : [])).catch(() => [] as AllocationEvent[]) : [];
 
   return (
     <Shell route="r/allocate" me={me.ok ? me.data : null}>
@@ -50,6 +54,7 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
           problem={offerings && !offerings.ok ? offerings.problem : null}
           imports={imports.ok ? imports.data : []}
           withoutClass={withoutClass}
+          events={events}
           canImport={!!me.ok && ["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super"].includes(me.data.activeOffice ?? "")}
         />
       )}

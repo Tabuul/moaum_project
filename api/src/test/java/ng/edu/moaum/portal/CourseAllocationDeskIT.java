@@ -246,6 +246,36 @@ class CourseAllocationDeskIT {
         assertThat(l(judged.get("rows")).get(1).get("codes").toString()).contains("OUT_OF_SCOPE");
     }
 
+    @Test
+    void theDepartmentDeskReadsTheSameChecksAndHistoryAndSaysWhy() {
+        String hod = it.officer("hod", "department", "MTC");
+        String base = "/api/v1/allocation/";
+        // the checks the ICT desk reads, for the department's own classes only
+        Map<String, Object> checks = it.get(hod, base + mine1 + "/check?lecturer=" + lecturerA).getBody();
+        assertThat(checks.get("ok")).isEqualTo(true);
+        assertThat(code(it.get(hod, base + outside + "/check?lecturer=" + lecturerA))).isEqualTo("ALLOC_DEPT");
+        // a person who holds no lecturer office takes no class here either
+        UUID noOffice = it.person("ZZ-ALD-N", "ZZALDNOOFFICE");
+        assertThat(code(it.call(hod, HttpMethod.POST, base + mine1, Map.of("lecturer", noOffice)))).isEqualTo("ALLOC_TEACHING");
+        // allocated; the lead replaced only with a reason; the same lead with a new second examiner needs none
+        assertThat(status(it.call(hod, HttpMethod.POST, base + mine1, Map.of("lecturer", lecturerA)))).isEqualTo(200);
+        assertThat(code(it.call(hod, HttpMethod.POST, base + mine1, Map.of("lecturer", lecturerB)))).isEqualTo("ALLOC_REASON");
+        assertThat(status(it.call(hod, HttpMethod.POST, base + mine1, Map.of("lecturer", lecturerB, "reason", "Dr ZZALDA moved to postgraduate teaching")))).isEqualTo(200);
+        assertThat(status(it.call(hod, HttpMethod.POST, base + mine1, Map.of("lecturer", lecturerB, "secondExaminer", lecturerA)))).isEqualTo(200);
+        // a co-lecturer from another faculty, removed only with a reason
+        assertThat(status(it.call(hod, HttpMethod.POST, base + mine1 + "/teachers", Map.of("lecturer", lecturerC)))).isEqualTo(200);
+        assertThat(code(it.call(hod, HttpMethod.DELETE, base + mine1 + "/teachers/" + lecturerC, null))).isEqualTo("ALLOC_REASON");
+        assertThat(status(it.call(hod, HttpMethod.DELETE, b -> b.path(base + mine1 + "/teachers/" + lecturerC).queryParam("reason", "Added by mistake").build(), null))).isEqualTo(200);
+        // the class's history and the department's: the record the ICT desk reads, another department's class refused
+        List<Map<String, Object>> history = it.getList(hod, base + mine1 + "/history").getBody();
+        assertThat(history).anyMatch(h -> "REASSIGNED".equals(h.get("action")) && "Dr ZZALDA moved to postgraduate teaching".equals(h.get("reason")) && "hod".equals(h.get("actor_office")));
+        assertThat(history).anyMatch(h -> "CO_LECTURER_REMOVED".equals(h.get("action")) && "Added by mistake".equals(h.get("reason")));
+        assertThat(history).anyMatch(h -> "SECOND_EXAMINER_SET".equals(h.get("action")));
+        List<Map<String, Object>> dept = it.getList(hod, base + "events?dept=MTC&session=" + SESSION + "&semester=1").getBody();
+        assertThat(dept).extracting(h -> h.get("course_code")).contains("ZZD 301").doesNotContain("ZZE 301");
+        assertThat(code(it.get(hod, base + outside + "/history"))).isEqualTo("ALLOC_DEPT");
+    }
+
     /** a ticket raised by a member of staff, in the agent's posted queue, for a department */
     private UUID ticket(String number, String faculty, String dept) {
         return it.db(() -> jdbc.sql("""
