@@ -56,6 +56,8 @@ class SecurityConfig {
                                 "/api/v1/payments/webhook/paystack", "/api/v1/payments/webhook/flutterwave",
                                 "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start", "/api/v1/payments/quickteller/return",
                                 "/api/v1/payments/paydirect/validate", "/api/v1/payments/paydirect/notify", "/api/v1/payments/paydirect/interswitch",
+                                // Oct 2026: the same doors with a key in the address (the key is the credential; see PaymentsController)
+                                "/api/v1/payments/paydirect/validate/*", "/api/v1/payments/paydirect/notify/*", "/api/v1/payments/paydirect/interswitch/*",
                                 "/api/v1/student-auth/sign-in",
                                 "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
                                 "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
