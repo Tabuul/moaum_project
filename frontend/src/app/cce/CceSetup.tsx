@@ -11,8 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
-import { buildXlsx } from "@/lib/xlsx";
-import { downloadBlob } from "@/lib/exportbrand";
+import { brandedSheet, downloadBlob } from "@/lib/exportbrand";
 import {
   ACTION_LABEL, REVIEW_LABEL, STATUS_LABEL, ccall, day, labelOf, naira, when,
   type AppRow, type CandidateRow, type FeeRule, type Mapping, type Overview, type Paged, type StudentRow,
@@ -272,7 +271,7 @@ export function CceReports({ session, pick, overview }: TabProps & { overview: O
         head = ["S/N", "Matric / admission number", "JAMB number", "Name", "Programme", "Department", "Faculty", "Level", "Entry session", "Expected completion", "Study mode", "Status"];
         body = rows.map((x, i) => [i + 1, x.matric_no ?? x.admission_no, x.jamb_reg_no, x.name, x.programme, x.department, x.faculty, x.current_level, x.entry_session, x.expected_completion, "PART-TIME", x.status]);
       }
-      downloadBlob(buildXlsx(head, body, `CCE ${kind}`), `cce-${kind}-${session.replace("/", "-")}.xlsx`);
+      downloadBlob(await brandedSheet(head, body, `CCE ${kind}`), `cce-${kind}-${session.replace("/", "-")}.xlsx`);
       if (r.data.total > r.data.rows.length) notify(`The first ${r.data.rows.length.toLocaleString()} of ${r.data.total.toLocaleString()} rows were exported`, "info");
     } finally { setBusy(null); }
   }
@@ -327,14 +326,14 @@ function CceFeesCollected({ session }: { session: string }) {
   }, [session, from, to]);
   const cells = (c: Collected) => [c.application_paid, naira(c.application_amount), c.checking_paid, naira(c.checking_amount), c.acceptance_paid, naira(c.acceptance_amount), naira(c.total)];
   const HEAD = ["Application paid|num", "Application ₦|num", "Checking paid|num", "Checking ₦|num", "Acceptance paid|num", "Acceptance ₦|num", "Total ₦|num"];
-  function exportXlsx() {
+  async function exportXlsx() {
     if (!v) return;
     const nums = (c: Collected) => [Number(c.application_paid), Number(c.application_amount), Number(c.checking_paid), Number(c.checking_amount), Number(c.acceptance_paid), Number(c.acceptance_amount), Number(c.total)];
     const head = ["Programme code", "Programme", "Faculty", "Application paid", "Application (NGN)", "Checking paid", "Checking (NGN)", "Acceptance paid", "Acceptance (NGN)", "Total (NGN)"];
     const body: (string | number | null)[][] = v.byProgramme.map((r) => [r.programme_code, r.programme, r.faculty, ...nums(r)]);
     body.push(["", "Total", "", ...nums(v.totals)], [], ["Day", "", "", "Application paid", "Application (NGN)", "Checking paid", "Checking (NGN)", "Acceptance paid", "Acceptance (NGN)", "Total (NGN)"]);
     for (const d of v.byDay) body.push([d.day, "", "", ...nums(d)]);
-    downloadBlob(buildXlsx(head, body, "CCE fees collected"), `cce-fees-collected-${session.replace("/", "-")}${from ? `-from-${from}` : ""}${to ? `-to-${to}` : ""}.xlsx`);
+    downloadBlob(await brandedSheet(head, body, "CCE fees collected"), `cce-fees-collected-${session.replace("/", "-")}${from ? `-from-${from}` : ""}${to ? `-to-${to}` : ""}.xlsx`);
   }
   const t = v?.totals;
   return (

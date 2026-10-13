@@ -11,11 +11,11 @@ import { notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
-import { buildXlsx } from "@/lib/xlsx";
-import { downloadBlob } from "@/lib/exportbrand";
+import { brandedSheet, downloadBlob } from "@/lib/exportbrand";
 import { ccall, day, semesterWord, type CceExamsView, type CceProgressionView } from "@/lib/cce";
 import type { TabProps } from "./CceList";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 const q = (s: string) => encodeURIComponent(s);
 
 function useLoad<T>(url: string): T | null {
@@ -41,7 +41,7 @@ export function CceExams({ session, pick }: TabProps) {
   const published = withSheet.filter((s) => s.stage === "PUBLISHED").length;
   const noLecturer = v.sheets.filter((s) => !s.lecturer).length;
   const p = v.policy;
-  const exportXlsx = () => downloadBlob(buildXlsx(["Course", "Title", "Semester", "Department", "Lecturer", "Candidates", "Sitting", "Stage", "Desk", "Due", "Submitted", "Published"],
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Course", "Title", "Semester", "Department", "Lecturer", "Candidates", "Sitting", "Stage", "Desk", "Due", "Submitted", "Published"],
     v.sheets.map((s) => [s.course_code, s.title, s.semester, s.dept ?? "", s.lecturer ?? "", s.candidates, s.sitting ? KIND[s.sitting] ?? s.sitting : "", s.stage ?? "No sheet yet", s.desk ?? "",
       s.due_on ? day(s.due_on) : "", s.submitted_at ? day(s.submitted_at) : "", s.published_at ? day(s.published_at) : ""]), "CCE examinations"), `cce-examinations-${session.replace("/", "-")}.xlsx`);
   return (
@@ -106,7 +106,7 @@ export function CceProgression({ pick }: TabProps) {
   const v = useLoad<CceProgressionView>(`/api/v1/cce/progression${qs ? `?${qs}` : ""}`);
   if (!v) return <Note kind="info" title="Reading the CCE students' progression…">One moment.</Note>;
   const c = v.counts;
-  const exportXlsx = () => downloadBlob(buildXlsx(["Number", "Surname", "Other names", "Programme", "Entry session", "Current session", "Level", "Final level", "Length (years)",
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Number", "Surname", "Other names", "Programme", "Entry session", "Current session", "Level", "Final level", "Length (years)",
     "Expected completion", "Deferred sessions", "Spillover years", "Standing", "Registered now", "Graduation"],
     v.rows.map((r) => [r.matric_no ?? "", r.surname, r.other_names, r.programme ?? r.programme_code, r.entry_session ?? "", r.current_session ?? "", r.current_level ?? "", r.final_level ?? "",
       r.duration_years ?? "", r.expected_completion ?? "", r.deferred_sessions, r.spillover_years, (SPILL[r.spillover_state] ?? [r.spillover_state])[0], r.registered_current ? "Yes" : "No",
@@ -127,7 +127,7 @@ export function CceProgression({ pick }: TabProps) {
       <Panel title="Filter">
         <PBody>
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
-            <Field id="pg-p" label="Programme"><select id="pg-p" className="ctl" value={f.programme} onChange={(e) => setF({ ...f, programme: e.target.value })}><option value="">Every CCE programme</option>{v.programmes.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
+            <Field id="pg-p" label="Programme"><SearchSelect id="pg-p" value={f.programme} onChange={(v) => setF({ ...f, programme: v })} allLabel="Every CCE programme" placeholder="Every CCE programme" options={v.programmes.map((x) => ({ value: x.code, label: x.name }))} /></Field>
             <Field id="pg-s" label="Standing"><select id="pg-s" className="ctl" value={f.state} onChange={(e) => setF({ ...f, state: e.target.value })}>
               <option value="">Every standing</option><option value="NORMAL">Within the programme length</option><option value="SPILLOVER">In spillover</option><option value="SPILLOVER_LIMIT_REACHED">Spillover limit reached</option>
             </select></Field>

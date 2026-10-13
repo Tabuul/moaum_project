@@ -16,7 +16,6 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/com
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { printNode } from "@/lib/print";
 
@@ -232,44 +231,20 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
   const { act, busy, problem } = useAct();
   const [now] = useState(() => Date.now());
   const live = c.cards.find((x) => x.state === "ISSUED") ?? null;
-  /* the card is drawn for every matriculated student — it is a picture of the card, keyed on the
-     matriculation number; the serial and validity fill in once the Library has issued the card itself */
-  const card: IdCardData | null = s.matricNo ? {
-    name: s.name,
-    matric: s.matricNo,
-    barcode: s.matricNo.replace(/[^A-Za-z0-9]/g, ""),
-    serial: live ? live.card_no : "Not yet issued",
-    faculty: s.faculty,
-    prog: s.programme,
-    level: String(s.level),
-    session: s.session,
-    admitted: (s.entrySession ?? "").slice(0, 4) || "—",
-    graduates: "—",
-    blood: "—",
-    expiresShort: live ? onDay(live.valid_to) : "—",
-    kinPhone: "—",
-    photoSrc: s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null,
-    state: live ? (new Date(live.valid_to).getTime() < now ? "expired" : "issued") : undefined,
-  } : null;
+  /* the student sees the card's status, never the card: it is printed and issued by the University's card desk and handed over in
+     person, so a picture or a printable copy of it is never offered here (portal gap audit: ID cards are the office's to produce) */
+  const expired = live ? new Date(live.valid_to).getTime() < now : false;
   return (
     <>
       {live ? (
-        <Note kind="ok" title={`Card ${live.card_no} · issued ${onDay(live.issued_at)} · valid to ${onDay(live.valid_to)}`}>Collected at the Library.</Note>
+        <Note kind={expired ? "bad" : "ok"} title={`Card ${live.card_no} · issued ${onDay(live.issued_at)} · ${expired ? "expired" : "valid to"} ${onDay(live.valid_to)}`}>{expired ? "Ask the card desk for a renewal." : "Collected in person from the card desk."}</Note>
       ) : !c.matricNo ? (
         <Note kind="info" title="A card is made after matriculation">It is keyed on the matriculation number, which you do not have yet.</Note>
       ) : c.clearsIdCard === false ? (
         <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
       ) : (
-        <Note kind="info" title="Your card has not been issued yet">Bring your fee receipt to the Library. The printable copy opens once the card is issued.</Note>
+        <Note kind="info" title="Your card has not been issued yet">The card desk prints it and hands it over in person against the photograph on your record; bring your fee receipt.</Note>
       )}
-      {card ? (
-        <Panel title="Your identity card" right={live ? "This is a picture of the card, not the card" : "Preview — not yet issued"}>
-          <PBody>
-            <IdCardPair c={card} big />
-            
-          </PBody>
-        </Panel>
-      ) : null}
       <div className="card"><div className="card__body row row--top" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
         <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
         <div className="grow" style={{ minWidth: 220 }}>
@@ -280,8 +255,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       </div></div>
       {live ? (
         <div className="row">
-          <a href="/student/idcard/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Open the printable copy</a>
-          <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the Library issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
+          <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the card desk issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
           <LinkBtn kind="ghost" href="/student/support">Request a replacement</LinkBtn>
         </div>
       ) : null}

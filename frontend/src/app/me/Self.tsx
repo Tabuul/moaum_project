@@ -75,7 +75,7 @@ export function Self({
       />
 
       <TwoCol>
-        <Panel title="My record" right={<span className="row row--tight"><a href="/staff/idcard/pdf" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">My ID card (PDF)</a><LinkBtn href="/me/profile" kind="primary">Edit my profile</LinkBtn></span>}>
+        <Panel title="My record" right={<span className="row row--tight"><LinkBtn href="/me/profile" kind="primary">Edit my profile</LinkBtn></span>}>
           <PBody>
             <div className="sub2 mb-3">{who}</div>
             <KvGrid

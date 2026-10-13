@@ -14,8 +14,7 @@ import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { buildXlsx } from "@/lib/xlsx";
-import { downloadBlob } from "@/lib/exportbrand";
+import { brandedSheet, downloadBlob } from "@/lib/exportbrand";
 import type { Problem } from "@/lib/api";
 import {
   ACTION_LABEL, DOC_LABEL, PROCESSING_STATES, REVIEW_LABEL, REVIEW_STATES, ccall, day, labelOf, naira, when,
@@ -356,8 +355,8 @@ export function CceAdmissionList({ session, powers, pick, refresh }: TabProps) {
       if (out) { setChosen([]); setTick((t) => t + 1); refresh(); }
     } finally { setBusy(false); }
   }
-  function exportList() {
-    const blob = buildXlsx(["S/N", "Application number", "JAMB number", "Name", "Programme", "Department", "Faculty", "Study mode", "Admission route", "Session", "Published", "Admission number"],
+  async function exportList() {
+    const blob = await brandedSheet(["S/N", "Application number", "JAMB number", "Name", "Programme", "Department", "Faculty", "Study mode", "Admission route", "Session", "Published", "Admission number"],
       admitted.map((r, i) => [i + 1, r.application_no, r.jamb_reg_no, r.name, r.programme, r.department, r.faculty, "PART-TIME", "CCE", session, day(r.published_at), r.admission_no ?? ""]), "CCE admission list");
     downloadBlob(blob, `cce-admission-list-${session.replace("/", "-")}.xlsx`);
   }

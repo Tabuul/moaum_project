@@ -22,6 +22,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 export interface DeskRow {
   id: string | null; application_no: string | null; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string;
   stage: number; fee_confirmed_at: string | null; submitted_at: string | null; batch: string | null; seat: string | null;
@@ -406,10 +407,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         <PBody>
           <div className="sub2">Admission summary, merit list, other qualified and non-qualified cases, per programme.</div>
           <div className="row mt-2">
-            <select className="ws__select" style={{ maxWidth: 420 }} value={val("export", "")} onChange={(e) => setEdits({ ...edits, export: e.target.value })} aria-label="Programme to export">
-              <option value="">Every programme in one workbook</option>
-              {programmes.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme in one workbook" placeholder="Every programme in one workbook" options={programmes.map((p) => ({ value: p, label: p }))} />
             <Btn kind="primary" disabled={exporting || !rows.length} onClick={() => void exportTemplate(val("export", ""))}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
           </div>
         </PBody>

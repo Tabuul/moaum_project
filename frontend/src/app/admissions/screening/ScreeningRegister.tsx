@@ -8,6 +8,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 export interface RegisterRow {
   jamb_reg_no: string; name: string; programme: string; programme_code: string | null; entry_mode: string;
   utme: number | null; olevel_scaled: number | null; post_utme: number | null; screening: number | null; source: string;
@@ -81,10 +82,7 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
             </select>
           </div>
           <div className="scope__f"><label htmlFor="sr-p">Programme</label>
-            <select id="sr-p" className="ws__select" value={prog} onChange={(e) => setProg(e.target.value)}>
-              <option value="">All programmes</option>
-              {programmes.map((x) => <option key={x} value={x}>{x}</option>)}
-            </select>
+            <SearchSelect id="sr-p" value={prog} onChange={(v) => setProg(v)} allLabel="All programmes" placeholder="All programmes" options={programmes.map((x) => ({ value: x, label: x }))} />
           </div>
           <div className="scope__f"><label htmlFor="sr-src">Screened by</label>
             <select id="sr-src" className="ws__select" value={src} onChange={(e) => setSrc(e.target.value)}>

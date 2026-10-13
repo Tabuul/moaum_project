@@ -1,7 +1,8 @@
 "use client";
 import { notifyProblem } from "@/components/proto/Toast";
 
-/** The applicant's forgotten password, on the sign-in page's own card (proto/part3.html): the same answer whether or not the identifier names an account. */
+/** The first sign-in or a forgotten password, on the sign-in page's own card (proto/part3.html): the same answer whether or not the identifier
+ *  names an account. V428: a person's own number is never their password, so a first password is set here, through the link. */
 import { useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
@@ -34,10 +35,10 @@ export function Forgot() {
   return (
     <AuthLayout eyebrow="Account recovery" lead={<>A reset link is sent to the email (and phone) on your account. It is valid for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
-          <PageHead title="Reset your password" description="Staff, students and applicants." />
+          <PageHead title="First sign-in or forgotten password" description="Staff, students and applicants. Your own number is never your password: a link lets you choose one." />
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
-              Check the email (and phone) on your account. The link is valid for an hour. If nothing arrives, <Link href="/login/help">ask ICT Support</Link>. (A staff account is emailed only when its username is an email address.)
+              Check the email and phone the University has for you. The link is valid for an hour and works once. If nothing arrives, or none is on record, <Link href="/login/help">ask ICT Support</Link>: a temporary password is given at the desk.
             </Note>
           ) : (
             <>
@@ -46,7 +47,7 @@ export function Forgot() {
                 <input id="ident" value={identifier} placeholder="e.g. MOAUM/STAFF/1234, MOAUM/SCI/24/0001, APP/26/000123 or you@example.com" autoComplete="username" onChange={(e) => setIdentifier(e.target.value)} />
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <Btn kind="primary" size="md" type="submit" disabled={busy || !identifier.trim()}>{busy ? "Sending…" : "Send the reset link"}</Btn>
+              <Btn kind="primary" size="md" type="submit" disabled={busy || !identifier.trim()}>{busy ? "Sending…" : "Send the link"}</Btn>
             </>
           )}
           <div className="login-help">

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 266
+\set EXPECTED 268
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11397,6 +11397,86 @@ BEGIN
                  AND d_students = 3 AND d_kin_missing = 2 AND d_kin_freed = 1 AND d_religion_held = 1 AND d_passport_missing = 1, false),
         format('memo=%s cat=%s pt=%s own=%s learnt=%s view=%s fn=%s after=%s fallback=%s prog=%s | students +%s kin missing +%s freed +%s religion held +%s passport missing +%s',
                n_memo, cat_ok, pt_ok, own_ok, learnt, view_cat, fn_cat, cat_after, fallback_cat, prog_ok, d_students, d_kin_missing, d_kin_freed, d_religion_held, d_passport_missing));
+END $$;
+-- ── V428: a person's own number is never their password ──
+-- The migration desk's "default passwords", which wrote each student's own number as the password, are retired: the function
+-- refuses with the way in. The teaching-staff upload gives an invented lecturer a first password nobody knows — never the staff
+-- number. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); dept text; refused text; own boolean; made int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V428', true);
+        BEGIN PERFORM iam.set_migrated_default_passwords(); refused := 'SET';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1); END;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        SELECT x.credentialed INTO made FROM iam.import_lecturers(jsonb_build_array(
+            jsonb_build_object('pno', '994281', 'full_names', 'Dr Invented Checkfour', 'department', dept, 'sex', 'F'))) x;
+        SELECT crypt('P994281', c.password_hash) = c.password_hash INTO own FROM iam.credential c WHERE c.username = 'p994281';
+        RAISE EXCEPTION 'the V428 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V428 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V428: a person''s own number is never their password — the migration desk''s default passwords refuse; the teaching-staff upload gives a password nobody knows',
+        coalesce(refused = 'AUTH_DEFAULT_PASSWORD_RETIRED' AND made = 1 AND own = false, false),
+        format('default passwords: %s | upload credentialed %s, own number opens it: %s', refused, made, own));
+END $$;
+-- ── V429: intake never makes a second student ──
+-- Invented candidates admitted for a session of their own. A is already on the register under A's JAMB number, unlinked: intake links
+-- that student, drawing no second admission number. B's earlier record names another programme and carries nothing: intake links it
+-- and moves it to the admitted programme. C's earlier record names another programme and carries a registration: intake refuses
+-- (INTAKE_DUPLICATE_JAMB). A second record sharing a JAMB number is listed for the Registry. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9947/9948'; prog text; prog_name text; other text;
+        ca uuid := gen_random_uuid(); cb uuid := gen_random_uuid(); cc uuid := gen_random_uuid();
+        sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid(); sc uuid := gen_random_uuid(); dup uuid := gen_random_uuid();
+        bt uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid();
+        got_a uuid; got_b uuid; b_prog text; c_refused text; n_a bigint; listed int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V429', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9947-10-01', date '9948-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code, name INTO prog, prog_name FROM ref.programme WHERE code = 'C00061';
+        SELECT code INTO other FROM ref.programme WHERE code <> 'C00061' AND NOT archived ORDER BY code LIMIT 1;
+        -- admitted from a CAPS row, as every admission is (ck_candidate_needs_caps)
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (bt, S, 'CAPS_DOWNLOAD', 'UTME', '47'::bytea, 3, date '9947-09-01', who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+        VALUES (ra, bt, S, '994700000001ZA', '{}'::jsonb, 'ZZINTAKE', 'Candidate A', prog, 250, 'UTME'),
+               (rb, bt, S, '994700000002ZB', '{}'::jsonb, 'ZZINTAKE', 'Candidate B', prog, 250, 'UTME'),
+               (rc, bt, S, '994700000003ZC', '{}'::jsonb, 'ZZINTAKE', 'Candidate C', prog, 250, 'UTME');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (ca, S, '994700000001ZA', 'ZZINTAKE', 'Candidate A', prog_name, 'UTME', 100, 'ADMITTED', ra),
+               (cb, S, '994700000002ZB', 'ZZINTAKE', 'Candidate B', prog_name, 'UTME', 100, 'ADMITTED', rb),
+               (cc, S, '994700000003ZC', 'ZZINTAKE', 'Candidate C', prog_name, 'UTME', 100, 'ADMITTED', rc);
+        INSERT INTO people.student (id, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (sa, 'MOAUM/ADM/47/994701', '994700000001ZA', 'ZZINTAKE', 'Candidate A', prog, 'UTME', S, 100, 100, 'ADMITTED'),
+               (sb, 'MOAUM/ADM/47/994702', '994700000002ZB', 'ZZINTAKE', 'Candidate B', other, 'UTME', S, 100, 100, 'ADMITTED'),
+               (sc, 'MOAUM/ADM/47/994703', '994700000003ZC', 'ZZINTAKE', 'Candidate C', other, 'UTME', S, 100, 100, 'ADMITTED'),
+               (dup, 'MOAUM/ADM/47/994704', '994700000003ZC', 'ZZINTAKE', 'Candidate C copy', other, 'UTME', S, 100, 100, 'ADMITTED');
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), sc, S, 100);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), sc, S, 1, 100, 'DRAFT');
+
+        got_a := people.intake_one(ca);
+        SELECT count(*) INTO n_a FROM people.student WHERE upper(jamb_reg_no) = '994700000001ZA';
+        got_b := people.intake_one(cb);
+        SELECT programme_code INTO b_prog FROM people.student WHERE id = sb;
+        BEGIN PERFORM people.intake_one(cc); c_refused := 'TAKEN';
+        EXCEPTION WHEN check_violation THEN c_refused := split_part(SQLERRM, ':', 1); END;
+        SELECT count(*) INTO listed FROM people.duplicate_students() d WHERE d.kind = 'SAME_JAMB' AND d.match_key = '994700000003ZC';
+        RAISE EXCEPTION 'the V429 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V429 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V429: intake links the student already on the register under the JAMB number — never a second admission number; an untouched earlier record takes the admitted programme; one with a history on another programme is refused for the Registry; a shared JAMB number is listed',
+        coalesce(got_a = sa AND n_a = 1 AND got_b = sb AND b_prog = prog AND c_refused = 'INTAKE_DUPLICATE_JAMB' AND listed = 2, false),
+        format('A %s (records %s) | B %s on %s | C %s | listed %s', got_a = sa, n_a, got_b = sb, b_prog, c_refused, listed));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

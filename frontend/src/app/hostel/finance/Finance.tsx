@@ -4,7 +4,6 @@
  *  revenue and not "unpaid") — by hostel, category and status; the fee rules by hostel, room type, category and level; and
  *  every occupant's fee line for reconciliation. The Bursar states fees here; the Dean allocates rooms elsewhere. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { Btn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -54,7 +53,7 @@ export function HostelFinance({ data, fees, session: s, sessions, office }: { da
 
   return (
     <>
-      <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/finance">Finance</Link><span>›</span><strong>Hostel fees</strong></div>
+      <div className="row row--tight sub2" style={{ gap: 6 }}><span>Finance</span><span>›</span><strong>Hostel fees</strong></div>
       <PageHead title="Hostel finance" description={`${s}. Exempt allocations are never revenue.`}
         actions={<>
           <Field id="hf-session" label="Session"><select id="hf-session" className="ctl" value={s} onChange={(e) => queryNav(`/hostel/finance?session=${encodeURIComponent(e.target.value)}`)}>{(sessions.includes(s) ? sessions : [s, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>

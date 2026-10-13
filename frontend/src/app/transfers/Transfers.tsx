@@ -15,6 +15,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 export interface TransferRow {
   id: string; student_id: string; name: string; matric_no: string | null;
   from_programme: string; from_dept: string | null; from_level: number;
@@ -111,7 +112,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
           <PBody>
             <div className="grid grid--2">
               <Field id="tr-num" label="Student number"><input id="tr-num" className="ctl tnum" value={rec.number} onChange={(e) => setRec({ ...rec, number: e.target.value })} placeholder="MOAUM/CSC/23/0001" /></Field>
-              <Field id="tr-prog" label="Course applied for"><select id="tr-prog" className="ctl" value={rec.programme} onChange={(e) => setRec({ ...rec, programme: e.target.value })}><option value="">Select a programme…</option>{programmes.map((p) => <option key={p.code} value={p.code}>{p.name} — {p.faculty}</option>)}</select></Field>
+              <Field id="tr-prog" label="Course applied for"><SearchSelect id="tr-prog" value={rec.programme} onChange={(v) => setRec({ ...rec, programme: v })} placeholder="Search a programme…" options={programmes.map((p) => ({ value: p.code, label: `${p.name} — ${p.faculty}` }))} /></Field>
             </div>
             <div className="grid grid--2">
               <Field id="tr-reason" label="Reason for seeking transfer"><input id="tr-reason" className="ctl" value={rec.reason} onChange={(e) => setRec({ ...rec, reason: e.target.value })} /></Field>

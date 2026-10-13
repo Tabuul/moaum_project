@@ -324,7 +324,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
   const [errFor, setErrFor] = useState<string | null>(null);
   return (
     <>
-      {change ? <Note kind="bad" title="Choose your own password before you go on">The Registry gave you a first password. Change it below; it is yours alone from then on.</Note> : null}
+      {change ? <Note kind="bad" title="Choose your own password before you go on">You came in on a first or temporary password. Choose your own below; it is yours alone from then on, and your matriculation or admission number cannot be it.</Note> : null}
       <div className="card"><div className="card__body row row--top" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
         <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
         <div className="stack grow" style={{ minWidth: 230 }}>
@@ -347,7 +347,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           {problem && errFor === "contact" ? <ProblemNotice problem={problem} /> : null}
           <div className="hr" />
           <div className="b600">Password</div>
-          <Field id="pw0" label="Current password">
+          <Field id="pw0" label="Current password" hint={change ? "Type the temporary password ICT Support gave you; leave it blank if you came in through a link." : undefined}>
             <div style={{ position: "relative" }}>
               <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
               <button type="button" aria-label={showCur ? "Hide password" : "Show password"} onClick={() => setShowCur((v) => !v)} style={pwToggle}>{showCur ? "Hide" : "Show"}</button>
@@ -359,7 +359,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
               <button type="button" aria-label={showNext ? "Hide password" : "Show password"} onClick={() => setShowNext((v) => !v)} style={pwToggle}>{showNext ? "Hide" : "Show"}</button>
             </div>
           </Field>
-          <Btn kind="ghost" disabled={busy !== null || !cur || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student", "Password changed"); if (ok) { setSaidPw(true); setCur(""); setNext(""); setErrFor(null); } else { setErrFor("pw"); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
+          <Btn kind="ghost" disabled={busy !== null || (!cur && !change) || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student", "Password changed"); if (ok) { setSaidPw(true); setCur(""); setNext(""); setErrFor(null); } else { setErrFor("pw"); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
           {saidPw ? <Note kind="ok" title="Password changed">Sign in with the new one from now on.</Note> : null}
           {problem && errFor === "pw" ? <ProblemNotice problem={problem} /> : null}
         </PBody></Panel>

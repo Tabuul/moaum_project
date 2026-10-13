@@ -67,9 +67,24 @@ public class StudentAuthService {
                 new DomainRuleViolation.Remedy("Use your matriculation number (or admission number before it is issued) and your password; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
+    /** V428: a person's own number is never their password — not the matriculation, admission or JAMB number, whether it is
+     *  offered at the door or was stored as a hash (the migration desk's old "default passwords"). The first password is the reset link to
+     *  the contact on record, ICT Support's temporary password, or one the Registry gives. */
+    static boolean ownNumber(String password, StudentPortalRepository.Student s) {
+        String p = password == null ? "" : password.trim();
+        return !p.isEmpty() && s != null
+               && ((s.matricNo() != null && p.equalsIgnoreCase(s.matricNo().trim())) || (s.admissionNo() != null && p.equalsIgnoreCase(s.admissionNo().trim()))
+                   || (s.jambRegNo() != null && p.equalsIgnoreCase(s.jambRegNo().trim())));
+    }
+
+    static DomainRuleViolation ownNumberRefused() {
+        return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your own number is not a password.",
+                new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"First sign-in or forgotten password\": a link goes to the email or phone the University has for you. With none on record, ICT Support gives a temporary password at the desk.", "ICT Support"));
+    }
+
     /** what the student account opens with when it is carried over from the applicant's: the applicant's own bcrypt hash — or, for an
-     *  account still on its first-login sentinel (V178: the JAMB number is the password until one is chosen), a fresh hash nobody knows
-     *  with must-change on, so the door opens the same way it did for the applicant: the number is the first password, changed at once.
+     *  account still on its first-login sentinel (V178), a fresh hash nobody knows with must-change on (V428: the JAMB number no longer
+     *  opens anything; the student chooses a password in the session they continued, or through the reset link).
      *  The sentinel itself is not a hash and the account table refuses it (ck_student_hash). */
     private record Carried(String hash, boolean mustChange) { }
 
@@ -117,20 +132,18 @@ public class StudentAuthService {
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
+            // V428: the student's own number opens nothing, whether offered as the default or stored as a hash
+            if (ownNumber(password, s)) {
+                repo.event(matricNo, s.id(), "OWN_NUMBER_REFUSED", ip);
+                throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
+                return ownNumberRefused();
+            }
             boolean ok = encoder.matches(password == null ? "" : password, a.passwordHash());
             if (ok && a.temporarySpent()) {
                 /* V346: a temporary password from ICT Support opens one session, until its time; spent or lapsed, it opens nothing */
                 repo.event(matricNo, s.id(), "TEMP_PASSWORD_SPENT", ip);
                 return new DomainRuleViolation("AUTH_TEMP_PASSWORD_SPENT", "This temporary password has expired or was already used.",
                         new DomainRuleViolation.Remedy("Ask ICT Support for a reset link, or a new temporary password at the desk; it is good for one sign-in.", "ICT Support"));
-            }
-            if (!ok && a.mustChange() && !a.temporary()) {
-                /* a migrated student whose password was never set signs in with their own number as the
-                   password (username == password) and is then forced to choose a real one. This is the
-                   default first password, granted at sign-in — so no 40,000 accounts are pre-hashed. */
-                String u = matricNo == null ? "" : matricNo.trim();
-                String p = password == null ? "" : password.trim();
-                ok = !p.isEmpty() && p.equalsIgnoreCase(u);
             }
             if (!ok) {
                 int attempts = a.failedAttempts() + 1;
@@ -214,15 +227,12 @@ public class StudentAuthService {
     @Transactional
     public Map<String, Object> changePassword(UUID student, String current, String next) {
         StudentPortalRepository.Account a = repo.account(student).orElseThrow(() -> new NotFound("student account", student));
+        StudentPortalRepository.Student s = repo.byId(student).orElse(null);
         boolean ok = encoder.matches(current == null ? "" : current, a.passwordHash());
-        if (!ok && a.mustChange() && !a.temporary()) {
-            // the default first password is the student's own number (matric, or admission before it is
-            // issued) — the same default sign-in grants, so changing from it here must accept it too
-            StudentPortalRepository.Student s = repo.byId(student).orElse(null);
-            String c = current == null ? "" : current.trim();
-            ok = !c.isEmpty() && s != null
-                 && ((s.matricNo() != null && c.equalsIgnoreCase(s.matricNo().trim()))
-                     || (s.admissionNo() != null && c.equalsIgnoreCase(s.admissionNo().trim())));
+        // V428: an account that must change and holds no temporary password was opened by a door that already proved the student
+        // (the applicant's own session continued, or the reset link) on a password nobody knows — so the current one is not asked
+        if (!ok && a.mustChange() && !a.temporary() && (current == null || current.isBlank())) {
+            ok = true;
         }
         if (!ok) {
             throw badCredentials();
@@ -230,6 +240,10 @@ public class StudentAuthService {
         if (next == null || next.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
+        }
+        if (ownNumber(next, s)) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your own number cannot be your password.",
+                    new DomainRuleViolation.Remedy("Choose a password that is not your matriculation, admission or JAMB number.", "You"));
         }
         repo.changePassword(student, encoder.encode(next));
         repo.event("", student, "PASSWORD_CHANGED", null);
@@ -266,10 +280,14 @@ public class StudentAuthService {
     /** the Registry opens or resets a student's account: a first password, changed at sign-in */
     @Transactional
     public Map<String, Object> open(UUID student, String firstPassword) {
-        repo.byId(student).orElseThrow(() -> new NotFound("student", student));
+        StudentPortalRepository.Student s = repo.byId(student).orElseThrow(() -> new NotFound("student", student));
         if (firstPassword == null || firstPassword.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Give the student a first password of eight characters or more; they change it at sign-in.", "Registry"));
+        }
+        if (ownNumber(firstPassword, s)) {   // V428
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "A student's own number is never their password.",
+                    new DomainRuleViolation.Remedy("Give a first password that is not the matriculation or admission number, or send the student the reset link.", "Registry"));
         }
         repo.openAccount(student, encoder.encode(firstPassword), true);
         repo.event("", student, "OPENED_BY_REGISTRY", null);

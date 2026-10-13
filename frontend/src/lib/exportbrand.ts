@@ -60,6 +60,13 @@ export async function brandedXlsx(
 }
 
 /** Trigger a browser download of a blob under a filename. */
+/** Portal gap audit: a report export with the plain builder's arguments (headers, rows, sheet name) and the branded workbook —
+ *  the University's logo and name, the title, the date and serial, S/N first. Upload templates keep the plain builder, so a filled
+ *  template reads back without a header to skip. */
+export function brandedSheet(headers: string[], rows: Cell[][], sheetName: string, sub?: string): Promise<Blob> {
+  return brandedXlsx(sheetName, headers, rows, { sheetName, sub });
+}
+
 export function downloadBlob(blob: Blob, filename: string): void {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

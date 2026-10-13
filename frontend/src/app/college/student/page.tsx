@@ -256,7 +256,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
 
       {view === "registration" ? (
         <>
-          {level < 200 ? <Note kind="info" title="100 Level registers on the University's form">Courses are chosen by semester under the Faculty of Science. <Link href="/student/registration">Open the registration form</Link>.</Note> : (
+          {level < 200 ? <Note kind="info" title="100 Level registers on the University's form">Courses are chosen by semester under the Faculty of Science. <Link href="/student/register">Open the registration form</Link>.</Note> : (
             <Panel title={`${level} Level registration · ${yearSession}`} right={registered ? `Registered · ${dayOf(cur?.registered_at ?? null)}` : next ? (next.cleared ? `Open: ${next.name}` : `${next.name} opens after its fees`) : "—"}>
               <PBody>
                 <div>The curriculum is fixed by the prospectus: there is nothing to choose. {sems.length ? "Each semester's courses are registered in turn, on that semester's fees; the whole session paid at once clears every semester. Nothing is graded at a semester's end: the one examination sits at the end of the year." : "Every posting at the level is registered together, on the first semester's fees."} {r.carryOvers.filter((c) => !c.cleared_on).length ? `Carried over and registered again: ${r.carryOvers.filter((c) => !c.cleared_on).map((c) => c.code).join(", ")}.` : ""}</div>

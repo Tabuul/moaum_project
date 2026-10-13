@@ -88,6 +88,14 @@ public class AuthService {
                         + c.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes, or ask the Registry to reset the password.", "Registrar"));
             }
+            // V428: a person's own staff number or username is never their password — the teaching-staff upload once set it so
+            if (ownNumber(password, c.username(), c.staffNumber())) {
+                // iam.sign_in_event takes a fixed set of outcomes; a refused own number is a refused password
+                repo.event(username, c.personId(), "BAD_PASSWORD", ip, null);
+                throttle.count(Throttle.Door.STAFF_SIGN_IN, ip);
+                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your staff number is not a password.",
+                        new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"Forgot password\": a link goes to the email or phone on your record. With none on record, the Registry or ICT gives you a first password on Users & roles.", "ICT Support"));
+            }
             if (!encoder.matches(password == null ? "" : password, c.passwordHash())) {
                 int attempts = c.failedAttempts() + 1;
                 repo.failed(c.personId(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
@@ -142,6 +150,14 @@ public class AuthService {
         if (n == 0) {
             throw new NotFound("session", sidHex);
         }
+    }
+
+    /** V428: the password is one of the person's own identifiers */
+    static boolean ownNumber(String password, String... numbers) {
+        String p = password == null ? "" : password.trim();
+        if (p.isEmpty()) return false;
+        for (String n : numbers) if (n != null && !n.isBlank() && p.equalsIgnoreCase(n.trim())) return true;
+        return false;
     }
 
     static void checkPolicy(String username, String password) {

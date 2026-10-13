@@ -19,6 +19,7 @@ import { GstGapsNote } from "@/components/gst/GstGapsNote";
 import { GstClassification, GstMoves, type CourseMove, type GstFamily, type UnassignedCourse } from "@/components/gst/GstClassification";
 import { GstTransfers, type GeneralTransfer } from "@/components/gst/GstTransfers";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 export interface CatalogueCourse { code: string; title: string; units: number; level: number; semester: number; dept_code: string; department: string; state: string; ended_on: string | null; general_office: string; ca_max: number | null; programmes: number; offers: string | null; offered_this_session: boolean }
 export interface GstCoursesData {
   office: GstOffice; session: string; semester: number | null; sessions: { name: string; state: string }[]; catalogue: CatalogueCourse[]; offerings: GstCourseRow[];
@@ -179,7 +180,7 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
               <Field id="gc-units" label="Units" required><input id="gc-units" type="number" min={0} max={12} className="ctl" value={form.units} onChange={(e) => setForm({ ...form, units: e.target.value })} /></Field>
               <Field id="gc-level" label="Level" required><select id="gc-level" className="ctl" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l} Level</option>)}</select></Field>
               <Field id="gc-sem" label="Semester" required><select id="gc-sem" className="ctl" value={form.semester} onChange={(e) => setForm({ ...form, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
-              <Field id="gc-dept" label="Department" required hint="The department that houses the course on the catalogue"><select id="gc-dept" className="ctl" value={form.deptCode} onChange={(e) => setForm({ ...form, deptCode: e.target.value })}><option value="">Choose</option>{data.departments.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}</select></Field>
+              <Field id="gc-dept" label="Department" required hint="The department that houses the course on the catalogue"><SearchSelect id="gc-dept" value={form.deptCode} onChange={(v) => setForm({ ...form, deptCode: v })} placeholder="Search a department…" options={data.departments.map((d) => ({ value: d.code, label: d.name }))} /></Field>
               <Field id="gc-ca" label="CA out of" hint="Blank keeps the catalogue's split"><input id="gc-ca" type="number" min={0} max={100} className="ctl" value={form.caMax} onChange={(e) => setForm({ ...form, caMax: e.target.value })} /></Field>
             </div>
           ) : null}
@@ -207,8 +208,8 @@ export function GstCourses({ data, base, actingOffice }: { data: GstCoursesData;
           ) : null}
           {act.kind === "lecturer" ? (
             <div className="grid grid--2">
-              <Field id="gc-lect" label="Lecturer" hint="Through the catalogue's own allocation; the overload rule is waived for a general course"><select id="gc-lect" className="ctl" value={form.lecturerId} onChange={(e) => setForm({ ...form, lecturerId: e.target.value })}><option value="">Not assigned</option>{data.lecturers.map((l) => <option key={l.id} value={l.id}>{l.name}{l.staff_number ? ` · ${l.staff_number}` : ""}</option>)}</select></Field>
-              <Field id="gc-second" label="Second examiner"><select id="gc-second" className="ctl" value={form.secondExaminerId} onChange={(e) => setForm({ ...form, secondExaminerId: e.target.value })}><option value="">None</option>{data.lecturers.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></Field>
+              <Field id="gc-lect" label="Lecturer" hint="Through the catalogue's own allocation; the overload rule is waived for a general course"><SearchSelect id="gc-lect" value={form.lecturerId} onChange={(v) => setForm({ ...form, lecturerId: v })} allLabel="Not assigned" placeholder="Search a lecturer…" options={data.lecturers.map((l) => ({ value: l.id, label: l.name }))} /></Field>
+              <Field id="gc-second" label="Second examiner"><SearchSelect id="gc-second" value={form.secondExaminerId} onChange={(v) => setForm({ ...form, secondExaminerId: v })} allLabel="None" placeholder="Search a lecturer…" options={data.lecturers.map((l) => ({ value: l.id, label: l.name }))} /></Field>
             </div>
           ) : null}
         </Modal>

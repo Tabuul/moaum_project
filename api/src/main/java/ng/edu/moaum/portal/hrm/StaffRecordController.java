@@ -38,10 +38,42 @@ class StaffRecordController {
 
     private final FileObjects files;
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    StaffRecordController(FileObjects files, JdbcClient jdbc) {
+    StaffRecordController(FileObjects files, JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
         this.files = files;
+        this.scope = scope;
+    }
+
+    /**
+     * Portal gap audit: a Head of Department, a Dean or a Faculty Officer reads the record of a member of staff of their own department
+     * or faculty — home department, a department office held there, or a course of theirs taught — never the whole University's (the
+     * record carries the contact, the grade and the employment). Every other reader is University-wide, as before.
+     */
+    private void requireInReach(UUID person) {
+        boolean dept = scope.actingDepartmentOffice();
+        boolean fac = scope.actingFacultyOffice();
+        if (!dept && !fac) {
+            return;
+        }
+        String d = dept ? scope.actingDept() : null;
+        String f = fac ? scope.actingFaculty() : null;
+        Boolean ok = jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM hrm.staff_record sr LEFT JOIN ref.department hd ON hd.code = sr.home_department
+                                WHERE sr.person_id = :p AND (sr.home_department = :d OR hd.faculty_code = :f OR sr.home_faculty = :f))
+                    OR EXISTS (SELECT 1 FROM iam.office_assignment a LEFT JOIN ref.department ad ON ad.code = a.scope_id
+                                WHERE a.person_id = :p AND a.scope_kind = 'department' AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                                  AND (a.scope_id = :d OR ad.faculty_code = :f))
+                    OR EXISTS (SELECT 1 FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+                                 LEFT JOIN ref.department cd ON cd.code = c.dept_code
+                                WHERE (o.lecturer_id = :p OR o.second_examiner_id = :p
+                                       OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :p))
+                                  AND (c.dept_code = :d OR cd.faculty_code = :f))
+                """).param("p", person).param("d", d, java.sql.Types.VARCHAR).param("f", f, java.sql.Types.VARCHAR).query(Boolean.class).single();
+        if (!Boolean.TRUE.equals(ok)) {
+            throw new org.springframework.security.access.AccessDeniedException("That member of staff is outside your department or faculty.");
+        }
     }
 
     /** the acting person's own record — anyone signed in may read their own, for their identity card */
@@ -49,7 +81,7 @@ class StaffRecordController {
     @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
     Map<String, Object> me(org.springframework.security.core.Authentication authentication) {
-        return one(UUID.fromString(authentication.getName()));
+        return record(UUID.fromString(authentication.getName()));
     }
 
     /** the acting person's own photograph */
@@ -57,13 +89,18 @@ class StaffRecordController {
     @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> myPhoto(org.springframework.security.core.Authentication authentication) {
-        return photo(UUID.fromString(authentication.getName()));
+        return photoOf(UUID.fromString(authentication.getName()));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> one(@PathVariable UUID id) {
+        requireInReach(id);
+        return record(id);
+    }
+
+    private Map<String, Object> record(UUID id) {
         Map<String, Object> person = jdbc.sql("""
                 SELECT pe.id, pe.staff_number, pe.surname, pe.given_names, pe.email, pe.phone, pe.ended_on, pe.ended_reason,
                        sr.pno, sr.sex, sr.present_rank AS rank, sr.conuass_step, sr.date_first_appointment,
@@ -139,6 +176,11 @@ class StaffRecordController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> photo(@PathVariable UUID id) {
+        requireInReach(id);
+        return photoOf(id);
+    }
+
+    private ResponseEntity<byte[]> photoOf(UUID id) {
         return jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :id").param("id", id)
                 .query().listOfRows().stream().findFirst()
                 .map(r -> ResponseEntity.ok()

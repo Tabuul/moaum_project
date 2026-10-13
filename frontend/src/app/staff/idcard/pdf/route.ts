@@ -12,9 +12,8 @@ import { finishPdf } from "@/lib/document/pdf";
 export const dynamic = "force-dynamic";
 
 /**
- * The staff identity card as a printable PDF — portrait (vertical), as the University issues it, drawn
- * to the same design as the student card on screen. Without ?id the card is the signed-in person's own;
- * with ?id it is the named member of staff's, for the offices that read the staff register.
+ * The staff identity card as a printable PDF — portrait (vertical), as the University issues it, for the offices that read the staff
+ * register (?id names the member of staff). Portal gap audit: a person never prints their own card — the card desk produces and issues it.
  */
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }) : "—");
@@ -31,8 +30,10 @@ interface StaffRecord { person: Person; offices: Office[] }
 export async function GET(req: Request) {
   await loadInstitution();
   const id = new URL(req.url).searchParams.get("id");
-  const self = !id;
-  const r = await api<StaffRecord>(self ? "/api/v1/hr/staff/me" : `/api/v1/hr/staff/${encodeURIComponent(id!)}`);
+  if (!id) {
+    return NextResponse.json({ status: 403, title: "The identity card is issued by the card desk", detail: "Your card is printed and handed over in person; your record shows its status." }, { status: 403 });
+  }
+  const r = await api<StaffRecord>(`/api/v1/hr/staff/${encodeURIComponent(id)}`);
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const s = r.data.person;
   if (!s.staff_number) {
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
       const office = (await cookies()).get("moaum_office")?.value;
       const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
       if (office) headers["X-Active-Office"] = office;
-      const res = await fetch(`${API_URL}${self ? "/api/v1/hr/staff/me/photo" : `/api/v1/hr/staff/${encodeURIComponent(id!)}/photo`}`, { headers, cache: "no-store" });
+      const res = await fetch(`${API_URL}/api/v1/hr/staff/${encodeURIComponent(id)}/photo`, { headers, cache: "no-store" });
       // the writer embeds JPEG; a PNG photograph leaves the frame blank on the print (the screen shows it)
       if (res.ok && (res.headers.get("content-type") ?? "").includes("jpeg")) {
         const buf = new Uint8Array(await res.arrayBuffer()); const dim = jpegSize(buf);
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
   const gap = 36;
   const x1 = A4.w / 2 - W - gap / 2, x2 = A4.w / 2 + gap / 2;
   p.textCenter(A4.w / 2, A4.h - 54, "Rev. Fr. Moses Orshio Adasu University - Staff Identity Card", 12, true, C.ink);
-  p.textCenter(A4.w / 2, A4.h - 70, self ? "A printed copy of your card. The card itself is issued by the Registry." : `Printed for ${clean(face.name)} by the office signed in.`, 8.5, false, C.foot);
+  p.textCenter(A4.w / 2, A4.h - 70, `Printed for ${clean(face.name)} by the office signed in.`, 8.5, false, C.foot);
   const top = A4.h - 104;
   drawFrontPortrait(p, x1, top - H, W, face, photo, crest);
   p.textCenter(x1 + W / 2, top - H - 18, "FRONT", 7, true, C.foot);

@@ -3,7 +3,8 @@
 /** t/migrate — bring the paid applicants over from the old portal (V167), with their email and phone (V296). A spreadsheet of
  *  the applicants who applied and paid — JAMB number, email, phone number — is read in the browser and sent up in small chunks;
  *  each row is created idempotently (a login on the JAMB CAPS record + a submitted, paid application) or, for an applicant
- *  already migrated, given the file's email and phone. The initial password is the JAMB number. The applicant fee must be set
+ *  already migrated, given the file's email and phone. V428: the JAMB number is never the password — the applicant sets one through
+ *  "First sign-in or forgot password" (a link to the email and phone from the file). The applicant fee must be set
  *  for the session first. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -228,7 +229,7 @@ export function MigrateApplicants({ session, fee, contacts, actingOffice }: { se
     <>
       <Note kind="info" title="Migrate the applicants who already applied and paid on the old portal">
         <b>Upload and commit the JAMB CAPS list first</b>: the applicant&rsquo;s data comes from it. Each row (<b>JAMB number, email,
-        phone</b> — see the template) confirms the payment, creates the login (initial password = the JAMB number) and records the
+        phone</b> — see the template) confirms the payment, creates the login (the applicant sets a password through <b>First sign-in or forgot password</b>; the JAMB number is never the password) and records the
         contacts. A JAMB number <b>not on the CAPS list is skipped and reported</b>. Safe to re-run.
       </Note>
 

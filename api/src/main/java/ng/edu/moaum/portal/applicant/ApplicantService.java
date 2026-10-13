@@ -130,6 +130,10 @@ public class ApplicantService {
             throw new DomainRuleViolation("AUTH_RESET_TOKEN", "This reset link has expired or was already used.",
                     new DomainRuleViolation.Remedy("Ask for a new one from the sign-in page; it is good for an hour and used once.", "You"));
         }
+        ApplicantRepository.Account owner = repo.byId(r.accountId()).orElse(null);
+        if (owner != null && ownNumber(password, owner.jambKey(), owner.applicationNo())) {   // V428
+            throw numberIsNoPassword();
+        }
         String hash = encoder.encode(password);
         ApplicantRepository.Account a = atTheDoor(r.accountId(), "applicant password reset", () -> {
             repo.useReset(r.id());
@@ -198,6 +202,9 @@ public class ApplicantService {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
+        if (ownNumber(password, key)) {   // V428
+            throw numberIsNoPassword();
+        }
         // V312: a new applicant account is started only while the Director of ICT has Post-UTME registration open for the session
         windows.requireOpen(ApplicationWindows.POST_UTME, session);
         String hash = encoder.encode(password);
@@ -228,6 +235,19 @@ public class ApplicantService {
                 new DomainRuleViolation.Remedy("Use your application number, your email or your JAMB number, and the password you chose; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
+    /** V428: an applicant's own JAMB or application number is never their password — at the door, at registration or at a reset */
+    static boolean ownNumber(String password, String... numbers) {
+        String p = password == null ? "" : password.trim();
+        if (p.isEmpty()) return false;
+        for (String n : numbers) if (n != null && !n.isBlank() && p.equalsIgnoreCase(n.trim())) return true;
+        return false;
+    }
+
+    private static DomainRuleViolation numberIsNoPassword() {
+        return new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your JAMB or application number cannot be your password.",
+                new DomainRuleViolation.Remedy("Choose a password that is not your JAMB or application number.", "You"));
+    }
+
     public SignedIn signIn(String identifier, String password, String ip) {
         // V359: one connection trying many applicant accounts is refused before any is tried
         throttle.refuse(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
@@ -244,12 +264,15 @@ public class ApplicantService {
                         + a.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
-            // a migrated account holds the sentinel until first login: its initial password is the JAMB
-            // number, verified directly (the JAMB number is already stored in plain text as jamb_key, so
-            // hashing it added no protection). The real password the applicant then sets is hashed normally.
-            boolean ok = "SET_ON_FIRST_LOGIN".equals(a.passwordHash())
-                    ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(password == null ? "" : password.trim())
-                    : encoder.matches(password == null ? "" : password, a.passwordHash());
+            // V428: the JAMB or application number opens nothing — a migrated account on its first-login sentinel (V178) once opened
+            // with the JAMB number; it now opens through the reset link sent to the email and phone it was migrated with
+            if (ownNumber(password, a.jambKey(), a.applicationNo())) {
+                repo.event(identifier, a.id(), "OWN_NUMBER_REFUSED", ip);
+                throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
+                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your JAMB or application number is not a password.",
+                        new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"Forgot password\": a link goes to the email and phone you gave.", "ICT Support"));
+            }
+            boolean ok = !"SET_ON_FIRST_LOGIN".equals(a.passwordHash()) && encoder.matches(password == null ? "" : password, a.passwordHash());
             if (!ok) {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(a.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
@@ -613,6 +636,9 @@ public class ApplicantService {
         if (password == null || password.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
+        }
+        if (ownNumber(password, key)) {   // V428
+            throw numberIsNoPassword();
         }
         Map<String, Object> listed = repo.cceLookup(key, dob);
         if ("found".equals(listed.get("state"))) {

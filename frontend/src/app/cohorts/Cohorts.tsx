@@ -262,6 +262,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               </PBody>
             </Panel>
           ) : null}
+          <DuplicateStudents />
           <Panel title="Academic sessions" right="A cancelled session is merged into the one that carried its students; their entry session stays">
             <DTable pageSize={0} cols={["Session", "State|mid", "Merged into", "Reason", "Entrants|mid", "Cohort size|mid", "|num"]} rows={settings.sessions.map((s) => [
               <span key="n" className="tnum b600">{s.name}</span>,
@@ -342,6 +343,41 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/** V429: the students who may be one person on the register twice — the same JAMB number, or every name, the programme and the entry
+ *  session — with what each record carries, for the Registry to reconcile. Read only; read when opened. */
+interface Duplicate { kind: "SAME_JAMB" | "SAME_NAME"; match_key: string; student_id: string; number: string; name: string; programme_code: string; entry_session: string;
+  status: string; jamb_reg_no: string | null; linked_candidate: boolean; registrations: number; payments: number; marks: number }
+const groupCount = (n: number) => `${n} ${n === 1 ? "group" : "groups"}`;
+function DuplicateStudents() {
+  const [rows, setRows] = useState<Duplicate[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  async function load() {
+    if (rows) return;
+    const r = await fetch("/api/bff/api/v1/student/duplicates", { cache: "no-store" }).catch(() => null);
+    if (r && r.ok) setRows(await r.json()); else setFailed(true);
+  }
+  if (failed) return null;
+  return (
+    <Panel title="Possible duplicate students" right="Read only — nothing is merged or deleted here">
+      <PBody>
+        <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void load(); }}>
+          <summary className="sub2">Students on the register twice under one JAMB number, or with every name, the programme and the entry session the same{rows ? ` (${groupCount(new Set(rows.map((x) => x.match_key)).size)})` : ""}</summary>
+          {rows === null ? <div className="sub2">Reading…</div> : rows.length ? (
+            <DTable cols={["Match", "Student", "Programme · entry", "Candidate|mid", "Registrations|num", "Payments|num", "Marks|num"]} rows={rows.map((x) => [
+              <span key="m"><Pil kind={x.kind === "SAME_JAMB" ? "bad" : "warn"}>{x.kind === "SAME_JAMB" ? "Same JAMB number" : "Same names"}</Pil><div className="sub2 tnum">{x.match_key}</div></span>,
+              <span key="s"><StudentOpen id={x.student_id} label={x.name} kind="link" /><div className="sub2 tnum">{x.number}</div></span>,
+              <span key="p" className="sub2">{`${x.programme_code} · ${x.entry_session} · ${x.status.toLowerCase()}`}</span>,
+              <span key="c" className="sub2">{x.linked_candidate ? "Linked" : "None"}</span>,
+              <span key="r" className="tnum">{x.registrations}</span>, <span key="y" className="tnum">{x.payments}</span>, <span key="k" className="tnum">{x.marks}</span>,
+            ])} texts={rows.map((x) => `${x.match_key} ${x.number} ${x.name}`)} />
+          ) : <div className="sub2">None found.</div>}
+          <p className="sub2 mt-2">The record a candidate stands behind is normally the one to keep; the other, with nothing registered, paid or marked on it, is the one to end. Admission now links an earlier record instead of making a second (V429).</p>
+        </details>
+      </PBody>
+    </Panel>
   );
 }
 

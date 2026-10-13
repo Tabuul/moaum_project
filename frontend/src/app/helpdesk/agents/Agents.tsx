@@ -19,6 +19,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { AVAILABILITY, PRIORITY, SCOPE_KINDS, STRATEGY, dayOf, hours, type Posting, type RoutingRule } from "@/lib/helpdesk";
 import type { AgentsData, QueuesData, RoutingData, Structure } from "./page";
 
+import { SearchSelect } from "@/components/proto/SearchSelect";
 type Tab = "agents" | "queues" | "routing";
 interface PostDraft { capabilities: string[]; personId: string; queueCode: string; scopeKind: string; scopeRef: string; isPrimary: boolean; availability: string; effectiveFrom: string; effectiveTo: string; reason: string }
 interface QueueDraft { isNew: boolean; code: string; name: string; description: string; officeCode: string; ordinal: string; active: boolean }
@@ -221,7 +222,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
                 </Field>
               ) : post.scopeKind === "DEPARTMENT" ? (
                 <Field id="ag-ref" label="Department" required style={{ flex: "2 1 220px" }}>
-                  <select id="ag-ref" className="ctl" value={post.scopeRef} onChange={(e) => setPost({ ...post, scopeRef: e.target.value })}><option value="">Choose…</option>{departments.map((d) => <option key={d.code} value={d.code}>{d.name} · {d.faculty}</option>)}</select>
+                  <SearchSelect id="ag-ref" value={post.scopeRef} onChange={(v) => setPost({ ...post, scopeRef: v })} placeholder="Search a department…" options={departments.map((d) => ({ value: d.code, label: `${d.name} · ${d.faculty}` }))} />
                 </Field>
               ) : post.scopeKind === "OFFICE" ? (
                 <Field id="ag-ref" label="Office" required style={{ flex: "2 1 220px" }}>

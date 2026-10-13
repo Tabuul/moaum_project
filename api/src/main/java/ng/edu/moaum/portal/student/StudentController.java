@@ -263,6 +263,15 @@ class StudentController {
         return search.find(q, kind);
     }
 
+    /** V429: the students who may be one person on the register twice (the same JAMB number, or every name, the programme and the
+     *  entry session), with what each record carries — for the Registry to reconcile. Read only: nothing is merged or deleted here. */
+    @GetMapping("/duplicates")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_ict','OFFICE_super')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    java.util.List<java.util.Map<String, Object>> duplicates() {
+        return jdbc.sql("SELECT * FROM people.duplicate_students()").query().listOfRows();
+    }
+
     @GetMapping("/records/{view}")
     @PreAuthorize(READERS)
     RecordsResult records(@PathVariable String view,

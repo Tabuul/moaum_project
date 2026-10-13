@@ -5,7 +5,7 @@
  *  formatted Excel workbook read from the register at that moment — matric number, name, programme,
  *  level, charged, paid, balance. No separate link: the number is the link. */
 import { useState } from "react";
-import { buildXlsx, loadCrest } from "@/lib/xlsx";
+import { brandedXlsx } from "@/lib/exportbrand";
 
 interface Row { matric_no: string | null; surname: string; other_names: string; programme: string; level: number; status: string; charged: number; paid: number }
 
@@ -13,14 +13,12 @@ async function downloadList(which: "cleared" | "owing", session: string, deptNam
   const r = await fetch(`/api/bff/api/v1/hod/fees?session=${encodeURIComponent(session)}&which=${which}`, { cache: "no-store" });
   if (!r.ok) return `Could not read the list (${r.status})`;
   const rows = (await r.json()) as Row[];
-  const logo = await loadCrest();
   const title = which === "cleared" ? `Cleared for registration · ${session}` : `Still owing for ${session}`;
-  const blob = buildXlsx(
+  // portal gap audit: the University's name and logo come from its profile, S/N leads, never a name written into the code
+  const blob = await brandedXlsx(`${deptName} — ${title}`,
     ["Matric no.", "Surname", "Other names", "Programme", "Level", "Status", "Charged (NGN)", "Paid (NGN)", "Balance (NGN)"],
     rows.map((x) => [x.matric_no, x.surname, x.other_names, x.programme, Number(x.level), x.status, Number(x.charged), Number(x.paid), Number(x.charged) - Number(x.paid)]),
-    which === "cleared" ? "Cleared" : "Owing",
-    { school: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", title: `${deptName} — ${title} (${rows.length.toLocaleString()} students)`,
-      date: "Read from the register " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }), logo: logo ?? undefined },
+    { sheetName: which === "cleared" ? "Cleared" : "Owing", sub: `${rows.length.toLocaleString()} students · read from the register` },
   );
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

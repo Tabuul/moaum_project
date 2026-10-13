@@ -3,8 +3,8 @@
 /**
  * t/lecturers — bulk-onboard teaching staff from the "List of teaching staff"
  * sheet (V137), and view the staff on record. Each row becomes a person, a
- * sign-in (username and first password are the staff id P<PNO>, must be changed
- * on first sign-in), the lecturer office scoped to the home department, and an
+ * sign-in (username the staff id P<PNO>; V428: a random first password nobody knows — the lecturer sets theirs through
+ * "First sign-in or forgot password"), the lecturer office scoped to the home department, and an
  * establishment record (sex, first appointment, rank, CONUASS).
  *
  * Sent in small chunks: every sign-in is a bcrypt (cost 12) hash, so one large
@@ -213,8 +213,9 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
     <>
       <RoleLine allowed={["ict", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Onboarding teaching staff" />
       <Note kind="info" title="Upload the list of teaching staff, and see who is on record">
-        From the <b>List of teaching staff</b>. Each row gets a sign-in where the <b>username and first password are both the
-        staff id</b> (changed on first sign-in) and the <b>lecturer office at the home department</b>. Re-uploading never
+        From the <b>List of teaching staff</b>. Each row gets a sign-in whose <b>username is the staff id</b>, and the <b>lecturer
+        office at the home department</b>. The staff id is never the password: the lecturer chooses one through <b>First sign-in or
+        forgot password</b> (a link to the email or phone on record), or the Registry gives a first password on Users &amp; roles. Re-uploading never
         duplicates or resets a password. The department must exist first.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Registry">Your office may not onboard teaching staff.</Note> : null}
@@ -224,7 +225,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         <>
           <Tiles cls="grid--4" items={[
             ["New staff", String(tally.created), null, "Added to the register"],
-            ["Sign-ins issued", String(tally.credentialed), null, "Username & first password = P<PNO>"],
+            ["Sign-ins issued", String(tally.credentialed), null, "Username = P<PNO>; the password set through the link"],
             ["Department grants", String(tally.granted), null, "Lecturer office at the home department"],
             ["Records kept", String(tally.records), null, "Sex · appointment · rank · CONUASS"],
           ]} />

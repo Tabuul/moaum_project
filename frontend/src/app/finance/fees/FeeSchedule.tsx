@@ -23,6 +23,7 @@ import { GstFeePanel } from "./GstFeePanel";
 import { PgFees } from "./PgFees";
 import type { GstFeePage } from "@/lib/gst";
 
+import { brandedSheet } from "@/lib/exportbrand";
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
@@ -196,8 +197,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(filteredItems.length / pageSize)) : 1;
   const pageItems = pageSize > 0 ? filteredItems.slice(page * pageSize, page * pageSize + pageSize) : filteredItems;
 
-  function exportExcel() {
-    const blob = buildXlsx(
+  async function exportExcel() {
+    const blob = await brandedSheet(
       ["Item", "Applies to", "Level", "Semester", "Faculty", "Programme", "Entry mode", "Indigeneship", "Spillover", "Amount"],
       filteredItems.map((i) => [i.item, appliesTo(i), i.spillover ? "Spillover" : i.level ? String(i.level) : "All", i.semester ? String(i.semester) : "Session", i.faculty_name ?? "All", i.programme_name ?? "All", i.entry_mode ?? "All", indigeneText(i) ?? "All", i.spillover ? "Yes" : "No", i.amount]),
       `Fee schedule ${session.replace("/", "-")}`,

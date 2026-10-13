@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 import type { Card } from "@/lib/student-portal";
 import { IdCard } from "../Screens5";
 
-/** s/idcard — the card the Library issued */
+/** s/idcard — the status of the student's identity card: issued, valid to, lost or replaced — never the card itself (portal gap audit) */
 export default async function Page() {
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/idcard" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;

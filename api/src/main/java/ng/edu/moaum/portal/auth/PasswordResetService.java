@@ -227,6 +227,12 @@ public class PasswordResetService {
         UUID resetId = (UUID) r.get("id");
         UUID subject = (UUID) r.get("subject_id");
         String kind = (String) r.get("subject_kind");
+        // V428: the person's own number is never the new password
+        String chosen = password.trim();
+        if (identifiers(kind, subject).stream().anyMatch(n -> n != null && !n.isBlank() && chosen.equalsIgnoreCase(n.trim()))) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your own number cannot be your password.",
+                    new DomainRuleViolation.Remedy("Choose a password that is not your matriculation, admission, staff, JAMB or application number.", "You"));
+        }
         String pwHash = encoder.encode(password);
         AuditContextHolder.with(new AuditContext(subject, "registrar", "password reset", null, null), () -> tx.execute(st -> {
             switch (kind) {
@@ -246,6 +252,17 @@ public class PasswordResetService {
             jdbc.sql("UPDATE iam.password_reset SET used_at = now() WHERE id = :id").param("id", resetId).update();
             return null;
         }));
+    }
+
+    /** V428: the numbers that name the account — none of them may be its password */
+    private java.util.List<String> identifiers(String kind, UUID subject) {
+        String sql = switch (kind) {
+            case "STAFF" -> "SELECT c.username AS n FROM iam.credential c WHERE c.person_id = :s UNION ALL SELECT p.staff_number FROM iam.person p WHERE p.id = :s";
+            case "STUDENT" -> "SELECT unnest(ARRAY[matric_no, admission_no, jamb_reg_no]) AS n FROM people.student WHERE id = :s";
+            case "PGAPPLICANT" -> "SELECT ap.application_no AS n FROM admissions.pg_application ap WHERE ap.applicant_id = :s";
+            default -> "SELECT unnest(ARRAY[a.jamb_key, ap.application_no]) AS n FROM admissions.applicant_account a LEFT JOIN admissions.application ap ON ap.account_id = a.id WHERE a.id = :s";
+        };
+        return jdbc.sql(sql).param("s", subject).query(String.class).list();
     }
 
     private static DomainRuleViolation badToken() {

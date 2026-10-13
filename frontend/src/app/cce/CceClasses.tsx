@@ -11,8 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
-import { buildXlsx } from "@/lib/xlsx";
-import { downloadBlob } from "@/lib/exportbrand";
+import { brandedSheet, downloadBlob } from "@/lib/exportbrand";
 import {
   ATT_LABEL, CAL_LABEL, CLASH_LABEL, REG_LABEL, VERDICT_LABEL, WEEKDAYS, ccall, day, labelOf, naira, semesterWord, when,
   type AttendanceView, type CalendarSemester, type CalendarView, type CceClass, type ClassesView, type Period, type RegistrationsView,
@@ -209,7 +208,7 @@ export function CceClasses({ session, powers, pick }: TabProps) {
     if (out) { setWithdraw(null); setWhy(""); setTick((t) => t + 1); }
   }
   const rows = v.classes;
-  const exportXlsx = () => downloadBlob(buildXlsx(["Course", "Title", "Units", "Level", "Semester", "Department", "Faculty", "Programmes", "Lecturer", "Second examiner", "Registered", "Slots"],
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Course", "Title", "Units", "Level", "Semester", "Department", "Faculty", "Programmes", "Lecturer", "Second examiner", "Registered", "Slots"],
     rows.map((c) => [c.course_code, c.title, c.units, c.level, c.semester, c.department ?? "", c.faculty ?? "", c.programmes ?? "", c.lecturer ?? "", c.second_examiner ?? "", c.registered,
       c.slots.map((s) => `${WEEKDAYS[s.weekday]} ${s.starts_at}–${s.ends_at} ${s.venue}`).join("; ")]), "CCE classes"), `cce-classes-${session.replace("/", "-")}.xlsx`);
 
@@ -313,7 +312,7 @@ export function CceTimetable({ session, powers, pick }: TabProps) {
     if (out) { setPeriod(null); setTick((t) => t + 1); }
   }
   const byDay = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ d, slots: v.slots.filter((s) => s.weekday === d) })).filter((x) => x.slots.length);
-  const exportXlsx = () => downloadBlob(buildXlsx(["Day", "Start", "End", "Course", "Title", "Lecturer", "Venue", "Kind", "Programmes", "Department", "Faculty", "Session", "Semester"],
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Day", "Start", "End", "Course", "Title", "Lecturer", "Venue", "Kind", "Programmes", "Department", "Faculty", "Session", "Semester"],
     v.slots.map((s) => [WEEKDAYS[s.weekday], s.starts_at, s.ends_at, s.course_code, s.title, s.lecturer ?? "", s.venue, s.kind, s.programmes ?? "", s.department ?? "", s.faculty ?? "", v.session, v.semester]),
     "CCE timetable"), `cce-timetable-${session.replace("/", "-")}-s${semester}.xlsx`);
   const activePeriods = v.periods.filter((p) => p.active);
@@ -400,7 +399,7 @@ export function CceRegistrations({ session, pick }: TabProps) {
   const v = useLoad<RegistrationsView>(`/api/v1/cce/registrations?session=${q(session)}&semester=${semester}${status ? `&status=${status}` : ""}`, 0);
   if (!v) return <Note kind="info" title="Reading the CCE registrations…">One moment.</Note>;
   const c = v.counts;
-  const exportXlsx = () => downloadBlob(buildXlsx(["Number", "Name", "Programme", "Level", "Registration", "Units", "Submitted", "Approved", "Fees stated", "Fees cleared"],
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Number", "Name", "Programme", "Level", "Registration", "Units", "Submitted", "Approved", "Fees stated", "Fees cleared"],
     v.rows.map((r) => [r.number, r.name, r.programme, r.level, labelOf(REG_LABEL, r.registration)[0], r.units, r.submitted_at ? when(r.submitted_at) : "", r.approved_at ? when(r.approved_at) : "",
       r.fees_stated ? "Yes" : "No", r.fees_cleared ? "Yes" : "No"]), "CCE registrations"), `cce-registrations-${session.replace("/", "-")}-s${semester}.xlsx`);
   return (
@@ -454,7 +453,7 @@ export function CceAttendance({ session, powers, pick }: TabProps) {
   }
   const p = v.policy;
   const below = v.rows.filter((r) => r.verdict === "NOT_ELIGIBLE").length;
-  const exportXlsx = () => downloadBlob(buildXlsx(["Number", "Name", "Programme", "Level", "Faculty", "Department", "Course", "Semester", "Lectures", "Present", "Late", "Absent", "Excused", "Rate %", "Standing"],
+  const exportXlsx = async () => downloadBlob(await brandedSheet(["Number", "Name", "Programme", "Level", "Faculty", "Department", "Course", "Semester", "Lectures", "Present", "Late", "Absent", "Excused", "Rate %", "Standing"],
     v.rows.map((r) => [r.number, r.name, r.programme, r.level, r.faculty ?? "", r.department ?? "", r.course_code, r.semester, r.total, r.present, r.late, r.absent, r.excused, r.rate ?? "",
       r.verdict ? labelOf(VERDICT_LABEL, r.verdict)[0] : ""]), "CCE attendance"), `cce-attendance-${session.replace("/", "-")}.xlsx`);
   const facultyProgs = v.programmes.filter((x) => !f.faculty || x.faculty_code === f.faculty);

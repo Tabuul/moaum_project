@@ -26,7 +26,9 @@ class StudentAuthController {
     public record SignIn(@NotBlank @Size(max = 40) String matricNo, @NotBlank @Size(max = 200) String password) {
     }
 
-    public record ChangePassword(@NotBlank String current, @NotBlank String next) {
+    /** V428: the current password may be left blank on an account that must change and holds no temporary password — it was opened by
+     *  a door that already proved the student; the service decides */
+    public record ChangePassword(@Size(max = 200) String current, @NotBlank String next) {
     }
 
     public record Open(@NotBlank @Size(max = 200) String password) {
