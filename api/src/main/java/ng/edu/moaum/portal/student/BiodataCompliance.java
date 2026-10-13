@@ -217,6 +217,15 @@ public class BiodataCompliance {
                 """).query().listOfRows();
     }
 
+    /**
+     * V427: for each item that can be required, over the students on the register — how many lack it, how many whose
+     * required biodata is complete would be held if it were required, and, for a required item, how many held students it
+     * alone holds (unticking it would free them).
+     */
+    public List<Map<String, Object>> impact() {
+        return jdbc.sql("SELECT item, required, students, missing, newly_held, freed FROM people.biodata_requirement_impact()").query().listOfRows();
+    }
+
     /** the exceptions live now, and those that ended in the last 90 days */
     public List<Map<String, Object>> exceptions() {
         return jdbc.sql("""

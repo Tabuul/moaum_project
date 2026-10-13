@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 265
+\set EXPECTED 266
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11326,6 +11326,77 @@ BEGIN
                  AND r_off = 0 AND r_on >= 2 AND r_again = 0 AND told_a = 2 AND told_a_sms = 1 AND told_b = 1 AND hr_told = 1, false),
         format('summary total=%s reach=%s phone=%s unreach=%s never=%s | list n=%s total=%s status=%s | prompt ask=%s skip=%s none=%s | remind off=%s on=%s again=%s told a=%s (sms %s) b=%s hr=%s',
                s_total, s_reach, s_phone, s_unreach, s_never, l_n, l_total, l_status, p_ask, p_skip, p_none, r_off, r_on, r_again, told_a, told_a_sms, told_b, hr_told));
+END $$;
+-- ── V427. Payments classified fast and each required biodata item counted: the rules' answers are kept per input — the
+--          category per purpose or kind, the programme type per entry mode and programme category, the owner per purpose and
+--          programme type — every one equal to the rule's own; a payment with a purpose never met before is learnt as it is
+--          created; a category the Bursary states reaches the ledger at once; an input the memo has lost still gets the rule's
+--          answer; the applicants' programme by name is the one admissions.programme_code_of chooses; and for each item that
+--          can be required, the students who lack it, the complete ones it would hold and the held ones it alone holds ──
+DO $$
+DECLARE S text := '9979/9980'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        purpose text := 'CHECK V427 hostel maintenance levy'; ref1 text := 'MOAUM-CHK-V427-0001';
+        n_memo int; cat_ok boolean; pt_ok boolean; own_ok boolean; learnt boolean; view_cat text; fn_cat text; cat_after text; fallback_cat text;
+        prog_ok boolean; i0 jsonb; i1 jsonb; d_students int; d_kin_missing int; d_kin_freed int; d_religion_held int; d_passport_missing int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V427', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V427', 'CHECKV427', 'Bursary');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9979-10-01', date '9980-08-31') ON CONFLICT (name) DO NOTHING;
+        -- the memo holds the rules' own answers
+        SELECT count(*) INTO n_memo FROM finance.category_memo;
+        SELECT coalesce(bool_and(m.code = finance.categorise(nullif(m.kind, ''), nullif(m.purpose, ''))), true) INTO cat_ok FROM finance.category_memo m;
+        SELECT coalesce(bool_and(m.code = finance.programme_type_for(nullif(m.entry_mode, ''), nullif(m.category, ''))), true) INTO pt_ok FROM finance.programme_type_memo m;
+        SELECT coalesce(bool_and(o.source_module IS NOT DISTINCT FROM m.source_module AND o.responsible_office IS NOT DISTINCT FROM m.responsible_office), true) INTO own_ok
+          FROM finance.owner_memo m LEFT JOIN LATERAL finance.payment_owner(m.purpose, m.programme_type) o(source_module, responsible_office) ON true;
+        -- the counts before the students of this check
+        SELECT jsonb_object_agg(x.item, jsonb_build_object('students', x.students, 'missing', x.missing, 'held', x.newly_held, 'freed', x.freed)) INTO i0
+          FROM people.biodata_requirement_impact() x;
+        INSERT INTO people.student (id, admission_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/79/009427', 'CHECKV427', 'Payer', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/79/009428', 'CHECKV427', 'Held by one', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+               (c, 'MOAUM/ADM/79/009429', 'CHECKV427', 'Complete', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        -- a payment with a purpose nobody has paid for: learnt as it is created, classified as the rule classifies it
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (a, S, ref1, purpose, 1000, now() + interval '1 day', now(), who, 'Card', 'RCPT-V427-0001');
+        learnt := EXISTS (SELECT 1 FROM finance.category_memo WHERE kind = '' AND finance.category_memo.purpose = 'CHECK V427 hostel maintenance levy');
+        SELECT v.category_code INTO view_cat FROM reporting.payments v WHERE v.reference = ref1;
+        fn_cat := finance.categorise(NULL, purpose);
+        -- the Bursary states a category that matches it: recomputed in the same transaction, the ledger follows
+        INSERT INTO finance.payment_category (code, label, pattern, ord, revenue, active) VALUES ('CHKV427', 'CHECK V427 levy', '^check v427', 0, true, true);
+        SELECT v.category_code INTO cat_after FROM reporting.payments v WHERE v.reference = ref1;
+        -- an input the memo has lost is still the rule's
+        DELETE FROM finance.category_memo WHERE finance.category_memo.purpose = 'CHECK V427 hostel maintenance levy';
+        SELECT v.category_code INTO fallback_cat FROM reporting.payments v WHERE v.reference = ref1;
+        -- the applicants' programme by name, as programme_code_of chooses
+        SELECT coalesce(bool_and(v.programme_code IS NOT DISTINCT FROM admissions.programme_code_of(cd.programme)), true) INTO prog_ok
+          FROM reporting.payments v JOIN admissions.application ap ON ap.id = v.application_id JOIN admissions.candidate cd ON cd.id = ap.candidate_id
+         WHERE v.source = 'APPLICANT';
+        -- b has every required item but the next of kin's phone; c has every required item and no religion
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (b, '08000000427', 'v427b@example.test'), (c, '08000000428', 'v427c@example.test');
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, reason) VALUES (b, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V427'),
+                                                                                                (c, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V427');
+        INSERT INTO people.biodata (student_id, field, value)
+        SELECT s.id, f.field, f.value FROM (VALUES (b), (c)) s(id)
+         CROSS JOIN (VALUES ('nationality', 'Nigeria'), ('home_address', 'CHECK house, Makurdi'), ('state_of_origin', 'Benue'), ('lga', 'Makurdi'),
+                            ('kin_name', 'CHECK Kin'), ('kin_relationship', 'Mother')) f(field, value);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (c, 'kin_mobile', '08000000429');
+        SELECT jsonb_object_agg(x.item, jsonb_build_object('students', x.students, 'missing', x.missing, 'held', x.newly_held, 'freed', x.freed)) INTO i1
+          FROM people.biodata_requirement_impact() x;
+        d_students := (i1->'kin_mobile'->>'students')::int - (i0->'kin_mobile'->>'students')::int;
+        d_kin_missing := (i1->'kin_mobile'->>'missing')::int - (i0->'kin_mobile'->>'missing')::int;
+        d_kin_freed := (i1->'kin_mobile'->>'freed')::int - (i0->'kin_mobile'->>'freed')::int;
+        d_religion_held := (i1->'religion'->>'held')::int - (i0->'religion'->>'held')::int;
+        d_passport_missing := (i1->'PASSPORT'->>'missing')::int - (i0->'PASSPORT'->>'missing')::int;
+        RAISE EXCEPTION 'the V427 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V427: the memo holds each classification rule''s own answer, a new purpose is learnt as it is paid, a category the Bursary states reaches the ledger at once, a lost memo row still gets the rule''s answer, the applicants'' programme is programme_code_of''s; the impact counts a student held by one item as freed by it and a complete student as held by a new item',
+        coalesce(n_memo > 0 AND cat_ok AND pt_ok AND own_ok AND learnt AND view_cat = fn_cat AND cat_after = 'CHKV427' AND fallback_cat = 'CHKV427' AND prog_ok
+                 AND d_students = 3 AND d_kin_missing = 2 AND d_kin_freed = 1 AND d_religion_held = 1 AND d_passport_missing = 1, false),
+        format('memo=%s cat=%s pt=%s own=%s learnt=%s view=%s fn=%s after=%s fallback=%s prog=%s | students +%s kin missing +%s freed +%s religion held +%s passport missing +%s',
+               n_memo, cat_ok, pt_ok, own_ok, learnt, view_cat, fn_cat, cat_after, fallback_cat, prog_ok, d_students, d_kin_missing, d_kin_freed, d_religion_held, d_passport_missing));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

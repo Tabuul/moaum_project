@@ -110,6 +110,10 @@ class BiodataGateIT {
             Map<String, Object> list = it.get(ict, B + "/students?status=INCOMPLETE&q=" + surname).getBody();
             assertThat(((Number) list.get("total")).intValue()).isEqualTo(1);
             assertThat(String.valueOf(l(list.get("rows")).getFirst().get("missing"))).contains("Passport photograph");
+            // V427: what requiring each item would do, counted over the register — the student lacks the next of kin's phone
+            List<Map> impact = it.getList(ict, B + "/requirements/impact").getBody();
+            assertThat(impact).anyMatch(x -> "kin_mobile".equals(x.get("item")) && ((Number) x.get("missing")).intValue() >= 1
+                    && ((Number) x.get("students")).intValue() >= 1);
             // a health field is never required
             ResponseEntity<Map> health = it.call(ict, HttpMethod.PUT, B + "/requirements/genotype", Map.of("required", true));
             assertThat(status(health)).isEqualTo(422);

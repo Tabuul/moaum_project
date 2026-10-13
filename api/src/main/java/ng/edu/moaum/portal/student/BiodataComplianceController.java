@@ -110,6 +110,14 @@ class BiodataComplianceController {
         return compliance.requirements();
     }
 
+    /** V427: what requiring each item would do — who lacks it, whom it would hold, whom it alone holds — before it is ticked */
+    @GetMapping("/requirements/impact")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Object impact() {
+        return compliance.impact();
+    }
+
     /** the students within the bound and the filter, paged (up to 5,000 rows for an export), searched on the server */
     @GetMapping("/students")
     @PreAuthorize(READERS)

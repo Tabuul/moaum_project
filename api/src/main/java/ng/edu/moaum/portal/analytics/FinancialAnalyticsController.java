@@ -251,75 +251,105 @@ class FinancialAnalyticsController {
         return m;
     }
 
-    /** one pass over the rows: the totals and every breakdown, by grouping sets */
-    @SuppressWarnings("unchecked")
-    private void groups(Map<String, Object> out, Bound b, Filters f) {
-        List<Map<String, Object>> rows = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + CONFIRMED + """
-                ), x AS (SELECT r.*, date_trunc(:g, r.confirmed_at)::date AS bucket FROM r)
-                SELECT grouping(category_code) AS g_c, grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p,
-                       grouping(level) AS g_l, grouping(sex) AS g_s, grouping(entry_mode) AS g_e, grouping(session) AS g_ss, grouping(channel) AS g_ch, grouping(bucket) AS g_b,
-                       grouping(programme_type) AS g_pt, grouping(purpose_code) AS g_pp, grouping(source_module) AS g_sm, grouping(responsible_office) AS g_ro,
-                       category_code, category, faculty_code, faculty, dept_code, department, programme_code, programme, level, sex, entry_mode, session, channel, bucket,
-                       programme_type, programme_type_label, purpose_code, purpose_label, source_module, responsible_office, responsible_office_label,
-                       count(*) AS transactions, count(DISTINCT payer_key) AS payers, coalesce(sum(amount), 0) AS amount
-                  FROM x
-                 GROUP BY GROUPING SETS ((), (category_code, category), (faculty_code, faculty), (faculty_code, faculty, dept_code, department),
-                                         (faculty_code, faculty, dept_code, department, programme_code, programme),
-                                         (level), (sex), (entry_mode), (session), (channel), (bucket),
-                                         (programme_type, programme_type_label), (purpose_code, purpose_label),
-                                         (programme_type, programme_type_label, purpose_code, purpose_label),
-                                         (source_module), (responsible_office, responsible_office_label))
-                 ORDER BY amount DESC, category, faculty, department, programme, level, sex, entry_mode, session, channel, bucket
-                """), b, f, f.from(), f.to()).param("g", f.granularity()).query().listOfRows();
-        Map<String, Object> totals = null;
-        List<Map<String, Object>> byCategory = new ArrayList<>(), byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(),
-                byLevel = new ArrayList<>(), byGender = new ArrayList<>(), byEntry = new ArrayList<>(), bySession = new ArrayList<>(), byChannel = new ArrayList<>(), trend = new ArrayList<>(),
-                byProgrammeType = new ArrayList<>(), byPurpose = new ArrayList<>(), byTypeAndPurpose = new ArrayList<>(), byModule = new ArrayList<>(), byOffice = new ArrayList<>();
-        for (Map<String, Object> g : rows) {
-            Map<String, Object> m = figures(g);
-            if (flag(g, "g_b") == 0) { m.put("bucket", String.valueOf(g.get("bucket"))); trend.add(m); }
-            // V409: programme type by purpose before either alone
-            else if (flag(g, "g_pt") == 0 && flag(g, "g_pp") == 0) { put(m, g, "programme_type", "programme_type_label", "purpose_code", "purpose_label"); byTypeAndPurpose.add(m); }
-            else if (flag(g, "g_pt") == 0) { put(m, g, "programme_type", "programme_type_label"); byProgrammeType.add(m); }
-            else if (flag(g, "g_pp") == 0) { put(m, g, "purpose_code", "purpose_label"); byPurpose.add(m); }
-            else if (flag(g, "g_sm") == 0) { m.put("source_module", g.get("source_module")); byModule.add(m); }
-            else if (flag(g, "g_ro") == 0) { put(m, g, "responsible_office", "responsible_office_label"); byOffice.add(m); }
-            else if (flag(g, "g_c") == 0) { m.put("code", g.get("category_code")); m.put("label", g.get("category")); byCategory.add(m); }
-            else if (flag(g, "g_p") == 0) { put(m, g, "faculty_code", "faculty", "dept_code", "department", "programme_code", "programme"); byProgramme.add(m); }
-            else if (flag(g, "g_d") == 0) { put(m, g, "faculty_code", "faculty", "dept_code", "department"); byDepartment.add(m); }
-            else if (flag(g, "g_f") == 0) { put(m, g, "faculty_code", "faculty"); byFaculty.add(m); }
-            else if (flag(g, "g_l") == 0) { m.put("level", g.get("level")); byLevel.add(m); }
-            else if (flag(g, "g_s") == 0) { m.put("sex", g.get("sex")); byGender.add(m); }
-            else if (flag(g, "g_e") == 0) { m.put("entry_mode", g.get("entry_mode")); byEntry.add(m); }
-            else if (flag(g, "g_ss") == 0) { m.put("session", g.get("session")); bySession.add(m); }
-            else if (flag(g, "g_ch") == 0) { m.put("channel", g.get("channel")); byChannel.add(m); }
-            else totals = m;
-        }
-        if (totals == null) totals = figures(Map.of("transactions", 0L, "payers", 0L, "amount", BigDecimal.ZERO));
-        trend.sort((x, y) -> String.valueOf(x.get("bucket")).compareTo(String.valueOf(y.get("bucket"))));
-        bySession.sort((x, y) -> String.valueOf(y.get("session")).compareTo(String.valueOf(x.get("session"))));
-        byLevel.sort((x, y) -> Integer.compare(x.get("level") == null ? 0 : ((Number) x.get("level")).intValue(), y.get("level") == null ? 0 : ((Number) y.get("level")).intValue()));
-        out.put("totals", totals);
-        out.put("byCategory", byCategory);
-        out.put("byFaculty", byFaculty);
-        out.put("byDepartment", byDepartment);
-        out.put("byProgramme", byProgramme);
-        out.put("byLevel", byLevel);
-        out.put("byGender", byGender);
-        out.put("byEntry", byEntry);
-        out.put("bySession", bySession);
-        out.put("byChannel", byChannel);
-        out.put("trend", trend);
-        out.put("byProgrammeType", byProgrammeType);
-        out.put("byPurpose", byPurpose);
-        out.put("byTypeAndPurpose", byTypeAndPurpose);
-        out.put("bySourceModule", byModule);
-        out.put("byResponsibleOffice", byOffice);
+    /** a breakdown of the summary: the key it is answered under and the codes it is grouped by (none for the totals) */
+    private record Breakdown(String key, List<String> cols) {
     }
 
-    private static int flag(Map<String, Object> g, String k) {
-        return ((Number) g.get(k)).intValue();
+    private static final List<Breakdown> BREAKDOWNS = List.of(
+            new Breakdown("totals", List.of()),
+            new Breakdown("byCategory", List.of("category_code")),
+            new Breakdown("byFaculty", List.of("faculty_code")),
+            new Breakdown("byDepartment", List.of("faculty_code", "dept_code")),
+            new Breakdown("byProgramme", List.of("faculty_code", "dept_code", "programme_code")),
+            new Breakdown("byLevel", List.of("level")),
+            new Breakdown("byGender", List.of("sex")),
+            new Breakdown("byEntry", List.of("entry_mode")),
+            new Breakdown("bySession", List.of("session")),
+            new Breakdown("byChannel", List.of("channel")),
+            new Breakdown("trend", List.of("bucket")),
+            new Breakdown("byProgrammeType", List.of("programme_type")),
+            new Breakdown("byPurpose", List.of("purpose_code")),
+            new Breakdown("byTypeAndPurpose", List.of("programme_type", "purpose_code")),
+            new Breakdown("bySourceModule", List.of("source_module")),
+            new Breakdown("byResponsibleOffice", List.of("responsible_office")));
+
+    /** the codes a breakdown may be grouped by, with the type a breakdown that does not group by one answers NULL as */
+    private static final List<String[]> CODES = List.of(
+            new String[] {"category_code", "text"}, new String[] {"faculty_code", "text"}, new String[] {"dept_code", "text"},
+            new String[] {"programme_code", "text"}, new String[] {"level", "int"}, new String[] {"sex", "text"}, new String[] {"entry_mode", "text"},
+            new String[] {"session", "text"}, new String[] {"channel", "text"}, new String[] {"bucket", "date"}, new String[] {"programme_type", "text"},
+            new String[] {"purpose_code", "text"}, new String[] {"source_module", "text"}, new String[] {"responsible_office", "text"});
+
+    /**
+     * Oct 2026: every breakdown of the summary in one statement over one narrow read of the revenue rows — the codes, the
+     * payer and the amount, the names joined only to the few rows each breakdown answers — each grouped twice by hashing
+     * (by its codes and the payer, then by its codes), so the unique payers come without a DISTINCT that sorted every
+     * row once per breakdown. On a live-shaped ledger the old statement re-sorted the full-width rows sixteen times and
+     * spilled hundreds of megabytes to disk.
+     */
+    private static String ledgerSql() {
+        String codes = String.join(", ", CODES.stream().filter(d -> !d[0].equals("bucket")).map(d -> "q." + d[0]).toList());
+        StringBuilder sql = new StringBuilder("WITH r AS MATERIALIZED (\n    SELECT ").append(codes)
+                .append(", date_trunc(:g, q.confirmed_at)::date AS bucket, q.payer_key, q.amount FROM (").append(ROWS).append(CONFIRMED).append(") q\n)\n");
+        sql.append("SELECT y.*, coalesce(c.label, y.category_code) AS category, fa.name AS faculty, d.name AS department, pg.name AS programme,\n")
+                .append("       coalesce(pt.label, y.programme_type) AS programme_type_label, coalesce(pu.label, y.purpose_code) AS purpose_label,\n")
+                .append("       coalesce(ro.label, y.responsible_office) AS responsible_office_label\n  FROM (\n");
+        for (int i = 0; i < BREAKDOWNS.size(); i++) {
+            List<String> cols = BREAKDOWNS.get(i).cols();
+            sql.append(i == 0 ? "" : "UNION ALL\n").append("SELECT ").append(i).append(" AS set_no");
+            for (String[] d : CODES) {
+                sql.append(", ").append(cols.contains(d[0]) ? "x." + d[0] : "NULL::" + d[1] + " AS " + d[0]);
+            }
+            String by = String.join(", ", cols);
+            sql.append(", coalesce(sum(x.n), 0)::bigint AS transactions, count(x.payer_key)::bigint AS payers, coalesce(sum(x.amt), 0) AS amount\n")
+                    .append("  FROM (SELECT ").append(cols.isEmpty() ? "" : by + ", ").append("r.payer_key, count(*) AS n, sum(r.amount) AS amt FROM r GROUP BY ")
+                    .append(cols.isEmpty() ? "" : by + ", ").append("r.payer_key) x\n");
+            if (!cols.isEmpty()) sql.append(" GROUP BY ").append(String.join(", ", cols.stream().map(c -> "x." + c).toList())).append("\n");
+        }
+        sql.append(") y\n")
+                .append("  LEFT JOIN finance.payment_category c ON c.code = y.category_code\n")
+                .append("  LEFT JOIN ref.faculty fa ON fa.code = y.faculty_code\n")
+                .append("  LEFT JOIN ref.department d ON d.code = y.dept_code\n")
+                .append("  LEFT JOIN ref.programme pg ON pg.code = y.programme_code\n")
+                .append("  LEFT JOIN finance.programme_type pt ON pt.code = y.programme_type\n")
+                .append("  LEFT JOIN finance.payment_purpose pu ON pu.code = y.purpose_code\n")
+                .append("  LEFT JOIN ref.office ro ON ro.code = y.responsible_office\n")
+                .append(" ORDER BY y.set_no, y.amount DESC, category, faculty, department, programme, y.level, y.sex, y.entry_mode, y.session, y.channel, y.bucket");
+        return sql.toString();
+    }
+
+    private static final String LEDGER = ledgerSql();
+
+    /** the totals and every breakdown — one statement, one read of the revenue rows */
+    private void groups(Map<String, Object> out, Bound b, Filters f) {
+        List<Map<String, Object>> rows = bind(jdbc.sql(LEDGER), b, f, f.from(), f.to()).param("g", f.granularity()).query().listOfRows();
+        Map<String, List<Map<String, Object>>> lists = new LinkedHashMap<>();
+        for (Breakdown bd : BREAKDOWNS) if (!bd.cols().isEmpty()) lists.put(bd.key(), new ArrayList<>());
+        Map<String, Object> totals = null;
+        for (Map<String, Object> g : rows) {
+            Breakdown bd = BREAKDOWNS.get(((Number) g.get("set_no")).intValue());
+            Map<String, Object> m = figures(g);
+            switch (bd.key()) {
+                case "totals" -> { totals = m; continue; }
+                case "trend" -> m.put("bucket", String.valueOf(g.get("bucket")));
+                case "byCategory" -> { m.put("code", g.get("category_code")); m.put("label", g.get("category")); }
+                case "byFaculty" -> put(m, g, "faculty_code", "faculty");
+                case "byDepartment" -> put(m, g, "faculty_code", "faculty", "dept_code", "department");
+                case "byProgramme" -> put(m, g, "faculty_code", "faculty", "dept_code", "department", "programme_code", "programme");
+                case "byProgrammeType" -> put(m, g, "programme_type", "programme_type_label");
+                case "byPurpose" -> put(m, g, "purpose_code", "purpose_label");
+                case "byTypeAndPurpose" -> put(m, g, "programme_type", "programme_type_label", "purpose_code", "purpose_label");
+                case "byResponsibleOffice" -> put(m, g, "responsible_office", "responsible_office_label");
+                default -> { for (String c : bd.cols()) m.put(c, g.get(c)); }
+            }
+            lists.get(bd.key()).add(m);
+        }
+        if (totals == null) totals = figures(Map.of("transactions", 0L, "payers", 0L, "amount", BigDecimal.ZERO));
+        lists.get("trend").sort((x, y) -> String.valueOf(x.get("bucket")).compareTo(String.valueOf(y.get("bucket"))));
+        lists.get("bySession").sort((x, y) -> String.valueOf(y.get("session")).compareTo(String.valueOf(x.get("session"))));
+        lists.get("byLevel").sort((x, y) -> Integer.compare(x.get("level") == null ? 0 : ((Number) x.get("level")).intValue(), y.get("level") == null ? 0 : ((Number) y.get("level")).intValue()));
+        out.put("totals", totals);
+        for (Map.Entry<String, List<Map<String, Object>>> e : lists.entrySet()) out.put(e.getKey(), e.getValue());
     }
 
     private static void put(Map<String, Object> m, Map<String, Object> g, String... keys) {
@@ -334,7 +364,12 @@ class FinancialAnalyticsController {
         return m;
     }
 
-    /** the figures no revenue sum shows: pending references, failed gateway attempts, refunds paid */
+    /**
+     * The figures no revenue sum shows: pending references, failed gateway attempts, refunds paid. A pending reference is
+     * read where it is (unconfirmed, unexpired, generated in the window — the ledger is restricted before it is read).
+     * Failed attempts and refunds are found first, in the window, and only the payments they name are read from the
+     * ledger (by reference, which the view restricts in each of its sources) — never the whole ledger to find a handful.
+     */
     private Map<String, Object> totals(Map<String, Object> revenue, Bound b, Filters f) {
         Map<String, Object> t = new LinkedHashMap<>(revenue);
         t.put("revenue", revenue.get("amount"));
@@ -346,22 +381,44 @@ class FinancialAnalyticsController {
                 """), b, f, f.from(), f.to()).query().singleRow();
         t.put("pending_count", pending.get("n"));
         t.put("pending_amount", pending.get("amount"));
-        Map<String, Object> failed = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
-                ) SELECT count(*) AS n FROM finance.gateway_event e JOIN r v ON v.reference = e.reference
-                   WHERE e.outcome = ANY (string_to_array(:failed, ','))
-                     AND (:from::date IS NULL OR e.received_at >= :from::date) AND (:to::date IS NULL OR e.received_at < (:to::date + 1))
-                """), b, f, f.from(), f.to()).param("failed", String.join(",", FAILED)).query().singleRow();
-        t.put("failed_count", failed.get("n"));
-        Map<String, Object> refunds = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
-                ) SELECT count(*) AS n, coalesce(sum(rf.amount), 0) AS amount FROM finance.refund rf JOIN r v ON v.reference = rf.reference
-                   WHERE rf.state = 'PAID'
-                     AND (:from::date IS NULL OR rf.paid_at >= :from::date) AND (:to::date IS NULL OR rf.paid_at < (:to::date + 1))
-                """), b, f, f.from(), f.to()).query().singleRow();
-        t.put("refunded_count", refunds.get("n"));
-        t.put("refunded_amount", refunds.get("amount"));
-        t.put("net_revenue", ((BigDecimal) t.get("revenue")).subtract((BigDecimal) refunds.get("amount")));
+        String[] failedRefs = jdbc.sql("""
+                SELECT DISTINCT e.reference FROM finance.gateway_event e
+                 WHERE e.outcome = ANY (string_to_array(:failed, ',')) AND e.reference IS NOT NULL
+                   AND (:from::date IS NULL OR e.received_at >= :from::date) AND (:to::date IS NULL OR e.received_at < (:to::date + 1))
+                """).param("failed", String.join(",", FAILED)).param("from", f.from(), Types.DATE).param("to", f.to(), Types.DATE)
+                .query(String.class).list().toArray(String[]::new);
+        long failed = 0;
+        if (failedRefs.length > 0) {
+            failed = ((Number) bind(jdbc.sql("""
+                    WITH r AS (""" + ROWS + """
+                     AND v.reference = ANY (:refs)
+                    ) SELECT count(*) AS n FROM finance.gateway_event e JOIN r v ON v.reference = e.reference
+                       WHERE e.outcome = ANY (string_to_array(:failed, ','))
+                         AND (:from::date IS NULL OR e.received_at >= :from::date) AND (:to::date IS NULL OR e.received_at < (:to::date + 1))
+                    """), b, f, f.from(), f.to()).param("refs", failedRefs).param("failed", String.join(",", FAILED)).query().singleRow().get("n")).longValue();
+        }
+        t.put("failed_count", failed);
+        String[] refundRefs = jdbc.sql("""
+                SELECT DISTINCT rf.reference FROM finance.refund rf
+                 WHERE rf.state = 'PAID' AND rf.reference IS NOT NULL
+                   AND (:from::date IS NULL OR rf.paid_at >= :from::date) AND (:to::date IS NULL OR rf.paid_at < (:to::date + 1))
+                """).param("from", f.from(), Types.DATE).param("to", f.to(), Types.DATE).query(String.class).list().toArray(String[]::new);
+        long refunded = 0;
+        BigDecimal refundedAmount = BigDecimal.ZERO;
+        if (refundRefs.length > 0) {
+            Map<String, Object> refunds = bind(jdbc.sql("""
+                    WITH r AS (""" + ROWS + """
+                     AND v.reference = ANY (:refs)
+                    ) SELECT count(*) AS n, coalesce(sum(rf.amount), 0) AS amount FROM finance.refund rf JOIN r v ON v.reference = rf.reference
+                       WHERE rf.state = 'PAID'
+                         AND (:from::date IS NULL OR rf.paid_at >= :from::date) AND (:to::date IS NULL OR rf.paid_at < (:to::date + 1))
+                    """), b, f, f.from(), f.to()).param("refs", refundRefs).query().singleRow();
+            refunded = ((Number) refunds.get("n")).longValue();
+            refundedAmount = (BigDecimal) refunds.get("amount");
+        }
+        t.put("refunded_count", refunded);
+        t.put("refunded_amount", refundedAmount);
+        t.put("net_revenue", ((BigDecimal) t.get("revenue")).subtract(refundedAmount));
         return t;
     }
 
@@ -384,7 +441,8 @@ class FinancialAnalyticsController {
         }
         Map<String, Object> row = bind(jdbc.sql("""
                 WITH r AS (""" + ROWS + CONFIRMED + """
-                ) SELECT count(*) AS transactions, count(DISTINCT payer_key) AS payers, coalesce(sum(amount), 0) AS amount FROM r
+                ) SELECT coalesce(sum(x.n), 0)::bigint AS transactions, count(*) AS payers, coalesce(sum(x.amt), 0) AS amount
+                    FROM (SELECT payer_key, count(*) AS n, sum(amount) AS amt FROM r GROUP BY payer_key) x
                 """), b, prev, prev.from(), prev.to()).query().singleRow();
         Map<String, Object> m = figures(row);
         m.put("label", label);

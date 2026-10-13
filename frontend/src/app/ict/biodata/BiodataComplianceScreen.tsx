@@ -6,7 +6,7 @@
  * exceptions and the history. Every number is counted on the server within the office's scope; the switch, the
  * requirements and the exceptions are the ICT Director's (or an administrator's) and the API refuses anyone else.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -134,7 +134,7 @@ export function BiodataComplianceScreen({ data, filters, structure, sessions, ce
         ) : <PBody><div className="sub2">No student in this view.</div></PBody>}
       </Panel>
 
-      <Requirements items={data.requirements} canSet={data.canSet} />
+      <Requirements items={data.requirements} canSet={data.canSet} gateOn={g.enabled} />
       {data.canSet ? <Exceptions rows={data.exceptions ?? []} today={data.today} /> : null}
       {data.canSet ? (
         <Panel title="History" right={<span className="sub2">Every change, from the audit trail</span>}>
@@ -188,11 +188,26 @@ export function BiodataComplianceScreen({ data, filters, structure, sessions, ce
 }
 
 /** the items the gate requires: the photograph and the fields a student can enter; a JAMB or health field says why not */
-function Requirements({ items, canSet }: { items: Requirement[]; canSet: boolean }) {
+/** V427: what requiring an item would do, over the students on the register */
+interface ItemImpact { item: string; required: boolean; students: number; missing: number; newly_held: number; freed: number }
+
+function Requirements({ items, canSet, gateOn }: { items: Requirement[]; canSet: boolean; gateOn: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  // V427: what each item would do, counted on the server over the register — read after the page, so the page never waits on it
+  const [impact, setImpact] = useState<Record<string, ItemImpact> | null>(null);
+  const [asking, setAsking] = useState<Requirement | null>(null);
   const sections = [...new Set(items.map((r) => r.section))];
   const n = items.filter((r) => r.required).length;
+  const key = items.filter((r) => r.required).map((r) => r.item).join(",");
+
+  useEffect(() => {
+    let live = true;
+    fetch(`${B}/requirements/impact`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : [])).then((j: ItemImpact[]) => {
+      if (live) setImpact(Object.fromEntries((Array.isArray(j) ? j : []).map((x) => [x.item, x])));
+    }).catch(() => { if (live) setImpact({}); });
+    return () => { live = false; };
+  }, [key]);
 
   async function set(r: Requirement, required: boolean) {
     setBusy(r.item);
@@ -200,30 +215,62 @@ function Requirements({ items, canSet }: { items: Requirement[]; canSet: boolean
       const done = await send(`${B}/requirements/${encodeURIComponent(r.item)}`, "PUT", { required }, `${r.label} ${required ? "required" : "no longer required"}`);
       if (!done) return;
       notify(`${r.label}: ${required ? "required" : "no longer required"}`);
+      setAsking(null);
       router.refresh();
     } finally {
       setBusy(null);
     }
   }
 
+  /** ticking an item that would hold students who are complete now asks first, with the number */
+  function tick(r: Requirement, required: boolean) {
+    const x = impact?.[r.item];
+    if (required && gateOn && x && x.newly_held > 0) { setAsking(r); return; }
+    void set(r, required);
+  }
+
+  const students = impact ? Object.values(impact)[0]?.students ?? 0 : 0;
+  const what = (r: Requirement) => {
+    const x = impact?.[r.item];
+    if (!x || r.refused) return null;
+    return (
+      <span className="sub2 tnum" style={{ display: "block", lineHeight: 1.35 }}>
+        {x.missing.toLocaleString()} without it
+        {r.required ? (x.freed ? <> · <b>frees {x.freed.toLocaleString()}</b> if not required</> : null)
+          : (x.newly_held ? <> · <b style={{ color: "var(--red-ink)" }}>holds {x.newly_held.toLocaleString()} more</b> if required</> : null)}
+      </span>
+    );
+  };
+
   return (
     <Panel title="Required biodata" right={<span className="sub2">{n} item{n === 1 ? "" : "s"} required{canSet ? " · changes apply at once" : ""}</span>}>
       <PBody>
         {canSet ? <div className="sub2">Make required only what the University needs. A field read from JAMB cannot be required (the student cannot enter it), and health information is given under consent, never required.</div> : null}
+        <div className="sub2">{impact ? `Counted over the ${students.toLocaleString()} students on the register: how many lack each item, and what requiring it would change.` : "Counting what each item would change…"}</div>
         <div className="grid grid--3">
           {sections.map((sec) => (
-            <div key={sec} className="stack" style={{ gap: 4 }}>
+            <div key={sec} className="stack" style={{ gap: 6 }}>
               <div className="eyebrow">{SECTION_LABEL[sec] ?? sec}</div>
               {items.filter((r) => r.section === sec).map((r) => canSet ? (
-                <label key={r.item} className="row row--tight" style={{ gap: 8, opacity: r.refused ? 0.6 : 1 }} title={r.refused ?? undefined}>
-                  <input type="checkbox" checked={r.required} disabled={busy !== null || (!!r.refused && !r.required)} onChange={(e) => void set(r, e.target.checked)} />
-                  <span>{r.label}{r.refused ? <span className="sub2"> — {r.refused}</span> : null}</span>
+                <label key={r.item} className="row row--top" style={{ gap: 8, opacity: r.refused ? 0.6 : 1 }} title={r.refused ?? undefined}>
+                  <input type="checkbox" style={{ marginTop: 3 }} checked={r.required} disabled={busy !== null || (!!r.refused && !r.required)} onChange={(e) => tick(r, e.target.checked)} />
+                  <span>{r.label}{r.refused ? <span className="sub2"> — {r.refused}</span> : null}{what(r)}</span>
                 </label>
-              ) : r.required ? <div key={r.item} className="row row--tight"><Pil kind="info">Required</Pil> {r.label}</div> : null)}
+              ) : r.required ? <div key={r.item} className="row row--top" style={{ gap: 8 }}><Pil kind="info">Required</Pil><span>{r.label}{what(r)}</span></div> : null)}
             </div>
           ))}
         </div>
       </PBody>
+      {asking ? (
+        <Modal title={`Require ${asking.label.toLowerCase()}?`} onClose={() => setAsking(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAsking(null)}>Cancel</Btn><Btn kind="primary" disabled={busy !== null} onClick={() => void set(asking, true)}>{busy ? "Saving…" : "Require it"}</Btn></>}>
+          <p style={{ marginTop: 0 }}>
+            <b>{(impact?.[asking.item]?.newly_held ?? 0).toLocaleString()}</b> student{(impact?.[asking.item]?.newly_held ?? 0) === 1 ? "" : "s"} whose required biodata is complete now
+            would be held at the biodata page until they give it, because mandatory completion is ON.
+            {" "}{(impact?.[asking.item]?.missing ?? 0).toLocaleString()} of the {students.toLocaleString()} students on the register lack it.
+          </p>
+        </Modal>
+      ) : null}
     </Panel>
   );
 }
