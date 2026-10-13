@@ -6,7 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.OfficeScope;
@@ -163,7 +166,7 @@ class AllocationController {
                                         @RequestParam(required = false) Integer level) {
         dept = scope.scopedDept(dept);                      // an HOD's allocation is limited to their department
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT o.id, o.course_code, c.title, c.units, c.level, o.allocated_on,
+                SELECT o.id, c.code AS course_code, c.title, c.units, c.level, o.allocated_on,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND r.status = 'APPROVED') AS registered,
                        o.lecturer_id,
@@ -175,18 +178,23 @@ class AllocationController {
                                   WHERE t.offering_id = o.id), '[]'::jsonb) AS co_lecturers,
                        coalesce((SELECT jsonb_agg(DISTINCT jsonb_build_object('code', co.programme_code, 'name', pr.name))
                                    FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code
-                                  WHERE co.course_code = o.course_code), '[]'::jsonb) AS programmes,
-                       EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet
-                  FROM catalogue.offering o
-                  JOIN catalogue.course c ON c.code = o.course_code
+                                  WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
+                       EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet,
+                       o.id IS NULL AS no_class,
+                       NOT EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code) AS not_in_structure
+                  FROM catalogue.course c
+                  -- V443: the department's COURSES for the semester, each with its class in the session if one exists — a course is never
+                  -- tied to a session; a class is opened when the course is allocated (POST /open), not by the calendar alone
+                  LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :session AND o.semester = :semester
+                                                 AND o.stream IN ('REGULAR', 'PG')          -- V380: the full-time classes; the Centre allocates its own (V389: and the School's)
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
-                 WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
-                   AND o.stream IN ('REGULAR', 'PG')          -- V380: the full-time classes; the Centre allocates its own (V389: and the School's)
+                 WHERE c.dept_code = :dept
                    AND catalogue.runs_in(c.semester, c.both_semesters, :semester)   -- only courses taught in this semester (V386: or in both)
                    AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
+                   AND c.code NOT LIKE 'DMO %'
                    AND (:level::int IS NULL OR c.level = :level)
-                 ORDER BY c.level, o.course_code
+                 ORDER BY c.level, c.code, o.stream
                 """).param("session", session).param("semester", semester).param("dept", dept)
                 .param("level", level, java.sql.Types.INTEGER).query().listOfRows();
         // co_lecturers comes back as a jsonb string over JDBC; parse it to a real array so the client gets one
@@ -199,6 +207,28 @@ class AllocationController {
                     new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
         }
         return rows;
+    }
+
+    public record Open(@NotBlank @Size(max = 24) String courseCode, @NotBlank @Size(max = 9) String session, @NotNull Integer semester) { }
+
+    /** V443: the class of a course in a session and semester — the one there is, or one opened now, so a course of the pool is
+     *  allocated in any session on the register; a Head of Department opens classes of their own department's courses only */
+    @PostMapping("/open")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional
+    Map<String, Object> open(@Valid @RequestBody Open body) {
+        String code = body.courseCode().trim().toUpperCase().replaceAll("\\s+", " ");
+        if (scope.actingHod()) {
+            String hodDept = scope.actingHodDept();
+            String owner = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", code).query(String.class).optional().orElse(null);
+            if (hodDept == null || !hodDept.equals(owner)) {
+                throw new DomainRuleViolation("ALLOC_DEPT", "A Head of Department allocates only courses that belong to their own department.",
+                        new DomainRuleViolation.Remedy("Choose a course in your department; another department allocates its own.", "Head of Department"));
+            }
+        }
+        UUID id = jdbc.sql("SELECT catalogue.open_class(:c, :s, :n, NULL)").param("c", code).param("s", body.session().trim()).param("n", body.semester())
+                .query(UUID.class).single();
+        return Map.of("id", id, "courseCode", code, "session", body.session().trim(), "semester", body.semester());
     }
 
     /** V405: the department's courses with no class in the session's opened semesters, and why — a course added to a programme's

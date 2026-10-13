@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 280
+\set EXPECTED 281
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12153,6 +12153,70 @@ BEGIN
         format('tally %s/%s err=%s | failing=%s told=%s again=%s sms=%s email=%s | recovered told=%s state=%s refailed told=%s | stuck=%s off=%s low=%s told low=%s | first=%s never=%s signed=%s list=%s is a=%s units=%s staff=%s | campaign reach=%s only a,b=%s',
                tally_tried, tally_failed, left(tally_err, 30), st_fail, told1, told2, told_sms, told_email, told3, st_ok, told4, st_stuck, st_off, st_low, told_low,
                sum_first, sum_never, sum_signed, n_list, l_first = a, n_units, staff_first, n_reach, reach_is_a));
+END $$;
+-- ── V443. A course is never tied to a session: a class is opened for a course in any session on the register (not a cancelled
+--          or merged one) when it is allocated — the same class returned the second time, a course that has ended or is not
+--          taught in that semester refused; and a course belongs to the department whose code it carries: a course inserted
+--          under another department's prefix goes to that department at once (its owner programme dropped when it is not
+--          that department's), a prefix that is no department's code is named to one by the Academic Office — not the
+--          Bursary — and applied to the pool on the owner trail as CODE, a department's own code refused as a prefix, and a
+--          deliberate Change owner afterwards stands ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); d_a text := 'CKQ' || chr(65 + extract(minute FROM now())::int % 26); d_b text := 'CKY' || chr(65 + extract(second FROM now())::int % 26); fac text; ses text;
+        c1 uuid; c2 uuid; r_ended text := 'accepted'; r_sem text := 'accepted'; r_sess text := 'accepted'; r_gone text := 'accepted';
+        own1 text; own2 text; prog1 text; moved int; own3 text; trail record; r_office text := 'accepted'; r_dept text := 'accepted';
+        r_isdept text := 'accepted'; mapped int; own4 text; listed record; dropped boolean; kept text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V443', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V443', 'CHECKV443', 'Academic');
+        SELECT faculty_code INTO fac FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (d_a, 'CHECK V443 DEPARTMENT A', fac), (d_b, 'CHECK V443 DEPARTMENT B', fac);
+        SELECT name INTO ses FROM policy.academic_session WHERE state NOT IN ('CANCELLED') AND merged_into IS NULL ORDER BY name DESC LIMIT 1;
+        -- (1) a class on allocation: opened once, the same again; refused for an ended course, the wrong semester, no session
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (d_a || ' 101', 'Check one', 2, 1, 100, d_a, 'Core', 'LIVE');
+        c1 := catalogue.open_class(d_a || ' 101', ses, 1, NULL);
+        c2 := catalogue.open_class(d_a || ' 101', ses, 1, NULL);
+        BEGIN PERFORM catalogue.open_class(d_a || ' 101', ses, 2, NULL); EXCEPTION WHEN check_violation THEN r_sem := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.open_class(d_a || ' 101', '1900/1901', 1, NULL); EXCEPTION WHEN foreign_key_violation THEN r_sess := split_part(SQLERRM, ':', 1); END;
+        UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = d_a || ' 101';
+        BEGIN PERFORM catalogue.open_class(d_a || ' 101', ses, 1, NULL); EXCEPTION WHEN check_violation THEN r_ended := split_part(SQLERRM, ':', 1); END;
+        -- (2) the code names the owner: a course inserted under A's prefix by B belongs to A; its owner programme, B's, is dropped
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (d_a || ' 202', 'Check two', 2, 1, 200, d_b, 'Core', 'LIVE');
+        SELECT dept_code, owner_programme INTO own1, prog1 FROM catalogue.course WHERE code = d_a || ' 202';
+        -- a course astray, moved by the rule on the owner trail as CODE
+        ALTER TABLE catalogue.course DISABLE TRIGGER trg_course_owner_by_code;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('MOAU-' || d_a || ' 303', 'Check three', 3, 2, 300, d_b, 'Core', 'LIVE');
+        ALTER TABLE catalogue.course ENABLE TRIGGER trg_course_owner_by_code;
+        SELECT dept_code INTO own2 FROM catalogue.course WHERE code = 'MOAU-' || d_a || ' 303';
+        moved := catalogue.apply_code_owners(d_a, 'CHECK: the rule applied');
+        SELECT dept_code INTO own3 FROM catalogue.course WHERE code = 'MOAU-' || d_a || ' 303';
+        SELECT h.from_dept, h.to_dept, h.source INTO trail FROM catalogue.course_owner_history h WHERE h.course_code = 'MOAU-' || d_a || ' 303' ORDER BY h.changed_at DESC LIMIT 1;
+        -- a prefix that is no department's code, named by the Academic Office (not the Bursary; not a department's own code; a live department)
+        BEGIN PERFORM catalogue.set_code_prefix('CKZ', d_a, NULL, false, NULL, who, 'bursar'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.set_code_prefix(d_a, d_b, NULL, false, NULL, who, 'academic'); EXCEPTION WHEN check_violation THEN r_isdept := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.set_code_prefix('CKZ', 'NO SUCH DEPARTMENT', NULL, false, NULL, who, 'academic'); EXCEPTION WHEN check_violation THEN r_dept := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('CKZ 404', 'Check four', 2, 1, 400, d_b, 'Core', 'LIVE');
+        mapped := catalogue.set_code_prefix('CKZ', d_a, 'checked', true, 'CHECK: CKZ named', who, 'academic');
+        SELECT dept_code INTO own4 FROM catalogue.course WHERE code = 'CKZ 404';
+        SELECT is_department, mapped_dept, owner_by_code, astray INTO listed FROM catalogue.code_owners() WHERE prefix = 'CKZ';
+        -- a deliberate Change owner afterwards stands: the rule runs at insert, not at update
+        PERFORM catalogue.change_owner('CKZ 404', d_b, NULL, 'CHECK: moved back on purpose');
+        SELECT dept_code INTO kept FROM catalogue.course WHERE code = 'CKZ 404';
+        dropped := catalogue.unset_code_prefix('CKZ', 'academic');
+        RAISE EXCEPTION 'the V443 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V443: a class is opened for a course in a session when it is allocated and found again the second time, refused for an ended course, the wrong semester or no such session; a course inserted under another department''s code belongs to that department; the courses astray move on the owner trail as CODE; a prefix that is no department''s code is named by the Academic Office only, never a department''s own code, and applied to the pool; a deliberate Change owner afterwards stands',
+        coalesce(c1 IS NOT NULL AND c1 = c2 AND r_sem = 'CLASS_NOT_IN_SEMESTER' AND r_sess = 'CLASS_SESSION' AND r_ended = 'ALLOC_ENDED'
+                 AND own1 = d_a AND prog1 IS NULL AND own2 = d_b AND moved = 1 AND own3 = d_a AND trail.from_dept = d_b AND trail.to_dept = d_a AND trail.source = 'CODE'
+                 AND r_office = 'CODE_OWNER_OFFICE' AND r_isdept = 'CODE_PREFIX_IS_DEPARTMENT' AND r_dept = 'CODE_OWNER_DEPT'
+                 AND mapped = 1 AND own4 = d_a AND NOT listed.is_department AND listed.mapped_dept = d_a AND listed.owner_by_code = d_a AND listed.astray = 0
+                 AND kept = d_b AND dropped, false),
+        format('class=%s/%s sem=%s sess=%s ended=%s own1=%s/%s own2=%s moved=%s own3=%s trail=%s/%s/%s office=%s isdept=%s dept=%s mapped=%s own4=%s listed=%s/%s/%s/%s kept=%s dropped=%s',
+               c1, c2, r_sem, r_sess, r_ended, own1, prog1, own2, moved, own3, trail.from_dept, trail.to_dept, trail.source, r_office, r_isdept, r_dept, mapped, own4,
+               listed.is_department, listed.mapped_dept, listed.owner_by_code, listed.astray, kept, dropped));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

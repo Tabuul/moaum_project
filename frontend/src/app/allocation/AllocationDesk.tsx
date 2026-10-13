@@ -30,8 +30,9 @@ export interface DeskOptions {
 }
 interface Initial { session: string; semester: number; faculty: string; dept: string; programme: string; level: number; status: string; q: string; ticket: string }
 interface Overview { classes: number; allocated: number; unallocated: number; several: number; allocations: number; teaching: number; conflicts: number; lecturers: number; session: string; semester: number; scope: string }
+/** V443: a course taught this semester in reach, with its class in the session if one exists — `id` null until the desk opens it */
 interface ClassRow {
-  id: string; course_code: string; title: string; units: number; level: number; dept_code: string; department: string | null; faculty_code: string | null; faculty: string | null;
+  id: string | null; no_class?: boolean; course_code: string; title: string; units: number; level: number; dept_code: string; department: string | null; faculty_code: string | null; faculty: string | null;
   programmes: string | null; lecturer_id: string | null; lecturer: string | null; lecturer_staff_number: string | null; co_lecturers: string | null; second_examiner: string | null;
   registered: number; stage: string | null; allocated_on: string | null; updated_at: string | null;
 }
@@ -113,6 +114,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
   const [list, setList] = useState<{ rows: ClassRow[]; total: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const SIZE = 50;
 
@@ -144,6 +146,19 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
     return () => { live = false; };
   }, [qs, status, qLive, page, version]);
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
+
+  /** V443: the class of a course the session holds none for yet, opened by the desk within its reach, then shown for allocation */
+  async function openClass(courseCode: string) {
+    setOpening(courseCode);
+    try {
+      const r = await call<{ offering: string }>("/classes/open", "POST", { courseCode, session, semester }, `Class opened for ${courseCode} in ${session}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      refresh();
+      setOpen(r.data.offering);
+    } finally {
+      setOpening(null);
+    }
+  }
 
   const facOpts: Opt[] = options.faculties.map((f) => ({ value: f.code, label: f.name }));
   const deptOpts: Opt[] = options.departments.filter((d) => !faculty || d.faculty_code === faculty).map((d) => ({ value: d.code, label: d.name }));
@@ -241,7 +256,12 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
                     c.co_lecturers ?? "—",
                     <Pil key="s" kind={c.lecturer_id ? "ok" : "warn"}>{c.lecturer_id ? "Allocated" : "Unallocated"}</Pil>,
                     day(c.updated_at),
-                    <Btn key="a" kind={c.lecturer_id ? "ghost" : "primary"} onClick={() => setOpen(c.id)}>{c.lecturer_id ? "View" : canAllocate ? "Allocate" : "View"}</Btn>])} />
+                    c.id
+                      ? <Btn key="a" kind={c.lecturer_id ? "ghost" : "primary"} onClick={() => setOpen(c.id as string)}>{c.lecturer_id ? "View" : canAllocate ? "Allocate" : "View"}</Btn>
+                      // V443: a course is never tied to a session — a course the session holds no class for yet is opened by the desk, then allocated
+                      : canAllocate
+                        ? <Btn key="a" kind="primary" disabled={opening === c.course_code} onClick={() => void openClass(c.course_code)}>{opening === c.course_code ? "Opening…" : "Open & allocate"}</Btn>
+                        : <span key="a" className="sub2">No class yet</span>])} />
                 <div className="row mt-2" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                   <span className="sub2">Showing {from}–{to} of {total}</span>
                   <span className="row row--inline">

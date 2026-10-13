@@ -136,7 +136,11 @@ class AllocationImportIT {
         // a Head of Department allocates only the department's own courses, cross-department mark or not
         assertThat((List<String>) by.get(7).get("codes")).contains("OUT_OF_SCOPE");
         assertThat((List<String>) by.get(8).get("codes")).contains("SESSION_NOT_FOUND");
-        assertThat((List<String>) by.get(9).get("codes")).contains("COURSE_NOT_OFFERED");
+        // V443: a course is never tied to a session — a course taught in the semester but with no class in the session yet is
+        // imported all the same; the import opens the class with the allocation
+        // (on a database that ran this test before, the class the import opened then still stands and the row is plainly valid)
+        assertThat(by.get(9).get("status")).isIn("WARNING", "VALID");
+        if ("WARNING".equals(by.get(9).get("status"))) assertThat((List<String>) by.get(9).get("codes")).contains("CLASS_OPENS");
         assertThat(by.get(10).get("status")).isEqualTo("WARNING");
         assertThat((List<String>) by.get(10).get("codes")).contains("COURSE_TITLE_MISMATCH");
         assertThat(by.get(11).get("status")).isEqualTo("DUPLICATE");
@@ -148,7 +152,7 @@ class AllocationImportIT {
         assertThat((List<String>) by.get(16).get("codes")).contains("COURSE_NOT_OFFERED_TO_PROGRAMME");
         Map<String, Object> summary = m(v.getBody().get("summary"));
         assertThat(summary.get("total")).isEqualTo(15);
-        assertThat(summary.get("willImport")).isEqualTo(6);
+        assertThat(summary.get("willImport")).isEqualTo(7);
         // nothing was written by the validation
         assertThat(jdbc.sql("SELECT count(*) FROM catalogue.offering WHERE session = :s AND lecturer_id IS NOT NULL").param("s", SESSION).query(Long.class).single()).isZero();
 
@@ -160,7 +164,7 @@ class AllocationImportIT {
         UUID key = UUID.randomUUID();
         ResponseEntity<Map> imp = it.call(hod, HttpMethod.POST, "/api/v1/allocation/import", Map.of("rows", rows, "options", Map.of(), "fileName", "allocations.xlsx", "importKey", key.toString()));
         assertThat(imp.getStatusCode().value()).as(String.valueOf(imp.getBody())).isEqualTo(200);
-        assertThat(imp.getBody().get("imported")).isEqualTo(6);
+        assertThat(imp.getBody().get("imported")).isEqualTo(7);
         assertThat(imp.getBody().get("status")).isEqualTo("COMPLETED_WITH_ERRORS");
         assertThat(String.valueOf(imp.getBody().get("reference"))).startsWith("ALLOC/2114-2115/");
         assertThat(imp.getBody().get("repeated")).isEqualTo(false);

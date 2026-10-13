@@ -726,6 +726,54 @@ class CatalogueController {
         return out;
     }
 
+    /* ── V443: the code names the owner ── */
+
+    public record CodeOwnerIn(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 120) String department,
+                              @jakarta.validation.constraints.Size(max = 400) String note, Boolean apply, @jakarta.validation.constraints.Size(max = 400) String reason) { }
+
+    /** every course-code prefix of the pool: whether it is a department's own code (its courses are that department's by rule), which
+     *  department the Academic Office named for it otherwise, who holds its courses now, and how many live courses sit astray */
+    @GetMapping("/code-owners")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> codeOwners() {
+        return Map.of("rows", jdbc.sql("SELECT * FROM catalogue.code_owners()").query().listOfRows(),
+                "departments", jdbc.sql("SELECT code, name FROM ref.department WHERE ended_on IS NULL ORDER BY name").query().listOfRows());
+    }
+
+    /** a prefix that is no department's own code, named to its department — and, when asked, its courses moved there on the owner trail */
+    @PutMapping("/code-owners/{prefix}")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> setCodeOwner(@PathVariable String prefix, @Valid @RequestBody CodeOwnerIn body) {
+        ng.edu.moaum.portal.shared.AuditContext ctx = ng.edu.moaum.portal.shared.AuditContextHolder.required();
+        int moved = jdbc.sql("SELECT catalogue.set_code_prefix(:p, :d, :n, :a, :r, :actor, :office)")
+                .param("p", prefix.trim().toUpperCase()).param("d", body.department().trim()).param("n", body.note(), java.sql.Types.VARCHAR)
+                .param("a", Boolean.TRUE.equals(body.apply())).param("r", body.reason(), java.sql.Types.VARCHAR)
+                .param("actor", ctx.actorId()).param("office", ctx.actorOffice()).query(Integer.class).single();
+        return Map.of("prefix", prefix.trim().toUpperCase(), "moved", moved);
+    }
+
+    /** the courses of a prefix moved to the department the code names — a department's own code, or one named here */
+    @PostMapping("/code-owners/{prefix}/apply")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> applyCodeOwner(@PathVariable String prefix, @RequestBody(required = false) Map<String, String> body) {
+        ng.edu.moaum.portal.shared.AuditContextHolder.required();
+        int moved = jdbc.sql("SELECT catalogue.apply_code_owners(:p, :r)").param("p", prefix.trim().toUpperCase())
+                .param("r", body == null ? null : body.get("reason"), java.sql.Types.VARCHAR).query(Integer.class).single();
+        return Map.of("prefix", prefix.trim().toUpperCase(), "moved", moved);
+    }
+
+    @DeleteMapping("/code-owners/{prefix}")
+    @PreAuthorize(CENTRAL)
+    @Transactional
+    Map<String, Object> unsetCodeOwner(@PathVariable String prefix) {
+        ng.edu.moaum.portal.shared.AuditContext ctx = ng.edu.moaum.portal.shared.AuditContextHolder.required();
+        boolean removed = jdbc.sql("SELECT catalogue.unset_code_prefix(:p, :o)").param("p", prefix.trim().toUpperCase()).param("o", ctx.actorOffice()).query(Boolean.class).single();
+        return Map.of("prefix", prefix.trim().toUpperCase(), "removed", removed);
+    }
+
     /** V402: a BSU- code and its MOAU- twin are both offered, and a student is shown their cohort's — MOAU- for the cohorts
      *  admitted from the entry session stated here, BSU- for the cohorts before it (their carry-overs come by code). Unstated,
      *  both reach everyone. The pairs are not linked: V396's link stays available but is no longer suggested. */

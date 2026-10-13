@@ -103,19 +103,20 @@ class AllocationDeskController {
     private String classes(AllocationReach.Reach r) {
         return """
                 cls AS (
+                    -- V443: the COURSES in reach taught this semester, each with its class in the session if one exists (id NULL when
+                    -- none): a course is never tied to a session; the desk opens the class when it allocates the course
                     SELECT o.id, o.lecturer_id, (SELECT count(*) FROM catalogue.offering_teacher t WHERE t.offering_id = o.id) AS co_count,
-                           c.level, o.course_code
-                      FROM catalogue.offering o
-                      JOIN catalogue.course c ON c.code = o.course_code
+                           c.level, c.code AS course_code
+                      FROM catalogue.course c
+                      LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :s AND o.semester = :sem AND o.stream IN ('REGULAR', 'PG')
                       LEFT JOIN ref.department d ON d.code = c.dept_code
                       LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
-                     WHERE o.session = :s AND o.semester = :sem AND o.stream IN ('REGULAR', 'PG')
-                       AND catalogue.runs_in(c.semester, c.both_semesters, :sem) AND c.state <> 'ENDED'
+                     WHERE catalogue.runs_in(c.semester, c.both_semesters, :sem) AND c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %%'
                        AND %s
                        AND (:fac = '' OR upper(d.faculty_code) = :fac) AND (:dept = '' OR upper(c.dept_code) = :dept)
-                       AND (:prog = '' OR EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = o.course_code AND upper(co.programme_code) = :prog))
+                       AND (:prog = '' OR EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code AND upper(co.programme_code) = :prog))
                        AND (:level::int IS NULL OR c.level = :level)
-                       AND (:q = '' OR o.course_code ILIKE '%%' || :q || '%%' OR replace(o.course_code, ' ', '') ILIKE '%%' || replace(:q, ' ', '') || '%%'
+                       AND (:q = '' OR c.code ILIKE '%%' || :q || '%%' OR replace(c.code, ' ', '') ILIKE '%%' || replace(:q, ' ', '') || '%%'
                             OR c.title ILIKE '%%' || :q || '%%' OR lp.surname ILIKE '%%' || :q || '%%' OR lp.given_names ILIKE '%%' || :q || '%%'
                             OR coalesce(lp.staff_number, '') ILIKE '%%' || :q || '%%'
                             OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id
@@ -185,10 +186,11 @@ class AllocationDeskController {
             case "CONFLICT" -> "id IN (SELECT k.offering_id FROM catalogue.allocation_conflicts(:s, :sem) k)";
             default -> "TRUE";
         };
-        List<Map<String, Object>> rows = bind(jdbc.sql("WITH " + classes(r) + ", pick AS (SELECT id, count(*) OVER () AS total FROM cls WHERE " + statusWhere
+        List<Map<String, Object>> rows = bind(jdbc.sql("WITH " + classes(r) + ", pick AS (SELECT id, course_code, count(*) OVER () AS total FROM cls WHERE " + statusWhere
                 + " ORDER BY level, course_code LIMIT :n OFFSET :off)" + """
-                SELECT o.id, o.course_code, c.title, c.units, c.level, c.dept_code, d.name AS department, d.faculty_code, f.name AS faculty,
-                       (SELECT string_agg(DISTINCT pr.name, '; ') FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code WHERE co.course_code = o.course_code) AS programmes,
+                SELECT o.id, pick.course_code, c.title, c.units, c.level, c.dept_code, d.name AS department, d.faculty_code, f.name AS faculty,
+                       o.id IS NULL AS no_class,
+                       (SELECT string_agg(DISTINCT pr.name, '; ') FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code WHERE co.course_code = pick.course_code) AS programmes,
                        o.lecturer_id, concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), '')) AS lecturer, lp.staff_number AS lecturer_staff_number,
                        (SELECT string_agg(concat_ws(', ', nullif(btrim(tp.surname), ''), nullif(btrim(tp.given_names), '')), '; ' ORDER BY tp.surname)
                           FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id WHERE t.offering_id = o.id) AS co_lecturers,
@@ -199,13 +201,13 @@ class AllocationDeskController {
                        o.allocated_on, (SELECT max(ev.at) FROM catalogue.allocation_event ev WHERE ev.offering_id = o.id) AS updated_at,
                        pick.total
                   FROM pick
-                  JOIN catalogue.offering o ON o.id = pick.id
-                  JOIN catalogue.course c ON c.code = o.course_code
+                  JOIN catalogue.course c ON c.code = pick.course_code
+                  LEFT JOIN catalogue.offering o ON o.id = pick.id
                   LEFT JOIN ref.department d ON d.code = c.dept_code
                   LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
-                 ORDER BY c.level, o.course_code
+                 ORDER BY c.level, c.code
                 """), r, f).param("n", n).param("off", (p - 1) * n).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue();
         rows.forEach(m -> m.remove("total"));
@@ -416,6 +418,30 @@ class AllocationDeskController {
     }
 
     /** the lead lecturer: allocated where there is none, reassigned (with a reason) where there is; the second examiner stays */
+    public record OpenIn(@NotNull @Size(max = 24) String courseCode, @NotNull @Size(max = 9) String session, @NotNull Integer semester) { }
+
+    /** V443: the class of a course in a session and semester — the one there is, or one opened now by the desk, within its reach:
+     *  a course is never tied to a session, so a course the calendar never opened a class for is allocated all the same */
+    @PostMapping("/classes/open")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> open(@Valid @RequestBody OpenIn body) {
+        String code = blank(body.courseCode()).toUpperCase().replaceAll("\\s+", " ");
+        Map<String, Object> course = jdbc.sql("SELECT c.code, c.dept_code, d.faculty_code FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code WHERE c.code = :c")
+                .param("c", code).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new DomainRuleViolation("ALLOC_COURSE", "No course is coded " + code + ".",
+                        new DomainRuleViolation.Remedy("Choose a course of the catalogue.", "You")));
+        AllocationReach.Reach r = reach.require(AllocationReach.ALLOCATE);
+        if (!r.covers((String) course.get("faculty_code"), (String) course.get("dept_code"))) {
+            throw new DomainRuleViolation("ALLOC_SCOPE", code + " belongs to a department outside your allocation scope (" + (r.words().isBlank() ? "none" : r.words()) + ").",
+                    new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
+        }
+        context("Class opened on the allocation desk for " + code + " in " + blank(body.session()) + ", semester " + body.semester(), null);
+        UUID id = jdbc.sql("SELECT catalogue.open_class(:c, :s, :n, NULL)").param("c", code).param("s", blank(body.session())).param("n", body.semester())
+                .query(UUID.class).single();
+        return Map.of("offering", id, "courseCode", code, "session", blank(body.session()), "semester", body.semester());
+    }
+
     @PostMapping("/classes/{offering}/lecturer")
     @PreAuthorize(DESK)
     @Transactional

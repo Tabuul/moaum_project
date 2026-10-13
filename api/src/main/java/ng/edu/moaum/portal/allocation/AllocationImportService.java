@@ -66,7 +66,12 @@ public class AllocationImportService {
     private record Person(UUID id, String staffNumber, String surname, String givenNames, boolean ended) {
     }
 
-    private record Course(String code, String title, int units, String dept, String kind, String state, int semester, int level, String generalOffice) {
+    private record Course(String code, String title, int units, String dept, String kind, String state, int semester, int level, String generalOffice,
+                          boolean bothSemesters) {
+        /** V386: taught in this semester, or in both */
+        boolean runsIn(int sem) {
+            return bothSemesters ? sem == 1 || sem == 2 : semester == sem;
+        }
     }
 
     private record Offering(UUID id, String courseCode, String session, int semester, UUID lecturer, UUID second) {
@@ -203,11 +208,12 @@ public class AllocationImportService {
             for (List<String> part : chunks(new ArrayList<>(codes), 2000)) {
                 List<String> ns = part.stream().map(x -> x.replaceAll("\\s", "")).toList();
                 for (Map<String, Object> c : jdbc.sql("""
-                        SELECT code, title, units, dept_code, kind, state, semester, level, general_office FROM catalogue.course
+                        SELECT code, title, units, dept_code, kind, state, semester, level, general_office, both_semesters FROM catalogue.course
                          WHERE upper(code) IN (:c) OR regexp_replace(upper(code), '\\s', '', 'g') IN (:n)
                         """).param("c", part).param("n", ns).query().listOfRows()) {
                     Course course = new Course((String) c.get("code"), String.valueOf(c.get("title")), ((Number) c.get("units")).intValue(), (String) c.get("dept_code"),
-                            String.valueOf(c.get("kind")), String.valueOf(c.get("state")), ((Number) c.get("semester")).intValue(), ((Number) c.get("level")).intValue(), (String) c.get("general_office"));
+                            String.valueOf(c.get("kind")), String.valueOf(c.get("state")), ((Number) c.get("semester")).intValue(), ((Number) c.get("level")).intValue(), (String) c.get("general_office"),
+                            Boolean.TRUE.equals(c.get("both_semesters")));
                     courseByCode.put(up(course.code()), course);
                     courseCodeByNoSpace.putIfAbsent(nospace(course.code()), course.code());
                 }
@@ -418,8 +424,14 @@ public class AllocationImportService {
                 }
             }
 
-            // the offering: the course must be offered in that session and semester
+            // the class: the one the session holds, or — V443: a course is never tied to a session — one the import opens when the
+            // course is taught in that semester; a course not taught in that semester has no class to open
             Offering off = (course == null || session == null || semester == null) ? null : reg.offerings.get(key(course.code(), session, semester));
+            if (course != null && session != null && semester != null && sess != null && off == null && course.runsIn(semester)) {
+                codes.add("CLASS_OPENS"); messages.add(course.code() + " has no class in " + session + " semester " + semester + " yet; the import opens it with this allocation");
+                if ("VALID".equals(status)) status = "WARNING";
+                off = new Offering(null, course.code(), session, semester, null, null);
+            }
             if (course != null && session != null && semester != null && sess != null && off == null) {
                 codes.add("COURSE_NOT_OFFERED"); messages.add(course.code() + " is not offered in " + session + " semester " + semester + (course.semester() != semester ? " (it is a semester " + course.semester() + " course)" : ""));
                 action = "The offering opens with the semester's course registration, or the Academic Office adds it."; fatal = true;
@@ -532,8 +544,12 @@ public class AllocationImportService {
         Integer semester = null;
         boolean mixedSemester = false;
         for (Judged j : judged) {
-            Plan p = j.plan();
-            if (p == null) continue;
+            Plan p0 = j.plan();
+            if (p0 == null) continue;
+            // V443: a class the session did not hold yet is opened by the import, as the desk opens it on allocation
+            Plan p = p0.offering() != null ? p0 : new Plan(
+                    jdbc.sql("SELECT catalogue.open_class(:c, :s, :n, NULL)").param("c", p0.courseCode()).param("s", p0.session()).param("n", p0.semester()).query(UUID.class).single(),
+                    p0.person(), p0.role(), p0.keepSecond(), p0.overload(), p0.courseCode(), p0.courseTitle(), p0.session(), p0.semester(), p0.units());
             if (session == null) session = p.session();
             if (semester == null) semester = p.semester();
             else if (semester != p.semester()) mixedSemester = true;

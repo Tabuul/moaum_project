@@ -5,6 +5,7 @@ import type { CourseList, Directory, DuplicatePair } from "@/lib/catalogue";
 import { AllCourses, type Filters } from "./AllCourses";
 import { GstTransfers, type ChaseSettings, type GeneralTransfer } from "@/components/gst/GstTransfers";
 import { CodeFamiliesPanel, type CodeFamilies, type CodeFamilyMismatch } from "./CodeFamilies";
+import { CodeOwnersPanel, type CodeOwners } from "./CodeOwners";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +38,13 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
   // V402: BSU- and MOAU- codes are both offered; a student is shown their cohort's — the rule the central offices state here
   const familiesCentral = ["academic", "dregistrar", "registrar", "admin", "super"].includes(acting ?? "");
   const families = await api<CodeFamilies>("/api/v1/catalogue/code-families").then((r) => (r.ok ? r.data : null)).catch(() => null);
+  // V443: a course belongs to the department whose code it carries — the prefixes, who they name, who holds them now
+  const codeOwners = await api<CodeOwners>("/api/v1/catalogue/code-owners").then((r) => (r.ok ? r.data : null)).catch(() => null);
   // V413: students registered under the other family's code, for the central offices to move
   const mismatches = familiesCentral ? await api<CodeFamilyMismatch[]>("/api/v1/catalogue/code-families/mismatches").then((r) => (r.ok ? r.data : [])).catch(() => [] as CodeFamilyMismatch[]) : [];
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
+      {codeOwners ? <CodeOwnersPanel data={codeOwners} maySet={familiesCentral} /> : null}
       {families ? <CodeFamiliesPanel data={families} sessions={sessions.map((x) => x.name)} maySet={familiesCentral} mismatches={mismatches} /> : null}
       {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (

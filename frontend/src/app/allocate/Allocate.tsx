@@ -15,17 +15,18 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
+import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "./BulkUpload";
 import { CheckList, HistoryTable, firmError, ACTION_WORD, ROLE_WORD, byText, whenText, type AllocationChecks, type AllocationEvent } from "@/components/allocation/AllocationParts";
 
 export interface Dept { code: string; name: string; faculty_code: string }
-/** V405: a course of the department with no class in the session's opened semesters, and why */
-export interface WithoutClass { code: string; title: string; level: number; semester: number; reason: "NOT_IN_STRUCTURE" | "NO_CLASS" }
 export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
 export interface CoLecturer { id: string; name: string; programme_code?: string | null; programme?: string | null }
+/** V443: a course of the department taught this semester, with its class in the session if one exists — `id` is null until the course
+ *  is allocated (the allocation opens the class); a course is never tied to a session */
 export interface Offering {
-  id: string; course_code: string; title: string; units: number; level: number; allocated_on: string | null; registered: number;
+  id: string | null; course_code: string; title: string; units: number; level: number; allocated_on: string | null; registered: number;
+  no_class?: boolean; not_in_structure?: boolean;
   lecturer_id: string | null; lecturer: string | null; second_examiner_id: string | null; second_examiner: string | null;
   co_lecturers: CoLecturer[]; sheet: boolean;
   /** the programmes that offer the course (V332): a co-lecturer may be posted to one programme's group */
@@ -36,9 +37,9 @@ const MAX_UNITS = 12;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 
-export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, withoutClass = [], events = [] }: {
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, events = [] }: {
   depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
-  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean; withoutClass?: WithoutClass[];
+  offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean;
   /** V408: the department's allocation history for the session and semester */
   events?: AllocationEvent[];
 }) {
@@ -157,29 +158,19 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     return (j ?? {}) as Record<string, unknown>;
   }
 
-  /** V405: the session's opened semesters get a class for every structure course still without one */
-  async function openClasses() {
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/bff/api/v1/allocation/open-classes?session=${encodeURIComponent(session)}`, {
-        method: "POST", headers: { "X-Reason": reasonHeader(`Classes opened in ${session} for courses added to the structure`) },
-      });
-      const j = (await r.json().catch(() => null)) as { opened?: number } | null;
-      if (!r.ok) { notifyProblem((j as Problem | null) ?? { status: r.status, title: r.statusText }); return; }
-      const n = Number(j?.opened ?? 0);
-      notify(n ? `${n} class${n === 1 ? "" : "es"} opened in ${session}` : `No class was owed in ${session}: what is listed is in no programme's structure`);
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function assign(overload: boolean) {
     if (!open || !lecturer) return;
     setBusy(true);
     setErr(null);
     try {
-      const ok = await call(`/${open.id}`, "POST", { lecturer, secondExaminer: second || null, overload, reason: replacing ? reason.trim() : undefined },
+      // V443: a course the session holds no class for yet — the allocation opens the class first, as part of the same act
+      let id = open.id;
+      if (!id) {
+        const opened = await call("/open", "POST", { courseCode: open.course_code, session, semester }, `Class opened for ${open.course_code} in ${session}`);
+        if (!opened) return;
+        id = String(opened.id);
+      }
+      const ok = await call(`/${id}`, "POST", { lecturer, secondExaminer: second || null, overload, reason: replacing ? reason.trim() : undefined },
         replacing ? reason.trim() : `Allocate ${open.course_code}`, replacing ? `${open.course_code} reassigned` : `Allocate ${open.course_code}`);
       if (!ok) return;
       const who = list.find((l) => l.id === lecturer)?.name ?? "the lecturer";
@@ -192,7 +183,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   }
 
   async function addCoLecturer() {
-    if (!open || !addCoId) return;
+    if (!open || !addCoId || !open.id) return;   // V443: co-lecturers join a class; the lead's allocation opens it first
     setBusy(true);
     try {
       const group = (open.programmes ?? []).find((p) => p.code === addCoProg) ?? null;
@@ -229,7 +220,9 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   const overloaded = after > MAX_UNITS;
   const coCandidates = list.filter((l) => l.id !== lecturer && !co.some((c) => c.id === l.id));
   // a new lead waits for the checks; a firm refusal, or a replacement without its reason, cannot be saved
-  const blockedLead = !!lecturer && lecturer !== openLead && (!leadChecks || firmError(leadChecks) || (replacing && reason.trim().length < 5));
+  // V443: a course the session holds no class for yet has no class to pre-check against; the server checks the lecturer when the
+  // class is opened and allocated (V408's refuseIneligible), so the save is not held for checks that cannot be fetched
+  const blockedLead = !!lecturer && lecturer !== openLead && ((!!openId && !leadChecks) || (leadChecks != null && firmError(leadChecks)) || (replacing && reason.trim().length < 5));
 
   return (
     <>
@@ -274,28 +267,6 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
         ["Lecturers", String(lecturers.length), null, "In this department"],
       ]} />
 
-      {withoutClass.length ? (
-        <Note kind={withoutClass.some((w) => w.reason === "NO_CLASS") ? "bad" : "info"} title={`${withoutClass.length} course${withoutClass.length === 1 ? "" : "s"} of ${deptName} ${withoutClass.length === 1 ? "has" : "have"} no class in ${session}`}
-          action={<>
-            {/* the list and the button sit in the notice's action slot: a list may not stand inside the notice's paragraph */}
-            <ul className="sub2" style={{ margin: "0 0 8px", paddingLeft: 18 }}>
-              {withoutClass.map((w) => (
-                <li key={w.code}><b className="tnum">{w.code}</b> · {w.title} · {w.level} level, {semName(w.semester).toLowerCase()} semester —{" "}
-                  {w.reason === "NOT_IN_STRUCTURE" ? "in no programme’s structure: add it on Department courses or in the structure upload, then open the classes here" : "in the structure, no class yet"}</li>
-              ))}
-            </ul>
-            <span className="row row--inline row--tight">
-              {withoutClass.some((w) => w.reason === "NO_CLASS") ? (
-                <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void openClasses()}>{busy ? "Opening…" : `Open the classes in ${session}`}</Btn>
-              ) : null}
-              <Btn kind="ghost" size="sm" onClick={() => brandedPrint(`Courses without a class — ${deptName} · ${session}`, `${withoutClass.length} courses`, ["Code", "Title", "Level", "Semester", "Why"],
-                withoutClass.map((w) => [w.code, w.title, w.level, semName(w.semester), w.reason === "NOT_IN_STRUCTURE" ? "in no programme's structure" : "in the structure, no class yet"]), docSerial("NCL"))}>Print</Btn>
-            </span>
-          </>}>
-          A course gets its class when the semester opens; one added to a programme&rsquo;s structure after that has none until it is opened here. A course
-          with no class cannot be allocated, timetabled or registered.
-        </Note>
-      ) : null}
       <Panel title="Teaching allocation" right={`${deptName} · ${session} · ${semName(semester).toLowerCase()} semester${level ? ` · ${level} level` : ""}`}>
         {offerings.length ? (
           <DTable cols={["Course", "Level|mid", "Units|mid", "Registered|mid", "Lecturers", "Second examiner", "Action|num"]} rows={offerings.map((o) => [
@@ -312,7 +283,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                   </div>
                 ) : null}
               </span>
-            ) : <span key="l" className="ink-red b700">Unassigned</span>,
+            ) : (
+              <span key="l">
+                <span className="ink-red b700">Unassigned</span>
+                {/* V443: a course the session holds no class for yet — allocating it opens the class */}
+                {!o.id ? <div className="sub2">No class in {session} yet · opens on allocation{o.not_in_structure ? " · in no programme's structure" : ""}</div> : null}
+              </span>
+            ),
             o.second_examiner ? <Pil kind="ok" key="s">{o.second_examiner}</Pil> : o.lecturer_id ? <Pil kind="bad" key="s">Not set</Pil> : <span className="sub2" key="s">&mdash;</span>,
             <Btn key="a" kind={o.lecturer_id ? "ghost" : "urgent"} onClick={() => openAssign(o)}>{o.lecturer_id ? "Manage" : "Assign"}</Btn>,
           ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
@@ -394,8 +371,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
           {/* co-teaching: additional lecturers who teach the course and enter scores on the same sheet */}
           <div className="eyebrow mt-4">Co-lecturers</div>
-          <div className="sub2 mb-2">Co-lecturers enter scores on the shared sheet; the lead submits it.</div>
-          {co.length ? (
+          <div className="sub2 mb-2">Co-lecturers enter scores on the shared sheet; the lead submits it.{!open.id ? " Save the lead first: the class opens with that, and co-lecturers join it after." : ""}</div>
+          {!open.id ? null : co.length ? (
             <div className="row mb-2">
               {co.map((c) => (
                 <span key={c.id} className="chip row row--inline" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-pill)", padding: "3px 6px 3px 12px" }}>
