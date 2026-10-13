@@ -13,6 +13,8 @@ import { StreamTabs } from "@/components/results/StreamTabs";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
+/** the stages a mark counts at — past the Faculty Board (ResultsService.COUNTED) */
+const COUNTED = ["RECORDS", "SENATE", "PUBLISHED"];
 const COLOUR = (points: number | null | undefined) => (points == null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
 const UNI = () => currentInstitution().name;
 const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -36,16 +38,21 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
   const gw = (grade: string | null | undefined, points: number | null | undefined) =>
     grade == null ? "" : points == null ? grade : `${grade}${Number.isInteger(Number(points)) ? Number(points) : Number(points).toFixed(2)}`;
-  /** a mark as text, the grade under the score — "75\nA5"; ABS over F0 for a candidate who did not sit; a score still in
-   *  the chain marked as not yet counted */
+  /** V421: no mark and no outcome — on a counted set, a student who is not on it; in the chain, a mark not yet entered */
+  const nrTitle = (m: { stage: string }) => (COUNTED.includes(m.stage) ? "No result — not on the approved sheet; never an F, never owed"
+    : `No mark yet — ${m.stage === "NO_SHEET" ? "no sheet yet" : (STAGE_LABEL[m.stage]?.[0] ?? m.stage).toLowerCase()}`);
+  /** a mark as text, the grade under the score — "75\nA5"; ABS over F0 for a candidate recorded absent; NR for no result
+   *  (V421); a score still in the chain marked as not yet counted */
   const markText = (m: ReturnType<typeof markOf>): string =>
     !m || m.stage === "NOT_REGISTERED" ? ""
+      : m.outcome === "NO_RESULT" ? "NR"
       : m.counted ? (m.total == null ? "ABS\nF0" : `${m.total}\n${gw(m.grade, m.points)}`)
       : m.total != null ? `${m.total}\n${gw(m.grade, m.points)}\n(not yet counted)`
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? m.outcome.slice(0, 3)
       : "ABS\nF0";
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
+      : m.outcome === "NO_RESULT" ? <span title={nrTitle(m)} className={COUNTED.includes(m.stage) ? "b700" : "sub2"}><span className="tnum">NR</span></span>
       : m.counted ? (m.total == null
           ? <span className="ink-red b700"><span className="tnum">ABS</span><div>F0</div></span>
           : <span><span className="tnum">{m.total}</span><div className="b700" style={{ color: COLOUR(m.points) }}>{gw(m.grade, m.points)}</div></span>)
@@ -66,6 +73,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   const onProbation = (r: Broadsheet["rows"][number]) => /TO GO ON PROBATION/.test(r.remarks);
   const advised = (r: Broadsheet["rows"][number]) => /ADVISED TO WITHDRAW/.test(r.remarks);
   const notRegistered = (r: Broadsheet["rows"][number]) => /DID NOT REGISTER/.test(r.remarks);
+  const noResult = (r: Broadsheet["rows"][number]) => /(^|· )NR: /.test(r.remarks);
   const pronounced = (r: Broadsheet["rows"][number]) => (shSem === 1 ? onProbation(r) : advised(r));
   const sections: { title: string; rows: Broadsheet["rows"] }[] = !sheet ? []
     : listed ? [
@@ -105,7 +113,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
     const unregistered = sheet.rows.filter(notRegistered).length;   // in the class, no approved registration for the semester
     const registered = roll - unregistered;
     const sat = sheet.rows.filter((r) => r.gpa !== null).length;
-    const notSit = registered - sat;
+    // V421: a candidate with a result missing (NR) is neither absent nor sat when nothing of theirs is counted
+    const withNr = sheet.rows.filter(noResult).length;
+    const notSit = registered - sat - sheet.rows.filter((r) => r.gpa === null && noResult(r)).length;
     // probation and withdrawal are what the remark pronounces (Senate's rule in the record): counted wherever they appear,
     // so a 100 level first semester reads Nil of itself
     const probation = sheet.rows.filter(onProbation).length;   // TO GO ON PROBATION
@@ -118,6 +128,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
       ["Total Number of Candidates that did not Register", n0(unregistered), ""],
       ["Total Number of Candidates at Examination", String(sat), sat ? "100" : ""],
       ["Total Number of Candidates that did not sit for the Examination", n0(notSit), notSit ? pc(notSit) : ""],
+      ["Total Number of Candidates with a Result Not Available", n0(withNr), ""],
       ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
       ["Total Number of Candidates that Deferred", "Nil", ""],
       ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
@@ -128,10 +139,12 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
     const KEY: [string, string][] = hideCum ? [
       ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"],
       ["GPA", "Grade Point Average"], ["WGP", "Weighted Grade Point"],
+      ["ABS", "Absent, graded F"], ["NR", "No Result (not counted, not owed)"],
     ] : [
       ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"],
       ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"],
       ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"],
+      ["ABS", "Absent, graded F"], ["NR", "No Result (not counted, not owed)"],
     ];
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
@@ -249,7 +262,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   return (
     <>
       <Note kind="info" title="The broadsheet is computed, not typed">
-        A mark counts once its set has passed the Faculty Board; scores still in the chain are greyed. No score on a counted set is ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
+        A mark counts once its set has passed the Faculty Board; scores still in the chain are greyed. A candidate recorded absent is ABS, graded F, and the course is owed. No mark and no outcome is NR, no result: never an F, never counted and never owed; on a counted set it is a student not on the approved sheet, named in the remark (NR:) until the result is uploaded, and nothing is pronounced on that semester. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
       </Note>
       <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course." />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}

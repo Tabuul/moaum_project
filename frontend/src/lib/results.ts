@@ -70,7 +70,13 @@ export interface SheetProgress {
 }
 export interface MissingCourse {
   sheetId?: string | null; offeringId?: string | null; courseCode: string; courseTitle: string; deptName: string; lecturer?: string | null;
-  candidates: number; received: number; missing: number; why: "NOT_STARTED" | "PARTIAL" | "NO_LECTURER" | "NO_SHEET" | string;
+  candidates: number; received: number; missing: number;
+  why: "NOT_STARTED" | "PARTIAL" | "NO_LECTURER" | "NO_SHEET" | "ROLL_GREW" | "NOT_ON_SHEET" | "NOT_IN_UPLOAD" | string;
+}
+/** V421: one registered candidate without a result, by course (GET /api/v1/results/pipeline/missing-students) */
+export interface MissingStudent {
+  number: string; name: string; programmeCode: string; level?: number | null; courseCode: string; courseTitle: string; deptName: string;
+  stage: string; why: "NOT_ENTERED" | "ROLL_GREW" | "NOT_ON_SHEET" | "NOT_IN_UPLOAD" | "NO_SHEET" | string; sheetId?: string | null;
 }
 export interface PipelineAlert { sheetId?: string | null; courseCode: string; deptName: string; stage?: string | null; kind: string; detail: string }
 export interface TimelineEvent {
@@ -101,6 +107,7 @@ export const FLAG_LABEL: Record<string, [string, "bad" | "info" | "warn" | "ok" 
   HIGH_FAIL: ["Fail rate over half", "bad"],
   HELD_SCRIPTS: ["Held scripts", "info"],
   ROLL_GREW: ["Roll grew after submission", "bad"],
+  NOT_ON_SHEET: ["Results missing on the published set", "bad"],
   STALLED: ["Stalled on a desk", "warn"],
   ON_BEHALF: ["Uploaded on behalf", "info"],
   EMPTY_ROLL: ["Nobody registered", "grey"],

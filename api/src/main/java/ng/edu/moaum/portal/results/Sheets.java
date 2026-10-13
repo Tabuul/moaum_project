@@ -95,6 +95,13 @@ public final class Sheets {
                            boolean blockedForYou, List<String> flags) {
     }
 
+    /** V421: one registered candidate without a result, by course — why: NOT_ENTERED (the sheet is at entry), ROLL_GREW (in the
+     *  chain, joined after submission), NOT_ON_SHEET (not on the published set), NOT_IN_UPLOAD (not in the old portal's results
+     *  the published set came from), NO_SHEET (no sheet over the offering yet) */
+    public record MissingStudent(String number, String name, String programmeCode, Integer level, String courseCode, String courseTitle,
+                                 String deptName, String stage, String why, UUID sheetId) {
+    }
+
     /** a course whose results are not all in: a sheet still short of marks, or an offering with no sheet at all */
     public record MissingCourse(UUID sheetId, UUID offeringId, String courseCode, String courseTitle, String deptName, String lecturer,
                                 long candidates, long received, long missing, String why) {

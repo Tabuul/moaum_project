@@ -177,6 +177,18 @@ class ResultsController {
         return service.pipeline(b.fac(), b.dept(), b.prog(), blank(session), sem);
     }
 
+    /** V421: the monitor's "Results not yet in", student by student — every registered candidate in scope with no mark or
+     *  outcome, by course, with why: not yet entered, joined after submission, not on the published set, not in the old
+     *  portal's results, or no sheet yet. The office's bound applies whatever the parameters say. */
+    @GetMapping("/pipeline/missing-students")
+    @PreAuthorize(READERS)
+    Map<String, Object> missingStudents(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                        @RequestParam(required = false) String prog, @RequestParam(required = false) String session,
+                                        @RequestParam(required = false) Integer sem) {
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        return service.missingStudents(b.fac(), b.dept(), b.prog(), blank(session), sem);
+    }
+
     /** V421: the students in scope by result status for a semester — not available, under verification, processing,
      *  incomplete, published — and those on probation or advised to withdraw, counted only from complete published results.
      *  By default the latest semester the University's calendar has closed. The office's bound applies. */

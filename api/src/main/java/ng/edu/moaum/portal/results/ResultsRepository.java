@@ -147,7 +147,8 @@ class ResultsRepository {
     record ProgressRow(UUID id, String courseCode, String courseTitle, int units, String deptCode, String deptName, String facultyCode,
                        String facultyName, String session, int semester, String sitting, String stage, LocalDate dueOn, int returnedTimes,
                        UUID lecturerId, String lecturer, long candidates, long received, long missing, long graded, long failed,
-                       long heldScripts, long uploadsOnBehalf, java.time.OffsetDateTime stageSince, UUID lastActor, String generalOffice) {
+                       long heldScripts, long uploadsOnBehalf, java.time.OffsetDateTime stageSince, UUID lastActor, String generalOffice,
+                       boolean imported) {
     }
 
     List<ProgressRow> progress(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
@@ -162,7 +163,8 @@ class ResultsRepository {
                        assessment.sheet_stage_since(s.id) AS stage_since,
                        (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
                          ORDER BY dd.decided_at DESC LIMIT 1) AS last_actor,
-                       c.general_office
+                       c.general_office,
+                       EXISTS (SELECT 1 FROM assessment.score sc WHERE sc.sheet_id = s.id AND sc.imported) AS imported   -- V421: the old portal's results
                   FROM assessment.score_sheet s
                   JOIN catalogue.offering o ON o.id = s.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
@@ -180,6 +182,53 @@ class ResultsRepository {
                  ORDER BY f.name, d.name, o.course_code
                 """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
                 .query(ProgressRow.class).list();
+    }
+
+    /** V421: one registered candidate without a result, by course: on a sheet's roll with no mark or outcome on it, or on an
+     *  offering with no sheet at all — where the set stands, and whether its results came from the old portal */
+    record MissingStudent(String number, String name, String programmeCode, Integer level, String courseCode, String courseTitle,
+                          String deptCode, String deptName, String stage, boolean imported, UUID sheetId, UUID offeringId, String generalOffice) {
+    }
+
+    List<MissingStudent> missingStudents(String fac, String dept, String prog, String session, Integer sem, UUID mine) {
+        return jdbc.sql("""
+                WITH o AS (
+                    SELECT o.id, o.course_code, coalesce(o.title, c.title) AS title, c.dept_code, d.name AS dept_name, c.general_office,
+                           s.id AS sheet_id, coalesce(s.stage, 'NO_SHEET') AS stage,
+                           s.id IS NOT NULL AND EXISTS (SELECT 1 FROM assessment.score sc WHERE sc.sheet_id = s.id AND sc.imported) AS imported
+                      FROM catalogue.offering o
+                      JOIN catalogue.course c ON c.code = o.course_code
+                      JOIN ref.department d ON d.code = c.dept_code
+                      LEFT JOIN assessment.score_sheet s ON s.offering_id = o.id
+                     WHERE (:fac::text IS NULL OR d.faculty_code = :fac)
+                       AND (:dept::text IS NULL OR c.dept_code = :dept)
+                       AND (:prog::text IS NULL OR catalogue.offering_serves(o.id, :prog))
+                       AND o.session = :session AND (:sem::int IS NULL OR o.semester = :sem)
+                       AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                            OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))),
+                -- each sheet's roll less the candidates with a mark or an outcome on it (as assessment.sheet_coverage counts the
+                -- missing), each function read once per sheet; an offering with no sheet misses every registered candidate
+                m AS (
+                    SELECT o.*, x.student_id
+                      FROM o CROSS JOIN LATERAL (SELECT c.student_id FROM assessment.sheet_candidates(o.sheet_id) c
+                                                 EXCEPT
+                                                 SELECT l.student_id FROM assessment.latest_scores(o.sheet_id) l) x
+                     WHERE o.sheet_id IS NOT NULL
+                    UNION ALL
+                    SELECT o.*, r.student_id
+                      FROM o
+                      JOIN registration.entry e ON e.offering_id = o.id AND e.status = 'APPROVED'
+                      JOIN registration.course_registration r ON r.id = e.registration_id AND r.status IN ('APPROVED','LOCKED')
+                     WHERE o.sheet_id IS NULL)
+                SELECT coalesce(st.matric_no, st.admission_no) AS number, st.surname || ', ' || st.other_names AS name, st.programme_code,
+                       (SELECT max(r.level) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                         WHERE e.offering_id = m.id AND r.student_id = m.student_id) AS level,
+                       m.course_code, m.title AS course_title, m.dept_code, m.dept_name, m.stage, m.imported, m.sheet_id, m.id AS offering_id,
+                       m.general_office
+                  FROM m JOIN people.student st ON st.id = m.student_id
+                 ORDER BY m.dept_name, m.course_code, st.surname, st.other_names
+                """).param("fac", fac).param("dept", dept).param("prog", prog).param("session", session).param("sem", sem).param("mine", mine)
+                .query(MissingStudent.class).list();
     }
 
     /** an offering in scope with registered candidates and no sheet: no lecturer allocated, or the session not opened over it */

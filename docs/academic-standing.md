@@ -65,6 +65,34 @@ your department records it"*, and the CGPA reads "—" until something is publis
 It is loaded after the page so a large scope does not hold the monitor up. A department of about a hundred students
 counts in about a third of a second.
 
+**The Senate broadsheet.** A registered course with no mark and no outcome is **NR**, no result. It is never ABS, never F,
+never counted in the GPA and never owed. On a set past the Faculty Board, the student is not on the approved sheet:
+
+- the remark names the course (*NR: …*);
+- the row's standing reads *Incomplete*, never *Pass*;
+- nothing is pronounced on that semester, so no *TO GO ON PROBATION* or *ADVISED TO WITHDRAW*;
+- the reporting sheet counts *Candidates with a Result Not Available*, and the key explains NR.
+
+A set still in the chain, or a course with no sheet yet, shows NR greyed as a mark not yet entered. A candidate the lecturer
+**recorded** absent stays ABS, graded F, and owes the course. Before this, the broadsheet showed every blank as
+ABS/F0, so the same student read 0.00 there and "result not available" on their own dashboard.
+
+**Results not yet in** (`/results/pipeline`) lists every course with a registered candidate who has no mark or outcome,
+wherever the set stands:
+
+| Why | Meaning | Where to act |
+|---|---|---|
+| No mark entered yet / partly entered | the sheet is at entry | the sheet |
+| Joined the roll after submission | in the chain | the chain (return it to the lecturer) |
+| Not on the published sheet | published through the chain | the chain |
+| Not in the old portal's results | the published set came from the old portal's upload | *Upload results* → Migrate from the old portal (Exams and Records, ICT) |
+| No sheet / no lecturer | nothing to enter on yet | Sessions / Allocate |
+
+*Download students* (`GET /api/v1/results/pipeline/missing-students`) gives the same list student by student: matriculation
+number, name, programme, level, course, where the set is and why. It keeps the monitor's bounds: a lecturer sees only their own
+courses, a HOD their department, the GST/EPS office its own courses, any other office its scope. A published set with
+candidates missing is flagged *Results missing on the published set*.
+
 **Migrated students.** A student whose record and registrations came over but whose results did not reads *result not
 available*, never 0.00. When the old portal's results are uploaded (`assessment.import_legacy_semester`), they become
 published results like any other and the standing is read from them.
@@ -84,4 +112,5 @@ subject); the counts are bound to the office's scope (`OfficeScope.bound`).
 - a recorded absence
 
 It also covers the threshold changed and refused to a lecturer, and the counts. `AcademicStandingIT` covers the same through
-the API, rerunnable on one database.
+the API, plus the broadsheet's NR, the pipeline's missing list and its student list within a lecturer's bound. It can be
+rerun on one database.

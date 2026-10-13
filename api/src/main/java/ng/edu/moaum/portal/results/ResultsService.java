@@ -532,6 +532,7 @@ public class ResultsService {
             if (failRate != null && failRate > 50) flags.add("HIGH_FAIL");
             if (r.heldScripts() > 0) flags.add("HELD_SCRIPTS");
             if (!atEntry && !done && r.missing() > 0) flags.add("ROLL_GREW");
+            if (done && r.missing() > 0) flags.add("NOT_ON_SHEET");   // V421: registered, no result on the published set
             if (!atEntry && !done && daysAtStage != null && daysAtStage > 14) flags.add("STALLED");
             if (r.uploadsOnBehalf() > 0) flags.add("ON_BEHALF");
             if (r.candidates() == 0) flags.add("EMPTY_ROLL");
@@ -540,9 +541,15 @@ public class ResultsService {
                     r.received(), r.missing(), failRate, r.stageSince(), daysAtStage, r.dueOn(), daysLate, r.returnedTimes(), r.heldScripts(),
                     r.uploadsOnBehalf(), mayAct, blocked, flags);
             sheets.add(p);
-            if (atEntry && r.missing() > 0) {
+            if (r.missing() > 0) {
+                /* V421: every registered candidate without a result is listed, wherever the set is — at entry, not yet entered;
+                   past it, a candidate who is not on the sheet: joined the roll after submission, or, on a published set, a
+                   registration whose result was never uploaded (from the old portal, when the set's results came from there) */
+                String why = atEntry ? (r.received() == 0 ? "NOT_STARTED" : "PARTIAL")
+                        : !done ? "ROLL_GREW"
+                        : r.imported() ? "NOT_IN_UPLOAD" : "NOT_ON_SHEET";
                 missing.add(new Sheets.MissingCourse(r.id(), null, r.courseCode(), r.courseTitle(), r.deptName(), r.lecturer(), r.candidates(),
-                        r.received(), r.missing(), r.received() == 0 ? "NOT_STARTED" : "PARTIAL"));
+                        r.received(), r.missing(), why));
             }
             if (flags.contains("OVERDUE")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "OVERDUE",
                     daysLate + " day" + (daysLate == 1 ? "" : "s") + " past " + r.dueOn() + "; " + r.missing() + " of " + r.candidates() + " still without a mark"));
@@ -556,6 +563,9 @@ public class ResultsService {
                     r.heldScripts() + " script" + (r.heldScripts() == 1 ? "" : "s") + " held from candidates not on the roll"));
             if (flags.contains("ROLL_GREW")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "ROLL_GREW",
                     r.missing() + " candidate" + (r.missing() == 1 ? "" : "s") + " joined the roll after submission and carry no mark"));
+            if (flags.contains("NOT_ON_SHEET")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "NOT_ON_SHEET",
+                    r.missing() + " registered candidate" + (r.missing() == 1 ? " has" : "s have") + " no result on the published set"
+                            + (r.imported() ? "; the old portal's results did not carry " + (r.missing() == 1 ? "it" : "them") : "")));
             if (flags.contains("STALLED")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "STALLED",
                     daysAtStage + " days at " + STAGE_NAME.get(r.stage()).toLowerCase() + " with " + STAGE_DESK.get(r.stage())));
             if (flags.contains("ON_BEHALF")) alerts.add(new Sheets.Alert(r.id(), r.courseCode(), r.deptName(), r.stage(), "ON_BEHALF",
@@ -582,6 +592,39 @@ public class ResultsService {
         List<Sheets.Progress> attention = sheets.stream().filter(p -> p.mayAct() && !p.blockedForYou() && (myStage == null || myStage.equals(p.stage()) || "ENTRY".equals(p.stage()) && "exams".equals(office))).toList();
         return new Sheets.PipelineView(session, sem, fac, dept, prog, desk(office), myStage, stages, coverage, sheets, missing, alerts, attention,
                 repo.timeline(fac, dept, prog, session, sem, mine, 40), repo.programmeCoverage(fac, dept, prog, session, sem, mine));
+    }
+
+    /** V421: every registered candidate in scope without a result, course by course — what the monitor's "Results not yet in"
+     *  counts, student by student, for Exams and Records to chase or upload. The monitor's bounds: a lecturer's own courses, a
+     *  HOD's department, the GST/EPS office's own courses. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> missingStudents(String fac, String dept, String prog, String session, Integer sem) {
+        AuditContext ctx = AuditContextHolder.current().orElse(null);
+        String office = ctx == null ? null : ctx.actorOffice();
+        UUID mine = "lecturer".equals(office) ? ctx.actorId() : null;
+        if ("hod".equals(office)) {
+            String hodDept = repo.officeDepartment(ctx.actorId(), "hod");
+            fac = null;
+            dept = hodDept != null ? hodDept : "__none__";
+        }
+        if (session == null || session.isBlank()) {
+            session = repo.currentSession();
+        }
+        List<ResultsRepository.MissingStudent> rows = repo.missingStudents(fac, dept, prog, session, sem, mine);
+        if ("gst".equals(office) || "eps".equals(office)) {
+            String general = office.toUpperCase();
+            rows = rows.stream().filter(r -> general.equals(r.generalOffice()) && r.sheetId() != null).toList();
+        }
+        List<Sheets.MissingStudent> out = rows.stream().map(r -> new Sheets.MissingStudent(r.number(), r.name(), r.programmeCode(), r.level(),
+                r.courseCode(), r.courseTitle(), r.deptName(), r.stage(),
+                "NO_SHEET".equals(r.stage()) ? "NO_SHEET" : "ENTRY".equals(r.stage()) ? "NOT_ENTERED"
+                        : !"PUBLISHED".equals(r.stage()) ? "ROLL_GREW" : r.imported() ? "NOT_IN_UPLOAD" : "NOT_ON_SHEET",
+                r.sheetId())).toList();
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("session", session);
+        view.put("semester", sem);
+        view.put("rows", out);
+        return view;
     }
 
     /** A mark is never overwritten: a change appends a version with its reason. */
@@ -844,6 +887,7 @@ public class ResultsService {
             int pending = 0;
             boolean failed = false;
             List<String> failedHere = new ArrayList<>();   // this sheet's failures, ABS included, by course code
+            List<String> noResultHere = new ArrayList<>(); // V421: registered, and no result on a set past the Faculty Board
             Sheets.BroadsheetCell first = e.getValue().getFirst();
             for (String code : courses.keySet()) {
                 Sheets.BroadsheetCell c = e.getValue().stream().filter(x -> x.courseCode().equals(code)).findFirst().orElse(null);
@@ -854,11 +898,21 @@ public class ResultsService {
                 cur += c.units();   // registered: the student has a cell for this course
                 boolean past = COUNTED.contains(c.stage());
                 boolean counted = past && "GRADED".equals(c.outcome()) && c.points() != null;
-                // no score at all for a course registered — whatever the set's stage, or with no set yet — or marked absent on a
-                // set past the Faculty Board: the candidate did not sit — an F, recorded ABS, and the course is owed. A score
-                // still in the chain is not an absence; it is pending, shown as not yet counted.
-                boolean absent = !counted && (c.total() == null || (past && "ABSENT".equals(c.outcome())));
-                if (counted) {
+                // V421: no mark and no outcome is NO RESULT (NR) — never an absence, an F or a course owed. A sheet cannot
+                // leave the lecturer with a blank (I-RES-4), so a blank on a set past the Faculty Board is a student who was never
+                // on that sheet (a registration migrated without its results, or added after); still in the chain, or with no set
+                // yet, it is a mark not yet entered. Neither is counted.
+                boolean noResult = !counted && c.outcome() == null && c.total() == null;
+                // marked absent: the candidate did not sit — an F, recorded ABS, and the course is owed. A score still in the
+                // chain is not an absence; it is pending, shown as not yet counted.
+                boolean absent = !counted && !noResult && (c.total() == null || (past && "ABSENT".equals(c.outcome())));
+                if (noResult) {
+                    if (past) {
+                        noResultHere.add(code);
+                    } else {
+                        pending++;
+                    }
+                } else if (counted) {
                     units += c.units();
                     points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));
                     if (c.points().signum() == 0) {
@@ -875,17 +929,22 @@ public class ResultsService {
                     pending++;
                 }
                 // a score still in the chain is carried with its figures so the sheet can show it as not yet counted
-                marks.add(new Sheets.BroadsheetMark(code, c.stage(), absent ? null : c.total(), absent ? "F" : c.grade(),
-                        absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent));
+                if (noResult) {
+                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, "NO_RESULT", false));
+                } else {
+                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), absent ? null : c.total(), absent ? "F" : c.grade(),
+                            absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent));
+                }
             }
             BigDecimal gpa = units == 0 ? null : points.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
-            String standing = gpa == null ? "Pending" : failed ? "Carryover" : "Pass";
+            // a semester with a result missing is incomplete: never a pass, and nothing is pronounced on it (V421)
+            String standing = failed ? "Carryover" : !noResultHere.isEmpty() ? "Incomplete" : gpa == null ? "Pending" : "Pass";
             if (gpa != null) {
                 gpaSum = gpaSum.add(gpa);
                 withGpa++;
                 if (failed) {
                     carrying++;
-                } else {
+                } else if (noResultHere.isEmpty()) {
                     passed++;
                 }
             }
@@ -899,26 +958,30 @@ public class ResultsService {
             List<String> carry = repo.carryoversAt(e.getKey(), session, sem, false).stream()
                     .filter(writtenThisSheet::contains).toList();
             /* the REMARK is what the student owes AS OF this sheet: prior unpassed carryovers plus this
-               semester's failures — scoped to this period, so a level not yet reached never appears. Plus
-               any course on a PUBLISHED sheet whose score is still missing (a missing script), shown as
-               pending until the score is found and the sheet re-viewed. */
+               semester's failures — scoped to this period, so a level not yet reached never appears. A
+               course with no result on a counted set is not owed: it is named apart (NR:) until its
+               result is uploaded. */
             List<String> owed = new java.util.ArrayList<>(repo.carryoversAt(e.getKey(), session, sem, true));
             for (String f : failedHere) if (!owed.contains(f)) owed.add(f);
             boolean anyUnreleased = marks.stream().anyMatch(m -> !"NOT_REGISTERED".equals(m.stage()) && !COUNTED.contains(m.stage()));
             /* the REMARK reads as the Senate's sheet reads: TO GO ON PROBATION when the CGPA is under 1.0; CO: for
-               every core course owed (a prior carryover, or failed or missed on this sheet); Fail: for an elective
-               failed; PASS when nothing is owed; PENDING only while a set is still in the chain and nothing is owed */
+               every core course owed (a prior carryover, or failed or absent on this sheet); Fail: for an elective
+               failed; NR: for a course with no result; PASS when nothing is owed or missing; PENDING only while a set
+               is still in the chain and nothing is owed */
             List<String> coreOwed = owed.stream().filter(x -> !"Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> electiveOwed = owed.stream().filter(x -> "Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> parts = new ArrayList<>();
             if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
+            // V421: NR: for every course with no result on a set past the Faculty Board — not owed, not counted
+            if (!noResultHere.isEmpty()) parts.add("NR: " + String.join(", ", noResultHere.stream().sorted().toList()));
             /* Senate's rule (V246, assessment.standing_of), said after the courses owed: TO GO ON PROBATION at 100 level
                second semester, or at a first semester from 200 level, with the CGPA under 1.0; ADVISED TO WITHDRAW at a
                second semester from 200 level still under 1.0 after that level's first semester was. A Direct Entry
                student's 200 level first semester has no standing to judge, so their second is probation, not withdrawal. */
             boolean deAt200 = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200;
-            String pronounced = cum.cgpa() == null ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
+            // V421: nothing is pronounced on a semester with a result missing — the student's standing waits for it
+            String pronounced = cum.cgpa() == null || !noResultHere.isEmpty() ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
             if ("PROBATION".equals(pronounced)) parts.add("TO GO ON PROBATION");
             if ("ADVISED_TO_WITHDRAW".equals(pronounced)) parts.add("ADVISED TO WITHDRAW");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)

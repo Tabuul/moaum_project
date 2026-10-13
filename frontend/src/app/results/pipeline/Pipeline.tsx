@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Scope } from "@/lib/scope";
-import { FLAG_LABEL, type PipelineView, type SheetProgress } from "@/lib/results";
+import { FLAG_LABEL, STAGE_LABEL, type MissingStudent, type PipelineView, type SheetProgress } from "@/lib/results";
 import { roleLabel } from "@/lib/offices";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
@@ -32,6 +32,11 @@ const WHY: Record<string, [string, "bad" | "warn" | "info"]> = {
   PARTIAL: ["Partly entered", "warn"],
   NO_LECTURER: ["No lecturer allocated — no sheet can open", "bad"],
   NO_SHEET: ["No sheet opened over the offering", "warn"],
+  // V421: candidates past entry with no mark or outcome — never an absence, never an F
+  NOT_ENTERED: ["No mark entered yet", "bad"],
+  ROLL_GREW: ["Joined the roll after submission", "warn"],
+  NOT_ON_SHEET: ["Not on the published sheet", "bad"],
+  NOT_IN_UPLOAD: ["Not in the old portal's results", "bad"],
 };
 
 function when(iso: string): string {
@@ -65,6 +70,27 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
     const body = view.missing.map((m, i) => [i + 1, m.courseCode, m.courseTitle, m.deptName, m.lecturer ?? "", m.candidates, m.received, m.missing, WHY[m.why]?.[0] ?? m.why]);
     downloadBlob(await brandedXlsx("Missing Results", head, body, { sheetName: "Missing", serial: docSerial("RPM"), sub: period }), `missing-results-${view.session.replace("/", "-")}.xlsx`);
   }
+
+  /** V421: the same, student by student — every registered candidate in scope with no mark or outcome, for Exams and Records
+   *  to chase or to upload (the old portal's results, where the set came from there) */
+  const [studentsErr, setStudentsErr] = useState<string | null>(null);
+  async function exportMissingStudents() {
+    setStudentsErr(null);
+    const q = new URLSearchParams({ session: view.session });
+    if (view.semester) q.set("sem", String(view.semester));
+    if (view.fac) q.set("fac", view.fac);
+    if (view.dept) q.set("dept", view.dept);
+    if (view.prog) q.set("prog", view.prog);
+    const r = await fetch(`/api/bff/api/v1/results/pipeline/missing-students?${q}`);
+    if (!r.ok) { setStudentsErr("The list could not be read. Try again."); return; }
+    const rows = ((await r.json()) as { rows: MissingStudent[] }).rows;
+    const head = ["S/N", "Matriculation number", "Name", "Programme", "Level", "Course", "Title", "Department", "Where the set is", "Why"];
+    const body = rows.map((m, i) => [i + 1, m.number, m.name, m.programmeCode, m.level ?? "", m.courseCode, m.courseTitle, m.deptName,
+      m.stage === "NO_SHEET" ? "No sheet yet" : STAGE_LABEL[m.stage]?.[0] ?? m.stage, WHY[m.why]?.[0] ?? m.why]);
+    downloadBlob(await brandedXlsx("Students Without a Result", head, body, { sheetName: "Students", serial: docSerial("RPM"), sub: period }), `students-without-a-result-${view.session.replace("/", "-")}.xlsx`);
+  }
+  // the old portal's results are uploaded by Exams and Records (and ICT) on Migrate from the old portal
+  const uploads = office === "records" || office === "ict" || office === "super";
 
   return (
     <>
@@ -132,7 +158,13 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
         )}
       </Panel>
       <div className="grid grid--2">
-        <Panel title={`Results not yet in · ${view.missing.length}`} right={view.missing.length ? <Btn kind="ghost" onClick={() => void exportMissing()}>Download</Btn> : "Everything is in"}>
+        <Panel title={`Results not yet in · ${view.missing.length}`} right={view.missing.length ? (
+          <span className="row row--inline">
+            <Btn kind="ghost" onClick={() => void exportMissing()}>Download courses</Btn>
+            <Btn kind="ghost" onClick={() => void exportMissingStudents()}>Download students</Btn>
+          </span>
+        ) : "Everything is in"}>
+          {studentsErr ? <Note kind="bad" title={studentsErr} /> : null}
           {view.missing.length === 0 ? <div className="card__body sub2">Every registered candidate in scope has a mark or an outcome on a sheet.</div> : (
             <DTable cols={["Course", "Lecturer", "Out|mid", "Why", "|num"]}
               rows={view.missing.map((m, i) => [
@@ -140,7 +172,11 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
                 <span className="sub2" key={`l${i}`}>{m.lecturer ?? "—"}</span>,
                 <span className="tnum" key={`m${i}`}><b className="ink-red">{m.missing}</b> <span className="sub2">of {m.candidates}</span></span>,
                 <Pil key={`w${i}`} kind={WHY[m.why]?.[1] ?? "info"}>{WHY[m.why]?.[0] ?? m.why}</Pil>,
-                m.sheetId
+                m.why === "NOT_IN_UPLOAD" && uploads
+                  ? <LinkBtn key={`a${i}`} href="/records/migration" kind="ghost">Upload results</LinkBtn>
+                  : m.sheetId && m.why !== "NOT_STARTED" && m.why !== "PARTIAL"
+                  ? <LinkBtn key={`a${i}`} href={`/results/chain?sheet=${m.sheetId}`} kind="ghost">Open</LinkBtn>
+                  : m.sheetId
                   ? <LinkBtn key={`a${i}`} href={office === "exams" || office === "academic" || office === "lecturer" ? `/results/sheets/${m.sheetId}` : `/results/chain?sheet=${m.sheetId}`} kind="ghost">{office === "exams" ? "Enter on behalf" : "Open"}</LinkBtn>
                   : <LinkBtn key={`a${i}`} href={m.why === "NO_LECTURER" ? "/allocate" : "/examinations/sessions"} kind="ghost">{m.why === "NO_LECTURER" ? "Allocate" : "Sessions"}</LinkBtn>,
               ])}
