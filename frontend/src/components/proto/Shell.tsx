@@ -11,6 +11,7 @@
  */
 import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
+import { IdleWatch } from "@/components/IdleWatch";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -837,6 +838,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               </div>
             )}
             {me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
+            <IdleWatch />
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>
           </div>
         </div>

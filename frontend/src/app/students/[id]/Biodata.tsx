@@ -10,7 +10,7 @@
  */
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
 import { fullName, statusLabel } from "@/lib/student";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
@@ -21,6 +21,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Passport, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { SearchSelect } from "@/components/proto/SearchSelect";
+import { markUnsaved } from "@/lib/idle";
 
 /** V423: the lists the form chooses from, as the University holds them (ref.state, ref.lga, ref.country) */
 export interface BioLists { states: { name: string; lgas: string[] }[]; countries: string[] }
@@ -205,6 +206,11 @@ export function Biodata({ record, may, base, required, missing, lists, startAt }
   const note = SECTION_NOTE[section];
   const meta = BIO_SECTIONS.find((x) => x[0] === section) ?? BIO_SECTIONS[0];
   const sectionChanged = record.biodata.some((f) => f.section === section && f.tier !== "locked" && (f.field in edits) && edits[f.field] !== (original[f.field] ?? ""));
+  // V437: the idle-timeout warning says so while a section holds unsaved changes, and can save them
+  useEffect(() => {
+    markUnsaved("biodata", sectionChanged, () => saveSection(false));
+    return () => markUnsaved("biodata", false);
+  }, [sectionChanged, saveSection]);
   const idx = BIO_SECTIONS.findIndex((x) => x[0] === section);
   const isLast = idx === BIO_SECTIONS.length - 1;
 

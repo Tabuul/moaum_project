@@ -19,5 +19,5 @@ function samePath(p: string | null): string {
 export function SignIn({ sso }: { sso: SsoOption }) {
   const search = useSyncExternalStore(noChange, () => window.location.search, () => "");
   const q = new URLSearchParams(search);
-  return <Login next={samePath(q.get("next"))} sso={sso} ssoProblem={q.get("sso") || null} />;
+  return <Login next={samePath(q.get("next"))} sso={sso} ssoProblem={q.get("sso") || null} reason={q.get("reason") || null} />;
 }

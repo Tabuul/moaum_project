@@ -45,11 +45,17 @@ public class AuditContextFilter extends OncePerRequestFilter {
     public static final String ACTIVE_OFFICE_HEADER = "X-Active-Office";
     public static final String REASON_HEADER = "X-Reason";
     public static final String OFFICES_CLAIM = "offices";
+    /** V437: a request the browser sends on its own — a poll, a board refreshing — never counts as the person's activity */
+    public static final String BACKGROUND_HEADER = "X-Background";
+    /** a request this long (an upload) is activity to its end as well, not only at its start */
+    private static final long LONG_REQUEST_MS = 10_000;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String longRequest = null;
+        long startedAt = System.currentTimeMillis();
         if (authentication instanceof JwtAuthenticationToken token) {
             Jwt jwt = token.getToken();
             UUID actor;
@@ -60,11 +66,15 @@ public class AuditContextFilter extends OncePerRequestFilter {
                 return;
             }
             String sid = jwt.getClaimAsString(SESSION_CLAIM);
+            boolean quiet = "1".equals(request.getHeader(BACKGROUND_HEADER));
             if (sid != null && sessions != null) {
-                java.util.Optional<String> refused = sessions.refuse(sid);
+                java.util.Optional<SessionGuard.Refusal> refused = sessions.refuse(sid, quiet);
                 if (refused.isPresent()) {
-                    refuse(response, HttpStatus.UNAUTHORIZED, refused.get());
+                    refuse(response, HttpStatus.UNAUTHORIZED, refused.get().code(), refused.get().detail());
                     return;
+                }
+                if (!quiet) {
+                    longRequest = sid;
                 }
             }
             List<String> offices = offices(jwt);
@@ -88,6 +98,10 @@ public class AuditContextFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } finally {
             AuditContextHolder.clear();
+            // an upload that took a while is activity until it finished, so the session is not judged idle from its start
+            if (longRequest != null && sessions != null && System.currentTimeMillis() - startedAt > LONG_REQUEST_MS) {
+                sessions.touch(longRequest);
+            }
         }
     }
 
@@ -97,9 +111,15 @@ public class AuditContextFilter extends OncePerRequestFilter {
     }
 
     private static void refuse(HttpServletResponse response, HttpStatus status, String detail) throws IOException {
+        refuse(response, status, null, detail);
+    }
+
+    /** a refusal as a problem, with a stable code when there is one (the portal reads SESSION_EXPIRED_IDLE to say "Session expired") */
+    private static void refuse(HttpServletResponse response, HttpStatus status, String code, String detail) throws IOException {
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"" + status.getReasonPhrase()
-                + "\",\"status\":" + status.value() + ",\"detail\":\"" + detail.replace("\"", "'") + "\"}");
+                + "\",\"status\":" + status.value() + (code == null ? "" : ",\"code\":\"" + code + "\"")
+                + ",\"detail\":\"" + detail.replace("\"", "'") + "\"}");
     }
 }

@@ -47,8 +47,10 @@ function Icon({ name, className }: { name: "shield" | "user" | "lock" | "eye" | 
   );
 }
 
-export function Login({ next, sso, ssoProblem = null }: {
+export function Login({ next, sso, ssoProblem = null, reason = null }: {
   next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
+  /** V437: why the person is back here — "idle" when the session ended for inactivity */
+  reason?: string | null;
   /** V312: which application windows are open — no longer shown here: the sign-in page is for signing in alone, and applicants reach their application pages directly */
   applications?: { postUtme: boolean; postgraduate: boolean } | null;
 }) {
@@ -120,6 +122,11 @@ export function Login({ next, sso, ssoProblem = null }: {
               </div>
             </div>
 
+            {reason === "idle" && !problem ? (
+              <div className="mt-1">
+                <Note kind="info" title="Session expired">Your session ended because you were inactive. Sign in again to continue where you were.</Note>
+              </div>
+            ) : null}
             {problem || ssoProblem ? (
               <div className={css.notices}>
                 {problem ? <ProblemNotice problem={problem} /> : null}

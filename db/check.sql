@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 271
+\set EXPECTED 272
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11651,6 +11651,52 @@ BEGIN
                c1.channels, c1.email_pending_before, c1.sms_pending_before, c1.email_cancelled, c1.sms_cancelled, c1.email_remaining, c1.sms_remaining,
                n_email_q, n_sms_q, n_cancel, reason_kept, by_kept = who, n_failed, c2.email_cancelled, c2.sms_cancelled, c2.sms_remaining,
                j_open, j_kind, left(r_again, 19), j_state));
+END $$;
+-- ── V437. The idle session timeout: the policy is ON by default at 120 seconds with a 30-second warning; set only by the
+--          Directorate of ICT or an administrator, a timeout under 30 seconds, over eight hours, or a warning not shorter
+--          than it refused; an office without a scope of its own is held to GLOBAL; a session left alone is ended for
+--          inactivity with the reason and the sign-in record told, once; the monitor counts the open sessions active or
+--          idle and today's ends ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); p1 uuid := gen_random_uuid(); s_old bytea := gen_random_bytes(32); s_new bytea := gen_random_bytes(32);
+        d_enabled boolean; d_idle int; d_warn int; fb int;
+        r_office text := 'accepted'; r_min text := 'accepted'; r_max text := 'accepted'; r_warn text := 'accepted';
+        set_idle int; set_by text; ended_once boolean; ended_twice boolean; reason text; ev int; m record; listed text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V437', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V437', 'CHECKV437', 'ICT');
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p1, 'CHK/V437B', 'CHECKV437', 'Idle');
+        SELECT idle_enabled, idle_seconds, warning_seconds INTO d_enabled, d_idle, d_warn FROM platform.session_policy WHERE scope = 'GLOBAL';
+        SELECT idle_seconds INTO fb FROM platform.session_policy_for('bursar');
+        BEGIN PERFORM platform.set_session_policy(true, 300, 30, true, 'CHECK', who, 'bursar'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.set_session_policy(true, 20, 5, true, 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_min := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.set_session_policy(true, 90000, 30, true, 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_max := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.set_session_policy(true, 120, 120, true, 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_warn := split_part(SQLERRM, ':', 1); END;
+        PERFORM platform.set_session_policy(true, 300, 60, true, 'CHECK: testing', who, 'ict');
+        SELECT idle_seconds, updated_office INTO set_idle, set_by FROM platform.session_policy WHERE scope = 'GLOBAL';
+        -- a session left alone, ended once with the reason; one seen just now, active
+        INSERT INTO platform.session (id, person_id, active_office, absolute_end, last_seen_at)
+        VALUES (s_old, p1, 'registrar', now() + interval '12 hours', now() - interval '20 minutes'),
+               (s_new, p1, 'registrar', now() + interval '12 hours', now());
+        SELECT m0.open_sessions, m0.active, m0.idle INTO m FROM platform.session_monitor() m0;
+        SELECT string_agg(status, ',' ORDER BY status) INTO listed FROM platform.open_sessions(1000) WHERE person_id = p1;
+        ended_once := platform.session_expire_idle(s_old);
+        ended_twice := platform.session_expire_idle(s_old);
+        SELECT ended_reason INTO reason FROM platform.session WHERE id = s_old;
+        SELECT count(*) INTO ev FROM iam.sign_in_event WHERE session_id = s_old AND outcome = 'EXPIRED_IDLE' AND person_id = p1;
+        RAISE EXCEPTION 'the V437 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V437: the idle timeout is ON at 120 s with a 30 s warning by default, GLOBAL for every office, set only by ICT or an administrator within its limits (30 s to 8 h, the warning shorter); an idle session is ended once with the reason and the sign-in record told; the monitor counts active and idle sessions',
+        coalesce(d_enabled AND d_idle = 120 AND d_warn = 30 AND fb = 120
+                 AND r_office = 'SESSION_POLICY_OFFICE' AND r_min = 'SESSION_POLICY_IDLE_MIN' AND r_max = 'SESSION_POLICY_IDLE_MAX' AND r_warn = 'SESSION_POLICY_WARNING'
+                 AND set_idle = 300 AND set_by = 'ict'
+                 AND m.open_sessions >= 2 AND m.active >= 1 AND m.idle >= 1 AND listed = 'ACTIVE,IDLE'
+                 AND ended_once AND NOT ended_twice AND reason = 'expired: idle' AND ev = 1, false),
+        format('default %s/%s/%s fallback=%s office=%s min=%s max=%s warn=%s set=%s/%s monitor=%s/%s/%s listed=%s ended=%s/%s reason=%s events=%s',
+               d_enabled, d_idle, d_warn, fb, r_office, r_min, r_max, r_warn, set_idle, set_by, m.open_sessions, m.active, m.idle, listed, ended_once, ended_twice, reason, ev));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

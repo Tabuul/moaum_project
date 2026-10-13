@@ -51,7 +51,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
     // V374: the eligibility count (each candidate's fees judged) is read on opening and once a minute, not on every poll
     polls.current += 1;
     const full = polls.current % 30 === 0 ? "&full=true" : "";
-    const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/monitor${cursor.current ? `?since=${encodeURIComponent(cursor.current)}${full}` : ""}`);
+    const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/monitor${cursor.current ? `?since=${encodeURIComponent(cursor.current)}${full}` : ""}`, { headers: { "X-Background": "1" } });
     const j = await r.json().catch(() => null);
     if (!r.ok) { setProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
     const mon = j as Monitor;
@@ -68,7 +68,7 @@ export function LiveMonitor({ examId, base, canManage }: { examId: string; base:
     if (loadedCandidates.current) return;
     loadedCandidates.current = true;
     for (let page = 1; page < 40; page++) {
-      const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/candidates?page=${page}&size=500&sort=name`);
+      const r = await fetch(`/api/bff/api/v1/cbt/exams/${examId}/candidates?page=${page}&size=500&sort=name`, { headers: { "X-Background": "1" } });
       const j = (await r.json().catch(() => null)) as CandidatePage | null;
       if (!r.ok || !j) return;
       setRows((prev) => {

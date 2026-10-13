@@ -78,7 +78,7 @@ export function InvigilatorBoard({ initial }: { initial: Board }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/bff/api/v1/cbt/sittings/${id}/board`, { cache: "no-store" });
+      const r = await fetch(`/api/bff/api/v1/cbt/sittings/${id}/board`, { cache: "no-store", headers: { "X-Background": "1" } });
       if (!r.ok) { setStale(true); return; }
       setBoard((await r.json()) as Board);
       setStale(false);

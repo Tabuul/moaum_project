@@ -66,10 +66,11 @@ const OPEN_EXACT = new Set([
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 
-function toLogin(request: NextRequest, clear: boolean): NextResponse {
+function toLogin(request: NextRequest, clear: boolean, reason = ""): NextResponse {
   const { pathname, search } = request.nextUrl;
   const to = new URL("/login", request.url);
   if (pathname !== "/") to.searchParams.set("next", pathname + search);
+  if (reason) to.searchParams.set("reason", reason);
   const response = NextResponse.redirect(to);
   if (clear) {
     response.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
@@ -97,7 +98,12 @@ export async function proxy(request: NextRequest) {
     if (!isApi && !isPrefetch) {
       try {
         const r = await fetch(`${API_URL}/api/v1/iam/session`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
-        if (r.status === 401) return toLogin(request, true);
+        if (r.status === 401) {
+          /* V437: a session the server ended for inactivity is said so on the sign-in page, never "wrong password" */
+          let reason = "";
+          try { reason = (await r.json())?.code === "SESSION_EXPIRED_IDLE" ? "idle" : ""; } catch { /* no body */ }
+          return toLogin(request, true, reason);
+        }
         /* V423: a student the biodata gate holds reaches only the biodata page (and help, the notices) until it is complete.
            The API refuses everything else whatever the address; this only spares the student a page of refusals. */
         if (r.headers.get("x-biodata-gate") === "REQUIRED" && pathname.startsWith("/student") && !gateOpenPage(pathname)) {

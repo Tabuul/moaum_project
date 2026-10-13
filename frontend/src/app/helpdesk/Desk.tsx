@@ -94,7 +94,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
     let stop = false;
     const tick = async () => {
       try {
-        const res = await fetch("/api/bff/api/v1/helpdesk/counts");
+        const res = await fetch("/api/bff/api/v1/helpdesk/counts", { headers: { "X-Background": "1" } });
         if (!res.ok || stop) return;
         const c = (await res.json()) as Counts;
         const newer = c.latest_new && (!baseline.current.latest || new Date(c.latest_new) > new Date(baseline.current.latest));

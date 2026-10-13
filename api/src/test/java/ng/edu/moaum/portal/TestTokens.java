@@ -22,13 +22,19 @@ public final class TestTokens {
     }
 
     public static String token(UUID subject, List<String> offices) {
+        return token(subject, offices, null);
+    }
+
+    /** V437: a token that names a server-side session (its id in hex), so the session's own rules apply to it */
+    public static String token(UUID subject, List<String> offices, String sessionHex) {
         try {
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            JWTClaimsSet.Builder b = new JWTClaimsSet.Builder()
                     .subject(subject.toString())
                     .issueTime(new Date())
                     .expirationTime(Date.from(Instant.now().plusSeconds(600)))
-                    .claim("offices", offices)
-                    .build();
+                    .claim("offices", offices);
+            if (sessionHex != null) b.claim("sid", sessionHex);
+            JWTClaimsSet claims = b.build();
             SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
             jwt.sign(new MACSigner(SECRET.getBytes(StandardCharsets.UTF_8)));
             return jwt.serialize();
