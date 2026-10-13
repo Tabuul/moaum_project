@@ -1,10 +1,10 @@
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Panel, PBody, Pil } from "@/components/proto/ui";
-import { DTable } from "@/components/proto/DTable";
+import { Panel, PBody } from "@/components/proto/ui";
 import { api } from "@/lib/api";
 import { loadStudent } from "../load";
 import { NotificationsList, type PortalNotice } from "./NotificationsList";
+import { Preferences, type Prefs } from "./Preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,11 @@ function when(iso: string): string {
 /** s/notifications — the portal's own notices (V425: delivered here the moment they are queued, read marks kept), every
  *  e-mail and SMS the portal sent, and how it reaches you */
 export default async function Page() {
-  const [loaded, portal] = await Promise.all([loadStudent({ gateOpen: true }), api<{ unread: number; notices: PortalNotice[] }>("/api/v1/me/notifications?limit=100")]);
+  const [loaded, portal, prefs] = await Promise.all([
+    loadStudent({ gateOpen: true }),
+    api<{ unread: number; notices: PortalNotice[] }>("/api/v1/me/notifications?limit=100"),
+    api<Prefs>("/api/v1/me/notifications/preferences"),
+  ]);
   const s = loaded.student;
   const sent = s ? s.notices.filter((n) => n.channel !== "PORTAL") : [];
   return (
@@ -37,14 +41,7 @@ export default async function Page() {
               </div>
             ) : <PBody><div className="sub2">Nothing sent to you yet.</div></PBody>}
           </Panel>
-          <Panel title="How we reach you">
-            <DTable cols={["Channel", "Transactional|mid", "Announcements|mid"]} rows={[
-              [<span key="e">Email · {s.contact.email ?? s.contact.reach_email ?? "none on file"}</span>, <Pil kind="ok" key="t">Always on</Pil>, <Pil kind={s.contact.email || s.contact.reach_email ? "ok" : "bad"} key="a">{s.contact.email || s.contact.reach_email ? "On" : "No address"}</Pil>],
-              [<span key="s">SMS · {s.contact.phone ?? s.contact.reach_phone ?? "none on file"}</span>, <Pil kind="ok" key="t">Always on</Pil>, <Pil kind={s.contact.phone || s.contact.reach_phone ? "ok" : "bad"} key="a">{s.contact.phone || s.contact.reach_phone ? "On" : "No number"}</Pil>],
-              [<span key="i">In-app</span>, <Pil kind="ok" key="t">Always on</Pil>, <Pil kind="ok" key="a">On</Pil>],
-            ]} />
-            <PBody><div className="sub2">Change the address and number on your profile. Results, payments and admission decisions are always sent.</div></PBody>
-          </Panel>
+          <Preferences prefs={prefs.ok ? prefs.data : { email: true, sms: true }} email={s.contact.email ?? s.contact.reach_email ?? null} phone={s.contact.phone ?? s.contact.reach_phone ?? null} />
         </>
       )}
     </Shell>

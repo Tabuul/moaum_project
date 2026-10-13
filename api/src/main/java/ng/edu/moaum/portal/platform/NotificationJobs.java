@@ -95,8 +95,26 @@ public class NotificationJobs {
             Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "weekly biodata reminder", null, null), () -> tx.execute(status ->
                     jdbc.sql("SELECT people.remind_biodata(3000)").query(Integer.class).single()));
             LOG.info("biodata reminders: {} student(s) reminded", n);
+            snapshotNow();
         } catch (RuntimeException e) {
             LOG.warn("biodata reminders did not run: {}", e.getMessage());
+        }
+    }
+
+    /** V426: the reading of every student's biodata status the offices' counts and lists read — every quarter of an hour,
+     *  and after the weekly reminder; some ten seconds on a register of 54,000 */
+    @Scheduled(fixedDelayString = "${moaum.biodata.snapshot-every-ms:900000}", initialDelayString = "${moaum.biodata.snapshot-initial-ms:120000}")
+    public void snapshot() {
+        lock.runExclusively("biodata-snapshot", this::snapshotNow);
+    }
+
+    void snapshotNow() {
+        try {
+            Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "biodata status reading", null, null), () -> tx.execute(status ->
+                    jdbc.sql("SELECT people.refresh_biodata_snapshot(NULL)").query(Integer.class).single()));
+            LOG.info("biodata status reading: {} student(s)", n);
+        } catch (RuntimeException e) {
+            LOG.warn("biodata status reading did not run: {}", e.getMessage());
         }
     }
 }

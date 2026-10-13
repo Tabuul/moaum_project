@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -79,5 +81,36 @@ class MeNoticesController {
         UUID me = AuditContextHolder.required().actorId();
         int n = jdbc.sql("SELECT platform.mark_all_read('person', :me)").param("me", me).query(Integer.class).single();
         return Map.of("marked", n, "unread", 0);
+    }
+
+    /** V426: the person's own switches for e-mail and SMS on optional messages; mandatory ones are always sent */
+    @GetMapping("/preferences")
+    @Transactional(readOnly = true)
+    Map<String, Object> preferences() {
+        return preferencesOf(AuditContextHolder.required().actorId());
+    }
+
+    record PreferencesIn(Boolean email, Boolean sms) {
+    }
+
+    @PutMapping("/preferences")
+    @Transactional
+    Map<String, Object> savePreferences(@RequestBody PreferencesIn in) {
+        UUID me = AuditContextHolder.required().actorId();
+        if (in != null && in.email() != null) {
+            jdbc.sql("SELECT platform.set_preference('person', :me, 'EMAIL', :on)").param("me", me).param("on", in.email()).query().listOfRows();
+        }
+        if (in != null && in.sms() != null) {
+            jdbc.sql("SELECT platform.set_preference('person', :me, 'SMS', :on)").param("me", me).param("on", in.sms()).query().listOfRows();
+        }
+        return preferencesOf(me);
+    }
+
+    private Map<String, Object> preferencesOf(UUID me) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map<String, Object> r : jdbc.sql("SELECT channel, enabled FROM platform.preferences('person', :me)").param("me", me).query().listOfRows()) {
+            out.put(String.valueOf(r.get("channel")).toLowerCase(), r.get("enabled"));
+        }
+        return out;
     }
 }

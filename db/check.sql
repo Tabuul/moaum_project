@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 263
+\set EXPECTED 264
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11187,6 +11187,89 @@ BEGIN
         format('first=%s second=%s channels=%s subject=%s tokens=%s bad=%s/%s phone=%s/%s unread=%s->%s job: reached=%s done=%s second=%s told a=%s b=%s state=%s status=%s/%s/%s confirm=%s staff=%s',
                n_first, n_second, v_channels, v_subject, v_tokens, st_bad, err_bad, st_phone, err_phone, unread1, unread2,
                r1.reached, r1.done, r2.job_id IS NULL, told_a, told_b, job_state, s_incomplete, s_review, s_done, r_confirm, staff_email));
+END $$;
+
+-- ── V426. A campaign reaches the students its filters name, once per person and channel, as a job the scheduler drains, and
+--          is reported by channel; a Dean addresses only their own faculty's students; a preview counts the addresses; a
+--          student's preference switches an optional message's SMS off but never a mandatory one; the offices' compliance
+--          reading counts and lists the students by status within a faculty ──
+DO $$
+DECLARE S text := '9983/9984'; who uuid := gen_random_uuid(); dean uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); camp uuid; camp2 uuid; job uuid;
+        fac_a text; fac_c text; dept_a text; prog_c text;
+        pv_total int; pv_email_ok int; pv_email_missing int; pv_phone_ok int;
+        r1 record; r2 record; st_after text; told_a int; told_b int; told_c int; rep_email int; rep_sms int; rep_portal int;
+        r_scope text := 'accepted'; r_empty text := 'accepted'; r_sent_edit text := 'accepted'; r_cancel text := 'accepted';
+        ann_sms int; win_sms int; ann_q int; win_q int;
+        sum_total int; sum_inc int; sum_rev int; list_n int; list_total bigint; computed timestamptz;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V426', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V426', 'CHECKV426', 'ICT'), (dean, 'CHK/V426D', 'CHECKV426', 'Dean');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9983-10-01', date '9984-08-31') ON CONFLICT (name) DO NOTHING;
+        -- two faculties: a and b (migrated, one with no e-mail) in the first, c in another
+        SELECT p.faculty_code, p.dept_code INTO fac_a, dept_a FROM ref.programme p WHERE p.code = 'C00023';
+        SELECT p.code, p.faculty_code INTO prog_c, fac_c FROM ref.programme p WHERE p.faculty_code <> fac_a AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), dean, 'dean', 'faculty', fac_a, 'CHECK V426', who, current_date);
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/83/009426', 'MOAUM/CHK/83/9426', now(), 'CHECKV426', 'Campaign Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/83/009427', 'MOAUM/CHK/83/9427', now(), 'CHECKV426B', 'Campaign Bola', 'M', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', 'FULL_TIME'),
+               (c, 'MOAUM/ADM/83/009428', NULL, NULL, 'CHECKV426C', 'Campaign Chidi', 'M', prog_c, 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000009426', 'v426a@example.test'), (b, '08000009427', NULL), (c, '08000009428', 'v426c@example.test');
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        -- 1. the Dean of a's faculty: their own faculty only, never the other, never the staff
+        PERFORM set_config('moaum.actor_office', 'dean', true);
+        BEGIN PERFORM platform.campaign_save(NULL, 'CHECK dean elsewhere', 'PORTAL_MIGRATION', jsonb_build_object('students', true, 'filters', jsonb_build_object('faculty', fac_c)), ARRAY['EMAIL'], '{}'::jsonb, dean, 'dean');
+        EXCEPTION WHEN check_violation THEN r_scope := split_part(SQLERRM, ':', 1); END;
+        camp2 := platform.campaign_save(NULL, 'CHECK dean own', 'PORTAL_MIGRATION', jsonb_build_object('students', true, 'filters', jsonb_build_object('faculty', fac_a, 'session', S)), ARRAY['EMAIL'], '{}'::jsonb, dean, 'dean');
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        -- 2. ICT's migration campaign to the session's students who came over, in a's faculty: the preview counts a and b only
+        camp := platform.campaign_save(NULL, 'CHECK welcome', 'PORTAL_MIGRATION', jsonb_build_object('students', true, 'filters', jsonb_build_object('faculty', fac_a, 'session', S, 'migrated', true)),
+                                       ARRAY['EMAIL', 'SMS', 'PORTAL'], '{}'::jsonb, who, 'ict');
+        SELECT total, email_ok, email_missing, phone_ok INTO pv_total, pv_email_ok, pv_email_missing, pv_phone_ok FROM platform.campaign_preview(camp) WHERE kind = 'student';
+        -- an empty audience is refused
+        BEGIN PERFORM platform.campaign_send(platform.campaign_save(NULL, 'CHECK nobody', 'PORTAL_MIGRATION', jsonb_build_object('applicants', true, 'filters', jsonb_build_object('session', S)), ARRAY['EMAIL'], '{}'::jsonb, who, 'ict'), who, 'ict');
+        EXCEPTION WHEN check_violation THEN r_empty := split_part(SQLERRM, ':', 1); END;
+        -- 3. sent as a job: one batch reaches a and b; a second run finds nothing; the campaign is SENT; the report counts by channel
+        job := platform.campaign_send(camp, who, 'ict');
+        SELECT * INTO r1 FROM platform.run_notice_job(1000000);
+        SELECT * INTO r2 FROM platform.run_notice_job(1000000);
+        SELECT state INTO st_after FROM platform.notice_campaign WHERE id = camp;
+        SELECT count(*) INTO told_a FROM platform.notice WHERE about_id = a AND event_key = 'campaign:' || camp;
+        SELECT count(*) INTO told_b FROM platform.notice WHERE about_id = b AND event_key = 'campaign:' || camp;
+        SELECT count(*) INTO told_c FROM platform.notice WHERE about_id = c AND event_key = 'campaign:' || camp;
+        SELECT coalesce(sum(total) FILTER (WHERE channel = 'EMAIL'), 0), coalesce(sum(total) FILTER (WHERE channel = 'SMS'), 0), coalesce(sum(total) FILTER (WHERE channel = 'PORTAL'), 0)
+          INTO rep_email, rep_sms, rep_portal FROM platform.campaign_report(camp);
+        BEGIN PERFORM platform.campaign_save(camp, 'CHECK edited', 'PORTAL_MIGRATION', jsonb_build_object('students', true), ARRAY['EMAIL'], '{}'::jsonb, who, 'ict');
+        EXCEPTION WHEN check_violation THEN r_sent_edit := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.campaign_cancel(camp, 'CHECK', who, 'ict');
+        EXCEPTION WHEN check_violation THEN r_cancel := split_part(SQLERRM, ':', 1); END;
+        -- 4. a's preference: SMS off — an announcement (optional) skips the SMS, a window (mandatory) does not
+        PERFORM platform.set_preference('student', a, 'SMS', false);
+        ann_q := platform.tell_student(a, 'ANNOUNCEMENT', NULL, jsonb_build_object('TITLE', 'CHECK', 'MESSAGE', 'Hello', 'SMS_MESSAGE', 'Hello', 'SIGNATURE', 'Registry'), 'check:v426:ann');
+        SELECT count(*) INTO ann_sms FROM platform.notice WHERE about_id = a AND event_key = 'check:v426:ann' AND channel = 'SMS';
+        win_q := platform.tell_student(a, 'WINDOW_OPENED', 'COURSE_REGISTRATION', jsonb_build_object('WINDOW', 'Course registration', 'SESSION', S, 'SEMESTER', ''), 'check:v426:win');
+        SELECT count(*) INTO win_sms FROM platform.notice WHERE about_id = a AND event_key = 'check:v426:win' AND channel = 'SMS';
+        -- 5. the compliance reading: a and b incomplete in a's faculty; c elsewhere; the list within the faculty
+        PERFORM people.refresh_biodata_snapshot(NULL);
+        SELECT total, incomplete, review_required, computed_at INTO sum_total, sum_inc, sum_rev, computed FROM people.biodata_compliance_summary(fac_a, NULL);
+        SELECT count(*), max(total) INTO list_n, list_total FROM people.biodata_status_list('INCOMPLETE', fac_a, NULL, NULL, NULL, S, NULL, NULL, 'CHECKV426', 50, 0);
+        RAISE EXCEPTION 'the V426 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V426: a campaign reaches the students its filters name once per person and channel as a job, is reported by channel and never edited once sent; a Dean addresses only their own faculty; the preview counts addresses; a preference switches an optional SMS off but never a mandatory one; the compliance reading counts and lists by status within a faculty',
+        coalesce(r_scope = 'CAMPAIGN_SCOPE' AND camp2 IS NOT NULL
+                 AND pv_total = 2 AND pv_email_ok = 1 AND pv_email_missing = 1 AND pv_phone_ok = 2 AND r_empty = 'CAMPAIGN_EMPTY'
+                 AND r1.reached = 2 AND r1.done AND r2.job_id IS NULL AND st_after = 'SENT'
+                 AND told_a = 3 AND told_b = 2 AND told_c = 0 AND rep_email = 1 AND rep_sms = 2 AND rep_portal = 2
+                 AND r_sent_edit = 'CAMPAIGN_NOT_DRAFT' AND r_cancel = 'CAMPAIGN_FINISHED'
+                 AND ann_q = 2 AND ann_sms = 0 AND win_q = 3 AND win_sms = 1
+                 AND sum_total >= 2 AND sum_inc >= 2 AND computed IS NOT NULL AND list_n = 2 AND list_total = 2, false),
+        format('scope=%s own=%s preview total=%s email ok=%s missing=%s phone ok=%s empty=%s | run1 reached=%s done=%s run2 none=%s state=%s told a=%s b=%s c=%s report email=%s sms=%s portal=%s edit=%s cancel=%s | ann q=%s sms=%s win q=%s sms=%s | summary total=%s inc=%s rev=%s computed=%s list=%s/%s',
+               r_scope, camp2 IS NOT NULL, pv_total, pv_email_ok, pv_email_missing, pv_phone_ok, r_empty, r1.reached, r1.done, r2.job_id IS NULL, st_after, told_a, told_b, told_c,
+               rep_email, rep_sms, rep_portal, r_sent_edit, r_cancel, ann_q, ann_sms, win_q, win_sms, sum_total, sum_inc, sum_rev, computed IS NOT NULL, list_n, list_total));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

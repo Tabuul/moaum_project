@@ -69,9 +69,49 @@ A new event is a template and one call: `SELECT platform.tell_student(st.id, 'MY
 'my-event:' || the_row_id)`. The event key is what makes a retried transaction harmless. A module's existing call to
 `platform.queue_notice(channel, to, subject, body, kind, id)` keeps working unchanged (with the address now checked).
 
-## Not yet (phase 2, V426)
+## Campaigns (V426)
 
-Campaigns (the NEW PORTAL MIGRATION message to everyone brought over, targeted messages and announcements by faculty,
-department, programme, level, session or office) with a recipient preview, a test send and a batched send through the job
-queue; notification preferences for optional messages; the migration and biodata compliance dashboard, lists and report
-on `people.biodata_statuses`.
+A message to many, decided by an office, on **Campaigns & announcements** (`/notices/campaigns`): the NEW PORTAL MIGRATION
+welcome to everyone brought over, an announcement to a faculty, a department, a programme, a level, a session, the staff,
+the lecturers or the applicants. Nobody is typed in: `platform.campaign_recipients` reads the students from the register
+(`people.student` with `people.student_reach`), the staff from `iam.person` with an active office, the applicants from
+`admissions.application` with their account, by the filters the office set (`platform.notice_campaign.audience`:
+session, faculty, department, programme, level, entry mode, status, office, "came over from the old portal", "never
+signed in").
+
+| Step | Function | What happens |
+|---|---|---|
+| Write | `platform.campaign_save` | The template, the audience, the channels, the office's own words for an announcement (`[TITLE]`, `[MESSAGE]`, `[SMS_MESSAGE]`, `[SIGNATURE]`). ICT, the administrators, the Registry, Student Affairs and the Academic Office address anyone; a Dean, a faculty officer or a Head only the students of their own faculty or department (`CAMPAIGN_SCOPE`). |
+| Preview | `platform.campaign_preview` | By kind: how many, how many with a good, bad or missing e-mail and phone, how many this campaign already reached. |
+| Test | `platform.campaign_test` | The template to one address, about nobody. |
+| Send | `platform.campaign_send` | A `CAMPAIGN` job on `platform.notice_job`; the first batch goes in the office's own request, the scheduler drains the rest (students, then staff, then applicants, the kind and cursor kept on the job). Each person is reached once per channel: the event key is `campaign:<id>`. An empty audience is refused (`CAMPAIGN_EMPTY`); a campaign sent is not edited (`CAMPAIGN_NOT_DRAFT`). |
+| Report | `platform.campaign_report` | By channel: queued, sent, failed, bad addresses. |
+| Cancel | `platform.campaign_cancel` | A draft or a campaign still sending; the job stops at its next batch. |
+
+## Preferences (V426)
+
+`platform.notice_preference`: a student's or staff member's own switch for e-mail and SMS on **optional** messages (an
+announcement). A mandatory template (a window, a payment, a result, the biodata reminder) is never switched off;
+`platform.notify` reads `platform.channel_allowed`. The student sets theirs on the notifications page
+(`GET/PUT /api/v1/me/notifications/preferences`), a staff member on `GET/PUT /api/v1/me/notices/preferences`.
+
+## The compliance view (V426)
+
+**Biodata compliance** (`/biodata/compliance`; `GET /api/v1/biodata/compliance`, `/students`, `/duplicates`,
+`POST /refresh`): the counts (up to date, incomplete, review required, outdated; who came over and has reviewed; no e-mail,
+no phone, bad addresses; never signed in; reminded this week), the students behind each count filtered by status, faculty,
+department, programme, level, entry session, entry mode and "came over", searched by name, number, e-mail or phone, printed
+and exported; and the data-quality picture (`people.contact_quality`, `people.duplicate_contacts`: addresses missing, not
+addresses, or shared by several students). A Dean, a faculty officer or a Head reads their own faculty or department
+(`OfficeScope`).
+
+Computing every student's status takes some ten seconds on a register of 54,000, so the offices read a reading the
+scheduler takes every quarter of an hour and after each reminder run (`people.biodata_status_snapshot`,
+`people.refresh_biodata_snapshot`; its time is shown; "Take the reading now" for ICT and the Registry). A student's own
+status is always computed live, and their confirmation refreshes their row at once.
+
+## Not yet
+
+Delivery receipts from the SMS and mail providers (a message is SENT when the provider accepts it; DELIVERED/BOUNCED would
+need the providers' callbacks); reminders before a window closes (the engine can carry them; the University has not asked
+for them).

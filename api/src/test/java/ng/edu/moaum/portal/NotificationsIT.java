@@ -114,6 +114,8 @@ class NotificationsIT {
         // queued as a job, the first batch sent in the Director's own request, the audience counted
         body(it.call(ict, HttpMethod.POST, "/api/v1/portal-windows/COURSE_REGISTRATION", Map.of("session", ses, "semester", 1, "action", "CLOSE", "reason", "IT " + tag + " closed first")));
         drain();
+        // (on a database that ran this test before, the window was already closed and the closing told nobody: count from here)
+        int unreadAfterClose = ((Number) body(it.get(token, "/api/v1/me/notifications/unread")).get("unread")).intValue();
         Map<String, Object> opened = body(it.call(ict, HttpMethod.POST, "/api/v1/portal-windows/COURSE_REGISTRATION",
                 Map.of("session", ses, "semester", 1, "action", "OPEN", "closesAt", "2089-12-01T23:59:00+01:00", "reason", "IT " + tag)));
         assertThat(((Number) opened.get("told")).intValue()).isGreaterThanOrEqualTo(1);
@@ -125,22 +127,24 @@ class NotificationsIT {
         // the e-mail's subject files the SMS too; the portal notice carries its own shorter title
         assertThat(mine.stream().filter(m -> !"PORTAL".equals(m.get("channel"))).map(m -> m.get("subject"))).containsOnly("Course registration for " + ses + ", semester 1 is open");
         assertThat(mine.stream().filter(m -> "PORTAL".equals(m.get("channel"))).map(m -> m.get("subject"))).containsOnly("Course registration is open");
-        // the student's bell: two unread portal notices (the closing, the opening); the newest read, one left
+        // the student's bell: the opening is one more unread portal notice; the newest read, then all read
         Map<String, Object> bell = body(it.get(token, "/api/v1/me/notifications"));
-        assertThat(((Number) bell.get("unread")).intValue()).isEqualTo(unreadBefore + 2);
+        assertThat(((Number) bell.get("unread")).intValue()).isEqualTo(unreadAfterClose + 1);
+        assertThat(unreadAfterClose).isGreaterThanOrEqualTo(unreadBefore);
         Map<String, Object> notice = ((List<Map<String, Object>>) bell.get("notices")).get(0);
         assertThat(notice.get("subject")).isEqualTo("Course registration is open");
         assertThat(String.valueOf(notice.get("body"))).contains("Course registration for " + ses + ", semester 1 is now open");
         assertThat(notice.get("read_at")).isNull();
         Map<String, Object> read = body(it.call(token, HttpMethod.POST, "/api/v1/me/notifications/" + notice.get("id") + "/read", Map.of()));
         assertThat(read.get("read")).isEqualTo(true);
-        assertThat(((Number) body(it.get(token, "/api/v1/me/notifications/unread")).get("unread")).intValue()).isEqualTo(unreadBefore + 1);
+        assertThat(((Number) body(it.get(token, "/api/v1/me/notifications/unread")).get("unread")).intValue()).isEqualTo(unreadAfterClose);
         body(it.call(token, HttpMethod.POST, "/api/v1/me/notifications/read-all", Map.of()));
         assertThat(((Number) body(it.get(token, "/api/v1/me/notifications/unread")).get("unread")).intValue()).isEqualTo(0);
-        // closed again: a new event, told once more on every channel (the first closing's three, and three)
+        // closed again: a new event, told once more on every channel — three more than before, whatever an earlier run left
+        int closesBefore = it.db(() -> jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND event_key LIKE 'window:%:CLOSE'").param("s", student).query(Integer.class).single());
         body(it.call(ict, HttpMethod.POST, "/api/v1/portal-windows/COURSE_REGISTRATION", Map.of("session", ses, "semester", 1, "action", "CLOSE", "reason", "IT " + tag)));
         drain();
-        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND event_key LIKE 'window:%:CLOSE'").param("s", student).query(Integer.class).single())).isEqualTo(6);
+        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND event_key LIKE 'window:%:CLOSE'").param("s", student).query(Integer.class).single())).isEqualTo(closesBefore + 3);
     }
 
     @SuppressWarnings("unchecked")

@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -72,6 +74,37 @@ class MeNotificationsController {
         UUID me = id(auth);
         int n = jdbc.sql("SELECT platform.mark_all_read('student', :me)").param("me", me).query(Integer.class).single();
         return Map.of("marked", n, "unread", 0);
+    }
+
+    /** V426: the student's own switches for e-mail and SMS on optional messages; mandatory ones are always sent */
+    @GetMapping("/notifications/preferences")
+    @Transactional(readOnly = true)
+    Map<String, Object> preferences(Authentication auth) {
+        return preferencesOf(id(auth));
+    }
+
+    record PreferencesIn(Boolean email, Boolean sms) {
+    }
+
+    @PutMapping("/notifications/preferences")
+    @Transactional
+    Map<String, Object> savePreferences(Authentication auth, @RequestBody PreferencesIn in) {
+        UUID me = id(auth);
+        if (in != null && in.email() != null) {
+            jdbc.sql("SELECT platform.set_preference('student', :me, 'EMAIL', :on)").param("me", me).param("on", in.email()).query().listOfRows();
+        }
+        if (in != null && in.sms() != null) {
+            jdbc.sql("SELECT platform.set_preference('student', :me, 'SMS', :on)").param("me", me).param("on", in.sms()).query().listOfRows();
+        }
+        return preferencesOf(me);
+    }
+
+    private Map<String, Object> preferencesOf(UUID me) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map<String, Object> r : jdbc.sql("SELECT channel, enabled FROM platform.preferences('student', :me)").param("me", me).query().listOfRows()) {
+            out.put(String.valueOf(r.get("channel")).toLowerCase(), r.get("enabled"));
+        }
+        return out;
     }
 
     /** where the student's biodata stands: the status, what is missing, when it last changed, when they last confirmed it */

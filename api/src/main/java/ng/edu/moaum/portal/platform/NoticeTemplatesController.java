@@ -243,6 +243,44 @@ class NoticeTemplatesController {
         return b.append('}').toString();
     }
 
+    /** a JSON object of the values given, nested maps and booleans kept as such (a campaign's audience) */
+    static String jsonObject(Map<String, Object> m) {
+        StringBuilder b = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Object> e : m.entrySet()) {
+            if (!first) {
+                b.append(',');
+            }
+            first = false;
+            b.append(quote(e.getKey())).append(':').append(jsonValue(e.getValue()));
+        }
+        return b.append('}').toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String jsonValue(Object v) {
+        if (v == null) {
+            return "null";
+        }
+        if (v instanceof Boolean || v instanceof Number) {
+            return String.valueOf(v);
+        }
+        if (v instanceof Map<?, ?> m) {
+            return jsonObject((Map<String, Object>) m);
+        }
+        if (v instanceof List<?> l) {
+            StringBuilder b = new StringBuilder("[");
+            for (int i = 0; i < l.size(); i++) {
+                if (i > 0) {
+                    b.append(',');
+                }
+                b.append(jsonValue(l.get(i)));
+            }
+            return b.append(']').toString();
+        }
+        return quote(String.valueOf(v));
+    }
+
     private static final char BACKSLASH = (char) 92;
 
     private static String quote(String s) {
