@@ -2,6 +2,7 @@ import type { Me } from "@/components/proto/Shell";
 import type { HostelDeskData } from "@/lib/hostel";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 /** The Deputy Registrar (Housing, Welfare and Passages) home: the accommodation draw at a glance —
  *  beds, allocations, reserves and the maintenance still open — from the hostel module (V038). */
@@ -23,6 +24,7 @@ export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDesk
           {c.allocated} allocated, {c.confirmed} confirmed, {c.reserves} on the reserve list. Lapse expired holds to pass beds to the next name.
         </Note>
       )}
+      <ClearanceAwaiting />
 
       <Tiles items={[
         ["Beds", Number(c.beds).toLocaleString(), null, `${c.out_of_service} out of service · ${c.free} free`],

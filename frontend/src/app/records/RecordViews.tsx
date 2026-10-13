@@ -340,10 +340,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
           rows={rows.map((r) => [
             <Tnum key="m">{str(r, "matricNo") || <span className="sub2">&mdash;</span>}</Tnum>,
             <strong key="n">{str(r, "name")}</strong>,
-            <Mark ok={str(r, "BURSARY") === "CLEARED"} key="b" />,
-            <Mark ok={str(r, "DEPARTMENT") === "CLEARED"} key="d" />,
-            <Mark ok={str(r, "LIBRARY") === "CLEARED"} key="l" />,
-            <Mark ok={str(r, "HOSTEL") === "CLEARED"} key="h" />,
+            ...(["BURSARY", "DEPARTMENT", "LIBRARY", "HOSTEL"] as const).map((u) => (str(r, u) === "NOT_APPLICABLE" ? <Dash key={u} /> : <Mark ok={str(r, u) === "CLEARED"} key={u} />)),
             r["clear"] === true ? (
               <Pil kind="ok" key="s">
                 Cleared

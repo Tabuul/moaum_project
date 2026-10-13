@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 257
+\set EXPECTED 258
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10640,6 +10640,58 @@ BEGIN
                  AND r_unknown = 'FEE_REVERSAL_UNKNOWN', false),
         format('check %s | office %s reason %s | reversed %s: confirmed %s receipt %s expired %s app fee %s journal %s reversals %s kept %s told %s | in use %s | gateway %s (%s) | unknown %s',
                pre.reversible, r_office, r_reason, rev, f_conf, f_receipt, f_expired, a_fee, j_status, j_new, kept, told, r_in_use, r_gateway, why_gw, r_unknown));
+END $$;
+
+-- ── V416. Clearance read for whole lists and the offices told what waits on them: the set-based read says what the gate
+--          says of each student (a workflow purpose and a gate purpose alike); the people who sign a stage are the unit's
+--          office within the student's department or faculty, never another department's Head; a student's upload is told
+--          to them by e-mail; a stage open past its deadline is chased once with them, and not again within the week ──
+DO $$
+DECLARE S text := '9969/9970'; who uuid := gen_random_uuid(); hod uuid := gen_random_uuid(); other_hod uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); pf uuid; v_same text; v_gate text; v_people text; v_upload int; v_first int; v_again int; v_chased int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V416', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V416', 'CHECKV416', 'Registry');
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (hod, 'CHK/V416/H1', 'CHECKV416', 'Head', 'v416.head@example.test'),
+            (other_hod, 'CHK/V416/H2', 'CHECKV416', 'Other', 'v416.other@example.test');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), hod, 'hod', 'department', 'MTC', 'CHECK V416', who, current_date),
+            (gen_random_uuid(), other_hod, 'hod', 'department', 'ASS', 'CHECK V416', who, current_date);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9969-10-01', date '9970-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/69/009969', 'MOAUM/CHK/69/416', 'CHECKV416', 'Finalist', 'F', 'C00023', 'UTME', S, 100, 400, 'ACTIVE', 'FULL_TIME', now());
+        pf := clearance.start('FINAL', st, S, 'MANUAL', NULL, who, 'registrar');
+        -- the set-based read says what the gate says, for the workflow purpose and a gate purpose alike
+        SELECT c.cleared::text || '/' || c.holding || '=' || clearance.is_clear(st, 'CONVOCATION')::text || '/' || (SELECT count(*) FROM clearance.position(st, 'CONVOCATION') WHERE state <> 'CLEARED')
+          INTO v_same FROM clearance.cleared_many('CONVOCATION', ARRAY[st]) c;
+        SELECT c.cleared::text || '=' || clearance.is_clear(st, 'TRANSCRIPT')::text INTO v_gate FROM clearance.cleared_many('TRANSCRIPT', ARRAY[st]) c;
+        -- the Department stage is signed by the Head over the student's department, not another
+        SELECT string_agg(name, ',' ORDER BY name) INTO v_people FROM clearance.office_people('DEPARTMENT', st);
+        -- a deadline on the Bursary stage, already past: the Bursary is chased once, and not again within the week
+        UPDATE clearance.workflow_stage SET deadline_days = 1 WHERE workflow = 'FINAL' AND unit = 'BURSARY';
+        UPDATE clearance.process SET started_at = now() - interval '5 days' WHERE id = pf;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (gen_random_uuid(), 'CHK/V416/B', 'CHECKV416', 'Bursar', 'v416.bursar@example.test');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        SELECT gen_random_uuid(), id, 'bursar', 'institution', NULL, 'CHECK V416', who, current_date FROM iam.person WHERE staff_number = 'CHK/V416/B';
+        v_first := clearance.chase_offices(7);
+        SELECT count(*) INTO v_chased FROM clearance.chase WHERE process_id = pf AND unit = 'BURSARY';
+        v_again := clearance.chase_offices(7);
+        -- a student's upload to the Department stage is told to the Head, by e-mail
+        PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', 'CHECK: fees settled on the old ledger', NULL, NULL, true, who, 'registrar');
+        PERFORM clearance.add_document(pf, 'DEPARTMENT', 'Project report', 'report.pdf', 'application/pdf', 1000, NULL, st, 'student');
+        SELECT count(*) INTO v_upload FROM platform.notice WHERE channel = 'EMAIL' AND recipient = 'v416.head@example.test' AND subject LIKE 'Clearance document to review:%';
+        RAISE EXCEPTION 'the V416 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V416: the set-based clearance read says what the gate says; a stage''s signers are its office within the student''s department or faculty; a student''s upload is told to them; a stage past its deadline is chased once with them, not again within the week',
+        v_same = 'false/7=false/7' AND v_gate = 'false=false'
+        AND v_people LIKE '%Head CHECKV416%' AND v_people NOT LIKE '%Other CHECKV416%'
+        AND v_first >= 1 AND v_chased = 1 AND v_again = 0
+        AND v_upload = 1,
+        format('same=%s gate=%s people=%s first=%s chased=%s again=%s upload=%s', v_same, v_gate, v_people, v_first, v_chased, v_again, v_upload));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

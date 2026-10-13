@@ -223,6 +223,29 @@ class ClearanceWorkflowIT {
         assertThat(status(agentTried)).as(String.valueOf(agentTried.getBody())).isEqualTo(403);
     }
 
+    /** V416: what waits on an office, on its own stage and within its own department */
+    private long awaiting(String tok, String workflow, String unit) {
+        List<Map<String, Object>> lines = it.getList(tok, C + "/awaiting").getBody();
+        return lines.stream().filter(x -> workflow.equals(x.get("workflow")) && unit.equals(x.get("unit")))
+                .mapToLong(x -> ((Number) x.get("awaiting")).longValue()).sum();
+    }
+
+    @Test
+    void anOfficeSeesWhatWaitsOnItsOwnStageWithinItsOwnDepartment() {
+        long own = awaiting(hodOwn, "FRESH", "DEPARTMENT");
+        long other = awaiting(hodOther, "FRESH", "DEPARTMENT");
+        UUID p = start("FRESH", hostel, "OVERRIDE", "Admitted before the portal kept admissions");
+        // waiting on the Bursary first: not yet the Department's
+        assertThat(awaiting(hodOwn, "FRESH", "DEPARTMENT")).isEqualTo(own);
+        assertThat(status(decide(registrar, p, "BURSARY", Map.of("state", "CLEARED", "item", "Paid on the old ledger", "override", true)))).isEqualTo(200);
+        // the Bursary cleared: the student now waits on the Head over their department, and on no other Head
+        assertThat(awaiting(hodOwn, "FRESH", "DEPARTMENT")).isEqualTo(own + 1);
+        assertThat(awaiting(hodOther, "FRESH", "DEPARTMENT")).isEqualTo(other);
+        // an office sees only its own stages
+        List<Map<String, Object>> library = it.getList(this.library, C + "/awaiting").getBody();
+        assertThat(library).extracting(x -> x.get("unit")).doesNotContain("DEPARTMENT", "BURSARY");
+    }
+
     @Test
     void finalClearanceIsTheConvocationGateAndNeverGraduatesAnyone() {
         UUID pf = start("FINAL", finalist, "MANUAL", null);

@@ -14,6 +14,7 @@ import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 import { semesterName } from "@/lib/student-portal";
 import type { PipelineView } from "@/lib/results";
 import { PipelinePanel } from "@/components/results/PipelinePanel";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 export interface HodHome {
   resolved: boolean;
@@ -134,6 +135,7 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
           No registrations are waiting and every course has a lecturer.
         </Note>
       )}
+      <ClearanceAwaiting />
 
       <Tiles items={[
         ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`, "/results/approvals"],

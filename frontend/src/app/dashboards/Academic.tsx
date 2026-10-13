@@ -6,6 +6,7 @@ import type { SheetListing } from "@/lib/results";
 import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 interface ApplicantsPreview { counts: { total: number; registered: number }; applicants: { jamb_reg_no: string; surname: string; other_names: string; programme: string | null; registered: boolean }[] }
 
@@ -63,6 +64,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
         <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<LinkBtn kind="primary" href="/admissions">Open admissions</LinkBtn>} />
       )}
       <StatsPanel session={session} />
+      <ClearanceAwaiting />
       <Tiles items={[
         ["Students on the register", total.toLocaleString(), null, "All levels", "/reports/students"],
         ["Registered this session", registeredCount.toLocaleString(), null, total ? `${Math.round((100 * registeredCount) / total)}% · ${session}` : session],

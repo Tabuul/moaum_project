@@ -285,6 +285,49 @@ class ClearanceDesk {
         return e;
     }
 
+    /**
+     * What waits on an office (V416): for each clearance in use and each of the office's units it has, within the faculty or
+     * department given — the students whose stage is open and undecided, those with the student to act, those past the
+     * stage's deadline, and the documents uploaded for the stage that await review.
+     */
+    List<Map<String, Object>> awaiting(List<String> units, String fac, String dept) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> w : jdbc.sql("SELECT code, label, purpose FROM clearance.workflow WHERE active ORDER BY CASE code WHEN 'FRESH' THEN 1 WHEN 'FINAL' THEN 2 ELSE 3 END")
+                .query().listOfRows()) {
+            List<Map<String, Object>> rows = jdbc.sql("""
+                    WITH pr AS (
+                        SELECT q.id, q.student_id, q.started_at FROM clearance.process q
+                          JOIN people.student s ON s.id = q.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code
+                         WHERE q.workflow = :w AND q.cancelled_at IS NULL AND q.completed_at IS NULL
+                           AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept)
+                    ),
+                    r AS (
+                        SELECT r.* FROM clearance.stage_rows(:purpose, NULL, (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM pr)) r
+                         WHERE r.unit IN (:units)
+                    )
+                    SELECT r.unit, r.label,
+                           count(*) FILTER (WHERE r.opened AND r.state IN ('PENDING', 'UNDER_REVIEW')) AS awaiting,
+                           count(*) FILTER (WHERE r.state = 'REQUIRES_ACTION') AS with_student,
+                           count(*) FILTER (WHERE r.opened AND r.state IN ('PENDING', 'UNDER_REVIEW') AND r.deadline_days IS NOT NULL
+                                              AND pr.started_at::date + r.deadline_days < current_date) AS overdue,
+                           (SELECT count(*) FROM clearance.document d JOIN pr p2 ON p2.id = d.process_id
+                             WHERE d.unit = r.unit AND d.superseded_by IS NULL AND d.state IN ('PENDING', 'UNDER_REVIEW')) AS documents
+                      FROM r JOIN pr ON pr.student_id = r.student_id
+                     GROUP BY r.unit, r.label, r.ord
+                     ORDER BY r.ord
+                    """).param("w", w.get("code")).param("purpose", w.get("purpose")).param("units", units)
+                    .param("fac", fac, Types.VARCHAR).param("dept", dept, Types.VARCHAR).query().listOfRows();
+            for (Map<String, Object> r : rows) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("workflow", w.get("code"));
+                one.put("workflow_label", w.get("label"));
+                one.putAll(r);
+                out.add(one);
+            }
+        }
+        return out;
+    }
+
     /** a student by id, matric, admission or JAMB number */
     Optional<UUID> studentBy(String key) {
         if (key == null || key.isBlank()) return Optional.empty();

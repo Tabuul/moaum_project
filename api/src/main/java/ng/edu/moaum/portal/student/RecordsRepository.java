@@ -192,29 +192,32 @@ class RecordsRepository {
                 """ + OFFERING_WHERE, scope);
     }
 
-    /** Who is held for convocation, and by which unit. */
+    /**
+     * Who is held for convocation, and by which unit — every unit's word on the students in scope read in one pass
+     * (V416: clearance.unit_states, not a workflow per row); a stage that does not apply to a student reads NOT_APPLICABLE
+     * and holds nobody.
+     */
     List<Map<String, Object>> clearance(Scope scope) {
         return rows("""
-                SELECT s.id::text AS "id", s.matric_no AS "matricNo",
-                       s.surname || ', ' || s.other_names AS "name", s.current_level AS "level",
-                       cl.bursary AS "BURSARY", cl.department AS "DEPARTMENT", cl.faculty AS "FACULTY",
-                       cl.library AS "LIBRARY", cl.health AS "HEALTH", cl.hostel AS "HOSTEL",
-                       cl.works AS "WORKS", cl.alumni AS "ALUMNI", cl.clear AS "clear"
-                  FROM people.student s
-                  JOIN ref.programme p ON p.code = s.programme_code
-                  JOIN ref.department d ON d.code = p.dept_code
-                  LEFT JOIN LATERAL (
-                        SELECT max(state) FILTER (WHERE unit = 'BURSARY') AS bursary,
-                               max(state) FILTER (WHERE unit = 'DEPARTMENT') AS department,
-                               max(state) FILTER (WHERE unit = 'FACULTY') AS faculty,
-                               max(state) FILTER (WHERE unit = 'LIBRARY') AS library,
-                               max(state) FILTER (WHERE unit = 'HEALTH') AS health,
-                               max(state) FILTER (WHERE unit = 'HOSTEL') AS hostel,
-                               max(state) FILTER (WHERE unit = 'WORKS') AS works,
-                               max(state) FILTER (WHERE unit = 'ALUMNI') AS alumni,
-                               bool_and(state = 'CLEARED') AS clear
-                          FROM clearance.position(s.id, 'CONVOCATION')) cl ON true
-                """ + STUDENT_WHERE + " ORDER BY s.surname, s.other_names", scope);
+                WITH st AS (
+                    SELECT s.id, s.matric_no, s.surname, s.other_names, s.current_level
+                      FROM people.student s
+                      JOIN ref.programme p ON p.code = s.programme_code
+                      JOIN ref.department d ON d.code = p.dept_code
+                """ + STUDENT_WHERE + """
+                ),
+                u AS (SELECT * FROM clearance.unit_states('CONVOCATION', (SELECT coalesce(array_agg(id), '{}'::uuid[]) FROM st)))
+                SELECT st.id::text AS "id", st.matric_no AS "matricNo",
+                       st.surname || ', ' || st.other_names AS "name", st.current_level AS "level",
+                       max(u.state) FILTER (WHERE u.unit = 'BURSARY') AS "BURSARY", max(u.state) FILTER (WHERE u.unit = 'DEPARTMENT') AS "DEPARTMENT",
+                       max(u.state) FILTER (WHERE u.unit = 'FACULTY') AS "FACULTY", max(u.state) FILTER (WHERE u.unit = 'LIBRARY') AS "LIBRARY",
+                       max(u.state) FILTER (WHERE u.unit = 'HEALTH') AS "HEALTH", max(u.state) FILTER (WHERE u.unit = 'HOSTEL') AS "HOSTEL",
+                       max(u.state) FILTER (WHERE u.unit = 'WORKS') AS "WORKS", max(u.state) FILTER (WHERE u.unit = 'ALUMNI') AS "ALUMNI",
+                       coalesce(bool_and(NOT u.holds), true) AS "clear"
+                  FROM st LEFT JOIN u ON u.student_id = st.id
+                 GROUP BY st.id, st.matric_no, st.surname, st.other_names, st.current_level
+                 ORDER BY st.surname, st.other_names
+                """, scope);
     }
 
     private List<Map<String, Object>> rows(String sql, Scope scope) {

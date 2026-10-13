@@ -8,6 +8,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { money } from "@/lib/format";
 import { when } from "@/lib/bursary";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 /** the CCE applicant fees as the Bursary's dashboard reads them (V414): the CCE session's fees and whether CCE is in use */
 interface CceFeesRead {
@@ -53,6 +54,7 @@ export async function BursarDashboard({ session }: { session: string }) {
       )}
       <StatsPanel session={session} />
       <FinancePanel />
+      <ClearanceAwaiting />
       <Tiles items={[
         ["Collected this session", money(Number(t.fees_collected)), "var(--green-ink)", `School fees, ${v.data.session}`],
         ["Collected today", money(Number(t.today)), null, `${t.today_count} confirmation${Number(t.today_count) === 1 ? "" : "s"}`],

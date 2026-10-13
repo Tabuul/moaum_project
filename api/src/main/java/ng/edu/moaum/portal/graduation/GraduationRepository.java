@@ -77,19 +77,24 @@ class GraduationRepository {
     }
 
     List<Graduand> graduands(String session, String fac, String dept, String prog) {
+        // V416: the convocation clearance of the whole list in one pass (clearance.cleared_many), not a workflow per row
         return jdbc.sql("""
-                SELECT g.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names,
-                       p.name AS programme_name, g.cgpa, g.unmet, g.senate_state,
-                       CASE WHEN g.cgpa IS NULL THEN NULL ELSE policy.class_of(g.cgpa) END AS class_of_degree,
-                       clearance.is_clear(g.student_id, 'CONVOCATION') AS cleared
-                  FROM records.graduand g
-                  JOIN people.student s ON s.id = g.student_id
-                  JOIN ref.programme p ON p.code = s.programme_code
-                 WHERE g.session = :s
-                   AND (:fac::text IS NULL OR p.faculty_code = :fac)
-                   AND (:dept::text IS NULL OR p.dept_code = :dept)
-                   AND (:prog::text IS NULL OR p.code = :prog)
-                 ORDER BY s.surname, s.other_names
+                WITH gl AS (
+                    SELECT g.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names,
+                           p.name AS programme_name, g.cgpa, g.unmet, g.senate_state,
+                           CASE WHEN g.cgpa IS NULL THEN NULL ELSE policy.class_of(g.cgpa) END AS class_of_degree
+                      FROM records.graduand g
+                      JOIN people.student s ON s.id = g.student_id
+                      JOIN ref.programme p ON p.code = s.programme_code
+                     WHERE g.session = :s
+                       AND (:fac::text IS NULL OR p.faculty_code = :fac)
+                       AND (:dept::text IS NULL OR p.dept_code = :dept)
+                       AND (:prog::text IS NULL OR p.code = :prog)
+                ),
+                cl AS (SELECT * FROM clearance.cleared_many('CONVOCATION', (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM gl)))
+                SELECT gl.*, coalesce(cl.cleared, false) AS cleared
+                  FROM gl LEFT JOIN cl ON cl.student_id = gl.student_id
+                 ORDER BY gl.surname, gl.other_names
                 """).param("s", session).param("fac", fac).param("dept", dept).param("prog", prog)
                 .query(Graduand.class).list();
     }

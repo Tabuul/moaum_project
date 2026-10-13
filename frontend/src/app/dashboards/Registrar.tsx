@@ -9,6 +9,7 @@ import type { PersonRow } from "@/app/people/People";
 import { LinkBtn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/lib/format";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 /** rRegistrar — proto/part17.html, with the register's own figures. */
 export async function RegistrarDashboard({ session }: { session: string }) {
@@ -39,6 +40,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
       </Note>
       <StatsPanel session={session} />
       <FinancePanel />
+      <ClearanceAwaiting />
       <Tiles items={[
         ["Students on the register", students.ok ? students.data.total.toLocaleString() : "—", null, "All levels and modes", "/reports/students"],
         ["Staff on the register", staff.length.toLocaleString(), null, `${staff.filter((p) => p.username).length} with an account`, "/reports/staff"],

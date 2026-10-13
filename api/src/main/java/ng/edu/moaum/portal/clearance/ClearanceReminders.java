@@ -17,7 +17,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Each morning (V415): a student whose clearance still has offices outstanding is reminded — once per process in the
  * workflow's interval (clearance.workflow.reminder_days; none at 0), never in the clearance's first interval — so nobody
- * is told the same thing twice in a week. clearance.reminder keeps what was sent.
+ * is told the same thing twice in a week. clearance.reminder keeps what was sent. V416: and a stage open past its deadline is
+ * chased with the people who sign it, once a week at most (clearance.chase).
  */
 @Component
 class ClearanceReminders {
@@ -45,6 +46,10 @@ class ClearanceReminders {
             Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "registrar", "clearance reminders", null, null),
                     () -> tx.execute(status -> jdbc.sql("SELECT clearance.remind(2000)").query(Integer.class).single()));
             if (n != null && n > 0) LOG.info("clearance reminders: {} student(s) reminded", n);
+            // V416: a stage open past its deadline, chased with the people who sign it (one e-mail each, not again within a week)
+            Integer told = AuditContextHolder.with(new AuditContext(NOBODY, "registrar", "clearance stages past their deadline", null, null),
+                    () -> tx.execute(status -> jdbc.sql("SELECT clearance.chase_offices(7)").query(Integer.class).single()));
+            if (told != null && told > 0) LOG.info("clearance chase: {} officer(s) told of stages past their deadline", told);
             return n == null ? 0 : n;
         } catch (RuntimeException e) {
             LOG.warn("clearance reminders failed: {}", e.getMessage());

@@ -2,6 +2,7 @@ import type { Me } from "@/components/proto/Shell";
 import type { ClinicDesk } from "@/lib/health";
 import { LinkBtn, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 const at = (iso: string) => { try { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
 const dayAt = (iso: string) => { try { return new Date(iso).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
@@ -16,6 +17,7 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
   const concluded = desk?.concluded ?? [];
   return (
     <>
+      <ClearanceAwaiting />
 
 
       <Tiles items={[

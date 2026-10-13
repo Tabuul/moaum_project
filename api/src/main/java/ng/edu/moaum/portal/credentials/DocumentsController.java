@@ -244,13 +244,21 @@ class DocumentsController {
         out.put("policies", jdbc.sql("SELECT * FROM credentials.document_policy ORDER BY kind").query().listOfRows());
         out.put("flagged", jdbc.sql("SELECT * FROM credentials.document_rows() WHERE flagged_at IS NOT NULL AND status = 'ACTIVE' ORDER BY flagged_at DESC LIMIT 100").query().listOfRows());
         out.put("suspected", jdbc.sql("SELECT * FROM credentials.suspected_forgeries()").query().listOfRows());
+        // V416: the list's convocation clearance in one pass (clearance.cleared_many), not a workflow per row
         out.put("awaitingCertificate", jdbc.sql("""
-                SELECT s.id AS student_id, s.surname || ', ' || s.other_names AS student_name, coalesce(s.matric_no, s.admission_no) AS student_number, g.session, g.award, g.cgpa, coalesce(policy.class_of(g.cgpa), 'Pass') AS class_of_degree,
-                       clearance.is_clear(s.id, 'CONVOCATION') AS cleared, p.name AS programme
-                  FROM records.graduand g JOIN people.student s ON s.id = g.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code
-                 WHERE g.senate_state = 'APPROVED' AND s.status = 'GRADUATED'
-                   AND NOT EXISTS (SELECT 1 FROM credentials.issued x WHERE x.student_id = g.student_id AND x.kind = 'DEGREE_CERTIFICATE' AND credentials.document_status(x.id) = 'ACTIVE')
-                 ORDER BY s.surname, s.other_names LIMIT 500
+                WITH aw AS (
+                    SELECT s.id AS student_id, s.surname || ', ' || s.other_names AS student_name, coalesce(s.matric_no, s.admission_no) AS student_number, g.session, g.award, g.cgpa, coalesce(policy.class_of(g.cgpa), 'Pass') AS class_of_degree,
+                           p.name AS programme, s.surname, s.other_names
+                      FROM records.graduand g JOIN people.student s ON s.id = g.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code
+                     WHERE g.senate_state = 'APPROVED' AND s.status = 'GRADUATED'
+                       AND NOT EXISTS (SELECT 1 FROM credentials.issued x WHERE x.student_id = g.student_id AND x.kind = 'DEGREE_CERTIFICATE' AND credentials.document_status(x.id) = 'ACTIVE')
+                     ORDER BY s.surname, s.other_names LIMIT 500
+                ),
+                cl AS (SELECT * FROM clearance.cleared_many('CONVOCATION', (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM aw)))
+                SELECT aw.student_id, aw.student_name, aw.student_number, aw.session, aw.award, aw.cgpa, aw.class_of_degree,
+                       coalesce(cl.cleared, false) AS cleared, aw.programme
+                  FROM aw LEFT JOIN cl ON cl.student_id = aw.student_id
+                 ORDER BY aw.surname, aw.other_names
                 """).query().listOfRows());
         return out;
     }

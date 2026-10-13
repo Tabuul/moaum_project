@@ -4,6 +4,7 @@ import type { OfficeScopeState } from "@/lib/office-scope";
 import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 export interface DeanHome {
   resolved: boolean;
@@ -46,6 +47,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", 
           Every course has a lecturer. Registration and results progress by department below.
         </Note>
       )}
+      <ClearanceAwaiting />
 
       <Tiles items={[
         [`Students in the ${scopeNoun}`, students.toLocaleString(), null, `${dept.length} department${dept.length === 1 ? "" : "s"}`],

@@ -142,6 +142,17 @@ class ClearanceDeskController {
         return out;
     }
 
+    /** V416: what waits on the acting office — its own stages, within its faculty or department — for its dashboard */
+    @GetMapping("/awaiting")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> awaiting() {
+        List<String> mine = desk.unitsOf(office());
+        if (mine.isEmpty()) return List.of();
+        OfficeScope.Bound b = scope.bound(null, null, null);
+        return desk.awaiting(mine, b.fac(), b.dept());
+    }
+
     /** the desk: a workflow's processes in a session, held to the office's bound, paged; export=true for a report (at most 20,000) */
     @GetMapping("/desk")
     @PreAuthorize(READERS)

@@ -3,6 +3,7 @@ import type { LibraryDeskData } from "@/lib/library";
 import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
+import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 
 const d0 = (iso: string | null | undefined) => { if (!iso) return "—"; try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return "—"; } };
 
@@ -26,6 +27,7 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
           Loans, returns, renewals and reservations are handled on the circulation desk.
         </Note>
       )}
+      <ClearanceAwaiting />
 
       <Tiles items={[
         ["On loan", String(t?.on_loan ?? 0), null, "Items out now", "/library/circulation"],
