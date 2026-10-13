@@ -2,9 +2,10 @@
 
 /** Financial analytics (V279): one filter bar over the one engine — date preset or range, granularity, payment types
  *  (several at once), gender, faculty, department, programme, level, session, entry type, channel, search — the
- *  figures as doors, the period before beside them, the charts, and the breakdown tables by payment type, faculty,
- *  department, programme, level, gender, entry type, session and channel, each row narrowing the filters or opening
- *  the transactions behind it. Every number is counted on the server within the acting office's scope. */
+ *  figures as doors, the period before beside them, the charts, and one revenue breakdown by programme type and
+ *  purpose, payment type, source module, responsible office, faculty, department, programme, level, gender, entry
+ *  type, session and channel, each row narrowing the filters or opening the transactions behind it. Every number is
+ *  counted on the server within the acting office's scope. */
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
@@ -19,17 +20,16 @@ import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import {
   PRESETS, analyticsHeading, bucketLabel, entryWord, finQuery, moduleWord, naira, nairaShort, presetGranularity, presetRange, sexWord,
-  type FinCategory, type FinFigures, type FinFilters, type FinSummary,
+  type FinCategory, type FinFilters, type FinSummary,
 } from "@/lib/analytics";
 import { Classification } from "./Classification";
+import { RevenueBreakdown, shareWord, type BreakRow, type BreakView } from "./RevenueBreakdown";
 
 const PALETTE = [VZ.s1, VZ.s3, VZ.s4, VZ.s2, VZ.s5, VZ.good, VZ.warn, VZ.crit, "#6b5bd6", "#2aa7b7", "#8a939e", "#c47f2a"];
 const SETTERS = new Set(["bursar", "ict", "admin", "super"]);
 /** V409: the catalogue of programme types, purposes and classification rules is the Bursary's */
 const FINANCE_SETTERS = new Set(["bursar", "admin", "super"]);
 const pct = (a: number, b: number) => (b ? `${a >= b ? "+" : ""}${Math.round(((a - b) / b) * 100)}%` : a ? "new" : "—");
-
-type BreakRow = FinFigures & { key: string; label: string; sub?: string; next: Partial<FinFilters> };
 
 export function FinancialAnalytics({ data, filters }: { data: FinSummary; filters: FinFilters }) {
   const queryNav = useQueryNav();
@@ -72,24 +72,14 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
   const txHref = (extra: Partial<FinFilters> = {}, more: Record<string, string | number | undefined> = {}) => `/finance/analytics/transactions?${finQuery({ ...f, ...extra }, more)}`;
   const toggleType = (code: string) => { const s = new Set(selected); if (s.has(code)) s.delete(code); else s.add(code); go({ types: [...s].join(",") }); };
 
-  /* the breakdown tables share one shape and one export */
-  const rows = (xs: BreakRow[]) => xs.map((r, i) => [
-    <span key="sn" className="tnum sub2">{i + 1}</span>,
-    <button key="l" type="button" className="lnk b600" style={{ background: "none", border: 0, padding: 0, font: "inherit", cursor: "pointer", textAlign: "left" }} onClick={() => go(r.next)} title={`Narrow to ${r.label}`}>{r.label}{r.sub ? <div className="sub2">{r.sub}</div> : null}</button>,
-    <span key="t" className="tnum">{vzNum(r.transactions)}</span>,
-    <span key="p" className="tnum">{vzNum(r.payers)}</span>,
-    <span key="a" className="tnum b600">{naira(r.amount)}</span>,
-    <span key="s" className="tnum sub2">{t.amount ? `${Math.round((100 * Number(r.amount)) / Number(t.amount))}%` : "—"}</span>,
-    canOpen ? <LinkBtn key="x" href={txHref(r.next)} size="sm">Transactions</LinkBtn> : <span key="x" />,
-  ]);
-  const COLS = ["S/N|num", "", "Transactions|num", "Unique payers|num", "Amount|num", "Share|num", "|num"];
+  /* every view of the breakdown shares one export */
   async function exportTable(kind: "xlsx" | "pdf", what: string, xs: BreakRow[]) {
     setBusy(what + kind);
     try {
       const serial = docSerial("FIN");
       const head = ["S/N", what, "Transactions", "Unique Paying Students", "Amount (₦)", "Share"];
-      const body = xs.map((r, i) => [i + 1, r.sub ? `${r.label} (${r.sub})` : r.label, r.transactions, r.payers, Number(r.amount), t.amount ? `${Math.round((100 * Number(r.amount)) / Number(t.amount))}%` : ""]);
-      body.push(["", "Total", t.transactions, t.payers, Number(t.amount), "100%"]);
+      const body = xs.map((r, i) => [i + 1, r.sub ? `${r.label} (${r.sub})` : r.label, r.transactions, r.payers, Number(r.amount), t.amount ? shareWord(r.amount, t.amount) : ""]);
+      body.push(["", "Total", t.transactions, t.payers, Number(t.amount), "100.0%"]);
       const title = `Revenue by ${what} — Financial Analytics`;
       if (kind === "xlsx") downloadBlob(await brandedXlsx(title, head, body, { sheetName: `By ${what}`.slice(0, 31), serial, sub: words }), `revenue-by-${what.toLowerCase().replace(/\s+/g, "-")}-${serial}.xlsx`);
       else brandedPrint(title, words, head, body, serial);
@@ -97,13 +87,6 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
     } catch (e) { notifyProblem((e as Problem) ?? { status: 0, title: "Unable to load financial statistics. Please try again." }); }
     finally { setBusy(null); }
   }
-  const table = (what: string, xs: BreakRow[], id: string) => (
-    <Panel title={`Revenue by ${what.toLowerCase()}`} right={xs.length ? <span className="row row--inline row--tight"><Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => void exportTable("xlsx", what, xs)}>Excel</Btn><Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => void exportTable("pdf", what, xs)}>PDF</Btn></span> : null} key={id}>
-      {xs.length ? <DTable pageSize={0} cols={[COLS[0], `${what}`, ...COLS.slice(2)]} rows={rows(xs)} texts={xs.map((r) => `${r.label} ${r.sub ?? ""}`)} />
-        : <PBody><div className="sub2">No payment records match the selected filters.</div></PBody>}
-    </Panel>
-  );
-
   const catRows: BreakRow[] = data.byCategory.map((x) => ({ ...x, key: x.code, label: x.label, next: { types: x.code } }));
   const facRows: BreakRow[] = data.byFaculty.map((x) => ({ ...x, key: x.faculty_code ?? "none", label: x.faculty ?? "No faculty on record", next: { fac: x.faculty_code ?? "" } }));
   const deptRows: BreakRow[] = data.byDepartment.map((x) => ({ ...x, key: x.dept_code ?? "none", label: x.department ?? "No department on record", sub: data.scope.kind === "UNIVERSITY" || data.scope.kind === "COLLEGE" || data.scope.kind === "PG_SCHOOL" ? x.faculty ?? undefined : undefined, next: { fac: x.faculty_code ?? "", dept: x.dept_code ?? "" } }));
@@ -120,6 +103,24 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
   const purposeRows: BreakRow[] = (data.byPurpose ?? []).map((x) => ({ ...x, key: String(x.purpose_code), label: x.purpose_label ?? x.purpose_code ?? "Other", next: { purpose: x.purpose_code ?? "" } }));
   const moduleRows: BreakRow[] = (data.bySourceModule ?? []).map((x) => ({ ...x, key: String(x.source_module), label: moduleWord(x.source_module), next: { module: x.source_module ?? "" } }));
   const officeRows: BreakRow[] = (data.byResponsibleOffice ?? []).map((x) => ({ ...x, key: String(x.responsible_office), label: x.responsible_office_label ?? x.responsible_office ?? "Not recorded", next: { office: x.responsible_office ?? "" } }));
+  // the breakdown's views, by group; a dimension the office's scope already fixes is not offered
+  const kind = data.scope.kind;
+  const views: BreakView[] = [
+    { id: "typepurpose", group: "Classification", label: "Type and purpose", what: "Programme type and purpose", noun: ["combination", "combinations"], rows: typePurposeRows },
+    { id: "ptype", group: "Classification", label: "Programme type", noun: ["programme type", "programme types"], rows: typeRows },
+    { id: "purpose", group: "Classification", label: "Purpose", noun: ["purpose", "purposes"], rows: purposeRows },
+    { id: "cat", group: "Classification", label: "Payment type", noun: ["payment type", "payment types"], rows: catRows },
+    { id: "module", group: "Classification", label: "Source module", noun: ["source module", "source modules"], rows: moduleRows },
+    ...(data.scope.owner ? [] : [{ id: "office", group: "Classification", label: "Responsible office", noun: ["office", "offices"], rows: officeRows } satisfies BreakView]),
+    ...(kind === "FACULTY" || kind === "DEPARTMENT" ? [] : [{ id: "fac", group: "Academic", label: kind === "COLLEGE" ? "Faculty / School" : "Faculty", noun: ["faculty", "faculties"], rows: facRows } satisfies BreakView]),
+    ...(kind === "DEPARTMENT" ? [] : [{ id: "dept", group: "Academic", label: "Department", noun: ["department", "departments"], rows: deptRows } satisfies BreakView]),
+    { id: "prog", group: "Academic", label: "Programme", noun: ["programme", "programmes"], rows: progRows },
+    { id: "level", group: "Academic", label: "Level", noun: ["level", "levels"], rows: levelRows },
+    { id: "sex", group: "Students", label: "Gender", noun: ["gender", "genders"], rows: sexRows },
+    { id: "entry", group: "Students", label: "Entry type", noun: ["entry type", "entry types"], rows: entryRows },
+    { id: "session", group: "Payment", label: "Session", noun: ["session", "sessions"], rows: sessionRows },
+    { id: "channel", group: "Payment", label: "Channel", noun: ["channel", "channels"], rows: channelRows },
+  ];
   const orgRows = data.scope.kind === "DEPARTMENT" ? progRows : data.scope.kind === "FACULTY" ? deptRows : facRows;
   const orgWord = data.scope.kind === "DEPARTMENT" ? "Programme" : data.scope.kind === "FACULTY" ? "Department" : "Faculty";
   const donut: DonutItem[] = catRows.slice(0, 12).map((r, i) => ({ l: r.label, v: Number(r.amount), c: PALETTE[i % PALETTE.length] }));
@@ -247,24 +248,8 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
         </PBody></Panel>
       </div>
 
-      {table("Programme type and purpose", typePurposeRows, "typepurpose")}
-      <div className="grid grid--2">
-        {table("Programme type", typeRows, "ptype")}
-        {table("Purpose", purposeRows, "purpose")}
-        {table("Source module", moduleRows, "module")}
-        {data.scope.owner ? null : table("Responsible office", officeRows, "office")}
-      </div>
-      {table("Payment type", catRows, "cat")}
-      {data.scope.kind === "FACULTY" || data.scope.kind === "DEPARTMENT" ? null : table("Faculty", facRows, "fac")}
-      {data.scope.kind === "DEPARTMENT" ? null : table("Department", deptRows, "dept")}
-      {table("Programme", progRows, "prog")}
-      <div className="grid grid--2">
-        {table("Level", levelRows, "level")}
-        {table("Gender", sexRows, "sex")}
-        {table("Entry type", entryRows, "entry")}
-        {table("Session", sessionRows, "session")}
-      </div>
-      {table("Channel", channelRows, "channel")}
+      <RevenueBreakdown views={views} totals={t} canOpen={canOpen} txHref={(next) => txHref(next)} go={go} busy={busy !== null}
+        onExport={(k, what, xs) => void exportTable(k, what, xs)} />
 
       <Panel title={`Revenue by ${f.granularity}`} right={data.trend.length ? <span className="sub2">{data.trend.length} period{data.trend.length === 1 ? "" : "s"}</span> : null}>
         {data.trend.length ? (

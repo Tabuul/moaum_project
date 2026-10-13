@@ -37,9 +37,12 @@ export interface DTableProps {
   noPrint?: boolean;
   /** rows a page; 0 shows every row given, for a list the server has already paged */
   pageSize?: number;
+  /** a total beneath the rows, one cell a column (null for a column with nothing to total, left out when the table
+   *  stacks): not a row of the list, so never counted, and not shown while a search narrows the rows it totals */
+  foot?: ReactNode[];
 }
 
-export function DTable({ cols, rows, texts, title, noPrint, pageSize }: DTableProps) {
+export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DTableProps) {
   const cls = cols.map((c) => c.split("|")[1] || "");
   const labels = cols.map((c) => c.split("|")[0]);
   const [q, setQ] = useState("");
@@ -139,6 +142,17 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize }: DTablePr
               </tr>
             ))}
           </tbody>
+          {foot && !q ? (
+            <tfoot>
+              <tr>
+                {foot.map((cell, ci) => cell == null ? <td key={ci} className={`${cls[ci]} tbl__nil`} /> : (
+                  <td key={ci} className={cls[ci]} data-l={labels[ci] || undefined}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
       </div>
       <div className="tfoot">

@@ -2290,3 +2290,25 @@ html[data-density="normal"] {
   .mbar__btn { width: 42px; height: 42px; }
 }
 @media print { .mbar, .menu-btn__badge { display: none !important; } }
+
+/* the revenue breakdown: one report, the dimension chosen by group, each share drawn in its row, the total beneath */
+.rbk__nav { display: flex; flex-direction: column; gap: var(--s-2); }
+.rbk__sum { color: var(--muted); font-size: var(--t-sm); }
+.rbk__sum b { color: var(--ink); }
+.rbk__lbl { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+.rbk__share { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 168px; }
+.rbk__bar { flex: 1 1 auto; max-width: 120px; height: 8px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.rbk__bar > span { display: block; height: 100%; border-radius: 4px; background: var(--chrome); }
+.rbk__share > .tnum { min-width: 50px; text-align: right; }
+/* the strip's underline sits under the tabs, not over them, so the strip never scrolls up and down */
+.rbk__nav .tabs--line .tabs__t { margin-bottom: 0; }
+/* a table's total beneath its rows (DTable foot), a card of its own when the table stacks */
+table.tbl--data tfoot td { font-weight: 700; border-top: 2px solid var(--line); background: var(--sunk); }
+table.tbl--data.tbl--stack tfoot { display: block; margin-top: 9px; }
+table.tbl--data.tbl--stack tfoot td { border-top: 0; }
+table.tbl--data.tbl--stack tfoot td.tbl__nil { display: none; }
+@media (max-width: 760px) { table.tbl--data tfoot { display: block; margin-top: 9px; } table.tbl--data tfoot td { border-top: 0; } table.tbl--data tfoot td.tbl__nil { display: none; } }
+.rbk__tabs { display: flex; flex-direction: column; gap: var(--s-2); }
+.rbk__pick { display: none; }
+@media (max-width: 720px) { .rbk__hint, .rbk__tabs { display: none; } .rbk__pick { display: block; } .rbk__share { min-width: 0; } }
+@media print { .rbk__bar { display: none; } }
