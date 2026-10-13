@@ -68,20 +68,29 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
+# The edge in front of the balancer is CloudFront (production, Oct 2026). Kept to CloudFront's origin-facing addresses, the
+# balancer answers nobody who calls it by its own name: nothing bypasses the WAF, and nothing can forge the X-Forwarded-For
+# entry the API trusts (MOAUM_CLIENT_ADDRESS=2). The managed prefix list counts as 55 rules against the group's quota of 60.
+data "aws_ec2_managed_prefix_list" "cloudfront" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
 resource "aws_security_group" "alb" {
   name   = "${local.name}-alb"
   vpc_id = aws_vpc.main.id
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    cidr_blocks     = var.alb_from_cloudfront_only ? [] : ["0.0.0.0/0"]
+    prefix_list_ids = var.alb_from_cloudfront_only ? [data.aws_ec2_managed_prefix_list.cloudfront.id] : []
   }
   ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    cidr_blocks     = var.alb_from_cloudfront_only ? [] : ["0.0.0.0/0"]
+    prefix_list_ids = var.alb_from_cloudfront_only ? [data.aws_ec2_managed_prefix_list.cloudfront.id] : []
   }
   egress {
     from_port   = 0

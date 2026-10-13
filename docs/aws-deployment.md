@@ -374,11 +374,12 @@ Troubleshooting:
   appends it, the ALB appends CloudFront's), so the API task needs
   `MOAUM_CLIENT_ADDRESS=2` (§3); without it the throttles and the sign-in records
   count CloudFront's edge address, not the person's, and one busy edge node can
-  lock every sign-in behind it. The ALB still answers anyone who calls it by its
-  own name, and such a caller can write the entry the API then trusts: restrict
+  lock every sign-in behind it. `alb_from_cloudfront_only` (default true) keeps
   the ALB security group to CloudFront's origin-facing prefix list
-  (`com.amazonaws.global.cloudfront.origin-facing`) when CloudFront comes into
-  Terraform.
+  (`com.amazonaws.global.cloudfront.origin-facing`), so nobody reaches the
+  balancer by its own name and nothing bypasses the WAF or forges the trusted
+  entry; the prefix list counts as 55 of the group's 60 rules. Set it false only
+  where no CloudFront fronts the balancer.
 - **A second NAT gateway** if an AZ outage of outbound calls (gateways, SMTP,
   SMS) is unacceptable.
 

@@ -109,7 +109,7 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
             <div className={css.fieldBlock}>
               <div className={css.labelRow}>
                 <label htmlFor="pw" className={css.label}>Password<span className={css.req} aria-hidden="true">*</span></label>
-                <Link href="/login/forgot" className={css.forgot}>First sign-in or forgot password?</Link>
+                <Link href="/login/forgot" className={css.forgot}>Forgot password?</Link>
               </div>
               <div className={css.inputBox}>
                 <Icon name="lock" className={css.inputIcon} />

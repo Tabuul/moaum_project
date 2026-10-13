@@ -237,4 +237,22 @@ public class NoticeRepository {
         // V425: an address that is not one is never tried again by a retry-all; it is corrected on the record first
         return jdbc.sql("UPDATE platform.notice SET state = 'QUEUED', attempts = 0, last_error = NULL WHERE state = 'FAILED' AND coalesce(last_error, '') NOT IN ('INVALID_EMAIL', 'INVALID_PHONE')").update();
     }
+
+    // ── V440: a person's messages, and one sent again ──
+
+    /** what the portal sent a student ('student') or a member of staff ('person'), newest first, with the provider's word */
+    public List<Map<String, Object>> messagesFor(String kind, UUID id) {
+        return jdbc.sql("SELECT * FROM platform.messages_for(:k, :id, 100)").param("k", kind).param("id", id).query().listOfRows();
+    }
+
+    public boolean isAbout(UUID notice, String kind, UUID id) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM platform.notice n WHERE n.id = :n AND n.about_kind = :k AND n.about_id = :id)")
+                .param("n", notice).param("k", kind).param("id", id).query(Boolean.class).single());
+    }
+
+    /** a failed, cancelled, bounced or undelivered e-mail or SMS queued again to the address the record holds now; the new message's id */
+    public UUID resend(UUID notice, UUID actor, String office) {
+        return jdbc.sql("SELECT platform.resend_notice(:n, :by, :office)")
+                .param("n", notice).param("by", actor, Types.OTHER).param("office", office, Types.VARCHAR).query(UUID.class).single();
+    }
 }

@@ -6,6 +6,7 @@ import type { Me as Portal } from "@/lib/student-portal";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Student360 } from "./Student360";
+import { MessagesPanel } from "@/components/MessagesPanel";
 import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
@@ -28,12 +29,19 @@ export default async function StudentPage({
     api<Portal>(`/api/v1/student/students/${id}/portal`),
   ]);
 
+  // V440: what the portal sent the student, for the offices that read the whole University's records
+  const office = me.ok ? me.data.activeOffice ?? "" : "";
+  const mayMessages = ["ict", "admin", "super", "registrar", "dregistrar", "records", "academic", "dsa"].includes(office);
+
   return (
     <Shell route="t/student" me={me.ok ? me.data : null}>
       {!record.ok ? (
         <ProblemNotice problem={record.problem} />
       ) : (
-        <Student360 record={record.data} portal={portal.ok ? portal.data : null} session={scope.session} actingOffice={me.ok ? me.data.activeOffice : null} />
+        <>
+          <Student360 record={record.data} portal={portal.ok ? portal.data : null} session={scope.session} actingOffice={me.ok ? me.data.activeOffice : null} />
+          {mayMessages ? <MessagesPanel path={`/api/v1/students/${id}/messages`} /> : null}
+        </>
       )}
     </Shell>
   );

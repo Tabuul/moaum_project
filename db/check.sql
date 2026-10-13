@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 277
+\set EXPECTED 278
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11943,6 +11943,85 @@ BEGIN
                seeded.version, seeded.status, seeded.n, seeded.p, seeded.req, r_pending, r_office, r_unpub, pub.status, pub.published, pub.effective_on, cur.version,
                v2.version, v2.status, v2.unconfirmed, r_second, r_bad, wd, need1, need2, need3, acc1, acc2, summ.accepted, v1_after.status, v1_after.archive_note,
                r_contact, c.dpo_email, c.request_days, c.updated_office, ref1, req.kind, req.days, req.filed_via, req.requester, r_limit, mine, cbt));
+END $$;
+
+-- ── V440. Applicant deadlines: before Post-UTME registration closes the applicants who have not submitted are reminded and the
+--          submitted are not; before admission status checking closes the submitted-and-unchecked are reminded and the
+--          never-submitted are not. A person's messages are read newest first; a failed message is sent again once to the
+--          address the record holds now, never a queued one nor a portal notice. The manual carries the twelve new procedures,
+--          published, and the edition has stepped ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9990/9991'; ca uuid := gen_random_uuid(); cb uuid := gen_random_uuid();
+        acc_a uuid := gen_random_uuid(); acc_b uuid := gen_random_uuid(); app_a uuid := gen_random_uuid(); app_b uuid := gen_random_uuid();
+        w_reg uuid; w_chk uuid; v_closes timestamptz; q1 int; q2 int;
+        told_a int; told_b int; subj_a text; told_b_chk int; told_a_chk int; done_b boolean;
+        st uuid := gen_random_uuid(); e_fail uuid; e_portal uuid; e_again uuid; e_queued uuid;
+        r_state text; r_channel text; r_done text; again_state text; again_to text; again_from uuid; n_msgs int; n_resent int;
+        n_manual int; ed_major int; ed_minor int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V440', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V440', 'CHECKV440', 'ICT');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9990-10-01', date '9991-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        UPDATE platform.notice_setting SET closing_reminders = true, portal_delivery = true, email_delivery = true, sms_delivery = true WHERE id;
+        -- two applicants of the session with accounts: A started and never submitted, B submitted
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state) VALUES
+            (ca, S, '9990000001AD', 'CHECKV440', 'Applicant Ada', (SELECT name FROM ref.programme WHERE code = 'C00061'), 'UTME', 100, 'PROPOSED'),
+            (cb, S, '9990000002BD', 'CHECKV440', 'Applicant Bola', (SELECT name FROM ref.programme WHERE code = 'C00061'), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+            (acc_a, S, ca, '9990000001AD', 'v440a@example.test', '08000004401', 'SET_ON_FIRST_LOGIN'),
+            (acc_b, S, cb, '9990000002BD', 'v440b@example.test', '08000004402', 'SET_ON_FIRST_LOGIN');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at) VALUES
+            (app_a, acc_a, ca, S, 'APP/90/004401', NULL), (app_b, acc_b, cb, S, 'APP/90/004402', now());
+        -- 1. Post-UTME registration closes in three days
+        v_closes := (((now() AT TIME ZONE 'Africa/Lagos')::date + 3)::timestamp + interval '12 hours') AT TIME ZONE 'Africa/Lagos';
+        INSERT INTO policy.portal_window (window_type, session, semester, opens_at, closes_at, created_office) VALUES ('POST_UTME_REGISTRATION', S, NULL, now() - interval '1 day', v_closes, 'ict') RETURNING id INTO w_reg;
+        q1 := platform.queue_closing_reminders(now());
+        FOR i IN 1..5 LOOP PERFORM platform.run_notice_job(100000); END LOOP;
+        SELECT count(*) INTO told_a FROM platform.notice n WHERE n.about_kind = 'application' AND n.about_id = app_a AND n.template_key = 'WINDOW_CLOSING:POST_UTME_REGISTRATION' AND n.event_key LIKE 'window-closing:' || w_reg || ':%:3';
+        SELECT count(*) INTO told_b FROM platform.notice n WHERE n.about_kind = 'application' AND n.about_id = app_b AND n.template_key = 'WINDOW_CLOSING:POST_UTME_REGISTRATION';
+        subj_a := (SELECT n.subject FROM platform.notice n WHERE n.about_id = app_a AND n.template_key = 'WINDOW_CLOSING:POST_UTME_REGISTRATION' AND n.channel = 'EMAIL');
+        -- 2. admission status checking closes tomorrow: B submitted and unchecked is reminded, A never submitted is not; once B checks, done
+        v_closes := (((now() AT TIME ZONE 'Africa/Lagos')::date + 1)::timestamp + interval '12 hours') AT TIME ZONE 'Africa/Lagos';
+        INSERT INTO policy.portal_window (window_type, session, semester, opens_at, closes_at, created_office) VALUES ('ADMISSION_STATUS_CHECKING', S, NULL, now() - interval '1 day', v_closes, 'ict') RETURNING id INTO w_chk;
+        q2 := platform.queue_closing_reminders(now());
+        FOR i IN 1..5 LOOP PERFORM platform.run_notice_job(100000); END LOOP;
+        SELECT count(*) INTO told_b_chk FROM platform.notice n WHERE n.about_id = app_b AND n.template_key = 'WINDOW_CLOSING:ADMISSION_STATUS_CHECKING' AND n.event_key LIKE 'window-closing:' || w_chk || ':%:1';
+        SELECT count(*) INTO told_a_chk FROM platform.notice n WHERE n.about_id = app_a AND n.template_key = 'WINDOW_CLOSING:ADMISSION_STATUS_CHECKING';
+        INSERT INTO admissions.status_check (application_id, session, result) VALUES (app_b, S, 'NOT_YET');
+        done_b := policy.applicant_window_done('ADMISSION_STATUS_CHECKING', S, app_b);
+        -- 3. a student's messages, and one sent again to the address the record holds now
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (st, 'MOAUM/ADM/90/004403', NULL, NULL, 'CHECKV440', 'Message Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        e_fail := platform.queue_notice('EMAIL', 'not an address', 'CHK V440 failed', 'body', 'student', st);
+        e_portal := platform.queue_notice('PORTAL', NULL, 'CHK V440 portal', 'body', 'student', st, 'chk-v440:portal', NULL, NULL);
+        e_queued := platform.queue_notice('SMS', '08000004403', 'CHK V440 queued', 'body', 'student', st);
+        BEGIN PERFORM platform.resend_notice(e_queued, who, 'ict'); EXCEPTION WHEN check_violation THEN r_state := SQLERRM; END;
+        BEGIN PERFORM platform.resend_notice(e_portal, who, 'ict'); EXCEPTION WHEN check_violation THEN r_channel := SQLERRM; END;
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (st, '08000004403', 'v440s@example.test');
+        e_again := platform.resend_notice(e_fail, who, 'ict');
+        SELECT n.state, n.recipient, n.resent_from INTO again_state, again_to, again_from FROM platform.notice n WHERE n.id = e_again;
+        BEGIN PERFORM platform.resend_notice(e_fail, who, 'ict'); EXCEPTION WHEN check_violation THEN r_done := SQLERRM; END;
+        SELECT count(*), count(*) FILTER (WHERE m.resent) INTO n_msgs, n_resent FROM platform.messages_for('student', st, 100) m;
+        -- 4. the manual
+        SELECT count(*) INTO n_manual FROM manual.procedure p WHERE p.state = 'PUBLISHED' AND p.seeded
+           AND p.slug IN ('notify-templates-words', 'notify-templates-test', 'notify-settings-reminders', 'notify-campaign-send', 'notify-delivery-switches', 'notify-queue-clear',
+                          'notify-receipts-door', 'biodata-compliance-read', 'biodata-staff-reach', 'quickteller-door-watch', 'quickteller-door-list', 'student-messages-resend');
+        SELECT e.major, e.minor INTO ed_major, ed_minor FROM manual.edition e;
+        RAISE EXCEPTION 'the V440 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V440: the applicants not yet submitted are reminded before registration closes and the submitted are not; the submitted-and-unchecked before status checking closes and the never-submitted not; a failed message is sent again once to the record''s address, never a queued one nor a portal notice; the manual carries the new procedures and the edition has stepped',
+        coalesce(q1 >= 1 AND told_a = 3 AND told_b = 0 AND subj_a LIKE '%closes in 3 days%'
+                 AND q2 >= 1 AND told_b_chk = 3 AND told_a_chk = 0 AND done_b
+                 AND r_state LIKE 'NOTICE_RESEND_STATE%' AND r_channel LIKE 'NOTICE_RESEND_CHANNEL%'
+                 AND e_again IS NOT NULL AND again_state = 'QUEUED' AND again_to = 'v440s@example.test' AND again_from = e_fail AND r_done LIKE 'NOTICE_RESEND_DONE%'
+                 AND n_msgs = 4 AND n_resent = 1
+                 AND n_manual = 12 AND (ed_major > 2 OR (ed_major = 2 AND ed_minor >= 1)), false),
+        format('reg q=%s told a=%s b=%s subject=%s | check q=%s told b=%s a=%s done b=%s | resend queued=%s portal=%s | again state=%s to=%s from ok=%s done=%s | messages=%s resent=%s | manual=%s edition=%s.%s',
+               q1, told_a, told_b, subj_a, q2, told_b_chk, told_a_chk, done_b, left(r_state, 20), left(r_channel, 22), again_state, again_to, again_from = e_fail, left(r_done, 19), n_msgs, n_resent, n_manual, ed_major, ed_minor));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

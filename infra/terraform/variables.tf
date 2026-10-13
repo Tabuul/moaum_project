@@ -30,6 +30,12 @@ variable "client_address" {
   default     = "2"
 }
 
+variable "alb_from_cloudfront_only" {
+  description = "Keep the load balancer's security group to CloudFront's origin-facing prefix list, so nobody reaches the balancer by its own name (the WAF and the trusted X-Forwarded-For entry cannot be bypassed). False only where no CloudFront fronts the balancer."
+  type        = bool
+  default     = true
+}
+
 variable "github_repository" {
   description = "owner/name of the GitHub repository allowed to deploy through OIDC."
   type        = string

@@ -187,6 +187,31 @@ sends is seen before it is trusted; Resend's events are read as `type` + `data.e
 (DELIVRD, UNDELIV, EXPIRED, REJECTD), a plain `{id, status, detail}` otherwise. The by-channel picture and the clearance
 report count the delivered and the bounced. Mail sent over SMTP has no receipt: bounces come back as mail and are not read.
 
+## Applicant deadlines (V440)
+
+The daily pass of V438 also queues the applicant windows: Post-UTME registration (an application started and not
+submitted), admission status checking (a submitted application whose status was never checked) and the Post-UTME CBT (a
+submitted application with no attempt). The job runner reminds the applicants of the session who have not yet done what the
+window is for (`platform.applicant_window_audience`, `policy.applicant_window_done`) through `WINDOW_CLOSING`'s variants
+`:POST_UTME_REGISTRATION`, `:ADMISSION_STATUS_CHECKING` and `:POST_UTME_CBT`, with the applicant's own tokens
+(`[APPLICATION_NUMBER]`, `[JAMB_NUMBER]`), once per deadline and day. JUPEB, postgraduate and CCE application windows are
+not reminded yet: their applications and contacts live in their own modules.
+
+## A person's messages, and one sent again (V440)
+
+Student 360 (the offices that read the whole University's records) and the staff record (the Registry, HR, Records and ICT)
+show every e-mail, SMS and portal notice the portal sent the person, newest first, with the provider's word where there is
+one (`platform.messages_for`; `GET /api/v1/students/{id}/messages`, `GET /api/v1/hr/staff/{id}/messages`). A message that
+failed, was cancelled, bounced or went undelivered is sent again once (`platform.resend_notice`; `POST …/{notice}/resend`),
+to the address the record holds now rather than the one on the message — correct the record first when the address was
+the trouble — and the new message remembers the one it repeats (`platform.notice.resent_from`). A portal notice is on the
+dashboard already and is not sent again (`NOTICE_RESEND_CHANNEL`); a queued or delivered message is not either
+(`NOTICE_RESEND_STATE`).
+
+The Quick Operational Manual (edition 2.1) carries the procedures of these screens: notification templates and settings,
+campaigns, the delivery switches and the queue cleared, the receipt door, biodata compliance and staff reach, the
+Quickteller door, and a student's messages.
+
 ## Not yet
 
 Bounces of mail sent over SMTP (they come back as mail; reading the mailbox is not built); eBulkSMS's delivery reports are

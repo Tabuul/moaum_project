@@ -1,8 +1,8 @@
 "use client";
 import { notifyProblem } from "@/components/proto/Toast";
 
-/** The first sign-in or a forgotten password, on the sign-in page's own card (proto/part3.html): the same answer whether or not the identifier
- *  names an account. V428: a person's own number is never their password, so a first password is set here, through the link. */
+/** A forgotten password, on the sign-in page's own card (proto/part3.html): the same answer whether or not the identifier names an
+ *  account. Oct 2026: the first sign-in is with the default password, changed on the first screen; this card is for a forgotten one. */
 import { useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
@@ -35,7 +35,7 @@ export function Forgot() {
   return (
     <AuthLayout eyebrow="Account recovery" lead={<>A reset link is sent to the email (and phone) on your account. It is valid for an hour and works once.</>}>
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
-          <PageHead title="First sign-in or forgotten password" description="Staff, students and applicants. Your own number is never your password: a link lets you choose one." />
+          <PageHead title="Forgotten password" description="Staff, students and applicants: a link lets you choose a new password." />
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
               Check the email and phone the University has for you. The link is valid for an hour and works once. If nothing arrives, or none is on record, <Link href="/login/help">ask ICT Support</Link>: a temporary password is given at the desk.

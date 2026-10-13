@@ -13,6 +13,7 @@ import { Btn, KvGrid, Note, Pil, Tabs } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Passport, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { MessagesPanel } from "@/components/MessagesPanel";
 import type { Problem } from "@/lib/api";
 
 interface Person {
@@ -33,8 +34,8 @@ interface Teaching { session: string; semester: number; course_code: string; tit
 interface Leave { leave_type: string; leave_name: string | null; from_date: string; to_date: string; days: number; state: string; requested_at: string; decided_at: string | null }
 interface StaffRecord { person: Person; offices: Office[]; profile: Profile | null; teaching: Teaching[]; leave: Leave[] }
 
-type Tab = "overview" | "profile" | "teaching" | "leave";
-const TABS: [Tab, string][] = [["overview", "Overview"], ["profile", "Profile"], ["teaching", "Teaching"], ["leave", "Leave"]];
+type Tab = "overview" | "profile" | "teaching" | "leave" | "messages";
+const TABS: [Tab, string][] = [["overview", "Overview"], ["profile", "Profile"], ["teaching", "Teaching"], ["leave", "Leave"], ["messages", "Messages"]];
 const words = (s: string | null | undefined) => (s ?? "").split("_").map((w) => (w ? w.charAt(0) + w.slice(1).toLowerCase() : w)).join(" ");
 const rankCase = (r: string | null) => (r ? r.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace(/\bIi\b/g, "II") : "—");
 const LISTS: [keyof Profile, string][] = [
@@ -148,6 +149,8 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
             texts={rec.leave.map((l) => `${l.leave_type} ${l.state}`)} />
         ) : <div className="sub2">No leave on record.</div>
       ) : null}
+
+      {tab === "messages" ? <MessagesPanel path={`/api/v1/hr/staff/${p.id}/messages`} embedded /> : null}
     </>
   );
 
