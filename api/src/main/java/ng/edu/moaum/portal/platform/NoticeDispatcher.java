@@ -47,6 +47,7 @@ public class NoticeDispatcher {
     private final String smsFrom;
     private final String emailFormat;
     private final String emailFrom;
+    private final int batch;
 
     private final MailService mailService;
     private final SmtpMailer smtpMailer;
@@ -62,7 +63,8 @@ public class NoticeDispatcher {
                             @Value("${moaum.notices.sms-format:generic}") String smsFormat,
                             @Value("${moaum.notices.sms-from:MOAUM}") String smsFrom,
                             @Value("${moaum.notices.email-format:generic}") String emailFormat,
-                            @Value("${moaum.notices.email-from:MOAUM Portal <portal@moaum.edu.ng>}") String emailFrom) {
+                            @Value("${moaum.notices.email-from:MOAUM Portal <portal@moaum.edu.ng>}") String emailFrom,
+                            @Value("${moaum.notices.batch:200}") int batch) {
         this.lock = lock;
         this.notices = notices;
         this.tx = new TransactionTemplate(transactions);
@@ -77,6 +79,7 @@ public class NoticeDispatcher {
         this.smsFrom = smsFrom == null ? "MOAUM" : smsFrom.trim();
         this.emailFormat = emailFormat == null ? "generic" : emailFormat.trim().toLowerCase();
         this.emailFrom = emailFrom == null ? "" : emailFrom.trim();
+        this.batch = Math.max(1, batch);
     }
 
     /** a Nigerian number in the international form Termii and its kind expect: 0803… → 234803… */
@@ -114,7 +117,8 @@ public class NoticeDispatcher {
         return !smsUrl.isEmpty();
     }
 
-    @Scheduled(fixedDelayString = "${moaum.notices.every-ms:60000}", initialDelayString = "${moaum.notices.initial-ms:15000}")
+    // V425: every half-minute, a batch of 200 (moaum.notices.batch) — a session's 50,000 students are reached within hours, not days
+    @Scheduled(fixedDelayString = "${moaum.notices.every-ms:30000}", initialDelayString = "${moaum.notices.initial-ms:15000}")
     public void dispatch() {
         lock.runExclusively("notice-dispatcher", this::dispatchNow);
     }
@@ -134,7 +138,7 @@ public class NoticeDispatcher {
             return;
         }
         saidNoProvider = false;
-        List<NoticeRepository.Queued> batch = notices.queued(50);
+        List<NoticeRepository.Queued> batch = notices.queued(this.batch);
         for (NoticeRepository.Queued n : batch) {
             boolean email = "EMAIL".equals(n.channel());
             String outcome = null;

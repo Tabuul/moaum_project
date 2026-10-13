@@ -46,8 +46,46 @@ public class NoticeRepository {
     public List<Queued> queued(int limit) {
         return jdbc.sql("""
                 SELECT id, channel, recipient, subject, body, attempts FROM platform.notice
-                 WHERE state = 'QUEUED' AND attempts < 5 ORDER BY created_at LIMIT :n
+                 WHERE state = 'QUEUED' AND attempts < 5 AND channel IN ('EMAIL', 'SMS')
+                 ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at
+                 LIMIT :n
                 """).param("n", limit).query(Queued.class).list();
+    }
+
+    /** V425: the outbox searched — by channel, state, what the notice is about, words in the recipient or subject, and a day range */
+    public List<Map<String, Object>> search(String channel, String state, String kind, String q, java.time.LocalDate from, java.time.LocalDate to, int limit) {
+        return jdbc.sql("""
+                SELECT n.id, n.channel, n.recipient, n.subject, n.about_kind, n.about_id, n.created_at, n.state, n.attempts, n.sent_at, n.last_error,
+                       n.template_key, n.priority, n.event_key,
+                       CASE n.about_kind WHEN 'student' THEN (SELECT s.surname || ', ' || s.other_names || coalesce(' (' || s.matric_no || ')', '') FROM people.student s WHERE s.id = n.about_id)
+                                         WHEN 'person' THEN (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = n.about_id) END AS about_name
+                  FROM platform.notice n
+                 WHERE (CAST(:channel AS text) IS NULL OR n.channel = CAST(:channel AS text))
+                   AND (CAST(:state AS text) IS NULL OR n.state = CAST(:state AS text))
+                   AND (CAST(:kind AS text) IS NULL OR n.about_kind = CAST(:kind AS text))
+                   AND (CAST(:q AS text) IS NULL OR n.recipient ILIKE '%' || CAST(:q AS text) || '%' OR n.subject ILIKE '%' || CAST(:q AS text) || '%'
+                        OR coalesce(n.template_key, '') ILIKE '%' || CAST(:q AS text) || '%')
+                   AND (CAST(:from AS date) IS NULL OR n.created_at >= CAST(:from AS date))
+                   AND (CAST(:to AS date) IS NULL OR n.created_at < CAST(:to AS date) + 1)
+                 ORDER BY n.created_at DESC LIMIT :n
+                """).param("channel", channel, Types.VARCHAR).param("state", state, Types.VARCHAR).param("kind", kind, Types.VARCHAR)
+                .param("q", q, Types.VARCHAR).param("from", from, Types.DATE).param("to", to, Types.DATE).param("n", limit).query().listOfRows();
+    }
+
+    /** V425: the delivery picture by channel — all time, and the last seven days */
+    public List<Map<String, Object>> byChannel() {
+        return jdbc.sql("""
+                SELECT channel,
+                       count(*) AS total,
+                       count(*) FILTER (WHERE state = 'SENT') AS sent,
+                       count(*) FILTER (WHERE state = 'QUEUED') AS queued,
+                       count(*) FILTER (WHERE state = 'FAILED') AS failed,
+                       count(*) FILTER (WHERE state = 'FAILED' AND last_error IN ('INVALID_EMAIL', 'INVALID_PHONE')) AS invalid,
+                       count(*) FILTER (WHERE created_at > now() - interval '7 days') AS week,
+                       count(*) FILTER (WHERE state = 'SENT' AND sent_at > now() - interval '7 days') AS week_sent,
+                       count(*) FILTER (WHERE state = 'FAILED' AND created_at > now() - interval '7 days') AS week_failed
+                  FROM platform.notice GROUP BY channel ORDER BY channel
+                """).query().listOfRows();
     }
 
     public void sent(UUID id, String providerRef) {
@@ -84,6 +122,7 @@ public class NoticeRepository {
     }
 
     public int requeueAllFailed() {
-        return jdbc.sql("UPDATE platform.notice SET state = 'QUEUED', attempts = 0, last_error = NULL WHERE state = 'FAILED'").update();
+        // V425: an address that is not one is never tried again by a retry-all; it is corrected on the record first
+        return jdbc.sql("UPDATE platform.notice SET state = 'QUEUED', attempts = 0, last_error = NULL WHERE state = 'FAILED' AND coalesce(last_error, '') NOT IN ('INVALID_EMAIL', 'INVALID_PHONE')").update();
     }
 }

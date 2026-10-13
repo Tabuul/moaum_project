@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** The outbox as the platform's offices see it: what waits, what went, and whether a provider is wired at all. */
@@ -25,9 +26,14 @@ class NoticesController {
         this.dispatcher = dispatcher;
     }
 
+    /** the outbox, and (V425) the history searched: channel, state, what it is about, words, a day range; the picture by channel */
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar')")
-    Map<String, Object> outbox() {
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_dregistrar')")
+    @Transactional(readOnly = true)
+    Map<String, Object> outbox(@RequestParam(required = false) String channel, @RequestParam(required = false) String state,
+                               @RequestParam(required = false) String kind, @RequestParam(required = false) String q,
+                               @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,
+                               @RequestParam(defaultValue = "100") int limit) {
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> c = notices.counts();
         out.put("queued", c.get("queued"));
@@ -36,8 +42,16 @@ class NoticesController {
         out.put("sentToday", c.get("sent_today"));
         out.put("emailProvider", dispatcher.emailConfigured());
         out.put("smsProvider", dispatcher.smsConfigured());
-        out.put("recent", notices.recent(50));
+        out.put("byChannel", notices.byChannel());
+        boolean filtered = channel != null || state != null || kind != null || (q != null && !q.isBlank()) || from != null || to != null;
+        out.put("recent", filtered
+                ? notices.search(blank(channel), blank(state), blank(kind), blank(q), from, to, Math.max(1, Math.min(limit, 1000)))
+                : notices.recent(Math.max(1, Math.min(limit, 1000))));
         return out;
+    }
+
+    private static String blank(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     private static final String OPERATORS = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')";

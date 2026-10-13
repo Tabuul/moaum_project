@@ -2,7 +2,9 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { api } from "@/lib/api";
 import { loadStudent } from "../load";
+import { NotificationsList, type PortalNotice } from "./NotificationsList";
 
 export const dynamic = "force-dynamic";
 
@@ -11,22 +13,25 @@ function when(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + ", " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-/** s/notifications — every notice the portal sent, and how it reaches you */
+/** s/notifications — the portal's own notices (V425: delivered here the moment they are queued, read marks kept), every
+ *  e-mail and SMS the portal sent, and how it reaches you */
 export default async function Page() {
-  const loaded = await loadStudent({ gateOpen: true });
+  const [loaded, portal] = await Promise.all([loadStudent({ gateOpen: true }), api<{ unread: number; notices: PortalNotice[] }>("/api/v1/me/notifications?limit=100")]);
   const s = loaded.student;
+  const sent = s ? s.notices.filter((n) => n.channel !== "PORTAL") : [];
   return (
     <Shell route="s/notifications" me={loaded.me}>
       {!s ? <ProblemNotice problem={loaded.problem} /> : (
         <>
-          <Panel title="Notifications" right="Transactional messages are always delivered — results, payments and admission decisions cannot be switched off">
-            {s.notices.length ? (
+          <NotificationsList notices={portal.ok ? portal.data.notices : []} unread={portal.ok ? portal.data.unread : 0} />
+          <Panel title="Sent to you by e-mail and SMS" right="Transactional messages are always delivered — results, payments and admission decisions cannot be switched off">
+            {sent.length ? (
               <div className="card__body" style={{ gap: 0, padding: 0 }}>
-                {s.notices.map((n, i) => (
-                  <div key={n.id} className="row row--top" style={{ padding: "var(--s-3) var(--s-4)", gap: "var(--s-3)", borderBottom: i < s.notices.length - 1 ? "1px solid var(--line-2)" : undefined }}>
+                {sent.map((n, i) => (
+                  <div key={n.id} className="row row--top" style={{ padding: "var(--s-3) var(--s-4)", gap: "var(--s-3)", borderBottom: i < sent.length - 1 ? "1px solid var(--line-2)" : undefined }}>
                     <span className="dot" style={{ background: n.state === "FAILED" ? "var(--red)" : n.state === "SENT" ? "var(--green)" : "var(--sky)", marginTop: 7 }} />
                     <div className="grow"><div className="b600">{n.subject}</div><div className="sub2" style={{ lineHeight: 1.5 }}>{n.body}</div></div>
-                    <span className="sub2" style={{ whiteSpace: "nowrap" }}>{when(n.created_at)}</span>
+                    <span className="sub2" style={{ whiteSpace: "nowrap" }}>{n.channel} · {when(n.created_at)}</span>
                   </div>
                 ))}
               </div>

@@ -76,8 +76,16 @@ class IamController {
             me.put("name", null);
             me.put("staffNumber", null);
         }
-        /* what waits in each queue, by menu item: the menu draws these, and nothing invented */
-        me.put("waiting", waiting.waiting());
+        /* what waits in each queue, by menu item: the menu draws these, and nothing invented; V425: and the bell — the
+         * signed-in person's (or student's) unread portal notices, on the item that opens them */
+        Map<String, String> queues = new LinkedHashMap<>(waiting.waiting());
+        try {
+            boolean student = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
+            waiting.unread(queues, UUID.fromString(authentication.getName()), student);
+        } catch (RuntimeException notCounted) {
+            // the bell is a convenience: a count that cannot be read never fails the sign-in
+        }
+        me.put("waiting", queues);
         if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
             me.put("sessionId", t.getToken().getClaimAsString("sid"));
         }

@@ -2,6 +2,7 @@ package ng.edu.moaum.portal.iam;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -60,6 +61,12 @@ class WaitingRepository {
         count(out, "t/approvals", row.get("approvals"));
         count(out, "t/users", row.get("users"));
         return out;
+    }
+
+    /** V425: the bell — the person's (or student's) unread portal notices, on the menu item that opens them */
+    void unread(Map<String, String> out, UUID actor, boolean student) {
+        Integer n = jdbc.sql("SELECT platform.unread_count(:k, :a)").param("k", student ? "student" : "person").param("a", actor).query(Integer.class).single();
+        count(out, student ? "s/notifications" : "r/notices", n);
     }
 
     private static void count(Map<String, String> out, String item, Object n) {

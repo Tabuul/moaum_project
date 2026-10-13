@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 262
+\set EXPECTED 263
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11105,6 +11105,88 @@ BEGIN
                  AND gst_list = '0427:GST 943:GST:' || SA || ' semester 2', false),
         format('W %s %s days amd=%s | Z %s decided=%s | told=%s logged=%s again=%s zero=%s | office=%s days=%s | absent=%s | gst=%s',
                held_w, w_days, w_amd, held_z, decided, first_told, logged, again, zero_days, r_office, r_days, absent_list, gst_list));
+END $$;
+
+-- ── V425. The central notification engine: a template rendered for one student reaches them by e-mail, SMS and on the portal
+--          with every token filled, and the same event never reaches them twice on a channel; an address that is not one is
+--          recorded FAILED and never tried; a portal notice counts unread until read; a window's message runs as a job the
+--          scheduler drains and reaches the session's students once; a student's biodata status reads INCOMPLETE, then
+--          REVIEW_REQUIRED for a record nobody wrote to or confirmed, then UP_TO_DATE once confirmed; a staff member's
+--          profile e-mail becomes the person's ──
+DO $$
+DECLARE S text := '9981/9982'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); staff uuid := gen_random_uuid();
+        n_first int; n_second int; v_subject text; v_body text; v_tokens int; v_channels text;
+        st_bad text; err_bad text; st_phone text; err_phone text; v_bad uuid; v_badphone uuid;
+        unread1 int; unread2 int;
+        job uuid; r1 record; r2 record; told_a int; told_b int; job_state text;
+        s_incomplete text; s_review text; s_done text; conf timestamptz; r_confirm text := 'accepted';
+        staff_email text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V425', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V425', 'CHECKV425', 'ICT');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9981-10-01', date '9982-08-31') ON CONFLICT (name) DO NOTHING;
+        -- two students of the session: one with every address, one with only a phone
+        -- the first came over from the old portal: a matriculation number the portal never issued (matriculation_run empty)
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/81/009425', 'MOAUM/CHK/81/9425', now(), 'CHECKV425', 'Engine Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/81/009426', NULL, NULL, 'CHECKV425B', 'Engine Bola', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (gen_random_uuid(), a, '$2a$12$CHECKV425CHECKV425CHECKV425CHECKV425CHECKV425CHECKV42', true);
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000000425', 'v425@example.test'), (b, '08000000426', NULL);
+        PERFORM platform.set_portal_url('https://portal.example.test/', who, 'ict');
+        -- 1. a template rendered for one student: three channels, every token filled, once per event
+        n_first := platform.tell_student(a, 'WINDOW_OPENED', 'COURSE_REGISTRATION',
+                       jsonb_build_object('WINDOW', 'Course registration', 'SESSION', S, 'SEMESTER', ', semester 1', 'CLOSES_NOTE', 'It closes on 1 December 9981 23:59.'), 'check:v425:open');
+        n_second := platform.tell_student(a, 'WINDOW_OPENED', 'COURSE_REGISTRATION',
+                       jsonb_build_object('WINDOW', 'Course registration', 'SESSION', S, 'SEMESTER', ', semester 1'), 'check:v425:open');
+        SELECT subject, body INTO v_subject, v_body FROM platform.notice WHERE about_id = a AND channel = 'EMAIL' AND event_key = 'check:v425:open';
+        SELECT count(*) INTO v_tokens FROM platform.notice WHERE about_id = a AND event_key = 'check:v425:open' AND (subject ~ '\[[A-Z_]+\]' OR body ~ '\[[A-Z_]+\]');
+        SELECT string_agg(channel, ',' ORDER BY channel) INTO v_channels FROM platform.notice WHERE about_id = a AND event_key = 'check:v425:open';
+        -- 2. an address that is not one is FAILED at once, never queued
+        v_bad := platform.queue_notice('EMAIL', 'nobody-at-nowhere', 'CHECK', 'CHECK', 'test', NULL, NULL, NULL, NULL);
+        v_badphone := platform.queue_notice('SMS', '12', 'CHECK', 'CHECK', 'test', NULL, NULL, NULL, NULL);
+        SELECT state, last_error INTO st_bad, err_bad FROM platform.notice WHERE id = v_bad;
+        SELECT state, last_error INTO st_phone, err_phone FROM platform.notice WHERE id = v_badphone;
+        -- 3. the portal notice counts unread until read
+        unread1 := platform.unread_count('student', a);
+        PERFORM platform.mark_all_read('student', a);
+        unread2 := platform.unread_count('student', a);
+        -- 4. a window's message as a job: the session's students reached once, the job done when nobody is further
+        PERFORM policy.window_act('COURSE_REGISTRATION', S, 1, 'OPEN', NULL, NULL, NULL, false, 'CHECK V425: window opened', who, 'ict');
+        job := platform.queue_window_job('COURSE_REGISTRATION', S, 1, 'OPEN', who, 'ict');
+        SELECT * INTO r1 FROM platform.run_notice_job(1000000);
+        SELECT * INTO r2 FROM platform.run_notice_job(1000000);
+        SELECT count(*) INTO told_a FROM platform.notice WHERE about_id = a AND event_key LIKE 'window:%:OPEN';
+        SELECT count(*) INTO told_b FROM platform.notice WHERE about_id = b AND event_key LIKE 'window:%:OPEN';
+        SELECT state INTO job_state FROM platform.notice_job WHERE id = job;
+        -- 5. the biodata status: incomplete, then (only the photograph and the contact required) complete but never written to or
+        --    confirmed = REVIEW_REQUIRED, then confirmed = UP_TO_DATE; a confirmation while incomplete is refused
+        s_incomplete := (people.biodata_status(a)).status;
+        BEGIN PERFORM people.confirm_biodata(a, a); EXCEPTION WHEN check_violation THEN r_confirm := split_part(SQLERRM, ':', 1); END;
+        UPDATE people.biodata_requirement SET required = false WHERE item NOT IN ('PASSPORT', 'mobile', 'personal_email');
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, reason) VALUES (a, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V425');
+        s_review := (people.biodata_status(a)).status;
+        conf := people.confirm_biodata(a, a);
+        s_done := (people.biodata_status(a)).status;
+        -- 6. a staff member's profile e-mail becomes the person's
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (staff, 'CHK/V425S', 'CHECKV425', 'Staff');
+        INSERT INTO hrm.staff_profile (person_id, email, phone) VALUES (staff, 'staff-v425@example.test', '08000000427');
+        SELECT email INTO staff_email FROM iam.person WHERE id = staff;
+        RAISE EXCEPTION 'the V425 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V425: a template reaches a student on every channel once per event with the tokens filled; a bad address fails at once; a portal notice counts unread until read; a window job reaches the session once; the biodata status reads INCOMPLETE, REVIEW_REQUIRED, UP_TO_DATE; a staff profile e-mail becomes the person''s',
+        coalesce(n_first = 3 AND n_second = 0 AND v_channels = 'EMAIL,PORTAL,SMS'
+                 AND v_subject = 'Course registration for ' || S || ', semester 1 is open' AND v_body LIKE 'Dear Engine,%' AND v_body LIKE '%https://portal.example.test%' AND v_tokens = 0
+                 AND st_bad = 'FAILED' AND err_bad = 'INVALID_EMAIL' AND st_phone = 'FAILED' AND err_phone = 'INVALID_PHONE'
+                 AND unread1 = 1 AND unread2 = 0
+                 AND r1.reached = 2 AND r1.done AND r2.job_id IS NULL AND told_a = 3 AND told_b = 2 AND job_state = 'DONE'
+                 AND s_incomplete = 'INCOMPLETE' AND r_confirm = 'BIODATA_INCOMPLETE' AND s_review = 'REVIEW_REQUIRED' AND conf IS NOT NULL AND s_done = 'UP_TO_DATE'
+                 AND staff_email = 'staff-v425@example.test', false),
+        format('first=%s second=%s channels=%s subject=%s tokens=%s bad=%s/%s phone=%s/%s unread=%s->%s job: reached=%s done=%s second=%s told a=%s b=%s state=%s status=%s/%s/%s confirm=%s staff=%s',
+               n_first, n_second, v_channels, v_subject, v_tokens, st_bad, err_bad, st_phone, err_phone, unread1, unread2,
+               r1.reached, r1.done, r2.job_id IS NULL, told_a, told_b, job_state, s_incomplete, s_review, s_done, r_confirm, staff_email));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

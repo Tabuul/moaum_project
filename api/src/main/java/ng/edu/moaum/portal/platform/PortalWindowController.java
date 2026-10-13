@@ -171,7 +171,7 @@ class PortalWindowController {
         if (!application && !PG_CHECKING.equals(t) && !JUPEB_CHECKING.equals(t) && !putmeCbt && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
             told = CHECKING.equals(t)
                     ? jdbc.sql("SELECT admissions.tell_status_checking(:s, :a)").param("s", body.session().trim()).param("a", body.action()).query(Integer.class).single()
-                    : tell(t, body.session().trim(), body.semester(), body.action(), after);
+                    : queueTelling(t, body.session().trim(), body.semester(), body.action(), ctx);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("windowId", id);
@@ -413,70 +413,20 @@ class PortalWindowController {
                 .param("n", limit).query().listOfRows();
     }
 
-    private static String word(String type) {
-        return switch (type) {
-            case "SCHOOL_FEES_PAYMENT" -> "School fees payment";
-            case "CCE_SCHOOL_FEES_PAYMENT" -> "CCE school fees payment";
-            case "CCE_COURSE_REGISTRATION" -> "CCE course registration";
-            case "PG_SCHOOL_FEES_PAYMENT" -> "Postgraduate school fees payment";
-            case "PG_COURSE_REGISTRATION" -> "Postgraduate course registration";
-            case CHECKING -> "Admission status checking";
-            case ApplicationWindows.POST_UTME -> "Post-UTME registration";
-            case ApplicationWindows.POSTGRADUATE -> "Postgraduate application";
-            default -> "Course registration";
-        };
-    }
-
-    private static String day(Object ts) {
-        if (ts == null) return null;
-        return jdbcDate(ts);
-    }
-
-    private static String jdbcDate(Object ts) {
-        try {
-            OffsetDateTime t = ts instanceof OffsetDateTime o ? o : OffsetDateTime.parse(String.valueOf(ts));
-            return t.atZoneSameInstant(java.time.ZoneId.of("Africa/Lagos")).format(java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy HH:mm"));
-        } catch (RuntimeException e) {
-            return String.valueOf(ts);
+    /** V425: the students of the session are told through the notification templates (WINDOW_OPENED, WINDOW_CLOSED, …) by a job
+     *  the scheduler drains in batches — e-mail, SMS and the portal, once per student and channel for this event; the number of
+     *  students the job will reach is returned (the route's students, in the session, as before) */
+    private int queueTelling(String type, String session, Integer semester, String action, AuditContext ctx) {
+        UUID job = jdbc.sql("SELECT platform.queue_window_job(:t, :s, :sem, :a, :by, :office)")
+                .param("t", type).param("s", session).param("sem", semester, Types.INTEGER).param("a", action)
+                .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR)
+                .query(UUID.class).optional().orElse(null);
+        if (job == null) {
+            return 0;
         }
-    }
-
-    /** the students of the session told, by email and SMS where the record has them; the count of those reached is returned */
-    private int tell(String type, String session, Integer semester, String action, Map<String, Object> after) {
-        String state = String.valueOf(after.get("state"));
-        String phase = String.valueOf(after.get("phase"));
-        String subject = word(type) + " " + session + (semester == null ? "" : " semester " + semester) + ": " + switch (action) {
-            case "CLOSE" -> "closed";
-            case "EXTEND" -> "extended";
-            case "REOPEN" -> "reopened";
-            default -> "open";
-        };
-        String body = switch (action) {
-            case "CLOSE" -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is closed from now. " + (after.get("reason") == null ? "" : String.valueOf(after.get("reason")) + " ")
-                    + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "A reference already generated may still be paid; no new one is generated until the window reopens." : "No registration is drafted, changed or submitted until the window reopens.");
-            default -> word(type) + " for " + session + (semester == null ? "" : ", semester " + semester) + " is " + (action.equals("EXTEND") ? "extended" : "open") + "."
-                    + (after.get("closes_at") == null ? "" : " It closes on " + day(after.get("closes_at")) + ".")
-                    + (after.get("late_until") == null ? "" : " Late " + (type.endsWith("SCHOOL_FEES_PAYMENT") ? "payment" : "registration") + " runs until " + day(after.get("late_until")) + (Boolean.TRUE.equals(after.get("late_fee_enabled")) ? ", with the late fee the Bursar states" : "") + ".")
-                    + ("LATE".equals(phase) ? " You are now in the late period." : "");
-        };
-        String sms = "MOAUM: " + subject + ". See the portal.";
-        // V380/V389: the Centre's windows reach its students, the School's its students, the University's every other student
-        String audience = type.startsWith("CCE_") ? "st.entry_mode = 'CCE'" : type.startsWith("PG_") ? "st.entry_mode = 'POSTGRADUATE'"
-                : "coalesce(st.entry_mode, '') NOT IN ('CCE', 'POSTGRADUATE')";
-        return jdbc.sql(("""
-                SELECT count(*) FROM (
-                    SELECT platform.queue_notice('EMAIL', r.email, :subj, :body || E'\\n\\nDirectorate of ICT, ' || :uni, 'student', st.id) AS n
-                      FROM people.student st CROSS JOIN LATERAL people.student_reach(st.id) r
-                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION') AND %1$s
-                       AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
-                            OR EXISTS (SELECT 1 FROM finance.payment_reference p WHERE p.student_id = st.id AND p.session = :s))
-                    UNION ALL
-                    SELECT platform.queue_notice('SMS', r.phone, :subj, :sms, 'student', st.id)
-                      FROM people.student st CROSS JOIN LATERAL people.student_reach(st.id) r
-                     WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION') AND %1$s
-                       AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
-                            OR EXISTS (SELECT 1 FROM finance.payment_reference p WHERE p.student_id = st.id AND p.session = :s))) x
-                 WHERE x.n IS NOT NULL
-                """).formatted(audience)).param("subj", subject).param("body", body).param("sms", sms).param("s", session).param("uni", Branding.name()).query(Integer.class).single();
+        // the first batch goes now, in the Director's own request, so the screen and the first students see it at once; the
+        // scheduler drains the rest within the half-minute
+        jdbc.sql("SELECT * FROM platform.run_notice_job(500)").query().listOfRows();
+        return jdbc.sql("SELECT count(*) FROM policy.window_audience(:t, :s, NULL, 1000000)").param("t", type).param("s", session).query(Integer.class).single();
     }
 }
