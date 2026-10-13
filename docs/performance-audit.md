@@ -342,3 +342,38 @@ reads.
 - Through V307 and V308 (a second fresh database): **156 of 156 properties hold**.
 - `mvnw compile` clean. CI's API job runs the `*IT` classes against a fresh
   database; the browser harnesses cover the dashboards.
+
+## N. The student profile statement timeout (13 October 2026)
+
+`/api/v1/me` (the student dashboard, profile and fees page) began failing with
+*canceling statement due to statement timeout*. Measured on a live-shaped copy
+(a `pg_dump` taken inside the API container and restored on the scratch
+cluster: 54,573 students, 538,147 registration entries, 367,445 scores on 1,042
+sheets, 314,325 payment references):
+
+- every results function the profile calls — `assessment.student_results`,
+  `student_gpa`, `student_standing`, `registration.carryovers`,
+  `records.student_graduation`, `finance.position` — finishes in under 200 ms
+  for the heaviest student on the register (70 entries, sheets of up to 11,883
+  scores);
+- the student's payment references (`StudentPortalRepository.references`,
+  also `reference`) took **70–84 s**, and 0.2 s without the V409 ledger join.
+
+The cause: `LEFT JOIN reporting.payments v ON v.payment_id = pr.id`. The ledger
+is a `UNION ALL` of four sources whose branches each join five tables and call
+`finance.categorise`, `finance.programme_type_for` and `finance.payment_owner`
+per row. PostgreSQL flattens a `UNION ALL` member only when it holds a single
+relation, so a join condition never reaches the branches: the whole ledger was
+classified on every dashboard load. A *constant* restriction is pushed into
+every branch, so the fix reads the ledger for the one student first —
+`(SELECT x.* FROM reporting.payments x WHERE x.source = 'STUDENT' AND
+x.student_id = :s) v` joined by payment — and runs in 9–170 ms, generic plan
+included (a `LATERAL` subquery is de-correlated into the same join and
+`= ANY (subselect)` is not pushed either; both were measured and rejected).
+
+Still open: the ledger itself costs about 70 s to classify in full on this data,
+so every Bursary analytics screen that reads `reporting.payments` whole
+(`FinancialAnalyticsController`) carries the same cost at scale. The remedy is a
+classification computed once per payment (a table kept by trigger on
+confirmation, or a materialized view refreshed on confirmation), which this
+change does not attempt.

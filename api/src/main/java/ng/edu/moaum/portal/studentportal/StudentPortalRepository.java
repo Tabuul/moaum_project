@@ -352,9 +352,13 @@ class StudentPortalRepository {
             v.programme_type, coalesce(pt.label, v.programme_type) AS programme_type_label, v.purpose_code, coalesce(pu.label, v.purpose_code) AS purpose_label,
                        v.source_module, v.responsible_office, coalesce(ro.label, v.responsible_office) AS responsible_office_label, v.semester AS ledger_semester
             """;
+    /* The ledger is a union of four sources that classifies every payment of the University row by row; a join condition on it
+     * cannot be pushed into those branches, so joining it on pr.id classified all 314k payments on every dashboard load (70 s on
+     * live-shaped data: the student profile's statement timeout). A constant restriction on the student IS pushed into every
+     * branch, so the ledger is read for this student only, then joined by payment. */
     private static final String LEDGER = """
 
-              LEFT JOIN reporting.payments v ON v.source = 'STUDENT' AND v.payment_id = pr.id
+              LEFT JOIN (SELECT x.* FROM reporting.payments x WHERE x.source = 'STUDENT' AND x.student_id = :s) v ON v.payment_id = pr.id
               LEFT JOIN finance.programme_type pt ON pt.code = v.programme_type
               LEFT JOIN finance.payment_purpose pu ON pu.code = v.purpose_code
               LEFT JOIN ref.office ro ON ro.code = v.responsible_office
