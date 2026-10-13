@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 
 import org.springframework.http.MediaType;
@@ -114,6 +115,14 @@ class PaymentsController {
         return ResponseEntity.ok().contentType(a.json() ? JSON_UTF8 : XML_UTF8).body(a.body());
     }
 
+    /** V433: every call counted by its address; refused when the door is kept to its list and the caller is not on it */
+    private ResponseEntity<String> door(HttpServletRequest request, String kind, java.util.function.Supplier<PayDirectMessages.Answer> work) {
+        if (!payments.paydirectDoorAdmits(request, kind)) {
+            return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN).body("MOAUM portal: this door answers only the addresses listed for it.");
+        }
+        return answer(work.get());
+    }
+
     /**
      * Quickteller asks here about the reference the payer brought (PayDirect
      * customer validation), when the payer presses Continue. The answer names the
@@ -121,8 +130,8 @@ class PaymentsController {
      * may not; nothing moves.
      */
     @PostMapping(value = "/paydirect/validate", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectValidate(@RequestBody(required = false) String body) {
-        return answer(payments.paydirectValidate(body));
+    ResponseEntity<String> paydirectValidate(HttpServletRequest request, @RequestBody(required = false) String body) {
+        return door(request, "validate", () -> payments.paydirectValidate(body));
     }
 
     /**
@@ -131,8 +140,8 @@ class PaymentsController {
      * payment is settled as every payment is, and answered 0 once received.
      */
     @PostMapping(value = "/paydirect/notify", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectNotify(@RequestBody(required = false) String body) {
-        return answer(payments.paydirectNotify(body));
+    ResponseEntity<String> paydirectNotify(HttpServletRequest request, @RequestBody(required = false) String body) {
+        return door(request, "notify", () -> payments.paydirectNotify(body));
     }
 
     /**
@@ -140,8 +149,8 @@ class PaymentsController {
      * the message (raw text/xml, posted to the stream) says which it is, by its root element, and is answered as at its own door.
      */
     @PostMapping(value = "/paydirect/interswitch", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectMessage(@RequestBody(required = false) String body) {
-        return answer(payments.paydirectMessage(body));
+    ResponseEntity<String> paydirectMessage(HttpServletRequest request, @RequestBody(required = false) String body) {
+        return door(request, "message", () -> payments.paydirectMessage(body));
     }
 
     /**
@@ -149,18 +158,18 @@ class PaymentsController {
      * the keyed address is believed by the key alone; the key is generated on the Gateways screen and shown once.
      */
     @PostMapping(value = "/paydirect/interswitch/{key}", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectMessageKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
-        return answer(payments.paydirectMessage(body, key));
+    ResponseEntity<String> paydirectMessageKeyed(HttpServletRequest request, @PathVariable String key, @RequestBody(required = false) String body) {
+        return door(request, "message", () -> payments.paydirectMessage(body, key));
     }
 
     @PostMapping(value = "/paydirect/notify/{key}", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectNotifyKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
-        return answer(payments.paydirectNotify(body, key));
+    ResponseEntity<String> paydirectNotifyKeyed(HttpServletRequest request, @PathVariable String key, @RequestBody(required = false) String body) {
+        return door(request, "notify", () -> payments.paydirectNotify(body, key));
     }
 
     @PostMapping(value = "/paydirect/validate/{key}", consumes = MediaType.ALL_VALUE)
-    ResponseEntity<String> paydirectValidateKeyed(@PathVariable String key, @RequestBody(required = false) String body) {
-        return answer(payments.paydirectValidate(body));
+    ResponseEntity<String> paydirectValidateKeyed(HttpServletRequest request, @PathVariable String key, @RequestBody(required = false) String body) {
+        return door(request, "validate", () -> payments.paydirectValidate(body));
     }
 
     /** opened in a browser, each door says what it is — so the Directorate of ICT can see it is reachable before giving it to Interswitch */
@@ -263,6 +272,37 @@ class PaymentsController {
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> showPaydirectKey() {
         return payments.showPaydirectKey();
+    }
+
+    /** V433: the door's settings — kept to its address list (never switched on blind), the silence watch, the least silence reported */
+    @org.springframework.web.bind.annotation.PutMapping("/paydirect/door")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> setPaydirectDoor(@RequestBody Map<String, Object> body) {
+        Object restrict = body.get("restrict");
+        Object watch = body.get("watch");
+        Object hours = body.get("silenceHours");
+        return payments.setPaydirectDoor(restrict instanceof Boolean r ? r : null, watch instanceof Boolean w ? w : null,
+                hours instanceof Number n ? n.intValue() : null);
+    }
+
+    /** V433: an address, or a range such as 41.223.145.0/24, the door answers while kept to its list */
+    @PostMapping("/paydirect/door/addresses")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> addPaydirectAddress(@RequestBody Map<String, String> body) {
+        return payments.addPaydirectAddress(body.get("address"), body.get("label"));
+    }
+
+    @PostMapping("/paydirect/door/addresses/remove")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> removePaydirectAddress(@RequestBody Map<String, String> body) {
+        return Map.of("removed", payments.removePaydirectAddress(body.get("address")));
+    }
+
+    /** V433: the silence watch run now by an office; the scheduler runs it every quarter of an hour */
+    @PostMapping("/paydirect/door/watch")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_bursar')")
+    Map<String, Object> watchPaydirectNow() {
+        return Map.of("told", payments.watchPaydirect(), "door", payments.paydirectDoor());
     }
 
     @PostMapping("/gateways/{gateway}/clear-key")

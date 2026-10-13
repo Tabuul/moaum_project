@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 268
+\set EXPECTED 269
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11477,6 +11477,78 @@ BEGIN
     PERFORM pg_temp.assert('V429: intake links the student already on the register under the JAMB number — never a second admission number; an untouched earlier record takes the admitted programme; one with a history on another programme is refused for the Registry; a shared JAMB number is listed',
         coalesce(got_a = sa AND n_a = 1 AND got_b = sb AND b_prog = prog AND c_refused = 'INTAKE_DUPLICATE_JAMB' AND listed = 2, false),
         format('A %s (records %s) | B %s on %s | C %s | listed %s', got_a = sa, n_a, got_b = sb, b_prog, c_refused, listed));
+END $$;
+
+-- ── V433. The PAYDirect door: every call counted by its address; kept to its list only once an address is listed and one of
+--          them has been seen at the door, the last listed address never removed while kept; the silence watch judges by the
+--          door's own rhythm (never less than the set hours), says nothing of a door with too few calls to judge by, tells the
+--          Directorate of ICT and the Bursary once per silence, and falls quiet again when a call arrives ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        adm_open boolean; r_none text; r_unseen text; r_on boolean; adm_out boolean; adm_in boolean; seen_n int; seen_refused bigint;
+        removed int; r_last text; r_bad text;
+        st_quiet text; told_quiet int; st_state text; st_n14 bigint; st_gap numeric; st_thr numeric; told int; again int;
+        told_b int; told_b_email int; subj text; st_after text; told_after int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V433', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (who, 'CHK/V433', 'CHECKV433', 'ICT', 'v433ict@example.test'),
+            (b, 'CHK/V433B', 'CHECKV433', 'Bursar', 'v433b@example.test');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), who, 'ict', 'institution', NULL, 'CHECK V433', who, current_date),
+            (gen_random_uuid(), b, 'bursar', 'institution', NULL, 'CHECK V433', who, current_date);
+        -- 1. the door: open, every call counted; kept to the list only with care
+        UPDATE finance.paydirect_setting SET restrict_addresses = false, watch_enabled = true, silence_hours = 6, last_alert_seen_at = NULL WHERE id;
+        DELETE FROM finance.paydirect_allowed_address;
+        adm_open := finance.paydirect_door_admit('41.223.145.174', 'validate');
+        BEGIN PERFORM finance.set_paydirect_door(true, NULL, NULL); EXCEPTION WHEN check_violation THEN r_none := SQLERRM; END;
+        PERFORM finance.add_paydirect_address('154.72.34.174', 'Interswitch live');
+        BEGIN PERFORM finance.set_paydirect_door(true, NULL, NULL); EXCEPTION WHEN check_violation THEN r_unseen := SQLERRM; END;
+        PERFORM finance.add_paydirect_address('41.223.145.0/24', 'Interswitch live range');
+        r_on := (SELECT x.restrict_addresses FROM finance.set_paydirect_door(true, NULL, NULL) x);
+        adm_out := finance.paydirect_door_admit('203.0.113.9', 'message');
+        adm_in := finance.paydirect_door_admit('41.223.145.174', 'notify');
+        SELECT count(*), sum(s.refused) FILTER (WHERE s.address = '203.0.113.9') INTO seen_n, seen_refused
+          FROM finance.paydirect_addresses_seen(7) s WHERE s.address IN ('41.223.145.174', '203.0.113.9');
+        removed := finance.remove_paydirect_address('154.72.34.174');
+        BEGIN PERFORM finance.remove_paydirect_address('41.223.145.0/24'); EXCEPTION WHEN check_violation THEN r_last := SQLERRM; END;
+        BEGIN PERFORM finance.add_paydirect_address('not an address', NULL); EXCEPTION WHEN check_violation THEN r_bad := SQLERRM; END;
+        -- 2. the watch: anything newer on the log moved out of the way (undone with the rest); one call ten hours ago is quiet with no rhythm to judge by
+        UPDATE finance.gateway_event SET received_at = received_at - interval '60 days' WHERE gateway = 'paydirect' AND received_at > now() - interval '10 hours';
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, signature_ok, outcome, received_at)
+        VALUES ('paydirect', 'VALIDATE', 'validate', 'CHK-V433-0', true, 'IGNORED', now() - interval '10 hours');
+        st_quiet := (SELECT x.state FROM finance.paydirect_door_status() x);
+        told_quiet := finance.watch_paydirect();
+        -- twenty-four more, two hours apart before it: a rhythm of two hours; ten hours of silence is reported, once, to both offices
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, signature_ok, outcome, received_at)
+        SELECT 'paydirect', CASE WHEN i % 2 = 0 THEN 'VALIDATE' ELSE 'WEBHOOK' END, 'validate', 'CHK-V433-' || i, true, 'IGNORED',
+               now() - interval '10 hours' - make_interval(hours => 2 * i)
+          FROM generate_series(1, 24) i;
+        SELECT x.state, x.calls_14d, x.longest_gap_hours, x.threshold_hours INTO st_state, st_n14, st_gap, st_thr FROM finance.paydirect_door_status() x;
+        told := finance.watch_paydirect();
+        again := finance.watch_paydirect();
+        SELECT count(*), count(*) FILTER (WHERE n.channel = 'EMAIL') INTO told_b, told_b_email FROM platform.notice n WHERE n.about_id = b AND n.template_key = 'PAYDIRECT_SILENT';
+        subj := (SELECT n.subject FROM platform.notice n WHERE n.about_id = b AND n.template_key = 'PAYDIRECT_SILENT' AND n.channel = 'EMAIL');
+        -- a call arrives: within its rhythm again, nothing more said
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, signature_ok, outcome) VALUES ('paydirect', 'WEBHOOK', 'notification', 'CHK-V433-NOW', true, 'IGNORED');
+        st_after := (SELECT x.state FROM finance.paydirect_door_status() x);
+        told_after := finance.watch_paydirect();
+        RAISE EXCEPTION 'the V433 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V433: the PAYDirect door counts every caller, is kept to its list only once a listed address has been seen, keeps its last listed address while kept, and refuses what is not an address; the watch judges by the door''s own rhythm, says nothing of too few calls, tells ICT and the Bursary once per silence, and falls quiet when a call arrives',
+        coalesce(adm_open AND r_none LIKE 'PAYDIRECT_NO_ADDRESS%' AND r_unseen LIKE 'PAYDIRECT_ADDRESS_UNSEEN%' AND r_on
+                 AND NOT adm_out AND adm_in AND seen_n = 2 AND seen_refused = 1
+                 AND removed = 1 AND r_last LIKE 'PAYDIRECT_LAST_ADDRESS%' AND r_bad LIKE 'PAYDIRECT_ADDRESS_INVALID%'
+                 AND st_quiet = 'QUIET' AND told_quiet = 0
+                 AND st_state = 'SILENT' AND st_n14 = 25 AND st_gap = 2.0 AND st_thr = 6.0
+                 AND told >= 4 AND again = 0 AND told_b = 2 AND told_b_email = 1 AND subj = 'The Quickteller payment door has gone quiet'
+                 AND st_after = 'OK' AND told_after = 0, false),
+        format('door open=%s none=%s unseen=%s on=%s out=%s in=%s seen=%s refused=%s removed=%s last=%s bad=%s | quiet=%s told=%s | state=%s n14=%s gap=%s thr=%s told=%s again=%s b=%s (email %s) subject=%s | after=%s told=%s',
+               adm_open, left(r_none, 24), left(r_unseen, 28), r_on, adm_out, adm_in, seen_n, seen_refused, removed, left(r_last, 24), left(r_bad, 28),
+               st_quiet, told_quiet, st_state, st_n14, st_gap, st_thr, told, again, told_b, told_b_email, subj, st_after, told_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

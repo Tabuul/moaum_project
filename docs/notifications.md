@@ -129,6 +129,25 @@ for the signed-in student or staff member (`platform.contact_prompt_for`), unles
 answer is the contact they already keep (a student's `PUT /api/v1/me/contact`, a staff member's `PUT /api/v1/staff/contact`).
 Nobody is locked out; applicants are not asked (their account holds the address they applied with).
 
+## The Quickteller door watched, and kept to Interswitch (V433)
+
+For four days in October 2026 a firewall rule in front of the portal refused Interswitch's payment notifications and nobody
+on the portal's side knew until Interswitch wrote. The PAYDirect door is now watched: every quarter of an hour
+`finance.watch_paydirect()` reads the door's own rhythm from its log (`finance.gateway_event`: the longest quiet spell among
+its calls in the fortnight before the last one) and, once per silence, tells the Directorate of ICT and the Bursary through
+the `PAYDIRECT_SILENT` template when the door has been quiet for longer than that rhythm allows — never for less than
+`finance.paydirect_setting.silence_hours` (6 by default). A door never called, or called fewer than twenty times in that
+fortnight, has no rhythm to judge by and is not reported. The message names any call the door itself refused in the quiet
+time. The Gateways screen shows the last validation, the last notification, the quiet time against the threshold, and "Check
+now"; `PUT /api/v1/payments/paydirect/door` sets the switch and the hours (ICT), `POST …/door/watch` runs it now.
+
+The validation door needs no credential, so the door may be kept to Interswitch: `finance.paydirect_allowed_address` (an
+address or a range, `POST …/door/addresses`, `…/addresses/remove`) and the switch `restrict_addresses`. Every call is counted
+by its address (`finance.paydirect_door_access`, shown as "who called in the last seven days"), and the switch is refused
+while no listed address has been seen at the door in the last seven days (`PAYDIRECT_ADDRESS_UNSEEN`), so it is never
+switched on blind; the last listed address is not removed while the door is kept (`PAYDIRECT_LAST_ADDRESS`). The address is
+the one the API reads for the caller (`ClientAddress`), so behind CloudFront the API task needs `MOAUM_CLIENT_ADDRESS=2`.
+
 ## Not yet
 
 Delivery receipts from the SMS and mail providers (a message is SENT when the provider accepts it; DELIVERED/BOUNCED would

@@ -380,4 +380,47 @@ class PaymentsRepository {
     void clearGatewaySecret(String gateway) {
         jdbc.sql("SELECT finance.clear_gateway_secret(:g)").param("g", gateway).query().singleRow();
     }
+
+    // ── V433: the PAYDirect door counted by address, kept to its list, and watched for silence ──
+
+    /** every call counted by its address; false when the door is kept to its list and the address is not on it */
+    boolean paydirectDoorAdmit(String address, String kind) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.paydirect_door_admit(:a, :k)")
+                .param("a", address, Types.VARCHAR).param("k", kind).query(Boolean.class).single());
+    }
+
+    Map<String, Object> paydirectDoorStatus() {
+        return jdbc.sql("SELECT * FROM finance.paydirect_door_status()").query().singleRow();
+    }
+
+    List<Map<String, Object>> paydirectAllowedAddresses() {
+        return jdbc.sql("""
+                SELECT CASE WHEN masklen(x.address) = CASE WHEN family(x.address) = 4 THEN 32 ELSE 128 END THEN host(x.address) ELSE x.address::text END AS address, x.label, x.added_at, p.surname || ', ' || p.given_names AS added_by_name
+                  FROM finance.paydirect_allowed_address x LEFT JOIN iam.person p ON p.id = x.added_by
+                 ORDER BY x.added_at
+                """).query().listOfRows();
+    }
+
+    List<Map<String, Object>> paydirectAddressesSeen(int days) {
+        return jdbc.sql("SELECT * FROM finance.paydirect_addresses_seen(:d)").param("d", days).query().listOfRows();
+    }
+
+    Map<String, Object> setPaydirectDoor(Boolean restrict, Boolean watch, Integer silenceHours) {
+        return jdbc.sql("SELECT restrict_addresses, watch_enabled, silence_hours, last_alert_at FROM finance.set_paydirect_door(:r, :w, :h)")
+                .param("r", restrict, Types.BOOLEAN).param("w", watch, Types.BOOLEAN).param("h", silenceHours, Types.INTEGER).query().singleRow();
+    }
+
+    Map<String, Object> addPaydirectAddress(String address, String label) {
+        return jdbc.sql("SELECT CASE WHEN masklen(address) = CASE WHEN family(address) = 4 THEN 32 ELSE 128 END THEN host(address) ELSE address::text END AS address, label, added_at FROM finance.add_paydirect_address(:a, :l)")
+                .param("a", address, Types.VARCHAR).param("l", label, Types.VARCHAR).query().singleRow();
+    }
+
+    int removePaydirectAddress(String address) {
+        return jdbc.sql("SELECT finance.remove_paydirect_address(:a)").param("a", address, Types.VARCHAR).query(Integer.class).single();
+    }
+
+    /** the messages queued to the Directorate of ICT and the Bursary; 0 while the door keeps its rhythm or the silence is told */
+    int watchPaydirect() {
+        return jdbc.sql("SELECT finance.watch_paydirect()").query(Integer.class).single();
+    }
 }

@@ -353,7 +353,9 @@ Troubleshooting:
   Allow rule on `/api/v1/payments/paydirect/` placed ahead of the managed rule
   group; `curl -X POST -H "User-Agent:" https://portal.moaum.edu.ng/api/v1/payments/paydirect/interswitch`
   answering 403 means the exception is not in place (200 with any `User-Agent`
-  means the door itself is fine).
+  means the door itself is fine). Since V433 the portal watches the door and
+  tells the Directorate of ICT and the Bursary when it falls silent; the
+  Gateways screen shows who called it.
 
 ## 9. What is deliberately deferred
 

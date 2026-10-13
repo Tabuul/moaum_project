@@ -11,11 +11,14 @@ import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -913,7 +916,60 @@ public class PaymentsService {
         m.put("singlePath", "/api/v1/payments/paydirect/interswitch");
         m.put("keyedPath", "/api/v1/payments/paydirect/interswitch/<key>");
         m.put("certification", repo.paydirectCertification());
+        m.put("door", paydirectDoor());
         return m;
+    }
+
+    // ── V433: the PAYDirect door counted by address, kept to its list, and watched for silence ──
+
+    /**
+     * Every call to the door is counted by the address the API reads for the caller (ClientAddress). False when the door is
+     * kept to its address list and the caller is not on it; a count that could not be written never shuts the door.
+     */
+    public boolean paydirectDoorAdmits(HttpServletRequest request, String kind) {
+        String address = ClientAddress.of(request);
+        try {
+            Boolean ok = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "paydirect door", null, null),
+                    () -> tx.execute(st -> repo.paydirectDoorAdmit(address, kind)));
+            return ok == null || ok;
+        } catch (RuntimeException notCounted) {
+            LOG.warn("payments: the PAYDirect door call from {} was not counted: {}", address, notCounted.getMessage());
+            return true;
+        }
+    }
+
+    /** the door's state and rhythm, the addresses it is kept to, and who called it in the last seven days */
+    public Map<String, Object> paydirectDoor() {
+        Map<String, Object> m = new LinkedHashMap<>(repo.paydirectDoorStatus());
+        m.put("addresses", repo.paydirectAllowedAddresses());
+        m.put("seen", repo.paydirectAddressesSeen(7));
+        return m;
+    }
+
+    public Map<String, Object> setPaydirectDoor(Boolean restrict, Boolean watch, Integer silenceHours) {
+        return AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.setPaydirectDoor(restrict, watch, silenceHours)));
+    }
+
+    public Map<String, Object> addPaydirectAddress(String address, String label) {
+        return AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.addPaydirectAddress(address, label)));
+    }
+
+    public int removePaydirectAddress(String address) {
+        Integer n = AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.removePaydirectAddress(address)));
+        return n == null ? 0 : n;
+    }
+
+    /** the silence watch run by an office, now */
+    public int watchPaydirect() {
+        Integer n = AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.watchPaydirect()));
+        return n == null ? 0 : n;
+    }
+
+    /** the silence watch run by the scheduler (PayDirectWatch): the Directorate of ICT and the Bursary told once per silence */
+    public int watchPaydirectUnattended() {
+        Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "PAYDirect door watch", null, null),
+                () -> tx.execute(st -> repo.watchPaydirect()));
+        return n == null ? 0 : n;
     }
 
     public Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, Boolean active, Boolean redirect, Boolean withAmount) {

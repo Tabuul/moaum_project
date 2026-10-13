@@ -16,6 +16,18 @@ export interface PaydirectTestReference {
   payer: string; number: string; confirmed_at?: string | null; receipt_no?: string | null; channel?: string | null; withdrawn_at?: string | null;
   issued_by_name?: string | null; issued_office: string; checks: number; last_check_at?: string | null; last_outcome?: string | null; link?: string;
 }
+/** V433: an address (or range) the PAYDirect door is kept to */
+export interface PaydirectDoorAddress { address: string; label: string | null; added_at: string; added_by_name: string | null }
+/** V433: an address that called the door, with how its calls fared */
+export interface PaydirectSeenAddress { address: string; calls: number; refused: number; first_at: string; last_at: string; last_kind: string | null; listed: boolean }
+/** V433: the PAYDirect door — its state against its own rhythm, who calls it, the addresses it is kept to, the silence watch */
+export interface PaydirectDoor {
+  restrict_addresses: boolean; watch_enabled: boolean; silence_hours: number; last_alert_at: string | null;
+  last_validation_at: string | null; last_notification_at: string | null; last_call_at: string | null;
+  calls_today: number; calls_7d: number; refused_7d: number; calls_14d: number;
+  longest_gap_hours: number; quiet_hours: number; threshold_hours: number; state: "NEVER" | "OK" | "QUIET" | "SILENT";
+  addresses: PaydirectDoorAddress[]; seen: PaydirectSeenAddress[];
+}
 export interface PaydirectDesk {
   billers: PaydirectBiller[]; collections: PaydirectCollection[]; validations: PaydirectValidation[]; credentials: boolean;
   /** Oct 2026: a username and password set, and a key in the notification address set */
@@ -24,6 +36,8 @@ export interface PaydirectDesk {
   certification?: PaydirectCertification;
   apiBase: string; validatePath: string; notifyPath: string; /** Oct 2026: the one address for both messages */ singlePath?: string;
   testReferences: PaydirectTestReference[];
+  /** V433: the door watched, and kept to Interswitch */
+  door?: PaydirectDoor;
 }
 export interface GatewayEvent {
   id: string; gateway: string; source: string; event: string | null; reference: string | null; gateway_ref: string | null; amount: number | null; status: string | null;
