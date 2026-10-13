@@ -155,4 +155,53 @@ class PortalAuditIT {
         assertThat(lost.get("state")).isEqualTo("LOST");
         assertThat(lost.get("student_name")).isNull();
     }
+
+    @Test
+    void aStaffCardIsIssuedFromTheRegisterAndVerifiesOnlyWithItsOwnCode() {
+        int n = new Random().nextInt(80000) + 10000;
+        String staffNo = "P439" + n;
+        UUID person = it.person("ZZSTAFFCARD-" + n, staffNo);
+        it.db(() -> jdbc.sql("UPDATE iam.person SET staff_number = :s WHERE id = :p").param("s", staffNo).param("p", person).update());
+        it.db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                VALUES (gen_random_uuid(), :p, 'lecturer', 'department', 'MTC', 'integration test', :p, current_date)
+                """).param("p", person).update());
+        String desk = it.officer("library", "institution", "MOAUM");
+        String any = ItSupport.token("lecturer");
+
+        // V439: issued on the staff number by the card desk, never by a lecturer
+        assertThat(it.call(any, HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/issue", Map.of("staffNumber", staffNo)).getStatusCode().value()).isEqualTo(403);
+        var issued = it.call(desk, HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/issue", Map.of("staffNumber", staffNo));
+        assertThat(issued.getStatusCode().value()).as(String.valueOf(issued.getBody())).isEqualTo(200);
+        String cardNo = String.valueOf(issued.getBody().get("cardNo"));
+        assertThat(cardNo).matches("MOAUM/SID/[0-9]{2}/[0-9]{5}");
+        Map<?, ?> live = it.get(desk, "/api/v1/credentials/identity-cards/staff/" + person + "/card").getBody();
+        String path = String.valueOf(live.get("verify_path"));
+        assertThat(((Map<?, ?>) live.get("face")).get("staff_number")).isEqualTo(staffNo);   // the card's face, from the register
+        // HR prints the card from the staff record too; a lecturer reads no card
+        assertThat(it.get(ItSupport.token("hrm"), "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(any, "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(403);
+        String code = path.substring(path.indexOf("&c=") + 3);
+
+        // the public check answers the card's own code, and nothing else
+        Map<?, ?> genuine = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
+        assertThat(genuine.get("genuine")).isEqualTo(true);
+        assertThat(genuine.get("staff_number")).isEqualTo(staffNo);
+        String altered = (code.charAt(0) == 'A' ? "B" : "A") + code.substring(1);
+        Map<?, ?> forged = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, altered)).getBody();
+        assertThat(forged.get("genuine")).isEqualTo(false);
+        assertThat(forged.get("staff_name")).isNull();
+        // a student card's code is not a staff card's
+        String studentKind = it.get(any, u -> u.path("/api/v1/verify/idcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody().get("genuine").toString();
+        assertThat(studentKind).isEqualTo("false");
+
+        // issued again, the first card is replaced and answers so; reported lost, the second says so
+        String second = String.valueOf(it.call(desk, HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/issue", Map.of("staffNumber", staffNo, "reason", "damaged")).getBody().get("cardNo"));
+        assertThat(second).isNotEqualTo(cardNo);
+        Map<?, ?> replaced = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
+        assertThat(replaced.get("state")).isEqualTo("REPLACED");
+        assertThat(replaced.get("staff_name")).isNull();
+        assertThat(it.call(desk, HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/" + person + "/lost", Map.of("reason", "dropped")).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(desk, "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(422);
+    }
 }

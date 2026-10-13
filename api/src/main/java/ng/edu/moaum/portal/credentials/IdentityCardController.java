@@ -31,16 +31,20 @@ class IdentityCardController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_super')";
     private static final String ISSUERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_super')";
+    /** V439: the staff cards are read by the card desk and by HR, whose staff record prints the card */
+    private static final String STAFF_READERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_hrm','OFFICE_super')";
 
     public record Issue(@Size(max = 200) String reason) {
     }
 
     private final JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.CheckCodes codes;
+    private final ng.edu.moaum.portal.shared.FileObjects files;
 
-    IdentityCardController(JdbcClient jdbc, ng.edu.moaum.portal.shared.CheckCodes codes) {
+    IdentityCardController(JdbcClient jdbc, ng.edu.moaum.portal.shared.CheckCodes codes, ng.edu.moaum.portal.shared.FileObjects files) {
         this.jdbc = jdbc;
         this.codes = codes;
+        this.files = files;
     }
 
     @GetMapping
@@ -92,5 +96,104 @@ class IdentityCardController {
         int n = jdbc.sql("SELECT credentials.report_card_lost(:s, :r)").param("s", studentId).param("r", body == null ? null : body.reason(), Types.VARCHAR)
                 .query(Integer.class).single();
         return Map.of("studentId", studentId, "ended", n);
+    }
+
+    /* ── V439 · staff identity cards: the register, issued on the staff number by the same desk ── */
+
+    /** the address a staff card's QR carries; the public page answers only with the code signed over the card number */
+    private String staffVerifyPath(String cardNo) {
+        return "/verify/staffcard?no=" + java.net.URLEncoder.encode(cardNo, java.nio.charset.StandardCharsets.UTF_8)
+                + "&c=" + codes.sign(ng.edu.moaum.portal.shared.CheckCodes.Kind.STAFF_CARD, cardNo);
+    }
+
+    private static final String STAFF_CARD_ROWS = """
+            SELECT c.id, c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason, c.issued_office,
+                   p.id AS person_id, p.staff_number, p.surname, p.given_names, d.name AS department
+              FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
+              LEFT JOIN hrm.staff_record r ON r.person_id = p.id LEFT JOIN ref.department d ON d.code = r.home_department
+            """;
+
+    @GetMapping("/staff")
+    @PreAuthorize(STAFF_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> staffDesk(@RequestParam(required = false) String q) {
+        List<Map<String, Object>> cards = jdbc.sql(STAFF_CARD_ROWS + """
+                 WHERE (:q::text IS NULL OR p.staff_number ILIKE '%' || :q || '%' OR p.surname ILIKE '%' || :q || '%' OR c.card_no ILIKE '%' || :q || '%')
+                 ORDER BY c.issued_at DESC LIMIT 300
+                """).param("q", q == null || q.isBlank() ? null : q.trim(), Types.VARCHAR).query().listOfRows().stream().map(r -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            m.put("verify_path", staffVerifyPath(String.valueOf(r.get("card_no"))));
+            return m;
+        }).toList();
+        return Map.of("cards", cards);
+    }
+
+    /** the live card of one member of staff, for the print — none until the desk issues one */
+    @GetMapping("/staff/{personId}/card")
+    @PreAuthorize(STAFF_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> staffCard(@PathVariable UUID personId) {
+        Map<String, Object> row = jdbc.sql(STAFF_CARD_ROWS + " WHERE c.person_id = :p AND c.state = 'ISSUED'").param("p", personId)
+                .query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARD_NONE", "No staff identity card is in force for this person.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card on the card desk first; the print carries its number.", "Library")));
+        Map<String, Object> m = new java.util.LinkedHashMap<>(row);
+        m.put("verify_path", staffVerifyPath(String.valueOf(row.get("card_no"))));
+        // what the card shows, and nothing more of the HR record: the desk prints from the register
+        m.put("face", jdbc.sql("""
+                SELECT pe.staff_number, pe.surname, pe.given_names, sr.present_rank AS rank, dp.name AS department, f.name AS faculty, e.category,
+                       sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo
+                  FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
+                  LEFT JOIN hrm.employment e ON e.person_id = pe.id AND e.status <> 'ENDED'
+                  LEFT JOIN ref.department dp ON dp.code = sr.home_department LEFT JOIN ref.faculty f ON f.code = dp.faculty_code
+                 WHERE pe.id = :p
+                """).param("p", personId).query().listOfRows().stream().findFirst().orElse(Map.of()));
+        m.put("offices", jdbc.sql("""
+                SELECT a.office_code, o.label AS office FROM iam.office_assignment a JOIN ref.office o ON o.code = a.office_code
+                 WHERE a.person_id = :p AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                 ORDER BY a.valid_from DESC
+                """).param("p", personId).query().listOfRows());
+        return m;
+    }
+
+    /** the photograph the card carries, for the desk's print — only of a member of staff with a card in force */
+    @GetMapping("/staff/{personId}/photo")
+    @PreAuthorize(STAFF_READERS)
+    @Transactional(readOnly = true)
+    org.springframework.http.ResponseEntity<byte[]> staffPhoto(@PathVariable UUID personId) {
+        boolean carded = jdbc.sql("SELECT EXISTS (SELECT 1 FROM credentials.staff_identity_card WHERE person_id = :p AND state = 'ISSUED')")
+                .param("p", personId).query(Boolean.class).single();
+        if (!carded) return org.springframework.http.ResponseEntity.notFound().build();
+        return jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :p").param("p", personId)
+                .query().listOfRows().stream().findFirst()
+                .map(r -> org.springframework.http.ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.parseMediaType(String.valueOf(r.get("content_type"))))
+                        .body(files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"))))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
+    }
+
+    public record StaffIssue(@jakarta.validation.constraints.NotBlank @Size(max = 40) String staffNumber, @Size(max = 200) String reason) {
+    }
+
+    @PostMapping("/staff/issue")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> issueStaff(@Valid @RequestBody StaffIssue body) {
+        UUID person = jdbc.sql("SELECT id FROM iam.person WHERE upper(staff_number) = upper(:n)").param("n", body.staffNumber().trim())
+                .query(UUID.class).optional()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARD_NO_PERSON", "No member of staff carries that staff number.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Check the number on the staff record.", "Registry")));
+        String no = jdbc.sql("SELECT credentials.issue_staff_card(:p, :r)").param("p", person).param("r", body.reason(), Types.VARCHAR)
+                .query(String.class).single();
+        return Map.of("personId", person, "cardNo", no);
+    }
+
+    @PostMapping("/staff/{personId}/lost")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> staffLost(@PathVariable UUID personId, @RequestBody(required = false) @Valid Issue body) {
+        int n = jdbc.sql("SELECT credentials.report_staff_card_lost(:p, :r)").param("p", personId).param("r", body == null ? null : body.reason(), Types.VARCHAR)
+                .query(Integer.class).single();
+        return Map.of("personId", personId, "ended", n);
     }
 }

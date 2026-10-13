@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 278
+\set EXPECTED 279
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12022,6 +12022,45 @@ BEGIN
                  AND n_manual = 12 AND (ed_major > 2 OR (ed_major = 2 AND ed_minor >= 1)), false),
         format('reg q=%s told a=%s b=%s subject=%s | check q=%s told b=%s a=%s done b=%s | resend queued=%s portal=%s | again state=%s to=%s from ok=%s done=%s | messages=%s resent=%s | manual=%s edition=%s.%s',
                q1, told_a, told_b, subj_a, q2, told_b_chk, told_a_chk, done_b, left(r_state, 20), left(r_channel, 22), again_state, again_to, again_from = e_fail, left(r_done, 19), n_msgs, n_resent, n_manual, ed_major, ed_minor));
+END $$;
+-- ── V439: the staff identity card register ──
+-- An invented member of staff with a staff number and a live office is issued a card (MOAUM/SID/YY/NNNNN, valid to 31 December three
+-- years on); issued again, the first card is replaced and one card stays live; reported lost, none is. A person with no staff number is
+-- refused (STAFF_CARD_NO_NUMBER), and so is one holding no office (STAFF_CARD_NO_OFFICE). The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); p uuid := gen_random_uuid(); q uuid := gen_random_uuid(); r uuid := gen_random_uuid();
+        a text; b text; live_after int; replaced text; valid date; lost int; live_lost int; no_number text; no_office text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'library', true);
+        PERFORM set_config('moaum.reason', 'check V439', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-ISSUER-439', 'ZZISSUER', 'Card Desk'),
+               (p, 'P4390001', 'ZZSTAFFCARD', 'Invented'), (q, NULL, 'ZZSTAFFCARD', 'No Number'), (r, 'P4390002', 'ZZSTAFFCARD', 'No Office');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), p, 'lecturer', 'department', 'MTC', 'check V439', who, current_date),
+               (gen_random_uuid(), q, 'lecturer', 'department', 'MTC', 'check V439', who, current_date);
+        a := credentials.issue_staff_card(p, NULL);
+        b := credentials.issue_staff_card(p, 'damaged');
+        SELECT count(*) INTO live_after FROM credentials.staff_identity_card WHERE person_id = p AND state = 'ISSUED';
+        SELECT state INTO replaced FROM credentials.staff_identity_card WHERE card_no = a;
+        SELECT valid_to INTO valid FROM credentials.staff_identity_card WHERE card_no = b;
+        lost := credentials.report_staff_card_lost(p, 'dropped at the gate');
+        SELECT count(*) INTO live_lost FROM credentials.staff_identity_card WHERE person_id = p AND state = 'ISSUED';
+        BEGIN PERFORM credentials.issue_staff_card(q, NULL); no_number := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN no_number := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM credentials.issue_staff_card(r, NULL); no_office := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN no_office := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V439 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V439 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V439: a staff identity card is issued on the staff number to a member of staff in office, one live at a time (the old one replaced), valid to 31 December three years on, and ended when reported lost; no staff number or no office, no card',
+        coalesce(a ~ '^MOAUM/SID/[0-9]{2}/[0-9]{5}$' AND b <> a AND live_after = 1 AND replaced = 'REPLACED'
+                 AND valid = make_date(extract(year FROM current_date)::int + 3, 12, 31) AND lost = 1 AND live_lost = 0
+                 AND no_number = 'STAFF_CARD_NO_NUMBER' AND no_office = 'STAFF_CARD_NO_OFFICE', false),
+        format('cards %s then %s, live %s, first %s, valid %s, lost %s (live after %s), no number %s, no office %s', a, b, live_after, replaced, valid, lost, live_lost, no_number, no_office));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -21,14 +21,19 @@ export interface CardDesk {
   cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null; student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; verify_path?: string }[];
   waiting: { student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; status?: string; had_one: boolean }[];
 }
+/** V439: the staff cards in the register */
+export interface StaffDesk {
+  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_reason: string | null; person_id: string; staff_number: string | null; surname: string; given_names: string; department: string | null; verify_path: string }[];
+}
 
-export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; actingOffice: string | null }) {
+export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staff: StaffDesk | null; q: string; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = ["library", "security", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [search, setSearch] = useState(q);
+  const [staffNo, setStaffNo] = useState("");
 
   async function act(key: string, path: string, body: unknown, reason: string) {
     setBusy(key);
@@ -74,6 +79,18 @@ export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; 
         ])} texts={desk.cards.map((c) => `${c.card_no} ${c.surname} ${c.other_names} ${c.matric_no}`)} />
         {!desk.cards.length ? <PBody><div className="sub2">No card has been issued yet.</div></PBody> : null}
       </Panel>
+      {staff ? (
+        <Panel title="Staff identity cards" right={may ? <form onSubmit={(e) => { e.preventDefault(); if (staffNo.trim()) void act("staff-issue", "/staff/issue", { staffNumber: staffNo.trim() }, `Staff identity card issued to ${staffNo.trim()}`); }} className="row row--inline row--tight"><input className="ws__in" value={staffNo} placeholder="Staff number" onChange={(e) => setStaffNo(e.target.value)} aria-label="Staff number to issue a card to" /><Btn kind="primary" disabled={busy !== null || !staffNo.trim()} onClick={() => { if (staffNo.trim()) void act("staff-issue", "/staff/issue", { staffNumber: staffNo.trim() }, `Staff identity card issued to ${staffNo.trim()}`); }}>Issue card</Btn></form> : `${staff.cards.length}`}>
+          <DTable cols={["Card", "Member of staff", "Issued|mid", "Valid to|mid", "State|mid", "|num"]} rows={staff.cards.map((c) => [
+            <span key="n"><span className="tnum">{c.card_no}</span>{c.state === "ISSUED" ? <div className="sub2"><a href={c.verify_path} target="_blank" rel="noopener" title="The address the card's QR carries">Check address</a></div> : null}</span>,
+            <Two key="s" a={`${c.surname}, ${c.given_names}`} b={`${c.staff_number ?? ""}${c.department ? ` · ${c.department}` : ""}`} />,
+            <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
+            c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
+            c.state === "ISSUED" ? <span key="l" className="row row--tight"><a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a>{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,
+          ])} texts={staff.cards.map((c) => `${c.card_no} ${c.surname} ${c.given_names} ${c.staff_number ?? ""}`)} />
+          {!staff.cards.length ? <PBody><div className="sub2">No staff card has been issued yet. A card is issued on the staff number to a member of staff in office; its QR carries the address the public check answers.</div></PBody> : null}
+        </Panel>
+      ) : null}
     </>
   );
 }

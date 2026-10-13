@@ -105,6 +105,8 @@ export interface CardBack {
   terms?: string[];
   /** the small block under the QR: a label and a value (e.g. "In an emergency" / the kin's phone) */
   aside?: [string, string];
+  /** what the QR carries: the card's signed check address (V439); without one, the serial */
+  qr?: string;
   signatures?: [string, string];
 }
 
@@ -309,7 +311,7 @@ export function drawBack(p: Page, x0: number, y0: number, W: number, H: number, 
   const sigSize = 5.6 * k;
   const sigTop = y0 + 6 * k + sigSize * 1.2 + 2 * k + 10 * k;      // the top of the signature block
   const qDim = Math.min(34 * k, Math.max(22 * k, ty - 4 * k - sigTop - 4 * k));
-  const { size, dark: qd } = qrMatrix(`MOAUM ID ${b.serial}`);
+  const { size, dark: qd } = qrMatrix(b.qr ?? `MOAUM ID ${b.serial}`);
   const cell = qDim / size, qx = x0 + pad, qy = ty - 4 * k - qDim;
   p.fill(qx, qy, qDim, qDim, 1);
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (qd[rr * size + cc]) p.fill(qx + cc * cell, qy + qDim - (rr + 1) * cell, cell, cell, 0.09);

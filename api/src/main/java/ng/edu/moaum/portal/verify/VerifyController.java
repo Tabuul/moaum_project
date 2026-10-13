@@ -565,6 +565,63 @@ class VerifyController {
         return checked(request, () -> idCardAnswer(no, c));   // a card number holds slashes, so it comes as a query value
     }
 
+    /**
+     * V439: a staff identity card, by its card number and the code signed over it — the address its QR carries. Genuine only for the
+     * card in force: the name, staff number, department and photograph; a card lost, replaced or out of date says so and names no one;
+     * without the code, or with another, nothing is said about the number.
+     */
+    @GetMapping("/staffcard")
+    @Transactional(readOnly = true)
+    Map<String, Object> staffCard(@RequestParam(required = false) String no, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> staffCardAnswer(no, c));
+    }
+
+    private Map<String, Object> staffCardAnswer(String cardNo, String c) {
+        String no = cardNo == null ? "" : cardNo.trim();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (c == null || c.isBlank()) {
+            out.put("genuine", false);
+            out.put("codeMissing", true);
+            return out;
+        }
+        if (no.isEmpty() || !codes.signed(c.trim(), CheckCodes.Kind.STAFF_CARD, no)) {
+            out.put("genuine", false);
+            return out;
+        }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT c.card_no, c.state, c.issued_at, c.valid_to, c.ended_at, c.valid_to < current_date AS expired, p.id AS person_id,
+                       p.surname || ', ' || p.given_names AS staff_name, p.staff_number, d.name AS department, p.ended_on
+                  FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
+                  LEFT JOIN hrm.staff_record r ON r.person_id = p.id LEFT JOIN ref.department d ON d.code = r.home_department
+                 WHERE c.card_no = :n
+                """).param("n", no).query().listOfRows();
+        if (rows.isEmpty()) {
+            out.put("genuine", false);
+            return out;
+        }
+        Map<String, Object> row = rows.get(0);
+        boolean left = row.get("ended_on") != null;
+        if (!"ISSUED".equals(row.get("state")) || Boolean.TRUE.equals(row.get("expired")) || left) {
+            out.put("genuine", false);
+            out.put("card_no", row.get("card_no"));
+            out.put("state", left ? "LEFT" : "ISSUED".equals(row.get("state")) ? "EXPIRED" : row.get("state"));
+            out.put("ended_at", row.get("ended_at"));
+            out.put("valid_to", row.get("valid_to"));
+            return out;
+        }
+        out.put("genuine", true);
+        for (String k : List.of("card_no", "state", "issued_at", "valid_to", "staff_name", "staff_number", "department")) out.put(k, row.get(k));
+        String photo = null;
+        List<Map<String, Object>> ph = jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :p")
+                .param("p", row.get("person_id")).query().listOfRows();
+        if (!ph.isEmpty()) {
+            byte[] bytes = files.resolve((byte[]) ph.get(0).get("content"), (UUID) ph.get(0).get("object_id"));
+            if (bytes != null) photo = "data:" + ph.get(0).get("content_type") + ";base64," + java.util.Base64.getEncoder().encodeToString(bytes);
+        }
+        out.put("photo", photo);
+        return out;
+    }
+
     private Map<String, Object> idCardAnswer(String cardNo, String c) {
         String no = cardNo == null ? "" : cardNo.trim();
         Map<String, Object> out = new LinkedHashMap<>();

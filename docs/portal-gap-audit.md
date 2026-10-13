@@ -53,7 +53,7 @@ Severity: CRITICAL, HIGH, MEDIUM, LOW. Status: **FIXED** (in this pass, tested),
 | GAP-020 | Mobile | The same 29 pages at 360 and 390 px: none scrolls sideways. | — | — | — | — | NO GAP |
 | GAP-021 | Documents | The deferment approval letter was verified by its reference alone; the references run in sequence (DEF-2026-00001…), so anyone could read every student's deferment. | SECURITY_PROBLEM | HIGH | Name, number, programme and deferment of every student who deferred. | V435: a random check code per deferment, carried by the letter's QR; the page answers only with it and says nothing otherwise. Letters printed before are printed again. | FIXED |
 | GAP-022 | Documents | The student identity card's QR carried only `MOAUM ID <serial>`: nothing to scan against, so a made-up card could not be told from a real one. | DOCUMENT_PROBLEM | HIGH | Cards checked by eye. | A check address signed over the card number (`/verify/idcard?no=…&c=…`): the guard sees the holder's name, number, programme and photograph for the card in force, and "lost", "replaced" or "expired" otherwise. The card desk shows each card's address for the card printer to encode. | FIXED; the Library's card printing must encode the address |
-| GAP-023 | Documents | Staff identity cards carry `MOAUM ID STF-…` with no register behind it. | DOCUMENT_PROBLEM | MEDIUM | A staff card cannot be checked. | A staff card register, like the students'. | OPEN |
+| GAP-023 | Documents | Staff identity cards carried `MOAUM ID STF-…`, a serial made up at print time, with no register behind it. | DOCUMENT_PROBLEM | MEDIUM | A staff card could not be checked or reported lost. | V439: a staff card register like the students' — a card number of its own (MOAUM/SID/YY/NNNNN), issued on the staff number by the card desk to a member of staff in office, one live card at a time, valid to 31 December three years on, ended when replaced or reported lost. The print is the card in the register and its QR carries `/verify/staffcard?no=…&c=…`, signed over the card number: the name, staff number, department and photograph for the card in force; "lost", "replaced", "expired" or "left" otherwise. | FIXED |
 | GAP-024 | Documents | Transcripts, certificates and admission letters verify by their 25-character random code, and also by their document number, which runs in sequence; by number the page shows the fields the University's document policy makes public. | BUSINESS_RULE | LOW | The public fields of every document can be listed by stepping numbers (one connection is throttled). | Whether the number alone should verify. Receipts, examination cards, registration forms, results statements, PG offers and CBT slips use signed codes (V360); hostel and clearance papers random codes (V359, V415); JUPEB papers random codes (V343). | CONFIRM |
 
 ## 3. Items that need the University's confirmation
@@ -86,7 +86,7 @@ guessed.
 | Performance | the 12 unindexed foreign keys on large tables or named as candidates measured; 3 indexed (GAP-012) | measured keys settled |
 | Mobile | 29 pages at 360 and 390 px, as their users | 29 of 29 fit |
 | Accessibility | axe-core WCAG 2 A/AA on the same 29 pages: 5 kinds of violation, fixed in shared components and the 23 hand-drawn table wrappers (GAP-019); the re-run finds none | 29 of 29 with no violation |
-| Document verification | every printed paper with a QR traced to its check: all checked by a signed or random code, after the two fixed here (GAP-021, GAP-022), except staff cards (GAP-023) | staff cards open |
+| Document verification | every printed paper with a QR traced to its check: all checked by a signed or random code, after the three fixed here (GAP-021, GAP-022, GAP-023) | all |
 
 ## 5. Fixes completed in this pass
 
@@ -108,6 +108,7 @@ Registry's duplicates panel lists a pair, and a searchable programme list filter
 - V431: the Registry settles a duplicate pair; the student door no longer breaks on a shared JAMB number.
 - V432: the three foreign-key indexes that measured worth it.
 - V435: the deferment letter verified by its check code; the student identity card by a code signed over its number.
+- V439: the staff identity card register; the staff card's QR a signed check address.
 - Role-by-role: missing offices added to reads their menus serve; items for pages an office can never use removed.
 - Accessibility: five fixes in shared components. The DSA's "My Profile", the preview's session, the dead endpoint.
 

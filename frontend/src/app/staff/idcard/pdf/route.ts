@@ -12,20 +12,20 @@ import { finishPdf } from "@/lib/document/pdf";
 export const dynamic = "force-dynamic";
 
 /**
- * The staff identity card as a printable PDF — portrait (vertical), as the University issues it, for the offices that read the staff
- * register (?id names the member of staff). Portal gap audit: a person never prints their own card — the card desk produces and issues it.
+ * The staff identity card as a printable PDF — portrait (vertical), as the University issues it, for the card desk (?id names the
+ * member of staff). Portal gap audit: a person never prints their own card — the card desk produces and issues it.
+ * V439: the card printed is the one in the register — its number and validity — and its QR carries the signed check address.
  */
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }) : "—");
 const rankCase = (r: string | null) => (r ? r.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace(/\bIi\b/g, "II") : "");
 
-interface Person {
-  id: string; staff_number: string | null; surname: string; given_names: string; rank: string | null; department: string | null;
-  faculty: string | null; category: string | null; date_first_appointment: string | null; appointment_date: string | null;
-  status: string; has_photo: boolean; phone: string | null; email: string | null;
+/** V439: the card in the register, with what the card shows — the desk prints from the register, never from the HR record */
+interface Face {
+  staff_number: string | null; surname: string; given_names: string; rank: string | null; department: string | null; faculty: string | null;
+  category: string | null; date_first_appointment: string | null; appointment_date: string | null; has_photo: boolean;
 }
-interface Office { office: string; office_code: string; live: boolean }
-interface StaffRecord { person: Person; offices: Office[] }
+interface LiveCard { card_no: string; valid_to: string; verify_path: string; face: Face; offices: { office_code: string; office: string }[] }
 
 export async function GET(req: Request) {
   await loadInstitution();
@@ -33,9 +33,10 @@ export async function GET(req: Request) {
   if (!id) {
     return NextResponse.json({ status: 403, title: "The identity card is issued by the card desk", detail: "Your card is printed and handed over in person; your record shows its status." }, { status: 403 });
   }
-  const r = await api<StaffRecord>(`/api/v1/hr/staff/${encodeURIComponent(id)}`);
-  if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
-  const s = r.data.person;
+  const cardR = await api<LiveCard>(`/api/v1/credentials/identity-cards/staff/${encodeURIComponent(id)}/card`);
+  if (!cardR.ok) return NextResponse.json(cardR.problem, { status: cardR.problem.status });
+  const card = cardR.data;
+  const s = card.face;
   if (!s.staff_number) {
     return NextResponse.json({ status: 409, title: "No staff number", detail: "A staff identity card carries the staff number the Registry issued; this person has none on record yet." }, { status: 409 });
   }
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       const office = (await cookies()).get("moaum_office")?.value;
       const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
       if (office) headers["X-Active-Office"] = office;
-      const res = await fetch(`${API_URL}/api/v1/hr/staff/${encodeURIComponent(id)}/photo`, { headers, cache: "no-store" });
+      const res = await fetch(`${API_URL}/api/v1/credentials/identity-cards/staff/${encodeURIComponent(id)}/photo`, { headers, cache: "no-store" });
       // the writer embeds JPEG; a PNG photograph leaves the frame blank on the print (the screen shows it)
       if (res.ok && (res.headers.get("content-type") ?? "").includes("jpeg")) {
         const buf = new Uint8Array(await res.arrayBuffer()); const dim = jpegSize(buf);
@@ -56,12 +57,11 @@ export async function GET(req: Request) {
     } catch { /* the blank frame */ }
   }
 
-  const live = r.data.offices.filter((o) => o.live);
+  const live = card.offices;
   const office = live.find((o) => o.office_code !== "lecturer")?.office ?? live[0]?.office ?? "";
   const academic = s.category === "ACADEMIC" || (!s.category && live.some((o) => ["lecturer", "hod", "dean"].includes(o.office_code)));
-  const expiresOn = new Date(); expiresOn.setFullYear(expiresOn.getFullYear() + 3); expiresOn.setMonth(11, 31);
   const staffNo = s.staff_number;
-  const serial = `STF-${staffNo.replace(/[^A-Za-z0-9]/g, "").slice(-8)}-${new Date().getFullYear()}`;
+  const serial = card.card_no;
   const face: CardFace = {
     name: `${s.surname}, ${s.given_names}`, number: staffNo, tag: "Staff",
     fields: [
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
       [s.faculty ? "Department" : "Unit", s.department ?? office ?? "—"], ["Faculty", s.faculty ?? "—"],
       ["Appointed", day(s.date_first_appointment ?? s.appointment_date)], ["Office", office || "—"],
     ],
-    foot: [["Valid to ", false], [day(expiresOn.toISOString()), true]],
+    foot: [["Valid to ", false], [day(card.valid_to), true]],
     serial,
   };
 
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
   drawFrontPortrait(p, x1, top - H, W, face, photo, crest);
   p.textCenter(x1 + W / 2, top - H - 18, "FRONT", 7, true, C.foot);
   drawBack(p, x2, top - H, W, H, {
-    barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial,
+    barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial, qr: `${new URL(req.url).origin}${card.verify_path}`,
     aside: ["If found, return to the Security post", "Km 1 Gboko Road, Makurdi"],
   }, crest);
   p.textCenter(x2 + W / 2, top - H - 18, "BACK", 7, true, C.foot);
