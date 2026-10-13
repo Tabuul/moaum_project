@@ -50,7 +50,10 @@ await p.evaluate(()=>{__S.pas=null; __render();}); await p.waitForTimeout(150);
 await p.setInputFiles('#cd-pas', [P+'202699168863AH_Face.jpg', P+'202699176777GF_Face.jpg',
                                   P+'Copy of 202699711714BJ_Face (1).jpg',
                                   P+'IMG-20260904-WA0031.jpg']);
-await p.waitForTimeout(800);
+/* the four files are read and listed asynchronously; a fixed wait was too short on a slow CI runner (13 Oct 2026),
+   so the harness waits for the last two names to be on the screen — bounded, and the checks below still judge */
+await p.waitForFunction(()=>{const s=document.body.innerText;
+  return s.includes('IMG-20260904-WA0031.jpg') && s.includes('202699711714BJ');}, null, {timeout: 8000}).catch(()=>{});
 txt=await p.locator('body').innerText();
 const matchedTile = async () => p.evaluate(()=>{
   const t=[...document.querySelectorAll('.tile')].map(x=>x.innerText.toUpperCase());
