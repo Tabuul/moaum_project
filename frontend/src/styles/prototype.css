@@ -1740,6 +1740,9 @@ body.nav-slim .nav__item[aria-current="page"]::before { left: 0; }
   .mdl__foot .btn { flex: 1 1 auto; }
   .tabs { width: 100%; }
   .tabs__t { flex: 1 1 auto; justify-content: center; }
+  /* portal gap audit: a panel's right-hand slot (filters, a tab strip) shrinks to the card on a phone, so a tab strip in it scrolls
+     inside itself instead of pushing the page sideways */
+  .card__head > .ml-auto, .card__head > .ml-auto > .row--inline { min-width: 0; max-width: 100%; }
   .topbar h1 { font-size: var(--t-lg); }
   .scope { flex-direction: column; }
   .scope__f { width: 100%; }

@@ -157,7 +157,7 @@ export function InstitutionProfile({ initial, actingOffice, actorName }: { initi
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}><b style={{ fontSize: 12, letterSpacing: ".04em" }}>RESULT BROADSHEET</b><span style={{ marginLeft: "auto", fontSize: 9, color: "#5a6b74", fontWeight: 700 }}>CONFIDENTIAL</span></div>
               <div style={{ fontSize: 10.5, color: "#5a6b74" }}>B.Sc. Computer Science — 400 Level · 2025/2026 Academic Session — First Semester</div>
-              <div style={{ borderTop: "1px solid #c9d3d9", marginTop: 10, paddingTop: 4, fontSize: 9, color: "#6b7b85", display: "flex", justifyContent: "space-between" }}>
+              <div style={{ borderTop: "1px solid #c9d3d9", marginTop: 10, paddingTop: 4, fontSize: 9, color: "#5d6c76", display: "flex", justifyContent: "space-between" }}>
                 <span>{preview.name} | RESULT BROADSHEET{preview.footerNote ? ` · ${preview.footerNote}` : ""}</span><span>Generated {formatDocDateTime(new Date(), preview)}{preview.showGeneratedBy && actorName ? ` by ${actorName}` : ""}{preview.showPageNumbers ? " · Page 1 of 3" : ""}</span>
               </div>
             </div>

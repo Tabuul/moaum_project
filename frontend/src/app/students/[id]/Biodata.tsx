@@ -84,29 +84,31 @@ function Fld({ field, value, options, may, pending, need, onChange }: {
     ) : field.tier === "approval" ? (
       <span className="bio__t bio__t--appr"><Ico name="scale" size={11} w={2.2} />Needs approval</span>
     ) : null;
+  // WCAG 1.3.1 (portal gap audit): the label names its control
+  const fid = `bio-${field.field}`;
   let control: React.ReactNode;
   if (field.tier === "locked") {
     control = <div className="ctl ctl--ro">{value || "—"}<Ico name="shield" size={14} stroke="var(--faint)" w={2} /></div>;
   } else if (options && options.length > 12) {
     // a long list (states, local governments, countries) is searched as it is typed
     const list = value && !options.includes(value) ? [value, ...options] : options;
-    control = <SearchSelect value={value} disabled={!may} options={list.map((o) => ({ value: o, label: o }))} allLabel="Select…" placeholder="Type to search…" onChange={onChange} />;
+    control = <SearchSelect id={fid} value={value} disabled={!may} options={list.map((o) => ({ value: o, label: o }))} allLabel="Select…" placeholder="Type to search…" onChange={onChange} />;
   } else if (options) {
     const list = value && !options.includes(value) ? [value, ...options] : options;
     control = (
-      <select className="ctl" value={value} disabled={!may} onChange={(e) => onChange(e.target.value)}>
+      <select id={fid} className="ctl" value={value} disabled={!may} onChange={(e) => onChange(e.target.value)}>
         <option value="">Select…</option>
         {list.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     );
   } else if (field.wide) {
-    control = <textarea className="ctl" rows={2} value={value} disabled={!may} onChange={(e) => onChange(e.target.value)} />;
+    control = <textarea id={fid} className="ctl" rows={2} value={value} disabled={!may} onChange={(e) => onChange(e.target.value)} />;
   } else {
-    control = <input className="ctl" value={value} disabled={!may} autoComplete="off" onChange={(e) => onChange(e.target.value)} />;
+    control = <input id={fid} className="ctl" value={value} disabled={!may} autoComplete="off" onChange={(e) => onChange(e.target.value)} />;
   }
   return (
     <div className={`bio__f${field.wide ? " bio__f--wide" : ""}${field.tier === "approval" ? " is-appr" : ""}${field.tier === "locked" ? " is-locked" : ""}${need === "missing" ? " is-needed" : ""}`}>
-      <label>{field.label}{badge}{need === "missing" ? <span className="bio__t bio__t--need">Required</span> : need === "given" ? <span className="bio__t bio__t--given">&#10003; Required</span> : null}</label>
+      <label htmlFor={field.tier === "locked" ? undefined : fid}>{field.label}{badge}{need === "missing" ? <span className="bio__t bio__t--need">Required</span> : need === "given" ? <span className="bio__t bio__t--given">&#10003; Required</span> : null}</label>
       {control}
       {pending ? <div className="hint">Waiting on the Registry: &rarr; {pending}</div> : null}
       {field.hint ? <div className="hint">{field.hint}</div> : null}

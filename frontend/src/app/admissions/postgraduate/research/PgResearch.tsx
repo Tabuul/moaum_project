@@ -173,7 +173,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
       ) : null}
 
       <Panel title="Research pipeline" right={
-        <select className="ctl" value={stage} onChange={(e) => onStage(e.target.value)} style={{ maxWidth: 260 }}>
+        <select className="ctl" aria-label="Stage" value={stage} onChange={(e) => onStage(e.target.value)} style={{ maxWidth: 260 }}>
           {STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       }>
@@ -222,7 +222,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
                     <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Supervisor name" value={sup.name} onChange={(e) => setSup({ ...sup, name: e.target.value })} style={{ maxWidth: 200 }} />
-                      <select className="ctl" value={sup.role} onChange={(e) => setSup({ ...sup, role: e.target.value })} style={{ maxWidth: 120 }}>
+                      <select className="ctl" aria-label="Supervisor role" value={sup.role} onChange={(e) => setSup({ ...sup, role: e.target.value })} style={{ maxWidth: 120 }}>
                         <option value="FIRST">First</option><option value="SECOND">Second</option><option value="CO">Co</option>
                       </select>
                       <label className="sub2 row" style={{ gap: "var(--s-1)" }}>
@@ -241,7 +241,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
                     <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Member name" value={pan.name} onChange={(e) => setPan({ ...pan, name: e.target.value })} style={{ maxWidth: 190 }} />
-                      <select className="ctl" value={pan.role} onChange={(e) => setPan({ ...pan, role: e.target.value })} style={{ maxWidth: 150 }}>
+                      <select className="ctl" aria-label="Panel role" value={pan.role} onChange={(e) => setPan({ ...pan, role: e.target.value })} style={{ maxWidth: 150 }}>
                         <option value="CHAIR">Chair / HOD</option><option value="EXTERNAL">External examiner</option>
                         <option value="SUPERVISOR">Supervisor</option><option value="CO_SUPERVISOR">Co-supervisor</option>
                         <option value="INTERNAL">Internal examiner</option><option value="PGSR">PGSR</option><option value="COORDINATOR">PG Coordinator</option>
@@ -265,7 +265,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                           {n.needs?.includes("viva") ? (
                             <>
                               <input className="ctl tnum" placeholder="Score %" value={viva.score} onChange={(e) => setViva({ ...viva, score: e.target.value.replace(/[^0-9.]/g, "") })} style={{ maxWidth: 110 }} />
-                              <select className="ctl" value={viva.outcome} onChange={(e) => setViva({ ...viva, outcome: e.target.value })} style={{ maxWidth: 170 }}>
+                              <select className="ctl" aria-label="Viva outcome" value={viva.outcome} onChange={(e) => setViva({ ...viva, outcome: e.target.value })} style={{ maxWidth: 170 }}>
                                 <option value="PASS_CLEAN">Pass, no corrections</option>
                                 <option value="PASS_MINOR">Pass, minor corrections</option>
                                 <option value="PASS_MAJOR">Pass, major corrections</option>

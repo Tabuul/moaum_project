@@ -40,11 +40,14 @@ class IdentityCardController {
     private final JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.CheckCodes codes;
     private final ng.edu.moaum.portal.shared.FileObjects files;
+    private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
 
-    IdentityCardController(JdbcClient jdbc, ng.edu.moaum.portal.shared.CheckCodes codes, ng.edu.moaum.portal.shared.FileObjects files) {
+    IdentityCardController(JdbcClient jdbc, ng.edu.moaum.portal.shared.CheckCodes codes, ng.edu.moaum.portal.shared.FileObjects files,
+                           ng.edu.moaum.portal.studentportal.StudentPortalService portal) {
         this.jdbc = jdbc;
         this.codes = codes;
         this.files = files;
+        this.portal = portal;
     }
 
     @GetMapping
@@ -96,6 +99,45 @@ class IdentityCardController {
         int n = jdbc.sql("SELECT credentials.report_card_lost(:s, :r)").param("s", studentId).param("r", body == null ? null : body.reason(), Types.VARCHAR)
                 .query(Integer.class).single();
         return Map.of("studentId", studentId, "ended", n);
+    }
+
+    /* ── the student card printed at the desk: the card in the register, its QR the signed check address ── */
+
+    /** the live card of one student, with what the card shows, for the desk's print — none until the desk issues one */
+    @GetMapping("/students/{studentId}/card")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> studentCard(@PathVariable UUID studentId) {
+        Map<String, Object> row = jdbc.sql("""
+                SELECT c.card_no, c.issued_at, c.valid_to, s.surname || ', ' || s.other_names AS name, s.matric_no, p.name AS programme,
+                       f.name AS faculty, s.current_level AS level, s.entry_session, policy.university_current_session() AS session,
+                       (SELECT r.phone FROM people.student_reach(s.id) r) AS reach_phone
+                  FROM credentials.identity_card c JOIN people.student s ON s.id = c.student_id
+                  LEFT JOIN ref.programme p ON p.code = s.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE c.student_id = :s AND c.state = 'ISSUED'
+                """).param("s", studentId).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("ID_CARD_NONE", "No identity card is in force for this student.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card first; the print carries its number.", "Library")));
+        Map<String, Object> m = new java.util.LinkedHashMap<>(row);
+        String no = String.valueOf(row.get("card_no"));
+        m.put("verify_path", "/verify/idcard?no=" + java.net.URLEncoder.encode(no, java.nio.charset.StandardCharsets.UTF_8)
+                + "&c=" + codes.sign(ng.edu.moaum.portal.shared.CheckCodes.Kind.ID_CARD, no));
+        m.put("has_photo", portal.passportImage(studentId).isPresent());
+        return m;
+    }
+
+    /** the photograph the student card carries, for the desk's print — only of a student with a card in force */
+    @GetMapping("/students/{studentId}/photo")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    org.springframework.http.ResponseEntity<byte[]> studentPhoto(@PathVariable UUID studentId) {
+        boolean carded = jdbc.sql("SELECT EXISTS (SELECT 1 FROM credentials.identity_card WHERE student_id = :s AND state = 'ISSUED')")
+                .param("s", studentId).query(Boolean.class).single();
+        if (!carded) return org.springframework.http.ResponseEntity.notFound().build();
+        return portal.passportImage(studentId)
+                .map(img -> org.springframework.http.ResponseEntity.ok().contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                        .cacheControl(org.springframework.http.CacheControl.noStore()).body(img))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
 
     /* ── V439 · staff identity cards: the register, issued on the staff number by the same desk ── */

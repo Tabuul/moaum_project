@@ -107,8 +107,8 @@ export function JupebCalendar({ canWrite }: { canWrite: boolean }) {
             <DTable pageSize={0} cols={["Dates", "Event", "Deadline", "From", "", ...(canWrite ? ["|mid"] : [])]}
               rows={d.events.map((e) => {
                 const w = when(e, d.today);
-                return [<span key="d" style={{ whiteSpace: "nowrap", opacity: w === "past" ? 0.6 : 1 }}>{eventDates(e)}</span>,
-                  <span key="t" style={{ opacity: w === "past" ? 0.6 : 1 }}>{e.title}{e.marker ? <span className="sub2">{` · ${MARKER[e.marker] ?? e.marker}`}</span> : null}</span>,
+                return [<span key="d" style={{ whiteSpace: "nowrap", color: w === "past" ? "var(--faint)" : undefined }}>{eventDates(e)}</span>,
+                  <span key="t" style={{ color: w === "past" ? "var(--faint)" : undefined }}>{e.title}{e.marker ? <span className="sub2">{` · ${MARKER[e.marker] ?? e.marker}`}</span> : null}</span>,
                   e.deadline_on ? `${day(e.deadline_on)}${e.deadline_note ? ` — ${e.deadline_note}` : ""}` : e.deadline_note ?? "—",
                   e.source === "BOARD" ? "JUPEB Board" : "University",
                   <span key="s" className="row" style={{ gap: 4 }}>{w === "now" ? <Pil kind="ok">On now</Pil> : w === "past" ? <Pil kind="grey">Past</Pil> : null}

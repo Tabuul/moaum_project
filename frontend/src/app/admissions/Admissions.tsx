@@ -67,7 +67,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       <Tiles items={[
         ["Applications", cycle.applications.toLocaleString(), null, `${cycle.session} cycle · on the CAPS lists`],
         ["Screened", cycle.screened.toLocaleString(), null,
-          <>{pct(cycle.screened, cycle.applications)} carry a screening aggregate · <span className="b600" style={{ color: "var(--sky)" }}>View all →</span></>,
+          <>{pct(cycle.screened, cycle.applications)} carry a screening aggregate · <span className="b600" style={{ color: "var(--link)" }}>View all →</span></>,
           `/admissions/screened?session=${encodeURIComponent(cycle.session)}`],
         ["Offers issued", cycle.offers.toLocaleString(), "var(--chrome)", cycle.capacity ? `Against ${cycle.capacity.toLocaleString()} capacity` : "No NUC capacity in force"],
         ["Accepted", cycle.accepted.toLocaleString(), "var(--green-ink)", `${pct(cycle.accepted, cycle.offers)} conversion`],

@@ -88,6 +88,22 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DT
     };
   }, [rows, shown.size]);
 
+  /* WCAG 1.3.1 / 4.1.2 (portal gap audit): a control edited in a cell — a mark, a rule, a curriculum — is named by its column and its
+     row ("Resit allowed — MBBS 1"), the way a sighted reader reads it; a control that names itself (aria-label, a label, a title) keeps
+     its own name */
+  useEffect(() => {
+    const tb = table.current;
+    if (!tb) return;
+    tb.querySelectorAll<HTMLElement>("tbody td[data-l] input, tbody td[data-l] select, tbody td[data-l] textarea").forEach((el) => {
+      if (el.getAttribute("aria-label") || el.getAttribute("aria-labelledby") || el.title) return;
+      if (el.id && tb.ownerDocument.querySelector(`label[for="${CSS.escape(el.id)}"]`)) return;
+      if (el.closest("label")) return;
+      const col = el.closest("td")?.getAttribute("data-l") ?? "";
+      const first = el.closest("tr")?.querySelector("td")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "";
+      el.setAttribute("aria-label", first && first !== col ? `${col} — ${first}` : col);
+    });
+  });
+
   const window5 = (() => {
     const want = [0, 1, p - 2, p - 1, p, p + 1, p + 2, pages - 2, pages - 1];
     const list = [...new Set(want.filter((x) => x >= 0 && x < pages))].sort((a, b) => a - b);

@@ -47,7 +47,7 @@ export function TimetableGrid({ slots, frame }: { slots: Slot[]; frame?: Frame }
   const th: React.CSSProperties = { border: "1px solid var(--line-2)", padding: "6px 8px", textAlign: "left", fontSize: 12, background: "var(--panel-2)", whiteSpace: "nowrap" };
   const td: React.CSSProperties = { border: "1px solid var(--line-2)", padding: "6px 8px", verticalAlign: "top", fontSize: 12.5, minWidth: 96 };
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Timetable">
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr>

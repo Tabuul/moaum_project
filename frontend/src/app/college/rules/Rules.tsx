@@ -84,7 +84,8 @@ export function Rules({ data, sessions, session, level100, carry, mayEdit, mayAc
     const r = await fetch(`/api/bff/api/v1/college/carry-overs?q=${encodeURIComponent(carryQ)}`, { cache: "no-store" }); const j = await r.json().catch(() => null);
     if (r.ok && j) setCarryRows((j as CarryOvers).rows);
   };
-  const inp = (key: string, current: unknown, width = 70, disabled = !mayEdit) => <input className="ctl tnum" style={{ width }} value={v(key, current)} disabled={disabled} onChange={(e) => setEdits({ ...edits, [key]: e.target.value })} />;
+  // a control outside a table names itself (a table cell is named by its column, in DTable)
+  const inp = (key: string, current: unknown, width = 70, disabled = !mayEdit, label?: string) => <input className="ctl tnum" aria-label={label} style={{ width }} value={v(key, current)} disabled={disabled} onChange={(e) => setEdits({ ...edits, [key]: e.target.value })} />;
   const sel = (key: string, current: boolean) => <select className="ctl" value={v(key, current)} disabled={!mayEdit} onChange={(e) => setEdits({ ...edits, [key]: e.target.value })}><option value="true">Yes</option><option value="false">No</option></select>;
   const open = carryRows.filter((c) => !c.cleared_on);
 
@@ -128,9 +129,9 @@ export function Rules({ data, sessions, session, level100, carry, mayEdit, mayAc
               <div key={p.programme_code} className="stack" style={{ gap: 8 }}>
                 <b>{p.programme} · {p.degree}</b>
                 <KvGrid cls="grid--2" pairs={[
-                  ["Distinction mark", inp(`pr-d-${p.programme_code}`, p.distinction_mark, 60)], ["Resit window (months)", inp(`pr-rw-${p.programme_code}`, p.resit_window_months, 60)],
-                  ["Minimum years · UTME", inp(`pr-u-${p.programme_code}`, p.min_years_utme, 60)], ["Minimum years · Direct Entry", inp(`pr-de-${p.programme_code}`, p.min_years_de, 60)],
-                  ["Minimum credit units", inp(`pr-cu-${p.programme_code}`, p.min_total_cu, 70)], ["Classified", p.classified ? "Yes" : "No, unclassified"],
+                  ["Distinction mark", inp(`pr-d-${p.programme_code}`, p.distinction_mark, 60, undefined, "Distinction mark")], ["Resit window (months)", inp(`pr-rw-${p.programme_code}`, p.resit_window_months, 60, undefined, "Resit window (months)")],
+                  ["Minimum years · UTME", inp(`pr-u-${p.programme_code}`, p.min_years_utme, 60, undefined, "Minimum years · UTME")], ["Minimum years · Direct Entry", inp(`pr-de-${p.programme_code}`, p.min_years_de, 60, undefined, "Minimum years · Direct Entry")],
+                  ["Minimum credit units", inp(`pr-cu-${p.programme_code}`, p.min_total_cu, 70, undefined, "Minimum credit units")], ["Classified", p.classified ? "Yes" : "No, unclassified"],
                 ]} />
                 <Field id={`pr-h-${p.programme_code}`} label="Honours rule"><textarea id={`pr-h-${p.programme_code}`} className="ctl" rows={2} value={v(`pr-h-${p.programme_code}`, p.honours_rule)} disabled={!mayEdit} onChange={(e) => setEdits({ ...edits, [`pr-h-${p.programme_code}`]: e.target.value })} /></Field>
                 <Field id={`pr-c-${p.programme_code}`} label="Carry-over rule"><textarea id={`pr-c-${p.programme_code}`} className="ctl" rows={2} value={v(`pr-c-${p.programme_code}`, p.carry_over_note)} disabled={!mayEdit} onChange={(e) => setEdits({ ...edits, [`pr-c-${p.programme_code}`]: e.target.value })} /></Field>

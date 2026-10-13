@@ -131,7 +131,7 @@ export function PutmeScores({ page, mode, acting }: { page: PutmeScoresPage; mod
       ]} />
       {mode === "ict" ? (
         <Panel title="Examinations of the session" right={mayExport ? <span className="row row--inline row--tight">
-          <select className="ctl" value={exportExam} onChange={(e) => setExportExam(e.target.value)}><option value="">Every approved examination</option>{page.exams.map((e) => <option key={e.id} value={e.id}>{e.title} · results {e.results_state.toLowerCase().replace("_", " ")}</option>)}</select>
+          <select className="ctl" aria-label="Examination to export" value={exportExam} onChange={(e) => setExportExam(e.target.value)}><option value="">Every approved examination</option>{page.exams.map((e) => <option key={e.id} value={e.id}>{e.title} · results {e.results_state.toLowerCase().replace("_", " ")}</option>)}</select>
           <Btn kind="primary" disabled={busy || !c.official} onClick={() => void generate()}>{busy ? "Working…" : "Generate official score file"}</Btn>
         </span> : null}>
           {page.exams.length ? <DTable cols={["Reference", "Examination", "State|mid", "Results|mid", "Window", "Sat|num", "|num"]} rows={page.exams.map((e) => [
@@ -164,10 +164,10 @@ export function PutmeScores({ page, mode, acting }: { page: PutmeScoresPage; mod
       </Panel>
       {mode === "ict" ? (
         <Panel title={`Scores · ${s}`} right={<span className="row row--inline row--tight">
-          <select className="ctl" defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("status") ?? "" : ""} onChange={(e) => go(q({ status: e.target.value }))}>
+          <select className="ctl" aria-label="Status" defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("status") ?? "" : ""} onChange={(e) => go(q({ status: e.target.value }))}>
             <option value="">Every score</option><option value="OFFICIAL">Official (approved)</option><option value="UNAPPROVED">Awaiting approval</option><option value="EXPORTED">Exported</option><option value="NOT_EXPORTED">Not yet exported</option><option value="IMPORTED">Imported by the Academic Office</option><option value="RELEASED">Released</option><option value="VOID">Void</option>
           </select>
-          <select className="ctl" defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("prog") ?? "" : ""} onChange={(e) => go(q({ prog: e.target.value }))}><option value="">Every programme</option>{page.programmes.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</select>
+          <select className="ctl" aria-label="Programme" defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("prog") ?? "" : ""} onChange={(e) => go(q({ prog: e.target.value }))}><option value="">Every programme</option>{page.programmes.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</select>
           <input className="ctl" placeholder="Search JAMB number, name or application number" defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") ?? "" : ""} onKeyDown={(e) => { if (e.key === "Enter") go(q({ q: (e.target as HTMLInputElement).value })); }} />
           <span className="sub2">{num(page.total)} rows</span>
         </span>}>

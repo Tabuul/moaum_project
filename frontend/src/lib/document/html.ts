@@ -72,11 +72,11 @@ const CSS = `
   td.sn,th.sn{width:38px;text-align:right;color:#5a6b74;font-variant-numeric:tabular-nums}
   .body button,.body .btn,.body input,.body .tsrch,.body .tfoot__x,.body .no-print{display:none!important}
   .body table{width:100%}
-  .foot{position:fixed;left:0;right:0;bottom:0;border-top:1px solid #c9d3d9;padding:4px 0 0;font-size:9px;color:#6b7b85;background:#fff;display:flex;justify-content:space-between;gap:12px}
+  .foot{position:fixed;left:0;right:0;bottom:0;border-top:1px solid #c9d3d9;padding:4px 0 0;font-size:9px;color:#5d6c76;background:#fff;display:flex;justify-content:space-between;gap:12px}
   .foot .r{text-align:right;white-space:nowrap}
   .note{margin-top:10px;font-size:10px;color:#5a6b74}
   .wm{position:fixed;top:40%;left:0;right:0;text-align:center;font-size:72px;font-weight:800;color:rgba(120,130,140,.13);transform:rotate(-24deg);pointer-events:none;letter-spacing:.1em}
-  @page{margin:14mm 12mm 18mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font-size:9px;color:#6b7b85}}
+  @page{margin:14mm 12mm 18mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font-size:9px;color:#5d6c76}}
   @media print{.foot{position:fixed}}
 `;
 

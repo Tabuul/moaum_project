@@ -126,7 +126,7 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
         </Panel>
       ) : null}
 
-      <Panel title="Programmes" right={<span className="row row--inline row--tight"><Field id="pc-fac" label=""><select id="pc-fac" className="ctl" value={fac} onChange={(e) => setFac(e.target.value)}><option value="">Every faculty</option>{data.faculties.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field><Field id="pc-q" label=""><input id="pc-q" className="ctl" placeholder="Search programme or code" value={q} onChange={(e) => setQ(e.target.value)} /></Field></span>}>
+      <Panel title="Programmes" right={<span className="row row--inline row--tight"><Field id="pc-fac" label=""><select id="pc-fac" aria-label="Faculty" className="ctl" value={fac} onChange={(e) => setFac(e.target.value)}><option value="">Every faculty</option>{data.faculties.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field><Field id="pc-q" label=""><input id="pc-q" className="ctl" placeholder="Search programme or code" value={q} onChange={(e) => setQ(e.target.value)} /></Field></span>}>
         <DTable pageSize={50} cols={["S/N|num", "Programme", "Faculty segment|mid", "Programme code|mid", "Carries code|mid", "Series|mid", "Next number", "|num"]} rows={rows.map((p, i) => [
           <span key="sn" className="tnum sub2">{i + 1}</span>,
           <span key="p"><strong>{p.programme}</strong><div className="sub2 tnum">{p.programme_code} · {p.faculty}{p.students_admitted ? ` · ${p.students_admitted} admitted awaiting a number` : ""}</div></span>,

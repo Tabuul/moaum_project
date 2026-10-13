@@ -139,7 +139,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Programme" right={chosen ? `${chosen.department_name} · ${chosen.faculty_name}` : "Choose a programme"}>
         <PBody>
-          <select className="ctl" value={programme} onChange={(e) => setProgramme(e.target.value)} style={{ maxWidth: 460 }}>
+          <select className="ctl" aria-label="Programme" value={programme} onChange={(e) => setProgramme(e.target.value)} style={{ maxWidth: 460 }}>
             <option value="">Choose a postgraduate programme…</option>
             {byFaculty.map(([fac, list]) => (
               <optgroup key={fac} label={fac}>
