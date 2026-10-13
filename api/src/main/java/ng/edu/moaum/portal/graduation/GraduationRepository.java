@@ -72,8 +72,11 @@ class GraduationRepository {
                 .param("unmet", unmet, Types.VARCHAR).update();
     }
 
+    /** a graduand, with the convocation clearance (cleared or not) and — V416 — the final clearance under way: its reference,
+     *  its process and its overall word (NOT_STARTED when none) */
     record Graduand(UUID studentId, String number, String surname, String otherNames, String programmeName, BigDecimal cgpa,
-                    String unmet, String senateState, String classOfDegree, boolean cleared) {
+                    String unmet, String senateState, String classOfDegree, boolean cleared, String clearanceRef, UUID clearanceProcess,
+                    String clearanceState) {
     }
 
     List<Graduand> graduands(String session, String fac, String dept, String prog) {
@@ -91,9 +94,29 @@ class GraduationRepository {
                        AND (:dept::text IS NULL OR p.dept_code = :dept)
                        AND (:prog::text IS NULL OR p.code = :prog)
                 ),
-                cl AS (SELECT * FROM clearance.cleared_many('CONVOCATION', (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM gl)))
-                SELECT gl.*, coalesce(cl.cleared, false) AS cleared
+                cl AS (SELECT * FROM clearance.cleared_many('CONVOCATION', (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM gl))),
+                pr AS (
+                    SELECT DISTINCT ON (q.student_id) q.student_id, q.id, q.reference FROM clearance.process q
+                     WHERE q.workflow = 'FINAL' AND q.cancelled_at IS NULL AND q.student_id IN (SELECT student_id FROM gl)
+                     ORDER BY q.student_id, q.started_at DESC
+                ),
+                sr AS (SELECT * FROM clearance.stage_rows('CONVOCATION', NULL, (SELECT coalesce(array_agg(student_id), '{}'::uuid[]) FROM pr))),
+                ov AS (
+                    SELECT sr.student_id,
+                           CASE WHEN coalesce(bool_and(sr.state = 'CLEARED') FILTER (WHERE sr.required AND sr.applies), true)
+                                     THEN (SELECT complete_word FROM clearance.workflow WHERE code = 'FINAL')
+                                WHEN bool_or(sr.state = 'REJECTED') FILTER (WHERE sr.required AND sr.applies) THEN 'REJECTED'
+                                WHEN bool_or(sr.state = 'NOT_CLEARED') FILTER (WHERE sr.required AND sr.applies) THEN 'NOT_CLEARED'
+                                WHEN bool_or(sr.state = 'REQUIRES_ACTION') FILTER (WHERE sr.required AND sr.applies) THEN 'PENDING_ACTION'
+                                WHEN bool_or(sr.state = 'CLEARED') FILTER (WHERE sr.required AND sr.applies) THEN 'PARTIALLY_CLEARED'
+                                ELSE 'IN_PROGRESS' END AS overall
+                      FROM sr GROUP BY sr.student_id
+                )
+                SELECT gl.*, coalesce(cl.cleared, false) AS cleared, pr.reference AS clearance_ref, pr.id AS clearance_process,
+                       CASE WHEN pr.id IS NULL THEN 'NOT_STARTED' ELSE coalesce(ov.overall, 'IN_PROGRESS') END AS clearance_state
                   FROM gl LEFT JOIN cl ON cl.student_id = gl.student_id
+                  LEFT JOIN pr ON pr.student_id = gl.student_id
+                  LEFT JOIN ov ON ov.student_id = gl.student_id
                  ORDER BY gl.surname, gl.other_names
                 """).param("s", session).param("fac", fac).param("dept", dept).param("prog", prog)
                 .query(Graduand.class).list();

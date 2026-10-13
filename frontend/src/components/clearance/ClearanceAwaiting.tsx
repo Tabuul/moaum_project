@@ -26,7 +26,7 @@ export function ClearanceAwaiting() {
           <div key={`${r.workflow}/${r.unit}`} className="row row--tight" style={{ flexWrap: "wrap", padding: "4px 0", borderBottom: "1px solid var(--line-2)" }}>
             <b style={{ minWidth: 220 }}>{r.workflow_label} · {r.label}</b>
             <Link href={desk(r)}><Pil kind={r.awaiting ? "info" : "grey"}>{r.awaiting.toLocaleString()} awaiting you</Pil></Link>
-            {r.documents ? <Link href={desk(r, "")}><Pil kind="warn">{r.documents.toLocaleString()} document{r.documents === 1 ? "" : "s"} to review</Pil></Link> : null}
+            {r.documents ? <Link href={`/clearance?${new URLSearchParams({ wf: r.workflow, unit: r.unit, docs: "1" }).toString()}`}><Pil kind="warn">{r.documents.toLocaleString()} document{r.documents === 1 ? "" : "s"} to review</Pil></Link> : null}
             {r.overdue ? <Link href={desk(r)}><Pil kind="bad">{r.overdue.toLocaleString()} past the deadline</Pil></Link> : null}
             {r.with_student ? <span className="sub2">{r.with_student.toLocaleString()} with the student to act</span> : null}
           </div>

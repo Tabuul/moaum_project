@@ -36,7 +36,7 @@ async function readFile(f: File): Promise<string> {
 
 export function ClearanceDesk({ workflows, workflow, session, desk, detail, scope, structure, sessions, ceiling, params, actingOffice }: {
   workflows: Workflows; workflow: string; session: string; desk: Desk | null; detail: ProcessDetail | null; scope: Scope; structure: ScopeStructure;
-  sessions: string[]; ceiling: Ceiling; params: { unit: string; status: string; sex: string; entry: string; q: string; page: number };
+  sessions: string[]; ceiling: Ceiling; params: { unit: string; status: string; sex: string; entry: string; q: string; page: number; docs?: boolean };
   actingOffice: string | null;
 }) {
   const router = useRouter();
@@ -56,7 +56,7 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
 
   function go(patch: Record<string, string>) {
     const p = new URLSearchParams({ wf: workflow, session, unit: params.unit, status: params.status, sex: params.sex, entry: params.entry, q: params.q,
-      fac: scope.fac, dept: scope.dept, prog: scope.prog, level: scope.level, ...patch });
+      fac: scope.fac, dept: scope.dept, prog: scope.prog, level: scope.level, docs: params.docs ? "1" : "", ...patch });
     for (const [k, v] of [...p.entries()]) if (!v) p.delete(k);
     if (!("page" in patch)) p.delete("page");
     nav(`/clearance?${p.toString()}`);
@@ -168,6 +168,14 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Tiles items={tileItems.map(([label, value, colour, sub, k]) => [label, value, colour, sub, `/clearance?${new URLSearchParams({ wf: workflow, session, ...(params.unit || unit ? { unit: params.unit || unit || "" } : {}), status: params.status === k ? "" : k, ...(scope.fac ? { fac: scope.fac } : {}), ...(scope.dept ? { dept: scope.dept } : {}), ...(params.q ? { q: params.q } : {}) }).toString()}`])} />
 
+      {(desk?.documents ?? 0) > 0 || params.docs ? (
+        <div className="row row--tight mt-1">
+          <Btn kind={params.docs ? "primary" : "ghost"} onClick={() => go({ docs: params.docs ? "" : "1", status: "" })}>
+            {params.docs ? "Showing documents to review — show everyone" : `Documents to review (${(desk?.documents ?? 0).toLocaleString()})`}
+          </Btn>
+        </div>
+      ) : null}
+
       {refusals.length ? (
         <Note kind="bad" title={`${refusals.length} not cleared — the record says why`}
           action={<Btn kind="ghost" onClick={() => setRefusals([])}>Done</Btn>}>
@@ -196,8 +204,9 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
                 <span key="f" className="sub2">{x.faculty ?? "—"} · {x.department ?? "—"}<br />{x.programme ?? ""}</span>,
                 <span key="l" className="tnum">{x.level ?? "—"}</span>,
                 <span key="e" className="sub2">{entryWord(x.entry_mode)}</span>,
-                unit ? <span key="st"><Pil kind={stateKind(x.my_state)}>{stateWord(x.my_state)}</Pil>{x.my_item ? <span className="sub2"> · {x.my_item}</span> : null}</span>
-                  : <Pil key="st" kind={stateKind(x.overall)}>{stateWord(x.overall)}</Pil>,
+                <span key="st">{unit ? <><Pil kind={stateKind(x.my_state)}>{stateWord(x.my_state)}</Pil>{x.my_item ? <span className="sub2"> · {x.my_item}</span> : null}</>
+                  : <Pil kind={stateKind(x.overall)}>{stateWord(x.overall)}</Pil>}
+                  {x.docs_pending ? <div className="mt-1"><Pil kind="warn">To review: {x.docs_pending}</Pil></div> : null}</span>,
                 <span key="o" className="tnum" title={x.stages.map((s) => `${s.label}: ${stateWord(s.state)}`).join("\n")} style={{ letterSpacing: "2px" }}>
                   {x.stages.map((s) => <span key={s.unit} className={s.state === "CLEARED" ? "ink-green" : s.state === "NOT_CLEARED" || s.state === "REJECTED" ? "ink-red" : "sub2"}>{stateMark(s.state)}</span>)}
                 </span>,

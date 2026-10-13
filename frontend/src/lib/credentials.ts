@@ -90,6 +90,9 @@ export interface GraduationView {
   tiles: { finalists: number; auditPassed: number; outstanding: number; awaitingClearance: number; approved: number };
   exceptions: { studentId: string; number: string; surname: string; otherNames: string; programmeName: string; unmet: string; cgpa: number | null }[];
   classification: { clazz: string; students: number; share: number; low: number; high: number }[];
+  /** V416: every graduand's final clearance — reference, process and overall word (NOT_STARTED when none) */
+  finalists?: { studentId: string; number: string; surname: string; otherNames: string; programmeName: string; cgpa: number | null; unmet: string | null;
+    senateState: string | null; clearanceRef: string | null; clearanceProcess: string | null; clearanceState: string }[];
 }
 
 export const DESTINATION: Record<string, string> = { SELF: "Myself", INSTITUTION: "Another institution", EMPLOYER: "Employer", EMBASSY: "Embassy" };

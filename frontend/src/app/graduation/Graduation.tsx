@@ -13,6 +13,8 @@ import { Btn, LinkBtn, Note, Panel, PBody, RoleLine, Tiles, Two } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Pil } from "@/components/proto/ui";
+import { OVERALL_WORD, stateKind } from "@/lib/clearance";
 
 export function Graduation({ scope, structure, sessions, view, actingOffice }: { scope: Scope; structure: ScopeStructure; sessions: string[]; view: GraduationView; actingOffice: string | null }) {
   const router = useRouter();
@@ -22,6 +24,31 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
   const [said, setSaid] = useState<string | null>(null);
   const t = view.tiles;
   const office = ["academic", "registrar", "dregistrar", "records"].includes(actingOffice ?? "");
+  // V416: final clearance from the graduation list — the Academic Office and the Registry start it
+  const canStart = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
+  const finalists = view.finalists ?? [];
+  const notStarted = finalists.filter((f) => f.clearanceState === "NOT_STARTED").length;
+  const byState = finalists.reduce<Record<string, number>>((a, f) => { a[f.clearanceState] = (a[f.clearanceState] ?? 0) + 1; return a; }, {});
+  const [refused, setRefused] = useState<{ number: string; name: string; why: string }[]>([]);
+
+  async function startFinal() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const body: Record<string, string> = { session: scope.session };
+      if (scope.fac) body.fac = scope.fac;
+      if (scope.dept) body.dept = scope.dept;
+      if (scope.prog) body.prog = scope.prog;
+      const r = await fetch("/api/bff/api/v1/clearance/start-graduands", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Final clearance started for the ${scope.session} graduands`) }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
+      setRefused(j.refused ?? []);
+      notify(`Final clearance started for ${j.started} graduand${j.started === 1 ? "" : "s"}${j.refused?.length ? `; ${j.refused.length} refused` : ""} — each is told`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function post(path: string, body: unknown, reason: string) {
     setBusy(true);
@@ -80,6 +107,34 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
           {!view.exceptions.length ? <PBody><div className="sub2">No exception on the list.</div></PBody> : null}
         </Panel>
       </div>
+      <Panel title="Final clearance" right={canStart && notStarted ? <Btn kind="go" disabled={busy} onClick={() => void startFinal()}>{busy ? "Starting…" : `Start final clearance for ${notStarted} graduand${notStarted === 1 ? "" : "s"}`}</Btn> : <LinkBtn href={`/clearance?${new URLSearchParams({ wf: "FINAL", session: scope.session }).toString()}`}>Open the clearance desk</LinkBtn>}>
+        <PBody>
+          <div className="row row--tight" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
+            {(["NOT_STARTED", "IN_PROGRESS", "PARTIALLY_CLEARED", "PENDING_ACTION", "NOT_CLEARED", "REJECTED", "COMPLETED"] as const).filter((k) => byState[k]).map((k) => (
+              <Pil key={k} kind={k === "NOT_STARTED" ? "grey" : stateKind(k)}>{byState[k]} {(OVERALL_WORD[k] ?? k).toLowerCase()}</Pil>
+            ))}
+            {!finalists.length ? <span className="sub2">No graduand on the list for {scope.session} yet.</span> : null}
+          </div>
+          {refused.length ? (
+            <Note kind="bad" title={`${refused.length} not started — the record says why`} action={<Btn kind="ghost" onClick={() => setRefused([])}>Done</Btn>}>
+              {refused.slice(0, 10).map((x) => `${x.name} (${x.number}): ${x.why}`).join(" · ")}
+            </Note>
+          ) : null}
+        </PBody>
+        {finalists.length ? (
+          <DTable
+            cols={["Student", "Programme", "CGPA|mid", "Clearance", "Final clearance|mid", "|num"]}
+            rows={finalists.map((f) => [
+              <Two key="s" a={`${f.surname}, ${f.otherNames}`} b={f.number} />, <span key="p">{f.programmeName}</span>,
+              <span className="tnum" key="c">{f.cgpa == null ? "—" : Number(f.cgpa).toFixed(2)}</span>,
+              <span className="tnum sub2" key="r">{f.clearanceRef ?? "—"}</span>,
+              <Pil key="st" kind={f.clearanceState === "NOT_STARTED" ? "grey" : stateKind(f.clearanceState)}>{OVERALL_WORD[f.clearanceState] ?? f.clearanceState}</Pil>,
+              f.clearanceProcess ? <LinkBtn key="o" kind="ghost" href={`/clearance?${new URLSearchParams({ wf: "FINAL", session: scope.session, process: f.clearanceProcess }).toString()}`}>Open</LinkBtn> : <span key="o" />,
+            ])}
+            texts={finalists.map((f) => `${f.number} ${f.surname} ${f.otherNames} ${f.programmeName} ${f.clearanceRef ?? ""} ${OVERALL_WORD[f.clearanceState] ?? f.clearanceState}`)}
+          />
+        ) : null}
+      </Panel>
       <Panel title="Classification summary" right="Computed from the versioned classification table in force at each student's entry">
         <DTable
           cols={["Class", "Students|mid", "Share|mid", "CGPA range|num"]}

@@ -163,7 +163,8 @@ class ClearanceDeskController {
                              @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                              @RequestParam(required = false) String sex, @RequestParam(required = false) String entry,
                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page,
-                             @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export) {
+                             @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export,
+                             @RequestParam(defaultValue = "false") boolean docs) {
         String office = office();
         List<String> mine = desk.unitsOf(office);
         String u = blank(unit) == null ? null : unit.trim().toUpperCase();
@@ -182,7 +183,7 @@ class ClearanceDeskController {
         OfficeScope.Bound b = scope.bound(fac, dept, prog);
         int sz = export ? Math.min(Math.max(size, 1), 20000) : Math.min(Math.max(size, 1), 200);
         Map<String, Object> out = desk.desk(new ClearanceDesk.Filter(workflow, session, u, st, b.fac(), b.dept(), b.prog(), level, blank(sex), blank(entry),
-                blank(q), export ? 0 : Math.max(page, 0), sz));
+                blank(q), export ? 0 : Math.max(page, 0), sz, docs));
         out.put("myUnits", mine);
         out.put("scope", Map.of("faculty", b.fac() == null ? "" : b.fac(), "department", b.dept() == null ? "" : b.dept()));
         return out;
@@ -333,6 +334,50 @@ class ClearanceDeskController {
         return jdbc.sql("SELECT started, remaining FROM clearance.start_eligible(:w, :s, :a, :o, :l)")
                 .param("w", body.workflow().toUpperCase()).param("s", body.session()).param("a", ctx.actorId()).param("o", ctx.actorOffice())
                 .param("l", body.limit() == null ? 500 : Math.min(Math.max(body.limit(), 1), 2000)).query().singleRow();
+    }
+
+    public record StartGraduands(@NotBlank String session, String fac, String dept, String prog) {
+    }
+
+    /**
+     * V416: final clearance started for every graduand of a session (on records.graduand, within the office's bound and
+     * the faculty, department or programme asked for) who has none under way — each on its own, against its own record,
+     * told once; a graduand the engine refuses is named with the reason, the others are started.
+     */
+    @PostMapping("/start-graduands")
+    @PreAuthorize(STARTERS)
+    Map<String, Object> startGraduands(@Valid @RequestBody StartGraduands body) {
+        OfficeScope.Bound b = scope.bound(body.fac(), body.dept(), body.prog());
+        AuditContext ctx = AuditContextHolder.required();
+        List<Map<String, Object>> todo = jdbc.sql("""
+                SELECT g.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname || ', ' || s.other_names AS name
+                  FROM records.graduand g
+                  JOIN people.student s ON s.id = g.student_id
+                  LEFT JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE g.session = :s
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                   AND NOT EXISTS (SELECT 1 FROM clearance.process q WHERE q.workflow = 'FINAL' AND q.student_id = g.student_id AND q.cancelled_at IS NULL)
+                 ORDER BY s.surname, s.other_names
+                 LIMIT 3000
+                """).param("s", body.session()).param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR)
+                .param("prog", b.prog(), Types.VARCHAR).query().listOfRows();
+        int started = 0;
+        List<Map<String, Object>> refused = new ArrayList<>();
+        for (Map<String, Object> g : todo) {
+            try {
+                tx.executeWithoutResult(st -> jdbc.sql("SELECT clearance.start('FINAL', :s, :sess, 'BULK', NULL, :a, :o)")
+                        .param("s", g.get("student_id")).param("sess", body.session()).param("a", ctx.actorId()).param("o", ctx.actorOffice())
+                        .query(UUID.class).single());
+                started++;
+            } catch (DataAccessException e) {
+                String m = String.valueOf(e.getMostSpecificCause() == null ? e.getMessage() : e.getMostSpecificCause().getMessage());
+                Matcher c = CODED.matcher(m);
+                boolean coded = c.find();
+                refused.add(Map.of("student", g.get("student_id"), "number", String.valueOf(g.get("number")), "name", String.valueOf(g.get("name")),
+                        "code", coded ? c.group(1) : "CLR_REFUSED", "why", coded ? c.group(2).trim() : "Refused"));
+            }
+        }
+        return Map.of("started", started, "refused", refused);
     }
 
     @GetMapping("/overview")

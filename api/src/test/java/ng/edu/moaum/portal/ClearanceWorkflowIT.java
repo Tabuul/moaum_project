@@ -180,9 +180,14 @@ class ClearanceWorkflowIT {
         assertThat(status(it.getBytesWith(them, "/api/v1/me/clearance/documents/" + doc + "/file", Map.of()))).isEqualTo(404);
         assertThat(status(it.getBytesWith(me, "/api/v1/me/clearance/documents/" + doc + "/file", Map.of()))).isEqualTo(200);
 
+        // V416: the Head's desk, filtered to documents awaiting review, lists the student with the document's name
+        Map<String, Object> toReview = it.get(hodOwn, C + "/desk?workflow=FRESH&session=" + S + "&unit=DEPARTMENT&docs=true&size=200").getBody();
+        assertThat(l(toReview.get("rows"))).filteredOn(r -> p.toString().equals(r.get("process_id"))).extracting(r -> r.get("docs_pending")).containsExactly("O'Level result");
         // the Head reviews: a rejection needs its reason; approved, the Department clears
         assertThat(it.call(hodOwn, HttpMethod.POST, C + "/documents/" + doc + "/review", Map.of("state", "REJECTED")).getBody().get("code")).isEqualTo("CLR_REASON");
         assertThat(status(it.call(hodOwn, HttpMethod.POST, C + "/documents/" + doc + "/review", Map.of("state", "APPROVED")))).isEqualTo(200);
+        assertThat(l(it.get(hodOwn, C + "/desk?workflow=FRESH&session=" + S + "&unit=DEPARTMENT&docs=true&size=200").getBody().get("rows")))
+                .extracting(r -> r.get("process_id")).doesNotContain(p.toString());
         assertThat(status(decide(hodOwn, p, "DEPARTMENT", Map.of("state", "CLEARED")))).isEqualTo(200);
         assertThat(status(decide(dean, p, "FACULTY", Map.of("state", "CLEARED")))).isEqualTo(200);
         assertThat(status(decide(library, p, "LIBRARY", Map.of("state", "CLEARED")))).isEqualTo(200);
@@ -244,6 +249,26 @@ class ClearanceWorkflowIT {
         // an office sees only its own stages
         List<Map<String, Object>> library = it.getList(this.library, C + "/awaiting").getBody();
         assertThat(library).extracting(x -> x.get("unit")).doesNotContain("DEPARTMENT", "BURSARY");
+    }
+
+    @Test
+    void finalClearanceIsStartedFromTheGraduationListForTheGraduandsWithoutOne() {
+        it.db(() -> jdbc.sql("INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet) VALUES (gen_random_uuid(), :s, :sess, 3.40, 'B.Sc.', NULL)")
+                .param("s", finalist).param("sess", S).update());
+        ResponseEntity<Map> started = it.call(registrar, HttpMethod.POST, C + "/start-graduands", Map.of("session", S));
+        assertThat(status(started)).as(String.valueOf(started.getBody())).isEqualTo(200);
+        assertThat(((Number) started.getBody().get("started")).intValue()).isGreaterThanOrEqualTo(1);
+        // the graduation list names the clearance and its word
+        Map<String, Object> view = it.get(registrar, "/api/v1/graduation/sessions/" + S).getBody();
+        Map<String, Object> mine = l(view.get("finalists")).stream().filter(f -> finalist.toString().equals(f.get("studentId"))).findFirst().orElseThrow();
+        assertThat(String.valueOf(mine.get("clearanceRef"))).startsWith("FCLR/");
+        assertThat(mine.get("clearanceState")).isEqualTo("IN_PROGRESS");
+        // started once: pressed again, nobody new
+        assertThat(l(it.call(registrar, HttpMethod.POST, C + "/start-graduands", Map.of("session", S)).getBody().get("refused")))
+                .extracting(r -> r.get("student")).doesNotContain(finalist.toString());
+        assertThat(jdbc.sql("SELECT count(*) FROM clearance.process WHERE student_id = :s AND workflow = 'FINAL' AND cancelled_at IS NULL").param("s", finalist).query(Long.class).single()).isEqualTo(1);
+        // a Bursar may not start it
+        assertThat(status(it.call(bursar, HttpMethod.POST, C + "/start-graduands", Map.of("session", S)))).isEqualTo(403);
     }
 
     @Test

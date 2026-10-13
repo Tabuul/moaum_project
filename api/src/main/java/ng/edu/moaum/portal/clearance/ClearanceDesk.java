@@ -70,7 +70,7 @@ class ClearanceDesk {
 
     /** the filters a desk or report is asked with */
     record Filter(String workflow, String session, String unit, String status, String fac, String dept, String prog, Integer level,
-                  String sex, String entry, String q, int page, int size) {
+                  String sex, String entry, String q, int page, int size, boolean documents) {
     }
 
     /**
@@ -125,19 +125,31 @@ class ClearanceDesk {
                            max(r.decided_at) FILTER (WHERE r.unit = :unit) AS my_decided_at
                       FROM r GROUP BY r.student_id
                 ),
+                -- V416: the documents uploaded for the stage (any stage, for every office's view) that await review
+                docs AS (
+                    SELECT d.process_id, string_agg(DISTINCT d.label, ', ') AS docs_pending
+                      FROM clearance.document d
+                     WHERE d.superseded_by IS NULL AND d.state IN ('PENDING', 'UNDER_REVIEW') AND (:unit::text IS NULL OR d.unit = :unit)
+                       AND d.process_id IN (SELECT process_id FROM pr)
+                     GROUP BY d.process_id
+                ),
                 joined AS (
                     SELECT pr.*, agg.stages, agg.overall, agg.my_state, agg.my_item, agg.my_applies, agg.my_opened, agg.my_decided_at,
+                           docs.docs_pending,
                            CASE WHEN :unit::text IS NULL THEN agg.overall ELSE agg.my_state END AS shown
                       FROM pr JOIN agg ON agg.student_id = pr.student_id
+                      LEFT JOIN docs ON docs.process_id = pr.process_id
                      WHERE :unit::text IS NULL OR agg.my_state IS NOT NULL
                 ),
                 filtered AS (
                     SELECT * FROM joined
                      WHERE (:status::text IS NULL OR shown = :status)
                        AND (:unit::text IS NULL OR my_applies OR :status::text = 'NOT_APPLICABLE')
+                       AND (NOT :docsOnly OR docs_pending IS NOT NULL)
                 )
                 SELECT (SELECT coalesce(jsonb_object_agg(k, n), '{}'::jsonb) FROM (SELECT shown AS k, count(*) AS n FROM joined GROUP BY shown) t)::text AS tiles,
                        (SELECT count(*) FROM joined) AS processes,
+                       (SELECT count(*) FROM joined WHERE docs_pending IS NOT NULL) AS documents,
                        (SELECT count(*) FROM filtered) AS total,
                        (SELECT coalesce(jsonb_agg(to_jsonb(x) - 'shown' ORDER BY x.surname, x.other_names), '[]'::jsonb)
                           FROM (SELECT * FROM filtered ORDER BY surname, other_names OFFSET :off LIMIT :lim) x)::text AS rows
@@ -147,6 +159,7 @@ class ClearanceDesk {
                 .param("fac", f.fac(), Types.VARCHAR).param("dept", f.dept(), Types.VARCHAR).param("prog", f.prog(), Types.VARCHAR)
                 .param("level", f.level(), Types.INTEGER).param("sex", f.sex(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR)
                 .param("ql", ql, Types.VARCHAR).param("unit", f.unit(), Types.VARCHAR).param("status", f.status(), Types.VARCHAR)
+                .param("docsOnly", f.documents())
                 .param("off", Math.max(0, f.page()) * f.size()).param("lim", f.size())
                 .query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -156,6 +169,8 @@ class ClearanceDesk {
         out.put("status", f.status());
         out.put("tiles", json.readValue(String.valueOf(row.get("tiles")), Map.class));
         out.put("processes", row.get("processes"));
+        out.put("documents", row.get("documents"));
+        out.put("documentsOnly", f.documents());
         out.put("total", row.get("total"));
         out.put("page", f.page());
         out.put("size", f.size());

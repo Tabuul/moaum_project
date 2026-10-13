@@ -24,6 +24,7 @@ export default async function ClearancePage({ searchParams }: { searchParams: Pr
   const q = new URLSearchParams({ workflow, session, page: String(page), size: "50" });
   for (const [k, v] of [["unit", s("unit")], ["status", s("status")], ["fac", scoped.scope.fac], ["dept", scoped.scope.dept], ["prog", scoped.scope.prog],
     ["level", scoped.scope.level], ["sex", s("sex")], ["entry", s("entry")], ["q", s("q")]] as [string, string][]) if (v) q.set(k, v);
+  if (s("docs") === "1") q.set("docs", "true");
   const process = /^[0-9a-f-]{36}$/.test(s("process")) ? s("process") : "";
   const [desk, detail] = await Promise.all([
     session ? api<Desk>(`/api/v1/clearance/desk?${q.toString()}`) : null,
@@ -35,7 +36,7 @@ export default async function ClearancePage({ searchParams }: { searchParams: Pr
       {detail && !detail.ok ? <ProblemNotice problem={detail.problem} /> : null}
       <ClearanceDesk workflows={wf.data} workflow={workflow} session={session} desk={desk && desk.ok ? desk.data : null}
         detail={detail && detail.ok ? detail.data : null} scope={{ ...scoped.scope, session }} structure={scoped.structure} sessions={scoped.sessions}
-        ceiling={scoped.ceiling} params={{ unit: s("unit"), status: s("status"), sex: s("sex"), entry: s("entry"), q: s("q"), page }}
+        ceiling={scoped.ceiling} params={{ unit: s("unit"), status: s("status"), sex: s("sex"), entry: s("entry"), q: s("q"), page, docs: s("docs") === "1" }}
         actingOffice={me.ok ? me.data.activeOffice : null} />
     </Shell>
   );

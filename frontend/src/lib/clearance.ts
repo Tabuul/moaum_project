@@ -24,10 +24,14 @@ export interface DeskRow {
   sex: string | null; entry_mode: string | null; level: number | null; programme_code: string | null; programme: string | null; dept_code: string | null;
   department: string | null; faculty_code: string | null; faculty: string | null; stages: DeskStage[]; overall: Overall;
   my_state: StageState | null; my_item: string | null; my_applies: boolean | null; my_opened: boolean | null; my_decided_at: string | null;
+  /** V416: the documents uploaded for the stage that await review, by name */
+  docs_pending?: string | null;
 }
 export interface Desk {
   workflow: Workflow; session: string; unit: string | null; status: string | null; tiles: Record<string, number>; processes: number; total: number;
   page: number; size: number; rows: DeskRow[]; myUnits: string[]; scope: { faculty: string; department: string };
+  /** V416: how many students have a document awaiting review, and whether the list is only those */
+  documents?: number; documentsOnly?: boolean;
 }
 export interface Stage {
   unit: string; label: string; office_code?: string | null; ord: number; required: boolean; waits: boolean; applies: boolean; opened: boolean;

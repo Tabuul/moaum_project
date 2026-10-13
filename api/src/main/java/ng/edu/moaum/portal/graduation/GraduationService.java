@@ -24,7 +24,12 @@ public class GraduationService {
     public record Tiles(long finalists, long auditPassed, long outstanding, long awaitingClearance, long approved) {
     }
 
-    public record View(String session, Tiles tiles, List<Exception> exceptions, List<ClassRow> classification) {
+    /** V416: a graduand's final clearance — its reference and overall word, NOT_STARTED when none is under way */
+    public record Finalist(UUID studentId, String number, String surname, String otherNames, String programmeName, BigDecimal cgpa,
+                           String unmet, String senateState, String clearanceRef, UUID clearanceProcess, String clearanceState) {
+    }
+
+    public record View(String session, Tiles tiles, List<Exception> exceptions, List<ClassRow> classification, List<Finalist> finalists) {
     }
 
     private final GraduationRepository repo;
@@ -84,7 +89,9 @@ public class GraduationService {
                     && g.cgpa().compareTo(b.low()) >= 0 && g.cgpa().compareTo(b.high()) <= 0).count();
             classes.add(new ClassRow(b.clazz(), n, classified == 0 ? 0 : (int) Math.round(100.0 * n / classified), b.low(), b.high()));
         }
-        return new View(session, new Tiles(all.size(), passed, exceptions.size(), awaitingClearance, approved), exceptions, classes);
+        List<Finalist> finalists = all.stream().map(g -> new Finalist(g.studentId(), g.number(), g.surname(), g.otherNames(), g.programmeName(),
+                g.cgpa(), g.unmet(), g.senateState(), g.clearanceRef(), g.clearanceProcess(), g.clearanceState())).toList();
+        return new View(session, new Tiles(all.size(), passed, exceptions.size(), awaitingClearance, approved), exceptions, classes, finalists);
     }
 
     @Transactional
