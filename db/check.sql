@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 272
+\set EXPECTED 273
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11697,6 +11697,81 @@ BEGIN
                  AND ended_once AND NOT ended_twice AND reason = 'expired: idle' AND ev = 1, false),
         format('default %s/%s/%s fallback=%s office=%s min=%s max=%s warn=%s set=%s/%s monitor=%s/%s/%s listed=%s ended=%s/%s reason=%s events=%s',
                d_enabled, d_idle, d_warn, fb, r_office, r_min, r_max, r_warn, set_idle, set_by, m.open_sessions, m.active, m.idle, listed, ended_once, ended_twice, reason, ev));
+END $$;
+
+-- ── V438. Reminders before a window closes: three days and one day before a registration window closes, the students of the
+--          session without a submitted registration are reminded through WINDOW_CLOSING, once per deadline and day, a registered
+--          student never, a student with no fees stated never for fees; the pass queues nothing twice and nothing while switched
+--          off. Delivery receipts: a provider's word lands on the SENT message it names as DELIVERED or BOUNCED, a report on a
+--          cancelled message or on nothing is only logged, a word that says nothing is ignored, the door's token is checked ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); S text := '9988/9989';
+        w uuid; v_closes timestamptz; q1 int; q2 int; q3 int; q_off int; told_a3 int; told_b3 int; told_a1 int; told_b1 int; subj3 text; sms1 text;
+        done_a boolean; done_b boolean; done_fees boolean;
+        e1 uuid; c1 uuid; r1 text; r2 text; r3 text; r4 text; r5 text; st1 text; ds1 text; dd1 text; st_c text; ds_c text; tok text; ok_t boolean; ok_f boolean; n_log int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V438', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V438', 'CHECKV438', 'ICT');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9988-10-01', date '9989-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/88/009438', NULL, NULL, 'CHECKV438', 'Closing Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/88/009439', NULL, NULL, 'CHECKV438', 'Closing Bola', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000004381', 'v438a@example.test'), (b, '08000004382', 'v438b@example.test');
+        -- B has submitted; the window closes at noon, Lagos, three days from today
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (gen_random_uuid(), b, S, 1, 100, 'SUBMITTED', now());
+        v_closes := (((now() AT TIME ZONE 'Africa/Lagos')::date + 3)::timestamp + interval '12 hours') AT TIME ZONE 'Africa/Lagos';
+        INSERT INTO policy.portal_window (window_type, session, semester, opens_at, closes_at, created_office) VALUES ('COURSE_REGISTRATION', S, 1, now() - interval '1 day', v_closes, 'ict') RETURNING id INTO w;
+        done_a := policy.window_done('COURSE_REGISTRATION', S, 1, a);
+        done_b := policy.window_done('COURSE_REGISTRATION', S, 1, b);
+        done_fees := policy.window_done('SCHOOL_FEES_PAYMENT', S, NULL, a);
+        UPDATE platform.notice_setting SET closing_reminders = true WHERE id;
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        -- 1. three days before: A reminded on every channel, B not; the same day again queues nothing
+        q1 := platform.queue_closing_reminders(now());
+        FOR i IN 1..5 LOOP PERFORM platform.run_notice_job(100000); END LOOP;
+        SELECT count(*) INTO told_a3 FROM platform.notice n WHERE n.about_id = a AND n.template_key LIKE 'WINDOW_CLOSING%' AND n.event_key = 'window-closing:' || w || ':' || to_char(v_closes AT TIME ZONE 'Africa/Lagos', 'YYYY-MM-DD') || ':3';
+        SELECT count(*) INTO told_b3 FROM platform.notice n WHERE n.about_id = b AND n.template_key LIKE 'WINDOW_CLOSING%';
+        subj3 := (SELECT n.subject FROM platform.notice n WHERE n.about_id = a AND n.template_key LIKE 'WINDOW_CLOSING%' AND n.channel = 'EMAIL' AND n.event_key LIKE '%:3');
+        q2 := platform.queue_closing_reminders(now());
+        -- 2. the day before: A again under a new key, B still not
+        q3 := platform.queue_closing_reminders(v_closes - interval '1 day');
+        FOR i IN 1..5 LOOP PERFORM platform.run_notice_job(100000); END LOOP;
+        SELECT count(*) INTO told_a1 FROM platform.notice n WHERE n.about_id = a AND n.template_key LIKE 'WINDOW_CLOSING%' AND n.event_key LIKE 'window-closing:' || w || ':%:1';
+        SELECT count(*) INTO told_b1 FROM platform.notice n WHERE n.about_id = b AND n.template_key LIKE 'WINDOW_CLOSING%';
+        sms1 := (SELECT n.body FROM platform.notice n WHERE n.about_id = a AND n.template_key LIKE 'WINDOW_CLOSING%' AND n.channel = 'SMS' AND n.event_key LIKE '%:1');
+        -- 3. switched off: nothing queued
+        UPDATE platform.notice_setting SET closing_reminders = false WHERE id;
+        q_off := platform.queue_closing_reminders(v_closes - interval '1 day');
+        -- 4. receipts: the token; a provider's word on a sent message; on a cancelled one; on nothing; a word that says nothing
+        tok := platform.new_receipt_token(who, 'ict');
+        ok_t := platform.receipt_token_ok(tok); ok_f := platform.receipt_token_ok('wrong');
+        e1 := platform.queue_notice('EMAIL', 'v438-r@example.test', 'CHK V438 receipt', 'body', 'test', NULL);
+        c1 := platform.queue_notice('EMAIL', 'v438-c@example.test', 'CHK V438 cancelled', 'body', 'test', NULL);
+        UPDATE platform.notice SET state = 'SENT', sent_at = now(), provider_id = 'rs-chk-438' WHERE id = e1;
+        UPDATE platform.notice SET state = 'CANCELLED', cancelled_at = now(), cancel_reason = 'CHECK' WHERE id = c1;
+        r1 := (SELECT x.outcome FROM platform.record_receipt('resend', 'rs-chk-438', 'email.delivered', NULL, '{"type":"email.delivered"}'::jsonb) x);
+        r2 := (SELECT x.outcome FROM platform.record_receipt('resend', 'rs-chk-438', 'email.bounced', 'mailbox full', '{"type":"email.bounced"}'::jsonb) x);
+        SELECT n.state, n.delivery_state, n.delivery_detail INTO st1, ds1, dd1 FROM platform.notice n WHERE n.id = e1;
+        r3 := (SELECT x.outcome FROM platform.record_receipt('ebulksms', c1::text, 'DELIVRD', NULL, '{}'::jsonb) x);
+        SELECT n.state, n.delivery_state INTO st_c, ds_c FROM platform.notice n WHERE n.id = c1;
+        r4 := (SELECT x.outcome FROM platform.record_receipt('generic', 'nothing-438', 'delivered', NULL, '{}'::jsonb) x);
+        r5 := (SELECT x.outcome FROM platform.record_receipt('generic', 'rs-chk-438', 'queued', NULL, '{}'::jsonb) x);
+        n_log := (SELECT count(*) FROM platform.notice_receipt r WHERE r.provider_id IN ('rs-chk-438', c1::text, 'nothing-438'));
+        RAISE EXCEPTION 'the V438 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V438: the students not yet registered are reminded three days and one day before the window closes, once per deadline and day, on every channel; a registered student never; nothing to pay is nothing to be reminded of; the pass queues nothing twice and nothing while off; a provider''s word lands on the sent message as DELIVERED or BOUNCED and never touches a cancelled one; a report on nothing or saying nothing is only logged; the door''s token is checked',
+        coalesce(NOT done_a AND done_b AND done_fees
+                 AND q1 >= 1 AND told_a3 = 3 AND told_b3 = 0 AND subj3 LIKE '%closes in 3 days%' AND q2 = 0
+                 AND q3 >= 1 AND told_a1 = 3 AND told_b1 = 0 AND sms1 LIKE '%closes tomorrow%' AND q_off = 0
+                 AND length(tok) = 64 AND ok_t AND NOT ok_f
+                 AND r1 = 'DELIVERED' AND r2 = 'BOUNCED' AND st1 = 'SENT' AND ds1 = 'BOUNCED' AND dd1 = 'mailbox full'
+                 AND r3 = 'NOT_SENT' AND st_c = 'CANCELLED' AND ds_c IS NULL AND r4 = 'UNMATCHED' AND r5 = 'IGNORED' AND n_log = 5, false),
+        format('done a=%s b=%s fees=%s | q1=%s told a=%s b=%s subject=%s q2=%s | q3=%s told a=%s b=%s sms=%s | off=%s | token len=%s ok=%s wrong=%s | r=%s/%s state=%s ds=%s detail=%s | cancelled r=%s state=%s ds=%s | unmatched=%s ignored=%s logged=%s',
+               done_a, done_b, done_fees, q1, told_a3, told_b3, subj3, q2, q3, told_a1, told_b1, left(sms1, 60), q_off, length(tok), ok_t, ok_f,
+               r1, r2, st1, ds1, dd1, r3, st_c, ds_c, r4, r5, n_log));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

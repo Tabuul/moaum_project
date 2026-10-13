@@ -154,6 +154,7 @@ public class NoticeDispatcher {
             boolean email = "EMAIL".equals(n.channel());
             String outcome = null;
             String error = null;
+            String providerId = null;   // V438: what the provider's delivery report will name
             List<NoticeRepository.Attachment> files = email ? notices.attachments(n.id()) : List.of();
             if (email && smtp.isPresent()) {
                 try {
@@ -164,7 +165,8 @@ public class NoticeDispatcher {
                 }
             } else if (!email && smsCreds.isPresent()) {
                 try {
-                    outcome = ebulkSms.send(smsCreds.get(), n.recipient(), n.body());
+                    outcome = ebulkSms.send(smsCreds.get(), n.recipient(), n.body(), n.id().toString());
+                    providerId = n.id().toString();   // eBulkSMS reports by the message id the portal sent: the notice's own
                 } catch (Exception e) {
                     error = e.getClass().getSimpleName() + ": " + e.getMessage();
                 }
@@ -184,6 +186,7 @@ public class NoticeDispatcher {
                     HttpResponse<String> r = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
                     if (r.statusCode() >= 200 && r.statusCode() < 300) {
                         outcome = r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 200));
+                        providerId = idIn(r.body());   // Resend answers {"id": "..."}; a relay of our own may too
                     } else {
                         error = "provider answered " + r.statusCode() + ": " + (r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 300)));
                     }
@@ -193,9 +196,10 @@ public class NoticeDispatcher {
             }
             final String ref = outcome;
             final String err = error;
+            final String pid = providerId;
             AuditContextHolder.with(new AuditContext(NOBODY, "ict", "notice dispatch", null, null), () -> tx.execute(status -> {
                 if (ref != null) {
-                    notices.sent(n.id(), ref);
+                    notices.sent(n.id(), ref, pid);
                 } else {
                     notices.failed(n.id(), err, n.attempts() + 1 >= 5);
                 }
@@ -206,6 +210,17 @@ public class NoticeDispatcher {
 
     static String json(NoticeRepository.Queued n) {
         return json(n, "");
+    }
+
+    private static final java.util.regex.Pattern ID_IN = java.util.regex.Pattern.compile("\"id\"\s*:\s*\"([^\"]{1,120})\"");
+
+    /** V438: the id a provider's JSON answer carries, if any */
+    static String idIn(String body) {
+        if (body == null) {
+            return null;
+        }
+        java.util.regex.Matcher m = ID_IN.matcher(body);
+        return m.find() ? m.group(1) : null;
     }
 
     static String json(NoticeRepository.Queued n, String att) {

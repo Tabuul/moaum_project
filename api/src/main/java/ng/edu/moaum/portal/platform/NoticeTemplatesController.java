@@ -166,7 +166,7 @@ class NoticeTemplatesController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> settings() {
-        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT portal_url, job_batch, staff_contact_remind, updated_at, updated_office FROM platform.notice_setting WHERE id").query().singleRow());
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT portal_url, job_batch, staff_contact_remind, closing_reminders, updated_at, updated_office FROM platform.notice_setting WHERE id").query().singleRow());
         out.putAll(jdbc.sql("""
                 SELECT b.remind_enabled, b.review_days, b.updated_at AS biodata_updated_at,
                        coalesce((SELECT enabled FROM people.biodata_gate LIMIT 1), false) AS gate_enabled
@@ -176,7 +176,8 @@ class NoticeTemplatesController {
         return out;
     }
 
-    record SettingsIn(@Size(max = 300) String portalUrl, Integer jobBatch, Boolean remindEnabled, Integer reviewDays, Boolean staffContactRemind) {
+    record SettingsIn(@Size(max = 300) String portalUrl, Integer jobBatch, Boolean remindEnabled, Integer reviewDays, Boolean staffContactRemind,
+                      Boolean closingReminders) {
     }
 
     @PutMapping("/settings")
@@ -187,6 +188,10 @@ class NoticeTemplatesController {
         if (in.staffContactRemind() != null) {
             jdbc.sql("UPDATE platform.notice_setting SET staff_contact_remind = :on, updated_by = :by, updated_office = :office, updated_at = now() WHERE id")
                     .param("on", in.staffContactRemind()).param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).update();
+        }
+        if (in.closingReminders() != null) {
+            jdbc.sql("UPDATE platform.notice_setting SET closing_reminders = :on, updated_by = :by, updated_office = :office, updated_at = now() WHERE id")
+                    .param("on", in.closingReminders()).param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).update();
         }
         if (in.portalUrl() != null) {
             jdbc.sql("SELECT platform.set_portal_url(:u, :by, :office)").param("u", in.portalUrl(), Types.VARCHAR)
@@ -228,6 +233,15 @@ class NoticeTemplatesController {
     Map<String, Object> remindStaffNow() {
         Integer n = jdbc.sql("SELECT iam.remind_staff_contact(2000)").query(Integer.class).single();
         return Map.of("reminded", n == null ? 0 : n);
+    }
+
+    /** V438: the daily pass for the windows closing in three days or tomorrow, run now: returns the jobs queued; the scheduler drains them */
+    @PostMapping("/closing-reminders/run")
+    @PreAuthorize(EDITORS)
+    @Transactional
+    Map<String, Object> closingRemindersNow() {
+        Integer n = jdbc.sql("SELECT platform.queue_closing_reminders()").query(Integer.class).single();
+        return Map.of("queued", n == null ? 0 : n);
     }
 
     /** the weekly biodata reminder run now by hand (ICT), for the students due: returns how many were reminded */

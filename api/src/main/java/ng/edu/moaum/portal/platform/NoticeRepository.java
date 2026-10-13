@@ -127,6 +127,7 @@ public class NoticeRepository {
     public List<Map<String, Object>> search(String channel, String state, String kind, String q, java.time.LocalDate from, java.time.LocalDate to, int limit) {
         return jdbc.sql("""
                 SELECT n.id, n.channel, n.recipient, n.subject, n.about_kind, n.about_id, n.created_at, n.state, n.attempts, n.sent_at, n.last_error,
+                       n.cancel_reason, n.delivery_state, n.delivered_at, n.delivery_detail,
                        n.template_key, n.priority, n.event_key,
                        CASE n.about_kind WHEN 'student' THEN (SELECT s.surname || ', ' || s.other_names || coalesce(' (' || s.matric_no || ')', '') FROM people.student s WHERE s.id = n.about_id)
                                          WHEN 'person' THEN (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = n.about_id) END AS about_name
@@ -152,6 +153,8 @@ public class NoticeRepository {
                        count(*) FILTER (WHERE state = 'QUEUED') AS queued,
                        count(*) FILTER (WHERE state = 'FAILED') AS failed,
                        count(*) FILTER (WHERE state = 'CANCELLED') AS cancelled,
+                       count(*) FILTER (WHERE state = 'SENT' AND delivery_state = 'DELIVERED') AS delivered,
+                       count(*) FILTER (WHERE state = 'SENT' AND delivery_state IN ('BOUNCED', 'UNDELIVERED')) AS bounced,
                        count(*) FILTER (WHERE state = 'FAILED' AND last_error IN ('INVALID_EMAIL', 'INVALID_PHONE')) AS invalid,
                        count(*) FILTER (WHERE created_at > now() - interval '7 days') AS week,
                        count(*) FILTER (WHERE state = 'SENT' AND sent_at > now() - interval '7 days') AS week_sent,
@@ -161,8 +164,43 @@ public class NoticeRepository {
     }
 
     public void sent(UUID id, String providerRef) {
-        jdbc.sql("UPDATE platform.notice SET state = 'SENT', sent_at = now(), attempts = attempts + 1, provider_ref = :r, last_error = NULL WHERE id = :id")
-                .param("r", providerRef, Types.VARCHAR).param("id", id).update();
+        sent(id, providerRef, null);
+    }
+
+    /** V438: the provider's own id of the message kept, so its delivery report can find it */
+    public void sent(UUID id, String providerRef, String providerId) {
+        jdbc.sql("UPDATE platform.notice SET state = 'SENT', sent_at = now(), attempts = attempts + 1, provider_ref = :r, provider_id = :p, last_error = NULL WHERE id = :id")
+                .param("r", providerRef, Types.VARCHAR).param("p", providerId, Types.VARCHAR).param("id", id).update();
+    }
+
+    // ── V438: delivery receipts ──
+
+    public boolean receiptTokenOk(String token) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT platform.receipt_token_ok(:t)").param("t", token, Types.VARCHAR).query(Boolean.class).single());
+    }
+
+    public String receiptToken() {
+        return jdbc.sql("SELECT receipt_token FROM platform.notice_setting WHERE id").query(String.class).optional().orElse(null);
+    }
+
+    public String newReceiptToken(UUID actor, String office) {
+        return jdbc.sql("SELECT platform.new_receipt_token(:by, :office)").param("by", actor, Types.OTHER).param("office", office, Types.VARCHAR).query(String.class).single();
+    }
+
+    /** the provider's word on one message: DELIVERED, BOUNCED, UNDELIVERED, or IGNORED, UNMATCHED, NOT_SENT — always logged */
+    public Map<String, Object> recordReceipt(String provider, String providerId, String status, String detail, String payloadJson) {
+        return jdbc.sql("SELECT outcome, notice_id FROM platform.record_receipt(:p, :id, :s, :d, :j::jsonb)")
+                .param("p", provider, Types.VARCHAR).param("id", providerId, Types.VARCHAR).param("s", status, Types.VARCHAR)
+                .param("d", detail, Types.VARCHAR).param("j", payloadJson, Types.VARCHAR).query().singleRow();
+    }
+
+    public List<Map<String, Object>> receipts(int limit) {
+        return jdbc.sql("""
+                SELECT r.id, r.provider, r.received_at, r.provider_id, r.status_word, r.notice_id, r.outcome, r.detail,
+                       n.channel, n.recipient, n.subject
+                  FROM platform.notice_receipt r LEFT JOIN platform.notice n ON n.id = r.notice_id
+                 ORDER BY r.received_at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
     }
 
     public void failed(UUID id, String error, boolean giveUp) {
@@ -183,7 +221,8 @@ public class NoticeRepository {
 
     public List<Map<String, Object>> recent(int limit) {
         return jdbc.sql("""
-                SELECT id, channel, recipient, subject, about_kind, about_id, created_at, state, attempts, sent_at, last_error
+                SELECT id, channel, recipient, subject, about_kind, about_id, created_at, state, attempts, sent_at, last_error,
+                       cancel_reason, delivery_state, delivered_at, delivery_detail
                   FROM platform.notice ORDER BY created_at DESC LIMIT :n
                 """).param("n", limit).query().listOfRows();
     }

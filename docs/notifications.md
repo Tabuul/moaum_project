@@ -161,10 +161,34 @@ generate must be keepable from real students without the modules being touched. 
 | The record | `platform.notice_clearance` (audited) | Who, when, why, what waited per channel, what was cancelled, what still waits, the sent and failed history left untouched, the jobs open — the clearance report, and "last cleared" on the screen. The cancelled messages themselves are audited row by row. |
 | The jobs | `platform.open_notice_jobs()`, `platform.cancel_notice_job(job, reason, actor, office)`; `POST …/jobs/{id}/cancel` | A job still running (a window's messages, a campaign) would refill the queue it just emptied: ended here, state `CANCELLED`, never picked by `run_notice_job`; a campaign's job cancels the campaign (`campaign_cancel` now marks its job cancelled too). The weekly biodata and staff reminders keep their own switches. |
 
-Provider delivery reports (DELIVERED/BOUNCED) are still not read (below), so SENT means accepted by the provider.
+## Reminders before a window closes (V438)
+
+Three days and one day before a school fees payment or course registration window closes (the University's, the Centre's
+and the School's), the students of the session who have not yet done what the window is for are reminded: fees not paid in
+full (`finance.position`; a student whose fees are not stated has nothing to pay and is left alone), no registration
+submitted for the semester (`policy.window_done`). A daily pass at 08:00 Lagos (`platform.queue_closing_reminders`,
+`moaum.windows.remind-cron`; "Run the closing reminders now" on the templates screen) queues one `WINDOW` job with the action
+`CLOSING` per window, deadline and day — the deadline being the close, or the end of the late period once the close has
+passed — and the job runner reminds through `WINDOW_CLOSING` (variants `:SCHOOL_FEES_PAYMENT`, `:COURSE_REGISTRATION`;
+`[DAYS_WORD]`, `[DEADLINE]`), once per person under the event key `window-closing:<window>:<deadline date>:<days>`. The switch
+is `platform.notice_setting.closing_reminders`.
+
+## Delivery receipts (V438)
+
+A message is SENT when the provider accepts it. A provider that reports further posts its report to the receipt door,
+`POST /api/v1/notices/receipts/{resend|ebulksms|generic}`, behind the token the Directorate of ICT generates on Notifications
+(`platform.notice_setting.receipt_token`, as `?token=` or `X-Receipt-Token`). The report is matched to the message by the
+provider's id the dispatcher kept (`platform.notice.provider_id`: Resend's id; for eBulkSMS the message id the portal sent,
+which is the notice's own) and written on it as `delivery_state` DELIVERED, BOUNCED or UNDELIVERED with `delivered_at` and
+`delivery_detail` (`platform.record_receipt`) — never changing `state`: a late report on a cancelled or failed message is
+logged as NOT_SENT and nothing changes. Every report is kept on `platform.notice_receipt` as it came (DELIVERED, BOUNCED,
+UNDELIVERED, IGNORED for a word that says nothing, UNMATCHED, NOT_SENT), shown on Notifications, so what a provider actually
+sends is seen before it is trusted; Resend's events are read as `type` + `data.email_id`, eBulkSMS's as `msgid` + `status`
+(DELIVRD, UNDELIV, EXPIRED, REJECTD), a plain `{id, status, detail}` otherwise. The by-channel picture and the clearance
+report count the delivered and the bounced. Mail sent over SMTP has no receipt: bounces come back as mail and are not read.
 
 ## Not yet
 
-Delivery receipts from the SMS and mail providers (a message is SENT when the provider accepts it; DELIVERED/BOUNCED would
-need the providers' callbacks); reminders before a window closes (the engine can carry them; the University has not asked
-for them).
+Bounces of mail sent over SMTP (they come back as mail; reading the mailbox is not built); eBulkSMS's delivery reports are
+read by the field names their documentation gives and are kept as they come, so the first real one shows whether the reading
+is right.

@@ -58,6 +58,7 @@ class CampaignsController {
     Map<String, Object> list() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("campaigns", jdbc.sql(ROW + " ORDER BY c.created_at DESC LIMIT 100").query().listOfRows());
+        out.put("delivery", jdbc.sql("SELECT * FROM platform.delivery()").query().singleRow());   // V438: a campaign sent with delivery off waits
         out.put("templates", jdbc.sql("SELECT key, label, purpose, mandatory, email_body IS NOT NULL AS email, sms_body IS NOT NULL AS sms, portal_body IS NOT NULL AS portal FROM platform.notice_template WHERE enabled ORDER BY key").query().listOfRows());
         out.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
         out.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL ORDER BY name").query().listOfRows());

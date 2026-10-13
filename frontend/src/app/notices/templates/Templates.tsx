@@ -20,6 +20,8 @@ export interface Template {
 }
 export interface Settings {
   portal_url: string | null; job_batch: number; remind_enabled: boolean; review_days: number | null; gate_enabled: boolean; staff_contact_remind?: boolean;
+  /** V438: the reminders three days and one day before a fees or registration window closes */
+  closing_reminders?: boolean;
   counts: { total: number; up_to_date: number; incomplete: number; review_required: number; outdated: number; no_email: number; no_phone: number; migrated: number } | null;
 }
 export interface Job { id: string; kind: string; payload: string; state: string; created_at: string; created_office: string | null; started_at: string | null; finished_at: string | null; reached: number; queued: number; runs: number; error: string | null }
@@ -60,6 +62,7 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
     portalUrl: settings?.portal_url ?? "", jobBatch: String(settings?.job_batch ?? 2000),
     remindEnabled: settings?.remind_enabled ?? false, reviewDays: settings?.review_days ? String(settings.review_days) : "",
     staffContactRemind: settings?.staff_contact_remind ?? false,
+    closingReminders: settings?.closing_reminders ?? true,
   });
 
   function edit(t: Template) {
@@ -118,7 +121,7 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
     try {
       const r = await send<Settings>("/settings", "PUT", {
         portalUrl: s.portalUrl, jobBatch: Number(s.jobBatch) || undefined, remindEnabled: s.remindEnabled, reviewDays: s.reviewDays === "" ? 0 : Number(s.reviewDays),
-        staffContactRemind: s.staffContactRemind,
+        staffContactRemind: s.staffContactRemind, closingReminders: s.closingReminders,
       }, "Notification settings");
       if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
       notify("Settings saved");
@@ -247,12 +250,16 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
             <Field id="staffremind" label="Weekly staff contact reminder" hint="Tuesday mornings, to each staff member or lecturer whose e-mail or phone is missing or not usable, by the channel they have; HR told once a week how many cannot be reached at all">
               <label className="row row--inline row--tight"><input id="staffremind" type="checkbox" checked={s.staffContactRemind} disabled={!may} onChange={(e) => setS({ ...s, staffContactRemind: e.target.checked })} /> On</label>
             </Field>
+            <Field id="closing" label="Reminders before a window closes" hint="Every morning at eight: three days and one day before a school fees payment or course registration window closes, to the students of the session who have not yet paid in full or submitted a registration; once per deadline and day (WINDOW_CLOSING)">
+              <label className="row row--inline row--tight"><input id="closing" type="checkbox" checked={s.closingReminders} disabled={!may} onChange={(e) => setS({ ...s, closingReminders: e.target.checked })} /> On</label>
+            </Field>
           </div>
           {may ? (
             <div className="row row--wrap row--tight mt-3">
               <Btn kind="primary" disabled={busy} onClick={() => void saveSettings()}>Save settings</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => void remindNow()}>Run the biodata reminder now</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => void remindStaffNow()}>Run the staff contact reminder now</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={async () => { const r = await send<{ queued: number }>("/closing-reminders/run", "POST", {}, "Window closing reminders run now"); if (r.ok) notify(`${r.data.queued} window reminder job${r.data.queued === 1 ? "" : "s"} queued`); else notifyProblem(r.problem); }}>Run the closing reminders now</Btn>
             </div>
           ) : null}
         </PBody>

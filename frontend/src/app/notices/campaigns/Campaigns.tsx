@@ -23,6 +23,8 @@ export interface Campaign {
 }
 export interface CampaignsPage {
   campaigns: Campaign[];
+  /** V438: the delivery switches on Notifications; a campaign sent while one is off waits in the outbox */
+  delivery?: { dispatch_enabled: boolean; email_delivery: boolean; sms_delivery: boolean; portal_delivery: boolean };
   templates: { key: string; label: string; purpose: string; mandatory: boolean; email: boolean; sms: boolean; portal: boolean }[];
   faculties: { code: string; name: string }[];
   departments: { code: string; name: string; faculty_code: string }[];
@@ -162,6 +164,11 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
 
   return (
     <>
+      {d.delivery && (!d.delivery.dispatch_enabled || !d.delivery.email_delivery || !d.delivery.sms_delivery) ? (
+        <Note kind="bad" title={!d.delivery.dispatch_enabled ? "Queue processing is paused" : `${!d.delivery.email_delivery && !d.delivery.sms_delivery ? "E-mail and SMS delivery are" : !d.delivery.email_delivery ? "E-mail delivery is" : "SMS delivery is"} switched off`}>
+          A campaign sent now is queued but waits in the outbox until delivery is switched on again on <a href="/notices">Notifications</a>; the portal notices are made as usual.
+        </Note>
+      ) : null}
       <Note kind="info" title="A message to many, read from the record">
         Nobody is typed in: the students, staff, lecturers or applicants the filters name are read from the register when the campaign is sent, once per person and channel.
         {wide ? " Preview first: it counts who would be reached, and whose address is missing or not one." : " A Dean or Head writes to the students of their own faculty or department."}

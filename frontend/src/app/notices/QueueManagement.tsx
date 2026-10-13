@@ -26,6 +26,8 @@ export interface Clearance {
   verification?: { pending: Pending[]; processing: number; dispatch_enabled: boolean };
 }
 export interface OpenJob { id: string; kind: string; state: string; about: string; created_at: string; created_office: string | null; reached: number; queued: number; runs: number }
+/** V438: a provider's delivery report as it came, and what was done with it */
+export interface Receipt { id: string; provider: string; received_at: string; provider_id: string | null; status_word: string | null; notice_id: string | null; outcome: string; detail: string | null; channel: string | null; recipient: string | null; subject: string | null }
 
 const DEFAULT_REASON = "Pending notification queue cancelled by the administrator before delivery";
 
@@ -34,8 +36,8 @@ function when(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function QueueManagement({ delivery, pending, jobs, last, may, mayClear }: {
-  delivery: Delivery; pending: Pending[]; jobs: OpenJob[]; last: Clearance | null; may: boolean; mayClear: boolean;
+export function QueueManagement({ delivery, pending, jobs, last, may, mayClear, receipts, receiptToken }: {
+  delivery: Delivery; pending: Pending[]; jobs: OpenJob[]; last: Clearance | null; may: boolean; mayClear: boolean; receipts: Receipt[]; receiptToken: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -44,6 +46,7 @@ export function QueueManagement({ delivery, pending, jobs, last, may, mayClear }
   const [reason, setReason] = useState(DEFAULT_REASON);
   const [confirming, setConfirming] = useState(false);
   const [report, setReport] = useState<Clearance | null>(null);
+  const [showToken, setShowToken] = useState(false);
   const count = (c: string) => Number(pending.find((p) => p.channel === c)?.pending ?? 0);
   const chosen = (["EMAIL", "SMS"] as const).filter((c) => channels[c]);
   const toCancel = chosen.reduce((n, c) => n + count(c), 0);
@@ -83,6 +86,32 @@ export function QueueManagement({ delivery, pending, jobs, last, may, mayClear }
             previewed, and the outbox holds the messages unsent until delivery is switched on or the queue is cleared. A portal notice is delivered the moment it is
             made, so the portal switch keeps it from being made at all. Queue processing paused holds every channel.
           </div>
+        </PBody>
+        <PBody style={{ borderTop: "1px solid var(--line-2)" }}>
+          <div className="row"><b>Delivery receipts</b>{receiptToken ? <Pil kind="ok">door open</Pil> : <Pil kind="grey">no token yet</Pil>}</div>
+          <div className="sub2">
+            A message is marked sent when the provider accepts it. A provider that reports further &mdash; delivered, bounced, undelivered &mdash; posts its report to the
+            receipt door, and the word lands on the message without changing its state. Give the provider the door address with the token: Resend&rsquo;s webhooks to{" "}
+            <code>/api/v1/notices/receipts/resend</code>, eBulkSMS&rsquo;s delivery reports to <code>/api/v1/notices/receipts/ebulksms</code>, anything else to{" "}
+            <code>/api/v1/notices/receipts/generic</code> with <code>id</code>, <code>status</code> and <code>detail</code>; the token goes as <code>?token=</code> or the
+            header <code>X-Receipt-Token</code>. Every report is kept below as it came, so what a provider actually sends is seen before it is trusted.
+          </div>
+          {may ? (
+            <div className="row row--wrap row--tight mt-1">
+              {receiptToken ? <Btn kind="ghost" size="sm" onClick={() => setShowToken(!showToken)}>{showToken ? "Hide the token" : "Show the token"}</Btn> : null}
+              {showToken && receiptToken ? <code className="tnum" style={{ userSelect: "all" }}>{receiptToken}</code> : null}
+              <Btn kind="secondary" size="sm" disabled={busy} onClick={() => { if (window.confirm(receiptToken ? "Generate a new token? The providers must be given the new one; reports with the old token are refused from now." : "Generate the receipt door's token?")) void send("/receipt-token", {}, "Delivery receipt token generated"); }}>{receiptToken ? "New token" : "Generate the token"}</Btn>
+            </div>
+          ) : null}
+          {receipts.length ? (
+            <DTable cols={["When|mid", "Provider", "Report", "Message", "Outcome|mid"]} rows={receipts.map((r) => [
+              <span key="w" className="tnum sub2">{when(r.received_at)}</span>,
+              r.provider,
+              <span key="r"><span className="tnum">{r.provider_id ?? "\u2014"}</span> <span className="sub2">{r.status_word ?? ""}{r.detail ? ` · ${r.detail}` : ""}</span></span>,
+              r.notice_id ? <span key="m" className="sub2">{r.channel} to {r.recipient}: {r.subject}</span> : <span key="m" className="sub2">no message of the portal&rsquo;s</span>,
+              <Pil key="o" kind={r.outcome === "DELIVERED" ? "ok" : r.outcome === "BOUNCED" || r.outcome === "UNDELIVERED" ? "bad" : "grey"}>{r.outcome.toLowerCase().replace("_", " ")}</Pil>,
+            ])} />
+          ) : <div className="sub2 mt-1">No report has reached the door yet.</div>}
         </PBody>
       </Panel>
 

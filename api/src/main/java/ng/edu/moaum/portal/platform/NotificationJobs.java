@@ -103,6 +103,24 @@ public class NotificationJobs {
 
     /** V430: the weekly reminder to staff whose e-mail or phone is missing or not usable (on ICT's switch), and the HR office's
      *  weekly word on how many cannot be reached at all; Tuesday mornings */
+    /** V438: every morning, the fees and registration windows closing in three days or tomorrow are queued as reminder jobs */
+    @Scheduled(cron = "${moaum.windows.remind-cron:0 0 8 * * *}", zone = "Africa/Lagos")
+    public void remindClosingWindows() {
+        lock.runExclusively("closing-reminders", this::remindClosingWindowsNow);
+    }
+
+    void remindClosingWindowsNow() {
+        try {
+            Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "window closing reminders", null, null), () -> tx.execute(status ->
+                    jdbc.sql("SELECT platform.queue_closing_reminders()").query(Integer.class).single()));
+            if (n != null && n > 0) {
+                LOG.info("window closing reminders: {} job(s) queued", n);
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("window closing reminders did not run: {}", e.getMessage());
+        }
+    }
+
     @Scheduled(cron = "${moaum.staff.remind-cron:0 0 9 * * TUE}", zone = "Africa/Lagos")
     public void remindStaffContact() {
         lock.runExclusively("staff-contact-reminders", this::remindStaffContactNow);

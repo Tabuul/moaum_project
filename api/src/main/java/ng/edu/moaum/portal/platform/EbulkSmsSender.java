@@ -22,13 +22,18 @@ class EbulkSmsSender {
 
     /** send the message to one recipient; returns eBulkSMS's own words (its response body) for the log */
     String send(SmsService.Creds c, String recipient, String message) throws Exception {
+        return send(c, recipient, message, java.util.UUID.randomUUID().toString());
+    }
+
+    /** V438: with the message id eBulkSMS will report delivery under — the notice's own id */
+    String send(SmsService.Creds c, String recipient, String message, String msgid) throws Exception {
         String gsm = normalise(recipient);
         if (gsm.isEmpty()) {
             throw new IllegalArgumentException("no usable phone number");
         }
         String body = "{\"SMS\":{\"auth\":{\"username\":" + quote(c.username()) + ",\"apikey\":" + quote(c.apiKey()) + "},"
                 + "\"message\":{\"sender\":" + quote(c.sender()) + ",\"messagetext\":" + quote(message) + ",\"flash\":\"0\"},"
-                + "\"recipients\":{\"gsm\":[{\"msidn\":" + quote(gsm) + ",\"msgid\":" + quote(java.util.UUID.randomUUID().toString()) + "}]}}}";
+                + "\"recipients\":{\"gsm\":[{\"msidn\":" + quote(gsm) + ",\"msgid\":" + quote(msgid) + "}]}}}";
         HttpRequest req = HttpRequest.newBuilder(URI.create(ENDPOINT))
                 .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")

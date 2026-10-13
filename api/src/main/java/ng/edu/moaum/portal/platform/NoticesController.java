@@ -45,8 +45,14 @@ class NoticesController {
     Map<String, Object> outbox(@RequestParam(required = false) String channel, @RequestParam(required = false) String state,
                                @RequestParam(required = false) String kind, @RequestParam(required = false) String q,
                                @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,
-                               @RequestParam(defaultValue = "100") int limit) {
+                               @RequestParam(defaultValue = "100") int limit,
+                               org.springframework.security.core.Authentication auth) {
         Map<String, Object> out = new LinkedHashMap<>();
+        // V438: the providers' delivery reports, and the receipt door's token for those who set it
+        out.put("receipts", notices.receipts(20));
+        boolean operator = auth != null && auth.getAuthorities().stream().map(Object::toString)
+                .anyMatch(a -> a.equals("OFFICE_ict") || a.equals("OFFICE_admin") || a.equals("OFFICE_super"));
+        out.put("receiptToken", operator ? notices.receiptToken() : null);
         Map<String, Object> c = notices.counts();
         out.put("queued", c.get("queued"));
         out.put("sent", c.get("sent"));
@@ -150,6 +156,15 @@ class NoticesController {
         verification.put("dispatch_enabled", false);
         out.put("verification", verification);
         return out;
+    }
+
+    /** V438: a new token for the receipt door; the providers' delivery reports must carry it */
+    @PostMapping("/receipt-token")
+    @PreAuthorize(OPERATORS)
+    @Transactional
+    Map<String, Object> newReceiptToken() {
+        AuditContext ctx = AuditContextHolder.required();
+        return Map.of("token", notices.newReceiptToken(ctx.actorId(), ctx.actorOffice()));
     }
 
     @GetMapping("/clearances")

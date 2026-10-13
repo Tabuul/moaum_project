@@ -12,18 +12,22 @@ import type { Problem } from "@/lib/api";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { QueueManagement, type Clearance, type Delivery, type OpenJob, type Pending } from "./QueueManagement";
+import { QueueManagement, type Clearance, type Delivery, type OpenJob, type Pending, type Receipt } from "./QueueManagement";
 
 export interface Recent {
   id: string; channel: string; recipient: string; subject: string; created_at: string; state: string; attempts: number; sent_at: string | null; last_error: string | null;
   about_kind?: string | null; about_name?: string | null; template_key?: string | null; priority?: string | null; event_key?: string | null;
   cancel_reason?: string | null;
+  /** V438: the provider's word after accepting the message */
+  delivery_state?: string | null; delivered_at?: string | null; delivery_detail?: string | null;
 }
-export interface ByChannel { channel: string; total: number; sent: number; queued: number; failed: number; cancelled?: number; invalid: number; week: number; week_sent: number; week_failed: number }
+export interface ByChannel { channel: string; total: number; sent: number; queued: number; failed: number; cancelled?: number; delivered?: number; bounced?: number; invalid: number; week: number; week_sent: number; week_failed: number }
 export interface Outbox {
   queued: number; sent: number; failed: number; cancelled?: number; sentToday: number; emailProvider: boolean; smsProvider: boolean; recent: Recent[]; byChannel?: ByChannel[];
   /** V436: the delivery switches, what waits now, the jobs that would still write to the queue, the last clearance */
   delivery?: Delivery; pending?: Pending[]; jobs?: OpenJob[]; lastClearance?: Clearance | null;
+  /** V438: the providers' delivery reports, and the receipt door's token (operators only) */
+  receipts?: Receipt[]; receiptToken?: string | null;
 }
 export interface Filters { channel: string; state: string; kind: string; q: string; from: string; to: string }
 
@@ -88,10 +92,12 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
 
       {by.length ? (
         <Panel title="By channel" right="All time, and the last seven days">
-          <DTable cols={["Channel", "Total|num", "Sent|num", "Waiting|num", "Failed|num", "Cancelled|num", "Bad addresses|num", "Last 7 days|num", "Sent, 7 days|num", "Failed, 7 days|num"]}
+          <DTable cols={["Channel", "Total|num", "Sent|num", "Delivered|num", "Bounced|num", "Waiting|num", "Failed|num", "Cancelled|num", "Bad addresses|num", "Last 7 days|num", "Sent, 7 days|num", "Failed, 7 days|num"]}
             rows={["EMAIL", "SMS", "PORTAL"].filter((c) => row(c)).map((c) => { const b = row(c)!; return [
               <b key="c">{c === "PORTAL" ? "Portal" : c === "EMAIL" ? "Email" : "SMS"}</b>,
-              <span className="tnum" key="t">{b.total}</span>, <span className="tnum" key="s">{b.sent}</span>, <span className="tnum" key="q">{b.queued}</span>,
+              <span className="tnum" key="t">{b.total}</span>, <span className="tnum" key="s">{b.sent}</span>,
+              <span className="tnum" key="d">{b.delivered ?? 0}</span>, <span className="tnum" key="b" style={b.bounced ? { color: "var(--red-ink)" } : undefined}>{b.bounced ?? 0}</span>,
+              <span className="tnum" key="q">{b.queued}</span>,
               <span className="tnum" key="f" style={b.failed ? { color: "var(--red-ink)" } : undefined}>{b.failed}</span>,
               <span className="tnum" key="x">{b.cancelled ?? 0}</span>,
               <span className="tnum" key="i">{b.invalid}</span>, <span className="tnum" key="w">{b.week}</span>, <span className="tnum" key="ws">{b.week_sent}</span>,
@@ -108,7 +114,7 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
         </PBody>
       </Panel>
 
-      {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} /> : null}
+      {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} receipts={d.receipts ?? []} receiptToken={d.receiptToken ?? null} /> : null}
 
       <Panel title="History" right={filtered ? `${d.recent.length} matching, newest first` : `${d.recent.length} most recent`}>
         <PBody style={{ borderBottom: "1px solid var(--line-2)" }}>
@@ -137,7 +143,13 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
             <span key="s">{n.subject}{n.template_key ? <div className="sub2">{n.template_key}</div> : null}</span>,
             <span className="sub2" key="c">{n.channel === "PORTAL" ? "Portal" : n.channel}</span>,
             <span className="tnum" key="a">{n.attempts}</span>,
-            n.state === "SENT" ? <Pil kind="ok" key="x">{n.channel === "PORTAL" ? "Delivered" : "Sent"}</Pil> : n.state === "FAILED" ? (
+            n.state === "SENT" ? (
+              <span key="x" className="row row--inline row--tight" title={n.delivery_detail ?? ""}>
+                <Pil kind={n.delivery_state === "BOUNCED" || n.delivery_state === "UNDELIVERED" ? "bad" : "ok"}>
+                  {n.channel === "PORTAL" ? "Delivered" : n.delivery_state === "DELIVERED" ? "Delivered" : n.delivery_state === "BOUNCED" ? "Bounced" : n.delivery_state === "UNDELIVERED" ? "Undelivered" : "Sent"}
+                </Pil>
+              </span>
+            ) : n.state === "FAILED" ? (
               <span key="x" className="row row--inline row--tight">
                 <Pil kind="bad">{n.last_error === "INVALID_EMAIL" ? "Not an e-mail" : n.last_error === "INVALID_PHONE" ? "Not a phone" : "Failed"}</Pil>
                 {n.last_error && !["INVALID_EMAIL", "INVALID_PHONE"].includes(n.last_error) ? <span className="sub2">{n.last_error}</span> : null}

@@ -65,7 +65,9 @@ class SecurityConfig {
                                 "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/helpdesk/sign-in-help", "/api/v1/public/**",
                                 "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate",
                                 // V385: the Post-UTME CBT door and result checking — public, verified by JAMB number and a second factor, throttled
-                                "/api/v1/putme/cbt/public", "/api/v1/putme/cbt/verify", "/api/v1/putme/results/check").permitAll()
+                                "/api/v1/putme/cbt/public", "/api/v1/putme/cbt/verify", "/api/v1/putme/results/check",
+                                // V438: the providers' delivery reports, behind the token the Directorate of ICT generated
+                                "/api/v1/notices/receipts/*").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);
