@@ -24,6 +24,12 @@ variable "portal_url" {
   type        = string
 }
 
+variable "client_address" {
+  description = "Which X-Forwarded-For entry is the person's (becomes MOAUM_CLIENT_ADDRESS): 'last' with the ALB alone, '2' with CloudFront in front of it (CloudFront appends the viewer, the ALB appends CloudFront). The throttles and the sign-in records count by it."
+  type        = string
+  default     = "2"
+}
+
 variable "github_repository" {
   description = "owner/name of the GitHub repository allowed to deploy through OIDC."
   type        = string

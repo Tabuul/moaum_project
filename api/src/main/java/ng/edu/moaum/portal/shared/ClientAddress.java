@@ -12,34 +12,42 @@ import jakarta.servlet.http.HttpServletRequest;
  * <p>So the address is read from {@code X-Forwarded-For}, which the portal passes on as it received it. Which entry is
  * the person's depends on the edge in front of the portal: Railway's edge drops whatever the client sent and writes the
  * address it saw, so the first entry is the person's; a load balancer that appends (AWS's) writes the address it saw at
- * the end, and anything to its left the client could have written itself. The API runs on Railway when Railway says so
- * ({@code RAILWAY_ENVIRONMENT_ID}); {@code MOAUM_CLIENT_ADDRESS=first|last} overrides the choice for another edge. With no
- * header, the connection's own address. An entry that is not an address is not trusted.
+ * the end, and anything to its left the client could have written itself. Two appending edges in a row (CloudFront in front
+ * of the load balancer, the production portal since Oct 2026) leave the person's address second from last: CloudFront
+ * appends the viewer's, the load balancer appends CloudFront's. The API runs on Railway when Railway says so
+ * ({@code RAILWAY_ENVIRONMENT_ID}); {@code MOAUM_CLIENT_ADDRESS} overrides the choice for another edge: {@code first},
+ * {@code last}, or a number counted from the end ({@code 1} the last, {@code 2} the second from last). A chain shorter than
+ * that number was written by the edges alone, and its first entry is the person's. With no header, the connection's own
+ * address. An entry that is not an address is not trusted.
  */
 public final class ClientAddress {
 
     private static final Pattern ADDRESS = Pattern.compile("^[0-9A-Fa-f:.]{2,45}$");
     private static final Pattern IPV4_WITH_PORT = Pattern.compile("^([0-9]{1,3}(\\.[0-9]{1,3}){3}):[0-9]{1,5}$");
-    private static final boolean FIRST = first(System.getenv("MOAUM_CLIENT_ADDRESS"), System.getenv("RAILWAY_ENVIRONMENT_ID"));
+    /** 0 = the first entry; n = the nth from the end */
+    private static final int ENTRY = entry(System.getenv("MOAUM_CLIENT_ADDRESS"), System.getenv("RAILWAY_ENVIRONMENT_ID"));
 
     private ClientAddress() {
     }
 
-    static boolean first(String setting, String railway) {
-        if ("first".equalsIgnoreCase(setting == null ? "" : setting.trim())) return true;
-        if ("last".equalsIgnoreCase(setting == null ? "" : setting.trim())) return false;
-        return railway != null && !railway.isBlank();
+    static int entry(String setting, String railway) {
+        String s = setting == null ? "" : setting.trim();
+        if ("first".equalsIgnoreCase(s)) return 0;
+        if ("last".equalsIgnoreCase(s)) return 1;
+        if (s.matches("[1-9][0-9]?")) return Integer.parseInt(s);
+        return railway != null && !railway.isBlank() ? 0 : 1;
     }
 
     /** the person's address, or null when the request carries none that can be trusted */
     public static String of(HttpServletRequest request) {
-        return pick(request.getHeader("X-Forwarded-For"), request.getRemoteAddr(), FIRST);
+        return pick(request.getHeader("X-Forwarded-For"), request.getRemoteAddr(), ENTRY);
     }
 
-    static String pick(String forwarded, String remote, boolean first) {
+    static String pick(String forwarded, String remote, int entry) {
         if (forwarded != null && !forwarded.isBlank()) {
             String[] parts = forwarded.split(",");
-            String p = clean(first ? parts[0] : parts[parts.length - 1]);
+            int at = entry == 0 ? 0 : Math.max(0, parts.length - entry);
+            String p = clean(parts[at]);
             if (p != null) return p;
         }
         return clean(remote);

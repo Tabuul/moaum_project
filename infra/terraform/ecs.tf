@@ -92,6 +92,7 @@ locals {
     { name = "PGUSER", value = aws_db_instance.main.username },
     { name = "DB_POOL_SIZE", value = tostring(var.db_pool_size) },
     { name = "MOAUM_PORTAL_URL", value = var.portal_url },
+    { name = "MOAUM_CLIENT_ADDRESS", value = var.client_address },
     { name = "PORT", value = "8081" },
     # files on S3 (V310); migrate=true moves the files already in the database, a few hundred a minute
     { name = "MOAUM_FILES_PROVIDER", value = "S3" },

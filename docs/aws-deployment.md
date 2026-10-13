@@ -76,6 +76,7 @@ the names below are the application's own, not new ones.
 | `PGPASSWORD` | Secrets Manager (RDS-managed secret, key `password`) | |
 | `DB_POOL_SIZE` | environment | `10` (variable `db_pool_size`) |
 | `MOAUM_PORTAL_URL` | environment | `portal_url` variable, e.g. `https://portal.moaum.edu.ng` |
+| `MOAUM_CLIENT_ADDRESS` | environment | `client_address` variable: `2` with CloudFront in front of the ALB (the production edge), `last` with the ALB alone. Which `X-Forwarded-For` entry is the person's, for the throttles and the sign-in records |
 | `PORT` | environment | `8081` |
 | `MOAUM_AUTH_HMAC_SECRET` | Secrets Manager | generated at first apply |
 | `MOAUM_FLUTTERWAVE_SECRET`, `MOAUM_FLUTTERWAVE_HASH`, `MOAUM_PAYSTACK_SECRET`, `MOAUM_PAYDIRECT_USERNAME`, `MOAUM_PAYDIRECT_PASSWORD`, `MOAUM_QUICKTELLER_MAC_KEY`, `MOAUM_QUICKTELLER_CHS_MAC_KEY`, `MOAUM_NOTICES_TOKEN`, `MOAUM_SSO_CLIENT_SECRET` | Secrets Manager | `unset` until you set them; the API treats a blank the same as absent |
@@ -342,6 +343,17 @@ Troubleshooting:
   or the API task not yet healthy.
 - *Gateway callbacks 404* — the paths are routed to the API by the ALB rule in
   `alb.tf`; a new callback path must be added there.
+- *Gateway callbacks 403, `Server: CloudFront`, `X-Cache: Error from cloudfront`* —
+  the request never reached the ALB: the production edge is CloudFront with a
+  WAF web ACL running the AWS managed Common rule set, both set up outside this
+  Terraform (§9). Interswitch's PAYDirect calls carry no `User-Agent`, which the
+  managed rule `NoUserAgent_HEADER` blocks (9 Oct 2026: thousands of payment
+  notifications a day refused before the API saw them). The exception is an IP
+  set of Interswitch's live addresses (41.223.145.174, 154.72.34.174) and an
+  Allow rule on `/api/v1/payments/paydirect/` placed ahead of the managed rule
+  group; `curl -X POST -H "User-Agent:" https://portal.moaum.edu.ng/api/v1/payments/paydirect/interswitch`
+  answering 403 means the exception is not in place (200 with any `User-Agent`
+  means the door itself is fine).
 
 ## 9. What is deliberately deferred
 
@@ -353,8 +365,18 @@ Troubleshooting:
 - **Passport upload as multipart.** `POST /api/v1/results/legacy/passports`
   still takes base64 JSON; with the bytes now going to S3 the database cost is
   gone, and the remaining cost is the 33 % base64 overhead in the request.
-- **CloudFront and WAF in front of the ALB.** Nothing public is static yet; add
-  with phase 2.
+- **CloudFront and WAF in front of the ALB.** In production since Oct 2026, set up
+  outside this Terraform (bringing them in is what is deferred). Two consequences:
+  the WAF's managed rules need the Interswitch exception in §8, and
+  `X-Forwarded-For` now carries the viewer's address second from last (CloudFront
+  appends it, the ALB appends CloudFront's), so the API task needs
+  `MOAUM_CLIENT_ADDRESS=2` (§3); without it the throttles and the sign-in records
+  count CloudFront's edge address, not the person's, and one busy edge node can
+  lock every sign-in behind it. The ALB still answers anyone who calls it by its
+  own name, and such a caller can write the entry the API then trusts: restrict
+  the ALB security group to CloudFront's origin-facing prefix list
+  (`com.amazonaws.global.cloudfront.origin-facing`) when CloudFront comes into
+  Terraform.
 - **A second NAT gateway** if an AZ outage of outbound calls (gateways, SMTP,
   SMS) is unacceptable.
 
