@@ -140,7 +140,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
+          { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
         ]
       },
       {
@@ -225,7 +225,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
+          { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" }
         ]
       },
@@ -1129,7 +1129,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
@@ -1226,7 +1225,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
@@ -1334,7 +1332,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "t/applicationwindows", "icon": "check", "label": "Application Registration Control" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" }
         ]
       },
@@ -1494,7 +1491,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
-          { "id": "t/biodatagate", "icon": "check", "label": "Biodata Compliance" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },

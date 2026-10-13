@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 269
+\set EXPECTED 270
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11549,6 +11549,46 @@ BEGIN
         format('door open=%s none=%s unseen=%s on=%s out=%s in=%s seen=%s refused=%s removed=%s last=%s bad=%s | quiet=%s told=%s | state=%s n14=%s gap=%s thr=%s told=%s again=%s b=%s (email %s) subject=%s | after=%s told=%s',
                adm_open, left(r_none, 24), left(r_unseen, 28), r_on, adm_out, adm_in, seen_n, seen_refused, removed, left(r_last, 24), left(r_bad, 28),
                st_quiet, told_quiet, st_state, st_n14, st_gap, st_thr, told, again, told_b, told_b_email, subj, st_after, told_after));
+END $$;
+-- ── V434. One biodata compliance screen: the students behind a count are listed by the item they miss and by sex as well,
+--          the V426 form still answering; what is missing and the counts by faculty are read from the same reading ──
+DO $$
+DECLARE S text := '9979/9980'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        fac text; by_missing text; by_sex text; old_form int; kin0 int; kin1 int; unit0 int; unit1 int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V434', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V434', 'CHECKV434', 'ICT');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9979-10-01', date '9980-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT faculty_code INTO fac FROM ref.programme WHERE code = 'C00023';
+        SELECT coalesce((SELECT students FROM people.biodata_missing_items(NULL, NULL) WHERE item = 'kin_mobile'), 0) INTO kin0;
+        SELECT coalesce((SELECT total FROM people.biodata_compliance_units(NULL, NULL) WHERE code = fac), 0) INTO unit0;
+        INSERT INTO people.student (id, admission_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/79/009434', 'CHECKV434', 'Held', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+               (b, 'MOAUM/ADM/79/009435', 'CHECKV434', 'Complete', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000000434', 'v434a@example.test'), (b, '08000000435', 'v434b@example.test');
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, reason) VALUES (a, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V434'),
+                                                                                                (b, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V434');
+        INSERT INTO people.biodata (student_id, field, value)
+        SELECT st.id, f.field, f.value FROM (VALUES (a), (b)) st(id)
+         CROSS JOIN (VALUES ('nationality', 'Nigeria'), ('home_address', 'CHECK house, Makurdi'), ('state_of_origin', 'Benue'), ('lga', 'Makurdi'),
+                            ('kin_name', 'CHECK Kin'), ('kin_relationship', 'Mother')) f(field, value);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (b, 'kin_mobile', '08000000436');
+        PERFORM people.refresh_biodata_snapshot(ARRAY[a, b]);
+        SELECT string_agg(other_names, ',' ORDER BY other_names) INTO by_missing
+          FROM people.biodata_status_list(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'CHECKV434', 50, 0, 'kin_mobile', NULL);
+        SELECT string_agg(other_names, ',' ORDER BY other_names) INTO by_sex
+          FROM people.biodata_status_list(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'CHECKV434', 50, 0, NULL, 'M');
+        SELECT count(*) INTO old_form FROM people.biodata_status_list(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'CHECKV434', 50, 0);
+        SELECT coalesce((SELECT students FROM people.biodata_missing_items(NULL, NULL) WHERE item = 'kin_mobile'), 0) INTO kin1;
+        SELECT coalesce((SELECT total FROM people.biodata_compliance_units(NULL, NULL) WHERE code = fac), 0) INTO unit1;
+        RAISE EXCEPTION 'the V434 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V434: the students behind a count are listed by the item they miss and by sex, the V426 form still answering; what is missing and the counts by faculty come from the same reading',
+        coalesce(by_missing = 'Held' AND by_sex = 'Complete' AND old_form = 2 AND kin1 - kin0 = 1 AND unit1 - unit0 = 2, false),
+        format('missing=%s sex=%s old=%s kin %s->%s unit %s->%s', by_missing, by_sex, old_form, kin0, kin1, unit0, unit1));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

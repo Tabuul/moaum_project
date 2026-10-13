@@ -106,10 +106,13 @@ class BiodataGateIT {
             // staff are never read by the gate
             assertThat(it.get(registrar, "/api/v1/iam/me").getHeaders().getFirst("X-Biodata-Gate")).isNull();
             assertThat(status(it.get(registrar, B))).isEqualTo(200);
-            // the ICT Director's list names the student and what is missing
-            Map<String, Object> list = it.get(ict, B + "/students?status=INCOMPLETE&q=" + surname).getBody();
+            // V434: the one compliance screen — the reading taken, the student listed by the item they miss
+            assertThat(status(it.call(ict, HttpMethod.POST, "/api/v1/biodata/compliance/refresh", Map.of()))).isEqualTo(200);
+            Map<String, Object> list = it.get(ict, "/api/v1/biodata/compliance/students?status=INCOMPLETE&missing=PASSPORT&q=" + surname).getBody();
             assertThat(((Number) list.get("total")).intValue()).isEqualTo(1);
-            assertThat(String.valueOf(l(list.get("rows")).getFirst().get("missing"))).contains("Passport photograph");
+            assertThat(String.valueOf(l(list.get("rows")).getFirst().get("missing_labels"))).contains("Passport photograph");
+            assertThat(((Number) it.get(ict, "/api/v1/biodata/compliance/students?status=INCOMPLETE&missing=PASSPORT&sex=M&q=" + surname).getBody().get("total")).intValue()).isZero();
+            assertThat(l(it.get(ict, "/api/v1/biodata/compliance").getBody().get("items"))).anyMatch(x -> "PASSPORT".equals(x.get("item")));
             // V427: what requiring each item would do, counted over the register — the student lacks the next of kin's phone
             List<Map> impact = it.getList(ict, B + "/requirements/impact").getBody();
             assertThat(impact).anyMatch(x -> "kin_mobile".equals(x.get("item")) && ((Number) x.get("missing")).intValue() >= 1

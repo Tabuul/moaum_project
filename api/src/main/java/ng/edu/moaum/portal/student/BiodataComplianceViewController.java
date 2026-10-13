@@ -50,6 +50,9 @@ class BiodataComplianceViewController {
         out.put("requirements", jdbc.sql("SELECT r.item, coalesce(f.label, 'Passport photograph') AS label, r.required FROM people.biodata_requirement r LEFT JOIN ref.biodata_field f ON f.field = r.field ORDER BY r.item = 'PASSPORT' DESC, f.ord").query().listOfRows());
         out.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
         out.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL ORDER BY name").query().listOfRows());
+        // V434: what is missing, and the counts by faculty (by department within a faculty), from the same reading
+        out.put("items", jdbc.sql("SELECT * FROM people.biodata_missing_items(:f, :d)").param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).query().listOfRows());
+        out.put("units", jdbc.sql("SELECT * FROM people.biodata_compliance_units(:f, :d)").param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).query().listOfRows());
         return out;
     }
 
@@ -60,16 +63,18 @@ class BiodataComplianceViewController {
                                  @RequestParam(required = false) String department, @RequestParam(required = false) String programme,
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String session,
                                  @RequestParam(required = false) String entryMode, @RequestParam(required = false) Boolean migrated,
-                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size) {
+                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size,
+                                 @RequestParam(required = false) String missing, @RequestParam(required = false) String sex) {
         OfficeScope.Bound b = scope.bound(blank(faculty), blank(department), blank(programme));
         int limit = Math.max(1, Math.min(size, 2000));
         int offset = Math.max(0, page - 1) * limit;
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT * FROM people.biodata_status_list(:status, :f, :d, :p, :l, :s, :m, :mig, :q, :n, :o)
+                SELECT * FROM people.biodata_status_list(:status, :f, :d, :p, :l, :s, :m, :mig, :q, :n, :o, :missing, :sex)
                 """).param("status", blank(status) == null ? null : status.trim().toUpperCase(), Types.VARCHAR)
                 .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
                 .param("l", level, Types.INTEGER).param("s", blank(session), Types.VARCHAR).param("m", blank(entryMode), Types.VARCHAR)
                 .param("mig", migrated, Types.BOOLEAN).param("q", blank(q), Types.VARCHAR).param("n", limit).param("o", offset)
+                .param("missing", blank(missing), Types.VARCHAR).param("sex", blank(sex) == null ? null : sex.trim().toUpperCase(), Types.VARCHAR)
                 .query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rows", rows);

@@ -1,22 +1,21 @@
 "use client";
 
 /**
- * V423 — Biodata compliance: the ICT Director's switch for mandatory student biodata completion (OFF until the University
- * goes live), the readiness the switch is turned on against, what is missing and where, the items required, the
- * exceptions and the history. Every number is counted on the server within the office's scope; the switch, the
- * requirements and the exceptions are the ICT Director's (or an administrator's) and the API refuses anyone else.
+ * V434 — the ICT Director's half of the one Biodata compliance screen (V423, V427): the switch for mandatory student
+ * biodata completion with the go-live readiness it is turned on against, the required items with what requiring each
+ * would do, the exceptions and the history. The figures it shows are the screen's own — the quarter-hourly reading the
+ * offices' counts and lists come from — so the switch is never turned on against a second count. The switch, the
+ * requirements and the exceptions are the ICT Director's (or an administrator's); the API refuses anyone else.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import type { Ceiling, ScopeStructure } from "@/components/proto/ScopeBar";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { SECTION_LABEL, pct, type ComplianceOverview, type GateException, type Requirement } from "@/lib/biodata-gate";
-import { ComplianceFilterBar, filterQuery, type ComplianceFilters } from "./ComplianceFilterBar";
 
 const B = "/api/bff/api/v1/biodata-compliance";
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -29,18 +28,17 @@ async function send(path: string, method: string, body: unknown, why: string): P
   return j ?? {};
 }
 
-export function BiodataComplianceScreen({ data, filters, structure, sessions, ceiling }: {
-  data: ComplianceOverview; filters: ComplianceFilters; structure: ScopeStructure; sessions: string[]; ceiling: Ceiling;
-}) {
+/** the figures the switch is turned on against: the screen's own reading */
+export interface Readiness { total: number; incomplete: number; computedAt: string | null; scoped: boolean }
+
+/** the switch: ON or OFF, who turned it last and why; turning it on shows the readiness first */
+export function GatePanel({ admin, readiness }: { admin: ComplianceOverview; readiness: Readiness }) {
   const router = useRouter();
   const [ask, setAsk] = useState<"on" | "off" | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const g = data.gate;
-  const sum = data.summary;
-  const labelOf = (item: string) => data.requirements.find((r) => r.item === item)?.label ?? item;
-  const sectionOf = (item: string) => data.requirements.find((r) => r.item === item)?.section ?? "";
-  const list = (more: Record<string, string>) => `/ict/biodata/students?${filterQuery(filters, more)}`;
+  const g = admin.gate;
+  const complete = Math.max(0, readiness.total - readiness.incomplete);
 
   async function toggle(on: boolean) {
     setBusy(true);
@@ -58,118 +56,42 @@ export function BiodataComplianceScreen({ data, filters, structure, sessions, ce
   }
 
   return (
-    <>
-      <PageHead description={`${sum.total.toLocaleString()} students on the register in this view · ${pct(sum.complete, sum.total)} with their required biodata complete`}
-        actions={<>
-          <LinkBtn kind="primary" href={list({ status: "INCOMPLETE" })}>View incomplete students</LinkBtn>
-          <LinkBtn href={list({})}>View compliance report</LinkBtn>
-        </>} />
-
-      <Panel title="Mandatory student biodata completion" right={<Pil kind={g.enabled ? "ok" : "grey"}>{g.enabled ? "ON" : "OFF"}</Pil>}>
-        <PBody>
-          <div className="row row--top" style={{ flexWrap: "wrap", gap: "var(--s-4)" }}>
-            <div className="grow" style={{ minWidth: 240 }}>
-              <div className="b600">Status: {g.enabled ? "ON" : "OFF"}</div>
-              <div className="sub2 mt-1" style={{ lineHeight: 1.55 }}>
-                {g.enabled
-                  ? "Students with incomplete mandatory biodata will be required to complete their biodata before accessing other Student Dashboard functions."
-                  : "Require students with incomplete mandatory biodata to complete their profile before accessing the Student Dashboard."}
-              </div>
-              {g.changed_at ? <div className="sub2 mt-1">Last turned {g.enabled ? "on" : "off"} {when(g.changed_at)}{g.changed_by ? ` by ${g.changed_by}` : ""}{g.changed_office ? ` (${g.changed_office})` : ""}{g.reason ? ` — ${g.reason}` : ""}</div> : null}
+    <Panel title="Mandatory student biodata completion" right={<Pil kind={g.enabled ? "ok" : "grey"}>{g.enabled ? "ON" : "OFF"}</Pil>}>
+      <PBody>
+        <div className="row row--top" style={{ flexWrap: "wrap", gap: "var(--s-4)" }}>
+          <div className="grow" style={{ minWidth: 240 }}>
+            <div className="b600">Status: {g.enabled ? "ON" : "OFF"}</div>
+            <div className="sub2 mt-1" style={{ lineHeight: 1.55 }}>
+              {g.enabled
+                ? "Students with incomplete mandatory biodata will be required to complete their biodata before accessing other Student Dashboard functions."
+                : "Require students with incomplete mandatory biodata to complete their profile before accessing the Student Dashboard."}
             </div>
-            {data.canSet ? (
-              <div className="row row--tight">
-                {g.enabled ? <Btn kind="urgent" onClick={() => setAsk("off")}>Turn off</Btn> : <Btn kind="primary" onClick={() => setAsk("on")}>Turn on</Btn>}
-              </div>
-            ) : null}
+            {g.changed_at ? <div className="sub2 mt-1">Last turned {g.enabled ? "on" : "off"} {when(g.changed_at)}{g.changed_by ? ` by ${g.changed_by}` : ""}{g.changed_office ? ` (${g.changed_office})` : ""}{g.reason ? ` — ${g.reason}` : ""}</div> : null}
           </div>
-        </PBody>
-      </Panel>
-
-      <ComplianceFilterBar filters={filters} structure={structure} sessions={sessions} ceiling={ceiling} />
-
-      <Tiles items={[
-        ["Total students", sum.total.toLocaleString(), null, "On the register: admitted, active, on probation or deferred", list({})],
-        ["Biodata complete", sum.complete.toLocaleString(), "var(--green-ink)", "Every required item given", list({ status: "COMPLETE" })],
-        ["Biodata incomplete", sum.incomplete.toLocaleString(), sum.incomplete ? "var(--red-ink)" : null, "At least one required item missing", list({ status: "INCOMPLETE" })],
-        ["Completion", `${sum.percent.toFixed(2)}%`, null, `${data.requirements.filter((r) => r.required).length} items required`],
-      ]} />
-
-      <div className="grid grid--2">
-        <Panel title="What is missing" right={<span className="sub2">Students missing each required item</span>}>
-          {sum.items.length ? (
-            <DTable pageSize={0} cols={["Item", "Section", "Students|num", "Share|num", "|num"]} rows={sum.items.map((x) => [
-              <span key="i" className="b600">{labelOf(x.item)}</span>,
-              <span key="s" className="sub2">{SECTION_LABEL[sectionOf(x.item)] ?? "—"}</span>,
-              <span key="n" className="tnum">{x.missing.toLocaleString()}</span>,
-              <span key="p" className="tnum sub2">{pct(x.missing, sum.total)}</span>,
-              <LinkBtn key="l" size="sm" href={list({ status: "INCOMPLETE", missing: x.item })}>Students</LinkBtn>,
-            ])} texts={sum.items.map((x) => labelOf(x.item))} />
-          ) : <PBody><div className="sub2">Nothing is missing in this view.</div></PBody>}
-        </Panel>
-
-        <Panel title="Old portal and this portal" right={<span className="sub2">Before the gate is turned on</span>}>
-          <DTable pageSize={0} cols={["Students", "Total|num", "Complete|num", "Incomplete|num", "Completion|num"]} rows={sum.origin.map((o) => [
-            <span key="o" className="b600">{o.origin === "MIGRATED" ? "Brought from the old portal" : "Admitted on this portal"}</span>,
-            <span key="t" className="tnum">{o.total.toLocaleString()}</span>,
-            <span key="c" className="tnum">{o.complete.toLocaleString()}</span>,
-            <span key="i" className="tnum">{(o.total - o.complete).toLocaleString()}</span>,
-            <span key="p" className="tnum">{pct(o.complete, o.total)}</span>,
-          ])} />
-          <PBody><div className="sub2">A student brought from the old portal has no admission on this one. Their record is read as it stands: what the old portal carried counts only where it fills a required item.</div></PBody>
-        </Panel>
-      </div>
-
-      <Panel title={filters.fac ? "By department" : "By faculty"}>
-        {(filters.fac ? sum.departments.filter((d) => d.faculty === filters.fac) : sum.faculties).length ? (
-          <DTable pageSize={0} cols={[filters.fac ? "Department" : "Faculty", "Students|num", "Complete|num", "Incomplete|num", "Completion|num", "|num"]}
-            rows={(filters.fac ? sum.departments.filter((d) => d.faculty === filters.fac) : sum.faculties).map((x) => [
-              <span key="n" className="b600">{x.name}</span>,
-              <span key="t" className="tnum">{x.total.toLocaleString()}</span>,
-              <span key="c" className="tnum">{x.complete.toLocaleString()}</span>,
-              <span key="i" className="tnum">{(x.total - x.complete).toLocaleString()}</span>,
-              <span key="p" className="tnum">{pct(x.complete, x.total)}</span>,
-              x.code ? <LinkBtn key="l" size="sm" href={list(filters.fac ? { dept: x.code, status: "INCOMPLETE" } : { fac: x.code, status: "INCOMPLETE" })}>Incomplete</LinkBtn> : <span key="l" />,
-            ])} texts={(filters.fac ? sum.departments : sum.faculties).map((x) => x.name)} />
-        ) : <PBody><div className="sub2">No student in this view.</div></PBody>}
-      </Panel>
-
-      <Requirements items={data.requirements} canSet={data.canSet} gateOn={g.enabled} />
-      {data.canSet ? <Exceptions rows={data.exceptions ?? []} today={data.today} /> : null}
-      {data.canSet ? (
-        <Panel title="History" right={<span className="sub2">Every change, from the audit trail</span>}>
-          {(data.history ?? []).length ? (
-            <DTable cols={["When", "Change", "By", "Office", "Reason", "From|num"]} rows={(data.history ?? []).map((h) => [
-              <span key="w" className="sub2 tnum">{when(h.occurred_at)}</span>,
-              <span key="c" className="b600">{h.subject_type === "people.biodata_gate"
-                ? (h.was_enabled === h.now_enabled ? "Gate setting saved" : `Mandatory completion ${h.was_enabled === "true" ? "ON" : "OFF"} → ${h.now_enabled === "true" ? "ON" : "OFF"}`)
-                : `${labelOf(h.item ?? "")}: ${h.now_required === "true" ? "required" : h.now_required === "false" ? "not required" : "removed"}`}</span>,
-              <span key="b">{h.actor}</span>,
-              <span key="o" className="sub2">{h.actor_office ?? "—"}</span>,
-              <span key="r" className="sub2">{h.reason ?? "—"}</span>,
-              <span key="ip" className="sub2 tnum">{h.source_ip ?? "—"}</span>,
-            ])} texts={(data.history ?? []).map((h) => `${h.actor} ${h.item ?? ""} ${h.reason ?? ""}`)} />
-          ) : <PBody><div className="sub2">No change recorded yet.</div></PBody>}
-        </Panel>
-      ) : null}
-
+          {admin.canSet ? (
+            <div className="row row--tight">
+              {g.enabled ? <Btn kind="urgent" onClick={() => setAsk("off")}>Turn off</Btn> : <Btn kind="primary" onClick={() => setAsk("on")}>Turn on</Btn>}
+            </div>
+          ) : null}
+        </div>
+      </PBody>
       {ask === "on" ? (
         <Modal title="Enable mandatory biodata completion?" onClose={() => setAsk(null)}
           foot={<>
             <Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn>
-            <Btn kind="primary" disabled={busy} onClick={() => void toggle(true)}>{busy ? "Enabling…" : sum.incomplete ? "Enable anyway" : "Enable"}</Btn>
+            <Btn kind="primary" disabled={busy} onClick={() => void toggle(true)}>{busy ? "Enabling…" : readiness.incomplete ? "Enable anyway" : "Enable"}</Btn>
           </>}>
           <p style={{ marginTop: 0 }}>Students with incomplete required biodata will be restricted to the Biodata Completion page until their required information is completed.</p>
           <div className="b600 mt-2">Biodata go-live readiness</div>
           <Tiles cls="grid--4" items={[
-            ["Total students", sum.total.toLocaleString(), null],
-            ["Complete", sum.complete.toLocaleString(), "var(--green-ink)"],
-            ["Incomplete", sum.incomplete.toLocaleString(), sum.incomplete ? "var(--red-ink)" : null],
-            ["Completion", `${sum.percent.toFixed(2)}%`, null],
+            ["Total students", readiness.total.toLocaleString(), null],
+            ["Complete", complete.toLocaleString(), "var(--green-ink)"],
+            ["Incomplete", readiness.incomplete.toLocaleString(), readiness.incomplete ? "var(--red-ink)" : null],
+            ["Completion", pct(complete, readiness.total), null],
           ]} />
-          {filters.fac || filters.dept || filters.prog || filters.level || filters.session || filters.sex
-            ? <Note kind="info" title="These figures are for the filtered view">The gate applies to every student on the register, whatever the filter.</Note> : null}
-          {sum.incomplete ? <Note kind="bad" title={`${sum.incomplete.toLocaleString()} student${sum.incomplete === 1 ? "" : "s"} still ha${sum.incomplete === 1 ? "s" : "ve"} incomplete required biodata.`} /> : null}
+          <div className="sub2">From the reading taken {when(readiness.computedAt)}.</div>
+          {readiness.scoped ? <Note kind="info" title="These figures are for the faculty or department chosen">The gate applies to every student on the register.</Note> : null}
+          {readiness.incomplete ? <Note kind="bad" title={`${readiness.incomplete.toLocaleString()} student${readiness.incomplete === 1 ? "" : "s"} still ha${readiness.incomplete === 1 ? "s" : "ve"} incomplete required biodata.`} /> : null}
           <Field id="bg-reason-on" label="Reason (optional)"><input id="bg-reason-on" className="ctl" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Portal go-live" /></Field>
         </Modal>
       ) : null}
@@ -183,7 +105,29 @@ export function BiodataComplianceScreen({ data, filters, structure, sessions, ce
           <Field id="bg-reason-off" label="Reason (optional)"><input id="bg-reason-off" className="ctl" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} /></Field>
         </Modal>
       ) : null}
-    </>
+    </Panel>
+  );
+}
+
+/** the switch and the required items as they were changed, from the audit trail */
+export function GateHistory({ admin }: { admin: ComplianceOverview }) {
+  const labelOf = (item: string) => admin.requirements.find((r) => r.item === item)?.label ?? item;
+  const rows = admin.history ?? [];
+  return (
+    <Panel title="History" right={<span className="sub2">Every change to the switch and the required items, from the audit trail</span>}>
+      {rows.length ? (
+        <DTable cols={["When", "Change", "By", "Office", "Reason", "From|num"]} rows={rows.map((h) => [
+          <span key="w" className="sub2 tnum">{when(h.occurred_at)}</span>,
+          <span key="c" className="b600">{h.subject_type === "people.biodata_gate"
+            ? (h.was_enabled === h.now_enabled ? "Gate setting saved" : `Mandatory completion ${h.was_enabled === "true" ? "ON" : "OFF"} → ${h.now_enabled === "true" ? "ON" : "OFF"}`)
+            : `${labelOf(h.item ?? "")}: ${h.now_required === "true" ? "required" : h.now_required === "false" ? "not required" : "removed"}`}</span>,
+          <span key="b">{h.actor}</span>,
+          <span key="o" className="sub2">{h.actor_office ?? "—"}</span>,
+          <span key="r" className="sub2">{h.reason ?? "—"}</span>,
+          <span key="ip" className="sub2 tnum">{h.source_ip ?? "—"}</span>,
+        ])} texts={rows.map((h) => `${h.actor} ${h.item ?? ""} ${h.reason ?? ""}`)} />
+      ) : <PBody><div className="sub2">No change recorded yet.</div></PBody>}
+    </Panel>
   );
 }
 
@@ -191,7 +135,7 @@ export function BiodataComplianceScreen({ data, filters, structure, sessions, ce
 /** V427: what requiring an item would do, over the students on the register */
 interface ItemImpact { item: string; required: boolean; students: number; missing: number; newly_held: number; freed: number }
 
-function Requirements({ items, canSet, gateOn }: { items: Requirement[]; canSet: boolean; gateOn: boolean }) {
+export function Requirements({ items, canSet, gateOn }: { items: Requirement[]; canSet: boolean; gateOn: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   // V427: what each item would do, counted on the server over the register — read after the page, so the page never waits on it
@@ -283,7 +227,7 @@ function plusDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function Exceptions({ rows, today }: { rows: GateException[]; today: string }) {
+export function Exceptions({ rows, today }: { rows: GateException[]; today: string }) {
   const router = useRouter();
   const max = plusDays(today, 29);
   const [form, setForm] = useState({ number: "", reason: "", until: plusDays(today, 7) });

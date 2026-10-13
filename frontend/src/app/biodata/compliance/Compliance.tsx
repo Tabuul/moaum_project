@@ -1,7 +1,9 @@
 "use client";
 
 /** t/compliance (V426): where every student's biodata stands — the counts from the quarter-hourly reading, the students behind
- *  each count (filtered, searched, printed or exported), and the data-quality picture: addresses missing, not addresses, shared. */
+ *  each count (filtered, searched, printed or exported), and the data-quality picture: addresses missing, not addresses, shared.
+ *  V434: the one Biodata compliance screen — the ICT Director's switch with its readiness, what is missing and where, the
+ *  required items with what each would do, the exceptions and the history are here too, all from the same reading. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -11,6 +13,8 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
+import { pct, type ComplianceOverview } from "@/lib/biodata-gate";
+import { Exceptions, GateHistory, GatePanel, Requirements } from "./GateAdmin";
 
 export interface ComplianceSummary {
   faculty: string | null; department: string | null;
@@ -21,6 +25,9 @@ export interface ComplianceSummary {
   requirements: { item: string; label: string; required: boolean }[];
   faculties: { code: string; name: string }[];
   departments: { code: string; name: string; faculty_code: string }[];
+  /** V434: what is missing, and the counts by faculty (by department within a faculty), from the same reading */
+  items?: { item: string; label: string; students: number }[];
+  units?: { code: string | null; name: string; faculty_code: string | null; total: number; incomplete: number; up_to_date: number }[];
 }
 export interface StudentRow {
   student_id: string; matric_no: string | null; jamb_reg_no: string | null; surname: string; other_names: string; faculty: string | null; department: string | null;
@@ -28,7 +35,9 @@ export interface StudentRow {
   last_updated: string | null; confirmed_at: string | null; last_reminded_at: string | null; total: number;
 }
 export interface StudentsPage { rows: StudentRow[]; total: number; page: number; size: number; computedAt: string | null }
-export interface Filters { status: string; faculty: string; department: string; programme: string; level: string; session: string; entryMode: string; migrated: string; q: string; page: string }
+export interface Filters { status: string; faculty: string; department: string; programme: string; level: string; session: string; entryMode: string; migrated: string; q: string; page: string;
+  /** V434: the required item missing, and the sex */
+  missing: string; sex: string }
 /** V430: staff reach */
 export interface StaffRow { person_id: string; staff_number: string | null; surname: string; given_names: string; email: string | null; phone: string | null; status: string; offices: string | null; signed_in: boolean; last_reminded_at: string | null; total: number }
 export interface StaffPage {
@@ -42,8 +51,10 @@ const when = (s: string | null | undefined) => (s ? new Date(s).toLocaleString("
 const day = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 const STATUS: Record<string, [string, "ok" | "bad" | "warn" | "grey"]> = { UP_TO_DATE: ["Up to date", "ok"], INCOMPLETE: ["Incomplete", "bad"], REVIEW_REQUIRED: ["Review required", "warn"], OUTDATED: ["Outdated", "warn"] };
 
-export function Compliance({ d, students, filters, actingOffice, staff = null, staffFilters = { status: "", office: "", q: "", page: "1" } }:
-  { d: ComplianceSummary; students: StudentsPage | null; filters: Filters; actingOffice: string | null; staff?: StaffPage | null; staffFilters?: StaffFilters }) {
+export function Compliance({ d, students, filters, actingOffice, staff = null, staffFilters = { status: "", office: "", q: "", page: "1" }, admin = null }:
+  { d: ComplianceSummary; students: StudentsPage | null; filters: Filters; actingOffice: string | null; staff?: StaffPage | null; staffFilters?: StaffFilters;
+    /** V434: the switch's half — the gate, the required items, and for the ICT Director the exceptions and the history */
+    admin?: ComplianceOverview | null }) {
   const [sf, setSf] = useState<StaffFilters>(staffFilters);
   const goStaff = (next: StaffFilters) => {
     const p = new URLSearchParams();
@@ -62,6 +73,9 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
   const [problem, setProblem] = useState<Problem | null>(null);
   const [dups, setDups] = useState<{ kind: string; rows: { value: string; students: number; names: string }[] } | null>(null);
   const s = d.summary;
+  const items = d.items ?? [];
+  const units = d.units ?? [];
+  const missingLabel = (item: string) => items.find((x) => x.item === item)?.label ?? d.requirements.find((r) => r.item === item)?.label ?? item;
 
   function go(next: Filters) {
     const p = new URLSearchParams();
@@ -97,12 +111,13 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
   const COLS = ["S/N", "Student", "Matric number", "JAMB number", "Faculty", "Department", "Programme", "Level", "Email", "Phone", "Status", "Missing", "Last updated", "Last reminder"];
   const rowsOut = () => (students?.rows ?? []).map((r, i) => [String(i + 1), `${r.surname}, ${r.other_names}`, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme ?? "",
     String(r.level), r.email ?? "", r.phone ?? "", STATUS[r.status]?.[0] ?? r.status, (r.missing_labels ?? []).join(", "), day(r.last_updated), day(r.last_reminded_at)]);
-  const title = `Biodata compliance${filters.status ? " — " + (STATUS[filters.status]?.[0] ?? filters.status) : ""}${d.faculty ? " — " + (d.faculties.find((x) => x.code === d.faculty)?.name ?? d.faculty) : ""}`;
+  const title = `Biodata compliance${filters.status ? " — " + (STATUS[filters.status]?.[0] ?? filters.status) : ""}${filters.missing ? " — missing " + missingLabel(filters.missing).toLowerCase() : ""}${d.faculty ? " — " + (d.faculties.find((x) => x.code === d.faculty)?.name ?? d.faculty) : ""}`;
   const depts = d.departments.filter((x) => !f.faculty || x.faculty_code === f.faculty);
   const pages = students ? Math.max(1, Math.ceil(students.total / students.size)) : 1;
 
   return (
     <>
+      {admin ? <GatePanel admin={admin} readiness={{ total: s.total, incomplete: s.incomplete, computedAt: s.computed_at, scoped: !!(d.faculty || d.department) }} /> : null}
       <Note kind="info" title={`From the reading taken ${s.computed_at ? when(s.computed_at) : "— not yet"}; the scheduler takes one every quarter of an hour`}>
         {d.gate.enabled ? "The biodata gate is ON: a student with incomplete required items reaches only the biodata page. " : "The biodata gate is OFF. "}
         {d.gate.remind_enabled || d.gate.enabled ? "The weekly reminder runs on Monday mornings to every student whose record is not up to date." : "The weekly reminder is off."}
@@ -129,6 +144,31 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
         <Btn kind="ghost" size="sm" onClick={() => go({ ...filters, status: "", migrated: "true", page: "1" })}>Came over</Btn>
         {may ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => void refresh()}>Take the reading now</Btn> : null}
         <LinkBtn kind="ghost" size="sm" href="/notices/campaigns?open=new">Write to them</LinkBtn>
+      </div>
+
+      <div className="grid grid--2">
+        <Panel title="What is missing" right={<span className="sub2">Students missing each required item</span>}>
+          {items.length ? (
+            <DTable pageSize={0} cols={["Item", "Students|num", "Share|num", "|num"]} rows={items.map((x) => [
+              <span key="i" className="b600">{x.label}</span>,
+              <span key="n" className="tnum">{x.students.toLocaleString()}</span>,
+              <span key="p" className="tnum sub2">{pct(x.students, s.total)}</span>,
+              <Btn key="l" kind="ghost" size="sm" onClick={() => go({ ...filters, status: "INCOMPLETE", missing: x.item, page: "1" })}>Students</Btn>,
+            ])} texts={items.map((x) => x.label)} />
+          ) : <PBody><div className="sub2">Nothing is missing.</div></PBody>}
+        </Panel>
+        <Panel title={d.faculty ? "By department" : "By faculty"}>
+          {units.length ? (
+            <DTable pageSize={0} cols={[d.faculty ? "Department" : "Faculty", "Students|num", "Incomplete|num", "Up to date|num", "Complete|num", "|num"]} rows={units.map((x) => [
+              <span key="n" className="b600">{x.name}</span>,
+              <span key="t" className="tnum">{x.total.toLocaleString()}</span>,
+              <span key="i" className="tnum">{x.incomplete.toLocaleString()}</span>,
+              <span key="u" className="tnum">{x.up_to_date.toLocaleString()}</span>,
+              <span key="c" className="tnum sub2">{pct(x.total - x.incomplete, x.total)}</span>,
+              x.code ? <Btn key="l" kind="ghost" size="sm" onClick={() => go({ ...filters, status: "INCOMPLETE", page: "1", ...(d.faculty ? { department: x.code ?? "" } : { faculty: x.code ?? "", department: "" }) })}>Incomplete</Btn> : <span key="l" />,
+            ])} texts={units.map((x) => x.name)} />
+          ) : <PBody><div className="sub2">No student in this view.</div></PBody>}
+        </Panel>
       </div>
 
       <Panel title="Data quality" right="Addresses the portal cannot use, or that several students share">
@@ -169,6 +209,12 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
               <option value="">Any level</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={String(l)}>{l}</option>)}
             </select>
             <input className="ctl" aria-label="Entry session" placeholder="Entry session" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })} style={{ width: 120 }} />
+            <select className="ctl" aria-label="Missing" value={f.missing} onChange={(e) => setF({ ...f, missing: e.target.value })}>
+              <option value="">Missing anything</option>{d.requirements.filter((r) => r.required).map((r) => <option key={r.item} value={r.item}>Missing {r.label.toLowerCase()}</option>)}
+            </select>
+            <select className="ctl" aria-label="Gender" value={f.sex} onChange={(e) => setF({ ...f, sex: e.target.value })}>
+              <option value="">Any gender</option><option value="F">Female</option><option value="M">Male</option>
+            </select>
             <select className="ctl" aria-label="Came over" value={f.migrated} onChange={(e) => setF({ ...f, migrated: e.target.value })}>
               <option value="">Came over or not</option><option value="true">Came over</option><option value="false">Admitted on the portal</option>
             </select>
@@ -249,6 +295,10 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
           </div>
         );
       })() : null}
+
+      {admin ? <Requirements items={admin.requirements} canSet={admin.canSet} gateOn={admin.gate.enabled} /> : null}
+      {admin?.canSet ? <Exceptions rows={admin.exceptions ?? []} today={admin.today} /> : null}
+      {admin?.canSet ? <GateHistory admin={admin} /> : null}
     </>
   );
 }

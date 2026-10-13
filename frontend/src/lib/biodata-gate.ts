@@ -40,17 +40,6 @@ export interface Requirement {
   refused?: string | null;
 }
 
-export interface ComplianceSummary {
-  total: number;
-  complete: number;
-  incomplete: number;
-  percent: number;
-  items: { item: string; missing: number }[];
-  origin: { origin: "MIGRATED" | "PORTAL"; total: number; complete: number }[];
-  faculties: { code: string | null; name: string; total: number; complete: number }[];
-  departments: { code: string | null; name: string; faculty: string | null; total: number; complete: number }[];
-}
-
 export interface GateException {
   id: string;
   student_id: string;
@@ -80,47 +69,15 @@ export interface GateHistory {
   now_required?: string | null;
 }
 
-/** GET /api/v1/biodata-compliance */
+/** GET /api/v1/biodata-compliance — the switch's half of the one compliance screen (V434: the counts are the reading's) */
 export interface ComplianceOverview {
   gate: GateSetting;
-  summary: ComplianceSummary;
   requirements: Requirement[];
   canSet: boolean;
   /** the University's date (Africa/Lagos), for the exception form's limits */
   today: string;
   exceptions?: GateException[];
   history?: GateHistory[];
-}
-
-export interface ComplianceRow {
-  id: string;
-  name: string;
-  matric_no?: string | null;
-  jamb_reg_no?: string | null;
-  admission_no?: string | null;
-  faculty?: string | null;
-  department?: string | null;
-  programme?: string | null;
-  level?: number | null;
-  sex?: string | null;
-  entry_session?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  required: number;
-  completed: number;
-  complete: boolean;
-  missing?: string | null;
-  last_updated?: string | null;
-  migrated: boolean;
-  excepted: boolean;
-  status: "UP_TO_DATE" | "INCOMPLETE";
-}
-
-export interface ComplianceList {
-  total: number;
-  page: number;
-  size: number;
-  rows: ComplianceRow[];
 }
 
 /** the sections of the biodata, as the form names them — and the photograph, which is not a field */

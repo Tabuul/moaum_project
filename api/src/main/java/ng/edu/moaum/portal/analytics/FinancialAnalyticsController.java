@@ -136,14 +136,8 @@ class FinancialAnalyticsController {
 
     /* ── the rows: the ledger within the bound and the filters ── */
 
-    private static final String ROWS = """
-            SELECT v.*, coalesce(c.label, v.category_code) AS category, coalesce(c.revenue, true) AS revenue,
-                   coalesce(pt.label, v.programme_type) AS programme_type_label, coalesce(pu.label, v.purpose_code) AS purpose_label, pu.entitlement,
-                   coalesce(ro.label, v.responsible_office) AS responsible_office_label
-              FROM reporting.payments v LEFT JOIN finance.payment_category c ON c.code = v.category_code
-              LEFT JOIN finance.programme_type pt ON pt.code = v.programme_type
-              LEFT JOIN finance.payment_purpose pu ON pu.code = v.purpose_code
-              LEFT JOIN ref.office ro ON ro.code = v.responsible_office
+    /** the filters, on the ledger's own columns: the bound, then what the request asked for */
+    private static final String FILTERS = """
              WHERE (:pg::boolean IS NULL OR v.is_pg = :pg)
                AND (:bo::text IS NULL OR v.responsible_office = :bo)
                AND (:ptype::text IS NULL OR v.programme_type = :ptype)
@@ -166,8 +160,23 @@ class FinancialAnalyticsController {
                AND (:q::text IS NULL OR lower(v.reference) LIKE :q OR lower(coalesce(v.number, '')) LIKE :q OR lower(coalesce(v.receipt_no, '')) LIKE :q
                     OR lower(v.surname || ' ' || coalesce(v.other_names, '')) LIKE :q OR lower(coalesce(v.other_names, '') || ' ' || v.surname) LIKE :q)
             """;
+
+    private static final String ROWS = """
+            SELECT v.*, coalesce(c.label, v.category_code) AS category, coalesce(c.revenue, true) AS revenue,
+                   coalesce(pt.label, v.programme_type) AS programme_type_label, coalesce(pu.label, v.purpose_code) AS purpose_label, pu.entitlement,
+                   coalesce(ro.label, v.responsible_office) AS responsible_office_label
+              FROM reporting.payments v LEFT JOIN finance.payment_category c ON c.code = v.category_code
+              LEFT JOIN finance.programme_type pt ON pt.code = v.programme_type
+              LEFT JOIN finance.payment_purpose pu ON pu.code = v.purpose_code
+              LEFT JOIN ref.office ro ON ro.code = v.responsible_office
+            """ + FILTERS;
     /** revenue: confirmed, in the window, of a category that counts */
     private static final String CONFIRMED = " AND v.confirmed_at IS NOT NULL AND coalesce(c.revenue, true)"
+            + " AND (:from::date IS NULL OR v.confirmed_at >= :from::date) AND (:to::date IS NULL OR v.confirmed_at < (:to::date + 1))";
+
+    /** revenue on the ledger alone (no label joined): a category that does not count is looked up, not joined to every row */
+    private static final String REVENUE = " AND v.confirmed_at IS NOT NULL"
+            + " AND NOT EXISTS (SELECT 1 FROM finance.payment_category nr WHERE nr.code = v.category_code AND NOT nr.revenue)"
             + " AND (:from::date IS NULL OR v.confirmed_at >= :from::date) AND (:to::date IS NULL OR v.confirmed_at < (:to::date + 1))";
 
     private JdbcClient.StatementSpec bind(JdbcClient.StatementSpec q, Bound b, Filters f, LocalDate from, LocalDate to) {
@@ -288,9 +297,9 @@ class FinancialAnalyticsController {
      * spilled hundreds of megabytes to disk.
      */
     private static String ledgerSql() {
-        String codes = String.join(", ", CODES.stream().filter(d -> !d[0].equals("bucket")).map(d -> "q." + d[0]).toList());
+        String codes = String.join(", ", CODES.stream().filter(d -> !d[0].equals("bucket")).map(d -> "v." + d[0]).toList());
         StringBuilder sql = new StringBuilder("WITH r AS MATERIALIZED (\n    SELECT ").append(codes)
-                .append(", date_trunc(:g, q.confirmed_at)::date AS bucket, q.payer_key, q.amount FROM (").append(ROWS).append(CONFIRMED).append(") q\n)\n");
+                .append(", date_trunc(:g, v.confirmed_at)::date AS bucket, v.payer_key, v.amount FROM reporting.payments v\n").append(FILTERS).append(REVENUE).append("\n)\n");
         sql.append("SELECT y.*, coalesce(c.label, y.category_code) AS category, fa.name AS faculty, d.name AS department, pg.name AS programme,\n")
                 .append("       coalesce(pt.label, y.programme_type) AS programme_type_label, coalesce(pu.label, y.purpose_code) AS purpose_label,\n")
                 .append("       coalesce(ro.label, y.responsible_office) AS responsible_office_label\n  FROM (\n");
@@ -511,10 +520,29 @@ class FinancialAnalyticsController {
         if (studentId != null && !studentId.isBlank()) {
             try { student = java.util.UUID.fromString(studentId.trim()); } catch (IllegalArgumentException e) { student = new java.util.UUID(0, 0); }
         }
-        List<Map<String, Object>> rows = bind(jdbc.sql("""
+        // Oct 2026: the page is chosen from a narrow read of the ledger — the filters, the order and the count, no label joined to
+        // every row — and only the page's rows are read whole, by id. Read whole and sorted, a page cost the full ledger every time.
+        List<Map<String, Object>> keys = bind(jdbc.sql("""
+                SELECT count(*) OVER () AS total_rows, v.payment_id::text AS id FROM reporting.payments v
+                """ + FILTERS + REVENUE + """
+                   AND (:student::uuid IS NULL OR v.student_id = :student)
+                 ORDER BY v.confirmed_at DESC, v.reference
+                 LIMIT :n OFFSET :o
+                """), b, f, f.from(), f.to()).param("student", student, Types.OTHER).param("n", sz).param("o", pg * sz).query().listOfRows();
+        long total;
+        if (!keys.isEmpty()) {
+            total = ((Number) keys.get(0).get("total_rows")).longValue();
+        } else {
+            total = pg == 0 ? 0 : ((Number) bind(jdbc.sql("SELECT count(*) AS n FROM reporting.payments v\n" + FILTERS + REVENUE
+                    + "\n AND (:student::uuid IS NULL OR v.student_id = :student)"), b, f, f.from(), f.to()).param("student", student, Types.OTHER)
+                    .query().singleRow().get("n")).longValue();
+        }
+        String[] ids = keys.stream().map(k -> String.valueOf(k.get("id"))).toArray(String[]::new);
+        List<Map<String, Object>> rows = ids.length == 0 ? List.of() : bind(jdbc.sql("""
                 WITH r AS (""" + ROWS + CONFIRMED + """
+                 AND v.payment_id = ANY (CAST(:ids AS uuid[]))
                 )
-                SELECT count(*) OVER () AS total_rows, r.source, r.reference, r.receipt_no, r.number, r.student_id, r.application_id, r.pg_application_id,
+                SELECT r.source, r.reference, r.receipt_no, r.number, r.student_id, r.application_id, r.pg_application_id,
                        r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme, r.level, r.entry_mode, r.entry_session,
                        r.session, r.category_code, r.category, r.purpose, r.kind, r.amount, r.confirmed_at, r.generated_at, r.channel, r.status,
                        r.programme_type, r.programme_type_label, r.admission_route, r.study_mode, r.purpose_code, r.purpose_label, r.entitlement,
@@ -523,15 +551,11 @@ class FinancialAnalyticsController {
                          ORDER BY e.received_at DESC LIMIT 1) AS gateway_reference,
                        (SELECT coalesce(sum(rf.amount), 0) FROM finance.refund rf WHERE rf.state = 'PAID' AND (rf.reference = r.reference OR rf.source_reference = r.reference)) AS refunded
                   FROM r
-                 WHERE (:student::uuid IS NULL OR r.student_id = :student)
                  ORDER BY r.confirmed_at DESC, r.reference
-                 LIMIT :n OFFSET :o
-                """), b, f, f.from(), f.to()).param("student", student, Types.OTHER).param("n", sz).param("o", pg * sz).query().listOfRows();
-        long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
+                """), b, f, f.from(), f.to()).param("ids", ids).query().listOfRows();
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
         for (Map<String, Object> r : rows) {
             Map<String, Object> x = new LinkedHashMap<>(r);
-            x.remove("total_rows");
             x.put("status", "CONFIRMED");
             // V409: the ledger's word for it — paid, refunded in part or in whole
             BigDecimal refunded = r.get("refunded") instanceof BigDecimal d ? d : BigDecimal.ZERO;
