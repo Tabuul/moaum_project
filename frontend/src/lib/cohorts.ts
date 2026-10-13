@@ -41,6 +41,8 @@ export interface CohortStudent extends CohortRow {
 }
 export interface CohortSettings {
   policy: { max_spillover_years: number; updated_at: string; updated_by: string | null };
+  /** V421: the probation threshold — a CGPA below it, on complete published results */
+  standing?: { probation_below_cgpa: number; updated_at: string; updated_by: string | null } | null;
   sessions: { name: string; state: string; starts_on: string; ends_on: string; merged_into: string | null; merged_reason: string | null; merged_minute: string | null; merged_on: string | null; merged_by: string | null; entrants: number; cohort_size: number }[];
   programmes: { code: string; name: string; category: string | null; archived: boolean | null; faculty: string | null; department: string | null; final_level: number | null; duration_years: number | null; pg_award: string | null; final_level_note: string | null; rule_level: number | null; active_students: number }[];
   awards: { award: string; programmes: number; configured: number; min_years: number | null; max_years: number | null; active_students: number }[];

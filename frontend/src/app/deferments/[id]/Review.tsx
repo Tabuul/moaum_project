@@ -20,6 +20,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { ACTION_WORD, ApprovalTimeline, COURSE_STATE, DOC_KIND, FeePil, OFFICE_OF, SEM, StatePil, ReturnPil, dayOf, effectPairs, naira, periodOf, returnOf, whenAt, type DefermentFull } from "@/lib/deferments";
 import { DocViewer } from "@/lib/deferment-viewer";
 
+/** V421: the standing in words — NOT_AVAILABLE is no complete published result yet, never good or bad standing */
+const STANDING_WORD: Record<string, string> = { GOOD: "Good standing", PROBATION: "On probation", ADVISED_TO_WITHDRAW: "Advised to withdraw", NOT_AVAILABLE: "No published result yet" };
+
 const ACTS: Record<string, [string, string, "primary" | "go" | "urgent" | "ghost" | "secondary", boolean]> = {
   bursaryApprove: ["BURSARY_APPROVE", "Approve (financial verification done)", "go", false],
   recommend: ["RECOMMEND", "Approve and send to the Faculty", "go", false],
@@ -119,7 +122,7 @@ export function Review({ d }: { d: DefermentFull }) {
         </Panel>
         <Panel title="The student's record" right={d.student_status.charAt(0) + d.student_status.slice(1).toLowerCase().replace(/_/g, " ")}>
           <PBody>
-            <KvGrid cls="grid--2" pairs={[["Status", d.student_status], ["Standing", d.standing?.standing ? `${d.standing.standing}${d.standing.cgpa != null ? ` · CGPA ${Number(d.standing.cgpa).toFixed(2)}` : ""}` : "—"], ["Entry session", d.entry_session], ["Level", `${d.level} Level`],
+            <KvGrid cls="grid--2" pairs={[["Status", d.student_status], ["Standing", d.standing?.standing ? `${STANDING_WORD[d.standing.standing] ?? d.standing.standing}${d.standing.cgpa != null ? ` · CGPA ${Number(d.standing.cgpa).toFixed(2)}` : ""}` : "—"], ["Entry session", d.entry_session], ["Level", `${d.level} Level`],
               ["Programme duration", tl ? `${tl.original_semesters} semesters → ${tl.adjusted_semesters} adjusted` : "—"], ["Expected completion", tl ? `${tl.adjusted_completion_session} · ${SEM(tl.adjusted_completion_semester)}` : "—"]]} />
             <div className="eyebrow mt-3 mb-1">Recent registrations</div>
             {d.registration?.length ? <ul className="plain">{d.registration.map((r, i) => <li key={i} className="sub2 tnum">{r.session} · {SEM(r.semester)} · {r.status.toLowerCase()}{r.submitted_at ? ` · ${dayOf(r.submitted_at)}` : ""}</li>)}</ul> : <div className="sub2">No course registration on record.</div>}

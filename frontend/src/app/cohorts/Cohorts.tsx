@@ -34,6 +34,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
   const [length, setLength] = useState<{ code: string; name: string; level: string; years: string; note: string; pg: boolean } | null>(null);
   const [award, setAward] = useState<{ award: string; years: string; note: string } | null>(null);
   const [years, setYears] = useState(String(summary.policy?.max_spillover_years ?? 2));
+  const [below, setBelow] = useState<string | null>(null);
   const t = summary.totals;
   const n = (v: number | null | undefined) => Number(v ?? 0);
   const isList = ["current", "graduated", "spillover", "review", "all"].includes(tab);
@@ -235,6 +236,21 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               </div>
             </PBody>
           </Panel>
+          {settings.standing ? (
+            <Panel title="Academic standing" right={`Set ${when(settings.standing.updated_at)}${settings.standing.updated_by ? ` by ${settings.standing.updated_by}` : ""}`}>
+              <PBody>
+                <div className="row row--base">
+                  <Field id="co-probation" label="Probation below a CGPA of" style={{ flex: "0 1 220px" }}>
+                    <input id="co-probation" className="ctl tnum" inputMode="decimal" disabled={!canSet} value={below ?? Number(settings.standing.probation_below_cgpa).toFixed(2)}
+                      onChange={(e) => setBelow(e.target.value.replace(/[^0-9.]/g, ""))} />
+                  </Field>
+                  {canSet ? <Btn kind="primary" disabled={busy || below === null || !(Number(below) > 0 && Number(below) <= 5) || Number(below) === Number(settings.standing.probation_below_cgpa)}
+                    onClick={() => void call("PUT", "/settings/probation", { probationBelowCgpa: Number(below) }, `Probation threshold set to a CGPA of ${Number(below).toFixed(2)}`).then((r) => { if (r) setBelow(null); })}>Save</Btn> : null}
+                  <span className="sub2">Read on complete published results only: a student whose results are missing, pending or incomplete is never placed on probation.</span>
+                </div>
+              </PBody>
+            </Panel>
+          ) : null}
           <Panel title="Academic sessions" right="A cancelled session is merged into the one that carried its students; their entry session stays">
             <DTable pageSize={0} cols={["Session", "State|mid", "Merged into", "Reason", "Entrants|mid", "Cohort size|mid", "|num"]} rows={settings.sessions.map((s) => [
               <span key="n" className="tnum b600">{s.name}</span>,

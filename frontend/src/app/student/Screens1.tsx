@@ -184,12 +184,19 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
       })() : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
-          CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester ({adv.pronounced_level} level), still under 1.0 after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
+          CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester ({adv.pronounced_level} level), still under {Number(adv.threshold ?? 1).toFixed(2)} after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
+        </Note>
+      ) : null}
+      {s.probation?.result_status && s.probation.result_status !== "PUBLISHED" && s.probation.result_message ? (
+        /* V421: a result not uploaded, not yet published or still incomplete is said as such — never a CGPA of 0.00, never probation */
+        <Note kind="info" title={s.probation.result_status === "NOT_AVAILABLE" ? "Result not available" : s.probation.result_status === "INCOMPLETE" ? "Result incomplete" : "Result pending"}
+          action={<LinkBtn kind="ghost" href="/student/results">View results</LinkBtn>}>
+          {s.probation.result_message}
         </Note>
       ) : null}
       {prob ? (
         <Note kind="bad" title="You are on probation" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
-          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Course registration is limited to <strong>{prob.probation_max_units} units</strong> until the next results; your outstanding courses stay on the form.</> : <>Your outstanding courses stay on your registration form.</>}
+          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, below the University&rsquo;s minimum requirement of {Number(prob.threshold ?? 1).toFixed(2)}. {prob.probation_max_units != null ? <>Course registration is limited to <strong>{prob.probation_max_units} units</strong> until the next results; your outstanding courses stay on the form.</> : <>Your outstanding courses stay on your registration form.</>}
         </Note>
       ) : null}
       {noScheme ? (

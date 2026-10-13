@@ -3,7 +3,7 @@
 /** tPipeline — the result pipeline monitor (V318, over proto/part26's nine stages): where every set in scope is, counted
  *  from the record; the coverage (expected, received, missing) counted from the rolls; the courses whose results are not
  *  in; what the chain flags; what needs this desk; the timeline; and every programme and level's live broadsheet. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Scope } from "@/lib/scope";
 import { FLAG_LABEL, type PipelineView, type SheetProgress } from "@/lib/results";
@@ -183,6 +183,46 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
             texts={view.programmes.map((p) => `${p.programmeName} ${p.programmeCode} ${p.level} ${p.deptName}`)} />
         </Panel>
       ) : null}
+      <StudentResultStatus scope={scope} />
     </>
+  );
+}
+
+/* ── V421: the students in scope by result status — a missing result counted as missing, never as probation ─────────── */
+
+const RESULT_STATUS: [string, string, string][] = [
+  ["NOT_AVAILABLE", "Result not uploaded", "Nothing past entry for the semester — or a registration the published sheets do not carry"],
+  ["UNDER_VERIFICATION", "Under verification", "At the Examinations Officer"],
+  ["PROCESSING", "Processing", "In the approval chain, not yet published"],
+  ["INCOMPLETE", "Incomplete", "Some courses published, some not: no standing is pronounced on it"],
+  ["PUBLISHED", "Published", "Every registered course published"],
+  ["PROBATION", "On probation", "Pronounced on complete published results only"],
+  ["ADVISED_TO_WITHDRAW", "Advised to withdraw", "Pronounced on complete published results only"],
+];
+
+function StudentResultStatus({ scope }: { scope: Scope }) {
+  const [v, setV] = useState<{ session: string; semester?: number; counts: Record<string, number> } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const q = new URLSearchParams();
+    for (const [k, val] of Object.entries({ fac: scope.fac, dept: scope.dept, prog: scope.prog, session: scope.session, sem: scope.sem })) if (val) q.set(k, val);
+    void fetch(`/api/bff/api/v1/results/student-status?${q}`).then(async (r) => {
+      if (!live) return;
+      if (r.ok) setV(await r.json()); else setFailed(true);
+    }).catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [scope.fac, scope.dept, scope.prog, scope.session, scope.sem]);
+  if (failed) return null;
+  return (
+    <Panel title="Students by result status" right={v ? `${v.session}${v.semester ? ` · semester ${v.semester}` : ""}` : "Counting…"}>
+      {!v ? <PBody><div className="sub2">Counting the students in scope…</div></PBody> : !Object.keys(v.counts).length ? (
+        <PBody><div className="sub2">No student in scope is registered for {v.session || "a semester the calendar has closed"}.</div></PBody>
+      ) : (
+        <DTable noPrint pageSize={0} cols={["Status", "Students|num", "What it means"]} rows={RESULT_STATUS.filter(([k]) => v.counts[k] != null).map(([k, label, what]) => [
+          <b key="l">{label}</b>, Number(v.counts[k]).toLocaleString(), <span key="w" className="sub2">{what}</span>,
+        ])} />
+      )}
+    </Panel>
   );
 }

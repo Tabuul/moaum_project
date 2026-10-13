@@ -481,12 +481,21 @@ class StudentPortalRepository {
         Integer cap = jdbc.sql("SELECT probation_max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level)
                 .query(Integer.class).optional().orElse(null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("standing", st == null ? "GOOD" : st.get("standing"));
+        // V421: NOT_AVAILABLE before any complete published semester — a missing result is never good or bad standing
+        out.put("standing", st == null ? "NOT_AVAILABLE" : st.get("standing"));
         out.put("cgpa", st == null ? null : st.get("cgpa"));
         out.put("pronounced_session", st == null ? null : st.get("pronounced_session"));
         out.put("pronounced_semester", st == null ? null : st.get("pronounced_semester"));
         out.put("pronounced_level", st == null ? null : st.get("pronounced_level"));
         out.put("probation_max_units", cap);
+        // V421: the University's threshold, and the latest ended semester's result status with the message the student reads
+        out.put("threshold", jdbc.sql("SELECT policy.probation_below_cgpa()").query(java.math.BigDecimal.class).single());
+        Map<String, Object> rs = jdbc.sql("SELECT session, semester, level, status, registered, published, message FROM assessment.student_result_status(:s)")
+                .param("s", student).query().listOfRows().stream().findFirst().orElse(null);
+        out.put("result_status", rs == null ? null : rs.get("status"));
+        out.put("result_session", rs == null ? null : rs.get("session"));
+        out.put("result_semester", rs == null ? null : rs.get("semester"));
+        out.put("result_message", rs == null ? null : rs.get("message"));
         return out;
     }
 

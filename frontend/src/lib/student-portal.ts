@@ -142,8 +142,13 @@ export interface Me {
   probation?: Probation | null;
 }
 export interface Probation {
-  standing: "PROBATION" | "ADVISED_TO_WITHDRAW" | "GOOD" | string; cgpa: number | null; pronounced_session: string | null; pronounced_semester: number | null;
+  /** V421: NOT_AVAILABLE before any complete published semester — a missing result is never good or bad standing */
+  standing: "PROBATION" | "ADVISED_TO_WITHDRAW" | "GOOD" | "NOT_AVAILABLE" | string; cgpa: number | null; pronounced_session: string | null; pronounced_semester: number | null;
   pronounced_level: number | null; probation_max_units: number | null;
+  /** V421: the University's probation threshold (a CGPA below it), and the latest ended semester's result status */
+  threshold?: number | null;
+  result_status?: "NOT_AVAILABLE" | "UNDER_VERIFICATION" | "PROCESSING" | "INCOMPLETE" | "PUBLISHED" | null;
+  result_session?: string | null; result_semester?: number | null; result_message?: string | null;
 }
 export interface ClearanceUnit { unit: string; label: string; state: string; item: string | null; decided_at: string | null; clears_against: string; holds_for: string; office_code: string | null }
 export interface Graduation {
@@ -203,6 +208,9 @@ export const WEEKDAY = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 /** the desks a sheet passes, as the results chain names them, for "where it is" */
 export const STAGE_LABEL: Record<string, [string, string]> = {
   NO_SHEET: ["Scores not Uploaded", "The examination session has not been opened for this offering"],
+  /* V421: the course's sheet is published but carries no result for you (a registration the old portal's results did not
+     cover, or one added after publication): no result — not a failure, not counted in your CGPA */
+  NO_RESULT: ["No result recorded", "Not on the published sheet — your department records it"],
   ENTRY: ["With the lecturer", "Marks being entered"],
   VERIFICATION: ["Verification", "Examinations Officer"],
   DEPT_BOARD: ["Departmental board", "Head of Department"],

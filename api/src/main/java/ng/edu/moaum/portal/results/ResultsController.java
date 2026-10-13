@@ -39,10 +39,12 @@ class ResultsController {
 
     private final ResultsService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    ResultsController(ResultsService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
+    ResultsController(ResultsService service, ng.edu.moaum.portal.shared.OfficeScope scope, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.service = service;
         this.scope = scope;
+        this.jdbc = jdbc;
     }
 
     private static final String MIGRATE =
@@ -173,6 +175,40 @@ class ResultsController {
                                  @RequestParam(required = false) Integer sem) {
         ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
         return service.pipeline(b.fac(), b.dept(), b.prog(), blank(session), sem);
+    }
+
+    /** V421: the students in scope by result status for a semester — not available, under verification, processing,
+     *  incomplete, published — and those on probation or advised to withdraw, counted only from complete published results.
+     *  By default the latest semester the University's calendar has closed. The office's bound applies. */
+    @GetMapping("/student-status")
+    @PreAuthorize(READERS)
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    Map<String, Object> studentStatus(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                      @RequestParam(required = false) String prog, @RequestParam(required = false) String session,
+                                      @RequestParam(required = false) Integer sem) {
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        String s = blank(session);
+        Integer n = sem;
+        if (s == null || n == null) {
+            Map<String, Object> last = jdbc.sql("""
+                    SELECT session, number FROM policy.semester WHERE state IN ('CLOSED', 'ARCHIVED') AND (:s::text IS NULL OR session = :s)
+                     ORDER BY session DESC, number DESC LIMIT 1
+                    """).param("s", s, java.sql.Types.VARCHAR).query().listOfRows().stream().findFirst().orElse(null);
+            if (last == null) {
+                return Map.of("session", s == null ? "" : s, "counts", Map.of());
+            }
+            s = (String) last.get("session");
+            n = ((Number) last.get("number")).intValue();
+        }
+        Map<String, Object> counts = new java.util.LinkedHashMap<>();
+        jdbc.sql("SELECT status, students FROM assessment.result_status_counts(:d, :f, :p, :s, :n)")
+                .param("d", blank(b.dept()), java.sql.Types.VARCHAR).param("f", blank(b.fac()), java.sql.Types.VARCHAR).param("p", blank(b.prog()), java.sql.Types.VARCHAR)
+                .param("s", s).param("n", n).query().listOfRows().forEach(r -> counts.put((String) r.get("status"), r.get("students")));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("semester", n);
+        out.put("counts", counts);
+        return out;
     }
 
     @PutMapping("/sheets/{id}/scores")

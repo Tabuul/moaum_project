@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 258
+\set EXPECTED 259
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10692,6 +10692,130 @@ BEGIN
         AND v_first >= 1 AND v_chased = 1 AND v_again = 0
         AND v_upload = 1,
         format('same=%s gate=%s people=%s first=%s chased=%s again=%s upload=%s', v_same, v_gate, v_people, v_first, v_chased, v_again, v_upload));
+END $$;
+
+-- ── V421: a missing result is not a zero, and never probation ──
+-- Eight invented students in a semester of their own (and one older session): A's registration came over but no result did —
+-- on sheets the old-portal upload published for others — so A has no result, no CGPA, no standing, no carryover, and is told
+-- the result is not available; B's published CGPA under the threshold is probation (and the real F a carryover); C's above it
+-- is good; D's partial semester (one F published, one course with no sheet) is incomplete and pronounces nothing; E's result
+-- under verification and F's at Senate are pending, never probation; G's older session stands as pronounced on its own
+-- session while the current one is not available; H's recorded absence is still an F. The threshold is the University's
+-- setting, the Academic Office's or the Registry's to change; the offices count students by result status, probation only
+-- from complete published results. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S0 text := '9933/9934'; S1 text := '9935/9936'; dept text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid();
+        o4 uuid := gen_random_uuid(); o5 uuid := gen_random_uuid(); o6 uuid := gen_random_uuid(); x uuid; reg uuid; i int;
+        a_stage text; a_pub int; a_cgpa numeric; a_st text; a_status text; a_msg text; a_carry int;
+        b_st text; b_cgpa numeric; b_carry int; b_msg_sess text; c_st text;
+        d_status text; d_st text; e_status text; e_st text; f_status text; f_st text;
+        g_st text; g_sess text; g_status text; g_status_sess text; h_st text; h_grade text;
+        b_low_st text; r_office text; counts jsonb; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.reason', 'check V421', true);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S0, date '9933-10-01', date '9934-08-31'), (gen_random_uuid(), S1, date '9935-10-01', date '9936-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'ZZP 10' || n, 'Check standing ' || n, 3, 2, 100, dept, 'Core', 'LIVE' FROM generate_series(1, 6) n;
+        i := 0;
+        FOREACH x IN ARRAY ARRAY[a, b, c, d, e, f, g, h] LOOP
+            i := i + 1;
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (x, 'MOAUM/ADM/99/99421' || i, 'MOAUM/ZZP/99/042' || i, 'ZZSTANDING', 'Student ' || i, 'C00061', 'UTME', S0, 100, 100, 'ACTIVE', now());
+        END LOOP;
+
+        -- the old portal's results, published as they came: B, C, D, H in S1; G in S0
+        PERFORM assessment.import_legacy_semester(S1, 2, jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0422', 'course', 'ZZP 101', 'total', '42', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0422', 'course', 'ZZP 102', 'total', '41', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0422', 'course', 'ZZP 103', 'total', '30', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0423', 'course', 'ZZP 101', 'total', '46', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0423', 'course', 'ZZP 102', 'total', '42', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0424', 'course', 'ZZP 101', 'total', '30', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0428', 'course', 'ZZP 101', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0428', 'course', 'ZZP 102', 'total', '30', 'level', '100')), true);
+        PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/ZZP/99/0427', 'course', 'ZZP 101', 'total', '65', 'level', '100')), true);
+
+        -- the registrations that came over without results: A (ZZP 101, ZZP 102), G in S1 (ZZP 102); D's second course has no sheet;
+        -- E's sheet is at verification, F's at Senate
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o4, 'ZZP 104', S1, 2), (o5, 'ZZP 105', S1, 2), (o6, 'ZZP 106', S1, 2);
+        INSERT INTO assessment.score_sheet (id, offering_id, stage) VALUES (gen_random_uuid(), o5, 'VERIFICATION'), (gen_random_uuid(), o6, 'SENATE');
+        FOREACH x IN ARRAY ARRAY[a, d, e, f, g] LOOP
+            SELECT id INTO reg FROM registration.course_registration WHERE student_id = x AND session = S1 AND semester = 2;
+            IF reg IS NULL THEN
+                reg := gen_random_uuid();
+                INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), x, S1, 100) ON CONFLICT (student_id, session) DO NOTHING;
+                INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by)
+                VALUES (reg, x, S1, 2, 100, 'APPROVED', now(), now(), who);
+            END IF;
+            INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+            SELECT reg, o.id, 3, 'CURRENT', 'APPROVED' FROM catalogue.offering o
+             WHERE o.session = S1 AND o.semester = 2 AND o.stream = 'REGULAR'
+               AND o.course_code = ANY (CASE WHEN x = a THEN ARRAY['ZZP 101', 'ZZP 102'] WHEN x = d THEN ARRAY['ZZP 104'] WHEN x = e THEN ARRAY['ZZP 105']
+                                             WHEN x = f THEN ARRAY['ZZP 106'] ELSE ARRAY['ZZP 102'] END)
+            ON CONFLICT (registration_id, offering_id) DO NOTHING;
+        END LOOP;
+
+        -- A: no result — no grade, no CGPA, no standing, no carryover; told the result is not available
+        SELECT string_agg(DISTINCT stage, ','), count(*) FILTER (WHERE published) INTO a_stage, a_pub FROM assessment.student_results(a);
+        SELECT cgpa INTO a_cgpa FROM assessment.student_gpa(a) ORDER BY session DESC, semester DESC LIMIT 1;
+        SELECT standing INTO a_st FROM assessment.student_standing(a);
+        SELECT status, message INTO a_status, a_msg FROM assessment.student_result_status(a);
+        SELECT count(*) INTO a_carry FROM registration.carryovers(a);
+        -- B: under the threshold on complete published results — probation, the real F a carryover; C above it — good
+        SELECT standing, cgpa, pronounced_session INTO b_st, b_cgpa, b_msg_sess FROM assessment.student_standing(b);
+        SELECT count(*) INTO b_carry FROM registration.carryovers(b);
+        SELECT standing INTO c_st FROM assessment.student_standing(c);
+        -- D partial, E under verification, F at Senate: pending, never probation
+        SELECT status INTO d_status FROM assessment.student_result_status(d);
+        SELECT standing INTO d_st FROM assessment.student_standing(d);
+        SELECT status INTO e_status FROM assessment.student_result_status(e);
+        SELECT standing INTO e_st FROM assessment.student_standing(e);
+        SELECT status INTO f_status FROM assessment.student_result_status(f);
+        SELECT standing INTO f_st FROM assessment.student_standing(f);
+        -- G: the older session stands on its own session; the current one is not available
+        SELECT standing, pronounced_session INTO g_st, g_sess FROM assessment.student_standing(g);
+        SELECT status, session INTO g_status, g_status_sess FROM assessment.student_result_status(g);
+        -- H: a recorded absence is still an F
+        SELECT standing INTO h_st FROM assessment.student_standing(h);
+        SELECT grade INTO h_grade FROM assessment.student_results(h) WHERE course_code = 'ZZP 101';
+
+        -- the threshold is the University's: at 0.5, B is in good standing; only the Academic Office or the Registry sets it
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM policy.set_probation_below_cgpa(0.5);
+        SELECT standing INTO b_low_st FROM assessment.student_standing(b);
+        PERFORM policy.set_probation_below_cgpa(1.0);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM policy.set_probation_below_cgpa(2.0); r_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+
+        -- the offices' counts for the semester
+        SELECT jsonb_object_agg(status, students) INTO counts FROM assessment.result_status_counts(dept, NULL, NULL, S1, 2);
+        RAISE EXCEPTION 'the V421 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V421 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V421: a missing result is no result — no CGPA, no standing, no carryover, the student told it is not available; probation only on complete published results under the University''s threshold; partial, under verification and at Senate are pending; an older session stands on its own session; a recorded absence is still an F; the offices count by result status',
+        coalesce(a_stage = 'NO_RESULT' AND a_pub = 0 AND a_cgpa IS NULL AND a_st = 'NOT_AVAILABLE' AND a_status = 'NOT_AVAILABLE'
+                 AND a_msg = 'Your result for the ' || S1 || ' second semester has not yet been uploaded or published.' AND a_carry = 0
+                 AND b_st = 'PROBATION' AND b_cgpa = 0.67 AND b_msg_sess = S1 AND b_carry = 1 AND c_st = 'GOOD'
+                 AND d_status = 'INCOMPLETE' AND d_st = 'NOT_AVAILABLE' AND e_status = 'UNDER_VERIFICATION' AND e_st = 'NOT_AVAILABLE'
+                 AND f_status = 'PROCESSING' AND f_st = 'NOT_AVAILABLE'
+                 AND g_st = 'GOOD' AND g_sess = S0 AND g_status = 'NOT_AVAILABLE' AND g_status_sess = S1
+                 AND h_st = 'PROBATION' AND h_grade = 'F' AND b_low_st = 'GOOD' AND r_office = 'STANDING_SETTING_OFFICE'
+                 AND (counts->>'NOT_AVAILABLE')::int = 2 AND (counts->>'PUBLISHED')::int = 3 AND (counts->>'INCOMPLETE')::int = 1
+                 AND (counts->>'UNDER_VERIFICATION')::int = 1 AND (counts->>'PROCESSING')::int = 1 AND (counts->>'PROBATION')::int = 2, false),
+        format('A %s pub=%s cgpa=%s standing=%s status=%s msg=%s carry=%s | B %s %s %s carry=%s | C %s | D %s %s | E %s %s | F %s %s | G %s %s %s %s | H %s %s | at 0.5 B %s | office %s | counts %s',
+               a_stage, a_pub, a_cgpa, a_st, a_status, a_msg, a_carry, b_st, b_cgpa, b_msg_sess, b_carry, c_st, d_status, d_st, e_status, e_st,
+               f_status, f_st, g_st, g_sess, g_status, g_status_sess, h_st, h_grade, b_low_st, r_office, counts));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
