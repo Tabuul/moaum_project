@@ -238,6 +238,24 @@ read by the offices that read the whole University. A reminder is a campaign: th
 password" (`first_password` in `platform.campaign_recipients`, for students, staff and applicants) with the template
 `FIRST_PASSWORD_REMINDER` ("Choose your own password").
 
+## The SMS cost of a campaign (V444)
+
+An SMS is charged by the page: 160 characters of the GSM alphabet make one, 153 a page once a message runs longer; a message
+with any character outside it is sent as Unicode, 70 characters one, 67 a page (`platform.sms_units`). The campaign's own SMS
+is rendered for its first recipient and allowed fifteen characters for longer names; its pages times the recipients with a
+usable phone is what it needs (`platform.campaign_sms_cost`), set against the balance the provider watch last read. The
+preview shows it beside the recipients; the send is refused while the balance is known and does not cover it
+(`CAMPAIGN_SMS_CREDIT`), and the screen asks whether to send anyway (`{"acceptShortfall": true}`): the e-mail and portal
+messages all go, the SMS stop when the credit runs out.
+
+## The other application deadlines (V444)
+
+The daily pass of V438/V440 now also reminds the applicants of the JUPEB application window (a draft, or an application
+returned for correction), the postgraduate application window (a draft) and the CCE application window (not yet submitted),
+each through `WINDOW_CLOSING`'s variant for the route, on the address the route's own module holds
+(`platform.tell_route_applicant`: `jupeb.application`, `admissions.pg_applicant`, the CCE candidate's applicant account), once
+per deadline and day. The Post-UTME windows no longer reach a CCE candidate.
+
 ## Not yet
 
 Bounces of mail sent over SMTP (they come back as mail; reading the mailbox is not built); eBulkSMS's delivery reports are

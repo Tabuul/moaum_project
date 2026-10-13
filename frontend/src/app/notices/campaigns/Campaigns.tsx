@@ -32,7 +32,9 @@ export interface CampaignsPage {
   sessions: { name: string; state: string }[];
   offices: { code: string; label: string }[];
 }
-interface Preview { total: number; emailOk: number; emailBad: number; emailMissing: number; phoneOk: number; phoneBad: number; phoneMissing: number; already: number; kinds: { kind: string; total: number }[] }
+/** V444: what the campaign's SMS will cost, against the balance last read */
+interface SmsCost { sms_on: boolean; sample: string | null; chars: number; units_each: number; recipients: number; units_total: number; balance: number | null; balance_at: string | null; covers: boolean | null }
+interface Preview { sms?: SmsCost | null; total: number; emailOk: number; emailBad: number; emailMissing: number; phoneOk: number; phoneBad: number; phoneMissing: number; already: number; kinds: { kind: string; total: number }[] }
 
 const when = (s: string | null) => (s ? new Date(s).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
@@ -135,10 +137,17 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
   async function doSend() {
     if (!opened) return;
     if (!preview) { await doPreview(); if (!preview) { /* the preview is shown first; the office sends from it */ } }
-    if (!window.confirm(`Send "${opened.name}" now? The messages go out in batches and cannot be recalled once queued.`)) return;
+    const sms = preview?.sms;
+    const cost = sms?.sms_on ? ` The SMS take about ${sms.units_total} units (${sms.recipients} messages of ${sms.units_each} page${sms.units_each === 1 ? "" : "s"})${sms.balance != null ? `; the account held ${sms.balance} when last read` : ""}.` : "";
+    if (!window.confirm(`Send "${opened.name}" now? The messages go out in batches and cannot be recalled once queued.${cost}`)) return;
     setBusy(true); setProblem(null);
     try {
-      const r = await send<Campaign>(`/${opened.id}/send`, "POST", {}, `Campaign ${opened.name} sent`);
+      let r = await send<Campaign>(`/${opened.id}/send`, "POST", {}, `Campaign ${opened.name} sent`);
+      // V444: a known shortfall of SMS credit refuses the send; the office may send anyway, the SMS stopping when the credit runs out
+      if (!r.ok && (r.problem as { code?: string }).code === "CAMPAIGN_SMS_CREDIT"
+          && window.confirm(`${r.problem.detail ?? "The SMS credit does not cover this campaign."}\n\nSend anyway? The e-mail and portal messages all go; the SMS stop when the credit runs out.`)) {
+        r = await send<Campaign>(`/${opened.id}/send`, "POST", { acceptShortfall: true }, `Campaign ${opened.name} sent, accepting the SMS credit shortfall`);
+      }
       if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
       notify("Sending: the first batch has gone; the rest follows within minutes");
       router.refresh();
@@ -296,7 +305,15 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
                   ["Valid e-mail", String(preview.emailOk), null, `${preview.emailBad} not an address · ${preview.emailMissing} none on file`],
                   ["Valid phone", String(preview.phoneOk), null, `${preview.phoneBad} not a number · ${preview.phoneMissing} none on file`],
                   ["Already reached", String(preview.already), null, "By this campaign"],
+                  ...(preview.sms?.sms_on ? [[
+                    "SMS credit needed", `≈ ${preview.sms.units_total}`, preview.sms.covers === false ? "var(--red-ink)" : null,
+                    `${preview.sms.recipients} × ${preview.sms.units_each} page${preview.sms.units_each === 1 ? "" : "s"} (≈ ${preview.sms.chars} characters) · `
+                      + (preview.sms.balance != null ? `${preview.sms.covers === false ? "more than" : "within"} the ${preview.sms.balance} units held` : "balance not read yet"),
+                  ] as [string, string, string | null, string]] : []),
                 ]} />
+                {preview.sms?.sms_on && preview.sms.covers === false ? (
+                  <div className="sub2 mt-1" style={{ color: "var(--red-ink)" }}>The SMS credit does not cover this campaign: top up the account, drop SMS from the channels, or narrow the audience. Send asks before going ahead.</div>
+                ) : null}
               </div>
             ) : null}
             {opened && opened.report?.length ? (

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 281
+\set EXPECTED 282
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12217,6 +12217,89 @@ BEGIN
         format('class=%s/%s sem=%s sess=%s ended=%s own1=%s/%s own2=%s moved=%s own3=%s trail=%s/%s/%s office=%s isdept=%s dept=%s mapped=%s own4=%s listed=%s/%s/%s/%s kept=%s dropped=%s',
                c1, c2, r_sem, r_sess, r_ended, own1, prog1, own2, moved, own3, trail.from_dept, trail.to_dept, trail.source, r_office, r_isdept, r_dept, mapped, own4,
                listed.is_department, listed.mapped_dept, listed.owner_by_code, listed.astray, kept, dropped));
+END $$;
+
+-- ── V444. The SMS cost of a campaign: pages are counted as the providers charge them (GSM-7 160/153, an extension character
+--          twice, Unicode 70/67); a campaign's SMS is costed for its recipients with a phone and set against the balance; the
+--          send is refused on a known shortfall and goes when the office accepts it. The JUPEB and postgraduate application
+--          windows remind their own drafts, on the addresses their modules hold, and never the submitted ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9994/9995'; st uuid := gen_random_uuid(); camp uuid := gen_random_uuid();
+        u_short int; u_160 int; u_161 int; u_306 int; u_307 int; u_ext80 int; u_ext81 int; u_uni70 int; u_uni71 int; u_empty int;
+        k record; r_credit text; job uuid;
+        ja uuid := gen_random_uuid(); jb uuid := gen_random_uuid(); jacc uuid := gen_random_uuid(); jacc2 uuid := gen_random_uuid(); w_j uuid; w_p uuid;
+        pa uuid := gen_random_uuid(); pg uuid := gen_random_uuid(); q1 int; q2 int;
+        told_ja int; told_jb int; told_pg int; subj_j text; sms_pg text; done_jb boolean; done_pg boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V444', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V444', 'CHECKV444', 'ICT');
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        UPDATE platform.notice_setting SET closing_reminders = true, portal_delivery = true WHERE id;
+        -- 1. pages
+        u_short := platform.sms_units('Hello');
+        u_160 := platform.sms_units(repeat('a', 160));
+        u_161 := platform.sms_units(repeat('a', 161));
+        u_306 := platform.sms_units(repeat('a', 306));
+        u_307 := platform.sms_units(repeat('a', 307));
+        u_ext80 := platform.sms_units(repeat('€', 80));
+        u_ext81 := platform.sms_units(repeat('€', 81));
+        u_uni70 := platform.sms_units(repeat('ọ', 70));
+        u_uni71 := platform.sms_units(repeat('ọ', 71));
+        u_empty := platform.sms_units('');
+        -- 2. a campaign's SMS against the balance: one student with a phone, a long announcement, a balance too small
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9994-10-01', date '9995-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (st, 'MOAUM/ADM/94/004441', NULL, NULL, 'CHECKV444', 'Credit Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (st, '08000004441', 'v444@example.test');
+        INSERT INTO platform.notice_campaign (id, name, template_key, audience, channels, vars, state, created_by, created_office)
+        VALUES (camp, 'CHK V444', 'ANNOUNCEMENT', jsonb_build_object('students', true, 'filters', jsonb_build_object('session', S)), ARRAY['EMAIL', 'SMS', 'PORTAL'],
+                jsonb_build_object('TITLE', 'Credit', 'MESSAGE', 'Hello', 'SMS_MESSAGE', repeat('Lectures resume on Monday. ', 12), 'SIGNATURE', 'Registry'), 'DRAFT', who, 'ict');
+        UPDATE platform.provider_health SET balance = 1, balance_raw = '1', balance_at = now() WHERE channel = 'SMS';
+        SELECT * INTO k FROM platform.campaign_sms_cost(camp, 1000);
+        BEGIN PERFORM platform.campaign_send(camp, who, 'ict'); EXCEPTION WHEN check_violation THEN r_credit := SQLERRM; END;
+        job := platform.campaign_send(camp, who, 'ict', true);
+        -- 3. the JUPEB and postgraduate application deadlines: a draft reminded, the submitted not
+        INSERT INTO jupeb.account (id, email, password_hash) VALUES (jacc, 'v444j@example.test', '$2a$12$CHECKV444CHECKV444CHECKV444CHECKV444CHECKV444CHECKV44'),
+            (jacc2, 'v444j2@example.test', '$2a$12$CHECKV444CHECKV444CHECKV444CHECKV444CHECKV444CHECKV44');
+        INSERT INTO jupeb.application (id, account_id, session, application_no, surname, first_name, email, phone, state, submitted_at) VALUES
+            (ja, jacc, S, 'CHK/V444/JA', 'CHECKV444', 'Jupeb Ada', 'v444ja@example.test', '08000004442', 'DRAFT', NULL),
+            (jb, jacc2, S, 'CHK/V444/JB', 'CHECKV444', 'Jupeb Bola', 'v444jb@example.test', '08000004443', 'SUBMITTED', now());
+        INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, phone, password_hash)
+        VALUES (pa, S, 'CHECKV444', 'Postgrad Chidi', 'v444pg@example.test', '08000004444', '$2a$12$CHECKV444CHECKV444CHECKV444CHECKV444CHECKV444CHECKV44');
+        INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state)
+        VALUES (pg, pa, S, 'PG/94/004444', 'C00023', 800, 'DRAFT');
+        INSERT INTO policy.portal_window (window_type, session, semester, opens_at, closes_at, created_office) VALUES
+            ('JUPEB_APPLICATION', S, NULL, now() - interval '1 day', (((now() AT TIME ZONE 'Africa/Lagos')::date + 3)::timestamp + interval '12 hours') AT TIME ZONE 'Africa/Lagos', 'ict')
+        RETURNING id INTO w_j;
+        INSERT INTO policy.portal_window (window_type, session, semester, opens_at, closes_at, created_office) VALUES
+            ('POSTGRADUATE_APPLICATION', S, NULL, now() - interval '1 day', (((now() AT TIME ZONE 'Africa/Lagos')::date + 1)::timestamp + interval '12 hours') AT TIME ZONE 'Africa/Lagos', 'ict')
+        RETURNING id INTO w_p;
+        UPDATE platform.notice_job SET state = 'CANCELLED', finished_at = now() WHERE state IN ('QUEUED', 'RUNNING') AND id <> job;   -- only this check's jobs drain below
+        UPDATE platform.notice_job SET state = 'CANCELLED', finished_at = now() WHERE id = job;
+        q1 := platform.queue_closing_reminders(now());
+        FOR i IN 1..8 LOOP PERFORM platform.run_notice_job(100000); END LOOP;
+        SELECT count(*) INTO told_ja FROM platform.notice n WHERE n.about_kind = 'jupeb_application' AND n.about_id = ja AND n.template_key = 'WINDOW_CLOSING:JUPEB_APPLICATION' AND n.event_key LIKE 'window-closing:' || w_j || ':%:3';
+        SELECT count(*) INTO told_jb FROM platform.notice n WHERE n.about_id = jb AND n.template_key LIKE 'WINDOW_CLOSING%';
+        SELECT count(*) INTO told_pg FROM platform.notice n WHERE n.about_kind = 'pg_application' AND n.about_id = pg AND n.template_key = 'WINDOW_CLOSING:POSTGRADUATE_APPLICATION' AND n.event_key LIKE 'window-closing:' || w_p || ':%:1';
+        subj_j := (SELECT n.subject FROM platform.notice n WHERE n.about_id = ja AND n.channel = 'EMAIL' AND n.template_key = 'WINDOW_CLOSING:JUPEB_APPLICATION');
+        sms_pg := (SELECT n.body FROM platform.notice n WHERE n.about_id = pg AND n.channel = 'SMS' AND n.template_key = 'WINDOW_CLOSING:POSTGRADUATE_APPLICATION');
+        done_jb := policy.applicant_window_done('JUPEB_APPLICATION', S, jb);
+        UPDATE admissions.pg_application SET state = 'SUBMITTED', submitted_at = now() WHERE id = pg;
+        done_pg := policy.applicant_window_done('POSTGRADUATE_APPLICATION', S, pg);
+        RAISE EXCEPTION 'the V444 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V444: SMS pages are counted as charged (GSM-7, extension characters twice, Unicode); a campaign''s SMS is costed against the balance, refused on a known shortfall and sent when accepted; the JUPEB and postgraduate drafts are reminded before their windows close, on their own modules'' addresses, and the submitted never',
+        coalesce(u_short = 1 AND u_160 = 1 AND u_161 = 2 AND u_306 = 2 AND u_307 = 3 AND u_ext80 = 1 AND u_ext81 = 2 AND u_uni70 = 1 AND u_uni71 = 2 AND u_empty = 0
+                 AND k.sms_on AND k.units_each >= 3 AND k.recipients = 1000 AND k.units_total = 1000 * k.units_each AND k.covers IS FALSE
+                 AND r_credit LIKE 'CAMPAIGN_SMS_CREDIT%' AND job IS NOT NULL
+                 AND q1 >= 2 AND told_ja = 3 AND told_jb = 0 AND told_pg = 3 AND subj_j LIKE 'JUPEB applications for%close in 3 days%'
+                 AND sms_pg LIKE '%close tomorrow%' AND done_jb AND done_pg, false),
+        format('units %s/%s/%s/%s/%s ext %s/%s uni %s/%s empty %s | cost on=%s each=%s rcpt=%s total=%s covers=%s | refused=%s job=%s | q=%s jupeb a=%s b=%s pg=%s subj=%s sms=%s done jb=%s pg=%s',
+               u_short, u_160, u_161, u_306, u_307, u_ext80, u_ext81, u_uni70, u_uni71, u_empty, k.sms_on, k.units_each, k.recipients, k.units_total, k.covers,
+               left(r_credit, 20), job IS NOT NULL, q1, told_ja, told_jb, told_pg, subj_j, left(sms_pg, 60), done_jb, done_pg));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

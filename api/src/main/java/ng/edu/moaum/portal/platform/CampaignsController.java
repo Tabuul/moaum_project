@@ -147,6 +147,10 @@ class CampaignsController {
         out.put("phoneBad", rows.stream().mapToLong(r -> ((Number) r.get("phone_bad")).longValue()).sum());
         out.put("phoneMissing", rows.stream().mapToLong(r -> ((Number) r.get("phone_missing")).longValue()).sum());
         out.put("already", rows.stream().mapToLong(r -> ((Number) r.get("already")).longValue()).sum());
+        // V444: what the SMS will cost — pages each, times the recipients with a usable phone — against the balance last read
+        int phones = (int) Math.min(Integer.MAX_VALUE, rows.stream().mapToLong(r -> ((Number) r.get("phone_ok")).longValue()).sum());
+        out.put("sms", jdbc.sql("SELECT * FROM platform.campaign_sms_cost(:id, :n)").param("id", id).param("n", phones).query().listOfRows()
+                .stream().findFirst().orElse(null));
         return out;
     }
 
@@ -168,13 +172,18 @@ class CampaignsController {
         return Map.of("queued", n == null ? 0 : n);
     }
 
-    /** the send: a job the scheduler drains; the first batch goes now so the office sees it move */
+    record SendIn(Boolean acceptShortfall) {
+    }
+
+    /** the send: a job the scheduler drains; the first batch goes now so the office sees it move. V444: refused while the SMS
+     *  balance last read does not cover the campaign's SMS, unless the office accepts the shortfall */
     @PostMapping("/{id}/send")
     @Transactional
-    Map<String, Object> send(@PathVariable UUID id) {
+    Map<String, Object> send(@PathVariable UUID id, @RequestBody(required = false) SendIn in) {
         AuditContext ctx = AuditContextHolder.required();
-        UUID job = jdbc.sql("SELECT platform.campaign_send(:id, :by, :office)").param("id", id)
-                .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query(UUID.class).single();
+        boolean accept = in != null && Boolean.TRUE.equals(in.acceptShortfall());
+        UUID job = jdbc.sql("SELECT platform.campaign_send(:id, :by, :office, :accept)").param("id", id)
+                .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).param("accept", accept).query(UUID.class).single();
         jdbc.sql("SELECT * FROM platform.run_notice_job(500)").query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>(one(id));
         out.put("job", job);
