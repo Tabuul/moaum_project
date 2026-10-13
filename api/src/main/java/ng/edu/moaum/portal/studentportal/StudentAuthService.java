@@ -68,8 +68,9 @@ public class StudentAuthService {
     }
 
     /** V428: a person's own number is never their password — not the matriculation, admission or JAMB number, whether it is
-     *  offered at the door or was stored as a hash (the migration desk's old "default passwords"). The first password is the reset link to
-     *  the contact on record, ICT Support's temporary password, or one the Registry gives. */
+     *  offered at the door or was stored as a hash (the migration desk's old "default passwords") — once a password has been chosen.
+     *  Before one is, the number is the first password (see {@link #firstPassword}); otherwise it is the reset link to the contact on
+     *  record, ICT Support's temporary password, or one the Registry gives. */
     static boolean ownNumber(String password, StudentPortalRepository.Student s) {
         String p = password == null ? "" : password.trim();
         return !p.isEmpty() && s != null
@@ -77,9 +78,24 @@ public class StudentAuthService {
                    || (s.jambRegNo() != null && p.equalsIgnoreCase(s.jambRegNo().trim())));
     }
 
+    /** the first password (V178, V122), granted at the door rather than hashed into 47,000 accounts: the number the student signs in
+     *  with — the matriculation number, or before one is issued the JAMB or admission number the door accepts (V267). It holds while
+     *  the account is still on its first password: must-change on, no temporary password, none chosen; the change is forced before
+     *  anything else, and from then on the number opens nothing. Most migrated students have no email or phone on record for the reset
+     *  link to reach. */
+    static boolean firstPassword(String password, String signedInAs) {
+        String p = password == null ? "" : password.trim();
+        String u = signedInAs == null ? "" : signedInAs.trim();
+        return !p.isEmpty() && p.equalsIgnoreCase(u);
+    }
+
+    static boolean onFirstPassword(StudentPortalRepository.Account a) {
+        return a.mustChange() && !a.temporary();
+    }
+
     static DomainRuleViolation ownNumberRefused() {
-        return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your own number is not a password.",
-                new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"First sign-in or forgotten password\": a link goes to the email or phone the University has for you. With none on record, ICT Support gives a temporary password at the desk.", "ICT Support"));
+        return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your own number is not your password.",
+                new DomainRuleViolation.Remedy("Signing in for the first time? The number you sign in with is your first password, and you choose your own at once. Chosen one and forgotten it? Choose \"Forgot password?\": a link goes to the email or phone the University has for you; with none on record, ICT Support gives a temporary password at the desk.", "ICT Support"));
     }
 
     /** what the student account opens with when it is carried over from the applicant's: the applicant's own bcrypt hash — or, for an
@@ -132,13 +148,15 @@ public class StudentAuthService {
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
-            // V428: the student's own number opens nothing, whether offered as the default or stored as a hash
-            if (ownNumber(password, s)) {
+            // the first sign-in: while the account is still on its first password, the number is that password and the change is
+            // forced before anything else (V178, V122); once one is chosen, the student's own number opens nothing (V428)
+            boolean firstSignIn = onFirstPassword(a) && firstPassword(password, matricNo);
+            if (ownNumber(password, s) && !firstSignIn) {
                 repo.event(matricNo, s.id(), "OWN_NUMBER_REFUSED", ip);
                 throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                 return ownNumberRefused();
             }
-            boolean ok = encoder.matches(password == null ? "" : password, a.passwordHash());
+            boolean ok = firstSignIn || encoder.matches(password == null ? "" : password, a.passwordHash());
             if (ok && a.temporarySpent()) {
                 /* V346: a temporary password from ICT Support opens one session, until its time; spent or lapsed, it opens nothing */
                 repo.event(matricNo, s.id(), "TEMP_PASSWORD_SPENT", ip);
@@ -160,7 +178,7 @@ public class StudentAuthService {
             if (a.temporary()) {
                 repo.temporaryUsed(s.id());
             }
-            repo.event(matricNo, s.id(), "SIGNED_IN", ip);
+            repo.event(matricNo, s.id(), firstSignIn ? "FIRST_SIGN_IN" : "SIGNED_IN", ip);
             String name = s.surname() + ", " + s.otherNames();
             return new SignedIn(issuer.issue(s.id(), name, List.of("student"), sid, end), end, s.id(), s.matricNo(), s.surname(), s.otherNames(), a.mustChange());
         });
@@ -229,9 +247,10 @@ public class StudentAuthService {
         StudentPortalRepository.Account a = repo.account(student).orElseThrow(() -> new NotFound("student account", student));
         StudentPortalRepository.Student s = repo.byId(student).orElse(null);
         boolean ok = encoder.matches(current == null ? "" : current, a.passwordHash());
-        // V428: an account that must change and holds no temporary password was opened by a door that already proved the student
-        // (the applicant's own session continued, or the reset link) on a password nobody knows — so the current one is not asked
-        if (!ok && a.mustChange() && !a.temporary() && (current == null || current.isBlank())) {
+        // an account still on its first password was opened by a door that already proved the student — the number at the first
+        // sign-in, the applicant's own session continued, or the reset link — on a hash nobody knows: the number it opened with is
+        // accepted as the current password, or none at all (V428)
+        if (!ok && onFirstPassword(a) && (current == null || current.isBlank() || ownNumber(current, s))) {
             ok = true;
         }
         if (!ok) {

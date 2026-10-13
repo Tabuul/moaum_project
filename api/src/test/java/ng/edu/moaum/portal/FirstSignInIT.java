@@ -68,9 +68,22 @@ class FirstSignInIT {
                     temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL
                 """).param("s", student).update());
 
-        // (1) the matriculation number, the old default: refused, with the way in
+        // (1) the first sign-in (V178, V122): while the account is still on its first password, the matriculation number is that
+        //     password — not the admission number once one is issued, nor anything else — with the change forced before anything else;
+        //     the number opens it again while the change is pending, and the change takes the number, or nothing, as the current one
+        refused(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", "not the password " + n)), "AUTH_BAD_CREDENTIALS");
+        refused(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", "MOAUM/ADM/86/7" + n + "0")), "AUTH_FIRST_PASSWORD_RETIRED");
+        Map<String, Object> first = ok(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", matric)));
+        assertThat(first.get("mustChange")).isEqualTo(true);
+        ok(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", matric.toLowerCase())));
+        String firstToken = String.valueOf(first.get("token"));
+        refused(it.call(firstToken, HttpMethod.POST, "/api/v1/student-auth/change-password", Map.of("current", matric, "next", matric)), "AUTH_PASSWORD_IS_NUMBER");
+        ok(it.call(firstToken, HttpMethod.POST, "/api/v1/student-auth/change-password", Map.of("current", matric, "next", "chosen at the door " + n)));
+        // chosen, the number opens nothing more — and the chosen password does
         refused(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", matric)), "AUTH_FIRST_PASSWORD_RETIRED");
-        // (2) the number stored as a hash by the migration desk's old default: refused as well, in any case
+        Map<String, Object> chosen = ok(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", "chosen at the door " + n)));
+        assertThat(chosen.get("mustChange")).isEqualTo(false);
+        // (2) the number stored as a hash by the migration desk's old default on an account whose password was chosen: refused in any case
         it.db(() -> jdbc.sql("UPDATE iam.student_account SET password_hash = crypt(:m, gen_salt('bf', 12)) WHERE student_id = :s")
                 .param("m", matric).param("s", student).update());
         refused(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", matric.toLowerCase())), "AUTH_FIRST_PASSWORD_RETIRED");

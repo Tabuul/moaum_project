@@ -404,12 +404,15 @@ class AdmissionLifecycleIT {
         assertThat(m(bst.get("offer")).get("changed_to")).isEqualTo("B.Sc. ACCOUNTING");
         // an applicant account still on its first-login sentinel (V178) crosses too, from the applicant's own session: the student account
         // opens on a password nobody knows, to be chosen at once — the sentinel is not a hash and the account table refuses it (this stopped
-        // real applicants). V428: the JAMB number itself never opens it.
+        // real applicants). The JAMB number — the number the student signs in with before a matriculation number — opens it while
+        // the password is still to be chosen (the first password, V178; V428's refusal holds once one is).
         it.db(() -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = 'SET_ON_FIRST_LOGIN' WHERE id = :id").param("id", b.account()).update());
         ResponseEntity<Map> crossedB = it.call(b.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
         assertThat(crossedB.getStatusCode().value()).as(String.valueOf(crossedB.getBody())).isEqualTo(200);
         assertThat(crossedB.getBody().get("mustChange")).isEqualTo(true);
-        assertThat(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", b.jamb(), "password", b.jamb())).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> crossedByJamb = it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", b.jamb(), "password", b.jamb()));
+        assertThat(crossedByJamb.getStatusCode().value()).as(String.valueOf(crossedByJamb.getBody())).isEqualTo(200);
+        assertThat(crossedByJamb.getBody().get("mustChange")).isEqualTo(true);
         // the letter follows the change: a new version under the same number naming Accounting
         Map<String, Object> letter2 = m(it.get(b.token(), "/api/v1/applicant/me/letter").getBody());
         assertThat(((Number) letter2.get("version")).intValue()).isEqualTo(2);

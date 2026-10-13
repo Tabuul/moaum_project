@@ -347,7 +347,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           {problem && errFor === "contact" ? <ProblemNotice problem={problem} /> : null}
           <div className="hr" />
           <div className="b600">Password</div>
-          <Field id="pw0" label="Current password" hint={change ? "Type the temporary password ICT Support gave you; leave it blank if you came in through a link." : undefined}>
+          <Field id="pw0" label="Current password" hint={change ? "Type the password you signed in with — your own number at the first sign-in, or the temporary password ICT Support gave you; leave it blank if you came in through a link." : undefined}>
             <div style={{ position: "relative" }}>
               <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
               <button type="button" aria-label={showCur ? "Hide password" : "Show password"} onClick={() => setShowCur((v) => !v)} style={pwToggle}>{showCur ? "Hide" : "Show"}</button>
