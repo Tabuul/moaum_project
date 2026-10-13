@@ -72,7 +72,12 @@ class CbtExamIT {
         do {
             pick = new Random().nextInt(9000) + 1000;
         } while (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", "GST " + pick).query(Long.class).single() > 0
-                || jdbc.sql("SELECT count(*) FROM people.student WHERE matric_no = :m").param("m", "MOAUM/CBT/18/" + pick).query(Long.class).single() > 0);
+                // both students' numbers must be free: the admission numbers too (pick and pick + 1 — an earlier method's pick + 1, or
+                // CbtEngineIT's own student, is this method's pick once in a while, and the unique admission number refused the fixture)
+                || jdbc.sql("SELECT count(*) FROM people.student WHERE matric_no IN (:m, :x) OR admission_no IN (:a, :b)")
+                        .param("m", "MOAUM/CBT/18/" + pick).param("x", "MOAUM/CBX/18/" + pick)
+                        .param("a", "MOAUM/ADM/18/" + String.format("%06d", pick)).param("b", "MOAUM/ADM/18/" + String.format("%06d", pick + 1))
+                        .query(Long.class).single() > 0);
         final int n = pick;
         s = it.student("ZZCBT" + n, PROGRAMME, "MOAUM/ADM/18/" + String.format("%06d", n), "MOAUM/CBT/18/" + n, 100);
         s2 = it.student("ZZCBX" + n, PROGRAMME, "MOAUM/ADM/18/" + String.format("%06d", n + 1), "MOAUM/CBX/18/" + n, 100);
