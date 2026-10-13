@@ -212,6 +212,32 @@ The Quick Operational Manual (edition 2.1) carries the procedures of these scree
 campaigns, the delivery switches and the queue cleared, the receipt door, biodata compliance and staff reach, the
 Quickteller door, and a student's messages.
 
+## The providers watched (V442)
+
+The dispatcher counts every attempt by channel, provider (`smtp`, `ebulksms`, `relay`) and hour, with the last error
+(`platform.dispatch_tally`). Every ten minutes (`ProviderWatch`, `moaum.providers.watch-every-ms`) the SMS balance is read from
+eBulkSMS when an eBulkSMS account is set (a GET of `https://api.ebulksms.com/balance/{username}/{apikey}`, as eBulkSMS documents
+it; the answer is kept as it came and read as a number when it is one), and `platform.watch_providers` judges each channel
+(`platform.provider_status`): **Off** (processing paused or the channel's delivery switched off — not a fault), **Failing** (at
+least `failing_min`, 10, tried and `failing_share`, 50 %, failed in the last two clock hours), **Stuck** (a message has waited
+`stuck_minutes`, 30, with nothing tried: no provider wired, or the dispatcher not running), **Low balance** (below
+`sms_low_balance`, 500 units; 0 switches it off), else OK or Idle. A problem is told to every ICT office holder once per
+episode through `PROVIDER_PROBLEM` (variants `:FAILING`, `:STUCK`, `:LOW_BALANCE`) on the channels that still work — an e-mail
+problem by SMS and on the portal, an SMS problem by e-mail and on the portal; a channel well again ends the episode.
+Provider health on Notifications shows it all, with "Check now" and the settings (`PUT /api/v1/platform/notices/providers`,
+`POST …/providers/check`).
+
+## The accounts still on their first password (V442)
+
+With the first sign-in on the person's own number restored, an account nobody has claimed opens to whoever knows the number.
+First passwords on Biodata compliance counts and lists them as the doors judge them — a student account to be changed with
+no temporary password standing, a staff credential to be changed, an applicant account on its first-login sentinel
+(`iam.first_password_summary`, `_units`, `_students`, `_staff`, `_others`; `GET /api/v1/biodata/compliance/first-passwords`,
+`…/first-passwords/staff`). A Dean or Head reads their own faculty or department; the staff and the migrated applicants are
+read by the offices that read the whole University. A reminder is a campaign: the filter "Only those still on their first
+password" (`first_password` in `platform.campaign_recipients`, for students, staff and applicants) with the template
+`FIRST_PASSWORD_REMINDER` ("Choose your own password").
+
 ## Not yet
 
 Bounces of mail sent over SMTP (they come back as mail; reading the mailbox is not built); eBulkSMS's delivery reports are

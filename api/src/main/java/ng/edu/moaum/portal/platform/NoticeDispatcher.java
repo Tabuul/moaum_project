@@ -155,8 +155,10 @@ public class NoticeDispatcher {
             String outcome = null;
             String error = null;
             String providerId = null;   // V438: what the provider's delivery report will name
+            String via;                  // V442: the provider the attempt went to, counted with its outcome
             List<NoticeRepository.Attachment> files = email ? notices.attachments(n.id()) : List.of();
             if (email && smtp.isPresent()) {
+                via = "smtp";
                 try {
                     smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body(), files);
                     outcome = "smtp " + smtp.get().host();
@@ -164,6 +166,7 @@ public class NoticeDispatcher {
                     error = e.getClass().getSimpleName() + ": " + e.getMessage();
                 }
             } else if (!email && smsCreds.isPresent()) {
+                via = "ebulksms";
                 try {
                     outcome = ebulkSms.send(smsCreds.get(), n.recipient(), n.body(), n.id().toString());
                     providerId = n.id().toString();   // eBulkSMS reports by the message id the portal sent: the notice's own
@@ -175,6 +178,7 @@ public class NoticeDispatcher {
                 if (url.isEmpty()) {
                     continue;
                 }
+                via = "relay";
                 try {
                     HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
                             .timeout(Duration.ofSeconds(20))
@@ -197,12 +201,14 @@ public class NoticeDispatcher {
             final String ref = outcome;
             final String err = error;
             final String pid = providerId;
+            final String provider = via;
             AuditContextHolder.with(new AuditContext(NOBODY, "ict", "notice dispatch", null, null), () -> tx.execute(status -> {
                 if (ref != null) {
                     notices.sent(n.id(), ref, pid);
                 } else {
                     notices.failed(n.id(), err, n.attempts() + 1 >= 5);
                 }
+                notices.recordAttempt(n.channel(), provider, ref != null, err);
                 return null;
             }));
         }
@@ -212,7 +218,7 @@ public class NoticeDispatcher {
         return json(n, "");
     }
 
-    private static final java.util.regex.Pattern ID_IN = java.util.regex.Pattern.compile("\"id\"\s*:\s*\"([^\"]{1,120})\"");
+    private static final java.util.regex.Pattern ID_IN = java.util.regex.Pattern.compile("\"id\"\\s*:\\s*\"([^\"]{1,120})\"");
 
     /** V438: the id a provider's JSON answer carries, if any */
     static String idIn(String body) {

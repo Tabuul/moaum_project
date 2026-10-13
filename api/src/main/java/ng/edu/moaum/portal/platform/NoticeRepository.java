@@ -255,4 +255,35 @@ public class NoticeRepository {
         return jdbc.sql("SELECT platform.resend_notice(:n, :by, :office)")
                 .param("n", notice).param("by", actor, Types.OTHER).param("office", office, Types.VARCHAR).query(UUID.class).single();
     }
+
+    // ── V442: the providers watched ──
+
+    /** one attempt counted against its channel, provider and hour, with the error when it failed */
+    public void recordAttempt(String channel, String provider, boolean ok, String error) {
+        jdbc.sql("SELECT platform.record_attempt(:c, :p, :ok, :e)")
+                .param("c", channel).param("p", provider, Types.VARCHAR).param("ok", ok).param("e", error, Types.VARCHAR).query().singleRow();
+    }
+
+    public List<Map<String, Object>> providerStatus() {
+        return jdbc.sql("SELECT * FROM platform.provider_status()").query().listOfRows();
+    }
+
+    public Map<String, Object> providerSettings() {
+        return jdbc.sql("SELECT provider_watch, failing_share, failing_min, stuck_minutes, sms_low_balance FROM platform.notice_setting WHERE id").query().singleRow();
+    }
+
+    public void setProviderWatch(Boolean watch, java.math.BigDecimal lowBalance, UUID actor, String office) {
+        jdbc.sql("SELECT platform.set_provider_watch(:w, :b, :by, :office)")
+                .param("w", watch, Types.BOOLEAN).param("b", lowBalance, Types.NUMERIC).param("by", actor, Types.OTHER).param("office", office, Types.VARCHAR)
+                .query().singleRow();
+    }
+
+    public void recordSmsBalance(String raw, java.math.BigDecimal value) {
+        jdbc.sql("SELECT platform.record_sms_balance(:r, :v)").param("r", raw, Types.VARCHAR).param("v", value, Types.NUMERIC).query().singleRow();
+    }
+
+    /** the watch: the messages queued to the Directorate of ICT (0 while every channel is well or the problem was told) */
+    public int watchProviders() {
+        return jdbc.sql("SELECT platform.watch_providers()").query(Integer.class).single();
+    }
 }

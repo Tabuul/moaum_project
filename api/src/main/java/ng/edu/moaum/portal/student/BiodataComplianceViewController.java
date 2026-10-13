@@ -119,6 +119,63 @@ class BiodataComplianceViewController {
         return out;
     }
 
+    /**
+     * V442: the accounts still on their first password — the person's own number opens them. The students' counts, by unit and
+     * listed, within the office's scope (a Dean or Head their own faculty or department); the staff and migrated applicants'
+     * counts for the offices that read the whole University.
+     */
+    @GetMapping("/first-passwords")
+    @Transactional(readOnly = true)
+    Map<String, Object> firstPasswords(@RequestParam(required = false) String faculty, @RequestParam(required = false) String department,
+                                       @RequestParam(required = false) String programme, @RequestParam(required = false) Integer level,
+                                       @RequestParam(required = false) Boolean never, @RequestParam(required = false) String q,
+                                       @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size) {
+        OfficeScope.Bound b = scope.bound(blank(faculty), blank(department), blank(programme));
+        int limit = Math.max(1, Math.min(size, 2000));
+        int offset = Math.max(0, page - 1) * limit;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("faculty", b.fac());
+        out.put("department", b.dept());
+        out.put("summary", jdbc.sql("SELECT * FROM iam.first_password_summary(:f, :d)").param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).query().singleRow());
+        out.put("units", jdbc.sql("SELECT * FROM iam.first_password_units(:f, :d)").param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).query().listOfRows());
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM iam.first_password_students(:f, :d, :p, :l, :n, :q, :lim, :off)")
+                .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
+                .param("l", level, Types.INTEGER).param("n", never, Types.BOOLEAN).param("q", blank(q), Types.VARCHAR)
+                .param("lim", limit).param("off", offset).query().listOfRows();
+        out.put("rows", rows);
+        out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
+        out.put("page", Math.max(1, page));
+        out.put("size", limit);
+        // the staff and the migrated applicants are the University's: read by the offices that read every record
+        out.put("others", b.fac() == null && b.dept() == null && b.prog() == null && wide()
+                ? jdbc.sql("SELECT * FROM iam.first_password_others()").query().singleRow() : null);
+        return out;
+    }
+
+    @GetMapping("/first-passwords/staff")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_records')")
+    @Transactional(readOnly = true)
+    Map<String, Object> firstPasswordStaff(@RequestParam(required = false) String office, @RequestParam(required = false) Boolean never,
+                                           @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page,
+                                           @RequestParam(defaultValue = "100") int size) {
+        int limit = Math.max(1, Math.min(size, 2000));
+        int offset = Math.max(0, page - 1) * limit;
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM iam.first_password_staff(:o, :n, :q, :lim, :off)")
+                .param("o", blank(office), Types.VARCHAR).param("n", never, Types.BOOLEAN).param("q", blank(q), Types.VARCHAR)
+                .param("lim", limit).param("off", offset).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
+        out.put("page", Math.max(1, page));
+        out.put("size", limit);
+        return out;
+    }
+
+    /** an office that reads the whole University's records, not one bound to a faculty or department */
+    private boolean wide() {
+        return !scope.actingDepartmentOffice() && !scope.actingFacultyOffice();
+    }
+
     /** the reading taken now, by hand (ICT and the administrators); the scheduler takes it every quarter of an hour regardless */
     @PostMapping("/refresh")
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar')")

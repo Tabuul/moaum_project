@@ -13,6 +13,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { QueueManagement, type Clearance, type Delivery, type OpenJob, type Pending, type Receipt } from "./QueueManagement";
+import { ProviderHealth, type ProviderRow, type ProviderSettings } from "./ProviderHealth";
 
 export interface Recent {
   id: string; channel: string; recipient: string; subject: string; created_at: string; state: string; attempts: number; sent_at: string | null; last_error: string | null;
@@ -28,6 +29,8 @@ export interface Outbox {
   delivery?: Delivery; pending?: Pending[]; jobs?: OpenJob[]; lastClearance?: Clearance | null;
   /** V438: the providers' delivery reports, and the receipt door's token (operators only) */
   receipts?: Receipt[]; receiptToken?: string | null;
+  /** V442: each channel's health and the watch's settings */
+  providers?: ProviderRow[]; providerSettings?: ProviderSettings | null;
 }
 export interface Filters { channel: string; state: string; kind: string; q: string; from: string; to: string }
 
@@ -113,6 +116,8 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
           ]} />
         </PBody>
       </Panel>
+
+      {d.providers?.length ? <ProviderHealth rows={d.providers} settings={d.providerSettings ?? null} may={may} /> : null}
 
       {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} receipts={d.receipts ?? []} receiptToken={d.receiptToken ?? null} /> : null}
 

@@ -29,13 +29,15 @@ class NoticesController {
     private final NoticeDispatcher dispatcher;
     private final ng.edu.moaum.portal.shared.JobLock lock;
     private final org.springframework.transaction.support.TransactionTemplate tx;
+    private final ProviderWatch providers;
 
     NoticesController(NoticeRepository notices, NoticeDispatcher dispatcher, ng.edu.moaum.portal.shared.JobLock lock,
-                      org.springframework.transaction.PlatformTransactionManager transactions) {
+                      org.springframework.transaction.PlatformTransactionManager transactions, ProviderWatch providers) {
         this.notices = notices;
         this.dispatcher = dispatcher;
         this.lock = lock;
         this.tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        this.providers = providers;
     }
 
     /** the outbox, and (V425) the history searched: channel, state, what it is about, words, a day range; the picture by channel */
@@ -50,6 +52,9 @@ class NoticesController {
         Map<String, Object> out = new LinkedHashMap<>();
         // V438: the providers' delivery reports, and the receipt door's token for those who set it
         out.put("receipts", notices.receipts(20));
+        // V442: each channel's health, and the watch's settings
+        out.put("providers", notices.providerStatus());
+        out.put("providerSettings", notices.providerSettings());
         boolean operator = auth != null && auth.getAuthorities().stream().map(Object::toString)
                 .anyMatch(a -> a.equals("OFFICE_ict") || a.equals("OFFICE_admin") || a.equals("OFFICE_super"));
         out.put("receiptToken", operator ? notices.receiptToken() : null);
@@ -156,6 +161,37 @@ class NoticesController {
         verification.put("dispatch_enabled", false);
         out.put("verification", verification);
         return out;
+    }
+
+    /** V442: the provider watch — on or off, and the SMS balance below which ICT is warned (0: no warning) */
+    @PutMapping("/providers")
+    @PreAuthorize(OPERATORS)
+    @Transactional
+    Map<String, Object> setProviderWatch(@RequestBody Map<String, Object> body) {
+        AuditContext ctx = AuditContextHolder.required();
+        Object low = body.get("lowBalance");
+        java.math.BigDecimal threshold = null;
+        if (low instanceof Number n) {
+            threshold = new java.math.BigDecimal(n.toString());
+        } else if (low instanceof String s && !s.isBlank()) {
+            try {
+                threshold = new java.math.BigDecimal(s.trim());
+            } catch (NumberFormatException e) {
+                throw new DomainRuleViolation("PROVIDER_LOW_BALANCE", "The balance to warn below is a number of SMS units; 0 switches the warning off.");
+            }
+        }
+        if (threshold != null && threshold.signum() < 0) {
+            throw new DomainRuleViolation("PROVIDER_LOW_BALANCE", "The balance to warn below is a number of SMS units; 0 switches the warning off.");
+        }
+        notices.setProviderWatch(bool(body.get("watch")), threshold, ctx.actorId(), ctx.actorOffice());
+        return notices.providerSettings();
+    }
+
+    /** V442: the SMS balance read and the providers judged now; what was found, and the messages told to ICT */
+    @PostMapping("/providers/check")
+    @PreAuthorize(OPERATORS)
+    Map<String, Object> checkProviders() {
+        return providers.check(AuditContextHolder.required());
     }
 
     /** V438: a new token for the receipt door; the providers' delivery reports must carry it */

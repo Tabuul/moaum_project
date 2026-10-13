@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Compliance, type ComplianceSummary, type StudentsPage, type StaffPage } from "./Compliance";
+import { FirstPasswords } from "./FirstPasswords";
 import type { ComplianceOverview } from "@/lib/biodata-gate";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ export default async function ComplianceRoute({ searchParams }: { searchParams: 
     <Shell route="t/compliance" me={me.ok ? me.data : null}>
       {summary.ok ? <Compliance d={summary.data} students={students.ok ? students.data : null} filters={filters} actingOffice={me.ok ? me.data.activeOffice : null}
         staff={staff.ok ? staff.data : null} staffFilters={staffFilters} admin={admin.ok ? admin.data : null} /> : <ProblemNotice problem={summary.problem} />}
+      {/* V442: the accounts still on their first password, within the office's scope */}
+      {summary.ok ? <FirstPasswords actingOffice={me.ok ? me.data.activeOffice : null} faculty={filters.faculty} department={filters.department} /> : null}
     </Shell>
   );
 }

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 279
+\set EXPECTED 280
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12061,6 +12061,98 @@ BEGIN
                  AND valid = make_date(extract(year FROM current_date)::int + 3, 12, 31) AND lost = 1 AND live_lost = 0
                  AND no_number = 'STAFF_CARD_NO_NUMBER' AND no_office = 'STAFF_CARD_NO_OFFICE', false),
         format('cards %s then %s, live %s, first %s, valid %s, lost %s (live after %s), no number %s, no office %s', a, b, live_after, replaced, valid, lost, live_lost, no_number, no_office));
+END $$;
+
+-- ── V442. The providers watched: attempts are counted by channel, provider and hour; a channel is FAILING when enough was
+--          tried and most failed, STUCK when a message waits with nothing tried, LOW_BALANCE below the SMS threshold, OFF when
+--          its delivery is switched off; ICT is told once per episode on the channels that still work, and afresh after a
+--          recovery. The accounts still on their first password are counted, listed and reached by a campaign's filter as the
+--          doors judge them ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9992/9993'; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        st_fail text; told1 int; told2 int; told_sms int; told_email int; st_ok text; told3 int; told4 int; st_stuck text; st_off text; st_low text; told_low int;
+        tally_tried int; tally_failed int; tally_err text;
+        sum_first bigint; sum_never bigint; sum_signed bigint; n_list int; l_first uuid; staff_first bigint; n_units int;
+        camp uuid := gen_random_uuid(); n_reach int; reach_is_a boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V442', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES (who, 'CHK/V442', 'CHECKV442', 'ICT', 'v442@example.test', '08000004420');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), who, 'ict', 'institution', NULL, 'CHECK V442', who, current_date);
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        -- a clean slate for the reading: switches on, no counts, nothing old waiting, no episode open
+        UPDATE platform.notice_setting SET dispatch_enabled = true, email_delivery = true, sms_delivery = true, portal_delivery = true,
+               provider_watch = true, failing_share = 50, failing_min = 10, stuck_minutes = 30, sms_low_balance = 500 WHERE id;
+        DELETE FROM platform.dispatch_tally;
+        UPDATE platform.notice SET state = 'CANCELLED', cancelled_at = now(), cancel_reason = 'CHECK V442' WHERE state = 'QUEUED';
+        UPDATE platform.provider_health SET state = 'IDLE', since = now(), alerted_state = NULL, alerted_at = NULL, balance = NULL, balance_raw = NULL;
+        -- 1. the dispatcher's attempts counted
+        PERFORM platform.record_attempt('EMAIL', 'smtp', true, NULL);
+        FOR i IN 1..11 LOOP PERFORM platform.record_attempt('EMAIL', 'smtp', false, 'AuthenticationFailedException: 535'); END LOOP;
+        SELECT tried, failed, last_error INTO tally_tried, tally_failed, tally_err FROM platform.dispatch_tally WHERE channel = 'EMAIL' AND provider = 'smtp';
+        -- 2. e-mail failing: told once, by SMS and the portal, never by the failing e-mail
+        st_fail := (SELECT x.state FROM platform.provider_status() x WHERE x.channel = 'EMAIL');
+        told1 := platform.watch_providers();
+        told2 := platform.watch_providers();
+        SELECT count(*) FILTER (WHERE n.channel = 'SMS'), count(*) FILTER (WHERE n.channel = 'EMAIL') INTO told_sms, told_email
+          FROM platform.notice n WHERE n.about_id = who AND n.template_key = 'PROVIDER_PROBLEM:FAILING';
+        -- 3. recovered: the episode ends; failing again is told afresh
+        DELETE FROM platform.dispatch_tally;
+        FOR i IN 1..12 LOOP PERFORM platform.record_attempt('EMAIL', 'smtp', true, NULL); END LOOP;
+        told3 := platform.watch_providers();
+        st_ok := (SELECT h.state FROM platform.provider_health h WHERE h.channel = 'EMAIL');
+        DELETE FROM platform.dispatch_tally;
+        FOR i IN 1..12 LOOP PERFORM platform.record_attempt('EMAIL', 'smtp', false, 'again'); END LOOP;
+        told4 := platform.watch_providers();
+        -- 4. SMS stuck: a message waiting an hour with nothing tried; off when its delivery is switched off; low balance
+        PERFORM platform.queue_notice('SMS', '08000004421', 'CHK V442 waiting', 'body', 'test', NULL);
+        UPDATE platform.notice SET created_at = now() - interval '1 hour' WHERE subject = 'CHK V442 waiting';
+        st_stuck := (SELECT x.state FROM platform.provider_status() x WHERE x.channel = 'SMS');
+        UPDATE platform.notice_setting SET sms_delivery = false WHERE id;
+        st_off := (SELECT x.state FROM platform.provider_status() x WHERE x.channel = 'SMS');
+        UPDATE platform.notice_setting SET sms_delivery = true WHERE id;
+        UPDATE platform.notice SET state = 'CANCELLED', cancelled_at = now(), cancel_reason = 'CHECK V442' WHERE subject = 'CHK V442 waiting';
+        PERFORM platform.record_sms_balance('120.5', 120.5);
+        st_low := (SELECT x.state FROM platform.provider_status() x WHERE x.channel = 'SMS');
+        PERFORM platform.watch_providers();
+        told_low := (SELECT count(*) FROM platform.notice n WHERE n.about_id = who AND n.template_key = 'PROVIDER_PROBLEM:LOW_BALANCE' AND n.channel = 'EMAIL');
+        -- 5. first passwords: A on its first password and never signed in, B signed in and not yet changed, C changed
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9992-10-01', date '9993-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode) VALUES
+            (a, 'MOAUM/ADM/92/004421', NULL, NULL, 'CHECKV442', 'First Ada', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+            (b, 'MOAUM/ADM/92/004422', NULL, NULL, 'CHECKV442', 'First Bola', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME'),
+            (c, 'MOAUM/ADM/92/004423', NULL, NULL, 'CHECKV442', 'First Chidi', 'M', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000004422', 'v442a@example.test'), (b, '08000004423', 'v442b@example.test'), (c, '08000004424', 'v442c@example.test');
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change, last_signed_in_at) VALUES
+            (gen_random_uuid(), a, '$2a$12$CHECKV442CHECKV442CHECKV442CHECKV442CHECKV442CHECKV44', true, NULL),
+            (gen_random_uuid(), b, '$2a$12$CHECKV442CHECKV442CHECKV442CHECKV442CHECKV442CHECKV44', true, now()),
+            (gen_random_uuid(), c, '$2a$12$CHECKV442CHECKV442CHECKV442CHECKV442CHECKV442CHECKV44', false, now());
+        SELECT x.students_first, x.students_first_never, x.students_signed_in_first INTO sum_first, sum_never, sum_signed
+          FROM iam.first_password_summary((SELECT faculty_code FROM ref.programme WHERE code = 'C00023'), (SELECT dept_code FROM ref.programme WHERE code = 'C00023')) x;
+        SELECT count(*), max(x.student_id::text)::uuid INTO n_list, l_first FROM iam.first_password_students(NULL, NULL, NULL, NULL, true, 'CHECKV442', 50, 0) x;
+        n_units := (SELECT count(*) FROM iam.first_password_units(NULL, NULL) u WHERE u.code = (SELECT faculty_code FROM ref.programme WHERE code = 'C00023'));
+        INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by) VALUES (who, 'chk/v442', '$2a$12$CHECKV442CHECKV442CHECKV442CHECKV442CHECKV442CHECKV44', true, who);
+        staff_first := (SELECT count(*) FROM iam.first_password_staff(NULL, true, 'CHECKV442', 50, 0));
+        -- 6. the campaign's filter: of the three, only those still on their first password
+        INSERT INTO platform.notice_campaign (id, name, template_key, audience, channels, vars, state, created_by, created_office)
+        VALUES (camp, 'CHK V442', 'FIRST_PASSWORD_REMINDER', jsonb_build_object('students', true, 'filters', jsonb_build_object('session', S, 'first_password', true)),
+                ARRAY['EMAIL'], '{}'::jsonb, 'DRAFT', who, 'ict');
+        SELECT count(*), bool_and(r.id IN (a, b)) INTO n_reach, reach_is_a FROM platform.campaign_recipients(camp, 'student', NULL, 100) r;
+        RAISE EXCEPTION 'the V442 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V442: attempts are counted; a failing channel is told to ICT once on the channels that still work and afresh after a recovery; stuck, off and low balance are read; the first passwords are counted, listed and reached by a campaign as the doors judge them',
+        coalesce(tally_tried = 12 AND tally_failed = 11 AND tally_err LIKE 'AuthenticationFailedException%'
+                 AND st_fail = 'FAILING' AND told1 >= 2 AND told2 = 0 AND told_sms = 1 AND told_email = 0
+                 AND told3 = 0 AND st_ok = 'OK' AND told4 >= 2
+                 AND st_stuck = 'STUCK' AND st_off = 'OFF' AND st_low = 'LOW_BALANCE' AND told_low = 1
+                 AND sum_first >= 2 AND sum_never >= 1 AND sum_signed >= 1 AND n_list = 1 AND l_first = a AND n_units = 1 AND staff_first = 1
+                 AND n_reach = 2 AND reach_is_a, false),
+        format('tally %s/%s err=%s | failing=%s told=%s again=%s sms=%s email=%s | recovered told=%s state=%s refailed told=%s | stuck=%s off=%s low=%s told low=%s | first=%s never=%s signed=%s list=%s is a=%s units=%s staff=%s | campaign reach=%s only a,b=%s',
+               tally_tried, tally_failed, left(tally_err, 30), st_fail, told1, told2, told_sms, told_email, told3, st_ok, told4, st_stuck, st_off, st_low, told_low,
+               sum_first, sum_never, sum_signed, n_list, l_first = a, n_units, staff_first, n_reach, reach_is_a));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

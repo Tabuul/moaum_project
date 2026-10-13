@@ -52,6 +52,24 @@ class EbulkSmsSender {
         return "ebulksms " + left(text, 120);
     }
 
+    private static final String BALANCE = "https://api.ebulksms.com/balance/";
+
+    /**
+     * V442: the account's balance, as eBulkSMS documents it (a GET of /balance/{username}/{apikey} answering the units left).
+     * The answer is returned as it came; the caller reads a number from it when it is one.
+     */
+    String balance(SmsService.Creds c) throws Exception {
+        String u = java.net.URLEncoder.encode(c.username() == null ? "" : c.username(), java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        String k = java.net.URLEncoder.encode(c.apiKey() == null ? "" : c.apiKey(), java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        HttpRequest req = HttpRequest.newBuilder(URI.create(BALANCE + u + "/" + k)).timeout(Duration.ofSeconds(15)).GET().build();
+        HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
+        String text = r.body() == null ? "" : r.body().trim();
+        if (r.statusCode() / 100 != 2) {
+            throw new IllegalStateException("eBulkSMS HTTP " + r.statusCode() + ": " + left(text, 120));
+        }
+        return left(text, 120);
+    }
+
     /** a Nigerian number in the 234XXXXXXXXXX form eBulkSMS expects; empty if it cannot be read */
     static String normalise(String raw) {
         if (raw == null) {

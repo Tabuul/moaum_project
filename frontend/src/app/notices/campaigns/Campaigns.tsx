@@ -39,7 +39,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleString("en-GB", { da
 interface Form {
   name: string; templateKey: string; students: boolean; staff: boolean; lecturers: boolean; applicants: boolean;
   session: string; faculty: string; department: string; programme: string; level: string; entryMode: string; status: string; office: string;
-  migrated: boolean; neverSignedIn: boolean; email: boolean; sms: boolean; portal: boolean;
+  migrated: boolean; neverSignedIn: boolean; firstPassword: boolean; email: boolean; sms: boolean; portal: boolean;
   title: string; message: string; smsMessage: string; signature: string;
 }
 
@@ -53,7 +53,7 @@ function parse(c: Campaign): Form {
   return {
     name: c.name, templateKey: c.template_key, students: !!a.students, staff: !!a.staff, lecturers: !!a.lecturers, applicants: !!a.applicants,
     session: s("session"), faculty: s("faculty"), department: s("department"), programme: s("programme"), level: s("level"), entryMode: s("entry_mode"), status: s("status"), office: s("office"),
-    migrated: f.migrated === true, neverSignedIn: f.never_signed_in === true,
+    migrated: f.migrated === true, neverSignedIn: f.never_signed_in === true, firstPassword: f.first_password === true,
     email: c.channels.includes("EMAIL"), sms: c.channels.includes("SMS"), portal: c.channels.includes("PORTAL"),
     title: v.TITLE ?? "", message: v.MESSAGE ?? "", smsMessage: v.SMS_MESSAGE ?? "", signature: v.SIGNATURE ?? "",
   };
@@ -62,7 +62,7 @@ function parse(c: Campaign): Form {
 const EMPTY: Form = {
   name: "", templateKey: "ANNOUNCEMENT", students: true, staff: false, lecturers: false, applicants: false,
   session: "", faculty: "", department: "", programme: "", level: "", entryMode: "", status: "", office: "",
-  migrated: false, neverSignedIn: false, email: true, sms: true, portal: true, title: "", message: "", smsMessage: "", signature: "",
+  migrated: false, neverSignedIn: false, firstPassword: false, email: true, sms: true, portal: true, title: "", message: "", smsMessage: "", signature: "",
 };
 
 async function send<T>(path: string, method: string, body: unknown, reason: string): Promise<{ ok: true; data: T } | { ok: false; problem: Problem }> {
@@ -92,7 +92,7 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
   function payload() {
     return {
       name: f.name, templateKey: f.templateKey, students: f.students, staff: f.staff, lecturers: f.lecturers, applicants: f.applicants,
-      filters: { session: f.session, faculty: f.faculty, department: f.department, programme: f.programme, level: f.level, entry_mode: f.entryMode, status: f.status, office: f.office, migrated: f.migrated, never_signed_in: f.neverSignedIn },
+      filters: { session: f.session, faculty: f.faculty, department: f.department, programme: f.programme, level: f.level, entry_mode: f.entryMode, status: f.status, office: f.office, migrated: f.migrated, never_signed_in: f.neverSignedIn, first_password: f.firstPassword },
       channels: [f.email ? "EMAIL" : null, f.sms ? "SMS" : null, f.portal ? "PORTAL" : null].filter(Boolean),
       vars: f.templateKey === "ANNOUNCEMENT" ? { TITLE: f.title, MESSAGE: f.message, SMS_MESSAGE: f.smsMessage || f.message, SIGNATURE: f.signature } : {},
     };
@@ -265,6 +265,7 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
             <div className="row row--wrap row--tight mt-2">
               <label className="row row--inline row--tight"><input type="checkbox" checked={f.migrated} disabled={!draft} onChange={(e) => setF({ ...f, migrated: e.target.checked })} /> Only those who came over from the old portal</label>
               <label className="row row--inline row--tight"><input type="checkbox" checked={f.neverSignedIn} disabled={!draft} onChange={(e) => setF({ ...f, neverSignedIn: e.target.checked })} /> Only those who have never signed in</label>
+              <label className="row row--inline row--tight"><input type="checkbox" checked={f.firstPassword} disabled={!draft} onChange={(e) => setF({ ...f, firstPassword: e.target.checked })} /> Only those still on their first password (their own number opens the account)</label>
             </div>
             <div className="b600 mt-3">Channels</div>
             <div className="row row--wrap row--tight mt-1">
