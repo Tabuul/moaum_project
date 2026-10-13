@@ -10,6 +10,7 @@
  * portal does not yet serve are the same buttons, and say so when pressed.
  */
 import { AccountMenu } from "./AccountMenu";
+import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -562,6 +563,8 @@ export interface Me {
   waiting?: Record<string, string> | null;
   /** a menu other than the office's own — a postgraduate signs in as a student but reads the School's sidebar */
   menu?: string | null;
+  /** V430: "how do we reach you" — ASK while the portal holds no usable e-mail or phone for the person (iam/me) */
+  contactPrompt?: ContactPromptData | null;
 }
 
 /* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
@@ -833,6 +836,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
                 </div>
               </div>
             )}
+            {me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>
           </div>
         </div>

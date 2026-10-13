@@ -29,12 +29,31 @@ export interface StudentRow {
 }
 export interface StudentsPage { rows: StudentRow[]; total: number; page: number; size: number; computedAt: string | null }
 export interface Filters { status: string; faculty: string; department: string; programme: string; level: string; session: string; entryMode: string; migrated: string; q: string; page: string }
+/** V430: staff reach */
+export interface StaffRow { person_id: string; staff_number: string | null; surname: string; given_names: string; email: string | null; phone: string | null; status: string; offices: string | null; signed_in: boolean; last_reminded_at: string | null; total: number }
+export interface StaffPage {
+  summary: { total: number; reachable: number; phone_only: number; email_only: number; unreachable: number; no_email: number; bad_email: number; no_phone: number; bad_phone: number; never_signed_in: number; reminded_week: number };
+  rows: StaffRow[]; total: number; page: number; size: number; remindEnabled: boolean; offices: { code: string; label: string }[];
+}
+export interface StaffFilters { status: string; office: string; q: string; page: string }
+const REACH: Record<string, [string, "ok" | "bad" | "warn" | "grey"]> = { REACHABLE: ["Reachable", "ok"], PHONE_ONLY: ["Phone only", "warn"], EMAIL_ONLY: ["E-mail only", "warn"], UNREACHABLE: ["Unreachable", "bad"] };
 
 const when = (s: string | null | undefined) => (s ? new Date(s).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 const day = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 const STATUS: Record<string, [string, "ok" | "bad" | "warn" | "grey"]> = { UP_TO_DATE: ["Up to date", "ok"], INCOMPLETE: ["Incomplete", "bad"], REVIEW_REQUIRED: ["Review required", "warn"], OUTDATED: ["Outdated", "warn"] };
 
-export function Compliance({ d, students, filters, actingOffice }: { d: ComplianceSummary; students: StudentsPage | null; filters: Filters; actingOffice: string | null }) {
+export function Compliance({ d, students, filters, actingOffice, staff = null, staffFilters = { status: "", office: "", q: "", page: "1" } }:
+  { d: ComplianceSummary; students: StudentsPage | null; filters: Filters; actingOffice: string | null; staff?: StaffPage | null; staffFilters?: StaffFilters }) {
+  const [sf, setSf] = useState<StaffFilters>(staffFilters);
+  const goStaff = (next: StaffFilters) => {
+    const p = new URLSearchParams();
+    (Object.keys(filters) as (keyof Filters)[]).forEach((k) => { if (filters[k] && !(k === "page" && filters[k] === "1")) p.set(k, filters[k]); });
+    if (next.status) p.set("staffStatus", next.status);
+    if (next.office) p.set("office", next.office);
+    if (next.q) p.set("sq", next.q);
+    if (next.page && next.page !== "1") p.set("spage", next.page);
+    router.push(`/biodata/compliance${p.toString() ? `?${p}` : ""}#staff`);
+  };
   const router = useRouter();
   const may = ["ict", "admin", "super", "registrar"].includes(actingOffice ?? "");
   const bound = !["ict", "admin", "super", "registrar", "dregistrar", "academic", "records", "dsa"].includes(actingOffice ?? "");
@@ -182,6 +201,54 @@ export function Compliance({ d, students, filters, actingOffice }: { d: Complian
           </div></PBody>
         ) : null}
       </Panel>
+
+      {staff ? (() => {
+        const ss = staff.summary;
+        const spages = Math.max(1, Math.ceil(staff.total / staff.size));
+        return (
+          <div id="staff">
+            <Panel title="Staff reach" right={`${ss.total} active staff with an office · ${staff.remindEnabled ? "weekly reminder on" : "weekly reminder off"}`}>
+              <PBody style={{ borderBottom: "1px solid var(--line-2)" }}>
+                <Tiles items={[
+                  ["Reachable", String(ss.reachable), "var(--green-ink)", "E-mail and phone both usable"],
+                  ["Phone only", String(ss.phone_only), ss.phone_only ? "var(--chrome)" : null, `${ss.no_email} with no e-mail · ${ss.bad_email} not an address`],
+                  ["E-mail only", String(ss.email_only), ss.email_only ? "var(--chrome)" : null, `${ss.no_phone} with no phone · ${ss.bad_phone} not a number`],
+                  ["Unreachable", String(ss.unreachable), ss.unreachable ? "var(--red-ink)" : "var(--green-ink)", `${ss.never_signed_in} never signed in · ${ss.reminded_week} reminded this week`],
+                ]} />
+                <form className="row row--wrap row--tight mt-2" onSubmit={(e) => { e.preventDefault(); goStaff({ ...sf, page: "1" }); }}>
+                  <select className="ctl" aria-label="Reach" value={sf.status} onChange={(e) => setSf({ ...sf, status: e.target.value })}>
+                    <option value="">Any</option><option value="REACHABLE">Reachable</option><option value="PHONE_ONLY">Phone only</option><option value="EMAIL_ONLY">E-mail only</option><option value="UNREACHABLE">Unreachable</option>
+                  </select>
+                  <select className="ctl" aria-label="Office" value={sf.office} onChange={(e) => setSf({ ...sf, office: e.target.value })}>
+                    <option value="">Any office</option>{staff.offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+                  </select>
+                  <input className="ctl" aria-label="Search staff" placeholder="Name, staff number, e-mail or phone" value={sf.q} onChange={(e) => setSf({ ...sf, q: e.target.value })} style={{ minWidth: 220 }} />
+                  <Btn kind="secondary" size="sm" type="submit">Search</Btn>
+                  <LinkBtn kind="ghost" size="sm" href="/notices/campaigns?open=new">Write to the staff</LinkBtn>
+                </form>
+              </PBody>
+              {staff.rows.length ? (
+                <DTable cols={["Staff member", "Offices", "E-mail", "Phone", "Reach|mid", "Signed in|mid", "Reminded|mid"]} rows={staff.rows.map((r) => [
+                  <span key="n"><b>{r.surname}, {r.given_names}</b><div className="sub2 tnum">{r.staff_number ?? ""}</div></span>,
+                  <span key="o" className="sub2">{r.offices ?? ""}</span>,
+                  <span key="e" className="sub2">{r.email ?? <i>none</i>}</span>,
+                  <span key="p" className="sub2 tnum">{r.phone ?? <i>none</i>}</span>,
+                  <Pil key="r" kind={REACH[r.status]?.[1] ?? "grey"}>{REACH[r.status]?.[0] ?? r.status}</Pil>,
+                  <span key="s" className="sub2">{r.signed_in ? "Yes" : "Never"}</span>,
+                  <span key="m" className="sub2 tnum">{day(r.last_reminded_at)}</span>,
+                ])} texts={staff.rows.map((r) => `${r.surname} ${r.given_names} ${r.staff_number ?? ""} ${r.email ?? ""} ${r.phone ?? ""} ${r.status}`)} />
+              ) : <PBody><div className="sub2">Nobody matches.</div></PBody>}
+              {spages > 1 ? (
+                <PBody><div className="row row--inline row--tight">
+                  <Btn kind="ghost" size="sm" disabled={staff.page <= 1} onClick={() => goStaff({ ...staffFilters, page: String(staff.page - 1) })}>Previous</Btn>
+                  <span className="sub2">page {staff.page} of {spages}</span>
+                  <Btn kind="ghost" size="sm" disabled={staff.page >= spages} onClick={() => goStaff({ ...staffFilters, page: String(staff.page + 1) })}>Next</Btn>
+                </div></PBody>
+              ) : null}
+            </Panel>
+          </div>
+        );
+      })() : null}
     </>
   );
 }

@@ -110,6 +110,25 @@ scheduler takes every quarter of an hour and after each reminder run (`people.bi
 `people.refresh_biodata_snapshot`; its time is shown; "Take the reading now" for ICT and the Registry). A student's own
 status is always computed live, and their confirmation refreshes their row at once.
 
+## Staff reach, and the contact prompt at sign-in (V430)
+
+The campaigns and reminders reach a person only where the record holds an address. On the live register 13,882 students
+had no e-mail and 30,886 no phone; of the staff who came over, 627 had never signed in and one had an e-mail on record.
+
+**Staff reach** (the Staff reach panel on Biodata compliance; `GET /api/v1/biodata/compliance/staff`, ICT, the Registry,
+HR, Records and the administrators): for every active person with an office, whether the e-mail and the phone are present
+and usable — reachable, phone only, e-mail only, unreachable — with who never signed in and who was reminded this week;
+the people behind a status, filtered by office and searched (`iam.staff_reach_summary`, `iam.staff_reach_list`). The weekly
+reminder (`iam.remind_staff_contact`, Tuesday mornings on ICT's switch `platform.notice_setting.staff_contact_remind`, or
+"Run the staff contact reminder now") speaks through the `STAFF_CONTACT_REMINDER` template by the channel the person has
+and on the portal, once in seven days; the HR office is told once a week how many staff cannot be reached at all.
+
+**The contact prompt**: `/api/v1/iam/me` carries `contactPrompt` — `ASK` while the portal holds no usable e-mail or phone
+for the signed-in student or staff member (`platform.contact_prompt_for`), unless they put it off in the last seven days
+(`POST /api/v1/me/contact-prompt/skip`). The shell shows one line with two fields on whatever screen they land on; the
+answer is the contact they already keep (a student's `PUT /api/v1/me/contact`, a staff member's `PUT /api/v1/staff/contact`).
+Nobody is locked out; applicants are not asked (their account holds the address they applied with).
+
 ## Not yet
 
 Delivery receipts from the SMS and mail providers (a message is SENT when the provider accepts it; DELIVERED/BOUNCED would

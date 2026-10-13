@@ -86,6 +86,22 @@ class IamController {
             // the bell is a convenience: a count that cannot be read never fails the sign-in
         }
         me.put("waiting", queues);
+        /* V430: "how do we reach you" — asked on the first screen while the portal holds no usable e-mail or phone for the
+         * person (a student's own contact, a staff member's record), unless they put it off in the last seven days */
+        try {
+            boolean student = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
+            boolean applicant = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_applicant".equals(a.getAuthority()));
+            if (!applicant) {
+                Map<String, Object> prompt = waiting.contactPrompt(UUID.fromString(authentication.getName()), student);
+                if (prompt != null) {
+                    Map<String, Object> p = new LinkedHashMap<>(prompt);
+                    p.put("kind", student ? "student" : "person");
+                    me.put("contactPrompt", p);
+                }
+            }
+        } catch (RuntimeException notAsked) {
+            // the prompt is a convenience: a record that cannot be read never fails the sign-in
+        }
         if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
             me.put("sessionId", t.getToken().getClaimAsString("sid"));
         }

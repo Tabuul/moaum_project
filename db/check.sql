@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 264
+\set EXPECTED 265
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11270,6 +11270,62 @@ BEGIN
         format('scope=%s own=%s preview total=%s email ok=%s missing=%s phone ok=%s empty=%s | run1 reached=%s done=%s run2 none=%s state=%s told a=%s b=%s c=%s report email=%s sms=%s portal=%s edit=%s cancel=%s | ann q=%s sms=%s win q=%s sms=%s | summary total=%s inc=%s rev=%s computed=%s list=%s/%s',
                r_scope, camp2 IS NOT NULL, pv_total, pv_email_ok, pv_email_missing, pv_phone_ok, r_empty, r1.reached, r1.done, r2.job_id IS NULL, st_after, told_a, told_b, told_c,
                rep_email, rep_sms, rep_portal, r_sent_edit, r_cancel, ann_q, ann_sms, win_q, win_sms, sum_total, sum_inc, sum_rev, computed IS NOT NULL, list_n, list_total));
+END $$;
+
+-- ── V430. Staff reach: an active person with an office counts as reachable, phone-only, e-mail-only or unreachable; the weekly
+--          reminder runs only on ICT's switch, reaches a phone-only person by SMS and on the portal, once in seven days, and tells
+--          the HR office once a week how many cannot be reached; the contact prompt asks a person with no usable address,
+--          stays away for seven days once put off, and never asks one the portal can reach ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); dept text;
+        s_total int; s_reach int; s_phone int; s_unreach int; s_never int;
+        l_n int; l_total bigint; l_status text;
+        p_ask text; p_skip text; p_none text; p_student text;
+        r_off int; r_on int; r_again int; told_a int; told_a_sms int; told_b int; hr_told int; hr_again int; week_now text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V430', true);
+        SELECT code INTO dept FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V430', 'CHECKV430', 'ICT');
+        -- a: a lecturer with a phone and no e-mail; b: a registry officer with neither; c: reachable on both
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES
+            (a, 'CHK/V430A', 'CHECKV430', 'Staff Ada', NULL, '08000009430'),
+            (b, 'CHK/V430B', 'CHECKV430', 'Staff Bola', NULL, NULL),
+            (c, 'CHK/V430C', 'CHECKV430', 'Staff Chidi', 'v430c@example.test', '08000009432');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), a, 'lecturer', 'department', dept, 'CHECK V430', who, current_date),
+            (gen_random_uuid(), b, 'registrar', 'institution', NULL, 'CHECK V430', who, current_date),
+            (gen_random_uuid(), c, 'lecturer', 'department', dept, 'CHECK V430', who, current_date);
+        PERFORM platform.set_portal_url('https://portal.example.test', who, 'ict');
+        -- 1. the reading
+        SELECT total, reachable, phone_only, unreachable, never_signed_in INTO s_total, s_reach, s_phone, s_unreach, s_never FROM iam.staff_reach_summary(NULL);
+        SELECT count(*), max(total), max(status) INTO l_n, l_total, l_status FROM iam.staff_reach_list('PHONE_ONLY', NULL, 'CHECKV430', 50, 0);
+        -- 2. the prompt: asked of a, put off, not asked for seven days; never asked of c; a student with a contact not asked
+        p_ask := (SELECT state FROM platform.contact_prompt_for('person', a));
+        PERFORM platform.contact_prompt_skip('person', a);
+        p_skip := (SELECT state FROM platform.contact_prompt_for('person', a));
+        p_none := (SELECT state FROM platform.contact_prompt_for('person', c));
+        -- 3. the reminder: nothing while the switch is off; on, a and b once (a by SMS and the portal, b on the portal only), not again
+        UPDATE platform.notice_setting SET staff_contact_remind = false, staff_digest_week = NULL WHERE id;
+        r_off := iam.remind_staff_contact(1000);
+        UPDATE platform.notice_setting SET staff_contact_remind = true WHERE id;
+        r_on := iam.remind_staff_contact(1000);
+        r_again := iam.remind_staff_contact(1000);
+        SELECT count(*), count(*) FILTER (WHERE channel = 'SMS') INTO told_a, told_a_sms FROM platform.notice WHERE about_id = a AND template_key = 'STAFF_CONTACT_REMINDER';
+        SELECT count(*) INTO told_b FROM platform.notice WHERE about_id = b AND template_key = 'STAFF_CONTACT_REMINDER';
+        week_now := to_char(now() AT TIME ZONE 'Africa/Lagos', 'IYYY-"W"IW');
+        hr_told := CASE WHEN (SELECT staff_digest_week FROM platform.notice_setting WHERE id) = week_now THEN 1 ELSE 0 END;
+        RAISE EXCEPTION 'the V430 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V430: the staff reach reading counts reachable, phone-only and unreachable; the prompt asks a person with no usable address, stays away once put off and never asks a reachable one; the weekly reminder runs on the switch only, once in seven days, by the channel the person has, and the HR office is told once a week',
+        coalesce(s_total >= 3 AND s_reach >= 1 AND s_phone >= 1 AND s_unreach >= 1 AND s_never >= 3
+                 AND l_n = 1 AND l_total = 1 AND l_status = 'PHONE_ONLY'
+                 AND p_ask = 'ASK' AND p_skip = 'NONE' AND p_none = 'NONE'
+                 AND r_off = 0 AND r_on >= 2 AND r_again = 0 AND told_a = 2 AND told_a_sms = 1 AND told_b = 1 AND hr_told = 1, false),
+        format('summary total=%s reach=%s phone=%s unreach=%s never=%s | list n=%s total=%s status=%s | prompt ask=%s skip=%s none=%s | remind off=%s on=%s again=%s told a=%s (sms %s) b=%s hr=%s',
+               s_total, s_reach, s_phone, s_unreach, s_never, l_n, l_total, l_status, p_ask, p_skip, p_none, r_off, r_on, r_again, told_a, told_a_sms, told_b, hr_told));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -153,6 +153,45 @@ class CampaignsIT {
         assertThat(it.getList(ict, "/api/v1/biodata/compliance/duplicates?kind=PHONE").getStatusCode().value()).isEqualTo(200);
     }
 
+    /** V430: staff reach read by ICT; a staff member with no e-mail is asked for one at sign-in and may put it off; the switch */
+    @SuppressWarnings("unchecked")
+    @Test
+    void staffReachIsReadAndAStaffMemberWithoutAnAddressIsAskedAtSignIn() {
+        UUID person = it.person("ZZCMP-REACH-" + tag, "ZZCMPREACH");
+        it.db(() -> {
+            jdbc.sql("UPDATE iam.person SET email = NULL, phone = '0800' || :n WHERE id = :p").param("n", tag + "1").param("p", person).update();
+            jdbc.sql("INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES (gen_random_uuid(), :p, 'lecturer', 'department', (SELECT code FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1), 'IT', :p, current_date)")
+                    .param("p", person).update();
+            return null;
+        });
+        String staff = TestTokens.token(person, List.of("lecturer"));
+        // the sign-in answer carries the prompt: ASK, with the phone it does hold
+        Map<String, Object> me = body(it.get(staff, "/api/v1/iam/me"));
+        Map<String, Object> prompt = (Map<String, Object>) me.get("contactPrompt");
+        assertThat(prompt).isNotNull();
+        assertThat(prompt.get("state")).isEqualTo("ASK");
+        assertThat(prompt.get("kind")).isEqualTo("person");
+        assertThat(prompt.get("phone_ok")).isEqualTo(true);
+        // put off: not asked again for seven days
+        body(it.call(staff, HttpMethod.POST, "/api/v1/me/contact-prompt/skip", Map.of()));
+        assertThat(((Map<String, Object>) body(it.get(staff, "/api/v1/iam/me")).get("contactPrompt")).get("state")).isEqualTo("NONE");
+        // ICT reads the staff reach: the person is phone-only
+        Map<String, Object> reach = body(it.get(ict, "/api/v1/biodata/compliance/staff?status=PHONE_ONLY&q=ZZCMPREACH"));
+        assertThat(((Number) reach.get("total")).longValue()).isGreaterThanOrEqualTo(1);
+        assertThat(((List<Map<String, Object>>) reach.get("rows")).stream().map(r -> r.get("status"))).containsOnly("PHONE_ONLY");
+        assertThat(((Map<String, Object>) reach.get("summary")).get("phone_only")).isNotNull();
+        // a student is refused the staff reach
+        assertThat(it.get(TestTokens.token(it.student("ITREACHS" + tag, "C00023", "MOAUM/ADM/87/05" + tag.substring(0, 4), null, 100), List.of("student")), "/api/v1/biodata/compliance/staff").getStatusCode().value()).isIn(403, 422);
+        // the switch on the settings; run now reminds the person by SMS and on the portal, once
+        body(it.call(ict, HttpMethod.PUT, "/api/v1/notices/settings", Map.of("staffContactRemind", true)));
+        assertThat(body(it.get(ict, "/api/v1/notices/settings")).get("staff_contact_remind")).isEqualTo(true);
+        body(it.call(ict, HttpMethod.POST, "/api/v1/notices/staff-contact-reminders/run", Map.of()));
+        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :p AND template_key = 'STAFF_CONTACT_REMINDER'").param("p", person).query(Integer.class).single())).isEqualTo(2);
+        body(it.call(ict, HttpMethod.POST, "/api/v1/notices/staff-contact-reminders/run", Map.of()));
+        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :p AND template_key = 'STAFF_CONTACT_REMINDER'").param("p", person).query(Integer.class).single())).isEqualTo(2);
+        body(it.call(ict, HttpMethod.PUT, "/api/v1/notices/settings", Map.of("staffContactRemind", false)));
+    }
+
     @SuppressWarnings("unchecked")
     @Test
     void aStudentsPreferenceSwitchesAnOptionalSmsOffButNeverAMandatoryOne() {

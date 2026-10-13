@@ -69,6 +69,13 @@ class WaitingRepository {
         count(out, student ? "s/notifications" : "r/notices", n);
     }
 
+    /** V430: the "how do we reach you" prompt — ASK while the portal holds no usable e-mail or phone for the person and they
+     *  have not put it off in the last seven days; with what it does hold */
+    Map<String, Object> contactPrompt(UUID actor, boolean student) {
+        return jdbc.sql("SELECT state, email, phone, email_ok, phone_ok FROM platform.contact_prompt_for(:k, :id)")
+                .param("k", student ? "student" : "person").param("id", actor).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
     private static void count(Map<String, String> out, String item, Object n) {
         long value = n instanceof Number number ? number.longValue() : 0;
         if (value > 0) out.put(item, Long.toString(value));

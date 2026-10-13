@@ -90,6 +90,30 @@ class BiodataComplianceViewController {
                 .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).query().listOfRows();
     }
 
+    /** V430: staff reach — for every active person with an office, whether the e-mail and the phone are present and usable;
+     *  the counts, and the people behind a status, filtered by office and searched; never bound to a faculty (staff are the
+     *  University's) */
+    @GetMapping("/staff")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_records')")
+    @Transactional(readOnly = true)
+    Map<String, Object> staff(@RequestParam(required = false) String status, @RequestParam(required = false) String office,
+                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size) {
+        int limit = Math.max(1, Math.min(size, 2000));
+        int offset = Math.max(0, page - 1) * limit;
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM iam.staff_reach_list(:st, :o, :q, :n, :off)")
+                .param("st", blank(status) == null ? null : status.trim().toUpperCase(), Types.VARCHAR).param("o", blank(office), Types.VARCHAR)
+                .param("q", blank(q), Types.VARCHAR).param("n", limit).param("off", offset).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("summary", jdbc.sql("SELECT * FROM iam.staff_reach_summary(:o)").param("o", blank(office), Types.VARCHAR).query().singleRow());
+        out.put("rows", rows);
+        out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
+        out.put("page", Math.max(1, page));
+        out.put("size", limit);
+        out.put("remindEnabled", jdbc.sql("SELECT staff_contact_remind FROM platform.notice_setting WHERE id").query(Boolean.class).single());
+        out.put("offices", jdbc.sql("SELECT code, label FROM ref.office WHERE code NOT IN ('student', 'applicant') ORDER BY label").query().listOfRows());
+        return out;
+    }
+
     /** the reading taken now, by hand (ICT and the administrators); the scheduler takes it every quarter of an hour regardless */
     @PostMapping("/refresh")
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar')")

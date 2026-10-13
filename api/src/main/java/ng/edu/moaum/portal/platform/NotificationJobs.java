@@ -101,6 +101,23 @@ public class NotificationJobs {
         }
     }
 
+    /** V430: the weekly reminder to staff whose e-mail or phone is missing or not usable (on ICT's switch), and the HR office's
+     *  weekly word on how many cannot be reached at all; Tuesday mornings */
+    @Scheduled(cron = "${moaum.staff.remind-cron:0 0 9 * * TUE}", zone = "Africa/Lagos")
+    public void remindStaffContact() {
+        lock.runExclusively("staff-contact-reminders", this::remindStaffContactNow);
+    }
+
+    void remindStaffContactNow() {
+        try {
+            Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "weekly staff contact reminder", null, null), () -> tx.execute(status ->
+                    jdbc.sql("SELECT iam.remind_staff_contact(2000)").query(Integer.class).single()));
+            LOG.info("staff contact reminders: {} person(s) reminded", n);
+        } catch (RuntimeException e) {
+            LOG.warn("staff contact reminders did not run: {}", e.getMessage());
+        }
+    }
+
     /** V426: the reading of every student's biodata status the offices' counts and lists read — every quarter of an hour,
      *  and after the weekly reminder; some ten seconds on a register of 54,000 */
     @Scheduled(fixedDelayString = "${moaum.biodata.snapshot-every-ms:900000}", initialDelayString = "${moaum.biodata.snapshot-initial-ms:120000}")

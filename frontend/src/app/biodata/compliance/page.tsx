@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Compliance, type ComplianceSummary, type StudentsPage } from "./Compliance";
+import { Compliance, type ComplianceSummary, type StudentsPage, type StaffPage } from "./Compliance";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +17,24 @@ export default async function ComplianceRoute({ searchParams }: { searchParams: 
   const scope = new URLSearchParams();
   if (filters.faculty) scope.set("faculty", filters.faculty);
   if (filters.department) scope.set("department", filters.department);
-  const [me, summary, students] = await Promise.all([
+  // V430: the staff reach panel, for the offices that read the staff (a Dean or Head reads students only)
+  const staffFilters = { status: one("staffStatus"), office: one("office"), q: one("sq"), page: one("spage") || "1" };
+  const sp = new URLSearchParams();
+  if (staffFilters.status) sp.set("status", staffFilters.status);
+  if (staffFilters.office) sp.set("office", staffFilters.office);
+  if (staffFilters.q) sp.set("q", staffFilters.q);
+  sp.set("page", staffFilters.page);
+  sp.set("size", "100");
+  const [me, summary, students, staff] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<ComplianceSummary>(`/api/v1/biodata/compliance${scope.toString() ? `?${scope}` : ""}`),
     api<StudentsPage>(`/api/v1/biodata/compliance/students?${p}`),
+    api<StaffPage>(`/api/v1/biodata/compliance/staff?${sp}`),
   ]);
   return (
     <Shell route="t/compliance" me={me.ok ? me.data : null}>
-      {summary.ok ? <Compliance d={summary.data} students={students.ok ? students.data : null} filters={filters} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={summary.problem} />}
+      {summary.ok ? <Compliance d={summary.data} students={students.ok ? students.data : null} filters={filters} actingOffice={me.ok ? me.data.activeOffice : null}
+        staff={staff.ok ? staff.data : null} staffFilters={staffFilters} /> : <ProblemNotice problem={summary.problem} />}
     </Shell>
   );
 }

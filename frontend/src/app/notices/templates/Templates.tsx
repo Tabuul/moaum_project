@@ -19,7 +19,7 @@ export interface Template {
   updated_at: string; updated_office: string | null; sent_30d: number;
 }
 export interface Settings {
-  portal_url: string | null; job_batch: number; remind_enabled: boolean; review_days: number | null; gate_enabled: boolean;
+  portal_url: string | null; job_batch: number; remind_enabled: boolean; review_days: number | null; gate_enabled: boolean; staff_contact_remind?: boolean;
   counts: { total: number; up_to_date: number; incomplete: number; review_required: number; outdated: number; no_email: number; no_phone: number; migrated: number } | null;
 }
 export interface Job { id: string; kind: string; payload: string; state: string; created_at: string; created_office: string | null; started_at: string | null; finished_at: string | null; reached: number; queued: number; runs: number; error: string | null }
@@ -59,6 +59,7 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
   const [s, setS] = useState({
     portalUrl: settings?.portal_url ?? "", jobBatch: String(settings?.job_batch ?? 2000),
     remindEnabled: settings?.remind_enabled ?? false, reviewDays: settings?.review_days ? String(settings.review_days) : "",
+    staffContactRemind: settings?.staff_contact_remind ?? false,
   });
 
   function edit(t: Template) {
@@ -117,6 +118,7 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
     try {
       const r = await send<Settings>("/settings", "PUT", {
         portalUrl: s.portalUrl, jobBatch: Number(s.jobBatch) || undefined, remindEnabled: s.remindEnabled, reviewDays: s.reviewDays === "" ? 0 : Number(s.reviewDays),
+        staffContactRemind: s.staffContactRemind,
       }, "Notification settings");
       if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
       notify("Settings saved");
@@ -130,6 +132,16 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
       const r = await send<{ reminded: number }>("/biodata-reminders/run", "POST", {}, "Weekly biodata reminder run now");
       if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
       notify(`${r.data.reminded} student(s) reminded`);
+      router.refresh();
+    } finally { setBusy(false); }
+  }
+
+  async function remindStaffNow() {
+    setBusy(true); setProblem(null);
+    try {
+      const r = await send<{ reminded: number }>("/staff-contact-reminders/run", "POST", {}, "Weekly staff contact reminder run now");
+      if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
+      notify(`${r.data.reminded} staff member(s) reminded`);
       router.refresh();
     } finally { setBusy(false); }
   }
@@ -232,11 +244,15 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
             <Field id="remind" label="Weekly biodata reminder" hint="Monday mornings, to each student whose biodata is not up to date, at most once a week; it also runs while the gate is ON">
               <label className="row row--inline row--tight"><input id="remind" type="checkbox" checked={s.remindEnabled} disabled={!may} onChange={(e) => setS({ ...s, remindEnabled: e.target.checked })} /> On while the gate is OFF</label>
             </Field>
+            <Field id="staffremind" label="Weekly staff contact reminder" hint="Tuesday mornings, to each staff member or lecturer whose e-mail or phone is missing or not usable, by the channel they have; HR told once a week how many cannot be reached at all">
+              <label className="row row--inline row--tight"><input id="staffremind" type="checkbox" checked={s.staffContactRemind} disabled={!may} onChange={(e) => setS({ ...s, staffContactRemind: e.target.checked })} /> On</label>
+            </Field>
           </div>
           {may ? (
             <div className="row row--wrap row--tight mt-3">
               <Btn kind="primary" disabled={busy} onClick={() => void saveSettings()}>Save settings</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => void remindNow()}>Run the biodata reminder now</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => void remindStaffNow()}>Run the staff contact reminder now</Btn>
             </div>
           ) : null}
         </PBody>
