@@ -112,10 +112,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
     const roll = sheet.rows.length;
     const unregistered = sheet.rows.filter(notRegistered).length;   // in the class, no approved registration for the semester
     const registered = roll - unregistered;
-    const sat = sheet.rows.filter((r) => r.gpa !== null).length;
+    const sat = sheet.rows.filter((r) => r.gpa != null).length;   // a null GPA is left out of the JSON: undefined, not null
     // V421: a candidate with a result missing (NR) is neither absent nor sat when nothing of theirs is counted
     const withNr = sheet.rows.filter(noResult).length;
-    const notSit = registered - sat - sheet.rows.filter((r) => r.gpa === null && noResult(r)).length;
+    const notSit = registered - sat - sheet.rows.filter((r) => r.gpa == null && noResult(r)).length;
     // probation and withdrawal are what the remark pronounces (Senate's rule in the record): counted wherever they appear,
     // so a 100 level first semester reads Nil of itself
     const probation = sheet.rows.filter(onProbation).length;   // TO GO ON PROBATION
