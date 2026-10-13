@@ -2312,3 +2312,17 @@ table.tbl--data.tbl--stack tfoot td.tbl__nil { display: none; }
 .rbk__pick { display: none; }
 @media (max-width: 720px) { .rbk__hint, .rbk__tabs { display: none; } .rbk__pick { display: block; } .rbk__share { min-width: 0; } }
 @media print { .rbk__bar { display: none; } }
+
+/* V423: the biodata gate — a required item the record misses, and one it holds; the student's progress */
+.bio__t--need { background: var(--red-bg); border: 1px solid var(--red-line); color: var(--red-ink); }
+.bio__t--given { background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green-ink); }
+.bio__f.is-needed .ctl { border-color: var(--red-line); }
+.bio__need { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--red-ink); }
+.bio__s.is-on .bio__need { color: #fff; }
+.bgate { display: flex; gap: var(--s-4); align-items: flex-start; flex-wrap: wrap; }
+.bgate__who { display: flex; gap: var(--s-3); align-items: center; min-width: 0; }
+.bgate__bar { height: 10px; border-radius: 5px; background: var(--line-2); overflow: hidden; }
+.bgate__bar > span { display: block; height: 100%; border-radius: 5px; background: var(--chrome); transition: width .2s ease; }
+.bgate__miss { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.bgate__miss button { font: inherit; cursor: pointer; }
+@media (max-width: 720px) { .bgate { flex-direction: column; } }

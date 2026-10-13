@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateOpenPage } from "@/lib/biodata-gate";
 
 /**
  * Nobody reaches a screen without a session. The sign-in page, the first-
@@ -97,6 +98,11 @@ export async function proxy(request: NextRequest) {
       try {
         const r = await fetch(`${API_URL}/api/v1/iam/session`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
         if (r.status === 401) return toLogin(request, true);
+        /* V423: a student the biodata gate holds reaches only the biodata page (and help, the notices) until it is complete.
+           The API refuses everything else whatever the address; this only spares the student a page of refusals. */
+        if (r.headers.get("x-biodata-gate") === "REQUIRED" && pathname.startsWith("/student") && !gateOpenPage(pathname)) {
+          return NextResponse.redirect(new URL("/student/biodata", request.url));
+        }
       } catch {
         /* the API is unreachable for a moment; do not lock the user out */
       }

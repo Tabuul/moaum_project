@@ -67,6 +67,51 @@ public class StudentPortalService {
         return repo.passportImage(id).map(StudentPortalService::toJpeg);
     }
 
+    private static final int MAX_PHOTO = 2 * 1024 * 1024;
+
+    /**
+     * V423: the student gives their own passport photograph — but only a first one: when the portal finds a photograph
+     * anywhere (replaced on the portal, the admission's document, the attachment store), changing it stays with ICT
+     * Support, who sees the student and records why. A JPEG or a PNG up to 2 MB, kept where every other photograph is.
+     */
+    @Transactional
+    public Map<String, Object> uploadPassport(UUID id, String dataUrl) {
+        student(id);
+        if (repo.hasPassport(id)) {
+            throw new DomainRuleViolation("PHOTO_ON_RECORD", "Your passport photograph is already on record.",
+                    new DomainRuleViolation.Remedy("To change it, ask ICT Support through Help & Requests.", "ICT Support"));
+        }
+        String u = dataUrl.trim();
+        int comma = u.indexOf(',');
+        String head = comma > 0 ? u.substring(0, comma).toLowerCase() : "";
+        String type = head.contains("image/png") ? "image/png" : head.contains("image/jpeg") || head.contains("image/jpg") ? "image/jpeg" : null;
+        if (type == null) {
+            throw new DomainRuleViolation("PHOTO_TYPE", "A passport photograph is a JPEG or a PNG.", new DomainRuleViolation.Remedy("Choose a .jpg or .png file.", "You"));
+        }
+        byte[] bytes;
+        try {
+            bytes = java.util.Base64.getDecoder().decode(u.substring(comma + 1));
+        } catch (IllegalArgumentException e) {
+            throw new DomainRuleViolation("PHOTO_BYTES", "The photograph could not be read.", new DomainRuleViolation.Remedy("Choose the file again.", "You"));
+        }
+        if (bytes.length == 0 || bytes.length > MAX_PHOTO) {
+            throw new DomainRuleViolation("PHOTO_SIZE", "A passport photograph is up to 2 MB.", new DomainRuleViolation.Remedy("Choose a smaller file.", "You"));
+        }
+        if (!isImage(bytes, type)) {
+            throw new DomainRuleViolation("PHOTO_BYTES", "The file is not a photograph the portal can read.", new DomainRuleViolation.Remedy("Choose a .jpg or .png photograph.", "You"));
+        }
+        String store = repo.savePassport(id, bytes, type);
+        return Map.of("saved", true, "bytes", bytes.length, "store", store);
+    }
+
+    /** the bytes are the image they say they are: a JPEG starts FF D8, a PNG with its eight-byte signature */
+    private static boolean isImage(byte[] b, String type) {
+        if ("image/jpeg".equals(type)) {
+            return b.length > 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8;
+        }
+        return b.length > 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G';
+    }
+
     /** Serve the passport as JPEG whatever it was stored as. The exam card, course form and receipt PDFs embed
      *  only JPEG (DCTDecode), so a PNG — which the bulk passport upload accepts — would otherwise print a blank
      *  photo box, defeating the invigilator's face check. Already-JPEG bytes pass straight through. */

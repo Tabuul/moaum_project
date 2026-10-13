@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** s/support — ask an office for help */
 export default async function Page() {
-  const loaded = await loadStudent();
+  const loaded = await loadStudent({ gateOpen: true });
   const r = loaded.student ? await api<ServiceRequest[]>("/api/v1/me/requests") : null;
   return (
     <Shell route="s/support" me={loaded.me}>

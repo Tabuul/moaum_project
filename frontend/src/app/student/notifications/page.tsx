@@ -13,7 +13,7 @@ function when(iso: string): string {
 
 /** s/notifications — every notice the portal sent, and how it reaches you */
 export default async function Page() {
-  const loaded = await loadStudent();
+  const loaded = await loadStudent({ gateOpen: true });
   const s = loaded.student;
   return (
     <Shell route="s/notifications" me={loaded.me}>

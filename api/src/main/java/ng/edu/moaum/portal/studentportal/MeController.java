@@ -34,6 +34,10 @@ class MeController {
     public record NewReference(String session, BigDecimal amount) {
     }
 
+    /** V423: a passport photograph as a data URL (JPEG or PNG, up to 2 MB) */
+    public record Photo(@NotBlank String dataUrl) {
+    }
+
     public record Choice(@NotBlank String session, @Min(1) @Max(3) int semester, List<UUID> offerings) {
     }
 
@@ -191,6 +195,12 @@ class MeController {
 
     /** the student's passport image — resolved from the document store or the JAMB/attachment store, so a
      *  migrated or JAMB-loaded photo also appears on the course form and identity documents. */
+    /** V423: the student's own first passport photograph, when the portal finds none anywhere; replacing one stays with ICT Support */
+    @PutMapping("/passport")
+    Map<String, Object> uploadPassport(Authentication auth, @Valid @RequestBody Photo body) {
+        return portal.uploadPassport(id(auth), body.dataUrl());
+    }
+
     @GetMapping("/passport")
     org.springframework.http.ResponseEntity<byte[]> passport(Authentication auth) {
         return portal.passportImage(id(auth))

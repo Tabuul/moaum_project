@@ -1,5 +1,7 @@
 package ng.edu.moaum.portal.student;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -23,9 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 class MeBiodataController {
 
     private final StudentService students;
+    private final BiodataCompliance compliance;
 
-    MeBiodataController(StudentService students) {
+    MeBiodataController(StudentService students, BiodataCompliance compliance) {
         this.students = students;
+        this.compliance = compliance;
     }
 
     private static UUID me(Authentication auth) {
@@ -36,6 +40,23 @@ class MeBiodataController {
     @PreAuthorize("hasAuthority('OFFICE_student')")
     StudentRecord mine(Authentication auth) {
         return students.record(me(auth), null);
+    }
+
+    /**
+     * V423: where the student stands with the biodata gate — OFF, EXCEPTION (until when), COMPLETE or REQUIRED — and their
+     * completion: the required items, how many are given, the percentage, the missing ones by name, when it last changed.
+     */
+    @GetMapping("/api/v1/me/biodata/completion")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    Map<String, Object> completion(Authentication auth) {
+        UUID id = me(auth);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("gate", compliance.gateState(id));
+        out.put("enabled", Boolean.TRUE.equals(compliance.gate().get("enabled")));
+        out.put("completion", compliance.completion(id));
+        out.put("requiredItems", compliance.requiredItems());
+        out.put("exception", compliance.liveException(id));
+        return out;
     }
 
     @PutMapping("/api/v1/me/biodata/{field}")

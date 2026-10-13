@@ -20,6 +20,10 @@ import { Btn, Ico, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { SearchSelect } from "@/components/proto/SearchSelect";
+
+/** V423: the lists the form chooses from, as the University holds them (ref.state, ref.lga, ref.country) */
+export interface BioLists { states: { name: string; lgas: string[] }[]; countries: string[] }
 
 const BIO_SECTIONS: [string, string, string][] = [
   ["identity", "Identity", "Read from JAMB"],
@@ -48,8 +52,16 @@ const SECTION_NOTE: Record<string, [("info" | "bad"), string, string]> = {
     "The account is used for refunds — an overpayment, a duplicate payment, a withdrawal, a scholarship credit. No fee is ever collected by direct debit, and the portal does not hold a card."],
 };
 
-/** the fields chosen from a list rather than typed */
-function optionsFor(field: string, values: Record<string, string>): string[] | null {
+/** the fields chosen from a list rather than typed — from the University's reference lists where the screen was given them */
+function optionsFor(field: string, values: Record<string, string>, lists?: BioLists): string[] | null {
+  if (lists) {
+    if (field === "nationality" || field === "country_of_origin") return lists.countries;
+    if (field === "state_of_origin" || field === "state_of_residence") return lists.states.map((x) => x.name);
+    if (field === "lga") {
+      const st = (values.state_of_origin ?? "").trim().toLowerCase();
+      return lists.states.find((x) => x.name.toLowerCase() === st)?.lgas ?? [];
+    }
+  }
   if (field === "nationality") return NATIONALITIES;
   if (field === "state_of_origin" || field === "state_of_residence") return STATES;
   if (field === "lga") return lgasOf(values.state_of_origin ?? "");
@@ -60,8 +72,10 @@ function optionsFor(field: string, values: Record<string, string>): string[] | n
 
 /** one field — read-only for a JAMB field, a select where there is a list, otherwise a box.
  *  Defined at module scope so a keystroke does not remount the input and steal focus. */
-function Fld({ field, value, options, may, pending, onChange }: {
-  field: BiodataField; value: string; options: string[] | null; may: boolean; pending: string | undefined; onChange: (v: string) => void;
+function Fld({ field, value, options, may, pending, need, onChange }: {
+  field: BiodataField; value: string; options: string[] | null; may: boolean; pending: string | undefined;
+  /** V423: a required item, and whether the record still misses it */
+  need?: "missing" | "given"; onChange: (v: string) => void;
 }) {
   const badge =
     field.tier === "locked" ? (
@@ -72,6 +86,10 @@ function Fld({ field, value, options, may, pending, onChange }: {
   let control: React.ReactNode;
   if (field.tier === "locked") {
     control = <div className="ctl ctl--ro">{value || "—"}<Ico name="shield" size={14} stroke="var(--faint)" w={2} /></div>;
+  } else if (options && options.length > 12) {
+    // a long list (states, local governments, countries) is searched as it is typed
+    const list = value && !options.includes(value) ? [value, ...options] : options;
+    control = <SearchSelect value={value} disabled={!may} options={list.map((o) => ({ value: o, label: o }))} allLabel="Select…" placeholder="Type to search…" onChange={onChange} />;
   } else if (options) {
     const list = value && !options.includes(value) ? [value, ...options] : options;
     control = (
@@ -86,8 +104,8 @@ function Fld({ field, value, options, may, pending, onChange }: {
     control = <input className="ctl" value={value} disabled={!may} autoComplete="off" onChange={(e) => onChange(e.target.value)} />;
   }
   return (
-    <div className={`bio__f${field.wide ? " bio__f--wide" : ""}${field.tier === "approval" ? " is-appr" : ""}${field.tier === "locked" ? " is-locked" : ""}`}>
-      <label>{field.label}{badge}</label>
+    <div className={`bio__f${field.wide ? " bio__f--wide" : ""}${field.tier === "approval" ? " is-appr" : ""}${field.tier === "locked" ? " is-locked" : ""}${need === "missing" ? " is-needed" : ""}`}>
+      <label>{field.label}{badge}{need === "missing" ? <span className="bio__t bio__t--need">Required</span> : need === "given" ? <span className="bio__t bio__t--given">&#10003; Required</span> : null}</label>
       {control}
       {pending ? <div className="hint">Waiting on the Registry: &rarr; {pending}</div> : null}
       {field.hint ? <div className="hint">{field.hint}</div> : null}
@@ -95,9 +113,13 @@ function Fld({ field, value, options, may, pending, onChange }: {
   );
 }
 
-export function Biodata({ record, may, base }: { record: StudentRecord; may: boolean; base?: string }) {
+export function Biodata({ record, may, base, required, missing, lists, startAt }: {
+  record: StudentRecord; may: boolean; base?: string;
+  /** V423: the items the biodata gate requires, those the record still misses, the reference lists, and the section to open on */
+  required?: string[]; missing?: string[]; lists?: BioLists; startAt?: string;
+}) {
   const router = useRouter();
-  const [section, setSection] = useState("identity");
+  const [section, setSection] = useState(startAt ?? "identity");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -178,6 +200,8 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
   ].map(([label, value], i) => ({ field: `identity-${i}`, section: "identity", label, tier: "locked" as Tier, hint: null, wide: false, ord: i, value }));
 
   const fields = section === "identity" ? identity : record.biodata.filter((f) => f.section === section);
+  // V423: how many required items a section still misses, for the section list
+  const missingIn = (sec: string) => (missing ?? []).filter((m) => record.biodata.some((f) => f.field === m && f.section === sec)).length;
   const note = SECTION_NOTE[section];
   const meta = BIO_SECTIONS.find((x) => x[0] === section) ?? BIO_SECTIONS[0];
   const sectionChanged = record.biodata.some((f) => f.section === section && f.tier !== "locked" && (f.field in edits) && edits[f.field] !== (original[f.field] ?? ""));
@@ -189,7 +213,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
       <div className="bio__nav">
         {BIO_SECTIONS.map((x) => (
           <button className={`bio__s${section === x[0] ? " is-on" : ""}`} key={x[0]} onClick={() => { setSection(x[0]); setSaved(null); setAsked(false); }}>
-            <span className="t">{x[1]}</span>
+            <span className="t">{x[1]}{missingIn(x[0]) ? <span className="bio__need">{missingIn(x[0])} required</span> : null}</span>
             <span className="d">{x[2]}</span>
           </button>
         ))}
@@ -241,7 +265,8 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
         ) : (
           <Panel title={meta[1]} right={meta[2]}>
             <PBody>
-              <div className="bio__grid">{fields.map((f) => <Fld key={f.field} field={f} value={f.section === "identity" ? (f.value ?? "") : val(f.field)} options={f.section === "identity" ? null : optionsFor(f.field, values)} may={may} pending={pending.get(f.field)} onChange={(v) => set(f.field, v)} />)}</div>
+              <div className="bio__grid">{fields.map((f) => <Fld key={f.field} field={f} value={f.section === "identity" ? (f.value ?? "") : val(f.field)} options={f.section === "identity" ? null : optionsFor(f.field, values, lists)} may={may} pending={pending.get(f.field)}
+                need={required?.includes(f.field) ? (missing?.includes(f.field) ? "missing" : "given") : undefined} onChange={(v) => set(f.field, v)} />)}</div>
             </PBody>
             {may && EDITABLE.includes(section) ? (
               <div className="card__body row" style={{ flexDirection: "row", borderTop: "1px solid var(--line-2)" }}>
@@ -258,7 +283,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
           <Panel title="Photograph" right="The one that identifies them everywhere">
             <PBody>
               <div className="row row--top" style={{ gap: "var(--s-5)" }}>
-                <Passport w={104} h={128} src={`/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} />
+                <Passport w={104} h={128} src={base ? `${base}/passport` : `/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} />
                 <div className="grow" style={{ minWidth: 220 }}>
                   <div className="sub2" style={{ lineHeight: 1.65 }}>Used in examination halls, on the identity card and the certificate. Replacing it is a Registry decision.</div>
                 </div>

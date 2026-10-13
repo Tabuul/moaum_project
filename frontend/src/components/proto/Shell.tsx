@@ -118,6 +118,8 @@ export const ROUTES: Record<string, string> = {
   "t/collegerules": "/college/rules",
   "t/portalwindows": "/ict/windows",
   "t/admissionchecking": "/ict/admission-checking",
+  "t/biodatagate": "/ict/biodata",
+  "t/biodatastudents": "/ict/biodata/students",
   "t/applicationwindows": "/ict/applications",
   "t/collegesheets": "/college/scoresheets",
   "r/mbbscoordinator": "/college/coordinator",

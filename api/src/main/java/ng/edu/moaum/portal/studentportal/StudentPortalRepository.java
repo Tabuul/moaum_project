@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.studentportal;
 
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
 import java.math.BigDecimal;
 import java.sql.Types;
@@ -208,6 +209,22 @@ class StudentPortalRepository {
                     String u = String.valueOf(r.get("u")); int i = u.indexOf(',');
                     return java.util.Base64.getDecoder().decode(i >= 0 ? u.substring(i + 1) : u);
                 });
+    }
+
+    /** V423: the student's own first photograph, in the object store where one is on, else in the row; the student is the one who gave it */
+    String savePassport(UUID studentId, byte[] bytes, String type) {
+        UUID object = files.enabled() ? files.store("student_photo", studentId, "passport." + (type.endsWith("png") ? "png" : "jpg"), type, bytes) : null;
+        int n = jdbc.sql("""
+                INSERT INTO people.student_photo (student_id, content, object_id, content_type, bytes, replaced_by, replaced_at, reason)
+                VALUES (:s, :c, :o, :t, :n, :s, now(), 'Given by the student on the portal')
+                ON CONFLICT (student_id) DO NOTHING
+                """).param("s", studentId).param("c", object == null ? bytes : null, java.sql.Types.BINARY).param("o", object, java.sql.Types.OTHER)
+                .param("t", type).param("n", bytes.length).update();
+        if (n == 0) {
+            throw new DomainRuleViolation("PHOTO_ON_RECORD", "Your passport photograph is already on record.",
+                    new DomainRuleViolation.Remedy("To change it, ask ICT Support through Help & Requests.", "ICT Support"));
+        }
+        return object == null ? "database" : "object";
     }
 
     /** whether a passport photo exists for the student, in either store — so the UI shows the photo without a broken image */

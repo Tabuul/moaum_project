@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 260
+\set EXPECTED 261
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10926,6 +10926,85 @@ BEGIN
         format('late cand %s->%s M=%s refused=%s kind=%s was=%s applied=%s L %s/%s reason=%s told=%s | X carry=%s gst=%s | W %s %s carry=%s units=%s msg=%s | Z %s %s | Y %s %s carry=%s',
                cand_before, cand_after, m_kind, refused, kind, was_v, applied, l_pub, l_grade, reason, told, x_carry, x_gst, w_status, w_st, w_carry, w_gpa_units, w_msg,
                z_status, z_st, y_status, y_st, y_carry));
+END $$;
+-- ── V423. The student biodata completion gate: OFF by default, and every student passes; turned on only by the ICT
+--          Director or an administrator, and not twice; a student whose required items are incomplete is REQUIRED, the
+--          missing items named in the form's order, the contact the student gave counting where the portal keeps it; an
+--          exception lets a named student through until it ends — granted only by the ICT Director or an administrator,
+--          within 30 days, one at a time — and revoked or ended, the gate applies again; a JAMB field or a health field is
+--          never required; while ON an incomplete student is reminded once in a week, never while OFF; complete (the
+--          photograph and the fields given), the student passes, and a field written carries when ──
+DO $$
+DECLARE S text := '9979/9980'; who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); ex uuid;
+        st_off text; st_req text; st_exc text; st_revoked text; st_expired text; st_done text; st_after_off text;
+        miss text; req_n int; done_n int; miss_done text;
+        r_office text := 'accepted'; r_twice text := 'accepted'; r_locked text := 'accepted'; r_health text := 'accepted';
+        r_cpo text := 'accepted'; r_long text := 'accepted'; r_active text := 'accepted';
+        told int; sent1 int; sent2 int; reminded_off int; touched boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V423', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V423', 'CHECKV423', 'ICT');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9979-10-01', date '9980-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+        VALUES (a, 'MOAUM/ADM/79/009423', 'CHECKV423', 'Gate', 'F', 'C00023', 'UTME', S, 100, 100, 'ADMITTED', 'FULL_TIME');
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (gen_random_uuid(), a, '$2a$12$CHECKV423CHECKV423CHECKV423CHECKV423CHECKV423CHECKV42', true);
+        INSERT INTO people.student_contact (student_id, phone, email) VALUES (a, '08000000423', 'v423@example.test');
+        st_off := people.biodata_gate_state(a);
+        -- turned on only by the ICT Director or an administrator, and not twice
+        BEGIN PERFORM people.set_biodata_gate(true, 'CHECK', who, 'bursar'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM people.set_biodata_gate(true, 'CHECK go-live', who, 'ict');
+        BEGIN PERFORM people.set_biodata_gate(true, 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+        st_req := people.biodata_gate_state(a);
+        SELECT array_to_string(missing, ','), required, completed INTO miss, req_n, done_n FROM people.biodata_completion(ARRAY[a]);
+        -- never a JAMB field, never a health field
+        BEGIN PERFORM people.set_biodata_requirement('university_email', true, who, 'ict'); EXCEPTION WHEN check_violation THEN r_locked := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.set_biodata_requirement('genotype', true, who, 'ict'); EXCEPTION WHEN check_violation THEN r_health := split_part(SQLERRM, ':', 1); END;
+        -- an exception: the ICT Director's, within 30 days, one at a time; revoked or ended, the gate applies again
+        BEGIN PERFORM people.grant_biodata_exception(a, 'CHECK reason', now(), now() + interval '2 days', who, 'cpo'); EXCEPTION WHEN check_violation THEN r_cpo := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.grant_biodata_exception(a, 'CHECK reason', now(), now() + interval '40 days', who, 'ict'); EXCEPTION WHEN check_violation THEN r_long := split_part(SQLERRM, ':', 1); END;
+        ex := people.grant_biodata_exception(a, 'CHECK: an examination tomorrow', now(), now() + interval '2 days', who, 'ict');
+        BEGIN PERFORM people.grant_biodata_exception(a, 'CHECK again', now(), now() + interval '1 day', who, 'ict'); EXCEPTION WHEN check_violation THEN r_active := split_part(SQLERRM, ':', 1); END;
+        st_exc := people.biodata_gate_state(a);
+        PERFORM people.revoke_biodata_exception(ex, 'CHECK: done', who, 'ict');
+        st_revoked := people.biodata_gate_state(a);
+        INSERT INTO people.biodata_gate_exception (student_id, reason, granted_by, granted_office, starts_at, expires_at)
+        VALUES (a, 'CHECK: an exception that ended', who, 'ict', now() - interval '10 days', now() - interval '1 day');
+        st_expired := people.biodata_gate_state(a);
+        -- reminded while ON, once in the week
+        PERFORM people.remind_biodata(1000000);
+        SELECT count(*) INTO told FROM platform.notice WHERE about_id = a AND subject LIKE 'Complete your biodata%';
+        SELECT sent INTO sent1 FROM people.biodata_reminder WHERE student_id = a;
+        PERFORM people.remind_biodata(1000000);
+        SELECT sent INTO sent2 FROM people.biodata_reminder WHERE student_id = a;
+        -- complete: the photograph and the fields given (the mobile and e-mail already counted from the contact)
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, reason) VALUES (a, decode('ffd8ffd9', 'hex'), 'image/jpeg', 4, 'CHECK V423');
+        INSERT INTO people.biodata (student_id, field, value) VALUES
+            (a, 'nationality', 'Nigeria'), (a, 'home_address', 'CHECK house, Makurdi'), (a, 'state_of_origin', 'Benue'), (a, 'lga', 'Makurdi'),
+            (a, 'kin_name', 'CHECK Kin'), (a, 'kin_relationship', 'Mother'), (a, 'kin_mobile', '08000000424');
+        SELECT array_to_string(missing, ',') INTO miss_done FROM people.biodata_completion(ARRAY[a]);
+        st_done := people.biodata_gate_state(a);
+        SELECT bool_and(updated_at IS NOT NULL) INTO touched FROM people.biodata WHERE student_id = a;
+        -- OFF: every student passes, and nobody is reminded
+        PERFORM people.set_biodata_gate(false, 'CHECK', who, 'ict');
+        DELETE FROM people.biodata WHERE student_id = a AND field = 'kin_mobile';
+        st_after_off := people.biodata_gate_state(a);
+        reminded_off := people.remind_biodata(1000000);
+        RAISE EXCEPTION 'the V423 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V423: the biodata gate is OFF until the ICT Director turns it on (not twice, not by another office); then an incomplete student is REQUIRED with the missing items named, the contact counting; an exception (ICT only, within 30 days, one at a time) lets them through until revoked or ended; JAMB and health fields are never required; reminded once a week while ON, never while OFF; complete, the student passes',
+        coalesce(st_off = 'OFF' AND r_office = 'BIO_GATE_OFFICE' AND r_twice = 'BIO_GATE_UNCHANGED' AND st_req = 'REQUIRED'
+                 AND miss = 'PASSPORT,nationality,home_address,state_of_origin,lga,kin_name,kin_relationship,kin_mobile' AND req_n = 10 AND done_n = 2
+                 AND r_locked = 'BIO_REQ_LOCKED' AND r_health = 'BIO_REQ_HEALTH'
+                 AND r_cpo = 'BIO_GATE_OFFICE' AND r_long = 'BIO_GATE_EXPIRY' AND r_active = 'BIO_GATE_EXCEPTION_ACTIVE'
+                 AND st_exc = 'EXCEPTION' AND st_revoked = 'REQUIRED' AND st_expired = 'REQUIRED'
+                 AND told = 2 AND sent1 = 1 AND sent2 = 1
+                 AND miss_done = '' AND st_done = 'COMPLETE' AND touched AND st_after_off = 'OFF' AND reminded_off = 0, false),
+        format('off=%s office=%s twice=%s req=%s miss=%s %s/%s locked=%s health=%s cpo=%s long=%s active=%s exc=%s revoked=%s expired=%s told=%s sent %s->%s done=[%s] %s touched=%s off=%s reminded_off=%s',
+               st_off, r_office, r_twice, st_req, miss, done_n, req_n, r_locked, r_health, r_cpo, r_long, r_active, st_exc, st_revoked, st_expired,
+               told, sent1, sent2, miss_done, st_done, touched, st_after_off, reminded_off));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

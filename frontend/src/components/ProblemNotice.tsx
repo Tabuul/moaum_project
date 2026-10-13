@@ -1,6 +1,7 @@
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { humanTitle } from "@/lib/problem-title";
+import Link from "next/link";
 
 /**
  * Every refusal is shown with its remedy and the office responsible
@@ -17,6 +18,7 @@ export function ProblemNotice({ problem }: { problem: Problem }) {
           <b>What to do:</b> {problem.remedy.message} <span className="sub2">&mdash; {problem.remedy.office}</span>
         </>
       )}
+      {problem.code === "BIODATA_COMPLETION_REQUIRED" ? <>{" "}<Link className="lnk b600" href="/student/biodata">Complete your biodata</Link></> : null}
       {problem.violations && problem.violations.length > 0 && (
         <>
           {" "}
