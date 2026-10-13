@@ -35,7 +35,9 @@ import org.springframework.web.bind.annotation.RestController;
  * (the course's lecturer, or the Programme Examinations Officer on the lecturer's behalf, or the GST / EPS office for its own
  * courses) with the reason, approved by each desk of the chain in turn (V357's rule: the stage's own office, never the person
  * who took the previous step), and applied by the Registrar on the Senate minute as a new version of the mark. A desk may
- * refuse it with the reason; the person who raised it may withdraw it. Everything keeps to the sheet's own scope.
+ * refuse it with the reason; the person who raised it may withdraw it. Everything keeps to the sheet's own scope. V422: a
+ * candidate on the published sheet's roll with no mark on it gets a LATE result the same way — the first mark, applied on the
+ * Senate minute.
  */
 @RestController
 @RequestMapping("/api/v1/results")
@@ -89,6 +91,15 @@ class AmendmentsController {
         return of(id);
     }
 
+    /** V422: the candidates on a published sheet's roll with no mark on it and no late result open — those a late result is for */
+    @GetMapping("/sheets/{id}/late-candidates")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> lateCandidates(@PathVariable UUID id) {
+        results.reach(id);
+        return jdbc.sql("SELECT student_id, number, surname, other_names, programme_code FROM assessment.late_candidates(:s)").param("s", id).query().listOfRows();
+    }
+
     public record RaiseIn(@NotNull UUID studentId, @Min(0) @Max(100) Integer ca, @Min(0) @Max(100) Integer exam,
                           @Pattern(regexp = "GRADED|ABSENT|WITHHELD|INCOMPLETE|MALPRACTICE|EXEMPTED") String outcome,
                           @NotBlank @Size(min = 10, max = 2000) String reason, UUID queryId) {
@@ -117,7 +128,7 @@ class AmendmentsController {
         if (stages.isEmpty()) return List.of();
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> r : jdbc.sql("""
-                SELECT m.id, m.ref, m.stage, m.sheet_id, m.raised_at, m.reason, m.outcome, m.ca, m.exam, m.was_ca, m.was_exam, m.was_outcome,
+                SELECT m.id, m.ref, m.kind, m.stage, m.sheet_id, m.raised_at, m.reason, m.outcome, m.ca, m.exam, m.was_ca, m.was_exam, m.was_outcome,
                        o.course_code, o.session, o.semester, coalesce(st.matric_no, st.admission_no) AS number, upper(st.surname) || ', ' || st.other_names AS name,
                        (SELECT d.actor_id FROM assessment.amendment_decision d WHERE d.amendment_id = m.id AND d.kind IN ('RAISE', 'ADVANCE') ORDER BY d.decided_at DESC LIMIT 1) AS last_actor
                   FROM assessment.amendment m JOIN assessment.score_sheet s ON s.id = m.sheet_id JOIN catalogue.offering o ON o.id = s.offering_id

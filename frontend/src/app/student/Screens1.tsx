@@ -189,7 +189,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
       ) : null}
       {s.probation?.result_status && s.probation.result_status !== "PUBLISHED" && s.probation.result_message ? (
         /* V421: a result not uploaded, not yet published or still incomplete is said as such — never a CGPA of 0.00, never probation */
-        <Note kind="info" title={s.probation.result_status === "NOT_AVAILABLE" ? "Result not available" : s.probation.result_status === "INCOMPLETE" ? "Result incomplete" : "Result pending"}
+        <Note kind="info" title={s.probation.result_status === "NOT_AVAILABLE" ? "Result not available" : s.probation.result_status === "INCOMPLETE" ? "Result incomplete" : s.probation.result_status === "HELD" ? "Result held for the Senate" : "Result pending"}
           action={<LinkBtn kind="ghost" href="/student/results">View results</LinkBtn>}>
           {s.probation.result_message}
         </Note>

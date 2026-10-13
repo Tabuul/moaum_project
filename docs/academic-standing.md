@@ -84,7 +84,7 @@ wherever the set stands:
 |---|---|---|
 | No mark entered yet / partly entered | the sheet is at entry | the sheet |
 | Joined the roll after submission | in the chain | the chain (return it to the lecturer) |
-| Not on the published sheet | published through the chain | the chain |
+| Not on the published sheet | published through the chain | the chain: a late result (V422) |
 | Not in the old portal's results | the published set came from the old portal's upload | *Upload results* → Migrate from the old portal (Exams and Records, ICT) |
 | No sheet / no lecturer | nothing to enter on yet | Sessions / Allocate |
 
@@ -92,6 +92,31 @@ wherever the set stands:
 number, name, programme, level, course, where the set is and why. It keeps the monitor's bounds: a lecturer sees only their own
 courses, a HOD their department, the GST/EPS office its own courses, any other office its scope. A published set with
 candidates missing is flagged *Results missing on the published set*.
+
+**Every outcome, read alike (V422).** The University's rule, the same on the student's record, the broadsheet, carryovers
+and the GST/EPS fee:
+
+| Outcome | GPA | Owed (carryover) | Semester | Broadsheet |
+|---|---|---|---|---|
+| Graded | counted | an F is owed (never an elective) | complete | the mark and grade |
+| Absent | an F, counted | **owed**, and a GST/EPS course is owed again | complete | ABS F0, *CO:* |
+| Withheld, incomplete, malpractice | not counted | not owed | **held**: no standing until the Senate decides | WIT / INC / MAL, *HELD:* |
+| Exempted | not counted | not owed | complete | EXE |
+| No result | not counted | not owed | incomplete | NR, *NR:* |
+
+A held result is never an F before the Senate decides. The decision comes as an amendment of the mark. The student reads
+*Result held for the Senate*: "Your result for the … is published with 1 course held for the Senate's decision." Before
+V422, a recorded absence was owed on the broadsheet but not carried over on the student's record, and withheld, incomplete,
+malpractice and exempted counted as F0 on the broadsheet only.
+
+**Late results (V422).** A candidate on a published sheet's roll with no mark on it has no result. This can be a
+registration added after publication, or one migrated without its result. The course's lecturer, or the Programme
+Examinations Officer on the lecturer's behalf, raises a **late result** from the sheet's chain, under *Amendments of the
+published result → Raise an amendment or a late result*. The roll's candidates with no mark are listed there. It goes
+through the same chain as an amendment, a different person at each desk, and the Registrar applies it on the Senate minute
+as the candidate's first mark. The student is told "Your result in … is published", with no mark in the message. A student
+who is not on the sheet's roll is refused (`RES_AMEND_NO_MARK`). On the pipeline, *Results not yet in* offers **Late
+result** to the desk of entry for a candidate not on a published sheet.
 
 **Migrated students.** A student whose record and registrations came over but whose results did not reads *result not
 available*, never 0.00. When the old portal's results are uploaded (`assessment.import_legacy_semester`), they become

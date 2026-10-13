@@ -13,6 +13,10 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles, Two } from "@/compo
 import { DTable } from "@/components/proto/DTable";
 import { onDay } from "./common";
 
+/** V422: how an outcome other than a grade reads to the student */
+const OUTCOME_WORD: Record<string, string> = { ABSENT: "ABS", WITHHELD: "Withheld", INCOMPLETE: "Incomplete", MALPRACTICE: "Malpractice case", EXEMPTED: "Exempted" };
+const HELD_OUTCOMES = ["WITHHELD", "INCOMPLETE", "MALPRACTICE"];
+
 function group(rows: ResultRow[]): { session: string; semester: number; rows: ResultRow[] }[] {
   const out: { session: string; semester: number; rows: ResultRow[] }[] = [];
   for (const r of rows) {
@@ -62,7 +66,8 @@ export function ResultsScreen({ r }: { r: Results }) {
                 const st = STAGE_LABEL[c.stage] ?? [c.stage, ""];
                 const taught = <span className="sub2" key="h">{c.lecturer || "—"}</span>;
                 if (!c.published) return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="info" key="w">{st[0]}</Pil>, taught];
-                if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind="bad" key="s">{c.outcome === "ABSENT" ? "ABS" : c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
+                // V422: an absence is an F; withheld, incomplete and malpractice are held for the Senate (not counted, not owed); an exemption is neither
+                if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind={c.outcome === "ABSENT" ? "bad" : c.outcome === "EXEMPTED" ? "grey" : "warn"} key="s">{OUTCOME_WORD[c.outcome ?? ""] ?? c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, HELD_OUTCOMES.includes(c.outcome ?? "") ? <Pil kind="warn" key="w">Held for the Senate</Pil> : <Pil kind="ok" key="w">Published</Pil>, taught];
                 return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
               })} />
               <div className="row" style={{ padding: "0 var(--s-4) var(--s-4)" }}>

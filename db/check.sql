@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 259
+\set EXPECTED 260
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10818,6 +10818,115 @@ BEGIN
                f_status, f_st, g_st, g_sess, g_status, g_status_sess, h_st, h_grade, b_low_st, r_office, counts));
 END $$;
 
+-- ── V422: a late result through the chain, and every outcome read alike ──
+-- Invented students in a semester of their own. L is on a published sheet's roll with no mark (registered after the old
+-- portal's results were published): L is a late-result candidate; the desk of entry raises a LATE result, which no other
+-- candidate's mark can be; it passes each desk of the chain, a different person at each, and is applied on the Senate minute
+-- as L's first mark, the score saying "Late result", L told the result is published; a student not on the roll is refused
+-- (RES_AMEND_NO_MARK), and a student with a mark is amended, never late. The outcomes: X recorded absent owes the course (a carryover, and a GST/EPS course owed again); W's
+-- withheld and Z's malpractice are held for the Senate — never counted, never owed, the semester HELD and no standing
+-- pronounced; Y's exemption is not counted or owed and Y's semester is complete. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); SL text := '9937/9938'; SN text := '9939/9940'; dept text; gst_ok boolean := true;
+        l uuid := gen_random_uuid(); m uuid := gen_random_uuid(); w uuid := gen_random_uuid(); x uuid := gen_random_uuid();
+        y uuid := gen_random_uuid(); z uuid := gen_random_uuid(); sheet uuid; reg uuid; amd uuid; st uuid; i int; step text;
+        offices text[] := ARRAY['exams', 'hod', 'facultyexams', 'facultyofficer', 'dean', 'records', 'registrar'];
+        cand_before int; cand_after int; kind text; was_v int; refused text; m_kind text; applied text; l_grade text; l_pub boolean; reason text; told int;
+        x_carry text; x_gst text; w_status text; w_st text; w_carry int; w_msg text; w_gpa_units int; z_status text; z_st text;
+        y_status text; y_st text; y_carry int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.reason', 'check V422', true);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), SL, date '9937-10-01', date '9938-08-31'), (gen_random_uuid(), SN, date '9939-10-01', date '9940-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'ZZL 10' || n, 'Check late ' || n, 3, 2, 100, dept, 'Core', 'LIVE' FROM generate_series(1, 3) n;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office)
+        VALUES ('GST 942', 'Check general studies', 2, 2, 100, dept, 'GST', 'LIVE', 'GST');
+        i := 0;
+        FOREACH st IN ARRAY ARRAY[l, m, w, x, y, z] LOOP
+            i := i + 1;
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (st, 'MOAUM/ADM/99/99422' || i, 'MOAUM/ZZL/99/042' || i, 'ZZLATE', 'Student ' || i, 'C00061', 'UTME', SL, 100, 100, 'ACTIVE', now());
+        END LOOP;
+
+        -- the old portal's results for the semester: W withheld + a pass, X absent (and absent from the GST course), Y exempted + a
+        -- pass, Z malpractice + a pass; M's mark makes ZZL 101's sheet
+        PERFORM assessment.import_legacy_semester(SL, 2, jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0422', 'course', 'ZZL 101', 'total', '55', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0423', 'course', 'ZZL 101', 'outcome', 'WITHHELD', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0423', 'course', 'ZZL 102', 'total', '60', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0424', 'course', 'ZZL 101', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0424', 'course', 'GST 942', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0425', 'course', 'ZZL 101', 'outcome', 'EXEMPTED', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0425', 'course', 'ZZL 102', 'total', '70', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0426', 'course', 'ZZL 101', 'outcome', 'MALPRACTICE', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZL/99/0426', 'course', 'ZZL 102', 'total', '64', 'level', '100')), true);
+        SELECT s.id INTO sheet FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
+         WHERE o.course_code = 'ZZL 101' AND o.session = SL AND o.semester = 2;
+
+        -- L registered on ZZL 101 after its results were published: on the roll, with no mark
+        reg := gen_random_uuid();
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), l, SL, 100) ON CONFLICT (student_id, session) DO NOTHING;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by)
+        VALUES (reg, l, SL, 2, 100, 'APPROVED', now(), now(), who);
+        INSERT INTO people.student_contact (student_id, email) VALUES (l, 'zzlate.v422@example.invalid');
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT reg, o.id, 3, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.course_code = 'ZZL 101' AND o.session = SL AND o.semester = 2;
+
+        -- (1) the late result: raised by the desk of entry, through every desk, applied on the minute
+        SELECT count(*) INTO cand_before FROM assessment.late_candidates(sheet) c WHERE c.student_id = l;
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        amd := assessment.raise_amendment(sheet, m, 30, 40, 'GRADED', 'M has a mark: this corrects it, never a late result', NULL);
+        SELECT a.kind INTO m_kind FROM assessment.amendment a WHERE a.id = amd;
+        BEGIN PERFORM assessment.raise_amendment(sheet, gen_random_uuid(), 30, 40, 'GRADED', 'a student nowhere on this sheet', NULL); refused := 'RAISED';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1);
+                  WHEN OTHERS THEN refused := SQLSTATE; END;
+        amd := assessment.raise_amendment(sheet, l, 28, 40, 'GRADED', 'L registered after the sheet was published; the script was marked', NULL);
+        SELECT a.kind, a.was_version INTO kind, was_v FROM assessment.amendment a WHERE a.id = amd;
+        SELECT count(*) INTO cand_after FROM assessment.late_candidates(sheet) c WHERE c.student_id = l;
+        FOREACH step IN ARRAY offices LOOP
+            PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+            PERFORM set_config('moaum.actor_office', step, true);
+            applied := assessment.advance_amendment(amd, 'check V422', CASE WHEN step = 'registrar' THEN 'SEN/9938/422' END);
+        END LOOP;
+        SELECT grade, published INTO l_grade, l_pub FROM assessment.student_results(l) WHERE course_code = 'ZZL 101';
+        SELECT sc.reason INTO reason FROM assessment.score sc WHERE sc.sheet_id = sheet AND sc.student_id = l;
+        SELECT count(*) INTO told FROM platform.notice n WHERE n.about_id = l AND n.subject LIKE 'Your result in ZZL 101 is published';
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+
+        -- (2) the outcomes
+        SELECT string_agg(course_code, ',' ORDER BY course_code) INTO x_carry FROM registration.carryovers(x);
+        SELECT string_agg(g.source || ':' || coalesce(g.last_grade, '-'), ',') INTO x_gst FROM finance.gst_eps_rows(SN, x) g WHERE g.course_code = 'GST 942';
+        SELECT status, message INTO w_status, w_msg FROM assessment.student_result_status(w);
+        SELECT standing INTO w_st FROM assessment.student_standing(w);
+        SELECT count(*) INTO w_carry FROM registration.carryovers(w);
+        SELECT units INTO w_gpa_units FROM assessment.student_gpa(w) WHERE session = SL AND semester = 2;
+        SELECT status INTO z_status FROM assessment.student_result_status(z);
+        SELECT standing INTO z_st FROM assessment.student_standing(z);
+        SELECT status INTO y_status FROM assessment.student_result_status(y);
+        SELECT standing INTO y_st FROM assessment.student_standing(y);
+        SELECT count(*) INTO y_carry FROM registration.carryovers(y);
+        RAISE EXCEPTION 'the V422 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V422 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V422: a late result for a candidate on a published sheet''s roll with no mark passes every desk and is applied on the Senate minute as the first mark; a student with a mark is amended, one not on the roll refused; an absence is owed (carryover, GST/EPS again); withheld and malpractice are held — not counted, not owed, the semester HELD, no standing; an exemption is not counted or owed and the semester complete',
+        coalesce(cand_before = 1 AND cand_after = 0 AND m_kind = 'AMEND' AND refused = 'RES_AMEND_NO_MARK' AND kind = 'LATE' AND was_v IS NULL AND applied = 'APPLIED' AND l_pub AND l_grade IS NOT NULL
+                 AND reason LIKE 'Late result AMD-%SEN/9938/422%' AND told >= 1
+                 AND x_carry = 'GST 942,ZZL 101' AND x_gst = 'CARRYOVER:F'
+                 AND w_status = 'HELD' AND w_st = 'NOT_AVAILABLE' AND w_carry = 0 AND w_gpa_units = 3 AND w_msg LIKE '%1 course held for the Senate%'
+                 AND z_status = 'HELD' AND z_st = 'NOT_AVAILABLE'
+                 AND y_status = 'PUBLISHED' AND y_st = 'GOOD' AND y_carry = 0, false),
+        format('late cand %s->%s M=%s refused=%s kind=%s was=%s applied=%s L %s/%s reason=%s told=%s | X carry=%s gst=%s | W %s %s carry=%s units=%s msg=%s | Z %s %s | Y %s %s carry=%s',
+               cand_before, cand_after, m_kind, refused, kind, was_v, applied, l_pub, l_grade, reason, told, x_carry, x_gst, w_status, w_st, w_carry, w_gpa_units, w_msg,
+               z_status, z_st, y_status, y_st, y_carry));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

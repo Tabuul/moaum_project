@@ -842,6 +842,8 @@ public class ResultsService {
     /* ── the broadsheet: computed from the sheets, never typed (proto/part26 tBroadsheet) ── */
 
     private static final List<String> COUNTED = List.of("RECORDS", "SENATE", "PUBLISHED");
+    /** V422: the outcomes held for the Senate's decision — never counted, never owed, never an F before the Senate decides */
+    private static final List<String> HELD = List.of("WITHHELD", "INCOMPLETE", "MALPRACTICE");
 
     @Transactional(readOnly = true)
     public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem, String stream) {
@@ -888,6 +890,7 @@ public class ResultsService {
             boolean failed = false;
             List<String> failedHere = new ArrayList<>();   // this sheet's failures, ABS included, by course code
             List<String> noResultHere = new ArrayList<>(); // V421: registered, and no result on a set past the Faculty Board
+            List<String> heldHere = new ArrayList<>();     // V422: held for the Senate on a set past the Faculty Board
             Sheets.BroadsheetCell first = e.getValue().getFirst();
             for (String code : courses.keySet()) {
                 Sheets.BroadsheetCell c = e.getValue().stream().filter(x -> x.courseCode().equals(code)).findFirst().orElse(null);
@@ -903,15 +906,27 @@ public class ResultsService {
                 // on that sheet (a registration migrated without its results, or added after); still in the chain, or with no set
                 // yet, it is a mark not yet entered. Neither is counted.
                 boolean noResult = !counted && c.outcome() == null && c.total() == null;
+                // V422: withheld, incomplete and malpractice are held for the Senate — never counted, never owed, never an F
+                // before the Senate decides (its decision comes as an amendment); an exemption is neither counted nor owed
+                boolean held = c.outcome() != null && HELD.contains(c.outcome());   // List.of refuses a null in contains
+                boolean exempted = "EXEMPTED".equals(c.outcome());
                 // marked absent: the candidate did not sit — an F, recorded ABS, and the course is owed. A score still in the
                 // chain is not an absence; it is pending, shown as not yet counted.
-                boolean absent = !counted && !noResult && (c.total() == null || (past && "ABSENT".equals(c.outcome())));
+                boolean absent = !counted && "ABSENT".equals(c.outcome());
                 if (noResult) {
                     if (past) {
                         noResultHere.add(code);
                     } else {
                         pending++;
                     }
+                } else if (held) {
+                    if (past) {
+                        heldHere.add(code);
+                    } else {
+                        pending++;
+                    }
+                } else if (exempted) {
+                    // neither counted nor owed, and nothing waits on it
                 } else if (counted) {
                     units += c.units();
                     points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));
@@ -931,20 +946,24 @@ public class ResultsService {
                 // a score still in the chain is carried with its figures so the sheet can show it as not yet counted
                 if (noResult) {
                     marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, "NO_RESULT", false));
+                } else if (held || exempted) {
+                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, c.outcome(), false));
                 } else {
                     marks.add(new Sheets.BroadsheetMark(code, c.stage(), absent ? null : c.total(), absent ? "F" : c.grade(),
                             absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent));
                 }
             }
             BigDecimal gpa = units == 0 ? null : points.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
-            // a semester with a result missing is incomplete: never a pass, and nothing is pronounced on it (V421)
-            String standing = failed ? "Carryover" : !noResultHere.isEmpty() ? "Incomplete" : gpa == null ? "Pending" : "Pass";
+            // a semester with a result missing (V421) or held for the Senate (V422) is incomplete: never a pass, and nothing is
+            // pronounced on it
+            boolean incomplete = !noResultHere.isEmpty() || !heldHere.isEmpty();
+            String standing = failed ? "Carryover" : incomplete ? "Incomplete" : gpa == null ? "Pending" : "Pass";
             if (gpa != null) {
                 gpaSum = gpaSum.add(gpa);
                 withGpa++;
                 if (failed) {
                     carrying++;
-                } else if (noResultHere.isEmpty()) {
+                } else if (!incomplete) {
                     passed++;
                 }
             }
@@ -966,8 +985,8 @@ public class ResultsService {
             boolean anyUnreleased = marks.stream().anyMatch(m -> !"NOT_REGISTERED".equals(m.stage()) && !COUNTED.contains(m.stage()));
             /* the REMARK reads as the Senate's sheet reads: TO GO ON PROBATION when the CGPA is under 1.0; CO: for
                every core course owed (a prior carryover, or failed or absent on this sheet); Fail: for an elective
-               failed; NR: for a course with no result; PASS when nothing is owed or missing; PENDING only while a set
-               is still in the chain and nothing is owed */
+               failed; NR: for a course with no result; HELD: for one held for the Senate; PASS when nothing is owed, missing or
+               held; PENDING only while a set is still in the chain and nothing is owed */
             List<String> coreOwed = owed.stream().filter(x -> !"Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> electiveOwed = owed.stream().filter(x -> "Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> parts = new ArrayList<>();
@@ -975,13 +994,15 @@ public class ResultsService {
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
             // V421: NR: for every course with no result on a set past the Faculty Board — not owed, not counted
             if (!noResultHere.isEmpty()) parts.add("NR: " + String.join(", ", noResultHere.stream().sorted().toList()));
+            // V422: HELD: for every course held for the Senate (withheld, incomplete, malpractice) — not owed, not counted
+            if (!heldHere.isEmpty()) parts.add("HELD: " + String.join(", ", heldHere.stream().sorted().toList()));
             /* Senate's rule (V246, assessment.standing_of), said after the courses owed: TO GO ON PROBATION at 100 level
                second semester, or at a first semester from 200 level, with the CGPA under 1.0; ADVISED TO WITHDRAW at a
                second semester from 200 level still under 1.0 after that level's first semester was. A Direct Entry
                student's 200 level first semester has no standing to judge, so their second is probation, not withdrawal. */
             boolean deAt200 = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200;
-            // V421: nothing is pronounced on a semester with a result missing — the student's standing waits for it
-            String pronounced = cum.cgpa() == null || !noResultHere.isEmpty() ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
+            // V421, V422: nothing is pronounced on a semester with a result missing or held — the student's standing waits for it
+            String pronounced = cum.cgpa() == null || incomplete ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
             if ("PROBATION".equals(pronounced)) parts.add("TO GO ON PROBATION");
             if ("ADVISED_TO_WITHDRAW".equals(pronounced)) parts.add("ADVISED TO WITHDRAW");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)

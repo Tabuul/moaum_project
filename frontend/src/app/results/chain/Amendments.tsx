@@ -5,7 +5,9 @@
  * reason, where it stands in the chain and who took each step. The desk of entry raises one (the course's lecturer, or the
  * Programme Examinations Officer on the lecturer's behalf); each desk approves or refuses it at its own stage; the Registrar
  * applies it on the Senate minute — a new version of the mark, the original kept. The person who raised it may withdraw it.
- * The server decides who may do each; the buttons only follow it.
+ * The server decides who may do each; the buttons only follow it. V422: a candidate on the published sheet's roll with no
+ * mark on it (registered after publication, or migrated without the result) gets a late result the same way — chosen from
+ * the roll's candidates with no mark, applied on the Senate minute as the first mark.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,15 +28,18 @@ const ENTRY_DESKS = ["lecturer", "gst", "eps", "exams"];
 const OUTCOMES = ["GRADED", "ABSENT", "WITHHELD", "INCOMPLETE", "MALPRACTICE", "EXEMPTED"];
 
 export interface Amendment {
-  id: string; ref: string; student_id: string; number: string; name: string; query_ref: string | null;
-  was_ca: number | null; was_exam: number | null; was_outcome: string; ca: number | null; exam: number | null; outcome: string;
+  id: string; ref: string; kind?: "AMEND" | "LATE"; student_id: string; number: string; name: string; query_ref: string | null;
+  was_ca: number | null; was_exam: number | null; was_outcome: string | null; ca: number | null; exam: number | null; outcome: string;
   reason: string; stage: string; raised_by_name: string | null; raised_office: string | null; raised_at: string;
   senate_minute: string | null; applied_at: string | null; closed_reason: string | null;
   decisions: { kind: string; from: string | null; to: string; office: string | null; comment: string | null; at: string; by: string | null }[];
 }
 
-const markOf = (outcome: string, ca: number | null, exam: number | null) =>
-  outcome === "GRADED" ? `${ca ?? "—"} + ${exam ?? "—"} = ${(ca ?? 0) + (exam ?? 0)}` : outcome.toLowerCase();
+/** V422: a candidate on the roll with no mark on the sheet — a late result is for them */
+interface LateCandidate { student_id: string; number: string; surname: string; other_names: string; programme_code: string }
+
+const markOf = (outcome: string | null, ca: number | null, exam: number | null) =>
+  outcome == null ? "no mark" : outcome === "GRADED" ? `${ca ?? "—"} + ${exam ?? "—"} = ${(ca ?? 0) + (exam ?? 0)}` : outcome.toLowerCase();
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
 function stagePil(stage: string) {
@@ -52,11 +57,18 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const [busy, setBusy] = useState(false);
   const [raise, setRaise] = useState<{ studentId: string; outcome: string; ca: string; exam: string; reason: string } | null>(null);
   const [act, setAct] = useState<{ a: Amendment; kind: "approve" | "minute" | "refuse" | "withdraw"; text: string } | null>(null);
+  const [late, setLate] = useState<LateCandidate[]>([]);
   useEffect(() => {
     let live = true;
     void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/amendments`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setRows(await r.json()); });
     return () => { live = false; };
   }, [sheetId]);
+  // V422: the roll's candidates with no mark on the published sheet, read again after each change
+  useEffect(() => {
+    let live = true;
+    if (published) void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/late-candidates`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setLate(await r.json()); });
+    return () => { live = false; };
+  }, [sheetId, published, rows]);
 
   async function post(path: string, body: unknown, reason: string) {
     setBusy(true);
@@ -74,18 +86,24 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const r = raise;
   const wrong = r && r.outcome === "GRADED" && (r.ca === "" || r.exam === "" || Number(r.ca) > caMax || Number(r.exam) > examMax || Number(r.ca) < 0 || Number(r.exam) < 0);
   const chosen = r ? marks.find((m) => m.studentId === r.studentId) : undefined;
+  const chosenLate = r ? late.find((c) => c.student_id === r.studentId) : undefined;
 
   return (
-    <Panel title="Amendments of the published result" right={mayRaise ? <Btn kind="primary" onClick={() => setRaise({ studentId: "", outcome: "GRADED", ca: "", exam: "", reason: "" })}>Raise an amendment</Btn> : null}>
+    <Panel title="Amendments of the published result" right={mayRaise ? <Btn kind="primary" onClick={() => setRaise({ studentId: "", outcome: "GRADED", ca: "", exam: "", reason: "" })}>Raise an amendment or a late result</Btn> : null}>
       <PBody>
-        <p className="sub2">A published mark changes only by an amendment, approved by each desk and applied on the Senate minute; the original is kept.</p>
+        <p className="sub2">A published mark changes only by an amendment, approved by each desk and applied on the Senate minute; the original is kept. A candidate on the roll with no mark on the sheet gets a late result the same way.</p>
+        {published && late.length ? (
+          <Note kind="bad" title={`${late.length} candidate${late.length === 1 ? "" : "s"} on the roll with no mark on this sheet`}>
+            {`${late.slice(0, 6).map((c) => c.number).join(", ")}${late.length > 6 ? ` and ${late.length - 6} more` : ""}: no result, never an F. ${mayRaise ? "Raise a late result for each, with the mark and the reason." : "The course's lecturer, or the Programme Examinations Officer, raises a late result for each."}`}
+          </Note>
+        ) : null}
         {!rows ? <p className="sub2">Loading…</p> : !rows.length ? <p className="sub2">No amendment of this sheet.</p> : (
           <DTable noPrint pageSize={0} cols={["Amendment", "Student", "Published", "Corrected to", "Reason", "Stands", "|mid"]} rows={rows.map((a) => {
             const open = !["APPLIED", "REFUSED", "WITHDRAWN"].includes(a.stage);
             const mine = open && !!actingOffice && (STAGE_DESKS[a.stage] ?? []).includes(actingOffice);
             const last = a.decisions[a.decisions.length - 1];
             return [
-              <span key="r"><b className="tnum">{a.ref}</b><span className="sub2" style={{ display: "block" }}>{`${a.raised_by_name ?? "—"} (${roleLabel(a.raised_office)}), ${day(a.raised_at)}`}</span>
+              <span key="r"><b className="tnum">{a.ref}</b>{a.kind === "LATE" ? <Pil kind="info">Late result</Pil> : null}<span className="sub2" style={{ display: "block" }}>{`${a.raised_by_name ?? "—"} (${roleLabel(a.raised_office)}), ${day(a.raised_at)}`}</span>
                 {a.query_ref ? <span className="sub2" style={{ display: "block" }}>{`From query ${a.query_ref}`}</span> : null}</span>,
               <span key="s">{a.name}<span className="sub2 tnum" style={{ display: "block" }}>{a.number}</span></span>,
               <span key="w" className="tnum">{markOf(a.was_outcome, a.was_ca, a.was_exam)}</span>,
@@ -104,15 +122,18 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
         )}
       </PBody>
       {r ? (
-        <Modal title={`Raise an amendment — ${courseCode}`} sub="One student's published mark, corrected through the chain" onClose={() => setRaise(null)}
+        <Modal title={`${chosenLate ? "Raise a late result" : "Raise an amendment"} — ${courseCode}`} sub={chosenLate ? "A candidate on the roll with no mark on the published sheet: the first mark, through the chain" : "One student's published mark, corrected through the chain"} onClose={() => setRaise(null)}
           foot={<><Btn kind="ghost" onClick={() => setRaise(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !r.studentId || r.reason.trim().length < 10 || !!wrong} onClick={async () => {
               const ok = await post(`/sheets/${sheetId}/amendments`, { studentId: r.studentId, outcome: r.outcome, ca: r.outcome === "GRADED" ? Number(r.ca) : null,
-                exam: r.outcome === "GRADED" ? Number(r.exam) : null, reason: r.reason.trim() }, `${courseCode}: an amendment raised`);
+                exam: r.outcome === "GRADED" ? Number(r.exam) : null, reason: r.reason.trim() }, `${courseCode}: ${chosenLate ? "a late result" : "an amendment"} raised`);
               if (ok) setRaise(null);
             }}>{busy ? "Raising…" : "Raise it"}</Btn></>}>
           <Field id="am-st" label="Student" required><select id="am-st" className="ctl" value={r.studentId} onChange={(e) => setRaise({ ...r, studentId: e.target.value })}>
-            <option value="">— Choose —</option>{marks.map((m) => <option key={m.studentId} value={m.studentId}>{`${m.number} — ${m.surname}, ${m.otherNames}`}</option>)}</select></Field>
+            <option value="">— Choose —</option>
+            <optgroup label="On the published sheet: an amendment">{marks.map((m) => <option key={m.studentId} value={m.studentId}>{`${m.number} — ${m.surname}, ${m.otherNames}`}</option>)}</optgroup>
+            {late.length ? <optgroup label="On the roll, no mark: a late result">{late.map((c) => <option key={c.student_id} value={c.student_id}>{`${c.number} — ${c.surname}, ${c.other_names}`}</option>)}</optgroup> : null}</select></Field>
+          {chosenLate ? <p className="sub2">No mark on the published sheet. A late result is applied on the Senate minute as the candidate&rsquo;s first mark.</p> : null}
           {chosen ? <p className="sub2">{`Published: ${chosen.outcome === "GRADED" || chosen.outcome == null ? `CA ${chosen.ca ?? "—"}, examination ${chosen.exam ?? "—"}` : chosen.outcome}`}</p> : null}
           <div className="grid grid--3">
             <Field id="am-o" label="Outcome"><select id="am-o" className="ctl" value={r.outcome} onChange={(e) => setRaise({ ...r, outcome: e.target.value })}>{OUTCOMES.map((o) => <option key={o}>{o}</option>)}</select></Field>
@@ -121,7 +142,7 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
               <Field id="am-ex" label={`Examination (0–${examMax})`}><input id="am-ex" className="ctl tnum" inputMode="numeric" value={r.exam} onChange={(e) => setRaise({ ...r, exam: e.target.value })} /></Field>
             </> : null}
           </div>
-          <Field id="am-why" label="Why" required hint="In words Senate can read: the query and what was found">
+          <Field id="am-why" label="Why" required hint={chosenLate ? "In words Senate can read: why the candidate was not on the sheet, and where the mark comes from" : "In words Senate can read: the query and what was found"}>
             <textarea id="am-why" className="ctl" rows={3} maxLength={2000} value={r.reason} onChange={(e) => setRaise({ ...r, reason: e.target.value })} /></Field>
           {wrong ? <Note kind="bad" title="Marks outside the course's split">{`This course assesses ${caMax} and examines ${examMax}.`}</Note> : null}
         </Modal>

@@ -147,7 +147,7 @@ export interface Probation {
   pronounced_level: number | null; probation_max_units: number | null;
   /** V421: the University's probation threshold (a CGPA below it), and the latest ended semester's result status */
   threshold?: number | null;
-  result_status?: "NOT_AVAILABLE" | "UNDER_VERIFICATION" | "PROCESSING" | "INCOMPLETE" | "PUBLISHED" | null;
+  result_status?: "NOT_AVAILABLE" | "UNDER_VERIFICATION" | "PROCESSING" | "INCOMPLETE" | "HELD" | "PUBLISHED" | null;
   result_session?: string | null; result_semester?: number | null; result_message?: string | null;
 }
 export interface ClearanceUnit { unit: string; label: string; state: string; item: string | null; decided_at: string | null; clears_against: string; holds_for: string; office_code: string | null }

@@ -184,4 +184,82 @@ class AcademicStandingIT {
                 "/api/v1/results/pipeline/missing-students?session=" + SESSION + "&sem=2", null)).get("rows");
         assertThat(mine).noneMatch(m -> s.missingMatric().equals(m.get("number")));
     }
+
+    /**
+     * V422: the student not on the published sheet gets a late result — raised by the course's lecturer, approved by each desk
+     * in turn, applied by the Registrar on the minute as the first mark; a student not on the roll is refused. A result held
+     * for the Senate (withheld) is never counted or owed: the broadsheet names it HELD and pronounces nothing, the student
+     * reads it as held.
+     */
+    @Test
+    void aLateResultReachesTheStudentThroughTheChainAndAHeldResultPronouncesNothing() {
+        Seeded s = seed();
+        String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = 'C00061'").query(String.class).single();
+        String faculty = jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = :d").param("d", dept).query(String.class).single();
+        UUID teacher = it.person("ZZ-LECTURER-STD101", "ZZLECTURERSTD101");
+        UUID sheet = it.db(() -> {
+            jdbc.sql("UPDATE catalogue.offering SET lecturer_id = :l WHERE course_code = 'STD 101' AND session = :s AND semester = 2 AND stream = 'REGULAR'")
+                    .param("l", teacher).param("s", SESSION).update();
+            return jdbc.sql("""
+                    SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+                     WHERE o.course_code = 'STD 101' AND o.session = :s AND o.semester = 2 AND o.stream = 'REGULAR'
+                    """).param("s", SESSION).query(UUID.class).single();
+        });
+        String lect = TestTokens.token(teacher, List.of("lecturer"));
+
+        // the candidates on the roll with no mark: the student whose result never came is one
+        List<Map<String, Object>> late = (List<Map<String, Object>>) (List<?>) it.getList(lect, "/api/v1/results/sheets/" + sheet + "/late-candidates").getBody();
+        assertThat(late).anySatisfy(c -> assertThat(c.get("number")).isEqualTo(s.missingMatric()));
+
+        // a student nowhere on the sheet is refused; the one on its roll gets a late result
+        String amend = "/api/v1/results/sheets/" + sheet + "/amendments";
+        ResponseEntity<Map> stranger = it.call(lect, HttpMethod.POST, amend,
+                Map.of("studentId", UUID.randomUUID().toString(), "ca", 20, "exam", 40, "reason", "a student who is not on this sheet"));
+        assertThat(stranger.getStatusCode().value()).isEqualTo(422);
+        assertThat(stranger.getBody().get("code")).isEqualTo("RES_AMEND_NO_MARK");
+        ResponseEntity<List> raised = it.callList(lect, HttpMethod.POST, amend,
+                Map.of("studentId", s.missing().toString(), "ca", 20, "exam", 40, "reason", "Registered on the old portal; the marked script was found"));
+        assertThat(raised.getStatusCode().value()).as(String.valueOf(raised.getBody())).isEqualTo(200);
+        Map<String, Object> am = ((List<Map<String, Object>>) raised.getBody()).stream()
+                .filter(a -> s.missing().toString().equals(String.valueOf(a.get("student_id")))).findFirst().orElseThrow();
+        assertThat(am.get("kind")).isEqualTo("LATE");
+        assertThat(am.get("was_outcome")).isNull();
+        String amId = String.valueOf(am.get("id"));
+
+        Map<String, String> desks = Map.of("exams", it.officer("exams", "programme", "C00061"), "hod", it.officer("hod", "department", dept),
+                "facultyexams", it.officer("facultyexams", "faculty", faculty), "facultyofficer", it.officer("facultyofficer", "faculty", faculty),
+                "dean", it.officer("dean", "faculty", faculty), "records", records);
+        for (String desk : List.of("exams", "hod", "facultyexams", "facultyofficer", "dean", "records")) {
+            ResponseEntity<List> r = it.callList(desks.get(desk), HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance", Map.of("comment", "seen"));
+            assertThat(r.getStatusCode().value()).as(desk + ": " + r.getBody()).isEqualTo(200);
+        }
+        ResponseEntity<List> applied = it.callList(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/results/amendments/" + amId + "/advance",
+                Map.of("minute", "SEN/2088/42"));
+        assertThat(applied.getStatusCode().value()).as(String.valueOf(applied.getBody())).isEqualTo(200);
+
+        // the student now has STD 101 published (60, a C); STD 102 is still no result, so the semester is incomplete
+        Map<String, Object> results = ok(it.call(TestTokens.token(s.missing(), List.of("student")), HttpMethod.GET, "/api/v1/me/results", null));
+        assertThat((List<Map<String, Object>>) results.get("rows")).filteredOn(r -> "STD 101".equals(r.get("course_code"))).singleElement()
+                .satisfies(r -> assertThat(r.get("published")).isEqualTo(true));
+        Map<String, Object> st = (Map<String, Object>) ok(it.call(TestTokens.token(s.missing(), List.of("student")), HttpMethod.GET, "/api/v1/me", null)).get("probation");
+        assertThat(st.get("result_status")).isEqualTo("INCOMPLETE");
+        assertThat(st.get("standing")).isEqualTo("NOT_AVAILABLE");
+
+        // a result withheld: held for the Senate — not counted, not owed, nothing pronounced, the student told it is held
+        int n = new Random().nextInt(8000) + 1000;
+        String heldMatric = "MOAUM/STD/87/3" + n;   // five digits: never one of seed()'s four
+        UUID held = it.student("ITSTANDHELD" + n, "C00061", "MOAUM/ADM/87/30" + n, heldMatric, 100);
+        it.db(() -> jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, 2, :rows::jsonb, true)").param("s", SESSION)
+                .param("rows", "[{\"matric\":\"" + heldMatric + "\",\"course\":\"STD 101\",\"outcome\":\"WITHHELD\",\"level\":\"100\"},"
+                        + "{\"matric\":\"" + heldMatric + "\",\"course\":\"STD 102\",\"total\":\"30\",\"level\":\"100\"}]")
+                .query().listOfRows());
+        Map<String, Object> bs = ok(it.call(records, HttpMethod.GET, "/api/v1/results/broadsheet?prog=C00061&level=100&session=" + SESSION + "&sem=2", null));
+        Map<String, Object> row = ((List<Map<String, Object>>) bs.get("rows")).stream().filter(r -> heldMatric.equals(r.get("number"))).findFirst().orElseThrow();
+        assertThat(String.valueOf(row.get("remarks"))).contains("HELD: STD 101").contains("CO: STD 102").doesNotContain("PROBATION");
+        Map<String, Object> heldSt = (Map<String, Object>) ok(it.call(TestTokens.token(held, List.of("student")), HttpMethod.GET, "/api/v1/me", null)).get("probation");
+        assertThat(heldSt.get("result_status")).isEqualTo("HELD");
+        assertThat(heldSt.get("standing")).isEqualTo("NOT_AVAILABLE");
+        assertThat((List<Map<String, Object>>) ok(it.call(TestTokens.token(held, List.of("student")), HttpMethod.GET, "/api/v1/me", null)).get("carryovers"))
+                .extracting(c -> c.get("course_code")).containsExactly("STD 102");
+    }
 }

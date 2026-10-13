@@ -91,6 +91,8 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
   }
   // the old portal's results are uploaded by Exams and Records (and ICT) on Migrate from the old portal
   const uploads = office === "records" || office === "ict" || office === "super";
+  // V422: the desk of entry raises a late result for a candidate not on a published set
+  const entryDesk = office === "lecturer" || office === "exams" || office === "gst" || office === "eps";
 
   return (
     <>
@@ -175,7 +177,8 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
                 m.why === "NOT_IN_UPLOAD" && uploads
                   ? <LinkBtn key={`a${i}`} href="/records/migration" kind="ghost">Upload results</LinkBtn>
                   : m.sheetId && m.why !== "NOT_STARTED" && m.why !== "PARTIAL"
-                  ? <LinkBtn key={`a${i}`} href={`/results/chain?sheet=${m.sheetId}`} kind="ghost">Open</LinkBtn>
+                  // V422: a candidate not on the published set gets a late result on the set's chain, raised by the desk of entry
+                  ? <LinkBtn key={`a${i}`} href={`/results/chain?sheet=${m.sheetId}`} kind="ghost">{(m.why === "NOT_ON_SHEET" || m.why === "NOT_IN_UPLOAD") && entryDesk ? "Late result" : "Open"}</LinkBtn>
                   : m.sheetId
                   ? <LinkBtn key={`a${i}`} href={office === "exams" || office === "academic" || office === "lecturer" ? `/results/sheets/${m.sheetId}` : `/results/chain?sheet=${m.sheetId}`} kind="ghost">{office === "exams" ? "Enter on behalf" : "Open"}</LinkBtn>
                   : <LinkBtn key={`a${i}`} href={m.why === "NO_LECTURER" ? "/allocate" : "/examinations/sessions"} kind="ghost">{m.why === "NO_LECTURER" ? "Allocate" : "Sessions"}</LinkBtn>,
@@ -231,6 +234,7 @@ const RESULT_STATUS: [string, string, string][] = [
   ["UNDER_VERIFICATION", "Under verification", "At the Examinations Officer"],
   ["PROCESSING", "Processing", "In the approval chain, not yet published"],
   ["INCOMPLETE", "Incomplete", "Some courses published, some not: no standing is pronounced on it"],
+  ["HELD", "Held for the Senate", "Every course published, one or more withheld, incomplete or under a malpractice case: no standing is pronounced on it"],
   ["PUBLISHED", "Published", "Every registered course published"],
   ["PROBATION", "On probation", "Pronounced on complete published results only"],
   ["ADVISED_TO_WITHDRAW", "Advised to withdraw", "Pronounced on complete published results only"],
