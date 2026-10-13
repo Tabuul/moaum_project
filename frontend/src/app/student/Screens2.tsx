@@ -177,7 +177,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           {r.term ? <div className="kv"><span className="k">Semester</span><span className="v">{r.term}</span></div> : null}
           {r.programme_type_label ? <div className="kv"><span className="k">Programme type</span><span className="v">{r.programme_type_label}</span></div> : null}
         </div>
-        <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 400 }}>
+        <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 400 }}>
           <thead><tr><th style={{ background: "var(--chrome)", color: "var(--surface)" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Amount</th></tr></thead>
           <tbody>
             <tr><td>{receiptPurpose(r.purpose)}<div className="sub2 tnum">Against reference {r.reference}</div></td><td className="num tnum b600">{naira(r.amount)}</td></tr>

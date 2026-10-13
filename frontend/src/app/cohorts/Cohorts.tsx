@@ -262,7 +262,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               </PBody>
             </Panel>
           ) : null}
-          <DuplicateStudents />
+          <DuplicateStudents canResolve={canDecide} />
           <Panel title="Academic sessions" right="A cancelled session is merged into the one that carried its students; their entry session stays">
             <DTable pageSize={0} cols={["Session", "State|mid", "Merged into", "Reason", "Entrants|mid", "Cohort size|mid", "|num"]} rows={settings.sessions.map((s) => [
               <span key="n" className="tnum b600">{s.name}</span>,
@@ -347,36 +347,77 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
 }
 
 /** V429: the students who may be one person on the register twice — the same JAMB number, or every name, the programme and the entry
- *  session — with what each record carries, for the Registry to reconcile. Read only; read when opened. */
+ *  session — with what each record carries, read when opened. V431: the Registry keeps one record and ends the other; the server
+ *  refuses a record to end that carries a matriculation number, a registration, a fee reference or a mark. Nothing is deleted. */
 interface Duplicate { kind: "SAME_JAMB" | "SAME_NAME"; match_key: string; student_id: string; number: string; name: string; programme_code: string; entry_session: string;
   status: string; jamb_reg_no: string | null; linked_candidate: boolean; registrations: number; payments: number; marks: number }
 const groupCount = (n: number) => `${n} ${n === 1 ? "group" : "groups"}`;
-function DuplicateStudents() {
+function DuplicateStudents({ canResolve }: { canResolve: boolean }) {
   const [rows, setRows] = useState<Duplicate[] | null>(null);
   const [failed, setFailed] = useState(false);
-  async function load() {
-    if (rows) return;
+  const [keep, setKeep] = useState<{ row: Duplicate; end: string; reason: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function load(force = false) {
+    if (rows && !force) return;
     const r = await fetch("/api/bff/api/v1/student/duplicates", { cache: "no-store" }).catch(() => null);
     if (r && r.ok) setRows(await r.json()); else setFailed(true);
   }
+  const others = (x: Duplicate) => (rows ?? []).filter((o) => o.match_key === x.match_key && o.student_id !== x.student_id);
+  async function resolve() {
+    if (!keep) return;
+    const ended = others(keep.row).find((o) => o.student_id === keep.end);
+    setBusy(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/student/duplicates/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Duplicate student: ${keep.row.number} kept, ${ended?.number ?? "the other record"} ended`) },
+        body: JSON.stringify({ keep: keep.row.student_id, end: keep.end, reason: keep.reason.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      notify(`${j?.kept_number ?? keep.row.number} kept; ${j?.ended_number ?? ""} ended as the same student${j?.candidate_moved ? ", and the candidate moved to the kept record" : ""}`);
+      setKeep(null);
+      await load(true);
+    } finally {
+      setBusy(false);
+    }
+  }
   if (failed) return null;
+  const cols = ["Match", "Student", "Programme · entry", "Candidate|mid", "Registrations|num", "Payments|num", "Marks|num", ...(canResolve ? ["|num"] : [])];
   return (
-    <Panel title="Possible duplicate students" right="Read only — nothing is merged or deleted here">
+    <Panel title="Possible duplicate students" right={canResolve ? "Keep one record, end the other — nothing is deleted" : "Read only"}>
       <PBody>
         <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void load(); }}>
           <summary className="sub2">Students on the register twice under one JAMB number, or with every name, the programme and the entry session the same{rows ? ` (${groupCount(new Set(rows.map((x) => x.match_key)).size)})` : ""}</summary>
           {rows === null ? <div className="sub2">Reading…</div> : rows.length ? (
-            <DTable cols={["Match", "Student", "Programme · entry", "Candidate|mid", "Registrations|num", "Payments|num", "Marks|num"]} rows={rows.map((x) => [
+            <DTable cols={cols} rows={rows.map((x) => [
               <span key="m"><Pil kind={x.kind === "SAME_JAMB" ? "bad" : "warn"}>{x.kind === "SAME_JAMB" ? "Same JAMB number" : "Same names"}</Pil><div className="sub2 tnum">{x.match_key}</div></span>,
               <span key="s"><StudentOpen id={x.student_id} label={x.name} kind="link" /><div className="sub2 tnum">{x.number}</div></span>,
               <span key="p" className="sub2">{`${x.programme_code} · ${x.entry_session} · ${x.status.toLowerCase()}`}</span>,
               <span key="c" className="sub2">{x.linked_candidate ? "Linked" : "None"}</span>,
               <span key="r" className="tnum">{x.registrations}</span>, <span key="y" className="tnum">{x.payments}</span>, <span key="k" className="tnum">{x.marks}</span>,
+              ...(canResolve ? [<Btn key="a" kind="ghost" onClick={() => setKeep({ row: x, end: others(x).length === 1 ? others(x)[0].student_id : "", reason: "" })}>Keep this record</Btn>] : []),
             ])} texts={rows.map((x) => `${x.match_key} ${x.number} ${x.name}`)} />
           ) : <div className="sub2">None found.</div>}
-          <p className="sub2 mt-2">The record a candidate stands behind is normally the one to keep; the other, with nothing registered, paid or marked on it, is the one to end. Admission now links an earlier record instead of making a second (V429).</p>
+          <p className="sub2 mt-2">The record a candidate stands behind is normally the one to keep; the other, with nothing registered, paid or marked on it, is the one to end. An ended record is withdrawn as the same student, points at the kept one and opens no sign-in. Admission now links an earlier record instead of making a second (V429).</p>
         </details>
       </PBody>
+      {keep ? (
+        <Modal title={`Keep ${keep.row.number}`} sub={`${keep.row.name} · ${keep.row.programme_code} · ${keep.row.entry_session}`} onClose={() => setKeep(null)}
+          foot={<><Btn kind="ghost" onClick={() => setKeep(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || !keep.end || keep.reason.trim().length < 10} onClick={() => void resolve()}>End the other record</Btn></>}>
+          <div className="stack">
+            <Field id="dup-end" label="Record to end" required hint="Withdrawn as the same student, pointing at the record kept; it must carry no matriculation number, registration, fee reference or mark">
+              <select id="dup-end" className="ctl" value={keep.end} onChange={(e) => setKeep({ ...keep, end: e.target.value })}>
+                <option value="">Choose…</option>
+                {others(keep.row).map((o) => <option key={o.student_id} value={o.student_id}>{`${o.number} · ${o.name} · ${o.programme_code} · ${o.registrations} reg, ${o.payments} fee ref, ${o.marks} marks`}</option>)}
+              </select>
+            </Field>
+            <Field id="dup-why" label="Why the two are one student" required hint="At least ten characters; kept on the record's change of status">
+              <textarea id="dup-why" className="ctl" rows={3} maxLength={500} value={keep.reason} onChange={(e) => setKeep({ ...keep, reason: e.target.value })} placeholder="The same JAMB number and candidate; the second record was taken on by an earlier list" />
+            </Field>
+          </div>
+        </Modal>
+      ) : null}
     </Panel>
   );
 }

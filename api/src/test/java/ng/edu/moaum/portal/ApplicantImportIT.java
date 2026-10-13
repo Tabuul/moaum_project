@@ -148,15 +148,13 @@ class ApplicantImportIT {
         assertThat(stillMissing.stream().map(x -> x.get("jambKey"))).doesNotContain(k.get(0), k.get(1), k.get(2));
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.applicant_event WHERE identifier IN (:k) AND outcome LIKE 'CONTACTS_UPDATED%'").param("k", k).query(Long.class).single()).isEqualTo(2);
 
-        // B's account holds the email and phone now; V428: the JAMB number is never the password — B sets one through the reset link,
-        // which reaches the email now on the account
-        Map<String, Object> acct = jdbc.sql("SELECT email, phone FROM admissions.applicant_account WHERE session = :s AND jamb_key = :k")
-                .param("s", SESSION).param("k", k.get(1)).query().singleRow();
-        assertThat(acct.get("email")).isEqualTo(emailB);
-        assertThat(acct.get("phone")).isEqualTo("08061112222");
+        // B signs in with the email now on the account (the first password is still the JAMB number, until B chooses one), and a reset
+        // reaches it
         ResponseEntity<Map> signIn = it.anon(HttpMethod.POST, "/api/v1/applicant/sign-in", Map.of("identifier", emailB, "password", k.get(1)));
-        assertThat(signIn.getStatusCode().value()).as(String.valueOf(signIn.getBody())).isEqualTo(422);
-        assertThat(signIn.getBody().get("code")).isEqualTo("AUTH_FIRST_PASSWORD_RETIRED");
+        assertThat(signIn.getStatusCode().value()).as(String.valueOf(signIn.getBody())).isEqualTo(200);
+        Map<String, Object> me = it.get(String.valueOf(signIn.getBody().get("token")), "/api/v1/applicant/me").getBody();
+        assertThat(me.get("email")).isEqualTo(emailB);
+        assertThat(me.get("phone")).isEqualTo("08061112222");
         assertThat(it.anon(HttpMethod.POST, "/api/v1/applicant/forgot", Map.of("identifier", emailB)).getStatusCode().value()).isEqualTo(202);
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE channel = 'EMAIL' AND recipient = :e AND subject LIKE 'Reset%'").param("e", emailB).query(Long.class).single()).isEqualTo(1);
     }

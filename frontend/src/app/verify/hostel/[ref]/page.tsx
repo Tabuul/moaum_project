@@ -26,7 +26,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Hostel allocation verification</div></div>
+          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Hostel allocation verification</div></div>
         </div>
         <div className="card__body">
           <Note kind={ok ? "ok" : throttled || v.codeMissing ? "info" : "bad"} title={ok ? "Genuine — this is the University's record" : throttled ? "Too many checks from this connection" : v.codeMissing ? "This letter carries no check code" : "Not verified"}>

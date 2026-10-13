@@ -139,15 +139,6 @@ class ResultsController {
         return service.importPassports(body.items());
     }
 
-    /** set a first password (the student's own number) for migrated accounts still on the random import
-     *  password; must_change stays on, so the student replaces it at first sign-in. Same offices as the rest
-     *  of the migration desk (MIGRATE), so the button works wherever the desk is shown. */
-    @PostMapping("/legacy/default-passwords")
-    @PreAuthorize(MIGRATE)
-    Map<String, Object> setDefaultPasswords() {
-        return service.setDefaultPasswords();
-    }
-
     @GetMapping("/sheets")
     @PreAuthorize(READERS)
     Sheets.Listing sheets(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,

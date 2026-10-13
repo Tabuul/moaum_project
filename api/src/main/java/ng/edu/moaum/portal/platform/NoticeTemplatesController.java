@@ -92,7 +92,7 @@ class NoticeTemplatesController {
         Map<String, Object> out = new LinkedHashMap<>();
         for (String channel : List.of("EMAIL", "SMS", "PORTAL")) {
             out.put(channel.toLowerCase(), jdbc.sql("SELECT subject, body FROM platform.render(:k, :v, :c, :vars::jsonb)")
-                    .param("k", base).param("v", variant, Types.VARCHAR).param("c", channel).param("vars", json(sample(vars)))
+                    .param("k", base).param("v", variant, Types.VARCHAR).param("c", channel).param("vars", json(sample(vars, currentSession())))
                     .query().listOfRows().stream().findFirst().orElse(null));
         }
         return out;
@@ -116,13 +116,18 @@ class NoticeTemplatesController {
                     new DomainRuleViolation.Remedy("Give the address to send the test to.", "Directorate of ICT"));
         }
         Integer n = jdbc.sql("SELECT platform.notify(:k, :v, :vars::jsonb, 'test', NULL, :e, :p, NULL)")
-                .param("k", base).param("v", variant, Types.VARCHAR).param("vars", json(sample(in.vars())))
+                .param("k", base).param("v", variant, Types.VARCHAR).param("vars", json(sample(in.vars(), currentSession())))
                 .param("e", email ? in.email().trim() : null, Types.VARCHAR).param("p", phone ? in.phone().trim() : null, Types.VARCHAR)
                 .query(Integer.class).single();
         return Map.of("queued", n == null ? 0 : n);
     }
 
-    private static Map<String, Object> sample(Map<String, Object> given) {
+    /** the preview names the University's current session, never a year written here */
+    private String currentSession() {
+        return jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElse("");
+    }
+
+    private static Map<String, Object> sample(Map<String, Object> given, String session) {
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("FIRST_NAME", "Adaeze");
         v.put("LAST_NAME", "Okafor");
@@ -135,7 +140,7 @@ class NoticeTemplatesController {
         v.put("DEPARTMENT", "Computer Science");
         v.put("FACULTY", "Science");
         v.put("LEVEL", "200");
-        v.put("SESSION", "2026/2027");
+        v.put("SESSION", session);
         v.put("SEMESTER", ", semester 1");
         v.put("WINDOW", "Course registration");
         v.put("END_DATE", "30 November 2026 23:59");

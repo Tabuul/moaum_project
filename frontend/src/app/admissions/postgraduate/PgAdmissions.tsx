@@ -306,7 +306,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
               <Btn kind="primary" onClick={() => setViewing({ url: `/api/bff/api/v1/pg/applications/${id}/documents.pdf`, title: "All documents — one PDF", image: false })}>View all as one PDF</Btn>
               <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download all</a>
             </div>
-            <div className="tablewrap" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+            <div className="tablewrap" tabIndex={0} style={{ border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl tbl--data">
                 <thead>
                   <tr><th style={{ width: 48 }}>S/N</th><th>Document</th><th>File name</th><th style={{ width: 170 }}>Uploaded</th><th style={{ width: 110 }} /></tr>

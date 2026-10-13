@@ -44,7 +44,7 @@ export function Rubrics({ rubrics, mayEdit }: { rubrics: Rubric[]; mayEdit: bool
             const lines = r.criteria.filter((c) => c.section === s);
             if (!lines.length && s === "DEFENCE" && !r.has_defence) return null;
             return (
-              <div key={s} className="tablewrap">
+              <div key={s} className="tablewrap" tabIndex={0}>
                 <table className="tbl--data">
                   <thead><tr><th>{s === "WRITTEN" ? "The written work" : "The defence"}</th><th>Guidance</th><th className="mid">Maximum</th><th className="mid">Order</th><th className="mid">State</th>{mayEdit ? <th /> : null}</tr></thead>
                   <tbody>

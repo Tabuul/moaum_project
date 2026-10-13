@@ -13,6 +13,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!["APPROVED", "ACTIVE", "COMPLETED"].includes(r.data.state)) {
     return NextResponse.json({ status: 409, title: "The letter is issued once the deferment is approved." }, { status: 409 });
   }
-  const bytes = defermentLetter(r.data, `${new URL(req.url).origin}/verify/deferment/${encodeURIComponent(r.data.reference)}`);
+  const bytes = defermentLetter(r.data, `${new URL(req.url).origin}/verify/deferment/${encodeURIComponent(r.data.reference)}?c=${encodeURIComponent(r.data.verify_code ?? "")}`);
   return new NextResponse(Buffer.from(bytes), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${r.data.reference}.pdf"` } });
 }

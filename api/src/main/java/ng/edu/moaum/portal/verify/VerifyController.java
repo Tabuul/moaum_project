@@ -518,25 +518,95 @@ class VerifyController {
 
     /* ── V286 · the two printed QR codes that led nowhere ── */
 
-    /** the deferment approval letter: the University's record of the deferment, by its reference */
+    /** the deferment approval letter: the University's record of the deferment, by its reference — and, since V435, only with the
+     *  check code the letter's QR carries: the references run in sequence, and without the code the page answered anyone's name,
+     *  number and deferment for any of them. Without the code, or with another, nothing is said about the reference. */
     @GetMapping("/deferment/{reference}")
     @Transactional(readOnly = true)
-    Map<String, Object> deferment(@PathVariable String reference, HttpServletRequest request) {
-        return checked(request, () -> defermentAnswer(reference));
+    Map<String, Object> deferment(@PathVariable String reference, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> defermentAnswer(reference, c));
     }
 
-    private Map<String, Object> defermentAnswer(String reference) {
+    private Map<String, Object> defermentAnswer(String reference, String c) {
         String r = reference == null ? "" : reference.trim().toUpperCase();
+        String code = c == null ? "" : c.trim().toLowerCase().replaceAll("[^0-9a-f]", "");
         Map<String, Object> out = new LinkedHashMap<>();
+        if (code.isEmpty()) {
+            out.put("genuine", false);
+            out.put("codeMissing", true);
+            return out;
+        }
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT d.reference, d.state, d.kind, d.session, d.semester, d.return_session, d.return_semester, d.return_on, d.decided_at, d.period_from, d.extension_semesters,
+                SELECT d.verify_code, d.reference, d.state, d.kind, d.session, d.semester, d.return_session, d.return_semester, d.return_on, d.decided_at, d.period_from, d.extension_semesters,
                        st.surname || ', ' || st.other_names AS student_name, coalesce(st.matric_no, st.admission_no) AS student_number, p.name AS programme, f.name AS faculty
                   FROM people.deferment d JOIN people.student st ON st.id = d.student_id LEFT JOIN ref.programme p ON p.code = st.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE upper(d.reference) = :r AND d.state IN ('APPROVED', 'ACTIVE', 'COMPLETED')
                 """).param("r", r).query().listOfRows();
-        if (r.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        if (r.isEmpty() || rows.isEmpty() || !MessageDigest.isEqual(String.valueOf(rows.get(0).get("verify_code")).getBytes(StandardCharsets.UTF_8),
+                code.getBytes(StandardCharsets.UTF_8))) {
+            out.put("genuine", false);
+            return out;
+        }
         out.put("genuine", true);
         out.putAll(rows.get(0));
+        out.remove("verify_code");
+        return out;
+    }
+
+    /**
+     * A student identity card, by its card number and the code signed over it — the address the card desk prints in the card's QR.
+     * Genuine only for the card in force: the student's name, number, programme, level and photograph, so a card with another
+     * face or another name is exposed at the gate. A card reported lost, or replaced, says so and names no one; without the code,
+     * or with another, nothing is said about the number.
+     */
+    @GetMapping("/idcard")
+    @Transactional(readOnly = true)
+    Map<String, Object> idCard(@RequestParam(required = false) String no, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> idCardAnswer(no, c));   // a card number holds slashes, so it comes as a query value
+    }
+
+    private Map<String, Object> idCardAnswer(String cardNo, String c) {
+        String no = cardNo == null ? "" : cardNo.trim();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (c == null || c.isBlank()) {
+            out.put("genuine", false);
+            out.put("codeMissing", true);
+            return out;
+        }
+        if (no.isEmpty() || !codes.signed(c.trim(), CheckCodes.Kind.ID_CARD, no)) {
+            out.put("genuine", false);
+            return out;
+        }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT c.card_no, c.state, c.issued_at, c.valid_to, c.ended_at, c.ended_reason, c.valid_to < current_date AS expired, s.id AS student_id,
+                       s.surname || ', ' || s.other_names AS student_name, s.matric_no AS student_number, p.name AS programme, f.name AS faculty, s.current_level AS level
+                  FROM credentials.identity_card c JOIN people.student s ON s.id = c.student_id
+                  LEFT JOIN ref.programme p ON p.code = s.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE c.card_no = :n
+                """).param("n", no).query().listOfRows();
+        if (rows.isEmpty()) {
+            out.put("genuine", false);
+            return out;
+        }
+        Map<String, Object> row = rows.get(0);
+        if (!"ISSUED".equals(row.get("state")) || Boolean.TRUE.equals(row.get("expired"))) {
+            out.put("genuine", false);
+            out.put("card_no", row.get("card_no"));
+            out.put("state", "ISSUED".equals(row.get("state")) ? "EXPIRED" : row.get("state"));
+            out.put("ended_at", row.get("ended_at"));
+            out.put("valid_to", row.get("valid_to"));
+            return out;
+        }
+        out.put("genuine", true);
+        for (String k : List.of("card_no", "state", "issued_at", "valid_to", "student_name", "student_number", "programme", "faculty", "level")) out.put(k, row.get(k));
+        String photo = null;
+        List<Map<String, Object>> b = jdbc.sql("""
+                SELECT encode(bl.content, 'base64') AS b64 FROM admissions.application_document d JOIN admissions.application_document_blob bl ON bl.document_id = d.id
+                  JOIN admissions.application a ON a.id = d.application_id JOIN people.student st ON st.candidate_id = a.candidate_id
+                 WHERE st.id = :s AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL ORDER BY d.id LIMIT 1
+                """).param("s", row.get("student_id")).query().listOfRows();
+        if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+        out.put("photo", photo);
         return out;
     }
 

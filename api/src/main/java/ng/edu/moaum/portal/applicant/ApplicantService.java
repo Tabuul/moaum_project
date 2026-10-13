@@ -264,15 +264,19 @@ public class ApplicantService {
                         + a.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
-            // V428: the JAMB or application number opens nothing — a migrated account on its first-login sentinel (V178) once opened
-            // with the JAMB number; it now opens through the reset link sent to the email and phone it was migrated with
-            if (ownNumber(password, a.jambKey(), a.applicationNo())) {
+            // the first sign-in (V178, restored by the University's decision of 13 Oct 2026): a migrated account holds the sentinel until
+            // a password is chosen, and its first password is the JAMB number, checked directly; once one is chosen, the JAMB or
+            // application number opens nothing (V428)
+            boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
+            if (!sentinel && ownNumber(password, a.jambKey(), a.applicationNo())) {
                 repo.event(identifier, a.id(), "OWN_NUMBER_REFUSED", ip);
                 throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
-                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your JAMB or application number is not a password.",
-                        new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"Forgot password\": a link goes to the email and phone you gave.", "ICT Support"));
+                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your JAMB or application number is no longer your password.",
+                        new DomainRuleViolation.Remedy("Use the password you chose. Forgotten it? Choose \"Forgot password\": a link goes to the email and phone you gave.", "ICT Support"));
             }
-            boolean ok = !"SET_ON_FIRST_LOGIN".equals(a.passwordHash()) && encoder.matches(password == null ? "" : password, a.passwordHash());
+            boolean ok = sentinel
+                    ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(password == null ? "" : password.trim())
+                    : encoder.matches(password == null ? "" : password, a.passwordHash());
             if (!ok) {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(a.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);

@@ -353,7 +353,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Me",
         "items": [
           { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" },
-          { "id": "t/profile", "icon": "user", "label": "My Profile" }
+          { "id": "t/myprofile", "icon": "user", "label": "My Profile" }
         ]
       }
     ]
@@ -1444,8 +1444,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Services",
         "items": [
           { "id": "t/circulation", "icon": "book", "label": "Library Circulation" },
-          { "id": "t/stores", "icon": "box", "label": "Stores & Assets" },
-          { "id": "t/alumni", "icon": "cap", "label": "Alumni Register" }
+          { "id": "t/stores", "icon": "box", "label": "Stores & Assets" }
         ]
       },
       {
@@ -2036,7 +2035,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "jupeb/settings", "icon": "server", "label": "Settings" },
           { "id": "f/jupebfees", "icon": "card", "label": "Fees (Bursary)" },
-          { "id": "t/helpdesk", "icon": "life", "label": "Support Desk" }
+          { "id": "t/helpdeskoffice", "icon": "life", "label": "Support Escalations" }
         ]
       }
     ]
@@ -2244,15 +2243,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/college", "icon": "flask", "label": "College Overview" },
-          { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
           { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
-        ]
-      },
-      {
-        "name": "Students",
-        "items": [
-          { "id": "t/postings", "icon": "calendar", "label": "Postings" },
-          { "id": "t/supervision", "icon": "check", "label": "Logbooks" }
         ]
       },
       {

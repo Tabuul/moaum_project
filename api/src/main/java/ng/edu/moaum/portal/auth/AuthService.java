@@ -88,15 +88,18 @@ public class AuthService {
                         + c.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes, or ask the Registry to reset the password.", "Registrar"));
             }
-            // V428: a person's own staff number or username is never their password — the teaching-staff upload once set it so
-            if (ownNumber(password, c.username(), c.staffNumber())) {
+            // the first sign-in (the University's decision, 13 Oct 2026): until a password has been chosen — the account still must
+            // change — the person's own staff number or username opens it and the change is forced at once; once one is chosen, the
+            // number opens nothing (V428)
+            boolean firstSignIn = c.mustChange() && ownNumber(password, c.username(), c.staffNumber());
+            if (!firstSignIn && ownNumber(password, c.username(), c.staffNumber())) {
                 // iam.sign_in_event takes a fixed set of outcomes; a refused own number is a refused password
                 repo.event(username, c.personId(), "BAD_PASSWORD", ip, null);
                 throttle.count(Throttle.Door.STAFF_SIGN_IN, ip);
-                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your staff number is not a password.",
-                        new DomainRuleViolation.Remedy("Signing in for the first time, or forgotten your password? Choose \"Forgot password\": a link goes to the email or phone on your record. With none on record, the Registry or ICT gives you a first password on Users & roles.", "ICT Support"));
+                return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your staff number is no longer your password.",
+                        new DomainRuleViolation.Remedy("Use the password you chose. Forgotten it? Choose \"Forgot password\": a link goes to the email or phone on your record; with none on record, the Registry or ICT gives you a new one on Users & roles.", "ICT Support"));
             }
-            if (!encoder.matches(password == null ? "" : password, c.passwordHash())) {
+            if (!firstSignIn && !encoder.matches(password == null ? "" : password, c.passwordHash())) {
                 int attempts = c.failedAttempts() + 1;
                 repo.failed(c.personId(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(username, c.personId(), "BAD_PASSWORD", ip, null);
@@ -174,11 +177,17 @@ public class AuthService {
     @Transactional
     public void changePassword(UUID person, String current, String next) {
         AuthRepository.Credential c = repo.byPerson(person).orElseThrow(() -> new NotFound("credential for", person));
-        if (!encoder.matches(current == null ? "" : current, c.passwordHash())) {
+        // at the first sign-in the own number opened the account: it stands for the current password until one is chosen
+        boolean first = c.mustChange() && ownNumber(current, c.username(), c.staffNumber());
+        if (!first && !encoder.matches(current == null ? "" : current, c.passwordHash())) {
             throw new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "The current password is not right.",
                     new DomainRuleViolation.Remedy("Type the password you signed in with.", "You"));
         }
         checkPolicy(c.username(), next);
+        if (ownNumber(next, c.username(), c.staffNumber())) {   // V428: never the number as the password chosen
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your staff number cannot be your password.",
+                    new DomainRuleViolation.Remedy("Choose a password that is not your staff number.", "You"));
+        }
         repo.setCredential(person, c.username(), encoder.encode(next), false, person, "CHANGED");
     }
 

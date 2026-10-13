@@ -18,7 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface CardDesk {
-  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null; student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number }[];
+  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null; student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; verify_path?: string }[];
   waiting: { student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; status?: string; had_one: boolean }[];
 }
 
@@ -67,7 +67,7 @@ export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; 
       </Panel>
       <Panel title="Cards issued" right={`${desk.cards.length}`}>
         <DTable cols={["Card", "Student", "Issued|mid", "Valid to|mid", "State|mid", "|num"]} rows={desk.cards.map((c) => [
-          <span className="tnum" key="n">{c.card_no}</span>, <Two key="s" a={`${c.surname}, ${c.other_names}`} b={`${c.matric_no} · ${c.programme}`} />,
+          <span key="n"><span className="tnum">{c.card_no}</span>{c.verify_path && c.state === "ISSUED" ? <div className="sub2"><a href={c.verify_path} target="_blank" rel="noopener" title="The address the card's QR carries; the public page shows the card only with this code">Check address</a></div> : null}</span>, <Two key="s" a={`${c.surname}, ${c.other_names}`} b={`${c.matric_no} · ${c.programme}`} />,
           <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
           c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
           c.state === "ISSUED" ? <Btn kind="ghost" key="l" disabled={!may || busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`lost-${c.id}`, `/students/${c.student_id}/lost`, { reason }, `Identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : <span key="l" />,

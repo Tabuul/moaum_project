@@ -319,7 +319,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         const results = parse<Result[]>(c.results, []);
         return (
           <Panel title={`${c.surname}, ${c.other_names} · ${c.number}`} right={<span className="row row--inline"><label htmlFor="ex-attempt" className="sub2">Attempt</label><select id="ex-attempt" className="ctl" value={attempt} onChange={(e) => { setAttempt(e.target.value); setMarks(marksAt(results, e.target.value)); }}>{ATTEMPTS.map((a) => <option key={a} value={a}>{word(a)}</option>)}</select></span>}>
-            <div className="tablewrap"><table className="tbl--data">
+            <div className="tablewrap" tabIndex={0}><table className="tbl--data">
               <thead><tr><th>Subject</th><th className="mid">CA</th><th className="mid">Examination</th><th className="mid">Clinical</th><th className="mid">Attendance %</th><th className="mid">Total</th><th className="mid">Standing</th><th>Earlier attempts</th></tr></thead>
               <tbody>
                 {subjects.map((s) => {

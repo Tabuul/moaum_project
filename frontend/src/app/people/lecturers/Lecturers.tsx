@@ -3,8 +3,8 @@
 /**
  * t/lecturers — bulk-onboard teaching staff from the "List of teaching staff"
  * sheet (V137), and view the staff on record. Each row becomes a person, a
- * sign-in (username the staff id P<PNO>; V428: a random first password nobody knows — the lecturer sets theirs through
- * "First sign-in or forgot password"), the lecturer office scoped to the home department, and an
+ * sign-in (username the staff id P<PNO>; the stored first password is random, and the staff id opens the account until the
+ * lecturer chooses one, at once — or "Forgot password"), the lecturer office scoped to the home department, and an
  * establishment record (sex, first appointment, rank, CONUASS).
  *
  * Sent in small chunks: every sign-in is a bcrypt (cost 12) hash, so one large
@@ -214,8 +214,8 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
       <RoleLine allowed={["ict", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Onboarding teaching staff" />
       <Note kind="info" title="Upload the list of teaching staff, and see who is on record">
         From the <b>List of teaching staff</b>. Each row gets a sign-in whose <b>username is the staff id</b>, and the <b>lecturer
-        office at the home department</b>. The staff id is never the password: the lecturer chooses one through <b>First sign-in or
-        forgot password</b> (a link to the email or phone on record), or the Registry gives a first password on Users &amp; roles. Re-uploading never
+        office at the home department</b>. The lecturer signs in with the <b>staff id as the first password</b> and chooses a password at once; after that
+        the staff id opens nothing (<b>Forgot password</b> sends a link to the email or phone on record, or the Registry gives a new one on Users &amp; roles). Re-uploading never
         duplicates or resets a password. The department must exist first.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Registry">Your office may not onboard teaching staff.</Note> : null}

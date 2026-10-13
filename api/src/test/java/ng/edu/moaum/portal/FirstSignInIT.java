@@ -74,8 +74,8 @@ class FirstSignInIT {
         it.db(() -> jdbc.sql("UPDATE iam.student_account SET password_hash = crypt(:m, gen_salt('bf', 12)) WHERE student_id = :s")
                 .param("m", matric).param("s", student).update());
         refused(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", matric.toLowerCase())), "AUTH_FIRST_PASSWORD_RETIRED");
-        // (3) the migration desk's "default passwords": retired
-        refused(it.call(ItSupport.token("records"), HttpMethod.POST, "/api/v1/results/legacy/default-passwords", Map.of()), "AUTH_DEFAULT_PASSWORD_RETIRED");
+        // (3) the migration desk's "default passwords": the endpoint is gone (GAP-014) and the function refuses (check.sql, V428)
+        assertThat(it.call(ItSupport.token("records"), HttpMethod.POST, "/api/v1/results/legacy/default-passwords", Map.of()).getStatusCode().is2xxSuccessful()).isFalse();
 
         // (4) the reset link sets the first password — never the number
         String token = "it-first-sign-in-" + UUID.randomUUID();
@@ -98,14 +98,27 @@ class FirstSignInIT {
         ok(it.call(studentToken, HttpMethod.POST, "/api/v1/student-auth/change-password", Map.of("current", "", "next", "chosen password " + n)));
         ok(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", "chosen password " + n)));
 
-        // (6) a lecturer's staff number opens nothing; the teaching-staff upload gives a password nobody knows
+        // (6) a lecturer's staff number is the first password until one is chosen (the University's decision, 13 Oct 2026): it opens
+        //     the account must-change, stands for the current password at the change, is never the password chosen, and opens nothing
+        //     once one is; the teaching-staff upload stores a password nobody knows
         String staffNo = "P9" + n;
         UUID person = it.person(staffNo, "ZZOWNSTAFF" + n);
         it.db(() -> jdbc.sql("""
-                INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by) VALUES (:p, lower(:u), crypt(:u, gen_salt('bf', 12)), true, :p)
+                INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by) VALUES (:p, lower(:u), crypt(gen_random_uuid()::text, gen_salt('bf', 12)), true, :p)
                 ON CONFLICT (person_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = true, failed_attempts = 0, locked_until = NULL
                 """).param("p", person).param("u", staffNo).update());
+        it.db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                VALUES (gen_random_uuid(), :p, 'lecturer', 'department', 'MTC', 'integration test', :p, current_date)
+                """).param("p", person).update());
+        Map<String, Object> staffFirst = ok(it.anon(HttpMethod.POST, "/api/v1/auth/sign-in", Map.of("username", staffNo, "password", staffNo)));
+        assertThat(staffFirst.get("mustChange")).isEqualTo(true);
+        String staffToken = String.valueOf(staffFirst.get("token"));
+        Map<String, String> asLecturer = Map.of("X-Active-Office", "lecturer");
+        assertThat(it.callWith(staffToken, HttpMethod.POST, "/api/v1/auth/change-password", Map.of("current", staffNo, "next", staffNo), asLecturer).getStatusCode().value()).isEqualTo(422);
+        ok(it.callWith(staffToken, HttpMethod.POST, "/api/v1/auth/change-password", Map.of("current", staffNo, "next", "chosen staff password " + n), asLecturer));
         refused(it.anon(HttpMethod.POST, "/api/v1/auth/sign-in", Map.of("username", staffNo, "password", staffNo)), "AUTH_FIRST_PASSWORD_RETIRED");
+        ok(it.anon(HttpMethod.POST, "/api/v1/auth/sign-in", Map.of("username", staffNo, "password", "chosen staff password " + n)));
         String pno = "8" + n;
         String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = 'C00061'").query(String.class).single();
         it.db(() -> jdbc.sql("SELECT * FROM iam.import_lecturers(:j::jsonb)")
@@ -115,7 +128,7 @@ class FirstSignInIT {
                 .param("p", pno).query(Boolean.class).optional().orElse(null);
         assertThat(ownNumberHash).as("the upload's credential for P" + pno).isFalse();
 
-        // (7) a migrated applicant's JAMB number opens nothing
+        // (7) a migrated applicant on the first-login sentinel signs in with the JAMB number (V178); a chosen password ends that
         String jamb = "8086" + String.format("%08d", n) + "OW";
         it.db(() -> {
             UUID cand = UUID.randomUUID();
@@ -135,6 +148,9 @@ class FirstSignInIT {
                     .param("a", acct).param("c", c).param("s", SESSION).param("no", "APP/86/97" + n).update();
             return null;
         });
+        ok(it.anon(HttpMethod.POST, "/api/v1/applicant/sign-in", Map.of("identifier", jamb, "password", jamb)));
+        it.db(() -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = crypt('chosen applicant password', gen_salt('bf', 12)) WHERE jamb_key = :k")
+                .param("k", jamb).update());
         refused(it.anon(HttpMethod.POST, "/api/v1/applicant/sign-in", Map.of("identifier", jamb, "password", jamb)), "AUTH_FIRST_PASSWORD_RETIRED");
     }
 }

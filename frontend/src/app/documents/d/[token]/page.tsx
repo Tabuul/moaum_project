@@ -19,7 +19,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
         <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Official document — secure link</div></div>
+          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Official document — secure link</div></div>
         </div>
         <div className="card__body">
           {c.ok && c.statement ? (

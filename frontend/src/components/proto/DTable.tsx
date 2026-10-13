@@ -120,7 +120,7 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DT
           )}
         </div>
       )}
-      <div className="tablewrap" ref={wrap}>
+      <div className="tablewrap" ref={wrap} tabIndex={0} role="region" aria-label={title ? `${title} (table)` : "Table"}>
         <table className="tbl--data" ref={table} data-title={title}>
           <thead>
             <tr>

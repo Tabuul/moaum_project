@@ -76,7 +76,7 @@ export function Approvals({
       ]} />
 
       <Panel title={title} right={sub}>
-        <div className="tablewrap">
+        <div className="tablewrap" tabIndex={0}>
           <table style={{ minWidth: 840 }}>
             <thead><tr><th>Course</th><th>Department</th><th className="mid">Students</th><th className="mid">Fail rate</th><th>Stage</th><th className="num">Action</th></tr></thead>
             <tbody>

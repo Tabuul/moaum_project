@@ -172,7 +172,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
 
       {levels.map((L) => (
         <Panel key={L} title={`${L} Level · ${session}`} right={<span className="row row--inline"><span className="sub2">{rows.find((r) => r.level === L)?.phase === "CLINICAL" ? "Clinical year: block and posting enrolment" : "Pre-clinical: the prospectus's semesters"}</span>{mayEdit ? <Btn kind="ghost" size="sm" disabled={busy !== null || !value(rows.filter((r) => r.level === L).slice().sort((a, b) => a.ordinal - b.ordinal)[0]).starts} onClick={() => dateFromFirst(L)}>Date the rest from the first semester</Btn> : null}</span>}>
-          <div className="tablewrap"><table className="tbl--data">
+          <div className="tablewrap" tabIndex={0}><table className="tbl--data">
             <thead><tr><th>Semester</th><th className="mid">Weeks</th><th>Subjects</th><th className="mid">Starts</th><th className="mid">Ends</th><th className="mid">Standing</th><th></th></tr></thead>
             <tbody>
               {rows.filter((r) => r.level === L).map((r) => {

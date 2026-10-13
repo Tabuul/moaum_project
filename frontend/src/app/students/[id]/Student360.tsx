@@ -262,7 +262,7 @@ export function Student360({
       </Panel>
 
       <Panel title="Record history" right="Append-only · every entry attributable">
-        <div className="tablewrap">
+        <div className="tablewrap" tabIndex={0}>
           <table className="tbl--data">
             <tbody>
               {record.statusHistory.length === 0 && record.decidedChanges.length === 0 ? (

@@ -119,7 +119,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
         </div>
         {r.standing ? <div className="row" style={{ background: "var(--green)", borderRadius: "var(--r)", padding: "var(--s-2) var(--s-3)" }}><Tick size={15} colour="#fff" /><span className="b600" style={{ color: "var(--surface)" }}>{r.standing}</span></div> : null}
       </div></div>
-      <div className="card"><div className="tablewrap"><table className="tbl--data">
+      <div className="card"><div className="tablewrap" tabIndex={0}><table className="tbl--data">
         <thead><tr><th>Course</th><th className="mid">Unit</th><th className="mid">Score</th><th className="mid">Grade</th></tr></thead>
         <tbody>
           {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{x.course_code}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid b700" style={{ color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
@@ -159,7 +159,7 @@ export function Broadsheet({ r }: { r: Results }) {
         return (
           <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
             right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
-            <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 520 }}>
+            <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
               <thead><tr>
                 <th>Course</th><th>Title</th><th className="mid">Unit</th><th className="mid">CA</th><th className="mid">Exam</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Point</th>
               </tr></thead>

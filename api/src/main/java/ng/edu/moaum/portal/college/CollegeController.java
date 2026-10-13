@@ -149,7 +149,7 @@ class CollegeController {
     /** the College's academic staff who may supervise a posting: anyone holding a lecturer, HOD or examinations office
      *  scoped to a department of the College's faculties */
     @GetMapping("/supervisors")
-    @PreAuthorize(DESK)
+    @PreAuthorize(DESK_OR_COORDINATOR)
     @Transactional(readOnly = true)
     List<Map<String, Object>> supervisors() {
         return jdbc.sql("""
@@ -309,7 +309,7 @@ class CollegeController {
 
     /* ── the supervisor's logbook: what a posting asks of the student, verified by the one who supervises ── */
 
-    private static final String SUPERVISORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
+    private static final String SUPERVISORS = "hasAnyAuthority('OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super','OFFICE_mbbscoordinator')";
     private static final java.util.Set<String> DESK_OFFICES = java.util.Set.of("provost", "collegesecretary", "academic", "registrar", "dregistrar", "admin", "super");
 
     private UUID actor(Authentication auth) {

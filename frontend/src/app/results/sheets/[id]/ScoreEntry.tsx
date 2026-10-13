@@ -327,7 +327,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         {roll.length === 0 ? (
           <div className="card__body sub2">Nobody is registered and approved for this offering.</div>
         ) : (
-          <div className="tablewrap">
+          <div className="tablewrap" tabIndex={0}>
             <table style={{ minWidth: 1020 }}>
               <thead><tr><th className="mid">S/N</th><th>Matriculation number</th><th>Name</th><th>Programme</th><th className="mid">Lv</th><th className="mid">CA — {CA_MAX}</th><th className="mid">Exam — {EXAM_MAX}</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Points</th><th>Outcome</th><th>Reason, if amended</th></tr></thead>
               <tbody>

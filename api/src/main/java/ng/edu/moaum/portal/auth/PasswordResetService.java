@@ -73,7 +73,8 @@ public class PasswordResetService {
         var student = jdbc.sql("""
                 SELECT s.id, r.email, r.phone FROM people.student s
                   LEFT JOIN LATERAL people.student_reach(s.id) r ON true
-                 WHERE upper(s.matric_no) = :k OR upper(s.admission_no) = :k OR lower(r.email) = :e
+                 WHERE s.duplicate_of IS NULL AND (upper(s.matric_no) = :k OR upper(s.admission_no) = :k OR lower(r.email) = :e)
+                 ORDER BY s.matric_no IS NULL, s.admission_no
                  LIMIT 1
                 """).param("k", upper).param("e", lower).query().listOfRows();
         if (!student.isEmpty()) {

@@ -36,9 +36,11 @@ class IdentityCardController {
     }
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.CheckCodes codes;
 
-    IdentityCardController(JdbcClient jdbc) {
+    IdentityCardController(JdbcClient jdbc, ng.edu.moaum.portal.shared.CheckCodes codes) {
         this.jdbc = jdbc;
+        this.codes = codes;
     }
 
     @GetMapping
@@ -51,6 +53,14 @@ class IdentityCardController {
                   FROM credentials.identity_card c JOIN people.student s ON s.id = c.student_id JOIN ref.programme p ON p.code = s.programme_code
                  ORDER BY c.issued_at DESC LIMIT 300
                 """).query().listOfRows();
+        // the address the card's QR carries: the public page answers only with the code signed over the card number
+        cards = cards.stream().map(r -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            String no = String.valueOf(r.get("card_no"));
+            m.put("verify_path", "/verify/idcard?no=" + java.net.URLEncoder.encode(no, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&c=" + codes.sign(ng.edu.moaum.portal.shared.CheckCodes.Kind.ID_CARD, no));
+            return m;
+        }).toList();
         List<Map<String, Object>> waiting = jdbc.sql("""
                 SELECT s.id AS student_id, s.matric_no, s.surname, s.other_names, p.name AS programme, s.current_level, s.status,
                        EXISTS (SELECT 1 FROM credentials.identity_card c WHERE c.student_id = s.id) AS had_one

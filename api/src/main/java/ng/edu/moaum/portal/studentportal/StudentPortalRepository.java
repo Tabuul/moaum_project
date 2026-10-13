@@ -49,9 +49,15 @@ class StudentPortalRepository {
        on the register. */
     Optional<Student> byMatric(String matricNo) {
         /* the door opens on the matriculation number; on the admission (or JAMB) number only until the matriculation
-           number is issued — from that moment the number IS the sign-in (V267), and the old one is history */
-        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND (upper(s.admission_no) = upper(:m) OR upper(s.jamb_reg_no) = upper(:m)))")
-                .param("m", matricNo == null ? "" : matricNo.trim()).query(Student.class).optional();
+           number is issued — from that moment the number IS the sign-in (V267), and the old one is history. A record the Registry
+           ended as a duplicate (V431) opens nothing; two live records under one JAMB number are refused by name, never guessed. */
+        java.util.List<Student> found = jdbc.sql(STUDENT + " WHERE s.duplicate_of IS NULL AND (upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND (upper(s.admission_no) = upper(:m) OR upper(s.jamb_reg_no) = upper(:m))))")
+                .param("m", matricNo == null ? "" : matricNo.trim()).query(Student.class).list();
+        if (found.size() > 1) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("STUDENT_NUMBER_SHARED", "Two records on the register carry this number.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Sign in with your admission number. The Registry is settling the two records.", "Registry"));
+        }
+        return found.stream().findFirst();
     }
 
     Optional<Student> byId(UUID id) {

@@ -31,7 +31,7 @@ class StudentController {
             + "'OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_ict','OFFICE_admin','OFFICE_super',"
             // offices that carry the Records & queries menu and so must be able to read it
             + "'OFFICE_bursar','OFFICE_library','OFFICE_security','OFFICE_housing','OFFICE_hrm',"
-            + "'OFFICE_audit','OFFICE_lecturer',"
+            + "'OFFICE_audit','OFFICE_deputyaudit','OFFICE_lecturer',"
             // the College's offices, whose menu offers the search (V285)
             + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator')";
     private static final String WRITERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
@@ -270,6 +270,22 @@ class StudentController {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     java.util.List<java.util.Map<String, Object>> duplicates() {
         return jdbc.sql("SELECT * FROM people.duplicate_students()").query().listOfRows();
+    }
+
+    public record ResolveDuplicateIn(@jakarta.validation.constraints.NotNull UUID keep, @jakarta.validation.constraints.NotNull UUID end,
+                                     @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 500) String reason) {
+    }
+
+    /** V431: the Registry keeps one record of a duplicate pair and ends the other — withdrawn, pointing at the kept record, nothing
+     *  deleted; refused when the record to end carries a matriculation number, a registration, a fee reference or a mark. */
+    @PostMapping("/duplicates/resolve")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_super')")
+    @org.springframework.transaction.annotation.Transactional
+    java.util.Map<String, Object> resolveDuplicate(@Valid @RequestBody ResolveDuplicateIn in) {
+        return jdbc.sql("""
+                SELECT r ->> 'keptNumber' AS kept_number, r ->> 'endedNumber' AS ended_number, (r ->> 'candidateMoved')::boolean AS candidate_moved
+                  FROM people.resolve_duplicate(:k, :e, :why) r
+                """).param("k", in.keep()).param("e", in.end()).param("why", in.reason().trim()).query().singleRow();
     }
 
     @GetMapping("/records/{view}")

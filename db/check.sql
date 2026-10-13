@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 273
+\set EXPECTED 276
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11772,6 +11772,98 @@ BEGIN
         format('done a=%s b=%s fees=%s | q1=%s told a=%s b=%s subject=%s q2=%s | q3=%s told a=%s b=%s sms=%s | off=%s | token len=%s ok=%s wrong=%s | r=%s/%s state=%s ds=%s detail=%s | cancelled r=%s state=%s ds=%s | unmatched=%s ignored=%s logged=%s',
                done_a, done_b, done_fees, q1, told_a3, told_b3, subj3, q2, q3, told_a1, told_b1, left(sms1, 60), q_off, length(tok), ok_t, ok_f,
                r1, r2, st1, ds1, dd1, r3, st_c, ds_c, r4, r5, n_log));
+END $$;
+-- ── V431: the Registry resolves a duplicate student ──
+-- Invented records for a session of their own. K and E share a JAMB number; a candidate stands behind E. Keeping K ends E: E is
+-- WITHDRAWN with no matriculation number, points at K, carries the change of status on the kept number's instrument, and K takes the
+-- candidate; the pair leaves the duplicates list and E is not flagged as missing its matriculation number. A pair whose record to end
+-- carries a registration is refused (DUPLICATE_HAS_HISTORY); two records sharing nothing are refused (DUPLICATE_NOT_A_PAIR); E cannot
+-- be ended twice (DUPLICATE_ALREADY_ENDED). The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9943/9944'; prog text;
+        k uuid := gen_random_uuid(); e uuid := gen_random_uuid(); h1 uuid := gen_random_uuid(); h2 uuid := gen_random_uuid(); ce uuid := gen_random_uuid();
+        r jsonb; e_status text; e_dup uuid; k_cand uuid; e_cand uuid; instr text; listed int; flagged boolean;
+        hist text; notpair text; twice text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V431', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9943-10-01', date '9944-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO prog FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (ce, S, '994300000001ZK', 'ZZDUPLICATE', 'Kept Person', (SELECT name FROM ref.programme WHERE code = prog), 'UTME', 100, 'PROPOSED');
+        INSERT INTO people.student (id, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, candidate_id)
+        VALUES (k, 'MOAUM/ADM/43/994311', '994300000001ZK', 'ZZDUPLICATE', 'Kept Person', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL),
+               (e, 'MOAUM/ADM/43/994312', '994300000001ZK', 'ZZDUPLICATE', 'Kept Person', prog, 'UTME', S, 100, 100, 'ADMITTED', ce),
+               (h1, 'MOAUM/ADM/43/994313', '994300000002ZH', 'ZZDUPLICATE', 'History Person', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL),
+               (h2, 'MOAUM/ADM/43/994314', '994300000002ZH', 'ZZDUPLICATE', 'History Person', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL);
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), h2, S, 100);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), h2, S, 1, 100, 'DRAFT');
+
+        r := people.resolve_duplicate(k, e, 'Same JAMB number; the candidate applied once');
+        SELECT status, duplicate_of, candidate_id INTO e_status, e_dup, e_cand FROM people.student WHERE id = e;
+        SELECT candidate_id INTO k_cand FROM people.student WHERE id = k;
+        SELECT instrument INTO instr FROM people.status_change WHERE student_id = e AND to_status = 'WITHDRAWN';
+        SELECT count(*) INTO listed FROM people.duplicate_students() d WHERE d.match_key = '994300000001ZK';
+        SELECT 'MISSING_MATRIC' = ANY (p.issues) INTO flagged FROM people.academic_position_rows(e) p;
+        BEGIN PERFORM people.resolve_duplicate(h1, h2, 'Same JAMB number, history on one'); hist := 'TAKEN';
+        EXCEPTION WHEN check_violation THEN hist := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.resolve_duplicate(k, h1, 'Not the same person at all'); notpair := 'TAKEN';
+        EXCEPTION WHEN check_violation THEN notpair := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.resolve_duplicate(k, e, 'Asked a second time on purpose'); twice := 'TAKEN';
+        EXCEPTION WHEN check_violation THEN twice := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V431 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V431 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V431: keeping one record of a duplicate pair ends the other — withdrawn without a matriculation number, pointing at the kept record, the change recorded on the kept number, the candidate moved — and lists it no more; a record with a history, two records that are not a pair, and a second ending are refused',
+        coalesce(e_status = 'WITHDRAWN' AND e_dup = k AND e_cand IS NULL AND k_cand = ce AND (r ->> 'candidateMoved')::boolean
+                 AND instr LIKE '%MOAUM/ADM/43/994311' AND listed = 0 AND NOT flagged
+                 AND hist = 'DUPLICATE_HAS_HISTORY' AND notpair = 'DUPLICATE_NOT_A_PAIR' AND twice = 'DUPLICATE_ALREADY_ENDED', false),
+        format('E %s dup=%s cand=%s | K cand=%s | instr %s | listed %s | flagged %s | history %s | not a pair %s | twice %s',
+               e_status, e_dup = k, e_cand, k_cand = ce, instr, listed, flagged, hist, notpair, twice));
+END $$;
+-- ── V432: the foreign-key indexes that measured worth it ──
+-- Removing a file object finds its holders in admissions.attachment through an index, and a session's enrolments and registrations
+-- are read through one: each of the three foreign keys timed on the live-shaped copy leads an index.
+DO $$
+DECLARE missing text;
+BEGIN
+    SELECT string_agg(t.tbl || '.' || t.col, ', ') INTO missing
+      FROM (VALUES ('admissions.attachment', 'object_id'), ('people.enrolment', 'session'), ('registration.course_registration', 'session')) t(tbl, col)
+     WHERE NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+                        WHERE i.indrelid = t.tbl::regclass AND a.attname = t.col);
+    PERFORM pg_temp.assert('V432: the foreign keys timed on the live-shaped copy — a file object''s attachments, a session''s enrolments and registrations — each lead an index',
+        missing IS NULL, coalesce('no index leads ' || missing, 'all three indexed'));
+END $$;
+-- ── V435: a deferment letter is verified by the check code its QR carries ──
+-- Every deferment carries a check code of eighteen hex digits, drawn at random (two deferments made one after the other carry two
+-- codes), so the public page can refuse a reference given without its code. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); a text; b text; shaped boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V435', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9935/9936', date '9935-10-01', date '9936-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9936/9937', date '9936-10-01', date '9937-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/35/993501', 'MOAUM/QRV/35/9935', 'ZZDEFERCODE', 'Invented', 'C00061', 'UTME', '9935/9936', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.deferment (reference, student_id, kind, session, reason_code, state)
+        VALUES ('DEF-9935-00001', st, 'SESSION', '9935/9936', (SELECT code FROM people.deferment_reason ORDER BY code LIMIT 1), 'DRAFT') RETURNING verify_code INTO a;
+        INSERT INTO people.deferment (reference, student_id, kind, session, reason_code, state)
+        VALUES ('DEF-9935-00002', st, 'SESSION', '9936/9937', (SELECT code FROM people.deferment_reason ORDER BY code LIMIT 1), 'DRAFT') RETURNING verify_code INTO b;
+        shaped := NOT EXISTS (SELECT 1 FROM people.deferment WHERE verify_code !~ '^[0-9a-f]{18}$');
+        RAISE EXCEPTION 'the V435 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V435 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V435: every deferment carries a random check code of eighteen hex digits — two deferments, two codes — for its letter''s QR',
+        coalesce(a ~ '^[0-9a-f]{18}$' AND b ~ '^[0-9a-f]{18}$' AND a <> b AND shaped, false), format('codes %s / %s, all shaped %s', a, b, shaped));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

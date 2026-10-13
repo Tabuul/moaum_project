@@ -41,7 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
           <div className="grow">
-            <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+            <div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
             <div className="phead__t ink-chrome">Course registration verification</div>
           </div>
         </div>
@@ -69,7 +69,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               </div>
               <div>
                 <div className="eyebrow mb-1">Registered courses</div>
-                <div className="tablewrap">
+                <div className="tablewrap" tabIndex={0}>
                   <table className="tbl--data">
                     <tbody>
                       {(v.courses ?? []).map((co, i) => (

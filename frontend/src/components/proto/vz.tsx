@@ -48,7 +48,7 @@ export function Donut({ items, capLabel, capValue, capTitle, onPick, fmt = vzNum
   });
   return (
     <div className="vz__donut">
-      <svg viewBox="0 0 180 180" width={180} height={180} role="img" aria-label={`${capLabel}: ${items.map((i) => `${i.l} ${i.v}`).join(", ")}`}>
+      <svg viewBox="0 0 180 180" width={180} height={180} role={onPick ? "group" : "img"} aria-label={`${capLabel}: ${items.map((i) => `${i.l} ${i.v}`).join(", ")}`}>
         <circle cx={90} cy={90} r={R} fill="none" stroke="#F1F4F6" strokeWidth={W} />
         {arcs}
         <text x={90} y={86} textAnchor="middle" className="vz__cv" style={capSize < 27 ? { fontSize: `${capSize.toFixed(1)}px`, letterSpacing: "-.3px" } : undefined}>

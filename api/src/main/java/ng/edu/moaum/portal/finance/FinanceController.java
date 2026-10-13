@@ -34,7 +34,7 @@ import ng.edu.moaum.portal.shared.Sessions;
 @RequestMapping("/api/v1/finance")
 class FinanceController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
     /** who may reconcile a transaction against the bank: the Bursary and the audit directorate */
     private static final String RECONCILERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')";

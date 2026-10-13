@@ -67,7 +67,7 @@ export function AssignmentDetail({ a }: { a: AssignmentFull }) {
         {s ? (
           <>
             {[["The written work", written], ["The defence", defence]].filter(([, ls]) => (ls as Line[]).length).map(([title, ls]) => (
-              <div key={String(title)} className="tablewrap">
+              <div key={String(title)} className="tablewrap" tabIndex={0}>
                 <table className="tbl--data">
                   <thead><tr><th>{String(title)}</th><th className="mid">Maximum</th><th className="mid">Score</th><th>Examiner&rsquo;s comment</th></tr></thead>
                   <tbody>

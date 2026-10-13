@@ -355,7 +355,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           <Btn kind="ghost" disabled={!loaded.length} onClick={exportLoadedPdf}>Download PDF</Btn>
         </span>}>
           {loaded.length ? (
-            <div className="tablewrap" style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+            <div className="tablewrap" tabIndex={0} style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl--data">
                 <thead><tr><th>Code</th><th>Title</th><th>Units</th><th>Level</th><th>Sem</th><th>Basis</th></tr></thead>
                 <tbody>
@@ -377,7 +377,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
               ["Levels", byLevel.length ? byLevel.join(", ") : "—", null, "From the headings"],
               ["With a code the rule rejects", String(preview.filter((r) => !/^[A-Z][A-Z0-9 /-]{2,19}$/.test(r.code.toUpperCase())).length), null, "Shown, not loaded"],
             ]} />
-            <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+            <div className="tablewrap" tabIndex={0} style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl--data">
                 <thead><tr><th>Code</th><th>Title</th><th>Units</th><th>Status</th><th>Level</th><th>Sem</th></tr></thead>
                 <tbody>
@@ -400,7 +400,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                     placements.counts.otherOffice ? `${placements.counts.otherOffice} the file says EPS but the GST office holds — left with the GST office` : null,
                   ].filter(Boolean).join(" · ")}. The offices are told and confirm it.
                 </Note>
-                <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+                <div className="tablewrap" tabIndex={0} style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
                   <table className="tbl--data">
                     <thead><tr><th>Code</th><th>Title</th><th>Programme</th><th>The file says</th><th>What loading does</th></tr></thead>
                     <tbody>

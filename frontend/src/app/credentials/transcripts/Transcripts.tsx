@@ -44,7 +44,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Panel title="Production queue" right="Oldest first · SLA clock runs from payment">
-        <div className="tablewrap">
+        <div className="tablewrap" tabIndex={0}>
           <table className="tbl--data" style={{ minWidth: 940 }}>
             <thead><tr><th>Request</th><th>Student</th><th>Destination</th><th className="mid">Clearance</th><th className="mid">SLA</th><th>Stage</th><th className="num">Action</th></tr></thead>
             <tbody>

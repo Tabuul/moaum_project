@@ -101,7 +101,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
     <>
       <div className="row row--tight" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
         <div className="sub2">Session</div>
-        <Field id="hs-session" label=""><select id="hs-session" className="ctl" value={h.session} onChange={(e) => queryNav(`/student/hostel?session=${encodeURIComponent(e.target.value)}`)}>{(h.sessions.includes(h.session) ? h.sessions : [h.session, ...h.sessions]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+        <Field id="hs-session" label="Session"><select id="hs-session" className="ctl" value={h.session} onChange={(e) => queryNav(`/student/hostel?session=${encodeURIComponent(e.target.value)}`)}>{(h.sessions.includes(h.session) ? h.sessions : [h.session, ...h.sessions]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
       </div>
 
       {v.fee === null || v.fee === undefined ? (

@@ -76,7 +76,7 @@ export function PgCalendar({ initial }: { initial: CalData }) {
 
       <Panel title="Sessions" right={<Btn kind="primary" onClick={() => setSessionModal("new")}>Setup new session</Btn>}>
         <PBody>
-          <div className="tablewrap">
+          <div className="tablewrap" tabIndex={0}>
             <table className="tbl tbl--data">
               <thead>
                 <tr>

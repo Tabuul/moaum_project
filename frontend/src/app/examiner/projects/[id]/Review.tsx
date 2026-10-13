@@ -111,7 +111,7 @@ export function Review({ d }: { d: ReviewData }) {
       <Panel title={`Assessment · ${d.rubric.name}`} right={<span className="row row--inline row--tight"><span className="sub2">Total</span><strong className="tnum">{totals.sum} / {totals.max}</strong><span className="sub2 tnum">{totals.pct}%</span>{a?.grade && totals.missing === 0 ? <Pil kind="info">{a.grade}</Pil> : null}</span>}>
         {d.rubric.note ? <PBody><div className="sub2">{d.rubric.note}</div></PBody> : null}
         {(["WRITTEN", "DEFENCE"] as const).filter((s) => sections[s]?.length).map((s) => (
-          <div key={s} className="tablewrap">
+          <div key={s} className="tablewrap" tabIndex={0}>
             <table className="tbl--data">
               <thead><tr><th>{s === "WRITTEN" ? "The written work" : "The defence"}</th><th className="mid">Maximum</th><th className="mid">Score</th><th>Comment</th></tr></thead>
               <tbody>

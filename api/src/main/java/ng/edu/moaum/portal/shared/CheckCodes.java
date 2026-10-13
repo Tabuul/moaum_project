@@ -34,8 +34,9 @@ public class CheckCodes {
 
     private static final Logger LOG = LoggerFactory.getLogger(CheckCodes.class);
 
-    /** V375: CBT_SLIP — a candidate's CBT slip (the examination and the candidate), scanned at the door of the sitting */
-    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP }
+    /** V375: CBT_SLIP — a candidate's CBT slip (the examination and the candidate), scanned at the door of the sitting;
+     *  ID_CARD — a student identity card, by its card number (the card desk prints the address the code completes) */
+    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP, ID_CARD }
 
     private final byte[] key;
 
@@ -70,6 +71,7 @@ public class CheckCodes {
             case RESULT -> "RESULT|" + part(parts, 0) + "|" + part(parts, 1) + "|" + part(parts, 2);
             case PG_OFFER -> part(parts, 0) + "|MOAUM-PG-OFFER";
             case CBT_SLIP -> null;   // V375: no slip was ever printed before the signed code
+            case ID_CARD -> null;    // no card ever carried a check code before the signed one
         };
         if (payload == null) return false;
         try {

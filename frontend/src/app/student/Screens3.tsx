@@ -338,7 +338,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session}</span></div>
           <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
         </div>
-        <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 520 }}>
+        <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
           <thead><tr>
             {["Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "var(--surface)" }}>{h}</th>)}
             <th className="mid" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Unit</th>

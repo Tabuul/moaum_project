@@ -34,7 +34,7 @@ export default async function Page({ params, searchParams }: {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
           <div className="grow">
-            <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+            <div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
             <div className="phead__t ink-chrome">Receipt verification</div>
           </div>
         </div>
@@ -54,7 +54,7 @@ export default async function Page({ params, searchParams }: {
                 <img src={v.passport} alt="Student passport" style={{ width: 96, height: 112, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line)" }} />
               </div>
             ) : null}
-            <div className="tablewrap">
+            <div className="tablewrap" tabIndex={0}>
               <table className="tbl--data">
                 <tbody>
                   {[["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],

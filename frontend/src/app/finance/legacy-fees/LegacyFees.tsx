@@ -234,7 +234,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       {preview ? (
         <Panel title="Read from the file — check, then load" right={`${preview.length} row${preview.length === 1 ? "" : "s"}`}>
           <PBody>
-            <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+            <div className="tablewrap" tabIndex={0} style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl--data">
                 <thead><tr><th>Matric</th><th>Session</th><th>Sem</th><th>Amount</th><th>For</th><th>Paid on</th></tr></thead>
                 <tbody>

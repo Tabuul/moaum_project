@@ -23,7 +23,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Postgraduate offer verification</div></div>
+          <div className="grow"><div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div className="phead__t ink-chrome">Postgraduate offer verification</div></div>
         </div>
         <div className="card__body">
           {v.limited ? <LegacyNote document="offer of admission" number={typeof v.number === "string" ? v.number : null} session={typeof v.session === "string" ? v.session : null} /> : (

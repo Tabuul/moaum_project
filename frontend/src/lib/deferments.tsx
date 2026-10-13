@@ -50,6 +50,8 @@ export interface Batch {
   forwarded_officer: string | null; awaiting_dvc: number; approved: number; rejected: number; returned: number; dvc_status: "OPEN" | "DECIDED";
 }
 export interface DefermentFull extends Deferment {
+  /** V435: the check code the approval letter's QR carries */
+  verify_code?: string;
   documents: DefermentDoc[]; history: DefermentEvent[]; effect: Effect | null; deferredCourses: DeferredCourse[];
   previous?: { reference: string; kind: string; session: string; semester: number | null; state: string; submitted_at: string | null; decided_at: string | null; stage_label: string }[];
   registration?: { session: string; semester: number; status: string; submitted_at: string | null }[];
