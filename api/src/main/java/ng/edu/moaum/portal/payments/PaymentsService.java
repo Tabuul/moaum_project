@@ -781,8 +781,8 @@ public class PaymentsService {
                 c.valid() ? c.amount() : null, c.valid() ? "0" : "1", true, c.valid() ? "VALID" : "INVALID", json(said));
         // the payer confirms the name on Quickteller's page: the surname and the first of the other names
         String first = c.otherNames() == null ? "" : c.otherNames().trim().split("\\s+")[0];
-        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.customerAnswer(m.json(), m.field("MerchantReference"), m.field("ThirdPartyCode"),
-                reference, c.valid(), first, c.surname(), c.number(), c.amount()));
+        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.wrap(m, PayDirectMessages.customerAnswer(m.json(), m.field("MerchantReference"), m.field("ThirdPartyCode"),
+                reference, c.valid(), first, c.surname(), c.number(), c.amount())));
     }
 
     /**
@@ -854,7 +854,7 @@ public class PaymentsService {
         if (m.payments().isEmpty()) {
             log("paydirect", "WEBHOOK", "notification", null, null, null, "no payment", authentic, "IGNORED", json(Map.of("why", "The notification named no payment")));
         }
-        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.notificationAnswer(m.json(), results));
+        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.wrap(m, PayDirectMessages.notificationAnswer(m.json(), results)));
     }
 
     /** one notified payment: true when the portal has received it (0), false when it is not accepted (1) */

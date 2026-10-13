@@ -52,4 +52,26 @@ class PayDirectMessagesTest {
         assertThatThrownBy(() -> PayDirectMessages.read("<!DOCTYPE x [<!ENTITY e SYSTEM \"file:///etc/passwd\">]><CustomerInformationRequest>&e;</CustomerInformationRequest>"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    /** Oct 2026: Interswitch's HTTP generic route sends the request in a SOAP envelope and reads the answer from one — a bare
+     *  answer is logged on their side as E19; the answer goes back in the request's own envelope, prefix and namespace kept */
+    @Test
+    void anEnvelopedRequestIsAnsweredInItsEnvelope() {
+        PayDirectMessages.Message m = PayDirectMessages.read("<ns3:Envelope xmlns:ns2=\"http://techquest.interswitchng.com/\" xmlns:ns3=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+                + "<ns3:Body><CustomerInformationRequest><ServiceUrl>https://portal.moaum.edu.ng/api/v1/payments/paydirect/interswitch</ServiceUrl>"
+                + "<MerchantReference>6316</MerchantReference><CustReference>MOAUM-FEE-513120-5203</CustReference><Amount>0</Amount></CustomerInformationRequest></ns3:Body></ns3:Envelope>");
+        assertThat(m.kind()).isEqualTo(PayDirectMessages.Kind.CUSTOMER_VALIDATION);
+        assertThat(m.enveloped()).isTrue();
+        assertThat(m.field("CustReference")).isEqualTo("MOAUM-FEE-513120-5203");
+        String answer = PayDirectMessages.wrap(m, PayDirectMessages.customerAnswer(false, "6316", "", "MOAUM-FEE-513120-5203", true, "Ada", "OKAFOR", "MOAUM/SC/23/1234", new java.math.BigDecimal("100000")));
+        assertThat(answer).startsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?><ns3:Envelope xmlns:ns3=\"http://schemas.xmlsoap.org/soap/envelope/\"><ns3:Body><CustomerInformationResponse>");
+        assertThat(answer).endsWith("</CustomerInformationResponse></ns3:Body></ns3:Envelope>");
+        assertThat(answer).contains("<CustReference>MOAUM-FEE-513120-5203</CustReference>").contains("<MerchantReference>6316</MerchantReference>");
+        assertThat(answer.indexOf("<?xml")).isEqualTo(0);
+        assertThat(answer.indexOf("<?xml", 1)).isEqualTo(-1);
+        // a bare request is answered bare, as before
+        PayDirectMessages.Message bare = PayDirectMessages.read("<CustomerInformationRequest><CustReference>A</CustReference></CustomerInformationRequest>");
+        assertThat(bare.enveloped()).isFalse();
+        assertThat(PayDirectMessages.wrap(bare, "<x/>")).isEqualTo("<x/>");
+    }
 }

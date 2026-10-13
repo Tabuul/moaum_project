@@ -44,7 +44,15 @@ final class PayDirectMessages {
 
     /** a request as read: its name (the root element, or the JSON's one key), the fields of its root (credentials, the reference asked
      *  about) and, for a notification, each payment */
-    record Message(boolean json, String name, Map<String, String> fields, List<Map<String, String>> payments) {
+    record Message(boolean json, String name, Map<String, String> fields, List<Map<String, String>> payments, String envelopeNs, String envelopePrefix) {
+        Message(boolean json, String name, Map<String, String> fields, List<Map<String, String>> payments) {
+            this(json, name, fields, payments, null, null);
+        }
+        /** Oct 2026: whether the request came wrapped in a SOAP envelope — Interswitch's HTTP generic route sends one, and reads
+         *  one back; a bare answer to an enveloped request is logged on their side as E19, "an invalid response from remote host" */
+        boolean enveloped() {
+            return envelopeNs != null;
+        }
         String field(String name) {
             String v = fields.get(name);
             return v == null ? "" : v.trim();
@@ -150,8 +158,13 @@ final class PayDirectMessages {
             db.setErrorHandler(new org.xml.sax.helpers.DefaultHandler());
             Document doc = db.parse(new ByteArrayInputStream(b.getBytes(StandardCharsets.UTF_8)));
             Element root = doc.getDocumentElement();
-            // a SOAP envelope, should one come, is looked through to the message in its body
+            // a SOAP envelope, should one come, is looked through to the message in its body — and remembered, so the answer
+            // goes back in the same envelope (Oct 2026: Interswitch's HTTP generic route sends and expects one)
+            String envelopeNs = null;
+            String envelopePrefix = null;
             if ("Envelope".equalsIgnoreCase(localName(root))) {
+                envelopeNs = root.getNamespaceURI() == null ? "http://schemas.xmlsoap.org/soap/envelope/" : root.getNamespaceURI();
+                envelopePrefix = root.getPrefix();
                 for (Element c : children(root)) {
                     if ("Body".equalsIgnoreCase(localName(c)) && !children(c).isEmpty()) {
                         root = children(c).get(0);
@@ -160,7 +173,7 @@ final class PayDirectMessages {
             }
             List<Map<String, String>> pays = new ArrayList<>();
             payments(root, pays);
-            return new Message(false, localName(root), leaves(root), pays);
+            return new Message(false, localName(root), leaves(root), pays, envelopeNs, envelopePrefix);
         } catch (Exception e) {
             throw new IllegalArgumentException("the request is not the XML it should be: " + e.getMessage(), e);
         }
@@ -221,6 +234,20 @@ final class PayDirectMessages {
     }
 
     /* ── writing ── */
+
+    /** the answer in the request's own shape: a request that came in a SOAP envelope is answered in the same envelope (the
+     *  same namespace and prefix), the XML prolog moved to the front; a bare request, or JSON, is answered as it was */
+    static String wrap(Message m, String body) {
+        if (m == null || !m.enveloped() || m.json() || body == null) {
+            return body;
+        }
+        String inner = body.startsWith("<?xml") ? body.substring(body.indexOf("?>") + 2) : body;
+        String p = m.envelopePrefix() == null || m.envelopePrefix().isBlank() ? "soapenv" : m.envelopePrefix();
+        return "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+                + "<" + p + ":Envelope xmlns:" + p + "=\"" + xml(m.envelopeNs()) + "\">"
+                + "<" + p + ":Body>" + inner + "</" + p + ":Body>"
+                + "</" + p + ":Envelope>";
+    }
 
     static String xml(String s) {
         if (s == null) {
