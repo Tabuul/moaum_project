@@ -582,7 +582,7 @@ export function ExamRoom({ attemptId, apiBase = "/api/bff/api/v1/me/cbt", listHr
   if (phase === "error") return <Screen title="The examination could not be opened"><p>{problem?.detail ?? problem?.title}</p><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></Screen>;
   if (phase === "noCamera") return (
     <Screen title="This examination is sat with the camera on">
-      <p>The examination&rsquo;s rules ask for the camera, with your consent, while you write. Without it no answer can be saved. Your choice is recorded; nothing else is.</p>
+      <p>The examination&rsquo;s rules ask for the camera, with your consent, while you write. Without it no answer can be saved. Your choice is recorded; nothing else is — no video or image is kept, as the <a className="lnk" href="/privacy-policy#s-examinations" target="_blank" rel="noopener">Privacy Policy</a> says.</p>
       <p className="sub2">If you did not consent or the camera failed, speak to the examination office, or try again.</p>
       <span className="row row--inline row--tight"><button type="button" className="btn btn--primary" onClick={() => setPhase("camera")}>Try again</button><a className="btn btn--ghost" href={backHref}>Back to {backLabel}</a></span>
     </Screen>

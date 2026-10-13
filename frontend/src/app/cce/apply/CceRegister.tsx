@@ -30,6 +30,7 @@ export function CceRegister({ session }: { session: string }) {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [show, setShow] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -58,6 +59,7 @@ export function CceRegister({ session }: { session: string }) {
     if (!ph.ok) e.phone = `Eleven digits beginning with a zero are needed; ${ph.digits.length} were read. Written as +234 or without the zero is fine.`;
     if (pw.length < 8) e.pw = "At least eight characters.";
     else if (pw !== pw2) e.pw2 = "The two passwords do not match.";
+    if (!agreed) e.agree = "Read the Privacy Policy and tick the box to continue.";
     setErr(e);
     return Object.keys(e).length === 0;
   }
@@ -68,7 +70,7 @@ export function CceRegister({ session }: { session: string }) {
     setProblem(null);
     try {
       const r = await fetch("/api/auth/applicant/cce-register", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jambKey: key, dateOfBirth: dob, email: email.trim(), phone: phoneRead(phone).digits, password: pw }) });
+        body: JSON.stringify({ jambKey: key, dateOfBirth: dob, email: email.trim(), phone: phoneRead(phone).digits, password: pw, acceptPolicy: agreed }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       router.push("/applicant/cce");
@@ -126,6 +128,8 @@ export function CceRegister({ session }: { session: string }) {
             {input("cw", "Choose a password", "pw", <input id="cw" type={show ? "text" : "password"} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required />)}
             {input("cw2", "Confirm password", "pw2", <input id="cw2" type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />)}
             <label className="row row--inline row--tight mb-2"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show the passwords</label>
+            <label className="row row--inline row--tight mb-1" htmlFor="cagree"><input id="cagree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>
+            {err.agree ? <div className="ferr mb-2">{err.agree}</div> : null}
             {problem ? <ProblemNotice problem={problem} /> : null}
             <Btn kind="primary" size="md" type="submit" disabled={busy}>{busy ? "Creating your account…" : "Create my account and continue"}</Btn>
           </>

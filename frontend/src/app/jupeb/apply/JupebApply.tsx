@@ -26,6 +26,7 @@ export function JupebApply() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -113,10 +114,11 @@ export function JupebApply() {
           <Field id="password2" label="Confirm password" required><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
         </div>
 
+        <label className="row row--inline row--tight mt-2" htmlFor="jagree"><input id="jagree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>
         <div className="row mt-1">
           <LinkBtn kind="ghost" href="/login">Cancel</LinkBtn>
           <span className="grow" />
-          <Btn kind="primary" size="md" disabled={busy || !opts} onClick={() => void submit()}>{busy ? "Starting…" : "Start my application"}</Btn>
+          <Btn kind="primary" size="md" disabled={busy || !opts || !agreed} title={agreed ? undefined : "Tick the Privacy Policy box first"} onClick={() => void submit()}>{busy ? "Starting…" : "Start my application"}</Btn>
         </div>
       </div></div>
       <div className="hint" style={{ textAlign: "center" }}>Already applied? <Link href="/login?next=/jupeb/portal">Sign in</Link> with your email or JUPEB application number · <Link href="/jupeb/reset">Forgot your password?</Link></div>

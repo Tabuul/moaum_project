@@ -1,6 +1,7 @@
 package ng.edu.moaum.portal.iam;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -74,6 +75,12 @@ class WaitingRepository {
     Map<String, Object> contactPrompt(UUID actor, boolean student) {
         return jdbc.sql("SELECT state, email, phone, email_ok, phone_ok FROM platform.contact_prompt_for(:k, :id)")
                 .param("k", student ? "student" : "person").param("id", actor).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V441: the published legal documents the person has still to accept in their current version — the Privacy Policy first */
+    List<Map<String, Object>> policyAcceptanceNeeded(String subjectKind, UUID subject) {
+        return jdbc.sql("SELECT document_id, kind, version, title, effective_on::text AS effective_on FROM platform.policy_acceptance_needed(:k, :id)")
+                .param("k", subjectKind).param("id", subject).query().listOfRows();
     }
 
     private static void count(Map<String, String> out, String item, Object n) {

@@ -12,6 +12,7 @@
 import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
 import { IdleWatch } from "@/components/IdleWatch";
+import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -255,6 +256,7 @@ export const ROUTES: Record<string, string> = {
   "t/recruit": "/hr/recruitment",
   "t/appraisal": "/hr/appraisal",
   "t/governance": "/governance",
+  "t/privacy": "/platform/privacy",
   "t/security": "/security",
   "t/dr": "/disaster-recovery",
   "t/cloud": "/cloud",
@@ -566,6 +568,8 @@ export interface Me {
   menu?: string | null;
   /** V430: "how do we reach you" — ASK while the portal holds no usable e-mail or phone for the person (iam/me) */
   contactPrompt?: ContactPromptData | null;
+  /** V441: a legal document (the Privacy Policy) published since the person last accepted one — asked once per version (iam/me) */
+  privacyPrompt?: PolicyPromptData | null;
 }
 
 /* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
@@ -777,6 +781,8 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <span className="nav__outlbl" aria-hidden="true">Sign out</span>
             </button>
           </div>
+          {/* V441: the one authoritative Privacy Policy, a click away on every signed-in screen; the slim rail has no room for it */}
+          {!navSlim ? <div style={{ padding: "0 14px 10px", fontSize: 11, opacity: 0.75 }}><a href="/privacy-policy" target="_blank" rel="noopener" style={{ color: "inherit" }}>Privacy policy</a></div> : null}
         </nav>
 
         <div className="main">
@@ -838,6 +844,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               </div>
             )}
             {me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
+            {me?.privacyPrompt && me.privacyPrompt.documents.length ? <PolicyPrompt p={me.privacyPrompt} /> : null}
             <IdleWatch />
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>
           </div>

@@ -62,7 +62,7 @@ export default function TrackPage() {
             </div>
           </div>
         ) : null}
-        <div className="login-help"><Link href="/login">Sign in to the portal instead</Link></div>
+        <div className="login-help"><Link href="/login">Sign in to the portal instead</Link> · <Link href="/privacy-policy">Privacy policy</Link></div>
       </div>
     </AuthLayout>
   );

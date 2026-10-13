@@ -57,6 +57,7 @@ export function Register({ session }: { session: string }) {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [show, setShow] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -88,6 +89,7 @@ export function Register({ session }: { session: string }) {
     else if (pw.length < 8) e.pw = "At least eight characters.";
     if (!e.pw && !pw2) e.pw2 = "Type it a second time.";
     else if (!e.pw && pw !== pw2) e.pw2 = "The two do not match. Nothing has been saved and nothing is lost — type both again, or press Show to see them.";
+    if (!agreed) e.agree = "Read the Privacy Policy and tick the box to continue.";
     setErr(e);
     return Object.keys(e).length === 0;
   }
@@ -97,7 +99,7 @@ export function Register({ session }: { session: string }) {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/auth/applicant/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session, jambKey: key, email: email.trim(), phone: phoneRead(phone).digits, password: pw }) });
+      const r = await fetch("/api/auth/applicant/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session, jambKey: key, email: email.trim(), phone: phoneRead(phone).digits, password: pw, acceptPolicy: agreed }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       router.push("/applicant");
@@ -193,6 +195,10 @@ export function Register({ session }: { session: string }) {
                 </div>
                 {err.pw2 ? <div className="ferr">{err.pw2}</div> : null}
                 <div className="hint">{show ? "Both boxes are showing. Nobody standing behind you should be able to read them." : "Asked twice because a password mistyped once locks you out of your own application on the morning of screening, and the portal cannot tell it from a stranger. Tap the eye in the box if you would rather see what you typed."}</div>
+              </div>
+              <div className="field">
+                <label className="row row--inline row--tight" htmlFor="agree"><input id="agree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>
+                {err.agree ? <div className="ferr">{err.agree}</div> : null}
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
               <Btn kind="primary" size="md" type="submit" disabled={busy}>{busy ? "Creating your account…" : "Continue"}</Btn>

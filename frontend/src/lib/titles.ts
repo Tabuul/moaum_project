@@ -104,6 +104,7 @@ export const TITLES: Record<string, string> = {
   "t/channels": "Notification channels",
   "t/migration": "Data migration",
   "t/session": "Session & semester setup",
+  "t/privacy": "Privacy & data protection",
   "t/biodatagate": "Biodata compliance",
   "t/biodatastudents": "Biodata compliance — students",
   "t/deptcourses": "Department courses",

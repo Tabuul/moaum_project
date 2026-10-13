@@ -69,7 +69,7 @@ class GovernanceController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> dsrList() {
-        List<Map<String, Object>> rows = jdbc.sql("SELECT id, reference, kind, requester, received_on, due_on, state, note FROM governance.dsr ORDER BY (state IN ('RECEIVED','IN_PROGRESS')) DESC, due_on").query().listOfRows();
+        List<Map<String, Object>> rows = jdbc.sql("SELECT id, reference, kind, requester, received_on, due_on, state, note, subject_kind, contact, detail, filed_via FROM governance.dsr ORDER BY (state IN ('RECEIVED','IN_PROGRESS')) DESC, due_on").query().listOfRows();
         return Map.of("rows", rows);
     }
 

@@ -14,7 +14,7 @@ import { Field, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Activity { id: string; activity: string; lawful_basis: string; sensitive: boolean; retention: string; dpia_state: string; note: string | null }
-export interface DsrRow { id: string; reference: string; kind: string; requester: string; received_on: string; due_on: string; state: string; note: string | null }
+export interface DsrRow { id: string; reference: string; kind: string; requester: string; subject_kind?: string | null; contact?: string | null; detail?: string | null; filed_via?: string | null; received_on: string; due_on: string; state: string; note: string | null }
 
 const DPIA: Record<string, ["ok" | "info" | "bad" | "grey", string]> = { NOT_REQUIRED: ["grey", "Not required"], OUTSTANDING: ["bad", "Outstanding"], COMPLETE: ["ok", "Complete"] };
 const DSTATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = { RECEIVED: ["warn", "Received"], IN_PROGRESS: ["info", "In progress"], COMPLETED: ["ok", "Completed"], REFUSED: ["grey", "Refused"] };
@@ -84,7 +84,7 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
           <DTable cols={["Reference", "Type", "Requester", "Due|mid", "Status|num"]} rows={dsr.map((d) => [
             <span className="tnum" key="r">{d.reference}</span>,
             <span className="sub2" key="k">{d.kind.charAt(0) + d.kind.slice(1).toLowerCase()}</span>,
-            <Two key="q" a={d.requester} b={`received ${day(d.received_on)}`} />,
+            <Two key="q" a={d.requester} b={`${d.filed_via === "PORTAL" ? "filed through the portal · " : ""}received ${day(d.received_on)}${d.contact ? ` · ${d.contact}` : ""}${d.detail ? ` · ${d.detail.length > 120 ? d.detail.slice(0, 117) + "…" : d.detail}` : ""}`} />,
             <span className={`tnum sub2${["RECEIVED", "IN_PROGRESS"].includes(d.state) && d.due_on < today ? " ink-red" : ""}`} key="due">{day(d.due_on)}</span>,
             <span key="s" className="row row--inline row--tight row--right">
               <Pil kind={DSTATE[d.state]?.[0] ?? "grey"}>{DSTATE[d.state]?.[1] ?? d.state}</Pil>

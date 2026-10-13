@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 276
+\set EXPECTED 277
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11864,6 +11864,85 @@ BEGIN
     END;
     PERFORM pg_temp.assert('V435: every deferment carries a random check code of eighteen hex digits — two deferments, two codes — for its letter''s QR',
         coalesce(a ~ '^[0-9a-f]{18}$' AND b ~ '^[0-9a-f]{18}$' AND a <> b AND shaped, false), format('codes %s / %s, all shaped %s', a, b, shaped));
+END $$;
+-- ── V441. The Privacy Policy and its engine: version 1 is seeded as a DRAFT of 36 sections with eight review points; it is
+--          drafted and published by ICT or an administrator only, and never while a review point is unconfirmed; publication
+--          archives (keeps) the version before it; one draft at a time, edited or withdrawn, its sections checked; acceptance is
+--          by the person's own act, once per version, asked again for a new version and never for an unchanged one; the privacy
+--          contact is set with its period; a request filed through the portal lands on the governance log under its reference,
+--          due in that period, five open at most; the register's CBT row says what the engine does ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); stu uuid := gen_random_uuid(); d1 uuid; d2 uuid; d3 uuid; k text;
+        seeded record; r_pending text := 'accepted'; r_office text := 'accepted'; r_second text := 'accepted'; r_bad text := 'accepted';
+        r_contact text := 'accepted'; r_limit text := 'accepted'; r_unpub text := 'accepted';
+        pub record; v2 record; wd text; need1 int; acc1 boolean; acc2 boolean; need2 int; summ record; need3 int; v1_after record;
+        c record; ref1 text; req record; mine int; cbt text; cur record; i int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V441', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V441', 'CHECKV441', 'ICT');
+        SELECT id, version, status, jsonb_array_length(sections) AS n, jsonb_array_length(review_points) AS p, requires_acceptance AS req
+          INTO seeded FROM platform.legal_document WHERE kind = 'PRIVACY_POLICY' ORDER BY version LIMIT 1;
+        d1 := seeded.id;
+        -- not yet: the review points stand; not by the Bursary at all
+        BEGIN PERFORM platform.legal_document_publish(d1, current_date, who, 'ict'); EXCEPTION WHEN check_violation THEN r_pending := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.legal_document_publish(d1, current_date, who, 'bursar'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        -- nothing to accept while nothing is published
+        BEGIN PERFORM platform.policy_accept('STUDENT', stu, d1, '10.0.0.1', 'CHECK'); EXCEPTION WHEN check_violation THEN r_unpub := split_part(SQLERRM, ':', 1); END;
+        FOR k IN SELECT p->>'key' FROM jsonb_array_elements((SELECT review_points FROM platform.legal_document WHERE id = d1)) p LOOP
+            PERFORM platform.legal_review_confirm(d1, k, true, who, 'ict');
+        END LOOP;
+        SELECT status, effective_on, published_at IS NOT NULL AS published, version INTO pub FROM platform.legal_document_publish(d1, current_date, who, 'ict');
+        SELECT version INTO cur FROM platform.legal_published('PRIVACY_POLICY');
+        -- a second draft: version 2, its points unconfirmed again; a third draft refused while it is open; bad sections refused; withdrawn, kept
+        SELECT id, version, status, (SELECT count(*) FROM jsonb_array_elements(review_points) p WHERE p->>'confirmed_at' IS NULL) AS unconfirmed
+          INTO v2 FROM platform.legal_document_draft('PRIVACY_POLICY', who, 'ict');
+        d2 := v2.id;
+        BEGIN PERFORM platform.legal_document_draft('PRIVACY_POLICY', who, 'ict'); EXCEPTION WHEN check_violation THEN r_second := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.legal_document_update(d2, 'Privacy Policy', NULL, '[{"heading": "x"}]'::jsonb, NULL, true, who, 'ict'); EXCEPTION WHEN check_violation THEN r_bad := split_part(SQLERRM, ':', 1); END;
+        PERFORM platform.legal_document_update(d2, 'Privacy Policy', 'A summary', '[{"key": "a", "heading": "One", "body": "Body one."}]'::jsonb, NULL, true, who, 'ict');
+        SELECT status INTO wd FROM platform.legal_document_withdraw(d2, who, 'ict');
+        -- acceptance: asked once, recorded once, never again for the same version
+        SELECT count(*) INTO need1 FROM platform.policy_acceptance_needed('STUDENT', stu);
+        acc1 := platform.policy_accept('STUDENT', stu, d1, '10.0.0.1', 'CHECK browser');
+        acc2 := platform.policy_accept('STUDENT', stu, d1, '10.0.0.1', 'CHECK browser');
+        SELECT count(*) INTO need2 FROM platform.policy_acceptance_needed('STUDENT', stu);
+        SELECT accepted INTO summ FROM platform.policy_acceptance_summary(d1) WHERE subject_kind = 'STUDENT';
+        -- a new version published: the old one archived and kept, the student asked again
+        SELECT id INTO d3 FROM platform.legal_document_draft('PRIVACY_POLICY', who, 'ict');
+        FOR k IN SELECT p->>'key' FROM jsonb_array_elements((SELECT review_points FROM platform.legal_document WHERE id = d3)) p LOOP
+            PERFORM platform.legal_review_confirm(d3, k, true, who, 'ict');
+        END LOOP;
+        PERFORM platform.legal_document_publish(d3, current_date + 7, who, 'ict');
+        SELECT status, archive_note INTO v1_after FROM platform.legal_document WHERE id = d1;
+        SELECT count(*) INTO need3 FROM platform.policy_acceptance_needed('STUDENT', stu);
+        -- the privacy contact, by the right offices, with its period; a request filed by the person lands on the governance log
+        BEGIN PERFORM platform.privacy_contact_set('A', 'B', 'C', 'dpo@example.edu', '080', 'D', 30, NULL, who, 'bursar'); EXCEPTION WHEN check_violation THEN r_contact := split_part(SQLERRM, ':', 1); END;
+        SELECT dpo_email, request_days, updated_office INTO c FROM platform.privacy_contact_set('Dr Check', 'Data Protection Officer', 'Registry', 'DPO@Example.edu', '0800', 'Makurdi', 21, NULL, who, 'ict');
+        ref1 := governance.dsr_file('COMPLAINT', 'STUDENT', stu, 'me@example.com', 'The record shows a wrong state of origin.');
+        SELECT kind, due_on - received_on AS days, filed_via, subject_id, requester INTO req FROM governance.dsr WHERE reference = ref1;
+        FOR i IN 1..4 LOOP PERFORM governance.dsr_file('ACCESS', 'STUDENT', stu, NULL, 'A copy of everything held about me, please.'); END LOOP;
+        BEGIN PERFORM governance.dsr_file('INQUIRY', 'STUDENT', stu, NULL, 'One more question about my data.'); EXCEPTION WHEN check_violation THEN r_limit := split_part(SQLERRM, ':', 1); END;
+        SELECT count(*) INTO mine FROM governance.dsr_mine('STUDENT', stu);
+        SELECT activity INTO cbt FROM governance.processing_activity WHERE activity LIKE 'Camera presence signals at CBT%';
+        RAISE EXCEPTION 'the V441 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V441: the Privacy Policy v1 is a seeded draft of 36 sections and 8 review points; published only by ICT/admin once every point is confirmed; one draft at a time, checked, withdrawable, kept; acceptance once per version by the person, asked again for a new version; the contact and its period set by the right offices; a request filed through the portal lands on the governance log under its reference, five open at most; the register''s CBT row says what the engine does',
+        coalesce(seeded.version = 1 AND seeded.status = 'DRAFT' AND seeded.n = 36 AND seeded.p = 8 AND seeded.req
+                 AND r_pending = 'LEGAL_REVIEW_PENDING' AND r_office = 'LEGAL_OFFICE' AND r_unpub = 'LEGAL_NOT_PUBLISHED'
+                 AND pub.status = 'PUBLISHED' AND pub.published AND pub.effective_on = current_date AND cur.version = 1
+                 AND v2.version = 2 AND v2.status = 'DRAFT' AND v2.unconfirmed = 8 AND r_second = 'LEGAL_DRAFT_EXISTS' AND r_bad = 'LEGAL_SECTIONS' AND wd = 'ARCHIVED'
+                 AND need1 = 1 AND acc1 AND NOT acc2 AND need2 = 0 AND summ.accepted = 1
+                 AND v1_after.status = 'ARCHIVED' AND v1_after.archive_note = 'replaced by version 3' AND need3 = 1
+                 AND r_contact = 'PRIVACY_CONTACT_OFFICE' AND c.dpo_email = 'dpo@example.edu' AND c.request_days = 21 AND c.updated_office = 'ict'
+                 AND ref1 LIKE 'DSR-%' AND req.kind = 'COMPLAINT' AND req.days = 21 AND req.filed_via = 'PORTAL' AND req.subject_id = stu AND req.requester LIKE 'Student %'
+                 AND r_limit = 'DSR_OPEN_LIMIT' AND mine = 5 AND cbt IS NOT NULL, false),
+        format('seed=%s/%s/%s/%s/%s pending=%s office=%s unpub=%s pub=%s/%s/%s cur=%s v2=%s/%s/%s second=%s bad=%s wd=%s need=%s/%s/%s acc=%s/%s summ=%s v1=%s/%s contact=%s/%s/%s/%s req=%s/%s/%s/%s/%s limit=%s mine=%s cbt=%s',
+               seeded.version, seeded.status, seeded.n, seeded.p, seeded.req, r_pending, r_office, r_unpub, pub.status, pub.published, pub.effective_on, cur.version,
+               v2.version, v2.status, v2.unconfirmed, r_second, r_bad, wd, need1, need2, need3, acc1, acc2, summ.accepted, v1_after.status, v1_after.archive_note,
+               r_contact, c.dpo_email, c.request_days, c.updated_office, ref1, req.kind, req.days, req.filed_via, req.requester, r_limit, mine, cbt));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

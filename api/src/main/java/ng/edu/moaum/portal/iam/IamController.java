@@ -102,6 +102,22 @@ class IamController {
         } catch (RuntimeException notAsked) {
             // the prompt is a convenience: a record that cannot be read never fails the sign-in
         }
+        /* V441: the Privacy Policy (or another legal document) published since the person last accepted one — asked once per
+         * version, by the person's own act, never again for an unchanged one; a CBT-only token is nobody's account */
+        try {
+            boolean student = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
+            boolean applicant = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_applicant".equals(a.getAuthority()));
+            boolean person = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().startsWith("OFFICE_") && !"OFFICE_putmecbt".equals(a.getAuthority()));
+            String subjectKind = student ? "STUDENT" : applicant ? "APPLICANT" : person ? "STAFF" : null;
+            if (subjectKind != null) {
+                List<Map<String, Object>> needed = waiting.policyAcceptanceNeeded(subjectKind, UUID.fromString(authentication.getName()));
+                if (!needed.isEmpty()) {
+                    me.put("privacyPrompt", Map.of("subjectKind", subjectKind, "documents", needed));
+                }
+            }
+        } catch (RuntimeException notAsked) {
+            // the prompt is a convenience: a record that cannot be read never fails the sign-in
+        }
         if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
             me.put("sessionId", t.getToken().getClaimAsString("sid"));
         }

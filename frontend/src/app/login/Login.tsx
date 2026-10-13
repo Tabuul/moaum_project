@@ -139,6 +139,7 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
           </form>
 
           <p className={css.foot}>Cannot sign in? <Link href="/login/help">Ask ICT Support for help</Link> · <Link href="/track">Track a request</Link></p>
+          <p className={css.foot}><Link href="/privacy-policy">Privacy policy</Link> · <Link href="/privacy-policy#s-cookies">Cookies</Link></p>
         </div>
     </AuthLayout>
   );

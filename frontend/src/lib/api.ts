@@ -39,21 +39,23 @@ export interface ApiOptions {
   reason?: string;
   /** Sent as X-Correlation-Id; echoed back and generated when absent. */
   correlationId?: string;
+  /** V441: a public door read as the public reads it — no session token, no acting office, even when the browser holds a (possibly ended) session */
+  anonymous?: boolean;
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<ApiResult<T>> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  const token = await sessionToken();
+  const token = options.anonymous ? null : await sessionToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  let office = options.office ?? null;
-  if (!office) {
+  let office = options.anonymous ? null : (options.office ?? null);
+  if (!office && !options.anonymous) {
     try {
       office = (await cookies()).get(OFFICE_COOKIE)?.value ?? null;
     } catch {
       office = null;
     }
   }
-  office = office ?? process.env.PORTAL_ACTIVE_OFFICE ?? null;
+  office = office ?? (options.anonymous ? null : process.env.PORTAL_ACTIVE_OFFICE ?? null);
   if (office) headers["X-Active-Office"] = office;
   if (options.reason) headers["X-Reason"] = reasonHeader(options.reason);
   if (options.correlationId) headers["X-Correlation-Id"] = options.correlationId;

@@ -81,6 +81,7 @@ export function PgApply() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -227,12 +228,13 @@ export function PgApply() {
           </>
         ) : null}
 
+        {last ? <label className="row row--inline row--tight mt-2" htmlFor="pagree"><input id="pagree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label> : null}
         <div className="row mt-1">
           {step > 1 ? <Btn kind="ghost" onClick={back}>Back</Btn> : <LinkBtn kind="ghost" href="/login">Cancel</LinkBtn>}
           <span className="grow" />
           <span className="sub2">Step {step} of {STEPS.length}</span>
           {last
-            ? <Btn kind="primary" size="md" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</Btn>
+            ? <Btn kind="primary" size="md" disabled={busy || !agreed} title={agreed ? undefined : "Tick the Privacy Policy box first"} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</Btn>
             : <Btn kind="primary" size="md" onClick={next}>Next</Btn>}
         </div>
       </div></div>

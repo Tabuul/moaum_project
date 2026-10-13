@@ -37,7 +37,7 @@ export function VerifyDocument({ v, keyAsked }: { v: Verify | null; keyAsked: st
               <div className="sub2">Verified {v.verifiedAt ? new Date(v.verifiedAt).toLocaleString("en-GB") : "now"} · reference {v.verificationCode ?? keyAsked}. Only fields the University has approved for public disclosure are shown.</div>
             </>
           ) : <div className="sub2">Scan the QR code, or type the verification reference or document number.</div>}
-          <div className="sub2"><Link className="lnk" href="/">The portal</Link></div>
+          <div className="sub2"><Link className="lnk" href="/">The portal</Link> · <Link className="lnk" href="/privacy-policy">Privacy policy</Link></div>
         </div>
       </div>
     </div>

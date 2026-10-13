@@ -1168,6 +1168,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/security", "icon": "shield", "label": "Security" },
           { "id": "t/dr", "icon": "box", "label": "Backups & Recovery" },
           { "id": "t/governance", "icon": "scale", "label": "Governance" },
+          { "id": "t/privacy", "icon": "shield", "label": "Privacy & Data Protection" },
           { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
 { "id": "t/supportstudents", "icon": "life", "label": "Student Support" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
@@ -1269,6 +1270,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Administration",
         "items": [
           { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
+          { "id": "t/privacy", "icon": "shield", "label": "Privacy & Data Protection" },
           { "id": "t/audit", "icon": "shield", "label": "Audit Trail" }
         ]
       },
@@ -1332,7 +1334,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "t/applicationwindows", "icon": "check", "label": "Application Registration Control" },
-          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" }
+          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" },
+          { "id": "t/privacy", "icon": "shield", "label": "Privacy & Data Protection" }
         ]
       },
       {
