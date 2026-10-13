@@ -262,4 +262,56 @@ class AcademicStandingIT {
         assertThat((List<Map<String, Object>>) ok(it.call(TestTokens.token(held, List.of("student")), HttpMethod.GET, "/api/v1/me", null)).get("carryovers"))
                 .extracting(c -> c.get("course_code")).containsExactly("STD 102");
     }
+
+    /**
+     * V424: the results held for the Senate are listed for the Registry (never for a lecturer), with the days after which the
+     * Registry is reminded — days only the Academic Office or the Registry sets, 7 to 365 or 0; the students owing a course only
+     * because of a recorded absence are named for the Registry, and the Bursary reads who owes a GST/EPS course again.
+     */
+    @Test
+    void heldResultsAreListedAndWhoTheAbsentRuleTouchesIsNamed() {
+        seed();
+        int n = new Random().nextInt(8000) + 1000;
+        String heldMatric = "MOAUM/STD/87/4" + n;
+        String absentMatric = "MOAUM/STD/87/5" + n;
+        it.student("ITSTANDHOLD" + n, "C00061", "MOAUM/ADM/87/40" + n, heldMatric, 100);
+        it.student("ITSTANDABS" + n, "C00061", "MOAUM/ADM/87/50" + n, absentMatric, 100);
+        it.db(() -> jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, 2, :rows::jsonb, true)").param("s", SESSION)
+                .param("rows", "[{\"matric\":\"" + heldMatric + "\",\"course\":\"STD 101\",\"outcome\":\"MALPRACTICE\",\"level\":\"100\"},"
+                        + "{\"matric\":\"" + absentMatric + "\",\"course\":\"STD 102\",\"outcome\":\"ABSENT\",\"level\":\"100\"}]")
+                .query().listOfRows());
+
+        // the held results: for the Registry, with the reminder days; never for a lecturer
+        Map<String, Object> held = ok(it.call(records, HttpMethod.GET, "/api/v1/results/held?session=" + SESSION, null));
+        assertThat(((Number) held.get("remindDays")).intValue()).isEqualTo(30);
+        assertThat((List<Map<String, Object>>) held.get("rows")).anySatisfy(r -> {
+            assertThat(r.get("number")).isEqualTo(heldMatric);
+            assertThat(r.get("outcome")).isEqualTo("MALPRACTICE");
+            assertThat(r.get("course_code")).isEqualTo("STD 101");
+        });
+        assertThat(it.call(lecturer, HttpMethod.GET, "/api/v1/results/held", null).getStatusCode().value()).isEqualTo(403);
+
+        // the reminder days: the Registry's to set, 7 to 365 or 0
+        assertThat(it.call(lecturer, HttpMethod.PUT, "/api/v1/cohorts/settings/held-reminder", Map.of("days", 14)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> tooSoon = it.call(academic, HttpMethod.PUT, "/api/v1/cohorts/settings/held-reminder", Map.of("days", 3));
+        assertThat(tooSoon.getStatusCode().value()).isEqualTo(422);
+        assertThat(tooSoon.getBody().get("code")).isEqualTo("STANDING_SETTING_HELD_DAYS");
+        try {
+            ok(it.call(academic, HttpMethod.PUT, "/api/v1/cohorts/settings/held-reminder", Map.of("days", 14)));
+            assertThat(((Number) ok(it.call(records, HttpMethod.GET, "/api/v1/results/held?session=" + SESSION, null)).get("remindDays")).intValue()).isEqualTo(14);
+        } finally {
+            ok(it.call(academic, HttpMethod.PUT, "/api/v1/cohorts/settings/held-reminder", Map.of("days", 30)));
+        }
+
+        // who the absent rule touches: the absence is owed; the Bursary reads the GST/EPS side
+        List<Map<String, Object>> owed = (List<Map<String, Object>>) (List<?>) it.getList(records, "/api/v1/results/absence-carryovers?prog=C00061").getBody();
+        assertThat(owed).anySatisfy(r -> {
+            assertThat(r.get("number")).isEqualTo(absentMatric);
+            assertThat(r.get("course_code")).isEqualTo("STD 102");
+            assertThat(r.get("absent_in")).isEqualTo(SESSION + " semester 2");
+        });
+        assertThat(owed).noneMatch(r -> heldMatric.equals(r.get("number")));
+        assertThat(ok(it.call(ItSupport.token("bursar"), HttpMethod.GET, "/api/v1/gst/fee/absences?session=" + SESSION, null))).containsKey("rows");
+        assertThat(it.call(lecturer, HttpMethod.GET, "/api/v1/gst/fee/absences", null).getStatusCode().value()).isEqualTo(403);
+    }
 }

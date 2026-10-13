@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 261
+\set EXPECTED 262
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11005,6 +11005,106 @@ BEGIN
         format('off=%s office=%s twice=%s req=%s miss=%s %s/%s locked=%s health=%s cpo=%s long=%s active=%s exc=%s revoked=%s expired=%s told=%s sent %s->%s done=[%s] %s touched=%s off=%s reminded_off=%s',
                st_off, r_office, r_twice, st_req, miss, done_n, req_n, r_locked, r_health, r_cpo, r_long, r_active, st_exc, st_revoked, st_expired,
                told, sent1, sent2, miss_done, st_done, touched, st_after_off, reminded_off));
+END $$;
+-- ── V424: results held for the Senate listed and reminded; who the absent rule now affects ──
+-- Invented students in sessions of their own. W's withheld and Z's malpractice result are listed as held, with how long they
+-- have waited and the amendment that carries a decision once one is raised; a held result later decided is no longer held.
+-- The Registry is reminded of the results held past the University's days — once a week at most, never when the days are
+-- 0 — and only the Academic Office or the Registry sets the days (7 to 365, or 0). A, Z (decided absent) and G owe the course
+-- they were recorded absent from; B owed it already for an earlier graded F and is not listed; C passed after
+-- the absence and owes nothing; D, graduated, is not listed. G owes a GST course again because of an absence. The block
+-- undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S0 text := '9941/9942'; SA text := '9943/9944'; SB text := '9945/9946'; dept text;
+        w uuid := gen_random_uuid(); z uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); g uuid := gen_random_uuid(); x uuid; i int; sheet uuid; amd uuid;
+        held_w text; held_z text; w_days int; w_amd text; decided int; first_told int; logged text; again int; zero_days int;
+        r_office text; r_days text; absent_list text; gst_list text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.reason', 'check V424', true);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+        VALUES (gen_random_uuid(), S0, date '9941-10-01', date '9942-08-31'), (gen_random_uuid(), SA, date '9943-10-01', date '9944-08-31'),
+               (gen_random_uuid(), SB, date '9945-10-01', date '9946-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        SELECT 'ZZM 10' || n, 'Check held ' || n, 3, 2, 100, dept, 'Core', 'LIVE' FROM generate_series(1, 2) n;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office)
+        VALUES ('GST 943', 'Check general studies absent', 2, 2, 100, dept, 'GST', 'LIVE', 'GST');
+        i := 0;
+        FOREACH x IN ARRAY ARRAY[w, z, a, b, c, d, g] LOOP
+            i := i + 1;
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (x, 'MOAUM/ADM/99/99424' || i, 'MOAUM/ZZM/99/042' || i, 'ZZHELD', 'Student ' || i, 'C00061', 'UTME', S0, 100, 100,
+                    CASE WHEN x = d THEN 'GRADUATED' ELSE 'ACTIVE' END, now());
+        END LOOP;
+
+        -- the old portal's results: B fails ZZM 102 in S0, then is absent from it in SA; C absent in S0, passes in SA
+        PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0424', 'course', 'ZZM 102', 'total', '20', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0425', 'course', 'ZZM 102', 'outcome', 'ABSENT', 'level', '100')), true);
+        PERFORM assessment.import_legacy_semester(SA, 2, jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0421', 'course', 'ZZM 101', 'outcome', 'WITHHELD', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0422', 'course', 'ZZM 101', 'outcome', 'MALPRACTICE', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0423', 'course', 'ZZM 101', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0424', 'course', 'ZZM 102', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0425', 'course', 'ZZM 102', 'total', '65', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0426', 'course', 'ZZM 101', 'outcome', 'ABSENT', 'level', '100'),
+            jsonb_build_object('matric', 'MOAUM/ZZM/99/0427', 'course', 'GST 943', 'outcome', 'ABSENT', 'level', '100')), true);
+        SELECT s.id INTO sheet FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
+         WHERE o.course_code = 'ZZM 101' AND o.session = SA AND o.semester = 2;
+        -- the sheet was published 40 days ago
+        UPDATE assessment.score_sheet SET published_at = now() - interval '40 days' WHERE id = sheet;
+        UPDATE assessment.score SET entered_at = now() - interval '40 days' WHERE sheet_id = sheet;
+
+        -- (1) the held results: listed with their days; an amendment raised for W shows; Z decided is no longer held
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        amd := assessment.raise_amendment(sheet, w, 20, 40, 'GRADED', 'The Senate released the withheld result', NULL);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        SELECT h.outcome, h.days, h.amendment_stage INTO held_w, w_days, w_amd FROM assessment.held_results(NULL, NULL, NULL, SA) h WHERE h.student_id = w;
+        SELECT h.outcome INTO held_z FROM assessment.held_results(NULL, dept, NULL, NULL) h WHERE h.student_id = z;
+        INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason)
+        VALUES (sheet, z, 2, NULL, NULL, 'ABSENT', 'check V424: the Senate''s decision');
+        SELECT count(*) INTO decided FROM assessment.held_results(NULL, NULL, NULL, SA) h WHERE h.student_id = z;
+
+        -- the reminder: past 30 days, once; not again within the week; never at 0 days
+        DELETE FROM assessment.held_reminder_log;
+        first_told := assessment.remind_held_results();
+        SELECT l.held || '/' || l.oldest INTO logged FROM assessment.held_reminder_log l ORDER BY l.sent_at DESC LIMIT 1;
+        again := assessment.remind_held_results() + (SELECT count(*) - 1 FROM assessment.held_reminder_log)::int;
+        DELETE FROM assessment.held_reminder_log;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM policy.set_held_remind_days(0);
+        zero_days := assessment.remind_held_results() + (SELECT count(*) FROM assessment.held_reminder_log)::int;
+        PERFORM policy.set_held_remind_days(30);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM policy.set_held_remind_days(14); r_office := 'SET';
+        EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM policy.set_held_remind_days(3); r_days := 'SET';
+        EXCEPTION WHEN check_violation THEN r_days := split_part(SQLERRM, ':', 1); END;
+
+        -- (2) who the absent rule now affects
+        SELECT string_agg(right(x.number, 4) || ':' || x.course_code || ':' || x.absent_in, ',' ORDER BY x.number) INTO absent_list
+          FROM assessment.absence_carryovers(NULL, NULL, 'C00061') x WHERE x.number LIKE 'MOAUM/ZZM/99/%';
+        SELECT string_agg(right(x.number, 4) || ':' || x.course_code || ':' || x.office || ':' || x.absent_in, ',') INTO gst_list
+          FROM finance.gst_eps_owed_for_absence(SB) x WHERE x.number LIKE 'MOAUM/ZZM/99/%';
+        RAISE EXCEPTION 'the V424 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V424 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V424: held results listed with their days and open amendment, gone once decided; the Registry reminded of those past the University''s days once a week, never at 0, the days set only by the Academic Office or the Registry; carryovers from a recorded absence and GST/EPS owed again because of one listed, never from an earlier graded F, a later pass or a graduate',
+        coalesce(held_w = 'WITHHELD' AND w_days = 40 AND w_amd = 'VERIFICATION' AND held_z = 'MALPRACTICE' AND decided = 0
+                 AND first_told >= 0 AND logged = '1/40' AND again = 0 AND zero_days = 0
+                 AND r_office = 'STANDING_SETTING_OFFICE' AND r_days = 'STANDING_SETTING_HELD_DAYS'
+                 AND absent_list = '0422:ZZM 101:' || SA || ' semester 2,0423:ZZM 101:' || SA || ' semester 2,0427:GST 943:' || SA || ' semester 2'
+                 AND gst_list = '0427:GST 943:GST:' || SA || ' semester 2', false),
+        format('W %s %s days amd=%s | Z %s decided=%s | told=%s logged=%s again=%s zero=%s | office=%s days=%s | absent=%s | gst=%s',
+               held_w, w_days, w_amd, held_z, decided, first_told, logged, again, zero_days, r_office, r_days, absent_list, gst_list));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

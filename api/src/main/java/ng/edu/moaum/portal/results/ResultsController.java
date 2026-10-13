@@ -223,6 +223,41 @@ class ResultsController {
         return out;
     }
 
+    /** V424: the Registry and the result desks — never a lecturer or a student — read the held results and who the absent rule touches */
+    private static final String REGISTRY_READERS =
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records',"
+            + "'OFFICE_dean','OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_super')";
+
+    /** V424: every result held for the Senate (withheld, incomplete, malpractice) in the office's scope — how long it has waited and
+     *  the amendment carrying the decision when one is open — with the days after which the Registry is reminded. Every session
+     *  unless one is named: a held result can be old. */
+    @GetMapping("/held")
+    @PreAuthorize(REGISTRY_READERS)
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    Map<String, Object> held(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                             @RequestParam(required = false) String prog, @RequestParam(required = false) String session) {
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("remindDays", jdbc.sql("SELECT policy.held_remind_days()").query(Integer.class).single());
+        out.put("rows", jdbc.sql("SELECT * FROM assessment.held_results(:f, :d, :p, :s)")
+                .param("f", blank(b.fac()), java.sql.Types.VARCHAR).param("d", blank(b.dept()), java.sql.Types.VARCHAR)
+                .param("p", blank(b.prog()), java.sql.Types.VARCHAR).param("s", blank(session), java.sql.Types.VARCHAR).query().listOfRows());
+        return out;
+    }
+
+    /** V424: the students in the office's scope owing a course only because of a recorded absence (V422) — for the Registry
+     *  before registration. Reads only. */
+    @GetMapping("/absence-carryovers")
+    @PreAuthorize(REGISTRY_READERS)
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    List<Map<String, Object>> absenceCarryovers(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                                @RequestParam(required = false) String prog) {
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        return jdbc.sql("SELECT * FROM assessment.absence_carryovers(:f, :d, :p)")
+                .param("f", blank(b.fac()), java.sql.Types.VARCHAR).param("d", blank(b.dept()), java.sql.Types.VARCHAR)
+                .param("p", blank(b.prog()), java.sql.Types.VARCHAR).query().listOfRows();
+    }
+
     @PutMapping("/sheets/{id}/scores")
     @PreAuthorize(ENTRY)
     Map<String, Object> scores(@PathVariable UUID id, @Valid @RequestBody ResultsService.ScoresIn body) {

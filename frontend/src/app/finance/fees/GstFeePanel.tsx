@@ -19,6 +19,8 @@ import { dayOf, naira, num, pct, reasonWord, type GstFeePage, type GstFeeRule } 
 
 interface ReviewRow { student_id: string; number: string; surname: string; other_names: string; programme: string; level: number; paid: number; reference: string | null; paid_at: string | null; gst_reason: string; eps_reason: string; payments?: string }
 interface Decided { reference: string; decision: "KEEP" | "REFUND"; note: string; decided_at: string; decided_by: string | null; number: string; surname: string; other_names: string; paid: number; refund_reference: string | null; refund_state: string | null; refund_amount: number | null }
+/** V424: a student owing a GST/EPS course again because they were recorded absent from it (V422) */
+interface AbsenceRow { student_id: string; number: string; name: string; programme: string; level: number | null; course_code: string; title: string; office: string; absent_in: string; owed_this_session: boolean; status: string }
 const REFUND_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { PROPOSED: ["Proposed — awaiting a second officer", "warn"], APPROVED: ["Approved", "info"], PAID: ["Refunded", "ok"], REJECTED: ["Rejected — back in review", "bad"] };
 
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct Entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich" };
@@ -37,6 +39,15 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
   const st = data?.standing ?? null;
   const [review, setReview] = useState<ReviewRow[] | null>(null);
   const [decided, setDecided] = useState<Decided[]>([]);
+  const [absences, setAbsences] = useState<AbsenceRow[] | null>(null);
+  /* V424: who owes a GST/EPS course again because of a recorded absence — read when the list is opened */
+  async function loadAbsences() {
+    if (absences) return;
+    const r = await fetch(`/api/bff/api/v1/gst/fee/absences?session=${encodeURIComponent(session)}`, { cache: "no-store" }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    if (!r || !r.ok) { notifyProblem((j as Problem) ?? { status: 503, title: "The list could not be read just now." }); return; }
+    setAbsences((j?.rows ?? []) as AbsenceRow[]);
+  }
   const [decide, setDecide] = useState<{ row: ReviewRow; reference: string; amount: number; decision: "KEEP" | "REFUND"; note: string; payer: string; bank: string; accountName: string; last4: string } | null>(null);
   async function loadReview(force = false) {
     if (review && !force) return;
@@ -132,6 +143,18 @@ export function GstFeePanel({ session, data, faculties, programmes, may }: {
                 ])} />
               </details>
             ) : null}
+            <details className="mt-1" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void loadAbsences(); }}>
+              <summary className="sub2">Owed again after a recorded absence{absences ? ` (${absences.length})` : ""}: a recorded absence is an F and the course is owed (V422)</summary>
+              {absences === null ? <div className="sub2">Reading…</div> : absences.length ? (
+                <DTable cols={["S/N|num", "Student", "Programme", "Level|num", "Course", "Absent in", "This session|mid"]} rows={absences.map((x, i) => [
+                  <span key="n" className="tnum sub2">{i + 1}</span>, <span key="s"><b>{x.name}</b><div className="sub2 tnum">{x.number}</div></span>,
+                  <span key="p">{x.programme}</span>, <span key="l" className="tnum">{x.level ?? "—"}</span>,
+                  <span key="c"><b className="tnum">{x.course_code}</b> <span className="sub2">{x.office}</span><div className="sub2">{x.title}</div></span>,
+                  <span key="a" className="tnum sub2">{x.absent_in}</span>,
+                  <Pil key="o" kind={x.owed_this_session ? "warn" : "grey"}>{x.owed_this_session ? "Owed" : x.status === "NOT_OFFERED" ? "Not run this session" : x.status.toLowerCase().replace(/_/g, " ")}</Pil>,
+                ])} />
+              ) : <div className="sub2">Nobody owes a GST or EPS course again because of an absence in {session}.</div>}
+            </details>
             {decide ? (
               <Modal title={decide.decision === "KEEP" ? `Keep ${decide.reference}` : `Refund ${decide.reference}`} sub={`${decide.row.surname}, ${decide.row.other_names} · ${naira(decide.amount)}`} onClose={() => setDecide(null)}
                 foot={<><Btn kind="ghost" onClick={() => setDecide(null)}>Back</Btn><Btn kind="primary" disabled={busy !== null} onClick={() => void submitDecision()}>{busy === "decide" ? "Saving…" : decide.decision === "KEEP" ? "Keep the payment" : "Propose the refund"}</Btn></>}>

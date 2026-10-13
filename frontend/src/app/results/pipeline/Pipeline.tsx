@@ -13,6 +13,7 @@ import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { PipelinePanel, broadsheetHref } from "@/components/results/PipelinePanel";
+import { HeldForSenate, OwedAfterAbsence } from "./HeldPanels";
 
 /** the nine stages, with what happens and what each cannot pass without (proto/part26 RP_STAGES, read against the chain V013 carries) */
 export const RP_STAGES: [string, string, string, string, string][] = [
@@ -223,6 +224,9 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
         </Panel>
       ) : null}
       <StudentResultStatus scope={scope} />
+      {/* V424: the results held for the Senate, and who now owes a course because of a recorded absence */}
+      <HeldForSenate scope={scope} />
+      <OwedAfterAbsence scope={scope} />
     </>
   );
 }

@@ -155,6 +155,21 @@ class GstController {
     }
 
     /**
+     * V424: the students who owe a GST/EPS course again in the session because they were recorded absent from it before (V422's
+     * rule: an absence is owed) — for the Bursary before the fee run. Reads only; nothing is charged here.
+     */
+    @GetMapping("/fee/absences")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> absences(@RequestParam(required = false) String session) {
+        String s = session(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("rows", jdbc.sql("SELECT * FROM finance.gst_eps_owed_for_absence(:s)").param("s", s).query().listOfRows());
+        return out;
+    }
+
+    /**
      * V367: the Bursary decides a GST payment no course requires — KEEP with its reason, or REFUND, which raises a refund of it
      * through the refunds desk's maker–checker workflow (another officer approves; nothing is approved or paid here). The
      * payment itself is never changed.

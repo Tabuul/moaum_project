@@ -35,6 +35,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
   const [award, setAward] = useState<{ award: string; years: string; note: string } | null>(null);
   const [years, setYears] = useState(String(summary.policy?.max_spillover_years ?? 2));
   const [below, setBelow] = useState<string | null>(null);
+  const [heldDays, setHeldDays] = useState<string | null>(null);   // V424
   const t = summary.totals;
   const n = (v: number | null | undefined) => Number(v ?? 0);
   const isList = ["current", "graduated", "spillover", "review", "all"].includes(tab);
@@ -247,6 +248,16 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
                   {canSet ? <Btn kind="primary" disabled={busy || below === null || !(Number(below) > 0 && Number(below) <= 5) || Number(below) === Number(settings.standing.probation_below_cgpa)}
                     onClick={() => void call("PUT", "/settings/probation", { probationBelowCgpa: Number(below) }, `Probation threshold set to a CGPA of ${Number(below).toFixed(2)}`).then((r) => { if (r) setBelow(null); })}>Save</Btn> : null}
                   <span className="sub2">Read on complete published results only: a student whose results are missing, pending or incomplete is never placed on probation.</span>
+                </div>
+                {/* V424: a result held for the Senate (withheld, incomplete, malpractice) reminded to the Registry after these days */}
+                <div className="row row--base mt-2">
+                  <Field id="co-held" label="Remind the Registry of a held result after (days)" style={{ flex: "0 1 260px" }}>
+                    <input id="co-held" className="ctl tnum" inputMode="numeric" disabled={!canSet} value={heldDays ?? String(settings.standing.held_remind_days ?? 30)}
+                      onChange={(e) => setHeldDays(e.target.value.replace(/[^0-9]/g, ""))} />
+                  </Field>
+                  {canSet ? <Btn kind="primary" disabled={busy || heldDays === null || heldDays === "" || !(Number(heldDays) === 0 || (Number(heldDays) >= 7 && Number(heldDays) <= 365)) || Number(heldDays) === Number(settings.standing.held_remind_days)}
+                    onClick={() => void call("PUT", "/settings/held-reminder", { days: Number(heldDays) }, Number(heldDays) === 0 ? "Held results: no reminder" : `Held results reminded after ${Number(heldDays)} days`).then((r) => { if (r) setHeldDays(null); })}>Save</Btn> : null}
+                  <span className="sub2">7 to 365 days, or 0 for no reminder. The Registrar, the Deputy Registrar and Exams and Records are told at most once a week; the list is on the Result pipeline.</span>
                 </div>
               </PBody>
             </Panel>

@@ -118,6 +118,22 @@ as the candidate's first mark. The student is told "Your result in … is publis
 who is not on the sheet's roll is refused (`RES_AMEND_NO_MARK`). On the pipeline, *Results not yet in* offers **Late
 result** to the desk of entry for a candidate not on a published sheet.
 
+**Held results and who the absent rule touches (V424).** Two read-only lists on the Result pipeline, for the Registry and
+the result desks (never a lecturer), within the office's scope:
+
+- **Held for the Senate**: every withheld, incomplete or malpractice result on a published sheet, in every session. It shows
+  the student, the course, how many days it has waited, and the amendment carrying the decision when one is open.
+  Each morning the Registrar, the Deputy Registrar and Exams and Records are emailed about any held longer than the
+  University's days, at most once a week. The days are 30 until the Academic Office or the Registry changes them on
+  *Cohorts → Settings → Academic standing*: 7 to 365, or 0 for no reminder. `assessment.held_reminder_log` keeps what was
+  sent.
+- **Owed after a recorded absence**: the students still on the register who owe a course only because of an absence, so it
+  now comes back at registration. A course also owed for a graded F was owed before and is not listed.
+
+The Bursary's GST fee panel (*Fees → GST fee*) has **Owed again after a recorded absence**. It lists the students who owe a
+GST/EPS course again in the session because they were absent from it, and whether it is owed this session. Nothing is
+charged or registered by any of these lists.
+
 **Migrated students.** A student whose record and registrations came over but whose results did not reads *result not
 available*, never 0.00. When the old portal's results are uploaded (`assessment.import_legacy_semester`), they become
 published results like any other and the standing is read from them.

@@ -280,7 +280,8 @@ class CohortController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("policy", jdbc.sql("SELECT max_spillover_years, updated_at, helpdesk.person_name(updated_by) AS updated_by FROM policy.progression_setting WHERE row_no").query().singleRow());
         // V421: the probation threshold — a CGPA below it, on complete published results
-        out.put("standing", jdbc.sql("SELECT probation_below_cgpa, updated_at, helpdesk.person_name(updated_by) AS updated_by FROM policy.standing_setting WHERE row_no").query().singleRow());
+        // V424: and the days a result held for the Senate waits before the Registry is reminded
+        out.put("standing", jdbc.sql("SELECT probation_below_cgpa, held_remind_days, updated_at, helpdesk.person_name(updated_by) AS updated_by FROM policy.standing_setting WHERE row_no").query().singleRow());
         out.put("sessions", jdbc.sql("""
                 SELECT a.name, a.state, a.starts_on, a.ends_on, a.merged_into, a.merged_reason, a.merged_minute, a.merged_on, helpdesk.person_name(a.merged_by) AS merged_by,
                        (SELECT count(*) FROM people.student s WHERE s.entry_session = a.name) AS entrants,
@@ -317,6 +318,18 @@ class CohortController {
     Map<String, Object> saveStanding(@Valid @RequestBody Standing body) {
         java.math.BigDecimal set = jdbc.sql("SELECT policy.set_probation_below_cgpa(:c)").param("c", body.probationBelowCgpa()).query(java.math.BigDecimal.class).single();
         return Map.of("probationBelowCgpa", set);
+    }
+
+    /** V424: the days a result held for the Senate waits before the Registry is reminded — 7 to 365, or 0 for never (the database says so) */
+    public record HeldReminder(@NotNull Integer days) {
+    }
+
+    @PutMapping("/settings/held-reminder")
+    @PreAuthorize(SETTERS)
+    @Transactional
+    Map<String, Object> saveHeldReminder(@Valid @RequestBody HeldReminder body) {
+        Integer set = jdbc.sql("SELECT policy.set_held_remind_days(:d)").param("d", body.days()).query(Integer.class).single();
+        return Map.of("days", set);
     }
 
     @PutMapping("/settings")
