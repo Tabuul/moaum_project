@@ -42,6 +42,7 @@ public class NoticeDispatcher {
     private final String token;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private boolean saidNoProvider;
+    private boolean saidPaused;
 
     private final String smsFormat;
     private final String smsFrom;
@@ -124,6 +125,16 @@ public class NoticeDispatcher {
     }
 
     void dispatchNow() {
+        // V436: the Delivery switches — nothing leaves while queue processing is paused; a channel switched off is held, not sent
+        NoticeRepository.Delivery delivery = notices.delivery();
+        if (!delivery.dispatch()) {
+            if (!saidPaused) {
+                LOG.info("notices: queue processing is paused on the Delivery switches; the outbox holds everything");
+                saidPaused = true;
+            }
+            return;
+        }
+        saidPaused = false;
         // the mail account set on the Mail server screen (V057) sends email over SMTP; an HTTP
         // relay (MOAUM_NOTICES_EMAIL_URL) is the fallback, and SMS still goes by the relay
         java.util.Optional<MailService.Smtp> smtp = mailService.smtp();
@@ -138,7 +149,7 @@ public class NoticeDispatcher {
             return;
         }
         saidNoProvider = false;
-        List<NoticeRepository.Queued> batch = notices.queued(this.batch);
+        List<NoticeRepository.Queued> batch = notices.sendable(this.batch, delivery);
         for (NoticeRepository.Queued n : batch) {
             boolean email = "EMAIL".equals(n.channel());
             String outcome = null;

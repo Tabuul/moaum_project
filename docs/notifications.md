@@ -148,6 +148,21 @@ while no listed address has been seen at the door in the last seven days (`PAYDI
 switched on blind; the last listed address is not removed while the door is kept (`PAYDIRECT_LAST_ADDRESS`). The address is
 the one the API reads for the caller (`ClientAddress`), so behind CloudFront the API task needs `MOAUM_CLIENT_ADDRESS=2`.
 
+## The outbox paused, switched and cleared (V436)
+
+While the portal is being tested, what waits in the outbox must be stoppable without a trace being lost, and what the modules
+generate must be keepable from real students without the modules being touched. On **Notifications** (`/notices`):
+
+| Piece | Where | What it does |
+|---|---|---|
+| The delivery switches | `platform.notice_setting.dispatch_enabled / email_delivery / sms_delivery / portal_delivery`; `PUT /api/v1/platform/notices/delivery` (ICT, administrators) | Delivery only. Queue processing paused holds every channel; e-mail or SMS delivery off is generated and held (the dispatcher's batch, `NoticeRepository.sendable`, takes only the channels switched on); a portal notice is delivered the moment it is made, so the portal switch keeps it from being made (`platform.queue_notice`). Templates are still tested and previewed; the outbox is still inspected. |
+| A message cancelled | `platform.notice.state = 'CANCELLED'`, `cancelled_at`, `cancelled_by`, `cancel_reason` | Never deleted. The dispatcher picks QUEUED only and the retries FAILED only, so a cancelled message is never sent. Its event key stays, so the same event is not raised again to that person. |
+| The clearance | `platform.clear_notice_queue(channels, reason, actor, office)`; `POST /api/v1/platform/notices/clear` (the ICT Director and the Super Administrator only) | After a confirmation naming the counts. The API pauses queue processing first, in a transaction of its own, then runs the clearance under the dispatcher's own lock (`JobLock` `notice-dispatcher`): a batch in flight finishes before it, none starts during it, and a lock that does not come free is reported (`NOTICE_DISPATCH_BUSY`), never worked around. E-mail, SMS or both (`NOTICE_CLEAR_CHANNEL`), a reason required (`NOTICE_CLEAR_REASON`), refused by the database while processing runs (`NOTICE_CLEAR_DISPATCHING`). Processing stays paused until the office resumes it. |
+| The record | `platform.notice_clearance` (audited) | Who, when, why, what waited per channel, what was cancelled, what still waits, the sent and failed history left untouched, the jobs open — the clearance report, and "last cleared" on the screen. The cancelled messages themselves are audited row by row. |
+| The jobs | `platform.open_notice_jobs()`, `platform.cancel_notice_job(job, reason, actor, office)`; `POST …/jobs/{id}/cancel` | A job still running (a window's messages, a campaign) would refill the queue it just emptied: ended here, state `CANCELLED`, never picked by `run_notice_job`; a campaign's job cancels the campaign (`campaign_cancel` now marks its job cancelled too). The weekly biodata and staff reminders keep their own switches. |
+
+Provider delivery reports (DELIVERED/BOUNCED) are still not read (below), so SENT means accepted by the provider.
+
 ## Not yet
 
 Delivery receipts from the SMS and mail providers (a message is SENT when the provider accepts it; DELIVERED/BOUNCED would

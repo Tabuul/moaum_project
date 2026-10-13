@@ -12,13 +12,19 @@ import type { Problem } from "@/lib/api";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { QueueManagement, type Clearance, type Delivery, type OpenJob, type Pending } from "./QueueManagement";
 
 export interface Recent {
   id: string; channel: string; recipient: string; subject: string; created_at: string; state: string; attempts: number; sent_at: string | null; last_error: string | null;
   about_kind?: string | null; about_name?: string | null; template_key?: string | null; priority?: string | null; event_key?: string | null;
+  cancel_reason?: string | null;
 }
-export interface ByChannel { channel: string; total: number; sent: number; queued: number; failed: number; invalid: number; week: number; week_sent: number; week_failed: number }
-export interface Outbox { queued: number; sent: number; failed: number; sentToday: number; emailProvider: boolean; smsProvider: boolean; recent: Recent[]; byChannel?: ByChannel[] }
+export interface ByChannel { channel: string; total: number; sent: number; queued: number; failed: number; cancelled?: number; invalid: number; week: number; week_sent: number; week_failed: number }
+export interface Outbox {
+  queued: number; sent: number; failed: number; cancelled?: number; sentToday: number; emailProvider: boolean; smsProvider: boolean; recent: Recent[]; byChannel?: ByChannel[];
+  /** V436: the delivery switches, what waits now, the jobs that would still write to the queue, the last clearance */
+  delivery?: Delivery; pending?: Pending[]; jobs?: OpenJob[]; lastClearance?: Clearance | null;
+}
 export interface Filters { channel: string; state: string; kind: string; q: string; from: string; to: string }
 
 function when(iso: string): string {
@@ -31,6 +37,7 @@ const KINDS: [string, string][] = [["", "Anyone"], ["student", "Students"], ["pe
 export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice: string | null; filters: Filters }) {
   const router = useRouter();
   const may = ["ict", "admin", "super"].includes(actingOffice ?? "");
+  const mayClear = ["ict", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -81,11 +88,12 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
 
       {by.length ? (
         <Panel title="By channel" right="All time, and the last seven days">
-          <DTable cols={["Channel", "Total|num", "Sent|num", "Waiting|num", "Failed|num", "Bad addresses|num", "Last 7 days|num", "Sent, 7 days|num", "Failed, 7 days|num"]}
+          <DTable cols={["Channel", "Total|num", "Sent|num", "Waiting|num", "Failed|num", "Cancelled|num", "Bad addresses|num", "Last 7 days|num", "Sent, 7 days|num", "Failed, 7 days|num"]}
             rows={["EMAIL", "SMS", "PORTAL"].filter((c) => row(c)).map((c) => { const b = row(c)!; return [
               <b key="c">{c === "PORTAL" ? "Portal" : c === "EMAIL" ? "Email" : "SMS"}</b>,
               <span className="tnum" key="t">{b.total}</span>, <span className="tnum" key="s">{b.sent}</span>, <span className="tnum" key="q">{b.queued}</span>,
               <span className="tnum" key="f" style={b.failed ? { color: "var(--red-ink)" } : undefined}>{b.failed}</span>,
+              <span className="tnum" key="x">{b.cancelled ?? 0}</span>,
               <span className="tnum" key="i">{b.invalid}</span>, <span className="tnum" key="w">{b.week}</span>, <span className="tnum" key="ws">{b.week_sent}</span>,
               <span className="tnum" key="wf">{b.week_failed}</span>]; })} />
         </Panel>
@@ -100,6 +108,8 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
         </PBody>
       </Panel>
 
+      {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} /> : null}
+
       <Panel title="History" right={filtered ? `${d.recent.length} matching, newest first` : `${d.recent.length} most recent`}>
         <PBody style={{ borderBottom: "1px solid var(--line-2)" }}>
           <form className="row row--wrap row--tight" onSubmit={(e) => { e.preventDefault(); search(f); }}>
@@ -107,7 +117,7 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
               <option value="">Any channel</option><option value="EMAIL">Email</option><option value="SMS">SMS</option><option value="PORTAL">Portal</option>
             </select>
             <select className="ctl" aria-label="State" value={f.state} onChange={(e) => setF({ ...f, state: e.target.value })}>
-              <option value="">Any state</option><option value="QUEUED">Waiting</option><option value="SENT">Sent</option><option value="FAILED">Failed</option>
+              <option value="">Any state</option><option value="QUEUED">Waiting</option><option value="SENT">Sent</option><option value="FAILED">Failed</option><option value="CANCELLED">Cancelled</option>
             </select>
             <select className="ctl" aria-label="About" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
               {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -133,7 +143,7 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
                 {n.last_error && !["INVALID_EMAIL", "INVALID_PHONE"].includes(n.last_error) ? <span className="sub2">{n.last_error}</span> : null}
                 {may && !["INVALID_EMAIL", "INVALID_PHONE"].includes(n.last_error ?? "") ? <Btn kind="ghost" disabled={busy} onClick={() => void retry(`/${n.id}/retry`, `Requeue notice to ${n.recipient}`)}>Requeue</Btn> : null}
               </span>
-            ) : <Pil kind="info" key="x">Queued</Pil>,
+            ) : n.state === "CANCELLED" ? <span key="x" title={n.cancel_reason ?? ""}><Pil kind="grey">Cancelled</Pil></span> : <Pil kind="info" key="x">Queued</Pil>,
           ])} texts={d.recent.map((n) => `${n.recipient} ${n.about_name ?? ""} ${n.subject} ${n.state} ${n.template_key ?? ""}`)} />
         ) : <PBody><div className="sub2">{filtered ? "Nothing matches." : "The outbox is empty."}</div></PBody>}
       </Panel>

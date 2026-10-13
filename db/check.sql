@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 270
+\set EXPECTED 271
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -11589,6 +11589,68 @@ BEGIN
     PERFORM pg_temp.assert('V434: the students behind a count are listed by the item they miss and by sex, the V426 form still answering; what is missing and the counts by faculty come from the same reading',
         coalesce(by_missing = 'Held' AND by_sex = 'Complete' AND old_form = 2 AND kin1 - kin0 = 1 AND unit1 - unit0 = 2, false),
         format('missing=%s sex=%s old=%s kin %s->%s unit %s->%s', by_missing, by_sex, old_form, kin0, kin1, unit0, unit1));
+END $$;
+
+-- ── V436. The outbox paused, switched and cleared: a portal notice is not made while the portal switch is off; e-mail and SMS are
+--          still generated while their delivery is off; the pending queue is cleared only while processing is paused, on e-mail,
+--          SMS or both, with a reason — what waits is cancelled, never deleted, with when, by whom and why; the sent and failed
+--          history stays as it was; the clearance is written with its counts; a job cancelled never runs again ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); e1 uuid; e2 uuid; s1 uuid; f1 uuid; p_off uuid; p_on uuid; d record;
+        r_dispatching text; r_channel text; r_reason text; c1 platform.notice_clearance; c2 platform.notice_clearance;
+        n_email_q int; n_sms_q int; n_cancel int; n_failed int; reason_kept text; by_kept uuid;
+        job uuid; j_open int; j_kind text; r_again text; j_state text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.reason', 'CHECK V436', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK/V436', 'CHECKV436', 'ICT', 'v434@example.test');
+        -- 1. the switches: the portal switch keeps a portal notice from being made; e-mail and SMS are generated and held while their delivery is off
+        PERFORM platform.set_delivery(NULL, false, false, false, who, 'ict');
+        p_off := platform.queue_notice('PORTAL', NULL, 'CHK V436 portal', 'body', 'person', who, 'chk-v434:portal-off', NULL, NULL);
+        e1 := platform.queue_notice('EMAIL', 'v434-a@example.test', 'CHK V436 e-mail 1', 'body', 'test', NULL);
+        e2 := platform.queue_notice('EMAIL', 'v434-b@example.test', 'CHK V436 e-mail 2', 'body', 'test', NULL);
+        s1 := platform.queue_notice('SMS', '08000004340', 'CHK V436 sms', 'body', 'test', NULL);
+        f1 := platform.queue_notice('EMAIL', 'not an address', 'CHK V436 failed', 'body', 'test', NULL);
+        PERFORM platform.set_delivery(NULL, true, true, true, who, 'ict');
+        p_on := platform.queue_notice('PORTAL', NULL, 'CHK V436 portal', 'body', 'person', who, 'chk-v434:portal-on', NULL, NULL);
+        SELECT * INTO d FROM platform.delivery();
+        -- 2. the clearance: refused while processing runs, for the portal, without a reason; e-mail cleared first and SMS left waiting; then the rest
+        BEGIN PERFORM platform.clear_notice_queue(ARRAY['EMAIL'], 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_dispatching := SQLERRM; END;
+        PERFORM platform.set_delivery(false, NULL, NULL, NULL, who, 'ict');
+        BEGIN PERFORM platform.clear_notice_queue(ARRAY['PORTAL'], 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_channel := SQLERRM; END;
+        BEGIN PERFORM platform.clear_notice_queue(ARRAY['EMAIL'], '  ', who, 'ict'); EXCEPTION WHEN check_violation THEN r_reason := SQLERRM; END;
+        c1 := platform.clear_notice_queue(ARRAY['email'], 'Pending queue cancelled during portal testing', who, 'ict');
+        SELECT count(*) FILTER (WHERE n.state = 'QUEUED' AND n.channel = 'EMAIL'), count(*) FILTER (WHERE n.state = 'QUEUED' AND n.channel = 'SMS'),
+               count(*) FILTER (WHERE n.state = 'CANCELLED')
+          INTO n_email_q, n_sms_q, n_cancel FROM platform.notice n WHERE n.id IN (e1, e2, s1);
+        SELECT n.cancel_reason, n.cancelled_by INTO reason_kept, by_kept FROM platform.notice n WHERE n.id = e1;
+        n_failed := (SELECT count(*) FROM platform.notice n WHERE n.id = f1 AND n.state = 'FAILED');
+        c2 := platform.clear_notice_queue(ARRAY['EMAIL', 'SMS'], 'The rest', who, 'ict');
+        -- 3. a job cancelled never runs again
+        INSERT INTO platform.notice_job (kind, payload, created_by, created_office)
+        VALUES ('WINDOW', '{"type":"COURSE_REGISTRATION","action":"OPENED","session":"2099/2100"}', who, 'ict') RETURNING id INTO job;
+        j_open := (SELECT count(*) FROM platform.open_notice_jobs() x WHERE x.id = job);
+        j_kind := platform.cancel_notice_job(job, 'CHECK', who, 'ict');
+        BEGIN PERFORM platform.cancel_notice_job(job, 'CHECK', who, 'ict'); EXCEPTION WHEN check_violation THEN r_again := SQLERRM; END;
+        PERFORM platform.run_notice_job(NULL);
+        j_state := (SELECT x.state FROM platform.notice_job x WHERE x.id = job);
+        RAISE EXCEPTION 'the V436 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V436: the portal switch keeps a portal notice from being made while e-mail and SMS are generated and held; the pending queue is cleared only while processing is paused, by channel, with a reason — cancelled, never deleted, with who and why, the failed history untouched, the clearance written with its counts; a job cancelled never runs again',
+        coalesce(p_off IS NULL AND p_on IS NOT NULL AND e1 IS NOT NULL AND e2 IS NOT NULL AND s1 IS NOT NULL AND f1 IS NOT NULL AND d.dispatch_enabled
+                 AND r_dispatching LIKE 'NOTICE_CLEAR_DISPATCHING%' AND r_channel LIKE 'NOTICE_CLEAR_CHANNEL%' AND r_reason LIKE 'NOTICE_CLEAR_REASON%'
+                 AND c1.channels = ARRAY['EMAIL'] AND c1.email_pending_before >= 2 AND c1.sms_pending_before >= 1 AND c1.email_cancelled >= 2 AND c1.sms_cancelled = 0
+                 AND c1.email_remaining = 0 AND c1.sms_remaining >= 1
+                 AND n_email_q = 0 AND n_sms_q = 1 AND n_cancel = 2 AND reason_kept = 'Pending queue cancelled during portal testing' AND by_kept = who AND n_failed = 1
+                 AND c2.email_cancelled = 0 AND c2.sms_cancelled >= 1 AND c2.sms_remaining = 0
+                 AND j_open = 1 AND j_kind = 'WINDOW' AND r_again LIKE 'NOTICE_JOB_FINISHED%' AND j_state = 'CANCELLED', false),
+        format('portal off=%s on=%s | dispatch on=%s | refused dispatching=%s channel=%s reason=%s | c1 channels=%s before e=%s s=%s cancelled e=%s s=%s remaining e=%s s=%s | rows email q=%s sms q=%s cancelled=%s reason=%s by ok=%s failed kept=%s | c2 e=%s s=%s remaining s=%s | job open=%s kind=%s again=%s state=%s',
+               p_off IS NULL, p_on IS NOT NULL, d.dispatch_enabled, left(r_dispatching, 26), left(r_channel, 20), left(r_reason, 19),
+               c1.channels, c1.email_pending_before, c1.sms_pending_before, c1.email_cancelled, c1.sms_cancelled, c1.email_remaining, c1.sms_remaining,
+               n_email_q, n_sms_q, n_cancel, reason_kept, by_kept = who, n_failed, c2.email_cancelled, c2.sms_cancelled, c2.sms_remaining,
+               j_open, j_kind, left(r_again, 19), j_state));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
