@@ -274,6 +274,39 @@ class CatalogueController {
         return json.readValue(out, Object.class);
     }
 
+    /** V460: what loading these structures would do to the units each programme takes an existing course at — the file's units
+     *  go on the programme's binding where they differ from the course's, and the course's own units stay as they are for every
+     *  other programme; listed course by course where the programme's units would change, read, nothing written */
+    @PostMapping("/import/units")
+    @PreAuthorize(UPLOADERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> importUnits(@Valid @RequestBody PlacementsIn body) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                WITH g AS (
+                    SELECT upper(btrim(x->>'programme')) AS programme, r
+                      FROM jsonb_array_elements(CAST(:g AS jsonb)) x, jsonb_array_elements(coalesce(x->'rows', '[]'::jsonb)) r),
+                f AS (
+                    SELECT DISTINCT ON (code, programme, level) *
+                      FROM (SELECT g.programme,
+                                   coalesce(catalogue.resolve_course_code(regexp_replace(upper(btrim(coalesce(g.r->>'code', g.r->>'courseCode', g.r->>'course_code', ''))), '[[:space:]]+', ' ', 'g')),
+                                            regexp_replace(upper(btrim(coalesce(g.r->>'code', g.r->>'courseCode', g.r->>'course_code', ''))), '[[:space:]]+', ' ', 'g')) AS code,
+                                   least(nullif(regexp_replace(coalesce(g.r->>'units', ''), '[^0-9]', '', 'g'), '')::int, 12) AS file_units,
+                                   nullif(regexp_replace(coalesce(g.r->>'level', ''), '[^0-9]', '', 'g'), '')::int AS level
+                              FROM g) z
+                     WHERE file_units > 0 AND level IS NOT NULL)
+                SELECT f.code, c.title, f.programme, f.level, f.file_units AS "fileUnits", c.units AS "courseUnits",
+                       catalogue.units_for(f.code, f.programme, f.level) AS "nowUnits", d.name AS department,
+                       CASE WHEN f.file_units <> c.units THEN 'PROGRAMME_OWN' ELSE 'BACK_TO_COURSE' END AS change
+                  FROM f
+                  JOIN catalogue.course c ON c.code = f.code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE f.file_units IS DISTINCT FROM catalogue.units_for(f.code, f.programme, f.level)
+                 ORDER BY f.programme, f.level, f.code
+                """).param("g", json.writeValueAsString(body.groups())).query().listOfRows();
+        long own = rows.stream().filter(r -> "PROGRAMME_OWN".equals(r.get("change"))).count();
+        return Map.of("rows", rows, "counts", Map.of("programmeOwn", own, "backToCourse", rows.size() - own));
+    }
+
     /** open course registration for a session: create an offering for every offered course of that
      *  semester, so students see the real programme/level courses (not leftover demo offerings) */
     @PostMapping("/open-registration")

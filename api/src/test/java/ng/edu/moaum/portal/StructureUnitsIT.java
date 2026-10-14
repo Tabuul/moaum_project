@@ -83,6 +83,17 @@ class StructureUnitsIT {
         // the Director of ICT keeps the structure, but does not edit the course itself
         assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/catalogue/courses/" + code,
                 Map.of("title", "x", "units", 4, "semester", 1, "level", 100)).getStatusCode().value()).isEqualTo(403);
+
+        // the structure upload's preview says, before anything loads, that the programme would take the course at the file's
+        // units and the course stays at its own — and lists nothing where the file agrees with what the programme takes now
+        Map<String, Object> group = Map.of("programme", programme, "rows", List.of(Map.of("code", code, "units", "2", "level", "100")));
+        ResponseEntity<Map> preview = it.call(ict, HttpMethod.POST, "/api/v1/catalogue/import/units", Map.of("groups", List.of(group)));
+        assertThat(preview.getStatusCode().value()).as(String.valueOf(preview.getBody())).isEqualTo(200);
+        List<Map<String, Object>> changes = (List<Map<String, Object>>) preview.getBody().get("rows");
+        assertThat(changes).hasSize(1);
+        assertThat(changes.get(0)).containsEntry("change", "PROGRAMME_OWN").containsEntry("fileUnits", 2).containsEntry("courseUnits", 3).containsEntry("nowUnits", 3);
+        Map<String, Object> same = Map.of("programme", programme, "rows", List.of(Map.of("code", code, "units", "3", "level", "100")));
+        assertThat((List<?>) it.call(ict, HttpMethod.POST, "/api/v1/catalogue/import/units", Map.of("groups", List.of(same))).getBody().get("rows")).isEmpty();
         it.db(() -> jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c").param("c", code).update());
     }
 }

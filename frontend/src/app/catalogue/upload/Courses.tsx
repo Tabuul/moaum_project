@@ -22,6 +22,9 @@ interface Loaded { code: string; title: string; units: number; level: number; se
 /** V369: what loading the structure would do to one GST/EPS course (catalogue.structure_placements) */
 type Change = "NEW_TO_OFFICE" | "NEW_NO_OFFICE" | "TO_OFFICE" | "MARKED_GENERAL_NO_OFFICE" | "BACK_TO_DEPARTMENT" | "KEPT_WITH_OFFICE" | "KEPT_WITH_DEPARTMENT" | "OTHER_OFFICE_HOLDS";
 interface Placement { code: string; title: string; programme: string; status: string; department: string | null; beforeOffice: string | null; beforeKind: string | null; afterOffice: string | null; afterKind: string; change: Change }
+/** V460: an existing course whose units this programme would take differently once the structure loads (catalogue import/units) */
+interface UnitChange { code: string; title: string; programme: string; level: number; fileUnits: number; courseUnits: number; nowUnits: number; department: string | null; change: "PROGRAMME_OWN" | "BACK_TO_COURSE" }
+interface UnitChanges { rows: UnitChange[]; counts: { programmeOwn: number; backToCourse: number } }
 interface Placements { placements: Placement[]; counts: { toGst: number; toEps: number; noOffice: number; backToDepartment: number; keptWithOffice: number; keptWithDepartment: number; otherOffice?: number } }
 /* the status (or Classification) as the file says it — V370: EPS is read whole, never as E */
 const statusWord = (s: string) => ({ C: "Core", R: "Required", E: "Elective", G: "General (G)", GST: "General (GST)", EPS: "Entrepreneurship (EPS)" } as Record<string, string>)[s.toUpperCase()]
@@ -47,6 +50,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [msg, setMsg] = useState<string | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
   const [placements, setPlacements] = useState<Placements | null>(null);
+  // V460: the existing courses whose units this structure would change for its programme
+  const [unitChanges, setUnitChanges] = useState<UnitChanges | null>(null);
   const [loaded, setLoaded] = useState<Loaded[] | null>(null);
   const [listing, setListing] = useState(false);
   const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
@@ -128,7 +133,10 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
     /* "Course Code" also contains "course", so match the title on "title" first and, only failing that,
        a "course" column that is not the code column — otherwise the title reads the code */
-    const codeIx = at(["code"]);
+    // the course's code: a "Course Code" column, else a code column that is not the programme's — a Programme Code column
+    // before it was read as every course's code
+    const exactCode = header.findIndex((h) => /course[\s_]*code/.test(h));
+    const codeIx = exactCode >= 0 ? exactCode : header.findIndex((h) => h.includes("code") && !h.includes("programme"));
     let titleIx = at(["title"]);
     if (titleIx < 0) titleIx = header.findIndex((h, i) => i !== codeIx && h.includes("course"));
     const ci = { code: codeIx, title: titleIx, units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]),
@@ -186,12 +194,19 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   /* V369: before loading, what the structure would do to the GST and EPS offices' courses — read by the server, nothing written */
   async function readPlacements(rows: Row[], prog: string) {
     setPlacements(null);
+    setUnitChanges(null);
     if (!may) return;
     const groups = [...groupsOf(rows, prog).values()].map((g) => ({ programme: g.programme, rows: g.rows }));
     if (!groups.length) return;
-    const r = await fetch("/api/bff/api/v1/catalogue/import/placements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ groups }) });
+    const body = JSON.stringify({ groups });
+    const [r, u] = await Promise.all([
+      fetch("/api/bff/api/v1/catalogue/import/placements", { method: "POST", headers: { "Content-Type": "application/json" }, body }),
+      fetch("/api/bff/api/v1/catalogue/import/units", { method: "POST", headers: { "Content-Type": "application/json" }, body }),
+    ]);
     const j = await r.json().catch(() => null);
     if (r.ok && j) setPlacements(j as Placements);
+    const k = await u.json().catch(() => null);
+    if (u.ok && k) setUnitChanges(k as UnitChanges);
   }
 
   async function upload() {
@@ -237,6 +252,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       notify(`Course structure loaded · ${totals.courses} courses`);
       setPreview(null);
       setPlacements(null);
+      setUnitChanges(null);
       if (programme) void viewLoaded();
     } finally {
       setBusy(false);
@@ -412,9 +428,35 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                 </div>
               </div>
             ) : null}
+            {unitChanges && unitChanges.rows.length ? (
+              <div className="mt-3">
+                <Note kind="info" title="Units: what loading this does">
+                  {[
+                    unitChanges.counts.programmeOwn ? `${unitChanges.counts.programmeOwn} existing course${unitChanges.counts.programmeOwn === 1 ? "" : "s"} taken by the programme at the file's units, its own` : null,
+                    unitChanges.counts.backToCourse ? `${unitChanges.counts.backToCourse} back to the course's own units` : null,
+                  ].filter(Boolean).join(" · ")}. A course&rsquo;s own units stay as they are, so every other programme keeps what it takes; the programme&rsquo;s students not yet scored follow.
+                </Note>
+                <div className="tablewrap" tabIndex={0} style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+                  <table className="tbl--data">
+                    <thead><tr><th>Code</th><th>Title</th><th>Programme</th><th>Level</th><th>Now</th><th>The file says</th><th>What loading does</th></tr></thead>
+                    <tbody>
+                      {unitChanges.rows.map((u) => (
+                        <tr key={`${u.programme}-${u.level}-${u.code}`}>
+                          <td className="tnum">{u.code}</td><td>{u.title}{u.department ? <div className="sub2">{u.department}</div> : null}</td>
+                          <td className="tnum">{u.programme}</td><td className="tnum">{u.level}</td><td className="tnum">{u.nowUnits}</td><td className="tnum">{u.fileUnits}</td>
+                          <td>{u.change === "PROGRAMME_OWN"
+                            ? `This programme takes it at ${u.fileUnits} unit${u.fileUnits === 1 ? "" : "s"}; the course stays at ${u.courseUnits}`
+                            : `Back to the course's ${u.courseUnits} unit${u.courseUnits === 1 ? "" : "s"}`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
             <div className="row mt-3">
               <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</Btn>
-              <Btn kind="ghost" size="md" disabled={busy} onClick={() => { setPreview(null); setPlacements(null); }}>Cancel</Btn>
+              <Btn kind="ghost" size="md" disabled={busy} onClick={() => { setPreview(null); setPlacements(null); setUnitChanges(null); }}>Cancel</Btn>
             </div>
           </PBody>
         </Panel>
