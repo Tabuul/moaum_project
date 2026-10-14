@@ -144,7 +144,10 @@ class PgCoursePoolIT {
         assertThat(it.getList(registrar, "/api/v1/finance/sessions/" + ses[0] + "/" + ses[1] + "/postgraduate/review").getStatusCode().value()).isEqualTo(403);
         assertThat(it.getList(registrar, "/api/v1/finance/sessions/" + ses[0] + "/" + ses[1] + "/postgraduate/unstated").getStatusCode().value()).isEqualTo(200);
         Map<String, Object> ready = ok(it.get(ict, "/api/v1/platform/readiness?session=" + SESSION));
-        assertThat(((List<Map<String, Object>>) ready.get("checks")).stream().map(c -> c.get("key"))).contains("pg_registration");
+        assertThat(((List<Map<String, Object>>) ready.get("checks")).stream().map(c -> c.get("key"))).contains("pg_registration", "pg_intake_fees");
+        // V452: the intake's PG fees — stated, or which session's are charged until they are
+        Map<String, Object> pgFees = ((List<Map<String, Object>>) ready.get("checks")).stream().filter(c -> "pg_intake_fees".equals(c.get("key"))).findFirst().orElseThrow();
+        assertThat(String.valueOf(pgFees.get("detail"))).containsAnyOf("Stated for ", "Not stated for ");
         Map<String, Object> status = ok(it.anon(HttpMethod.GET, "/api/v1/platform/status", null));
         assertThat((Map<String, Object>) status.get("postgraduate")).containsKeys("session", "current", "semesterOpen", "classes", "feesStated", "ready");
     }

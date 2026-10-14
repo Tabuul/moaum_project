@@ -275,6 +275,22 @@ class PlatformController {
                 pgReady ? "The School's session " + pg.get("session") + " is ready for course registration"
                         : pg.get("session") + ": " + String.join("; ", pgMissing), pgFix));
 
+        // V452: the postgraduate applicants' fees of the intake — until the Bursary states them, the latest stated session's are charged
+        Map<String, Object> pgi = jdbc.sql("""
+                SELECT i.s AS session, EXISTS (SELECT 1 FROM admissions.pg_fee f WHERE f.session = i.s) AS stated,
+                       (SELECT max(f.session) FROM admissions.pg_fee f WHERE f.session < i.s) AS carried_from,
+                       r.application_fee, r.acceptance_fee, r.checking_fee
+                  FROM (SELECT admissions.pg_intake_session() AS s) i CROSS JOIN LATERAL admissions.pg_fee_rule(i.s) r
+                """).query().singleRow();
+        String pgIntake = String.valueOf(pgi.get("session"));
+        String pgFees = "application ₦" + naira(pgi.get("application_fee")) + ", acceptance ₦" + naira(pgi.get("acceptance_fee"))
+                + ", checking ₦" + naira(pgi.get("checking_fee"));
+        checks.add(chk(INTAKE, "pg_intake_fees", "Postgraduate fees stated for " + pgIntake, Boolean.TRUE.equals(pgi.get("stated")) ? "ok" : "warn",
+                Boolean.TRUE.equals(pgi.get("stated")) ? "Stated for " + pgIntake + ": " + pgFees
+                        : "Not stated for " + pgIntake + ": postgraduate applicants are charged "
+                          + (pgi.get("carried_from") != null ? pgi.get("carried_from") + "'s" : "the default") + " amounts (" + pgFees + ")",
+                "/finance/fees?session=" + pgIntake));
+
         // V412: CCE admission, in the CCE session — blocking only where CCE is in use (a list, an open window or applications)
         Map<String, Object> cce = cceReadiness();
         String cs = String.valueOf(cce.get("session"));

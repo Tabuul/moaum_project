@@ -288,10 +288,13 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   // the postgraduate application/acceptance fees (admissions.pg_fee), read by the PG apply page
   const [pgf, setPgf] = useState({ applicationFee: "", acceptanceFee: "", checkingFee: "" });
   const [pgfStated, setPgfStated] = useState(false);
+  // V452: an unstated session carries the latest stated one's fees; the intake is the session PG applicants apply for now
+  const [pgfCarried, setPgfCarried] = useState<string | null>(null);
+  const [pgfIntake, setPgfIntake] = useState(false);
   useEffect(() => {
     let alive = true;
     fetch(`/api/bff/api/v1/pg/sessions/${session}/fees`).then((r) => (r.ok ? r.json() : null)).then((j) => {
-      if (alive && j) { setPgf({ applicationFee: String(j.application_fee ?? ""), acceptanceFee: String(j.acceptance_fee ?? ""), checkingFee: String(j.checking_fee ?? "") }); setPgfStated(!!j.stated); }
+      if (alive && j) { setPgf({ applicationFee: String(j.application_fee ?? ""), acceptanceFee: String(j.acceptance_fee ?? ""), checkingFee: String(j.checking_fee ?? "") }); setPgfStated(!!j.stated); setPgfCarried(j.carriedFrom ?? null); setPgfIntake(!!j.intake); }
     }).catch(() => { /* leave blank */ });
     return () => { alive = false; };
   }, [session]);
@@ -305,6 +308,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setPgfStated(true);
+      setPgfCarried(null);
     } finally { setBusy(null); }
   }
 
@@ -638,10 +642,15 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </div>
         </PBody>
       </Panel>
-      <Panel title="Postgraduate · application &amp; acceptance fees" right={pgfStated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>
+      <Panel title="Postgraduate · application &amp; acceptance fees" right={pgfStated ? `Stated for ${session}` : pgfCarried ? `Not yet stated for ${session} — ${pgfCarried}'s charged` : `Default (not yet stated for ${session})`}>
         <PBody>
+          {!pgfStated && pgfIntake ? (
+            <Note kind="info" title={`Postgraduate applicants for ${session} are being charged ${pgfCarried ? `the ${pgfCarried} fees` : "the default fees"}`}>
+              {session} is the session postgraduate applicants apply for now. Until its fees are stated here, {pgfCarried ? `the ${pgfCarried} amounts shown below are` : "the default amounts shown below are"} charged for the application, the admission checking and the acceptance.
+            </Note>
+          ) : null}
           <div className="sub2 mb-3">
-            The postgraduate application and acceptance fees. Until stated, a default applies.
+            The postgraduate application and acceptance fees. Until stated, the latest stated session&rsquo;s apply{pgfCarried ? ` (${pgfCarried})` : ""}; where none was ever stated, a default.
           </div>
           <div className="grid grid--2">
             <Field id="pgf-app" label="PG application fee" hint="What a postgraduate applicant pays to apply"><input id="pgf-app" className="ctl tnum" inputMode="numeric" value={pgf.applicationFee} onChange={(e) => setPgf({ ...pgf, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="20000" disabled={!may} /></Field>

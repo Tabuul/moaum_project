@@ -20,6 +20,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * V453: every ICT support agent in service opens any student in support mode, manages their course registration and works
  * Payment Support — never posted, or posted to a queue only; an agent the Head took off the desk does none of it; what a
  * posting adds beyond the baseline (editing the record, the support override) still comes only with the posting.
+ * V456: the same agent reaches JUPEB records (the JUPEB ticket's record and payments) without a JUPEB posting.
  * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -63,6 +64,9 @@ class SupportBaselineIT {
         assertThat(reg.getBody().get("override")).isEqualTo(false);
         ResponseEntity<Map> search = it.get(tok, "/api/v1/helpdesk/support/payments?q=ZZBASE" + tag);
         assertThat(search.getStatusCode().value()).as(String.valueOf(search.getBody())).isEqualTo(200);
+        // V456: JUPEB records are reached without a JUPEB Support posting
+        ResponseEntity<Map> jupeb = it.get(tok, "/api/v1/helpdesk/support/jupeb?q=ZZNOBODY" + tag);
+        assertThat(jupeb.getStatusCode().value()).as(String.valueOf(jupeb.getBody())).isEqualTo(200);
         // editing the record is still a posting's to give
         ResponseEntity<Map> edit = it.call(tok, HttpMethod.PUT, "/api/v1/helpdesk/support/students/" + student + "/biodata/mobile",
                 Map.of("value", "08031234567", "reason", "asked at the desk"));
@@ -80,5 +84,7 @@ class SupportBaselineIT {
         // taken off the desk (every posting ended): none of it
         it.db(() -> jdbc.sql("UPDATE helpdesk.agent_assignment SET active = false, effective_to = current_date WHERE person_id = :p").param("p", queued).update());
         assertThat(it.get(TestTokens.token(queued, List.of("ictagent")), "/api/v1/helpdesk/support/students/" + student).getStatusCode().value()).isEqualTo(404);
+        assertThat(String.valueOf(it.get(TestTokens.token(queued, List.of("ictagent")), "/api/v1/helpdesk/support/jupeb?q=ZZNOBODY" + tag).getBody().get("code")))
+                .isEqualTo("SUPPORT_JUPEB_SCOPE");
     }
 }

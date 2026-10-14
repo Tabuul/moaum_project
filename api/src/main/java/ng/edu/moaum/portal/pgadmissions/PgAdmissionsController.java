@@ -90,7 +90,8 @@ class PgAdmissionsController {
     /* the Bursary (and the School) set the postgraduate application and acceptance fees */
     private static final String FEES = "hasAnyAuthority('OFFICE_bursar','OFFICE_pgsecretary','OFFICE_pgschool','OFFICE_super')";
 
-    /** the postgraduate application and acceptance fees in force for a session (the stated ones, else the default) */
+    /** the postgraduate application and acceptance fees in force for a session (the stated ones, else — V452 — the latest earlier
+     *  session's stated ones, carried, else the default); which session's are carried, and whether the session is the PG intake */
     @GetMapping("/sessions/{session}/{year}/fees")
     @PreAuthorize(FEES)
     @Transactional(readOnly = true)
@@ -102,6 +103,8 @@ class PgAdmissionsController {
                 .param("s", s).query(Long.class).single() > 0;
         Map<String, Object> out = new LinkedHashMap<>(rule);
         out.put("stated", stated);
+        out.put("carriedFrom", stated ? null : jdbc.sql("SELECT max(session) FROM admissions.pg_fee WHERE session < :s").param("s", s).query(String.class).single());
+        out.put("intake", s.equals(jdbc.sql("SELECT admissions.pg_intake_session()").query(String.class).single()));
         return out;
     }
 

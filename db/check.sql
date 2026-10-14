@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 293
+\set EXPECTED 294
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13004,6 +13004,37 @@ BEGIN
              AND r_n >= 1 AND r_mode >= 1 AND r_lvl >= 1 AND e_mode = 'POSTGRADUATE' AND e_cl = v_rule AND lvl_in = v_rule, false),
         format('programme %s rule %s | new %s/%s/%s | kept %s, %s | re-filed %s %s | undergraduate %s %s | repair %s/%s/%s -> %s %s | level_in %s',
                v_prog, v_rule, a_mode, a_el, a_cl, b_cl, c_cl, d_mode, d_cl, ug_mode, ug_cl, r_n, r_mode, r_lvl, e_mode, e_cl, lvl_in));
+END $$;
+-- V456: every ICT support agent in service reaches JUPEB records with the support baseline. An invented person holding the ICT
+-- support agent office and never posted reaches JUPEB records with exactly the baseline; taken off the desk (their posting
+-- ended) they reach none and hold nothing there; a person without the office gains nothing. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); stranger uuid := gen_random_uuid();
+        q text; reach boolean; caps text[]; reach_off boolean; caps_off text[]; reach_stranger boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        PERFORM set_config('moaum.reason', 'check V456', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (agent, 'CHECKJUPEBBASE', 'Agent'), (stranger, 'CHECKJUPEBBASE', 'Stranger');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), agent, 'ictagent', 'platform', NULL, 'check V456', who, current_date);
+        reach := helpdesk.agent_reaches_jupeb(agent);
+        caps := helpdesk.agent_jupeb_capabilities(agent);
+        reach_stranger := helpdesk.agent_reaches_jupeb(stranger) OR cardinality(helpdesk.agent_jupeb_capabilities(stranger)) > 0;
+        SELECT code INTO q FROM helpdesk.queue WHERE active AND code <> 'JUPEB_SUPPORT' ORDER BY ordinal LIMIT 1;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities, active, effective_to)
+        VALUES (agent, q, 'OFFICE', 'bursar', ARRAY['VIEW_STUDENT'], false, current_date);
+        reach_off := helpdesk.agent_reaches_jupeb(agent);
+        caps_off := helpdesk.agent_jupeb_capabilities(agent);
+        RAISE EXCEPTION 'the V456 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V456 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V456: every ICT support agent in service reaches JUPEB records with the support baseline (the record and its payments); taken off the desk, or without the office, none',
+        coalesce(reach AND caps @> helpdesk.agent_baseline() AND helpdesk.agent_baseline() @> caps AND NOT reach_off AND cardinality(caps_off) = 0 AND NOT reach_stranger, false),
+        format('reach %s caps %s | off the desk: reach %s caps %s | no office: %s', reach, caps, reach_off, caps_off, reach_stranger));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
