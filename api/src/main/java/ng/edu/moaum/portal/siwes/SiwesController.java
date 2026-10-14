@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -138,7 +139,7 @@ class SiwesController {
     @PutMapping("/offerings/{offering}/students/{student}/supervisor")
     @PreAuthorize(ASSIGNERS)
     @Transactional
-    Map<String, Object> assign(@PathVariable UUID offering, @PathVariable UUID student, @RequestBody AssignIn body) {
+    Map<String, Object> assign(@PathVariable UUID offering, @PathVariable UUID student, @Valid @RequestBody AssignIn body) {
         jdbc.sql("SELECT assessment.assign_siwes_supervisor(:o, :s, :sup)")
                 .param("o", offering).param("s", student).param("sup", body.supervisor()).query().singleRow();
         return Map.of("offering", offering, "student", student, "supervisor", body.supervisor(), "assigned", true);
@@ -178,7 +179,7 @@ class SiwesController {
     @PutMapping("/mine/students/{student}/score")
     @PreAuthorize("isAuthenticated()")
     @Transactional
-    Map<String, Object> score(@PathVariable UUID student, @RequestBody ScoreIn body, Authentication auth) {
+    Map<String, Object> score(@PathVariable UUID student, @Valid @RequestBody ScoreIn body, Authentication auth) {
         boolean mine = Boolean.TRUE.equals(jdbc.sql("""
                 SELECT EXISTS (SELECT 1 FROM assessment.siwes_supervisor
                                 WHERE offering_id = :o AND student_id = :s AND supervisor_id = :me)
@@ -194,7 +195,7 @@ class SiwesController {
     @PutMapping("/offerings/{offering}/students/{student}/practical")
     @PreAuthorize(ASSIGNERS)
     @Transactional
-    Map<String, Object> practical(@PathVariable UUID offering, @PathVariable UUID student, @RequestBody PracticalIn body) {
+    Map<String, Object> practical(@PathVariable UUID offering, @PathVariable UUID student, @Valid @RequestBody PracticalIn body) {
         return record(offering, student, false, body.mark(), body.reason(), "SIWES Coordinator");
     }
 

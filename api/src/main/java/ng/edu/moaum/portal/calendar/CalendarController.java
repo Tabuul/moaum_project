@@ -77,7 +77,7 @@ class CalendarController {
     @PostMapping("/sessions/{session}/{year}/archive")
     @PreAuthorize(WRITERS)
     Calendar archive(@PathVariable String session, @PathVariable String year,
-                     @RequestBody(required = false) CalendarService.Reason body) {
+                     @Valid @RequestBody(required = false) CalendarService.Reason body) {
         return calendar.archive(session + "/" + year, body == null ? null : body.reason());
     }
 

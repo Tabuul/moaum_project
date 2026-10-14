@@ -207,7 +207,7 @@ class HostelLifecycleController {
     @PostMapping("/api/v1/me/hostel/checkout")
     @PreAuthorize(STUDENT)
     @Transactional
-    Map<String, Object> requestCheckout(Authentication auth, @RequestBody CheckoutIn body) {
+    Map<String, Object> requestCheckout(Authentication auth, @Valid @RequestBody CheckoutIn body) {
         String s = session(body.session());
         jdbc.sql("SELECT hostel.request_checkout(:s, :n, :d, :r)").param("s", student(auth)).param("n", s).param("d", body.on(), Types.DATE).param("r", blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
@@ -432,7 +432,7 @@ class HostelLifecycleController {
     @PutMapping("/api/v1/hostel/sessions/{s}/{y}/window")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> window(@PathVariable String s, @PathVariable String y, @RequestBody WindowIn body) {
+    Map<String, Object> window(@PathVariable String s, @PathVariable String y, @Valid @RequestBody WindowIn body) {
         String session = ses(s, y);
         if (body.fee() == null || body.fee().signum() < 0) throw new DomainRuleViolation("HOSTEL_FEE", "State the accommodation fee for the session.", new DomainRuleViolation.Remedy("Enter zero for no fee.", "Housing"));
         String method = blank(body.allocationMethod()) == null ? "BALLOT" : body.allocationMethod().trim().toUpperCase();
@@ -672,7 +672,7 @@ class HostelLifecycleController {
     @PostMapping("/api/v1/hostel/allocations/{id}/checkin")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> checkin(@PathVariable UUID id, @RequestBody(required = false) CheckinIn body) {
+    Map<String, Object> checkin(@PathVariable UUID id, @Valid @RequestBody(required = false) CheckinIn body) {
         String cond = body == null || blank(body.condition()) == null ? "GOOD" : body.condition().trim().toUpperCase();
         jdbc.sql("SELECT hostel.checkin(:a, :n, :c)").param("a", id).param("n", body == null ? null : blank(body.note()), Types.VARCHAR).param("c", cond).query().listOfRows();
         return Map.of("ok", true, "state", "CHECKED_IN");
@@ -753,7 +753,7 @@ class HostelLifecycleController {
     @PostMapping("/api/v1/hostel/clearances/{id}/complete")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> complete(@PathVariable UUID id, @RequestBody(required = false) NoteIn body) {
+    Map<String, Object> complete(@PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn body) {
         String st = jdbc.sql("SELECT hostel.complete_clearance(:c, :n)").param("c", id).param("n", body == null ? null : blank(body.note()), Types.VARCHAR).query(String.class).single();
         return Map.of("state", st);
     }
@@ -761,7 +761,7 @@ class HostelLifecycleController {
     @PostMapping("/api/v1/hostel/clearances/{id}/reopen")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> reopen(@PathVariable UUID id, @RequestBody(required = false) NoteIn body) {
+    Map<String, Object> reopen(@PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn body) {
         jdbc.sql("SELECT hostel.reopen_clearance(:c, :n)").param("c", id).param("n", body == null ? null : blank(body.note()), Types.VARCHAR).query().listOfRows();
         return Map.of("state", "PENDING");
     }

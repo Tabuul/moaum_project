@@ -253,7 +253,8 @@ class PutmeController {
     @Transactional
     Map<String, Object> workstation(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody WorkstationIn body) {
         jdbc.sql("UPDATE admissions.cbt_workstation SET operational = :o WHERE id = :id").param("o", body.operational()).param("id", id).update();
-        return jdbc.sql("SELECT id, number, label, operational FROM admissions.cbt_workstation WHERE id = :id").param("id", id).query().singleRow();
+        return jdbc.sql("SELECT id, number, label, operational FROM admissions.cbt_workstation WHERE id = :id").param("id", id).query().listOfRows()
+                .stream().findFirst().orElseThrow(() -> new NotFound("workstation", id));
     }
 
     /* ── the examination's centres, days and slots ──────────────────────── */

@@ -447,7 +447,7 @@ class CourseOfferingController {
     @PostMapping("/offer-proposals/{id}/approve")
     @PreAuthorize(OWNERS)
     @Transactional
-    Map<String, Object> approve(@PathVariable UUID id, @RequestBody(required = false) Decision body) {
+    Map<String, Object> approve(@PathVariable UUID id, @Valid @RequestBody(required = false) Decision body) {
         Map<String, Object> pr = proposal(id);
         assertDecides(pr);
         String outcome = jdbc.sql("SELECT catalogue.decide_offer_proposal(:id, true, :n)").param("id", id).param("n", body == null ? null : blank(body.note()), Types.VARCHAR).query(String.class).single();
@@ -457,7 +457,7 @@ class CourseOfferingController {
     @PostMapping("/offer-proposals/{id}/reject")
     @PreAuthorize(OWNERS)
     @Transactional
-    Map<String, Object> reject(@PathVariable UUID id, @RequestBody(required = false) Decision body) {
+    Map<String, Object> reject(@PathVariable UUID id, @Valid @RequestBody(required = false) Decision body) {
         Map<String, Object> pr = proposal(id);
         assertDecides(pr);
         String outcome = jdbc.sql("SELECT catalogue.decide_offer_proposal(:id, false, :n)").param("id", id).param("n", body == null ? null : blank(body.note()), Types.VARCHAR).query(String.class).single();
@@ -467,7 +467,7 @@ class CourseOfferingController {
     @PostMapping("/offer-proposals/{id}/cancel")
     @PreAuthorize(OWNERS)
     @Transactional
-    Map<String, Object> cancel(@PathVariable UUID id, @RequestBody(required = false) Decision body) {
+    Map<String, Object> cancel(@PathVariable UUID id, @Valid @RequestBody(required = false) Decision body) {
         Map<String, Object> pr = proposal(id);
         String mine = authority.actingDept();
         boolean proposer = authority.central() || (mine != null && mine.equalsIgnoreCase(String.valueOf(pr.get("proposed_dept"))))

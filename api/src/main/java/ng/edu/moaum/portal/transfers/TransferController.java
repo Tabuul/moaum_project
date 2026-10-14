@@ -265,7 +265,7 @@ class TransferController {
     @PostMapping("/api/v1/transfers/{id}/review")
     @PreAuthorize(SAIC)
     @Transactional
-    Map<String, Object> review(@PathVariable UUID id, @RequestBody Review body) {
+    Map<String, Object> review(@PathVariable UUID id, @Valid @RequestBody Review body) {
         if (body.recommend() && (body.level() == null)) {
             throw new DomainRuleViolation("TR_LEVEL", "A recommendation names the level to admit into.", new DomainRuleViolation.Remedy("Choose the level.", "Academic Office"));
         }
@@ -280,7 +280,7 @@ class TransferController {
     @PostMapping("/api/v1/transfers/{id}/senate")
     @PreAuthorize(SENATE)
     @Transactional
-    Map<String, Object> senate(@PathVariable UUID id, @RequestBody Senate body) {
+    Map<String, Object> senate(@PathVariable UUID id, @Valid @RequestBody Senate body) {
         jdbc.sql("SELECT people.senate_transfer(:id, :ap, :note)")
                 .param("id", id).param("ap", body.approve()).param("note", body.note(), Types.VARCHAR)
                 .query().singleRow();

@@ -287,14 +287,14 @@ class AdmissionEligibilityController {
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/approve")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) DecisionIn body, Authentication auth) {
         return decide(session + "/" + year, id, "APPROVE", body == null ? null : body.note(), auth);
     }
 
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/reject")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) DecisionIn body, Authentication auth) {
         return decide(session + "/" + year, id, "REJECT", body == null ? null : body.note(), auth);
     }
 

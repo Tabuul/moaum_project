@@ -235,7 +235,7 @@ class ScreeningReviewController {
     @PutMapping("/api/v1/admissions/sessions/{session}/{year}/screening-policy")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> policy(@PathVariable String session, @PathVariable String year, @RequestBody PolicyIn body) {
+    Map<String, Object> policy(@PathVariable String session, @PathVariable String year, @Valid @RequestBody PolicyIn body) {
         String s = session + "/" + year;
         jdbc.sql("INSERT INTO admissions.screening_policy (session) VALUES (:s) ON CONFLICT (session) DO NOTHING").param("s", s).update();
         jdbc.sql("""

@@ -66,7 +66,7 @@ class HealthController {
 
     @PostMapping("/api/v1/me/health/appointments/{id}/cancel")
     @PreAuthorize("hasAuthority('OFFICE_student')")
-    Map<String, Object> cancel(Authentication auth, @PathVariable UUID id, @RequestBody(required = false) Why body) {
+    Map<String, Object> cancel(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) Why body) {
         return service.cancel(student(auth), id, body == null ? null : body.why());
     }
 

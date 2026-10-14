@@ -171,7 +171,7 @@ class PutmeScoreController {
     @PostMapping("/exports/{id}/send")
     @PreAuthorize(ICT)
     @Transactional
-    Map<String, Object> send(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) NoteIn in) {
+    Map<String, Object> send(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn in) {
         String s = session + "/" + year;
         export(id, s);
         jdbc.sql("SELECT (admissions.putme_send_export(:id, :m, :by)).state").param("id", id).param("m", in == null ? null : in.message(), Types.VARCHAR)
@@ -194,7 +194,7 @@ class PutmeScoreController {
     @PostMapping("/exports/{id}/{action}")
     @PreAuthorize(ACADEMIC)
     @Transactional
-    Map<String, Object> act(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @PathVariable String action, @RequestBody(required = false) NoteIn in) {
+    Map<String, Object> act(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @PathVariable String action, @Valid @RequestBody(required = false) NoteIn in) {
         String s = session + "/" + year;
         String a = action == null ? "" : action.trim().toUpperCase();
         if (!List.of("RECEIVE", "DOWNLOAD", "REJECT").contains(a)) throw new NotFound("action", action);
@@ -223,7 +223,7 @@ class PutmeScoreController {
     @PostMapping("/exports/{id}/import")
     @PreAuthorize(ACADEMIC)
     @Transactional
-    Map<String, Object> importScores(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) ImportIn in) {
+    Map<String, Object> importScores(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) ImportIn in) {
         String s = session + "/" + year;
         export(id, s);
         AuditContext ctx = actor();

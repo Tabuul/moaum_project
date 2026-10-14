@@ -92,8 +92,9 @@ class GovernanceController {
     @PreAuthorize(WRITERS)
     @Transactional
     Map<String, Object> dsrAdvance(@PathVariable UUID id, @Valid @RequestBody Advance body) {
-        jdbc.sql("UPDATE governance.dsr SET state = :s, note = coalesce(:n, note) WHERE id = :id")
+        int n = jdbc.sql("UPDATE governance.dsr SET state = :s, note = coalesce(:n, note) WHERE id = :id")
                 .param("s", body.state().toUpperCase()).param("n", body.note() == null || body.note().isBlank() ? null : body.note().trim(), Types.VARCHAR).param("id", id).update();
+        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("data-subject request", id);
         return Map.of("id", id, "state", body.state().toUpperCase());
     }
 

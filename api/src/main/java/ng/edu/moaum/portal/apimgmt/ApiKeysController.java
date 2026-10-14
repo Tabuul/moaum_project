@@ -91,6 +91,9 @@ class ApiKeysController {
     @PreAuthorize(OPERATORS)
     @Transactional
     Map<String, Object> deprecate(@PathVariable UUID id) {
+        if (jdbc.sql("SELECT count(*) FROM apimgmt.consumer WHERE id = :id").param("id", id).query(Integer.class).single() == 0) {
+            throw new ng.edu.moaum.portal.shared.NotFound("API consumer", id);
+        }
         jdbc.sql("SELECT apimgmt.deprecate_consumer(:id)").param("id", id).query().singleRow();
         return Map.of("id", id, "status", "DEPRECATED");
     }

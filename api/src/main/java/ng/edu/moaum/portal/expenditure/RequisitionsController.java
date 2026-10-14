@@ -94,7 +94,8 @@ class RequisitionsController {
     @PreAuthorize(APPROVERS)
     @Transactional
     Map<String, Object> po(@PathVariable UUID id) {
-        jdbc.sql("UPDATE expenditure.requisition SET state = 'PO_RAISED' WHERE id = :id AND state = 'APPROVED'").param("id", id).update();
+        int n = jdbc.sql("UPDATE expenditure.requisition SET state = 'PO_RAISED' WHERE id = :id AND state = 'APPROVED'").param("id", id).update();
+        if (n == 0) refuse(id, "A purchase order is raised on an approved requisition.");
         return Map.of("id", id, "state", "PO_RAISED");
     }
 
@@ -102,8 +103,17 @@ class RequisitionsController {
     @PreAuthorize(APPROVERS)
     @Transactional
     Map<String, Object> close(@PathVariable UUID id) {
-        jdbc.sql("UPDATE expenditure.requisition SET state = 'CLOSED' WHERE id = :id AND state IN ('PO_RAISED','APPROVED')").param("id", id).update();
+        int n = jdbc.sql("UPDATE expenditure.requisition SET state = 'CLOSED' WHERE id = :id AND state IN ('PO_RAISED','APPROVED')").param("id", id).update();
+        if (n == 0) refuse(id, "A requisition is closed once approved or once its purchase order is raised.");
         return Map.of("id", id, "state", "CLOSED");
+    }
+
+    /** nothing changed: the requisition is not there, or not in the state the act needs — said, never answered as done */
+    private void refuse(UUID id, String rule) {
+        String state = jdbc.sql("SELECT state FROM expenditure.requisition WHERE id = :id").param("id", id).query(String.class).optional().orElse(null);
+        if (state == null) throw new ng.edu.moaum.portal.shared.NotFound("requisition", id);
+        throw new ng.edu.moaum.portal.shared.DomainRuleViolation("REQUISITION_STATE", "The requisition is " + state.toLowerCase().replace('_', ' ') + ". " + rule,
+                new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Reload the requisitions to see where it stands.", "Bursary"));
     }
 
     @PostMapping("/api/v1/expenditure/requisitions/{id}/reject")

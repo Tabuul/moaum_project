@@ -149,7 +149,13 @@ public class AuthService {
 
     @Transactional
     public void endSession(UUID person, String sidHex) {
-        int n = repo.endSession(HexFormat.of().parseHex(sidHex), person, "ended by the person");
+        byte[] sid;
+        try {
+            sid = HexFormat.of().parseHex(sidHex);
+        } catch (IllegalArgumentException e) {
+            throw new NotFound("session", sidHex);   // not a session id at all: none of the person's
+        }
+        int n = repo.endSession(sid, person, "ended by the person");
         if (n == 0) {
             throw new NotFound("session", sidHex);
         }

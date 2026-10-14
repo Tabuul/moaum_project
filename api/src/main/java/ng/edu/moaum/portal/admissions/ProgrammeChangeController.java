@@ -186,14 +186,14 @@ class ProgrammeChangeController {
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/programme-changes/requests/{id}/approve")
     @PreAuthorize(DECIDERS)
     @Transactional
-    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) DecisionIn body, Authentication auth) {
         return decide(session + "/" + year, id, "APPROVE", body == null ? null : body.note(), auth);
     }
 
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/programme-changes/requests/{id}/reject")
     @PreAuthorize(DECIDERS)
     @Transactional
-    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody(required = false) DecisionIn body, Authentication auth) {
         return decide(session + "/" + year, id, "REJECT", body == null ? null : body.note(), auth);
     }
 

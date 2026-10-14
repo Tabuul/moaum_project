@@ -617,7 +617,7 @@ class CbtExamController {
     @PostMapping("/exams/{id}/{action}")
     @PreAuthorize(MANAGERS)
     @Transactional
-    Map<String, Object> act(@PathVariable UUID id, @PathVariable String action, @RequestBody(required = false) ActionIn in) {
+    Map<String, Object> act(@PathVariable UUID id, @PathVariable String action, @Valid @RequestBody(required = false) ActionIn in) {
         String a = action == null ? "" : action.trim().toLowerCase();
         if (!EXAM_ACTIONS.contains(a)) throw new NotFound("action", action);
         managed(id);

@@ -263,7 +263,7 @@ class ManualController {
     @PostMapping("/admin/procedures/{id}/{action}")
     @PreAuthorize(ADMINS)
     @Transactional
-    Map<String, Object> act(@PathVariable UUID id, @PathVariable String action, @RequestBody(required = false) NoteIn in) {
+    Map<String, Object> act(@PathVariable UUID id, @PathVariable String action, @Valid @RequestBody(required = false) NoteIn in) {
         String act = action.trim().toUpperCase();
         if (!ACTIONS.contains(act)) {
             throw new DomainRuleViolation("MANUAL_ACTION", "A procedure is published, unpublished, archived or restored.");
@@ -310,7 +310,7 @@ class ManualController {
     @PostMapping("/admin/edition")
     @PreAuthorize(ADMINS)
     @Transactional
-    Map<String, Object> release(@RequestBody(required = false) NoteIn in) {
+    Map<String, Object> release(@Valid @RequestBody(required = false) NoteIn in) {
         AuditContext a = actor();
         String v = jdbc.sql("SELECT manual.bump_edition(:by, :office, :note, true)").param("by", a.actorId(), Types.OTHER).param("office", a.actorOffice())
                 .param("note", in == null || in.note() == null ? "released" : in.note(), Types.VARCHAR).query(String.class).single();

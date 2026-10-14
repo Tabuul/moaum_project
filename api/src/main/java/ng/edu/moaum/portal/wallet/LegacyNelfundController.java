@@ -232,7 +232,7 @@ class LegacyNelfundController {
     @PostMapping("/rows/{id}/{action}")
     @PreAuthorize(BURSARY)
     @Transactional
-    Map<String, Object> resolve(@PathVariable UUID id, @PathVariable String action, @RequestBody(required = false) ResolveIn in) {
+    Map<String, Object> resolve(@PathVariable UUID id, @PathVariable String action, @Valid @RequestBody(required = false) ResolveIn in) {
         if (!ACTIONS.contains(action)) {
             throw new DomainRuleViolation("LEGACY_ACTION_UNKNOWN", "An old-portal payment is matched or rejected.", new DomainRuleViolation.Remedy("match or reject", "Bursary"));
         }

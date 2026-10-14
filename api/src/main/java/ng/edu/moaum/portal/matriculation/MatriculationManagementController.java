@@ -233,7 +233,7 @@ class MatriculationManagementController {
     @PostMapping(BASE + "/faculties/{code}/generate")
     @PreAuthorize(PREPARERS)
     @Transactional
-    Map<String, Object> generate(@PathVariable String s, @PathVariable String y, @PathVariable String code, @RequestBody(required = false) GenerateIn body) {
+    Map<String, Object> generate(@PathVariable String s, @PathVariable String y, @PathVariable String code, @Valid @RequestBody(required = false) GenerateIn body) {
         String session = s + "/" + y;
         String faculty = facultyOf(code);
         String prog = body == null ? null : blank(body.programme());

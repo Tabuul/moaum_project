@@ -109,7 +109,7 @@ class VouchersController {
     @PostMapping("/{id}/advance")
     @PreAuthorize(AUDIT)
     @Transactional
-    Map<String, Object> advance(@PathVariable UUID id, @RequestBody(required = false) Note body) {
+    Map<String, Object> advance(@PathVariable UUID id, @Valid @RequestBody(required = false) Note body) {
         String next = jdbc.sql("SELECT expenditure.advance_voucher(:id, :n)")
                 .param("id", id).param("n", body == null ? null : body.note(), Types.VARCHAR).query(String.class).single();
         return Map.of("id", id, "stage", next);

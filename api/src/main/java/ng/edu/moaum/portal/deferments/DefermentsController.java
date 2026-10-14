@@ -210,7 +210,7 @@ class DefermentsController {
     @PostMapping("/api/v1/me/deferments/{id}/cancel")
     @PreAuthorize(STUDENT)
     @Transactional
-    Map<String, Object> myCancel(Authentication a, @PathVariable UUID id, @RequestBody(required = false) NoteIn body) {
+    Map<String, Object> myCancel(Authentication a, @PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn body) {
         owned(me(a), id);
         jdbc.sql("SELECT people.deferment_decide(:id, 'CANCEL', :n, NULL, 'student')").param("id", id)
                 .param("n", body == null || body.note() == null || body.note().isBlank() ? "Withdrawn by the student" : body.note().trim()).query(String.class).single();
@@ -476,7 +476,7 @@ class DefermentsController {
     @PostMapping("/api/v1/deferments/forward")
     @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')")
     @Transactional
-    Map<String, Object> forward(@RequestBody(required = false) ForwardIn body) {
+    Map<String, Object> forward(@Valid @RequestBody(required = false) ForwardIn body) {
         Bound b = bound();
         UUID[] ids = body == null || body.ids() == null || body.ids().isEmpty() ? null : body.ids().toArray(new UUID[0]);
         UUID batch = jdbc.sql("SELECT people.deferment_forward(:ids::uuid[], :ses, :sem, :n, :by, :o)")
@@ -591,7 +591,7 @@ class DefermentsController {
     @PostMapping("/api/v1/deferments/{id}/return")
     @PreAuthorize(DESK)
     @Transactional
-    Map<String, Object> confirmReturn(@PathVariable UUID id, @RequestBody(required = false) NoteIn body) {
+    Map<String, Object> confirmReturn(@PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn body) {
         Bound b = bound();
         Map<String, Object> d = inBound(id, b);
         if (!may(b, d).get("confirmReturn")) {

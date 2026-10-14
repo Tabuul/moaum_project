@@ -58,7 +58,7 @@ class AllocationController {
     /** every row judged against the register; nothing written */
     @PostMapping("/import/validate")
     @PreAuthorize(IMPORTERS)
-    AllocationImportService.Validation validateImport(@RequestBody ImportIn body) {
+    AllocationImportService.Validation validateImport(@Valid @RequestBody ImportIn body) {
         return imports.validate(body.rows(), body.options());
     }
 
@@ -66,7 +66,7 @@ class AllocationController {
      *  with the record already made */
     @PostMapping("/import")
     @PreAuthorize(IMPORTERS)
-    AllocationImportService.ImportResult doImport(@RequestBody ImportIn body) {
+    AllocationImportService.ImportResult doImport(@Valid @RequestBody ImportIn body) {
         return imports.importRows(body.importKey(), body.fileName(), body.rows(), body.options());
     }
 
@@ -336,7 +336,7 @@ class AllocationController {
     @PostMapping("/{offering}")
     @PreAuthorize(ALLOCATORS)
     @Transactional
-    Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
+    Map<String, Object> assign(@PathVariable UUID offering, @Valid @RequestBody Assign body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
         // V408: the same checks as the ICT desk — a person who has left or holds no lecturer office takes no class, as lead or
@@ -379,7 +379,7 @@ class AllocationController {
     @PostMapping("/{offering}/teachers")
     @PreAuthorize(ALLOCATORS)
     @Transactional
-    Map<String, Object> addTeacher(@PathVariable UUID offering, @RequestBody Teacher body) {
+    Map<String, Object> addTeacher(@PathVariable UUID offering, @Valid @RequestBody Teacher body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
         record.refuseIneligible(offering, body.lecturer(), "CO_LECTURER");   // V408

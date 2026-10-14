@@ -218,7 +218,7 @@ class WalletController {
 
     @PostMapping("/api/v1/funding/withdrawals/{id}/pay")
     @PreAuthorize(BURSARY)
-    Map<String, Object> payWithdrawal(@PathVariable UUID id, @RequestBody(required = false) PayIn body) {
+    Map<String, Object> payWithdrawal(@PathVariable UUID id, @Valid @RequestBody(required = false) PayIn body) {
         return service.payWithdrawal(id, body == null ? null : body.ref());
     }
 }

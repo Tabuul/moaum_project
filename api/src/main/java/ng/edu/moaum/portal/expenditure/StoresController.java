@@ -75,8 +75,9 @@ class StoresController {
     @PreAuthorize(WRITERS)
     @Transactional
     Map<String, Object> adjust(@PathVariable UUID id, @Valid @RequestBody Adjust body) {
-        jdbc.sql("UPDATE expenditure.store_item SET quantity = quantity + :d, note = coalesce(:n, note) WHERE id = :id")
+        int n = jdbc.sql("UPDATE expenditure.store_item SET quantity = quantity + :d, note = coalesce(:n, note) WHERE id = :id")
                 .param("d", body.delta()).param("n", body.note() == null || body.note().isBlank() ? null : body.note().trim(), Types.VARCHAR).param("id", id).update();
+        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("store item", id);
         return Map.of("id", id, "adjusted", true);
     }
 
@@ -109,7 +110,9 @@ class StoresController {
     @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')")
     @Transactional
     Map<String, Object> verify(@PathVariable UUID id) {
-        jdbc.sql("UPDATE expenditure.asset SET last_verified_on = current_date WHERE id = :id").param("id", id).update();
+        if (jdbc.sql("UPDATE expenditure.asset SET last_verified_on = current_date WHERE id = :id").param("id", id).update() == 0) {
+            throw new ng.edu.moaum.portal.shared.NotFound("asset", id);
+        }
         return Map.of("id", id, "verified_on", LocalDate.now().toString());
     }
 
@@ -117,7 +120,9 @@ class StoresController {
     @PreAuthorize(WRITERS)
     @Transactional
     Map<String, Object> condition(@PathVariable UUID id, @Valid @RequestBody Condition body) {
-        jdbc.sql("UPDATE expenditure.asset SET condition = :c WHERE id = :id").param("c", body.condition().toUpperCase()).param("id", id).update();
+        if (jdbc.sql("UPDATE expenditure.asset SET condition = :c WHERE id = :id").param("c", body.condition().toUpperCase()).param("id", id).update() == 0) {
+            throw new ng.edu.moaum.portal.shared.NotFound("asset", id);
+        }
         return Map.of("id", id, "condition", body.condition().toUpperCase());
     }
 }

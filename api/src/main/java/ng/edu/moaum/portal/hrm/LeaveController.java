@@ -118,7 +118,7 @@ class LeaveController {
     @PostMapping("/api/v1/hr/leave/{id}/decide")
     @PreAuthorize(APPROVERS)
     @Transactional
-    Map<String, Object> decide(@PathVariable UUID id, @RequestBody Decide body) {
+    Map<String, Object> decide(@PathVariable UUID id, @Valid @RequestBody Decide body) {
         // a Head of Department decides leave only for their own department's staff
         String dept = scope.actingHodDept();
         if (dept != null) {

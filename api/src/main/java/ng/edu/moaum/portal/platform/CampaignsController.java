@@ -195,7 +195,7 @@ class CampaignsController {
 
     @PostMapping("/{id}/cancel")
     @Transactional
-    Map<String, Object> cancel(@PathVariable UUID id, @RequestBody(required = false) CancelIn in) {
+    Map<String, Object> cancel(@PathVariable UUID id, @Valid @RequestBody(required = false) CancelIn in) {
         AuditContext ctx = AuditContextHolder.required();
         jdbc.sql("SELECT platform.campaign_cancel(:id, :r, :by, :office)").param("id", id).param("r", in == null ? null : in.reason(), Types.VARCHAR)
                 .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();

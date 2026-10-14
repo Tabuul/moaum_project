@@ -442,7 +442,7 @@ class CatalogueController {
     @PostMapping("/courses/{code}/curriculum")
     @PreAuthorize(OWNERS)
     @Transactional
-    Map<String, Object> setCurriculum(@PathVariable String code, @RequestBody CurriculumIn body) {
+    Map<String, Object> setCurriculum(@PathVariable String code, @Valid @RequestBody CurriculumIn body) {
         String curr = cleanCurriculum(body.curriculum());
         if (curr != null && curr.startsWith("CCMAS_")) curr = "CCMAS";   // the course carries the framework; the structure row carries the track
         String c = code.trim().toUpperCase();

@@ -164,7 +164,7 @@ class DocumentsController {
     @PostMapping("/api/v1/me/documents/requests/{id}/cancel")
     @PreAuthorize(STUDENT)
     @Transactional
-    Map<String, Object> cancelMine(Authentication auth, @PathVariable UUID id, @RequestBody(required = false) ReasonIn body) {
+    Map<String, Object> cancelMine(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) ReasonIn body) {
         jdbc.sql("SELECT credentials.cancel_request(:id, :s, :r)").param("id", id).param("s", student(auth)).param("r", body == null ? null : blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
     }
@@ -197,7 +197,7 @@ class DocumentsController {
     @PreAuthorize(STUDENT)
     @Transactional
     Map<String, Object> myLink(Authentication auth, @PathVariable UUID id, @RequestBody(required = false) LinkIn body) {
-        String t = jdbc.sql("SELECT credentials.new_download_token(:i, :s, :d)").param("i", id).param("s", student(auth)).param("d", body == null ? 7 : body.days(), Types.INTEGER).query(String.class).single();
+        String t = jdbc.sql("SELECT credentials.new_download_token(:i, :s, :d)").param("i", id).param("s", student(auth)).param("d", body == null || body.days() == null ? 7 : body.days(), Types.INTEGER).query(String.class).single();
         return Map.of("token", t, "path", "/documents/d/" + t);
     }
 
@@ -351,7 +351,7 @@ class DocumentsController {
     @PostMapping("/api/v1/documents/requests/{id}/cancel")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> cancel(@PathVariable UUID id, @RequestBody(required = false) ReasonIn body) {
+    Map<String, Object> cancel(@PathVariable UUID id, @Valid @RequestBody(required = false) ReasonIn body) {
         jdbc.sql("SELECT credentials.cancel_request(:id, NULL, :r)").param("id", id).param("r", body == null ? "Cancelled by the desk" : blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
     }
@@ -359,7 +359,7 @@ class DocumentsController {
     @PostMapping("/api/v1/documents/requests/{id}/complete")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> complete(@PathVariable UUID id, @RequestBody(required = false) ReasonIn body) {
+    Map<String, Object> complete(@PathVariable UUID id, @Valid @RequestBody(required = false) ReasonIn body) {
         jdbc.sql("SELECT credentials.complete_request(:id, :n)").param("id", id).param("n", body == null ? null : blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
     }
@@ -462,7 +462,7 @@ class DocumentsController {
     @PostMapping("/api/v1/documents/issued/{id}/clear-flag")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> clearFlag(@PathVariable UUID id, @RequestBody(required = false) ReasonIn body) {
+    Map<String, Object> clearFlag(@PathVariable UUID id, @Valid @RequestBody(required = false) ReasonIn body) {
         jdbc.sql("SELECT credentials.clear_flag(:id, :n)").param("id", id).param("n", body == null ? "Reviewed; the document stands" : blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
     }
@@ -512,7 +512,7 @@ class DocumentsController {
     @PutMapping("/api/v1/documents/policies/{kind}")
     @PreAuthorize(CONFIG)
     @Transactional
-    Map<String, Object> policy(@PathVariable String kind, @RequestBody PolicyIn body) {
+    Map<String, Object> policy(@PathVariable String kind, @Valid @RequestBody PolicyIn body) {
         String k = kind.trim().toUpperCase();
         if (!KINDS.contains(k)) throw new NotFound("document kind", k);
         jdbc.sql("""

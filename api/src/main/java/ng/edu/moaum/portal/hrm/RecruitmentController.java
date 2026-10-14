@@ -61,6 +61,16 @@ class RecruitmentController {
         return Map.of("rows", rows);
     }
 
+    /** the vacancy's closing date as the form sends it (YYYY-MM-DD); anything else is refused, never a server error */
+    private static java.time.LocalDate closingDate(String text) {
+        try {
+            return java.time.LocalDate.parse(text.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("HR_VACANCY_CLOSING_DATE", "The closing date '" + text.trim() + "' is not a date.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Give the closing date as a calendar date, or leave it empty.", "Human Resources"));
+        }
+    }
+
     @PostMapping("/api/v1/hr/vacancies")
     @PreAuthorize(OFFICERS)
     @Transactional
@@ -72,7 +82,7 @@ class RecruitmentController {
                 .param("t", body.title().trim()).param("d", body.department().trim()).param("r", body.requirements().trim())
                 .param("g", body.grade() == null || body.grade().isBlank() ? null : body.grade().trim(), Types.VARCHAR)
                 .param("c", body.category() == null || body.category().isBlank() ? null : body.category().trim(), Types.VARCHAR)
-                .param("cl", body.closesOn() == null || body.closesOn().isBlank() ? null : java.time.LocalDate.parse(body.closesOn()), Types.DATE)
+                .param("cl", body.closesOn() == null || body.closesOn().isBlank() ? null : closingDate(body.closesOn()), Types.DATE)
                 .query(UUID.class).single();
         return Map.of("id", id, "state", "OPEN");
     }
@@ -118,7 +128,7 @@ class RecruitmentController {
     @PreAuthorize(OFFICERS)
     @Transactional
     Map<String, Object> assess(@PathVariable UUID id, @Valid @RequestBody Assess body) {
-        jdbc.sql("""
+        int n = jdbc.sql("""
                 UPDATE hrm.applicant
                    SET score = coalesce(:sc, score),
                        recommendation = coalesce(:rec, recommendation),
@@ -129,6 +139,7 @@ class RecruitmentController {
                 .param("rec", body.recommendation() == null || body.recommendation().isBlank() ? null : body.recommendation().trim(), Types.VARCHAR)
                 .param("st", body.state() == null || body.state().isBlank() ? null : body.state().toUpperCase(), Types.VARCHAR)
                 .param("id", id).update();
+        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("applicant", id);
         return Map.of("id", id, "updated", true);
     }
 }
