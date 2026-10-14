@@ -346,6 +346,10 @@ public class StudentPortalService {
         BigDecimal balance = (BigDecimal) pos.get("balance");
         BigDecimal firstDue = repo.dueForSemester(id, session, 1);
         BigDecimal firstOutstanding = firstDue.subtract(paid).max(BigDecimal.ZERO);
+        // V454: short by under one naira counts as paid (finance.fee_short), so no semester is offered for kobo
+        if (firstOutstanding.compareTo(BigDecimal.ONE) < 0) {
+            firstOutstanding = BigDecimal.ZERO;
+        }
         BigDecimal secondOutstanding = balance.subtract(firstOutstanding).max(BigDecimal.ZERO);
         out.put("firstSemesterOutstanding", firstOutstanding);
         out.put("secondSemesterOutstanding", secondOutstanding);

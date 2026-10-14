@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 291
+\set EXPECTED 292
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12888,6 +12888,72 @@ BEGIN
              AND own = 1 AND src_after IS NULL AND chain = 'FEE_SOURCE_CHAIN' AND self = 'FEE_SOURCE_SELF', false),
         format('A %s B %s | missing %s, student page %s, told %s/%s/%s | charged %s, CCE %s, total %s, S1 %s, S2 %s, stated %s, sums %s, gaps after %s | own %s, rule after %s | chain %s, self %s',
                fa, fb, gap_missing, un_sem, told1, told2, told3, n_rule, n_cce, tot, d1, d2, stated, sums_ok, gaps_after, own, src_after, chain, self));
+END $$;
+
+-- ── V454: a school-fees balance under one naira counts as paid ──
+-- A second-semester line stated with kobo (₦53,488.42) paid in whole naira (₦53,488.00): the student is paid in full, owes
+-- nothing, the semester clears for course registration, the College report reads fully paid, the Bursary's set-based list
+-- agrees, and the session is no arrears in the next one; a shortfall of one naira is still owed and still arrears; the first
+-- instalment (half the charge) is likewise met short by kobo; Quickteller is refused a ₦0.42 school-fees reference, and no
+-- reference can be raised for kobo. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9945/9946'; S2 text := '9946/9947'; prog text; fac text;
+        k1 uuid := gen_random_uuid(); k2 uuid := gen_random_uuid(); k3 uuid := gen_random_uuid();
+        p1 record; p2 record; p3 record; c1 boolean; c2 boolean; rep text; sfp boolean; arr1 boolean; arr2 boolean;
+        cust record; r_new text := 'accepted'; owed numeric; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V454', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT code, faculty_code INTO prog, fac FROM ref.programme
+         WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND faculty_code IS NOT NULL ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHECK/V454/P', 'ZZKOBO', 'Invented', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9945-10-01', date '9946-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S2, date '9946-10-01', date '9947-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (k1, 'MOAUM/ADM/45/990454', NULL, 'ZZKOBO454', 'Kobo Short', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL),
+               (k2, 'MOAUM/ADM/45/990455', NULL, 'ZZKOBO454', 'Naira Short', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL),
+               (k3, 'MOAUM/ADM/45/990456', NULL, 'ZZKOBO454', 'Half Paid', prog, 'UTME', S, 100, 100, 'ADMITTED', NULL);
+        -- the programme's lines: a first semester in whole naira, a second with kobo; the next session's, so arrears are read
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+            (S, 'Check V454: school fees (semester 1)', 100000.00, 100, prog, 1),
+            (S, 'Check V454: school fees (semester 2)', 53488.42, 100, prog, 2),
+            (S2, 'Check V454: school fees', 1000.00, 100, prog, NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (k1, S, 'CHK-V454-K1-A', 'School fees ' || S, 100000.00, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V454-1A'),
+            (k1, S, 'CHK-V454-K1-B', 'School fees ' || S, 53488.00, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V454-1B'),
+            (k2, S, 'CHK-V454-K2-A', 'School fees ' || S, 100000.00, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V454-2A'),
+            (k2, S, 'CHK-V454-K2-B', 'School fees ' || S, 53487.42, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V454-2B'),
+            (k3, S, 'CHK-V454-K3-A', 'School fees ' || S, 76744.00, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V454-3A');
+        SELECT * INTO p1 FROM finance.position(k1, S);
+        SELECT * INTO p2 FROM finance.position(k2, S);
+        SELECT * INTO p3 FROM finance.position(k3, S);
+        c1 := finance.semester_cleared(k1, S, 2);
+        c2 := finance.semester_cleared(k2, S, 2);
+        SELECT status INTO rep FROM finance.payment_position(k1, S, NULL);
+        SELECT f.paid_in_full INTO sfp FROM finance.session_fee_positions(S) f WHERE f.student_id = k1;
+        SELECT has_arrears INTO arr1 FROM finance.position(k1, S2);
+        SELECT has_arrears INTO arr2 FROM finance.position(k2, S2);
+        -- a ₦0.42 school-fees reference, as one was raised before: Quickteller is told it pays nothing
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES
+            (k1, S, 'MOAUM-FEE-990454-0042', 'School fees ' || S, 0.42, now() + interval '1 day');
+        SELECT * INTO cust FROM finance.paydirect_customer('MOAUM-FEE-990454-0042');
+        BEGIN PERFORM finance.new_reference(k1, S, 0.42, 'School fees ' || S); EXCEPTION WHEN check_violation THEN r_new := SQLERRM; END;
+        owed := finance.fee_owed(53488.42, 53488.00) + finance.fee_owed(53488.42, 53487.42);
+        RAISE EXCEPTION 'the V454 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V454 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V454: a school-fees balance under one naira counts as paid — paid in full, nothing owed, the semester cleared, the College report and the Bursary''s list agree, no arrears after; one naira short is still owed and arrears; half the charge short by kobo is the first instalment; Quickteller is refused a ₦0.42 school-fees reference and none can be raised',
+        coalesce(p1.paid_in_full AND p1.balance = 0 AND p1.instalments_paid = 2 AND c1 AND rep = 'FULLY_PAID' AND sfp AND NOT arr1
+                 AND NOT p2.paid_in_full AND p2.balance = 1.00 AND NOT c2 AND arr2
+                 AND p3.instalments_paid = 1 AND NOT p3.paid_in_full
+                 AND NOT cust.valid AND cust.why LIKE 'Nothing to pay%' AND r_new <> 'accepted' AND owed = 1.00, false),
+        format('kobo: full=%s bal=%s inst=%s cleared=%s report=%s list=%s arrears=%s | naira: full=%s bal=%s cleared=%s arrears=%s | half: inst=%s full=%s | quickteller=%s/%s | new=%s | owed=%s',
+               p1.paid_in_full, p1.balance, p1.instalments_paid, c1, rep, sfp, arr1, p2.paid_in_full, p2.balance, c2, arr2,
+               p3.instalments_paid, p3.paid_in_full, cust.valid, cust.why, left(r_new, 60), owed));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
