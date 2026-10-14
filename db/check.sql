@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 300
+\set EXPECTED 301
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13343,6 +13343,67 @@ BEGIN
              AND m_pg NOT LIKE '%Continuing Education%'
              AND m_ug LIKE 'REGISTRATION_STREAM: ' || v_course || ' is a class of the Centre for Continuing Education, and a full-time undergraduate registers only on full-time undergraduate classes', false),
         format('postgraduate on a full-time class: %s | undergraduate on a CCE class: %s', m_pg, m_ug));
+END $$;
+
+-- ── V463: register uploads fast — the academic position refreshed once per batch, and only when it moved ──
+-- An upload of two new students leaves each one's position exactly as a fresh reading gives it, written once, and ends its
+-- deferral; re-uploading them unchanged rewrites no position; a level the file raises is refreshed by the upload's one pass;
+-- outside an upload a student moved is refreshed at once and a student rewritten unchanged is not; the one-student and the
+-- many-student readings agree; a deferral already begun is not begun twice. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_prog text; a uuid; b uuid; r record; same_a boolean; same_b boolean; c0 tid; c1 tid; c2 tid; c3 tid; c4 tid; cb tid;
+        defer_after text; lvl_after int; one_many boolean; nested boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V463', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHECK/V463/P', 'ZZPOSITION', 'Invented');
+        SELECT p.code INTO v_prog FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND p.category = 'UNDER GRADUATE' AND p.faculty_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        -- 1. two new students in one upload: their positions written once, as a fresh reading gives them; the deferral ended
+        SELECT * INTO r FROM people.import_students(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CKP/26/4631', 'name', 'CHECKV463, Ada', 'programme', v_prog, 'level', '200', 'entrySession', '2024/2025'),
+            jsonb_build_object('matric', 'MOAUM/CKP/26/4632', 'name', 'CHECKV463, Bola', 'programme', v_prog, 'level', '100', 'entrySession', '2025/2026')));
+        SELECT id INTO a FROM people.student WHERE matric_no = 'MOAUM/CKP/26/4631';
+        SELECT id INTO b FROM people.student WHERE matric_no = 'MOAUM/CKP/26/4632';
+        same_a := (SELECT to_jsonb(ap) - 'computed_at' FROM people.academic_position ap WHERE ap.student_id = a)
+                = (SELECT to_jsonb(x) - 'computed_at' FROM people.academic_position_rows(a) x);
+        same_b := (SELECT to_jsonb(ap) - 'computed_at' FROM people.academic_position ap WHERE ap.student_id = b)
+                = (SELECT to_jsonb(x) - 'computed_at' FROM people.academic_position_rows(b) x);
+        defer_after := coalesce(current_setting('moaum.position_defer', true), '');
+        -- 2. the same file again: nothing moved, no position rewritten
+        SELECT ctid INTO c0 FROM people.academic_position WHERE student_id = a;
+        PERFORM people.import_students(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CKP/26/4631', 'name', 'CHECKV463, Ada', 'programme', v_prog, 'level', '200', 'entrySession', '2024/2025')));
+        SELECT ctid INTO c1 FROM people.academic_position WHERE student_id = a;
+        -- 3. the file raises the level: the upload's one pass refreshes it
+        PERFORM people.import_students(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CKP/26/4631', 'name', 'CHECKV463, Ada', 'programme', v_prog, 'level', '300', 'entrySession', '2024/2025')));
+        SELECT ctid, current_level INTO c2, lvl_after FROM people.academic_position WHERE student_id = a;
+        -- 4. outside an upload: rewritten unchanged, not refreshed; moved, refreshed at once
+        SELECT ctid INTO cb FROM people.academic_position WHERE student_id = b;
+        UPDATE people.student SET current_level = current_level, status = status WHERE id = b;
+        SELECT ctid INTO c3 FROM people.academic_position WHERE student_id = b;
+        UPDATE people.student SET current_level = 200 WHERE id = b;
+        SELECT ctid INTO c4 FROM people.academic_position WHERE student_id = b;
+        -- 5. one and many read alike; a deferral already begun is not begun again
+        one_many := (SELECT jsonb_agg(to_jsonb(x) - 'computed_at' ORDER BY x.student_id) FROM people.academic_position_rows_of(ARRAY[a, b]) x)
+                  = (SELECT jsonb_agg(y ORDER BY y->>'student_id') FROM (SELECT to_jsonb(x) - 'computed_at' AS y FROM people.academic_position_rows(a) x
+                                                                         UNION ALL SELECT to_jsonb(x) - 'computed_at' FROM people.academic_position_rows(b) x) z);
+        PERFORM people.defer_positions();
+        nested := NOT people.defer_positions();
+        PERFORM people.refresh_deferred_positions();
+        RAISE EXCEPTION 'the V463 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V463 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V463: a register upload writes each student''s academic position once, as a fresh reading gives it, and ends its deferral; an unchanged re-upload or rewrite refreshes nothing; a moved student is refreshed, in the upload''s one pass or at once; one and many read alike',
+        coalesce(r.created = 2 AND same_a AND same_b AND defer_after = '' AND c1 = c0 AND c2 <> c1 AND lvl_after = 300
+                 AND c3 = cb AND c4 <> c3 AND one_many AND nested, false),
+        format('created %s, fresh %s/%s, defer after "%s" | same file %s→%s, raised %s level %s | rewrite %s→%s, moved %s | one=many %s, nested %s',
+               r.created, same_a, same_b, defer_after, c0, c1, c2, lvl_after, cb, c3, c4, one_many, nested));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
