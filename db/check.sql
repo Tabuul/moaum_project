@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 286
+\set EXPECTED 287
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12635,6 +12635,75 @@ BEGIN
     PERFORM pg_temp.assert('V447: the live PG students with no fee line stated are counted once per group of students alike in what finance.fee_stated reads (programme, level, entry mode, home-state origin), and the count is the per-student count row for row: indigenes stated by an indigene-only line, the other students of the level and the next level not, a programme stated whole',
         coalesce(only_grouped = 0 AND only_each = 0 AND u_pa = 2 AND u_pa2 = 1 AND u_pb = 0, false),
         format('only grouped=%s only each=%s | A at the level=%s (expected 2: other state, no state) A next level=%s B=%s', only_grouped, only_each, u_pa, u_pa2, u_pb));
+END $$;
+
+-- ── V449. An old-portal school-fees payment recorded twice (a whole-session record repeating a per-semester one of the same
+--          reference base, amount and day) is withdrawn: its ledger posting reversed, the record kept on the register, the
+--          per-semester record untouched; a whole-session record of another amount or another day is not a duplicate; one a
+--          refund points at is left and counted; the importer records a semesterless row of the same payment never again ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9998/9999';
+        x uuid := gen_random_uuid(); y uuid := gen_random_uuid(); z uuid := gen_random_uuid(); w uuid := gen_random_uuid();
+        v_day timestamptz := timestamptz '9998-11-13 00:00:00+01'; v_journal uuid; v_income text;
+        pairs_before int; r record; gone boolean; kept boolean; reg record; j_status text; other_kept int; linked_kept boolean; day_kept boolean;
+        paid_after numeric; imp record; imp2 record; n_whole int; n_new int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V449', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V449', 'CHECKV449', 'Bursary');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9998-10-01', date '9999-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode) VALUES
+            (x, 'MOAUM/ADM/98/004491', 'MOAUM/CHK/98/4491', now(), 'CHECKV449', 'Twice Ada', 'F', 'C00023', 'UTME', v_ses, 100, 100, 'ACTIVE', 'FULL_TIME'),
+            (y, 'MOAUM/ADM/98/004492', 'MOAUM/CHK/98/4492', now(), 'CHECKV449', 'Other Bola', 'M', 'C00023', 'UTME', v_ses, 100, 100, 'ACTIVE', 'FULL_TIME'),
+            (z, 'MOAUM/ADM/98/004493', 'MOAUM/CHK/98/4493', now(), 'CHECKV449', 'Refund Chidi', 'M', 'C00023', 'UTME', v_ses, 100, 100, 'ACTIVE', 'FULL_TIME'),
+            (w, 'MOAUM/ADM/98/004494', 'MOAUM/CHK/98/4494', now(), 'CHECKV449', 'Day Dayo', 'M', 'C00023', 'UTME', v_ses, 100, 100, 'ACTIVE', 'FULL_TIME');
+        -- X: the same payment twice; Y: a whole-session record of another amount; Z: twice, but a refund points at it; W: another day
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (x, v_ses, 'MOAUM-LEG-MOAUMCHK984491-9998-9999-S1', 'School fees (legacy) · semester 1', 112735, v_day, v_day, who, 'Legacy', 'LEG-X1', '1 school-fees payment(s), migrated'),
+            (x, v_ses, 'MOAUM-LEG-MOAUMCHK984491-9998-9999', 'School fees (legacy)', 112735, v_day, v_day, who, 'Legacy', 'LEG-X', 'Imported from the old portal'),
+            (y, v_ses, 'MOAUM-LEG-MOAUMCHK984492-9998-9999-S1', 'School fees (legacy) · semester 1', 112735, v_day, v_day, who, 'Legacy', 'LEG-Y1', NULL),
+            (y, v_ses, 'MOAUM-LEG-MOAUMCHK984492-9998-9999', 'School fees (legacy)', 48315, v_day, v_day, who, 'Legacy', 'LEG-Y', NULL),
+            (z, v_ses, 'MOAUM-LEG-MOAUMCHK984493-9998-9999-S1', 'School fees (legacy) · semester 1', 112735, v_day, v_day, who, 'Legacy', 'LEG-Z1', NULL),
+            (z, v_ses, 'MOAUM-LEG-MOAUMCHK984493-9998-9999', 'School fees (legacy)', 112735, v_day, v_day, who, 'Legacy', 'LEG-Z', NULL),
+            (w, v_ses, 'MOAUM-LEG-MOAUMCHK984494-9998-9999-S1', 'School fees (legacy) · semester 1', 112735, v_day, v_day, who, 'Legacy', 'LEG-W1', NULL),
+            (w, v_ses, 'MOAUM-LEG-MOAUMCHK984494-9998-9999', 'School fees (legacy)', 112735, v_day + interval '3 days', v_day + interval '3 days', who, 'Legacy', 'LEG-W', NULL);
+        INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference)
+        VALUES ('CHK-V449-RF', z, 'CHECKV449 Refund Chidi', 'CHECK', 100, who, 'MOAUM-LEG-MOAUMCHK984493-9998-9999');
+        -- X's duplicate had reached the ledger
+        v_income := finance.gl_income_account(finance.payment_category('School fees (legacy)'));
+        v_journal := finance.gl_post(current_date, 'Fee receipt MOAUM-LEG-MOAUMCHK984491-9998-9999', 'AUTO', 'PAYMENT', 'MOAUM-LEG-MOAUMCHK984491-9998-9999',
+            jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 112735, 'narration', 'CHECK', 'session', v_ses),
+                              jsonb_build_object('account', v_income, 'credit', 112735, 'narration', 'CHECK', 'session', v_ses)));
+        pairs_before := (SELECT count(*) FROM finance.legacy_duplicate_pairs() p WHERE p.student_id IN (x, y, z, w));
+        SELECT * INTO r FROM finance.withdraw_legacy_duplicates('CHECK V449');
+        gone := NOT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999-S1');
+        SELECT * INTO reg FROM finance.legacy_duplicate_withdrawn WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999';
+        j_status := (SELECT status FROM finance.gl_journal WHERE id = v_journal);
+        other_kept := (SELECT count(*) FROM finance.payment_reference WHERE student_id = y AND session = v_ses);
+        linked_kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984493-9998-9999');
+        day_kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984494-9998-9999');
+        paid_after := (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE student_id = x AND session = v_ses AND confirmed_at IS NOT NULL);
+        -- the importer: the same payment without a semester is a duplicate; another amount is recorded
+        SELECT * INTO imp FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CHK/98/4491', 'session', v_ses, 'amount', '112735', 'paidOn', '9998-11-13', 'purpose', 'SCHOOL FEES')));
+        n_whole := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        SELECT * INTO imp2 FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matric', 'MOAUM/CHK/98/4491', 'session', v_ses, 'amount', '48315', 'paidOn', '9999-03-02', 'purpose', 'SCHOOL FEES')));
+        n_new := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        RAISE EXCEPTION 'the V449 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V449: a school-fees payment recorded twice is withdrawn — its ledger posting reversed, the record kept on the register, the per-semester record untouched; another amount, another day or a refund''s record is left; the importer never records the same payment twice again',
+        coalesce(pairs_before = 2 AND r.withdrawn >= 1 AND r.ledger_reversed >= 1 AND r.left_linked >= 1
+                 AND gone AND kept AND reg.kept_reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999-S1' AND reg.amount = 112735
+                 AND reg.ledger_journal = v_journal AND reg.reversal_journal IS NOT NULL AND j_status = 'REVERSED'
+                 AND other_kept = 2 AND linked_kept AND day_kept AND paid_after = 112735
+                 AND imp.duplicates = 1 AND imp.cleared = 0 AND n_whole = 0 AND imp2.cleared = 1 AND n_new = 1, false),
+        format('pairs %s | withdrawn %s reversed %s left %s | gone %s kept %s register kept=%s journal ok=%s reversal=%s status=%s | Y %s, refund kept %s, other day kept %s | paid %s | import dup=%s cleared=%s whole=%s then cleared=%s whole=%s',
+               pairs_before, r.withdrawn, r.ledger_reversed, r.left_linked, gone, kept, reg.kept_reference, reg.ledger_journal = v_journal, reg.reversal_journal IS NOT NULL, j_status,
+               other_kept, linked_kept, day_kept, paid_after, imp.duplicates, imp.cleared, n_whole, imp2.cleared, n_new));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
