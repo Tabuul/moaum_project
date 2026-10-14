@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 288
+\set EXPECTED 289
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12743,6 +12743,35 @@ BEGIN
     PERFORM pg_temp.assert('V450: in the current and planned sessions Communication and Media Studies has fee lines whenever Social Sciences has, Technology and Industrial Studies whenever Education has; the Education copy reaches a TI student',
         coalesce(bare_cm = 0 AND bare_ti = 0 AND n = 2 AND (v_prog IS NULL OR charged = 2), false),
         format('sessions with SS and no CM: %s, with ED and no TI: %s | copied %s | programme %s charged %s', bare_cm, bare_ti, n, v_prog, charged));
+END $$;
+-- V452: postgraduate applications are filed under the intake session. On an invented PG calendar (a current session and two
+-- planned after it) the intake is the first planned one after the current, and the postgraduate application window reads it;
+-- a session the Bursary has stated no PG fees for carries the latest earlier stated ones, its own once stated, and a session
+-- earlier than any stated one takes the amounts V202 wrote in. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_intake text; v_app text; carried text; stated text; none_yet text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        PERFORM set_config('moaum.reason', 'check V452', true);
+        UPDATE admissions.pg_academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+        INSERT INTO admissions.pg_academic_session (name, state) VALUES ('9952/9953', 'CURRENT'), ('9953/9954', 'PLANNED'), ('9954/9955', 'PLANNED');
+        v_intake := admissions.pg_intake_session();
+        v_app := policy.application_session('POSTGRADUATE_APPLICATION');
+        INSERT INTO admissions.pg_fee (session, application_fee, acceptance_fee, checking_fee) VALUES ('9952/9953', 11, 22, 3);
+        carried := (SELECT application_fee || '/' || acceptance_fee || '/' || checking_fee FROM admissions.pg_fee_rule('9953/9954'));
+        INSERT INTO admissions.pg_fee (session, application_fee, acceptance_fee, checking_fee) VALUES ('9953/9954', 12, 23, 4);
+        stated := (SELECT application_fee || '/' || acceptance_fee || '/' || checking_fee FROM admissions.pg_fee_rule('9953/9954'));
+        RAISE EXCEPTION 'the V452 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V452 check undoes its writes' THEN RAISE; END IF;
+    END;
+    none_yet := (SELECT application_fee || '/' || acceptance_fee || '/' || checking_fee FROM admissions.pg_fee_rule('0001/0002'));
+    PERFORM pg_temp.assert('V452: postgraduate applications are filed under the intake — the first planned PG session after the current — and a session with no PG fees stated carries the latest earlier stated ones',
+        coalesce(v_intake = '9953/9954' AND v_app = '9953/9954' AND carried = '11.00/22.00/3.00' AND stated = '12.00/23.00/4.00' AND none_yet = '20000/50000/3000', false),
+        format('intake %s, application window %s | carried %s, stated %s, before any %s', v_intake, v_app, carried, stated, none_yet));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

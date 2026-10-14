@@ -10,11 +10,13 @@ export default async function PgAdmissionsPage({ searchParams }: { searchParams:
   const p = await searchParams;
   const [me, cal] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
-    api<{ sessions: { name: string; state: string }[]; current: string | null }>("/api/v1/pg/calendar"),
+    api<{ sessions: { name: string; state: string }[]; current: string | null; intake?: string | null }>("/api/v1/pg/calendar"),
   ]);
-  // the PG School keeps its own calendar (V224): default to its current/intake session, not the University's
+  // the PG School keeps its own calendar (V224); the applications desk opens on the session applicants are admitted into
+  // (V452: the intake, 2026/2027 while 2025/2026 runs), else the School's current one
   const pgSessions = cal.ok ? cal.data.sessions : [];
   const session = typeof p.session === "string" ? p.session
+    : (cal.ok && cal.data.intake) ? cal.data.intake
     : (cal.ok && cal.data.current) ? cal.data.current
     : intakeSession(pgSessions);
   const view = await api<PgView>(`/api/v1/pg/applications?session=${encodeURIComponent(session)}`);

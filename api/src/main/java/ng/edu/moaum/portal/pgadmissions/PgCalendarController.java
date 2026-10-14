@@ -63,7 +63,8 @@ class PgCalendarController {
                              @Pattern(regexp = "NOT_YET_OPEN|OPEN|CLOSED") String state) {
     }
 
-    /** Every PG session, which one is current, and the semesters of the session asked for (else the current). */
+    /** Every PG session, which one is current, which one applicants are admitted into (V452), and the semesters of the session
+     *  asked for (else the current). */
     @GetMapping
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -82,6 +83,8 @@ class PgCalendarController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("sessions", sessions);
         out.put("current", current);
+        // V452: the session applicants are admitted into — the application desks open on it, the students' screens on the current
+        out.put("intake", jdbc.sql("SELECT admissions.pg_intake_session()").query(String.class).single());
         out.put("looking", looking);
         out.put("semesters", semesters);
         return out;

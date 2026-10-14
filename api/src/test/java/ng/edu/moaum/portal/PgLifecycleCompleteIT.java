@@ -56,7 +56,8 @@ class PgLifecycleCompleteIT {
         it = new ItSupport(port, jdbc, transactions);
         school = TestTokens.token(it.person("ZZPG-DEAN", "ZZPGDEAN"), List.of("pgschool"));
         academic = TestTokens.token(it.person("ZZPG-ACAD", "ZZPGACADEMIC"), List.of("academic"));
-        session = jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single();
+        // V452: an application is filed under the PG intake session, so the whole lifecycle runs in it
+        session = jdbc.sql("SELECT admissions.pg_intake_session()").query(String.class).single();
         it.session(session, Integer.parseInt(session.substring(0, 4)));
         // two postgraduate programmes of two departments
         List<Map<String, Object>> two = jdbc.sql("""
