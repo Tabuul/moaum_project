@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 284
+\set EXPECTED 285
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12528,6 +12528,58 @@ BEGIN
                v_closed, v_sub, v_sub_at, v_office, v_unver, v_olev, v_own, pub, st.status, st.label,
                letter.statement->>'admissionRoute', letter.statement->>'degreeType', letter.statement->>'targetProgramme', notices, utme_aud, scr, rows_ict,
                cls.programme_type, cls.source_module, cls.responsible_office, stats->>'admitted'));
+END $$;
+
+-- ── V448. A faculty's fee lines are copied to another for a session: every faculty-wide live line, as it stands (semester,
+--          level, entry mode, indigene, kind, amount), never a programme's own line nor an ended one; only into a faculty with
+--          no live line in that session; a second run copies nothing; a student of the receiving faculty is then charged ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9996/9997'; st uuid := gen_random_uuid(); v_prog text; v_ss_prog text;
+        n1 int; n2 int; n3 int; n_cm int; n_same int; n_prog int; n_ended int; charged int; stated boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V448', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9996-10-01', date '9997-08-31') ON CONFLICT (name) DO NOTHING;
+        v_ss_prog := (SELECT code FROM ref.programme WHERE faculty_code = 'SS' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        -- Social Sciences for the session: four faculty-wide lines, one programme's own line, one ended line
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind, ended_at) VALUES
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 85294.86, 200, 'UTME', 'SS', NULL, 1, 1, 'INDIGENE', false, 'FEE', NULL),
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 112735.00, 200, 'UTME', 'SS', NULL, 1, 1, 'NON_INDIGENE', false, 'FEE', NULL),
+            (gen_random_uuid(), v_ses, 'School fees (semester 2)', 36554.94, 200, 'UTME', 'SS', NULL, 2, 2, 'INDIGENE', false, 'FEE', NULL),
+            (gen_random_uuid(), v_ses, 'School fees (semester 2)', 48315.00, 200, 'UTME', 'SS', NULL, 2, 2, 'NON_INDIGENE', false, 'FEE', NULL),
+            (gen_random_uuid(), v_ses, 'Programme levy', 5000.00, 200, 'UTME', 'SS', v_ss_prog, 3, NULL, NULL, false, 'FEE', NULL),
+            (gen_random_uuid(), v_ses, 'Old line', 1.00, 200, 'UTME', 'SS', NULL, 4, NULL, NULL, false, 'FEE', now());
+        n1 := finance.copy_faculty_fees('SS', 'CM', v_ses);
+        n2 := finance.copy_faculty_fees('SS', 'CM', v_ses);
+        SELECT count(*) INTO n_cm FROM finance.fee_schedule WHERE session = v_ses AND faculty_code = 'CM' AND ended_at IS NULL;
+        -- each copied line is its Social Sciences line, field for field
+        SELECT count(*) INTO n_same FROM finance.fee_schedule c JOIN finance.fee_schedule s
+            ON s.session = c.session AND s.faculty_code = 'SS' AND s.programme_code IS NULL AND s.ended_at IS NULL
+           AND s.item = c.item AND s.amount = c.amount AND s.level = c.level AND s.entry_mode = c.entry_mode AND s.semester = c.semester
+           AND s.indigene = c.indigene AND s.spillover = c.spillover AND s.kind = c.kind AND s.ord = c.ord
+         WHERE c.session = v_ses AND c.faculty_code = 'CM' AND c.ended_at IS NULL;
+        SELECT count(*) INTO n_prog FROM finance.fee_schedule WHERE session = v_ses AND faculty_code = 'CM' AND programme_code IS NOT NULL;
+        SELECT count(*) INTO n_ended FROM finance.fee_schedule WHERE session = v_ses AND faculty_code = 'CM' AND item = 'Old line';
+        -- the same faculty, an unknown faculty, a faculty onto itself: nothing
+        n3 := finance.copy_faculty_fees('SS', 'SS', v_ses) + finance.copy_faculty_fees('SS', 'NO_SUCH_FACULTY', v_ses);
+        -- a 200-level UTME student of the receiving faculty (non-indigene) is charged both semesters
+        v_prog := (SELECT code FROM ref.programme WHERE faculty_code = 'CM' AND NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1);
+        IF v_prog IS NOT NULL THEN
+            INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, state_of_origin)
+            VALUES (st, 'MOAUM/ADM/96/004481', NULL, NULL, 'CHECKV448', 'Media Ada', 'F', v_prog, 'UTME', v_ses, 200, 200, 'ADMITTED', 'FULL_TIME', 'Ondo');
+            UPDATE finance.fee_setting SET home_state = coalesce(home_state, 'Benue') WHERE id = 1;
+            charged := (SELECT count(*) FROM finance.charges(st, v_ses));
+            stated := finance.fee_stated(st, v_ses);
+        END IF;
+        RAISE EXCEPTION 'the V448 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V448: a faculty''s live faculty-wide fee lines are copied to another for a session as they stand, never a programme''s own line nor an ended one, only into a faculty with no line in the session, once; a student of the receiving faculty is then charged',
+        coalesce(n1 = 4 AND n2 = 0 AND n_cm = 4 AND n_same = 4 AND n_prog = 0 AND n_ended = 0 AND n3 = 0
+                 AND (v_prog IS NULL OR (charged = 2 AND stated)), false),
+        format('copied %s then %s | CM lines %s, alike %s, programme %s, ended %s | self/unknown %s | programme %s charged %s stated %s',
+               n1, n2, n_cm, n_same, n_prog, n_ended, n3, v_prog, charged, stated));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
