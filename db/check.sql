@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 297
+\set EXPECTED 298
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13186,6 +13186,50 @@ BEGIN
                  AND e1_b = 4 AND e2_b = 2 AND e4_b = 3 AND pinned = 3, false),
         format('units_for %s/%s | programme change: own dept %s, other %s, scored %s, menu %s | course change: own dept %s, own units %s, third dept %s pinned %s',
                u_p1, u_p2, e1_a, e2_a, e3_a, menu_p2, e1_b, e2_b, e4_b, pinned));
+END $$;
+
+-- ── V457: students with no fee stated, the Bursary told by SMS as well ──
+-- A live undergraduate of a session whose open semester has no fee line: the watch tells a Bursary office holder by
+-- e-mail, on the portal and by SMS, on the phone on their staff record; read again with nothing new, it tells nobody.
+-- The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); st uuid := gen_random_uuid(); v_ses text := '9943/9944'; v_prog text;
+        told1 int; told2 int; chans text; sms_to text; sms_body text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V457', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT p.code INTO v_prog FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND p.faculty_code IS NOT NULL
+           AND p.faculty_code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES
+            (who, 'CHECK/V457/P', 'ZZFEEGAPSMS', 'Invented', NULL, NULL),
+            (bur, 'CHECK/V457/B', 'ZZFEEGAPSMS', 'Bursar', 'v457.bursar@example.test', '08000004570');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'CHECK V457', who, current_date);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9943-10-01', date '9944-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), v_ses, 1, 'OPEN')
+            ON CONFLICT (session, number) DO UPDATE SET state = excluded.state;
+        -- one line of the session's, for a level nobody here is at: the session is on the fee schedule, the student's group is not
+        INSERT INTO finance.fee_schedule (session, item, amount, level, semester) VALUES (v_ses, 'Check V457: another level', 1000, 900, 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/43/004571', NULL, 'CHECKV457', 'No Fee', v_prog, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED', NULL);
+        told1 := finance.watch_fee_gaps(v_ses);
+        told2 := finance.watch_fee_gaps(v_ses);
+        SELECT string_agg(DISTINCT n.channel, ',' ORDER BY n.channel) INTO chans
+          FROM platform.notice n WHERE n.template_key = 'FEE_GAPS' AND n.about_kind = 'person' AND n.about_id = bur AND n.event_key LIKE 'fee-gaps:' || v_ses || ':%';
+        SELECT n.recipient, n.body INTO sms_to, sms_body
+          FROM platform.notice n WHERE n.template_key = 'FEE_GAPS' AND n.about_id = bur AND n.channel = 'SMS' AND n.event_key LIKE 'fee-gaps:' || v_ses || ':%' LIMIT 1;
+        RAISE EXCEPTION 'the V457 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V457 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V457: students with no fee stated — the Bursary told by e-mail, on the portal and by SMS on the phone of their staff record, and once',
+        coalesce(v_prog IS NOT NULL AND told1 > 0 AND told2 = 0 AND chans = 'EMAIL,PORTAL,SMS' AND sms_to LIKE '%4570' AND sms_body LIKE '%no school fee stated for ' || v_ses || '%', false),
+        format('told %s then %s | channels %s | sms to %s: %s', told1, told2, chans, sms_to, left(sms_body, 90)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
