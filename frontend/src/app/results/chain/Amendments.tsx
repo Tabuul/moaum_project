@@ -7,7 +7,10 @@
  * applies it on the Senate minute — a new version of the mark, the original kept. The person who raised it may withdraw it.
  * The server decides who may do each; the buttons only follow it. V422: a candidate on the published sheet's roll with no
  * mark on it (registered after publication, or migrated without the result) gets a late result the same way — chosen from
- * the roll's candidates with no mark, applied on the Senate minute as the first mark.
+ * the roll's candidates with no mark, applied on the Senate minute as the first mark. V465: when a programme's students on the
+ * class carry units its structure no longer says, and the class's results are worked on (so a change of units does not reach
+ * it), the desk of entry raises a units correction for that programme the same way — applied on the minute to their
+ * registrations.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -28,12 +31,17 @@ const ENTRY_DESKS = ["lecturer", "gst", "eps", "exams"];
 const OUTCOMES = ["GRADED", "ABSENT", "WITHHELD", "INCOMPLETE", "MALPRACTICE", "EXEMPTED"];
 
 export interface Amendment {
-  id: string; ref: string; kind?: "AMEND" | "LATE"; student_id: string; number: string; name: string; query_ref: string | null;
+  id: string; ref: string; kind?: "AMEND" | "LATE" | "UNITS"; student_id: string | null; number: string | null; name: string | null; query_ref: string | null;
   was_ca: number | null; was_exam: number | null; was_outcome: string | null; ca: number | null; exam: number | null; outcome: string;
   reason: string; stage: string; raised_by_name: string | null; raised_office: string | null; raised_at: string;
   senate_minute: string | null; applied_at: string | null; closed_reason: string | null;
   decisions: { kind: string; from: string | null; to: string; office: string | null; comment: string | null; at: string; by: string | null }[];
+  programme_code?: string | null; programme_name?: string | null; units?: number | null; was_units?: number | null; applied_count?: number | null;
 }
+
+/** V465: the class by programme — students on it, the units they carry, what the programme's structure says now */
+interface ClassUnit { programme: string; name: string | null; students: number; carried: number[]; takes: number[]; examined: boolean; openRef: string | null }
+const unitsOf = (n: number | null | undefined) => (n == null ? "—" : `${n} unit${n === 1 ? "" : "s"}`);
 
 /** V422: a candidate on the roll with no mark on the sheet — a late result is for them */
 interface LateCandidate { student_id: string; number: string; surname: string; other_names: string; programme_code: string }
@@ -58,6 +66,8 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const [raise, setRaise] = useState<{ studentId: string; outcome: string; ca: string; exam: string; reason: string } | null>(null);
   const [act, setAct] = useState<{ a: Amendment; kind: "approve" | "minute" | "refuse" | "withdraw"; text: string } | null>(null);
   const [late, setLate] = useState<LateCandidate[]>([]);
+  const [classUnits, setClassUnits] = useState<ClassUnit[]>([]);
+  const [unitsRaise, setUnitsRaise] = useState<{ u: ClassUnit; units: string; reason: string } | null>(null);
   useEffect(() => {
     let live = true;
     void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/amendments`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setRows(await r.json()); });
@@ -69,6 +79,12 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
     if (published) void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/late-candidates`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setLate(await r.json()); });
     return () => { live = false; };
   }, [sheetId, published, rows]);
+  // V465: the class's programmes and their units, read again after each change
+  useEffect(() => {
+    let live = true;
+    void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/units`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setClassUnits(await r.json()); });
+    return () => { live = false; };
+  }, [sheetId, rows]);
 
   async function post(path: string, body: unknown, reason: string) {
     setBusy(true);
@@ -81,7 +97,10 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   }
 
   const mayRaise = published && !!actingOffice && ENTRY_DESKS.includes(actingOffice);
-  if (!published && !(rows && rows.length)) return null;
+  const entryDesk = !!actingOffice && ENTRY_DESKS.includes(actingOffice);
+  // V465: programmes whose students on an examined class carry units their structure no longer says
+  const unitsOff = classUnits.filter((u) => u.examined && (u.carried.length !== 1 || u.takes.length !== 1 || u.carried[0] !== u.takes[0]));
+  if (!published && !(rows && rows.length) && !unitsOff.length) return null;
   const examMax = 100 - caMax;
   const r = raise;
   const wrong = r && r.outcome === "GRADED" && (r.ca === "" || r.exam === "" || Number(r.ca) > caMax || Number(r.exam) > examMax || Number(r.ca) < 0 || Number(r.exam) < 0);
@@ -89,12 +108,24 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const chosenLate = r ? late.find((c) => c.student_id === r.studentId) : undefined;
 
   return (
-    <Panel title="Amendments of the published result" right={mayRaise ? <Btn kind="primary" onClick={() => setRaise({ studentId: "", outcome: "GRADED", ca: "", exam: "", reason: "" })}>Raise an amendment or a late result</Btn> : null}>
+    <Panel title={published ? "Amendments of the published result" : "Amendments of this class"} right={mayRaise ? <Btn kind="primary" onClick={() => setRaise({ studentId: "", outcome: "GRADED", ca: "", exam: "", reason: "" })}>Raise an amendment or a late result</Btn> : null}>
       <PBody>
         <p className="sub2">A published mark changes only by an amendment, approved by each desk and applied on the Senate minute; the original is kept. A candidate on the roll with no mark on the sheet gets a late result the same way.</p>
         {published && late.length ? (
           <Note kind="bad" title={`${late.length} candidate${late.length === 1 ? "" : "s"} on the roll with no mark on this sheet`}>
             {`${late.slice(0, 6).map((c) => c.number).join(", ")}${late.length > 6 ? ` and ${late.length - 6} more` : ""}: no result, never an F. ${mayRaise ? "Raise a late result for each, with the mark and the reason." : "The course's lecturer, or the Programme Examinations Officer, raises a late result for each."}`}
+          </Note>
+        ) : null}
+        {unitsOff.length ? (
+          <Note kind="info" title="Units on this class differ from the programme's structure">
+            <span className="sub2">The class&rsquo;s results are worked on, so a change of units does not reach it; a units correction for the programme goes through the chain, as a mark does.</span>
+            <DTable noPrint pageSize={0} cols={["Programme", "Students|mid", "They carry|mid", "Its structure says|mid", "|mid"]} rows={unitsOff.map((u) => [
+              <span key="p"><b className="tnum">{u.programme}</b>{u.name ? <span className="sub2" style={{ display: "block" }}>{u.name}</span> : null}</span>,
+              <span key="n" className="tnum">{u.students}</span>, <span key="c" className="tnum">{u.carried.join(", ")}</span>, <b key="t" className="tnum">{u.takes.join(", ")}</b>,
+              u.openRef ? <span key="x" className="sub2">{`${u.openRef} open`}</span>
+                : entryDesk ? <Btn key="x" kind="primary" disabled={busy} onClick={() => setUnitsRaise({ u, units: u.takes.length === 1 ? String(u.takes[0]) : "", reason: "" })}>Raise a units correction</Btn>
+                : <span key="x" className="sub2">The desk of entry raises it</span>,
+            ])} />
           </Note>
         ) : null}
         {!rows ? <p className="sub2">Loading…</p> : !rows.length ? <p className="sub2">No amendment of this sheet.</p> : (
@@ -103,11 +134,13 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
             const mine = open && !!actingOffice && (STAGE_DESKS[a.stage] ?? []).includes(actingOffice);
             const last = a.decisions[a.decisions.length - 1];
             return [
-              <span key="r"><b className="tnum">{a.ref}</b>{a.kind === "LATE" ? <Pil kind="info">Late result</Pil> : null}<span className="sub2" style={{ display: "block" }}>{`${a.raised_by_name ?? "—"} (${roleLabel(a.raised_office)}), ${day(a.raised_at)}`}</span>
+              <span key="r"><b className="tnum">{a.ref}</b>{a.kind === "LATE" ? <Pil kind="info">Late result</Pil> : a.kind === "UNITS" ? <Pil kind="info">Units</Pil> : null}<span className="sub2" style={{ display: "block" }}>{`${a.raised_by_name ?? "—"} (${roleLabel(a.raised_office)}), ${day(a.raised_at)}`}</span>
                 {a.query_ref ? <span className="sub2" style={{ display: "block" }}>{`From query ${a.query_ref}`}</span> : null}</span>,
-              <span key="s">{a.name}<span className="sub2 tnum" style={{ display: "block" }}>{a.number}</span></span>,
-              <span key="w" className="tnum">{markOf(a.was_outcome, a.was_ca, a.was_exam)}</span>,
-              <b key="n" className="tnum">{markOf(a.outcome, a.ca, a.exam)}</b>,
+              a.kind === "UNITS"
+                ? <span key="s">{`Students of ${a.programme_code}`}<span className="sub2" style={{ display: "block" }}>{a.programme_name ?? ""}</span></span>
+                : <span key="s">{a.name}<span className="sub2 tnum" style={{ display: "block" }}>{a.number}</span></span>,
+              <span key="w" className="tnum">{a.kind === "UNITS" ? unitsOf(a.was_units) : markOf(a.was_outcome, a.was_ca, a.was_exam)}</span>,
+              <b key="n" className="tnum">{a.kind === "UNITS" ? <>{unitsOf(a.units)}{a.applied_count != null ? <span className="sub2" style={{ display: "block", fontWeight: 400 }}>{`${a.applied_count} registration${a.applied_count === 1 ? "" : "s"} changed`}</span> : null}</> : markOf(a.outcome, a.ca, a.exam)}</b>,
               <span key="why" className="sub2">{a.reason}</span>,
               <span key="st">{stagePil(a.stage)}
                 <span className="sub2" style={{ display: "block" }}>{a.stage === "APPLIED" ? `Minute ${a.senate_minute}, ${day(a.applied_at)}` : a.closed_reason ? a.closed_reason
@@ -147,9 +180,27 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
           {wrong ? <Note kind="bad" title="Marks outside the course's split">{`This course assesses ${caMax} and examines ${examMax}.`}</Note> : null}
         </Modal>
       ) : null}
+      {unitsRaise ? (() => {
+        const n = /^\d{1,2}$/.test(unitsRaise.units.trim()) && Number(unitsRaise.units) <= 12 ? Number(unitsRaise.units) : null;
+        return (
+          <Modal title={`Raise a units correction — ${courseCode}`} sub={`Students of ${unitsRaise.u.programme} on this class: ${unitsRaise.u.students}, carrying ${unitsRaise.u.carried.join(", ")}`} onClose={() => setUnitsRaise(null)}
+            foot={<><Btn kind="ghost" onClick={() => setUnitsRaise(null)}>Cancel</Btn><span className="grow" />
+              <Btn kind="primary" disabled={busy || n == null || unitsRaise.reason.trim().length < 10} onClick={async () => {
+                const ok = await post(`/sheets/${sheetId}/units-amendments`, { programme: unitsRaise.u.programme, units: n, reason: unitsRaise.reason.trim() },
+                  `${courseCode}: a units correction raised for ${unitsRaise.u.programme}`);
+                if (ok) setUnitsRaise(null);
+              }}>{busy ? "Raising…" : "Raise it"}</Btn></>}>
+            <p className="sub2">{`${unitsRaise.u.programme}'s structure says ${unitsRaise.u.takes.join(", ")}. Applied on the Senate minute, the programme's students on this class carry the corrected units, their grade point average reads them, and each is told by e-mail.`}</p>
+            <Field id="ua-units" label="Corrected units" required hint="0 to 12"><input id="ua-units" className="ctl tnum" inputMode="numeric" style={{ width: 90 }} value={unitsRaise.units} onChange={(e) => setUnitsRaise({ ...unitsRaise, units: e.target.value })} /></Field>
+            <Field id="ua-why" label="Why" required hint="In words Senate can read: what the programme takes the course at, and why this class carried another number">
+              <textarea id="ua-why" className="ctl" rows={3} maxLength={2000} value={unitsRaise.reason} onChange={(e) => setUnitsRaise({ ...unitsRaise, reason: e.target.value })} /></Field>
+          </Modal>
+        );
+      })() : null}
       {act ? (
         <Modal title={act.kind === "minute" ? `Apply ${act.a.ref} on the Senate minute` : act.kind === "refuse" ? `Refuse ${act.a.ref}` : act.kind === "withdraw" ? `Withdraw ${act.a.ref}` : `Approve ${act.a.ref}`}
-          sub={`${act.a.name}: ${markOf(act.a.was_outcome, act.a.was_ca, act.a.was_exam)} → ${markOf(act.a.outcome, act.a.ca, act.a.exam)}`} onClose={() => setAct(null)}
+          sub={act.a.kind === "UNITS" ? `Students of ${act.a.programme_code} on this class: ${unitsOf(act.a.was_units)} → ${unitsOf(act.a.units)}`
+            : `${act.a.name}: ${markOf(act.a.was_outcome, act.a.was_ca, act.a.was_exam)} → ${markOf(act.a.outcome, act.a.ca, act.a.exam)}`} onClose={() => setAct(null)}
           foot={<><Btn kind="ghost" onClick={() => setAct(null)}>Cancel</Btn><span className="grow" />
             <Btn kind={act.kind === "refuse" || act.kind === "withdraw" ? "urgent" : "go"} disabled={busy || ((act.kind === "minute" || act.kind === "refuse" || act.kind === "withdraw") && act.text.trim().length < (act.kind === "minute" ? 3 : 5))}
               onClick={async () => {

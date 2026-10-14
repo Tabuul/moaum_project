@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 303
+\set EXPECTED 304
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13489,6 +13489,104 @@ BEGIN
         coalesce(seeded LIKE 'The University has not currently opened the payment portal%' AND after = 'CHECK V466: payment reopens on Monday.' AND logged = 1
                  AND r_blank LIKE '%cannot be blank%' AND r_reg LIKE 'no closure message for%', false),
         format('seeded "%s" | after "%s", logged %s | blank: %s | registration: %s', left(seeded, 40), after, logged, r_blank, r_reg));
+END $$;
+
+-- ── V465. Units corrected for an examined class through the amendment chain, and what a change of the course's own units
+--          reaches counted first: an invented 3-unit course taken by a programme of its department and by another
+--          department's. A programme's change reaches its student on the class with no result, not the two on the class with
+--          a score. A units correction is refused to another desk, for the units already carried, for a class not examined,
+--          and while one is open; then approved by each desk and applied on the Senate minute — the programme's two students
+--          on the class carry 2, the other programme's keeps 3, the two told by e-mail. The course's own change to 4 is
+--          counted first (1 follows, 2 kept, 1 binding pinned) and does exactly that. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); lect uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; v_ses text := '9465/9466';
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid();
+        st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        rg uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        imp record; cimp record; amd uuid; stg text; msg text; r_desk text; r_same text; r_notex text; r_open text; r_minute text;
+        units_after text; applied int; told int; listed text; cls text; course_after text; pinned_units int; n_steps int := 0;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V465', true);
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (lect, 'CHECKV465', 'Lecturer', 'zz.check465@example.com');
+        SELECT p.dept_code, p.code INTO v_dept, p1 FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        SELECT p.code INTO p2 FROM ref.programme p WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.dept_code IS NOT NULL AND p.dept_code <> v_dept ORDER BY p.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9465-10-01', date '9466-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZW 101', 'Units corrected by amendment', 3, 1, 100, v_dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZW 101', p1, 100, 'Core'), ('ZZW 101', p2, 100, 'Borrowed');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZZW 101', v_ses, 1), (o2, 'ZZW 101', v_ses, 2);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        SELECT st[i], 'MOAUM/ADM/60/94650' || i, 'CHECKV465', 'S' || i, CASE WHEN i IN (3, 5) THEN p2 ELSE p1 END, 'UTME', v_ses, 100, 100, 'ADMITTED'
+          FROM generate_series(1, 5) i;
+        INSERT INTO people.student_contact (student_id, email) SELECT st[i], 'zz.check465.' || i || '@example.com' FROM generate_series(1, 5) i
+        ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email;
+        -- 1 and 2 of the first programme and 3 of the second on class 1 (1 scored); 4 of the first and 5 of the second on class 2 (no result)
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES
+          (rg[1], st[1], v_ses, 1, 100), (rg[2], st[2], v_ses, 1, 100), (rg[3], st[3], v_ses, 1, 100), (rg[4], st[4], v_ses, 2, 100), (rg[5], st[5], v_ses, 2, 100);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
+          (rg[1], o1, 3, 'CURRENT'), (rg[2], o1, 3, 'CURRENT'), (rg[3], o1, 3, 'CURRENT'), (rg[4], o2, 3, 'CURRENT'), (rg[5], o2, 3, 'CURRENT');
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh, o1), (sh2, o2);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st[1], 20, 40);
+        SELECT * INTO imp FROM catalogue.units_change_impact('ZZW 101', p1, 100, 2);
+
+        -- the units correction: another desk, the units already carried, a class not examined — refused
+        PERFORM set_config('moaum.actor_id', lect::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM assessment.raise_units_amendment(sh, p1, 2, 'the programme takes the course at two units');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_desk := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM assessment.raise_units_amendment(sh, p1, 3, 'the programme takes the course at three units');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_same := split_part(msg, ':', 1); END;
+        BEGIN PERFORM assessment.raise_units_amendment(sh2, p1, 2, 'the programme takes the course at two units');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_notex := split_part(msg, ':', 1); END;
+        amd := assessment.raise_units_amendment(sh, p1, 2, 'the programme takes the course at two units');
+        BEGIN PERFORM assessment.raise_units_amendment(sh, p1, 1, 'a second correction while the first is open');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_open := split_part(msg, ':', 1); END;
+        listed := (SELECT a.kind || ' ' || a.programme_code || ' ' || a.units || ' was ' || a.was_units FROM assessment.amendments_of(sh) a WHERE a.id = amd);
+        -- each desk in turn; Senate without its minute refused, then applied on it
+        LOOP
+            stg := (SELECT stage FROM assessment.amendment WHERE id = amd);
+            EXIT WHEN stg = 'APPLIED' OR n_steps > 10;
+            n_steps := n_steps + 1;
+            PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+            PERFORM set_config('moaum.actor_office', (assessment.stage_offices(stg))[1], true);
+            IF stg = 'SENATE' THEN
+                BEGIN PERFORM assessment.advance_amendment(amd, NULL, NULL);
+                EXCEPTION WHEN check_violation THEN r_minute := 'refused'; END;
+                PERFORM assessment.advance_amendment(amd, NULL, 'SEN/9465/1');
+            ELSE
+                PERFORM assessment.advance_amendment(amd, 'seen', NULL);
+            END IF;
+        END LOOP;
+        units_after := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 5) i JOIN registration.entry e ON e.registration_id = rg[i]);
+        applied := (SELECT applied_count FROM assessment.amendment WHERE id = amd);
+        told := (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id IN (st[1], st[2], st[3]) AND subject = 'Your units in ZZW 101 are corrected');
+        cls := (SELECT string_agg(c.programme_code || ':' || c.students || ':' || array_to_string(c.carried, '/') || ':' || c.examined, ' ' ORDER BY c.programme_code = p1 DESC)
+                  FROM assessment.class_units(sh) c);
+
+        -- the course's own units to 4: counted first, then made
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT * INTO cimp FROM catalogue.course_units_change_impact('ZZW 101', 4);
+        UPDATE catalogue.course SET units = 4 WHERE code = 'ZZW 101';
+        course_after := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 5) i JOIN registration.entry e ON e.registration_id = rg[i]);
+        pinned_units := (SELECT units FROM catalogue.course_offer WHERE course_code = 'ZZW 101' AND programme_code = p2 AND level = 100);
+        RAISE EXCEPTION 'the V465 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V465 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V465: an examined class''s units corrected only through the amendment chain — refused to another desk, for the units carried, for a class not examined and while one is open; applied on the Senate minute to the programme''s students alone, each told; a change of the course''s own units counted before it is made, exactly as it then reaches',
+        coalesce(imp.follow = 1 AND imp.kept = 2 AND r_desk IS NOT NULL AND r_same = 'RES_AMEND_SAME' AND r_notex = 'RES_UNITS_NOT_EXAMINED' AND r_open = 'RES_UNITS_OPEN'
+                 AND listed = 'UNITS ' || p1 || ' 2 was 3' AND r_minute = 'refused' AND units_after = '2,2,3,3,3' AND applied = 2 AND told = 2
+                 AND cls = p1 || ':2:2:true ' || p2 || ':1:3:true'
+                 AND cimp.now_units = 3 AND cimp.new_units = 4 AND cimp.follow = 1 AND cimp.kept = 2 AND cimp.pinned = 1
+                 AND course_after = '2,2,3,4,3' AND pinned_units = 3, false),
+        format('impact %s | desk %s same %s not examined %s open %s | listed %s | minute %s | after %s applied %s told %s | class %s | course impact %s -> %s pinned %s',
+               to_jsonb(imp), r_desk, r_same, r_notex, r_open, listed, r_minute, units_after, applied, told, cls, to_jsonb(cimp), course_after, pinned_units));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

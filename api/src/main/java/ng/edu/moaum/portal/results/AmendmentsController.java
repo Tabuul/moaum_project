@@ -37,7 +37,8 @@ import org.springframework.web.bind.annotation.RestController;
  * who took the previous step), and applied by the Registrar on the Senate minute as a new version of the mark. A desk may
  * refuse it with the reason; the person who raised it may withdraw it. Everything keeps to the sheet's own scope. V422: a
  * candidate on the published sheet's roll with no mark on it gets a LATE result the same way — the first mark, applied on the
- * Senate minute.
+ * Senate minute. V465: the units one programme's students carry on a class whose results are worked on (which a change of units
+ * no longer reaches) are corrected the same way — a UNITS amendment, applied on the minute to their registrations.
  */
 @RestController
 @RequestMapping("/api/v1/results")
@@ -118,6 +119,44 @@ class AmendmentsController {
         return of(id);
     }
 
+    /** V465: the class's programmes — their students on it, the units they carry, what each programme's structure says now,
+     *  whether the class's results are worked on, and the units correction open for the programme */
+    @GetMapping("/sheets/{id}/units")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> classUnits(@PathVariable UUID id) {
+        results.reach(id);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT programme_code AS programme, programme_name AS name, students, array_to_json(carried)::text AS carried,
+                       array_to_json(takes)::text AS takes, examined, open_ref AS "openRef"
+                  FROM assessment.class_units(:s)
+                """).param("s", id).query().listOfRows()) {
+            Map<String, Object> m = new LinkedHashMap<>(r);
+            m.put("carried", json.readValue(String.valueOf(r.get("carried")), new tools.jackson.core.type.TypeReference<List<Integer>>() { }));
+            m.put("takes", json.readValue(String.valueOf(r.get("takes")), new tools.jackson.core.type.TypeReference<List<Integer>>() { }));
+            out.add(m);
+        }
+        return out;
+    }
+
+    public record UnitsIn(@NotBlank @Size(max = 12) String programme, @NotNull @Min(0) @Max(12) Integer units,
+                          @NotBlank @Size(min = 10, max = 2000) String reason) {
+    }
+
+    /** V465: a units correction for one programme's students on a class whose results are worked on, raised by the desk of
+     *  entry within the sheet's scope; then the chain, as any amendment */
+    @PostMapping("/sheets/{id}/units-amendments")
+    @PreAuthorize(ENTRY)
+    @Transactional
+    List<Map<String, Object>> raiseUnits(@PathVariable UUID id, @Valid @RequestBody UnitsIn b) {
+        Sheets.Row r = results.reach(id);
+        ResultsService.requireStageDesk("ENTRY", r.courseCode(), "raised");
+        jdbc.sql("SELECT assessment.raise_units_amendment(:s, :p, :u, :r)").param("s", id).param("p", b.programme().trim().toUpperCase())
+                .param("u", b.units()).param("r", b.reason().trim()).query().singleRow();
+        return of(id);
+    }
+
     /** the open amendments at a stage this office takes, within its scope — the desk's own list */
     @GetMapping("/amendments")
     @PreAuthorize(DESKS)
@@ -130,9 +169,11 @@ class AmendmentsController {
         for (Map<String, Object> r : jdbc.sql("""
                 SELECT m.id, m.ref, m.kind, m.stage, m.sheet_id, m.raised_at, m.reason, m.outcome, m.ca, m.exam, m.was_ca, m.was_exam, m.was_outcome,
                        o.course_code, o.session, o.semester, coalesce(st.matric_no, st.admission_no) AS number, upper(st.surname) || ', ' || st.other_names AS name,
+                       m.programme_code, pr.name AS programme_name, m.units, m.was_units,
                        (SELECT d.actor_id FROM assessment.amendment_decision d WHERE d.amendment_id = m.id AND d.kind IN ('RAISE', 'ADVANCE') ORDER BY d.decided_at DESC LIMIT 1) AS last_actor
                   FROM assessment.amendment m JOIN assessment.score_sheet s ON s.id = m.sheet_id JOIN catalogue.offering o ON o.id = s.offering_id
-                  JOIN people.student st ON st.id = m.student_id
+                  LEFT JOIN people.student st ON st.id = m.student_id     -- V465: a units correction has a programme and no student
+                  LEFT JOIN ref.programme pr ON pr.code = m.programme_code
                  WHERE m.stage = ANY (:stages) ORDER BY m.raised_at
                 """).param("stages", stages.toArray(new String[0])).query().listOfRows()) {
             try {

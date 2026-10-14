@@ -264,6 +264,38 @@ class ResultsIT {
             assertThat(m.get("amended")).isEqualTo(true);
         });
 
+        // V465: the units the programme's students carry on the examined class corrected the same way — listed on the sheet,
+        // raised by the course's lecturer (not the Head of Department), approved by each desk, applied on the minute: their
+        // registrations carry the corrected units and each is told
+        List<Map<String, Object>> classUnits = (List<Map<String, Object>>) (List<?>) it.getList(lect, "/api/v1/results/sheets/" + sheet + "/units").getBody();
+        assertThat(classUnits).isNotEmpty();
+        Map<String, Object> pu = classUnits.get(0);
+        assertThat(pu.get("examined")).isEqualTo(true);
+        assertThat((List<Object>) pu.get("carried")).containsExactly(18);
+        String unitsAmend = "/api/v1/results/sheets/" + sheet + "/units-amendments";
+        Map<String, Object> unitsRaise = Map.of("programme", pu.get("programme"), "units", 3, "reason", "The programme takes the course at three units, not eighteen");
+        assertThat(it.call(hod, HttpMethod.POST, unitsAmend, unitsRaise).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<List> uRaised = it.callList(lect, HttpMethod.POST, unitsAmend, unitsRaise);
+        assertThat(uRaised.getStatusCode().value()).as(String.valueOf(uRaised.getBody())).isEqualTo(200);
+        Map<String, Object> ua = ((List<Map<String, Object>>) (List<?>) uRaised.getBody()).stream().filter(x -> "UNITS".equals(x.get("kind"))).findFirst().orElseThrow();
+        assertThat(ua).containsEntry("stage", "VERIFICATION").containsEntry("units", 3).containsEntry("was_units", 18).containsEntry("programme_code", pu.get("programme"));
+        String uaId = String.valueOf(ua.get("id"));
+        assertThat((List<Map<String, Object>>) (List<?>) it.getList(exams, "/api/v1/results/amendments").getBody())
+                .anySatisfy(x -> assertThat(x).containsEntry("id", uaId).containsEntry("kind", "UNITS").containsEntry("units", 3));
+        for (String desk : List.of("exams", "hod", "facultyexams", "facultyofficer", "dean", "records")) {
+            ResponseEntity<List> r = it.callList(desks.get(desk), HttpMethod.POST, "/api/v1/results/amendments/" + uaId + "/advance", Map.of("comment", "seen"));
+            assertThat(r.getStatusCode().value()).as(desk + ": " + r.getBody()).isEqualTo(200);
+        }
+        ResponseEntity<List> uApplied = it.callList(registrar, HttpMethod.POST, "/api/v1/results/amendments/" + uaId + "/advance", Map.of("minute", "SEN/2095/03"));
+        assertThat(uApplied.getStatusCode().value()).as(String.valueOf(uApplied.getBody())).isEqualTo(200);
+        assertThat(((List<Map<String, Object>>) (List<?>) uApplied.getBody()).stream().filter(x -> uaId.equals(String.valueOf(x.get("id")))).findFirst().orElseThrow())
+                .containsEntry("stage", "APPLIED").containsEntry("applied_count", 2);
+        assertThat(jdbc.sql("""
+                SELECT DISTINCT e.units FROM registration.entry e JOIN assessment.score_sheet sh ON sh.offering_id = e.offering_id WHERE sh.id = :s
+                """).param("s", UUID.fromString(sheet)).query(Integer.class).list()).containsExactly(3);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = :s AND subject = 'Your units in ZZR 301 are corrected'")
+                .param("s", s1).query(Long.class).single()).isEqualTo(1L);
+
         ResponseEntity<Map> after = it.get(academic, "/api/v1/results/sheets/" + sheet);
         List<Map<String, Object>> marks = (List<Map<String, Object>>) after.getBody().get("marks");
         assertThat(marks).extracting(m -> m.get("grade")).contains("A");

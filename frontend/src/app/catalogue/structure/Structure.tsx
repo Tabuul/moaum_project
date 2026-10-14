@@ -3,7 +3,8 @@
  *  units each semester carries against the level's limits, and — for the programme's own department —
  *  the binding of a course into the structure and its removal. Registration reads these rows, so a
  *  course missing here is a course no student of the programme sees. V460: each binding may carry the programme's own units
- *  (one programme takes a course at 2, another at 3); registration, course forms and results follow them. */
+ *  (one programme takes a course at 2, another at 3); registration, course forms and results follow them. V465: a change of
+ *  units is counted before it is saved, and the examined classes it leaves as they are are listed with their sheets. */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -15,6 +16,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { UnitsChangeModal, type UnitsTarget } from "../UnitsChange";
 
 export interface ProgrammeOption { code: string; name: string; dept_code: string | null; department_name: string | null; faculty_name: string; archived: boolean }
 export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; own_units?: number | null; course_units?: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number }
@@ -41,6 +43,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
   const [found, setFound] = useState<Found[]>([]);
   const [pick, setPick] = useState<Found | null>(null);
   const [f, setF] = useState({ level: "100", basis: "Core", track: "", units: "" });
+  const [unitsEdit, setUnitsEdit] = useState<UnitsTarget | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rows = data ? data.rows.filter((r) => !track || !r.track || r.track === track) : [];
@@ -86,19 +89,11 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
     if (ok) { setPick(null); setQ(""); setFound([]); setF({ ...f, units: "" }); }
   }
 
-  /** V460: the units this programme takes a bound course at; blank takes the course's own again */
+  /** V460, V465: the units this programme takes a bound course at — counted before it is saved; the course's own number takes
+   *  the course's units again */
   function changeUnits(r: StructureRow) {
     if (!data) return;
-    const own = r.course_units ?? r.units;
-    const said = window.prompt(`Units for ${r.code} in ${data.programme.code} at ${r.level} level (the course carries ${own}; leave blank for the course's own). `
-      + "Students of the programme registered on it and not yet scored follow at once.", r.own_units != null ? String(r.own_units) : "");
-    if (said === null) return;
-    const text = said.trim();
-    if (text !== "" && !/^\d{1,2}$/.test(text)) { notifyProblem({ status: 422, title: "Units are a whole number from 0 to 12" }); return; }
-    const units = text === "" ? own : Number(text);
-    if (units > 12) { notifyProblem({ status: 422, title: "Units are a whole number from 0 to 12" }); return; }
-    void call("POST", "/structure/bind", { programme: data.programme.code, course: r.code, level: r.level, basis: r.basis, track: r.track ?? null, units },
-      `${r.code} in ${data.programme.code} at ${r.level} level set to ${units} unit${units === 1 ? "" : "s"}${units === own ? " (the course's own)" : ""}`);
+    setUnitsEdit({ course: r.code, courseUnits: r.course_units ?? r.units, programme: data.programme.code, programmeName: data.programme.name, level: r.level, units: r.units });
   }
 
   function unbind(r: StructureRow) {
@@ -213,6 +208,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
           })}
         </>
       )}
+      {unitsEdit ? <UnitsChangeModal target={unitsEdit} onClose={() => setUnitsEdit(null)} onSaved={() => { setUnitsEdit(null); router.refresh(); }} /> : null}
     </>
   );
 }

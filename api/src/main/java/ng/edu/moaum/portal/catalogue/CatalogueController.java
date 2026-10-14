@@ -486,7 +486,48 @@ class CatalogueController {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_UNITS", "A programme takes a course at 0 to 12 units.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Give a number from 0 to 12.", "Head of Department"));
         }
-        return impactOf(c, p, level, units);
+        Map<String, Object> out = new java.util.LinkedHashMap<>(impactOf(c, p, level, units));
+        out.put("held", heldClasses("SELECT * FROM catalogue.units_change_rows(:c, :p, :l, :u)", Map.of("c", c, "p", p, "l", level, "u", units)));
+        return out;
+    }
+
+    /** V465: the classes a change leaves as they are — a closed session, or results worked on — each with the sheet its units
+     *  correction is raised on (none for a closed session's class without one), the latest first */
+    private List<Map<String, Object>> heldClasses(String rows, Map<String, Object> params) {
+        return jdbc.sql("""
+                SELECT o.session, o.semester, o.course_code AS course, count(*) AS registrations,
+                       (SELECT sh.id FROM assessment.score_sheet sh WHERE sh.offering_id = x.offering_id
+                         ORDER BY sh.exam_session_id IS NOT NULL, sh.id LIMIT 1) AS "sheetId",
+                       coalesce((SELECT a.state = 'CLOSED' FROM policy.academic_session a WHERE a.name = o.session), false) AS closed
+                  FROM (%s) x JOIN catalogue.offering o ON o.id = x.offering_id
+                 WHERE x.held AND x.old_units IS DISTINCT FROM x.to_units
+                 GROUP BY o.session, o.semester, o.course_code, x.offering_id
+                 ORDER BY o.session DESC, o.semester DESC LIMIT 50
+                """.formatted(rows)).params(params).query().listOfRows();
+    }
+
+    /** V465: what a change of the course's own units would reach, before it is made — the registrations that follow, those that
+     *  keep theirs, the other departments' programmes left at the old number, and the classes that keep their units */
+    @GetMapping("/courses/{code}/units-impact")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> courseUnitsImpact(@PathVariable String code, @RequestParam int units) {
+        String c = code.trim().toUpperCase();
+        if (units < 0 || units > 12) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_UNITS", "A course carries 0 to 12 units.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Give a number from 0 to 12.", "Head of Department"));
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(jdbc.sql("""
+                SELECT now_units AS "nowUnits", new_units AS "newUnits", follow, kept, pinned FROM catalogue.course_units_change_impact(:c, :u)
+                """).param("c", c).param("u", units).query().listOfRows().stream().findFirst()
+                .filter(r -> r.get("nowUnits") != null).orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", c)));
+        out.put("pinnedProgrammes", ((Number) out.get("pinned")).intValue() == 0 ? List.of() : jdbc.sql("""
+                SELECT x.programme_code AS programme, p.name, x.level, d.name AS department
+                  FROM catalogue.units_pinned_by_course(:c) x JOIN ref.programme p ON p.code = x.programme_code LEFT JOIN ref.department d ON d.code = p.dept_code
+                 ORDER BY d.name, p.name, x.level
+                """).param("c", c).query().listOfRows());
+        out.put("held", heldClasses("SELECT * FROM catalogue.course_units_change_rows(:c, :u)", Map.of("c", c, "u", units)));
+        return out;
     }
 
     public record UnitsIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,

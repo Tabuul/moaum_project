@@ -105,8 +105,17 @@ export interface UnitsByProgramme {
   programmes: { programme: string; name: string; level: number; units: number; own: boolean; department: string | null; deptCode?: string | null }[];
 }
 
-/** V464: what setting a programme's units for a course would reach, before it is set */
-export interface UnitsImpact { nowUnits: number; newUnits: number; follow: number; kept: number }
+/** V465: a class a change of units leaves as it is — a closed session, or results worked on — with the sheet its units
+ *  correction is raised on (none for a closed session's class without one) */
+export interface HeldClass { session: string; semester: number; course: string; registrations: number; sheetId: string | null; closed: boolean }
+
+/** V464: what setting a programme's units for a course would reach, before it is set (V465: and the classes that keep theirs) */
+export interface UnitsImpact { nowUnits: number; newUnits: number; follow: number; kept: number; held?: HeldClass[] }
+
+/** V465: what a change of the course's own units would reach — and the other departments' programmes left at the old number */
+export interface CourseUnitsImpact extends UnitsImpact {
+  pinned: number; pinnedProgrammes: { programme: string; name: string; level: number; department: string | null }[];
+}
 
 export interface DuplicatePair {
   evidence: string; keep_code: string; merge_code: string; keep_title: string; merge_title: string; keep_dept: string | null; merge_dept: string | null;

@@ -13,6 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { BASES, EVIDENCE, ISSUE, KINDS, LEVELS, PROPOSAL_STATE, REVIEW, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type CourseHistoryData, type Directory } from "@/lib/catalogue";
+import { CourseUnitsImpactNote } from "../UnitsChange";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -221,6 +222,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
               <Field id="ed-sem" label="Semester"><select id="ed-sem" className="ctl" value={edit.semester} onChange={(e) => setEdit({ ...edit, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option><option value="both">First and second</option></select></Field>
               <Field id="ed-kind" label="Kind"><select id="ed-kind" className="ctl" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
             </div>
+            {edit.units.trim() !== String(c.units) ? <CourseUnitsImpactNote code={c.code} units={edit.units} /> : null}
           </div>
         </Modal>
       ) : null}
