@@ -123,4 +123,52 @@ class CheckCodesIT {
         assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/exam?matric=MOAUM/MTC/79/0000&session=" + SESSION + "&semester=1&c=" + exam.get("code"), null).getBody())
                 .containsEntry("genuine", false);
     }
+
+    /** the receipt of an applicant's Post-UTME application fee: the code comes with the receipt, the same verification page
+     *  answers it with the applicant's name, application number and the fee; another code, or the code on another reference, says nothing */
+    @Test
+    void anApplicantsFeeReceiptCarriesASignedCodeTheVerifierAnswers() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        it.session(SESSION, 2079);
+        int n = new java.util.Random().nextInt(90_000_000) + 10_000_000;
+        String jamb = "2179" + n + "SC";
+        String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        String reference = "MOAUM-APP-ZZ" + tag;
+        String unpaid = "MOAUM-APP-ZY" + tag;
+        String applicationNo = "APP/79/" + String.format("%06d", n % 1_000_000);
+        UUID cand = UUID.randomUUID(), acct = UUID.randomUUID(), app = UUID.randomUUID();
+        it.db(() -> {
+            jdbc.sql("INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state) VALUES (:id, :s, :j, :sn, 'Receipt Person', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED')")
+                    .param("id", cand).param("s", SESSION).param("j", jamb).param("sn", "ZZRECEIPT-" + tag).update();
+            jdbc.sql("INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES (:id, :s, :c, :k, :e, '08030000000', crypt('x', gen_salt('bf', 12)))")
+                    .param("id", acct).param("s", SESSION).param("c", cand).param("k", jamb).param("e", jamb.toLowerCase() + "@example.com").update();
+            jdbc.sql("INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at) VALUES (:id, :a, :c, :s, :no, now())")
+                    .param("id", app).param("a", acct).param("c", cand).param("s", SESSION).param("no", applicationNo).update();
+            jdbc.sql("""
+                    INSERT INTO admissions.fee_reference (id, application_id, kind, reference, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+                    VALUES (gen_random_uuid(), :a, 'APPLICATION', :r, 2000, now() + interval '7 days', now(), :acc, 'Old-portal migration', :rc)
+                    """).param("a", app).param("r", reference).param("acc", acct).param("rc", "RCT-ZZ-" + tag).update();
+            return jdbc.sql("""
+                    INSERT INTO admissions.fee_reference (id, application_id, kind, reference, amount, expires_at)
+                    VALUES (gen_random_uuid(), :a, 'APPLICATION', :r, 2000, now() + interval '7 days')
+                    """).param("a", app).param("r", unpaid).update();
+        });
+        String me = TestTokens.token(acct, List.of("applicant"));
+
+        Map<String, Object> receipt = it.get(me, "/api/v1/applicant/me/receipts/" + reference).getBody();
+        String code = String.valueOf(receipt.get("check_code"));
+        assertThat(code).matches("[0-9A-F]{12}");
+        assertThat(receipt).containsEntry("kind", "APPLICATION").containsEntry("route", "UTME");
+        Map<String, Object> v = it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + reference + "?c=" + code, null).getBody();
+        assertThat(v).containsEntry("genuine", true).containsEntry("holder", "APPLICANT").containsEntry("feeKind", "APPLICATION")
+                .containsEntry("applicationNo", applicationNo).doesNotContainKey("legacy");
+        assertThat(String.valueOf(v.get("name"))).startsWith("ZZRECEIPT-" + tag);
+        // the public page takes the reference or the receipt number with the code
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/RCT-ZZ-" + tag + "?c=" + code, null).getBody())
+                .containsEntry("genuine", true).containsEntry("applicationNo", applicationNo).containsEntry("reference", reference);
+        // a wrong code, or this receipt's code on another reference, verifies nothing; an unconfirmed reference has no receipt
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + reference + "?c=000000000000", null).getBody()).containsOnlyKeys("genuine").containsEntry("genuine", false);
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + unpaid + "?c=" + code, null).getBody()).containsOnlyKeys("genuine").containsEntry("genuine", false);
+        assertThat(it.get(me, "/api/v1/applicant/me/receipts/" + unpaid).getStatusCode().value()).isEqualTo(404);
+    }
 }

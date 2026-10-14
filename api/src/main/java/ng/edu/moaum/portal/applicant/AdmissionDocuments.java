@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
 
 /**
@@ -28,9 +29,11 @@ import ng.edu.moaum.portal.shared.NotFound;
 public class AdmissionDocuments {
 
     private final JdbcClient jdbc;
+    private final CheckCodes codes;
 
-    AdmissionDocuments(JdbcClient jdbc) {
+    AdmissionDocuments(JdbcClient jdbc, CheckCodes codes) {
         this.jdbc = jdbc;
+        this.codes = codes;
     }
 
     /** the application behind a student, when the student came through the admission lifecycle */
@@ -148,13 +151,17 @@ public class AdmissionDocuments {
 
     /** the receipt of an admission fee (checking or acceptance), with the payer as the application names them */
     public Map<String, Object> receipt(UUID app, String reference) {
-        return jdbc.sql("""
+        Map<String, Object> r = new LinkedHashMap<>(jdbc.sql("""
                 SELECT fr.reference, fr.kind, fr.amount, fr.confirmed_at, fr.receipt_no, fr.channel, fr.generated_at,
                        a.application_no, a.session, c.surname, c.other_names, c.jamb_reg_no, c.programme,
                        c.entry_mode AS route   -- V412: a CCE applicant's receipt names the CCE fee
                   FROM admissions.fee_reference fr JOIN admissions.application a ON a.id = fr.application_id JOIN admissions.candidate c ON c.id = a.candidate_id
                  WHERE fr.application_id = :a AND fr.reference = :r AND fr.confirmed_at IS NOT NULL
-                """).param("a", app).param("r", reference).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("receipt", reference));
+                """).param("a", app).param("r", reference).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("receipt", reference)));
+        // the receipt's QR opens /verify/receipt/{reference}?c=…: the code is signed over the reference, so the page answers
+        // only for the receipt in hand and the references cannot be run through to read names and amounts
+        r.put("check_code", codes.sign(CheckCodes.Kind.APPLICANT_RECEIPT, String.valueOf(r.get("reference"))));
+        return r;
     }
 
     /* ── the parts ── */

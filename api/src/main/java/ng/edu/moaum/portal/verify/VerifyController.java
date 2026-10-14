@@ -119,8 +119,8 @@ class VerifyController {
                  LIMIT 1
                 """).param("ref", reference).query().listOfRows();
 
+        if (rows.isEmpty()) return applicantReceiptAnswer(reference, c);
         Map<String, Object> out = new LinkedHashMap<>();
-        if (rows.isEmpty()) { out.put("genuine", false); return out; }
         Map<String, Object> row = rows.get(0);
         /* V360: the signed code; or the old one, on a payment confirmed before the change — the old receipt code needs the
            receipt number, printed only on the receipt itself, so its full answer stands */
@@ -145,6 +145,58 @@ class VerifyController {
         out.put("receiptNo", row.get("receipt_no"));
         out.put("passport", files.dataUrl((String) row.get("passport"),
                 (UUID) (row.get("passport_object") != null ? row.get("passport_object") : row.get("jamb_object"))));
+        return out;
+    }
+
+    /** the receipt of an applicant's fee (the Post-UTME application fee, the admission checking fee, the acceptance fee):
+     *  the same page answers it, found by its reference or receipt number, by the code signed over the reference — there was
+     *  never an older code to honour */
+    private Map<String, Object> applicantReceiptAnswer(String reference, String c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT fr.reference, fr.receipt_no, fr.kind, fr.amount, fr.channel, fr.confirmed_at, a.session, a.application_no,
+                       trim(upper(c.surname) || ', ' || c.other_names) AS name, c.programme, c.entry_mode,
+                       coalesce(
+                         (SELECT 'data:' || coalesce(nullif(btrim(d.content_type), ''), 'image/jpeg') || ';base64,' || encode(b.content, 'base64')
+                            FROM admissions.application_document d JOIN admissions.application_document_blob b ON b.document_id = d.id
+                           WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL ORDER BY d.id LIMIT 1),
+                         (SELECT at.payload->>'dataUrl' FROM admissions.attachment at
+                           WHERE at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                             AND (at.candidate_id = c.id OR (c.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(c.jamb_reg_no))))
+                           LIMIT 1)) AS passport,
+                       coalesce(
+                         (SELECT b.object_id FROM admissions.application_document d JOIN admissions.application_document_blob b ON b.document_id = d.id
+                           WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL ORDER BY d.id LIMIT 1),
+                         (SELECT at.object_id FROM admissions.attachment at
+                           WHERE at.kind = 'PASSPORT' AND at.object_id IS NOT NULL
+                             AND (at.candidate_id = c.id OR (c.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(c.jamb_reg_no))))
+                           LIMIT 1)) AS passport_object
+                  FROM admissions.fee_reference fr
+                  JOIN admissions.application a ON a.id = fr.application_id
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE (upper(fr.reference) = upper(:ref) OR upper(coalesce(fr.receipt_no, '')) = upper(:ref)) AND fr.confirmed_at IS NOT NULL
+                 ORDER BY upper(fr.reference) = upper(:ref) DESC
+                 LIMIT 1
+                """).param("ref", reference).query().listOfRows();
+        if (rows.isEmpty() || !codes.signed(c, CheckCodes.Kind.APPLICANT_RECEIPT, String.valueOf(rows.get(0).get("reference")))) {
+            out.put("genuine", false);
+            return out;
+        }
+        Map<String, Object> row = rows.get(0);
+        out.put("genuine", true);
+        out.put("holder", "APPLICANT");
+        out.put("reference", row.get("reference"));
+        out.put("name", row.get("name"));
+        out.put("applicationNo", row.get("application_no"));
+        out.put("programme", row.get("programme"));
+        out.put("feeKind", row.get("kind"));
+        out.put("route", row.get("entry_mode"));
+        out.put("amount", row.get("amount"));
+        out.put("session", row.get("session"));
+        out.put("channel", row.get("channel"));
+        out.put("confirmedOn", row.get("confirmed_at"));
+        out.put("receiptNo", row.get("receipt_no"));
+        out.put("passport", files.dataUrl((String) row.get("passport"), (UUID) row.get("passport_object")));
         return out;
     }
 

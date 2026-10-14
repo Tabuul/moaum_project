@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { receiptPurpose } from "@/lib/student-portal";
+import { applicantFeeName, applicantReceiptTitle } from "@/lib/applicant-receipt";
 import { Note } from "@/components/proto/ui";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,8 @@ interface VerifyResult {
   name?: string; matricNo?: string | null; programme?: string | null; level?: number | null;
   amount?: number; purpose?: string; session?: string; term?: string | null; channel?: string | null;
   confirmedOn?: string | null; receiptNo?: string | null; passport?: string | null;
+  /** an applicant's fee receipt (the Post-UTME application fee, admission checking, acceptance): the application, not a matriculation number */
+  holder?: "APPLICANT"; applicationNo?: string | null; feeKind?: string | null; route?: string | null; reference?: string | null;
 }
 
 const naira = (n: number | undefined) => (n == null ? "—" : `NGN ${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`);
@@ -26,6 +29,17 @@ export default async function Page({ params, searchParams }: {
   const r = await api<VerifyResult>(`/api/v1/verify/receipt/${encodeURIComponent(reference)}?c=${encodeURIComponent(c)}`);
   const v = r.ok ? r.data : { genuine: false };
   const ok = v.genuine;
+  const applicant = ok && v.holder === "APPLICANT";
+  const rows: [string, string | null | undefined][] = applicant
+    ? [["Received from", v.name], ["Application number", v.applicationNo ?? "—"], ["Programme applied for", v.programme ?? "—"],
+       ["Being payment for", applicantFeeName(v.feeKind, v.route)], ["Session", v.session], ["Amount", naira(v.amount)],
+       ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Reference", v.reference ?? reference], ...(v.receiptNo ? [["Receipt number", v.receiptNo] as [string, string]] : [])]
+    : [["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
+       ...(v.level ? [["Level", `${v.level} Level`] as [string, string]] : []),
+       ["Being payment for", receiptPurpose(v.purpose)], ["Session", v.session],
+       ...(v.term ? [["Semester", v.term] as [string, string]] : []),
+       ["Amount", naira(v.amount)],
+       ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Receipt number", v.receiptNo ?? "—"]];
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-8) var(--s-4)" }}>
@@ -35,7 +49,7 @@ export default async function Page({ params, searchParams }: {
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
           <div className="grow">
             <div className="eyebrow" style={{ color: "var(--amber-ink)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-            <div className="phead__t ink-chrome">Receipt verification</div>
+            <div className="phead__t ink-chrome">{applicant ? `${applicantReceiptTitle(v.feeKind, v.route)} verification` : "Receipt verification"}</div>
           </div>
         </div>
 
@@ -51,18 +65,13 @@ export default async function Page({ params, searchParams }: {
             {v.passport ? (
               <div style={{ display: "flex", justifyContent: "center" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={v.passport} alt="Student passport" style={{ width: 96, height: 112, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line)" }} />
+                <img src={v.passport} alt={applicant ? "Applicant passport" : "Student passport"} style={{ width: 96, height: 112, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line)" }} />
               </div>
             ) : null}
             <div className="tablewrap" tabIndex={0}>
               <table className="tbl--data">
                 <tbody>
-                  {[["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                    ...(v.level ? [["Level", `${v.level} Level`]] : []),
-                    ["Being payment for", receiptPurpose(v.purpose)], ["Session", v.session],
-                    ...(v.term ? [["Semester", v.term]] : []),
-                    ["Amount", naira(v.amount)],
-                    ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Receipt number", v.receiptNo ?? "—"]].map(([k, val], i) => (
+                  {rows.map(([k, val], i) => (
                     <tr key={i}>
                       <td className="eyebrow" style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{k}</td>
                       <td className={k === "Amount" ? "b700" : "b600"} style={{ textAlign: "right", overflowWrap: "anywhere" }}>{val ?? "—"}</td>

@@ -36,8 +36,9 @@ public class CheckCodes {
 
     /** V375: CBT_SLIP — a candidate's CBT slip (the examination and the candidate), scanned at the door of the sitting;
      *  ID_CARD — a student identity card, by its card number (the card desk prints the address the code completes);
-     *  STAFF_CARD — a staff identity card, by its card number (V439) */
-    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP, ID_CARD, STAFF_CARD }
+     *  STAFF_CARD — a staff identity card, by its card number (V439);
+     *  APPLICANT_RECEIPT — the receipt of an applicant's fee (application, admission checking, acceptance), by its reference */
+    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP, ID_CARD, STAFF_CARD, APPLICANT_RECEIPT }
 
     private final byte[] key;
 
@@ -73,6 +74,7 @@ public class CheckCodes {
             case PG_OFFER -> part(parts, 0) + "|MOAUM-PG-OFFER";
             case CBT_SLIP -> null;   // V375: no slip was ever printed before the signed code
             case ID_CARD, STAFF_CARD -> null;    // no card ever carried a check code before the signed one
+            case APPLICANT_RECEIPT -> null;      // an applicant's receipt carried no check code before the signed one
         };
         if (payload == null) return false;
         try {
