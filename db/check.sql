@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 287
+\set EXPECTED 288
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12704,6 +12704,45 @@ BEGIN
         format('pairs %s | withdrawn %s reversed %s left %s | gone %s kept %s register kept=%s journal ok=%s reversal=%s status=%s | Y %s, refund kept %s, other day kept %s | paid %s | import dup=%s cleared=%s whole=%s then cleared=%s whole=%s',
                pairs_before, r.withdrawn, r.ledger_reversed, r.left_linked, gone, kept, reg.kept_reference, reg.ledger_journal = v_journal, reg.reversal_journal IS NOT NULL, j_status,
                other_kept, linked_kept, day_kept, paid_after, imp.duplicates, imp.cleared, n_whole, imp2.cleared, n_new));
+END $$;
+
+-- ── V450. The faculties charged another's fees by the University's word are never left without lines: in the current session
+--          and every planned one, Communication and Media Studies has lines whenever Social Sciences has (V448), Technology
+--          and Industrial Studies whenever Education has (V450); and the copy from Education reaches a TI student ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9990/9991'; st uuid := gen_random_uuid(); v_prog text;
+        bare_cm int; bare_ti int; n int; charged int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V450', true);
+        -- the standing property, over the sessions the portal charges in
+        SELECT count(*) FILTER (WHERE has_ss AND NOT has_cm), count(*) FILTER (WHERE has_ed AND NOT has_ti) INTO bare_cm, bare_ti
+          FROM (SELECT a.name,
+                       EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'SS' AND f.programme_code IS NULL AND f.ended_at IS NULL) AS has_ss,
+                       EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'CM' AND f.ended_at IS NULL) AS has_cm,
+                       EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'ED' AND f.programme_code IS NULL AND f.ended_at IS NULL) AS has_ed,
+                       EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'TI' AND f.ended_at IS NULL) AS has_ti
+                  FROM policy.academic_session a
+                 WHERE a.name = policy.university_current_session() OR a.state = 'PLANNED') x;
+        -- the copy from Education reaches a TI student
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9990-10-01', date '9991-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind) VALUES
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 109150.86, 100, 'UTME', 'ED', NULL, 1, 1, NULL, false, 'FEE'),
+            (gen_random_uuid(), v_ses, 'School fees (semester 2)', 46779.00, 100, 'UTME', 'ED', NULL, 2, 2, NULL, false, 'FEE');
+        n := finance.copy_faculty_fees('ED', 'TI', v_ses);
+        v_prog := (SELECT code FROM ref.programme WHERE faculty_code = 'TI' AND NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1);
+        IF v_prog IS NOT NULL THEN
+            INSERT INTO people.student (id, admission_no, matric_no, matriculated_at, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode)
+            VALUES (st, 'MOAUM/ADM/90/004501', NULL, NULL, 'CHECKV450', 'Tech Ada', 'F', v_prog, 'UTME', v_ses, 100, 100, 'ADMITTED', 'FULL_TIME');
+            charged := (SELECT count(*) FROM finance.charges(st, v_ses));
+        END IF;
+        RAISE EXCEPTION 'the V450 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V450: in the current and planned sessions Communication and Media Studies has fee lines whenever Social Sciences has, Technology and Industrial Studies whenever Education has; the Education copy reaches a TI student',
+        coalesce(bare_cm = 0 AND bare_ti = 0 AND n = 2 AND (v_prog IS NULL OR charged = 2), false),
+        format('sessions with SS and no CM: %s, with ED and no TI: %s | copied %s | programme %s charged %s', bare_cm, bare_ti, n, v_prog, charged));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
