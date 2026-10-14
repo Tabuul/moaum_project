@@ -186,6 +186,22 @@ class PlatformController {
         boolean feeSchedule = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM finance.fee_schedule WHERE session=:s AND ended_at IS NULL)").param("s", s).query(Boolean.class).single());
         checks.add(chk(RUNNING, "fee_schedule", "School-fee schedule set", feeSchedule ? "ok" : "bad",
                 feeSchedule ? "A current fee schedule exists for " + s : "No fee schedule for " + s + " — students cannot pay or register", "/finance/fees"));
+        // V451: the live undergraduates the stated lines do not reach — none at all, or none for an open semester
+        if (feeSchedule) {
+            Map<String, Object> gaps = jdbc.sql("""
+                    SELECT coalesce(sum(students), 0) AS students, count(*) AS groups,
+                           string_agg(DISTINCT replace(replace(initcap(lower(coalesce(faculty, faculty_code))), ' And ', ' and '), ' Of ', ' of '), ', ') AS faculties
+                      FROM finance.fee_gaps(:s)
+                    """).param("s", s).query().singleRow();
+            long gapStudents = ((Number) gaps.get("students")).longValue();
+            long gapGroups = ((Number) gaps.get("groups")).longValue();
+            checks.add(chk(RUNNING, "fee_gaps", "Every undergraduate has a school fee stated", gapStudents == 0 ? "ok" : open.isEmpty() ? "warn" : "bad",
+                    gapStudents == 0 ? "Every live undergraduate has a school fee stated for " + s + (open.isEmpty() ? "" : ", for every open semester")
+                            : String.format(java.util.Locale.ENGLISH, "%,d", gapStudents) + " live undergraduate" + (gapStudents == 1 ? "" : "s") + " in " + gapGroups
+                                    + " group" + (gapGroups == 1 ? "" : "s") + " have no school fee stated for " + s + (open.isEmpty() ? "" : " or an open semester")
+                                    + " (" + gaps.get("faculties") + "): they are shown nothing to pay and cannot register",
+                    "/finance/fees?session=" + s));
+        }
 
         boolean clearance = Boolean.TRUE.equals(jdbc.sql("SELECT policy.in_force('clearance','UNIVERSITY',current_date) IS NOT NULL").query(Boolean.class).single());
         checks.add(chk(RUNNING, "clearance", "Clearance scheme in force", clearance ? "ok" : "warn",

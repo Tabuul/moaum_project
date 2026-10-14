@@ -331,6 +331,8 @@ public class StudentPortalService {
         out.put("charges", repo.charges(id, session));
         // V361: whether the Bursary has stated a school fee that applies to the student — until it has, nothing is cleared
         out.put("stated", repo.feeStated(id, session));
+        // V451: an open semester with no line stated for the student, while another semester's is — not "settled"
+        out.put("unstatedSemesters", repo.unstatedSemesters(id, session));
         out.put("due", pos.get("due"));
         out.put("paid", pos.get("paid"));
         out.put("balance", pos.get("balance"));

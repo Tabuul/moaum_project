@@ -20,6 +20,8 @@ export interface Fees {
   session: string;
   /** V361: whether the Bursary has stated a school fee for the student this session (a ₦0 line on purpose counts) */
   stated?: boolean;
+  /** V451: the open semesters whose school fees are not yet stated for the student, while another semester's are */
+  unstatedSemesters?: number[];
   window?: PortalWindow;
   charges: Charge[];
   due: number;

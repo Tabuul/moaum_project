@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 290
+\set EXPECTED 291
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12716,7 +12716,7 @@ BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V450', true);
         -- the standing property, over the sessions the portal charges in
-        SELECT count(*) FILTER (WHERE has_ss AND NOT has_cm), count(*) FILTER (WHERE has_ed AND NOT has_ti) INTO bare_cm, bare_ti
+        SELECT count(*) FILTER (WHERE has_ss AND NOT has_cm AND finance.fee_source_of('CM', x.name) IS DISTINCT FROM 'SS'), count(*) FILTER (WHERE has_ed AND NOT has_ti AND finance.fee_source_of('TI', x.name) IS DISTINCT FROM 'ED') INTO bare_cm, bare_ti
           FROM (SELECT a.name,
                        EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'SS' AND f.programme_code IS NULL AND f.ended_at IS NULL) AS has_ss,
                        EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = a.name AND f.faculty_code = 'CM' AND f.ended_at IS NULL) AS has_cm,
@@ -12740,7 +12740,7 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('V450: in the current and planned sessions Communication and Media Studies has fee lines whenever Social Sciences has, Technology and Industrial Studies whenever Education has; the Education copy reaches a TI student',
+    PERFORM pg_temp.assert('V450: in the current and planned sessions Communication and Media Studies has fee lines (or is charged as Social Sciences by the V451 rule) whenever Social Sciences has, Technology and Industrial Studies (or as Education) whenever Education has; the Education copy reaches a TI student',
         coalesce(bare_cm = 0 AND bare_ti = 0 AND n = 2 AND (v_prog IS NULL OR charged = 2), false),
         format('sessions with SS and no CM: %s, with ED and no TI: %s | copied %s | programme %s charged %s', bare_cm, bare_ti, n, v_prog, charged));
 END $$;
@@ -12809,6 +12809,85 @@ BEGIN
     PERFORM pg_temp.assert('V453: every ICT support agent in service opens any student with the support baseline (the student, course registration, payment support) across the University; taken off the desk, or without the office, no one',
         coalesce(sees AND caps @> helpdesk.agent_baseline() AND helpdesk.agent_baseline() @> caps AND words = 'The University' AND NOT sees_off AND cardinality(caps_off) = 0 AND NOT sees_stranger, false),
         format('sees %s caps %s scope %s | off the desk: sees %s caps %s | no office: %s', sees, caps, words, sees_off, caps_off, sees_stranger));
+END $$;
+
+-- ── V451. A faculty charged as another by a standing rule: while it has no full-time fee line of its own in a session, the
+--          source faculty's lines reach its undergraduates — never a CCE student — alike in every matcher; once it states its
+--          own, they alone apply; a rule never chains nor names itself. The students with no fee stated are listed by group, an
+--          open semester with no line counted as missing, and the Bursary is told of a new group once, and again if it reopens ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9990/9991'; st uuid := gen_random_uuid(); cce uuid := gen_random_uuid();
+        fa text; fb text; v_prog text; key_prof text;
+        gap_missing int[]; un_sem int[]; told1 int; told2 int; told3 int;
+        n_rule int; n_cce int; tot numeric; d1 numeric; d2 numeric; stated boolean; sums_ok boolean; gaps_after int;
+        own int; src_after text; chain text; self text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V451', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES (who, 'CHK/V451', 'CHECKV451', 'Bursar', 'v451@example.test', '08000004510');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), who, 'bursar', 'institution', NULL, 'CHECK V451', who, current_date);
+        -- two faculties no rule names; A with an undergraduate programme
+        SELECT p.faculty_code, p.code INTO fa, v_prog FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.faculty_code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r UNION SELECT r.source_faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY p.faculty_code, p.code LIMIT 1;
+        SELECT f.code INTO fb FROM ref.faculty f
+         WHERE f.code <> fa AND f.code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r UNION SELECT r.source_faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY f.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9990-10-01', date '9991-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), v_ses, 1, 'CLOSED'), (gen_random_uuid(), v_ses, 2, 'OPEN')
+            ON CONFLICT (session, number) DO UPDATE SET state = excluded.state;
+        PERFORM finance.set_faculty_fee_source(fa, fb, NULL, 'CHECK V451');
+        -- B states the first semester, and a CCE line
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind) VALUES
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 100000, 100, 'UTME', fb, NULL, 1, 1, NULL, false, 'FEE'),
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 70000, NULL, 'CCE', fb, NULL, 1, 1, NULL, false, 'FEE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st, 'MOAUM/ADM/90/004511', NULL, 'CHECKV451', 'Rule Ada', v_prog, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED', NULL),
+            (cce, 'MOAUM/ADM/90/004512', NULL, 'CHECKV451', 'Evening Bola', v_prog, 'CCE', 'PART_TIME', v_ses, 100, 100, 'ADMITTED', NULL);
+        -- the open second semester has no line: listed, the student's page told, the Bursary told once
+        gap_missing := (SELECT g.missing FROM finance.fee_gaps(v_ses) g WHERE g.programme_code = v_prog AND g.level = 100 AND g.entry_mode = 'UTME' LIMIT 1);
+        un_sem := finance.fee_unstated_semesters(st, v_ses);
+        told1 := finance.watch_fee_gaps(v_ses);
+        told2 := finance.watch_fee_gaps(v_ses);
+        -- the second semester stated: charged both by the rule, every matcher alike; the CCE student reached by none
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind) VALUES
+            (gen_random_uuid(), v_ses, 'School fees (semester 2)', 50000, 100, 'UTME', fb, NULL, 2, 2, NULL, false, 'FEE');
+        n_rule := (SELECT count(*) FROM finance.charges(st, v_ses));
+        n_cce := (SELECT count(*) FROM finance.charges(cce, v_ses));
+        tot := finance.session_fee_total(st, v_ses); d1 := finance.due_for_semester(st, v_ses, 1); d2 := finance.due_for_semester(st, v_ses, 2);
+        stated := finance.fee_stated(st, v_ses);
+        key_prof := (SELECT pr.profile_key FROM finance.fee_profiles() pr WHERE pr.student_id = st);
+        sums_ok := (SELECT s.due_before = 100000 AND s.due_upto = 150000 AND s.fee = 150000 FROM finance.fee_sums(v_ses, 2) s WHERE s.profile_key = key_prof);
+        gaps_after := (SELECT count(*) FROM finance.fee_gaps(v_ses) g WHERE g.programme_code = v_prog AND g.level = 100 AND g.entry_mode = 'UTME');
+        PERFORM finance.watch_fee_gaps(v_ses);
+        -- A states its own first semester: the rule waits, A's line alone applies, and the second semester is missing again — told again
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind) VALUES
+            (gen_random_uuid(), v_ses, 'School fees (semester 1)', 90000, 100, 'UTME', fa, NULL, 1, 1, NULL, false, 'FEE');
+        own := (SELECT count(*) FROM finance.charges(st, v_ses));
+        src_after := finance.fee_source_of(fa, v_ses);
+        told3 := finance.watch_fee_gaps(v_ses);
+        -- a chain, and a faculty charged as itself, refused
+        BEGIN
+            PERFORM finance.set_faculty_fee_source(fb, fa, NULL, NULL); chain := 'accepted';
+        EXCEPTION WHEN check_violation THEN chain := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.set_faculty_fee_source(fa, fa, NULL, NULL); self := 'accepted';
+        EXCEPTION WHEN check_violation THEN self := split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V451 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V451: a faculty charged as another reads the source''s lines while it has none of its own, alike in every matcher and never for a CCE student; its own lines end the rule; no chain nor self; the unstated open semester listed, and told once and again on reopening',
+        coalesce(fa IS NOT NULL AND fb IS NOT NULL
+             AND gap_missing = '{2}' AND un_sem = '{2}' AND told1 > 0 AND told2 = 0 AND told3 > 0
+             AND n_rule = 2 AND n_cce = 0 AND tot = 150000 AND d1 = 100000 AND d2 = 150000 AND stated AND sums_ok AND gaps_after = 0
+             AND own = 1 AND src_after IS NULL AND chain = 'FEE_SOURCE_CHAIN' AND self = 'FEE_SOURCE_SELF', false),
+        format('A %s B %s | missing %s, student page %s, told %s/%s/%s | charged %s, CCE %s, total %s, S1 %s, S2 %s, stated %s, sums %s, gaps after %s | own %s, rule after %s | chain %s, self %s',
+               fa, fb, gap_missing, un_sem, told1, told2, told3, n_rule, n_cce, tot, d1, d2, stated, sums_ok, gaps_after, own, src_after, chain, self));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

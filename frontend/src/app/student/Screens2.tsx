@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { type Fees, type Me, type Receipt, receiptPurpose } from "@/lib/student-portal";
+import { type Fees, type Me, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
@@ -30,6 +30,10 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   const w = fees.window ?? null;   // V288: the portal's school-fees window
   const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
   const canPay = !w || w.state === "OPEN";
+  // V451: an open semester whose fees are not yet stated for the student, while another's are — never read as settled
+  const unstated = noCharge ? [] : fees.unstatedSemesters ?? [];
+  const unstatedWords = unstated.map((n) => semesterName(n).toLowerCase()).join(" and ");
+  const askBursary = (subject: string) => `/student/support?office=bursar&subject=${encodeURIComponent(subject)}`;
   return (
     <>
       {justPaid && !justPaid.confirmed_at ? (
@@ -41,11 +45,16 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : null}
       <div className="grid grid--3">
         <div className="tile"><span className="eyebrow">Session charge</span><span className="n tnum">{noCharge ? "—" : naira(fees.due)}</span><span className="c">{fees.session} · {s.level} Level</span></div>
-        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{fees.paidInFull && !noCharge ? "Settled in full" : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : "Nothing yet"}</span></div>
-        <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : "Cleared"}</span></div>
+        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{fees.paidInFull && !noCharge ? (unstated.length ? "Settled for what is stated" : "Settled in full") : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : "Nothing yet"}</span></div>
+        <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : unstated.length ? `${semesterName(unstated[0])} semester not yet stated` : "Cleared"}</span></div>
       </div>
+      {unstated.length ? (
+        <Note kind="info" title={`Your ${unstatedWords} semester school fees for ${fees.session} are not yet stated`}>
+          What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.
+        </Note>
+      ) : null}
       {noCharge ? (
-        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>Your charge appears when the Bursar states the fee schedule. Course registration opens once it is stated and paid.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
+        <Note kind="info" title={`Your school fees for ${fees.session} are not yet stated`}>The Bursary has not yet stated the school fees for your programme, level and entry mode, so there is nothing to pay yet; the Bursary is told when a student&rsquo;s fees are missing. Your charge appears here once it is stated, and course registration opens once it is paid. If it is still not here in a few days, <Link href={askBursary(`School fees for ${fees.session} not stated`)}>ask the Bursary</Link>.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
       ) : fees.schemeProblem ? (
         <Note kind="info" title="What a payment releases is not yet stated">{fees.schemeProblem}</Note>
       ) : fees.clearsRegistration ? (

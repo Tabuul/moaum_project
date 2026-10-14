@@ -188,6 +188,74 @@ class FinanceController {
         return jdbc.sql("SELECT level, programme_code, programme, students FROM finance.pg_unstated(:s)").param("s", session + "/" + year).query().listOfRows();
     }
 
+    /** V451: the live undergraduates with no school fee stated for the session — no line at all, or none for an open
+     *  semester — by group of alike students, with what the watch last told the Bursary */
+    @GetMapping("/sessions/{session}/{year}/fee-gaps")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> feeGaps(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT faculty_code, faculty, programme_code, programme, level, entry_mode, indigene, spillover, students, charged_as, stated,
+                       array_to_string(missing, ',') AS missing
+                  FROM finance.fee_gaps(:s)
+                """).param("s", s).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("students", rows.stream().mapToLong(r -> ((Number) r.get("students")).longValue()).sum());
+        out.put("groups", rows.size());
+        out.put("openSemesters", jdbc.sql("SELECT number FROM policy.semester WHERE session = :s AND state = 'OPEN' ORDER BY number")
+                .param("s", s).query(Integer.class).list());
+        out.put("scheduleLines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND ended_at IS NULL AND kind = 'FEE'")
+                .param("s", s).query(Long.class).single());
+        out.put("watch", jdbc.sql("SELECT told_at, told, students, groups, checked_at FROM finance.fee_gap_watch WHERE session = :s")
+                .param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("rows", rows);
+        return out;
+    }
+
+    public record FeeSource(@NotBlank @Size(max = 12) String source, @Pattern(regexp = "\\d{4}/\\d{4}") String fromSession, @Size(max = 300) String note) {
+    }
+
+    /** V451: the standing "charged as" rules — a faculty charged another's lines while it has none of its own in a session —
+     *  and whether each is in force for the session asked about */
+    @GetMapping("/fee-sources")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> feeSources(@RequestParam(required = false) String session) {
+        String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(Sessions::byDate);
+        return jdbc.sql("""
+                SELECT r.faculty_code, f.name AS faculty, r.source_faculty_code, sf.name AS source_faculty, r.from_session, r.note,
+                       r.set_at, r.set_office, nullif(btrim(coalesce(p.given_names, '') || ' ' || coalesce(p.surname, '')), '') AS set_by_name,
+                       (r.from_session IS NULL OR :s >= r.from_session) AS from_reached,
+                       finance.fee_source_of(r.faculty_code, :s) IS NOT NULL AS in_force
+                  FROM finance.faculty_fee_source r
+                  JOIN ref.faculty f ON f.code = r.faculty_code
+                  JOIN ref.faculty sf ON sf.code = r.source_faculty_code
+                  LEFT JOIN iam.person p ON p.id = r.set_by
+                 ORDER BY f.name
+                """).param("s", s).query().listOfRows();
+    }
+
+    @PutMapping("/fee-sources/{faculty}")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setFeeSource(@PathVariable String faculty, @Valid @RequestBody FeeSource body) {
+        jdbc.sql("SELECT finance.set_faculty_fee_source(:f, :src, :from, :note)")
+                .param("f", faculty).param("src", body.source().trim().toUpperCase())
+                .param("from", body.fromSession(), Types.VARCHAR).param("note", body.note(), Types.VARCHAR).query().singleRow();
+        return Map.of("faculty", faculty, "source", body.source().trim().toUpperCase());
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/fee-sources/{faculty}")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> endFeeSource(@PathVariable String faculty) {
+        jdbc.sql("SELECT finance.set_faculty_fee_source(:f, NULL, NULL, NULL)").param("f", faculty).query().singleRow();
+        return Map.of("faculty", faculty, "ended", true);
+    }
+
     @GetMapping("/fee-groups")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)

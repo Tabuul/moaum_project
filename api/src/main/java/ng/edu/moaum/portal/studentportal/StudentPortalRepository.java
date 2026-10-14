@@ -343,6 +343,11 @@ class StudentPortalRepository {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.fee_stated(:s, :ses)").param("s", student).param("ses", session).query(Boolean.class).single());
     }
 
+    /** V451: the open semesters of the session whose school fees are not yet stated for the student, while another's are */
+    List<Integer> unstatedSemesters(UUID student, String session) {
+        return jdbc.sql("SELECT unnest(finance.fee_unstated_semesters(:s, :ses))").param("s", student).param("ses", session).query(Integer.class).list();
+    }
+
     boolean semesterCleared(UUID student, String session, int semester) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")
                 .param("s", student).param("ses", session).param("sem", semester).query(Boolean.class).single());

@@ -27,11 +27,11 @@ const DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 
 const OFFICES: [string, string][] = [["registrar", "Registry"], ["bursar", "Bursary"], ["ict", "ICT"], ["library", "Library"], ["services", "Student Services"], ["academic", "Academic Office"], ["hod", "My department"], ["housing", "Housing"]];
 
-export function Support({ requests }: { requests: ServiceRequest[] }) {
+export function Support({ requests, office: askOffice, subject: askSubject }: { requests: ServiceRequest[]; office?: string; subject?: string }) {
   const router = useRouter();
   const { act, busy, problem, setProblem } = useAct();
-  const [office, setOffice] = useState("registrar");
-  const [subject, setSubject] = useState("");
+  const [office, setOffice] = useState(OFFICES.some(([code]) => code === askOffice) ? (askOffice as string) : "registrar");
+  const [subject, setSubject] = useState(askSubject ?? "");
   const [detail, setDetail] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
