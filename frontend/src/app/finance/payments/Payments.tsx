@@ -11,6 +11,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
+import { STUDENT_LEVELS } from "@/lib/levels";
 
 interface Row {
   reference: string; confirmed_at: string; payer: string; number: string;
@@ -29,7 +30,7 @@ export interface Filters {
   session: string; faculty: string; dept: string; programme: string; level: string; category: string; channel: string; from: string; to: string;
 }
 
-const LEVELS = ["100", "200", "300", "400", "500", "600"];
+const LEVELS = STUDENT_LEVELS;
 
 export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) {
   const router = useRouter();

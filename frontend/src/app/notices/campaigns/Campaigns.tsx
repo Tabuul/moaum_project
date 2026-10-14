@@ -12,6 +12,7 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { STUDENT_LEVELS } from "@/lib/levels";
 
 export interface Campaign {
   id: string; name: string; template_key: string; template_label: string; audience: string; channels: string[]; vars: string; state: string;
@@ -250,7 +251,7 @@ export function Campaigns({ d, actingOffice, open }: { d: CampaignsPage; actingO
               </Field>
               <Field id="flvl" label="Level">
                 <select id="flvl" className="ctl" value={f.level} disabled={!draft} onChange={(e) => setF({ ...f, level: e.target.value })}>
-                  <option value="">Any</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={String(l)}>{l}</option>)}
+                  <option value="">Any</option>{STUDENT_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
               </Field>
               <Field id="fmode" label="Entry mode">

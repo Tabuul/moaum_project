@@ -9,6 +9,7 @@
  * not widen is disabled and says why.
  */
 import { usePathname, useSearchParams } from "next/navigation";
+import { STUDENT_LEVELS } from "@/lib/levels";
 import { useQueryNav } from "@/lib/query-nav";
 import { Ico } from "./ui";
 import { EMPTY_SCOPE, SCOPE_COOKIE, SCOPE_KEYS, type Scope } from "@/lib/scope";
@@ -24,7 +25,7 @@ export interface Ceiling {
   why?: string;
 }
 
-const LEVELS = ["100", "200", "300", "400", "500", "600"];
+const LEVELS = STUDENT_LEVELS;
 
 /** the scope holds between screens: a cookie the server pages read */
 function remember(next: Scope) {

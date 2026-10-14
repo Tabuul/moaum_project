@@ -14,6 +14,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { StudentOpen } from "@/components/StudentModal";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { STUDENT_LEVELS } from "@/lib/levels";
 import { CLASS, CONF, ISSUE, RULE, SPILL, STATUSES, classWord, fullName, issuesOf, statusWord, type CohortList, type CohortRow, type CohortSettings, type CohortStudent, type CohortSummary } from "@/lib/cohorts";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; cohort: string; entry: string; jamb: string; level: string; duration: string; status: string; grad: string; spill: string; conf: string; issue: string; sex: string; entryMode: string; sort: string; dir: string; size: string }
@@ -93,7 +94,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               <select id="co-jamb" className="ctl" value={filters.jamb} onChange={(e) => nav({ jamb: e.target.value })}><option value="">Any</option>{jambYears.map((y) => <option key={y} value={String(y)}>{y}</option>)}</select>
             </Field>
             <Field id="co-level" label="Level" style={{ flex: "1 1 100px" }}>
-              <select id="co-level" className="ctl" value={filters.level} onChange={(e) => nav({ level: e.target.value })}><option value="">Any</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={String(l)}>{l}</option>)}</select>
+              <select id="co-level" className="ctl" value={filters.level} onChange={(e) => nav({ level: e.target.value })}><option value="">Any</option>{STUDENT_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}</select>
             </Field>
             <Field id="co-dur" label="Programme length" style={{ flex: "1 1 120px" }}>
               <select id="co-dur" className="ctl" value={filters.duration} onChange={(e) => nav({ duration: e.target.value })}><option value="">Any</option>{[1, 2, 3, 4, 5, 6].map((y) => <option key={y} value={String(y)}>{y} session{y === 1 ? "" : "s"}</option>)}</select>

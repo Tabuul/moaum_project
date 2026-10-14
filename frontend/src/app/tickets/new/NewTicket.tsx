@@ -9,6 +9,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { STUDENT_LEVELS } from "@/lib/levels";
 import { EMAIL_OK, FILE_TYPES, MAX_FILE, PRIORITY, human, parse, readBase64, type Category, type Field as F, type Profile } from "@/lib/helpdesk";
 
 export function NewTicket({ profile, categories, sessions }: { profile: Profile; categories: Category[]; sessions: string[] }) {
@@ -157,7 +158,7 @@ function PriorityHint({ p }: { p: string }) {
 /** one of the category's fields, by its type */
 function DynamicField({ f, value, sessions, onChange }: { f: F; value: string; sessions: string[]; onChange: (v: string) => void }) {
   const id = `tk-f-${f.key}`;
-  const listed = f.type === "select" ? (f.options ?? []) : f.type === "session" ? sessions : f.type === "semester" ? ["First semester", "Second semester"] : f.type === "level" ? ["100", "200", "300", "400", "500", "600"] : null;
+  const listed = f.type === "select" ? (f.options ?? []) : f.type === "session" ? sessions : f.type === "semester" ? ["First semester", "Second semester"] : f.type === "level" ? [...STUDENT_LEVELS] : null;
   // a choice with nothing to choose from (the sessions could not be read, say) falls back to typing
   const opts = listed && listed.length ? listed : null;
   return (

@@ -14,6 +14,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { pct, type ComplianceOverview } from "@/lib/biodata-gate";
+import { STUDENT_LEVELS } from "@/lib/levels";
 import { Exceptions, GateHistory, GatePanel, Requirements } from "./GateAdmin";
 
 export interface ComplianceSummary {
@@ -206,7 +207,7 @@ export function Compliance({ d, students, filters, actingOffice, staff = null, s
               </select>
             ) : null}
             <select className="ctl" aria-label="Level" value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>
-              <option value="">Any level</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={String(l)}>{l}</option>)}
+              <option value="">Any level</option>{STUDENT_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
             <input className="ctl" aria-label="Entry session" placeholder="Entry session" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })} style={{ width: 120 }} />
             <select className="ctl" aria-label="Missing" value={f.missing} onChange={(e) => setF({ ...f, missing: e.target.value })}>
