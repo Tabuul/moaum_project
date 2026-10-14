@@ -103,7 +103,9 @@ class PgAdmissionsController {
                 .param("s", s).query(Long.class).single() > 0;
         Map<String, Object> out = new LinkedHashMap<>(rule);
         out.put("stated", stated);
-        out.put("carriedFrom", stated ? null : jdbc.sql("SELECT max(session) FROM admissions.pg_fee WHERE session < :s").param("s", s).query(String.class).single());
+        // no earlier session with postgraduate fees stated reads as none (the default amounts), never a server error
+        out.put("carriedFrom", stated ? null : jdbc.sql("SELECT max(session) FROM admissions.pg_fee WHERE session < :s").param("s", s)
+                .query(String.class).optional().orElse(null));
         out.put("intake", s.equals(jdbc.sql("SELECT admissions.pg_intake_session()").query(String.class).single()));
         return out;
     }

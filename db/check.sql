@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 299
+\set EXPECTED 300
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13301,6 +13301,48 @@ BEGIN
              AND a3.charged_as = 1 AND a3.added = 1 AND src_after = fb, false),
         format('A %s B %s | unstated %s, refused %s, cleared before %s after %s | sheet %s, again %s | then %s | charged as: %s, rule after %s',
                fa, fb, unstated, refused1, cleared_before, cleared_after, to_jsonb(a1), to_jsonb(a2), refused2, to_jsonb(a3), src_after));
+END $$;
+
+-- ── V462. The class-stream refusal names the course and both routes: a postgraduate student put on a full-time class is
+--          told it is a full-time undergraduate class and that a postgraduate student registers only on the School's classes
+--          (not, as before, about the Centre for Continuing Education); an undergraduate on a CCE class is told so; the code
+--          stays REGISTRATION_STREAM ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9990/9991'; v_course text;
+        pg uuid := gen_random_uuid(); ug uuid := gen_random_uuid(); r_pg uuid := gen_random_uuid(); r_ug uuid := gen_random_uuid();
+        ft_class uuid := gen_random_uuid(); cce_class uuid := gen_random_uuid(); m_pg text; m_ug text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V462', true);
+        v_course := (SELECT code FROM catalogue.course ORDER BY code LIMIT 1);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9990-10-01', date '9991-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (ft_class, v_course, v_ses, 1, 'REGULAR'), (cce_class, v_course, v_ses, 1, 'CCE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (pg, 'MOAUM/ADM/90/004621', NULL, 'CHECKV462', 'Ada',
+                (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1),
+                'POSTGRADUATE', 'FULL_TIME', v_ses, 800, 800, 'ADMITTED', NULL),
+               (ug, 'MOAUM/ADM/90/004622', NULL, 'CHECKV462', 'Bola',
+                (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1),
+                'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED', NULL);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status)
+        VALUES (r_pg, pg, v_ses, 1, 800, 'DRAFT'), (r_ug, ug, v_ses, 1, 100, 'DRAFT');
+        BEGIN
+            INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (r_pg, ft_class, 3, 'CURRENT'); m_pg := 'accepted';
+        EXCEPTION WHEN check_violation THEN m_pg := SQLERRM;
+        END;
+        BEGIN
+            INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (r_ug, cce_class, 3, 'CURRENT'); m_ug := 'accepted';
+        EXCEPTION WHEN check_violation THEN m_ug := SQLERRM;
+        END;
+        RAISE EXCEPTION 'the V462 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V462: the class-stream refusal names the course, the class''s stream and the student''s route — never the CCE to a postgraduate student',
+        coalesce(m_pg LIKE 'REGISTRATION_STREAM: ' || v_course || ' is a full-time undergraduate class, and a postgraduate student registers only on the School''s postgraduate classes'
+             AND m_pg NOT LIKE '%Continuing Education%'
+             AND m_ug LIKE 'REGISTRATION_STREAM: ' || v_course || ' is a class of the Centre for Continuing Education, and a full-time undergraduate registers only on full-time undergraduate classes', false),
+        format('postgraduate on a full-time class: %s | undergraduate on a CCE class: %s', m_pg, m_ug));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
