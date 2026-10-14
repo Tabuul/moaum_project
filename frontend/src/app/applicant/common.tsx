@@ -16,6 +16,7 @@ import { Step } from "@/components/proto/blocks";
 import { asProblem } from "@/app/student/common";
 import { QuicktellerPay } from "@/components/QuicktellerPay";
 import { PAY_LABEL, isQuicktellerCheckout, type QuicktellerCheckout } from "@/lib/quickteller";
+import { OnlyThisReference, PaymentStarted, useReferenceState } from "@/components/PaymentStarted";
 
 /* stage N means milestone N is complete, so N is ticked and N+1 is in hand */
 export function Rail({ a }: { a: Application }) {
@@ -88,6 +89,9 @@ export function useAct() {
  * is wired the button says so, and the reference is paid by transfer or at a branch.
  */
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
+  // Oct 2026: a reference Quickteller was already told may be paid, with no payment reported, leads with "I've paid — check now"
+  const state = useReferenceState(reference);
+  const [payAnyway, setPayAnyway] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
@@ -133,11 +137,18 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       await go();
     }
   }
+  const begun = !!state?.startedAt && !state.confirmed;
+  if (state && begun && !payAnyway && !qt) {
+    return <PaymentStarted reference={reference} state={state} onPay={() => setPayAnyway(true)} report={{ href: "/login/help", label: "Ask ICT Support" }} />;
+  }
   if (wired === false) {
     return (
-      <Note kind="info" title="Card and USSD payment is not open yet">
-        Pay &#8358;{amount.toLocaleString()} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference.
-      </Note>
+      <>
+        <Note kind="info" title="Card and USSD payment is not open yet">
+          Pay &#8358;{amount.toLocaleString()} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference.
+        </Note>
+        <OnlyThisReference reference={reference} again={begun} />
+      </>
     );
   }
   return (
@@ -153,6 +164,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       ) : (
         <Btn kind="go" size="md" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ₦${amount.toLocaleString()} by card or USSD`}</Btn>
       )}
+      {qt ? null : <OnlyThisReference reference={reference} again={begun} />}
       {problem ? <div style={{ flexBasis: "100%" }}><ProblemNoticeInline problem={problem} /></div> : null}
     </>
   );

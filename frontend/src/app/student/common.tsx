@@ -9,6 +9,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note } from "@/components/proto/ui";
 import { QuicktellerPay } from "@/components/QuicktellerPay";
 import { PAY_LABEL, isQuicktellerCheckout, type QuicktellerCheckout } from "@/lib/quickteller";
+import { OnlyThisReference, PaymentStarted, useReferenceState } from "@/components/PaymentStarted";
 
 export function useAct() {
   const router = useRouter();
@@ -75,8 +76,12 @@ export function asProblem(j: unknown, r: Response): Problem {
  * Card and USSD through whichever gateway is wired; when more than one is on, the payer picks.
  * Pay on Quickteller (V299) opens the University's biller page on quickteller.com in a new tab,
  * the reference (and the amount) filled in; Interswitch's report confirms the payment.
+ * Oct 2026: a reference Quickteller was already told may be paid, with no payment reported, leads with "I've paid — check
+ * now" and keeps paying as the second choice (PaymentStarted).
  */
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
+  const state = useReferenceState(reference);
+  const [payAnyway, setPayAnyway] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
@@ -122,11 +127,19 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
     }
   }
   if (qt) return <QuicktellerPay qt={qt} onClose={() => setQt(null)} />;
+  const begun = !!state?.startedAt && !state.confirmed;
+  if (state && begun && !payAnyway) {
+    return <PaymentStarted reference={reference} state={state} onPay={() => setPayAnyway(true)}
+      report={{ href: `/student/support?office=bursar&subject=${encodeURIComponent(`Payment not confirmed: ${reference}`)}`, label: "Report it to the Bursary" }} />;
+  }
   if (wired === false) {
     return (
-      <Note kind="info" title="Card and USSD payment is not open yet">
-        Pay {naira(amount)} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference.
-      </Note>
+      <>
+        <Note kind="info" title="Card and USSD payment is not open yet">
+          Pay {naira(amount)} against reference <b className="tnum">{reference}</b> at a bank branch or by bank transfer, quoting the reference.
+        </Note>
+        <OnlyThisReference reference={reference} again={begun} />
+      </>
     );
   }
   return (
@@ -140,6 +153,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       ) : (
         <Btn kind="go" size="md" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ${naira(amount)} by card or USSD`}</Btn>
       )}
+      <OnlyThisReference reference={reference} again={begun} />
       {problem ? (
         <div className="mt-2" style={{ flexBasis: "100%" }}>
           <Note kind="info" title={`${problem.title ?? "Not now"}.`}>{problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</Note>

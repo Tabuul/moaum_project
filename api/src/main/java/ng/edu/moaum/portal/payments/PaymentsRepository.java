@@ -244,6 +244,16 @@ class PaymentsRepository {
                     String description, String scope, String billerCode) {
     }
 
+    /** Oct 2026: when Quickteller last asked after the reference and was told it may be paid — the payer pressed Continue on
+     *  Quickteller's page or at a bank. Not a payment: the payment is Interswitch's notification. */
+    java.util.Optional<java.time.Instant> quicktellerStartedAt(String reference) {
+        return jdbc.sql("""
+                SELECT e.received_at FROM finance.gateway_event e
+                 WHERE e.reference = :r AND e.gateway = 'paydirect' AND e.source = 'VALIDATE' AND e.outcome = 'VALID'
+                 ORDER BY e.received_at DESC LIMIT 1
+                """).param("r", reference).query(java.sql.Timestamp.class).optional().map(java.sql.Timestamp::toInstant);
+    }
+
     /** what Quickteller is told about a reference it asks after */
     Customer paydirectCustomer(String reference) {
         return jdbc.sql("SELECT * FROM finance.paydirect_customer(:r)").param("r", reference == null ? "" : reference).query(Customer.class).single();

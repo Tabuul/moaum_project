@@ -321,6 +321,8 @@ class PaymentsIT {
 
             // the one address Interswitch asks for takes both messages; opened in a browser it says it is reachable
             assertThat(open.get().uri("/api/v1/payments/paydirect/interswitch").retrieve().body(String.class)).contains("This address is reachable");
+            // Oct 2026: nobody has asked after the reference yet, so the payer's screen shows the ordinary pay controls
+            assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("startedAt")).isNull();
             // Quickteller's question about the reference, at the one address: the payer's name and the amount; an unknown reference is refused
             String asked = postXml("/api/v1/payments/paydirect/interswitch", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
                     + "<MerchantReference>6405</MerchantReference><CustReference>" + reference.toLowerCase() + "</CustReference><PaymentItemCode>01</PaymentItemCode>"
@@ -337,6 +339,10 @@ class PaymentsIT {
                     .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>1</Status>");
             assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single()).isTrue();
             assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).as("the payer's check reads the record").isEqualTo(false);
+            // Oct 2026: Quickteller was told the reference may be paid and no payment is believed yet: the screen asks the payer to check first
+            Map<String, Object> begun = it.get(token, "/api/v1/payments/state?reference=" + reference).getBody();
+            assertThat(begun.get("startedAt")).as("Quickteller's validation, not a payment").isNotNull();
+            assertThat(begun.get("startedOn")).isEqualTo("QUICKTELLER");
 
             // the credentials, set once by the Directorate of ICT
             ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
@@ -357,6 +363,7 @@ class PaymentsIT {
                     .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
             assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("feeConfirmedAt")).isNotNull();
             assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).isEqualTo(true);
+            assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("startedAt")).as("paid: nothing left to check").isNull();
             assertThat(jdbc.sql("SELECT channel FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(String.class).single()).isEqualTo("Quickteller · WEB");
             // the same payment again is received, not paid twice
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
