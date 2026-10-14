@@ -4,7 +4,8 @@
  * prototype's stylesheet styles them identically. Names are the prototype's
  * names: note, btn, pil, two, tiles, panel, pbody, dtable, kvGrid, ico.
  */
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
+import { IcoBtn as ActIcoBtn, type BtnKind, type BtnSize } from "./Btn";
 import Link from "next/link";
 import { roleLabel } from "@/lib/offices";
 import { PageHeadBody } from "./ShellTitle";
@@ -120,40 +121,10 @@ export function Note({ kind, title, children, action }: { kind: NoteKind; title:
   );
 }
 
-/** the button hierarchy: primary (the one act), secondary (tinted), ghost (outline), go (a completing act), urgent (a destructive one) */
-export type BtnKind = "primary" | "secondary" | "ghost" | "go" | "urgent";
-export type BtnSize = "sm" | "md";
-
-/** btn(kind, label, attrs) — small by default, as the desk screens use it; md for a form's or a page's main act */
-export function Btn({
-  kind,
-  size = "sm",
-  children,
-  onClick,
-  disabled,
-  title,
-  type = "button",
-  style,
-  className,
-  "aria-label": ariaLabel,
-}: {
-  kind: BtnKind;
-  size?: BtnSize;
-  children: ReactNode;
-  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  title?: string;
-  type?: "button" | "submit";
-  style?: CSSProperties;
-  className?: string;
-  "aria-label"?: string;
-}) {
-  return (
-    <button type={type} className={`btn btn--${kind} btn--${size}${className ? " " + className : ""}`} onClick={onClick} disabled={disabled} title={title} style={style} aria-label={ariaLabel}>
-      {children}
-    </button>
-  );
-}
+/* the button hierarchy (primary, secondary, ghost, go, urgent) and the act-aware Btn and IcoBtn live in ./Btn: a button
+   whose click sends a request, or whose handler returns a promise, shows the act under way until it settles */
+export { Btn, Spinner, doingLabel } from "./Btn";
+export type { BtnKind, BtnSize } from "./Btn";
 
 /** a link that looks like a button — the same hierarchy and sizes, for a route rather than an act */
 export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, prefetch, className, "aria-label": ariaLabel }: {
@@ -171,36 +142,11 @@ export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, pr
  * An icon-only action button — Edit (pencil), View (eye), Delete (trash) and the
  * like. The label is always given: it shows as the hover tooltip and is read by
  * assistive tech, so the control is professional and compact without losing its
- * meaning. {@code danger} tints a destructive action.
+ * meaning. {@code danger} tints a destructive action; while its act is under way
+ * the spinner takes the icon's place (./Btn).
  */
-export function IcoBtn({
-  icon,
-  label,
-  kind = "ghost",
-  onClick,
-  disabled,
-  danger,
-}: {
-  icon: string;
-  label: string;
-  kind?: BtnKind;
-  onClick?: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={`btn btn--${kind} btn--sm btn--icon${danger ? " is-danger" : ""}`}
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <Ico name={icon} size={16} />
-      <span className="sr-only">{label}</span>
-    </button>
-  );
+export function IcoBtn({ icon, ...rest }: Omit<ComponentProps<typeof ActIcoBtn>, "icon"> & { icon: string }) {
+  return <ActIcoBtn {...rest} icon={<Ico name={icon} size={16} />} />;
 }
 
 /**

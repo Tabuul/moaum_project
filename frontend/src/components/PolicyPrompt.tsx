@@ -18,7 +18,9 @@ export interface PolicyPromptData {
   documents: { document_id: string; kind: string; version: number; title: string; effective_on: string | null }[];
 }
 
-const PUT_OFF_KEY = "moaum_policy_put_off";
+/** cleared at sign-out (lib/sign-out), so whoever signs in next on this tab is asked */
+export const POLICY_PUT_OFF_KEY = "moaum_policy_put_off";
+const PUT_OFF_KEY = POLICY_PUT_OFF_KEY;
 const PATH: Record<string, string> = { PRIVACY_POLICY: "/privacy-policy", TERMS_OF_USE: "/privacy-policy", COOKIE_NOTICE: "/privacy-policy#s-cookies" };
 
 function putOff(): boolean {

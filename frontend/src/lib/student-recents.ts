@@ -11,7 +11,9 @@
  */
 import { useSyncExternalStore } from "react";
 
-const KEY = "moaum_recent_searches";
+/** forgotten at sign-out (lib/sign-out): what one person searched for is not shown to the next */
+export const RECENT_SEARCHES_KEY = "moaum_recent_searches";
+const KEY = RECENT_SEARCHES_KEY;
 const KEEP = 6;
 const NONE: string[] = [];
 

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastHost } from "@/components/proto/Toast";
+import { ActivityBar } from "@/components/proto/ActivityBar";
 
 /* IBM Plex is shipped with the portal (app/fonts.css → public/fonts), so neither the build nor a browser in
    Makurdi ever calls Google Fonts — a build once failed on the CI runner for want of that fetch. */
@@ -32,6 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: DENSITY }} />
       </head>
       <body>
+        {/* the one watch over what the person asked for and is waiting for: the bar along the top while it loads, and
+            every button's busy state (lib/activity) */}
+        <ActivityBar />
         <div id="app">{children}</div>
         {/* the one notification host, for every page — the shell's screens and the standalone ones alike */}
         <ToastHost />

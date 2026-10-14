@@ -13,16 +13,17 @@ import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
 import { IdleWatch } from "@/components/IdleWatch";
 import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Ico } from "./ui";
+import { Btn, Ico } from "./ui";
 import { OFFICE_COOKIE, roleLabel, roleUnit } from "@/lib/offices";
 import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
 import { TITLES as PROTOTYPE_TITLES } from "@/lib/titles";
 import { ShellTitle } from "./ShellTitle";
 import { ManualHelp } from "@/components/manual/ManualHelp";
 import { UniversityBrand } from "./UniversityBrand";
+import { signOut as endSession } from "@/lib/sign-out";
 
 /* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
@@ -676,11 +677,21 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
     router.refresh();
   }
 
+  // sign out, from the top bar or the menu's foot (lib/sign-out, the one sign-out): it reads "Signing out…" from the
+  // click until the sign-in page replaces this one, and a second click does nothing
+  const [signingOut, setSigningOut] = useState(false);
+  const leaving = useRef(false);
   async function signOut() {
-    await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => null);
-    router.push("/login");
-    router.refresh();
+    if (leaving.current) return;
+    leaving.current = true;
+    setSigningOut(true);
+    await endSession();
   }
+  const outIcon = (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9" />
+    </svg>
+  );
 
   const href = (id: string) => (id === menu.home ? "/" : ROUTES[id]);
 
@@ -784,11 +795,10 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <div className="nav__who">{who}</div>
               <div className="nav__sub">{whoSub}</div>
             </div>
-            <button className="nav__out" title="Sign out" aria-label="Sign out" onClick={() => void signOut()}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9" />
-              </svg>
-              <span className="nav__outlbl" aria-hidden="true">Sign out</span>
+            <button className="nav__out" title="Sign out" aria-label={signingOut ? "Signing out, please wait" : "Sign out"}
+              aria-busy={signingOut || undefined} disabled={signingOut} onClick={() => void signOut()}>
+              {outIcon}
+              <span className="nav__outlbl" aria-hidden="true">{signingOut ? "Signing out…" : "Sign out"}</span>
             </button>
           </div>
           {/* V441: the one authoritative Privacy Policy, a click away on every signed-in screen; the slim rail has no room for it */}
@@ -824,7 +834,6 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <h1>{t0}</h1>
               {t1 ? <div className="sub">{t1}</div> : null}
             </div>
-            {me ? <AccountMenu who={who} label={label} initials={initials(who)} /> : null}
             {me ? <ManualHelp route={route} menu={me.menu ?? null} /> : null}
             <button className="topsrch" aria-label="Search" title="Search records (/)" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -834,6 +843,15 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <span>Search records</span>
               <kbd>/</kbd>
             </button>
+            {/* the person signed in, then sign out: always at the top right of a signed-in screen, on a phone as on a desktop
+                (a phone shows the sign-out alone; who is signed in heads its menu) */}
+            {me ? <AccountMenu who={who} label={label} initials={initials(who)} /> : null}
+            {me ? (
+              <Btn kind="ghost" className="topout" onClick={signOut} busy={signingOut} busyLabel="Signing out…" title="Sign out of the portal">
+                {outIcon}
+                <span className="topout__l">Sign out</span>
+              </Btn>
+            ) : null}
           </header>
           <div className="content">
             {said && (

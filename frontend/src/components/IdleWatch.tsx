@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Modal } from "@/components/proto/blocks";
+import { signOut } from "@/lib/sign-out";
 import {
   BACKGROUND_HEADER, IDLE_EXPIRED_KEY, IDLE_LAST_KEY, IDLE_POLICY_KEY, canSaveUnsaved, clock, hasUnsaved, idleExempt, saveUnsaved,
   type SessionPolicy,
@@ -82,9 +83,8 @@ export function IdleWatch() {
     if (ending.current) return;
     ending.current = true;
     if (why === "idle") writeStored(IDLE_EXPIRED_KEY, Date.now());
-    await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => null);
     const next = `${window.location.pathname}${window.location.search}`;
-    window.location.assign(why === "idle" ? `/login?reason=idle&next=${encodeURIComponent(next)}` : "/login");
+    await signOut(why === "idle" ? `/login?reason=idle&next=${encodeURIComponent(next)}` : "/login");
   }, []);
 
   useEffect(() => {
