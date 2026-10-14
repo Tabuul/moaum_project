@@ -20,7 +20,8 @@ import ng.edu.moaum.portal.shared.NotFound;
  * Who is asking on the support desk, whom they reach and what they may do (V334, V346) — shared by the student and the
  * payment support screens, so the same answer is given everywhere and on the server every time. A student outside the
  * agent's reach is not found. A capability counts for a student only when it comes with a posting whose scope covers that
- * student (helpdesk.agent_capabilities_for); the Head of the Support Desk, the Director of ICT, Admin and Super hold every
+ * student (helpdesk.agent_capabilities_for), or is the support baseline every ICT support agent in service holds on every
+ * student (V453: open the student, course registration, payment support); the Head of the Support Desk, the Director of ICT, Admin and Super hold every
  * capability the desk defines — and only those: results, refunds, fees, amounts, matriculation and admission decisions
  * are not among them. Every act lands on the support ledger with its reason and, when a ticket is named, on its timeline.
  */

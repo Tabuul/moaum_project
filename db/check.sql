@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 289
+\set EXPECTED 290
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12772,6 +12772,43 @@ BEGIN
     PERFORM pg_temp.assert('V452: postgraduate applications are filed under the intake — the first planned PG session after the current — and a session with no PG fees stated carries the latest earlier stated ones',
         coalesce(v_intake = '9953/9954' AND v_app = '9953/9954' AND carried = '11.00/22.00/3.00' AND stated = '12.00/23.00/4.00' AND none_yet = '20000/50000/3000', false),
         format('intake %s, application window %s | carried %s, stated %s, before any %s', v_intake, v_app, carried, stated, none_yet));
+END $$;
+-- V453: every ICT support agent in service holds the support baseline on every student. An invented person holding the ICT
+-- support agent office and never posted reaches any student with exactly the baseline (open the student, course registration,
+-- payment support) and the University as scope; taken off the desk (their posting ended) they reach no one; a person
+-- without the office gains nothing. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); stranger uuid := gen_random_uuid(); st uuid := gen_random_uuid();
+        v_prog text; q text; sees boolean; caps text[]; words text; sees_off boolean; caps_off text[]; sees_stranger boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        PERFORM set_config('moaum.reason', 'check V453', true);
+        v_prog := (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/53/845301', 'MOAUM/CHK/53/045301', 'CHECKBASELINE', 'Student', v_prog, 'UTME', '2082/2083', 100, 100, 'ACTIVE', now());
+        INSERT INTO iam.person (id, surname, given_names) VALUES (agent, 'CHECKBASELINE', 'Agent'), (stranger, 'CHECKBASELINE', 'Stranger');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), agent, 'ictagent', 'platform', NULL, 'check V453', who, current_date);
+        sees := helpdesk.agent_may_see_student(agent, st);
+        caps := helpdesk.agent_capabilities_for(agent, st);
+        SELECT s.words INTO words FROM helpdesk.agent_student_scope(agent) s;
+        sees_stranger := helpdesk.agent_may_see_student(stranger, st) OR cardinality(helpdesk.agent_capabilities(stranger)) > 0;
+        -- taken off the desk: a posting, ended
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities, active, effective_to)
+        VALUES (agent, q, 'OFFICE', 'bursar', ARRAY['VIEW_STUDENT'], false, current_date);
+        sees_off := helpdesk.agent_may_see_student(agent, st);
+        caps_off := helpdesk.agent_capabilities(agent);
+        RAISE EXCEPTION 'the V453 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V453 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V453: every ICT support agent in service opens any student with the support baseline (the student, course registration, payment support) across the University; taken off the desk, or without the office, no one',
+        coalesce(sees AND caps @> helpdesk.agent_baseline() AND helpdesk.agent_baseline() @> caps AND words = 'The University' AND NOT sees_off AND cardinality(caps_off) = 0 AND NOT sees_stranger, false),
+        format('sees %s caps %s scope %s | off the desk: sees %s caps %s | no office: %s', sees, caps, words, sees_off, caps_off, sees_stranger));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -236,7 +236,7 @@ export function Agents({ tab, agents, queues, routing, structure }: { tab: strin
             </div>
             <div>
               <div className="eyebrow">Student records this posting may work on</div>
-              <div className="sub2 mb-1">Nothing by default; each counts only within this posting&rsquo;s scope. Results, grades, refunds, fees, matriculation and admission decisions are never among them.</div>
+              <div className="sub2 mb-1">Every agent in service already opens any student in support mode, manages their course registration and works Payment Support across the University; what is ticked here adds to that, and counts only within this posting&rsquo;s scope. Results, grades, refunds, fees, matriculation and admission decisions are never among them.</div>
               {Object.entries(CAPABILITIES).map(([code, [label, hint]]) => (
                 <label key={code} className="row row--tight" style={{ cursor: "pointer", alignItems: "flex-start", marginBottom: 4 }}>
                   <input type="checkbox" className="chk" checked={post.capabilities.includes(code)} onChange={(e) => setPost({ ...post, capabilities: e.target.checked ? [...post.capabilities, code] : post.capabilities.filter((c) => c !== code) })} />
