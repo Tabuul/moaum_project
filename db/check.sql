@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 296
+\set EXPECTED 297
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13124,6 +13124,68 @@ BEGIN
              AND (p4->>'levelLowered')::int = 1 AND p4->'changes'->0->>'to' = '800' AND pg4 = 800, false),
         format('students file: %s | kept %s/%s new %s | stated: %s -> %s | postgraduate blank: %s -> %s | stated 800: %s -> %s',
                p1 - 'changes', ug1, pg1, new1, p2->'changes', ug2, p3->'changes', pg3, p4->'changes', pg4));
+END $$;
+-- V460: a course's units per programme, and a change is the department's that sees it. An invented 3-unit course is taken by
+-- a programme of its own department, by another department's programme at 2 units of its own, and by a third department's
+-- programme at the course's units. The second programme's change reaches its unscored student at once and no one else; a
+-- student already scored keeps the units examined. A change of the course's own units (3 → 4) reaches only its own
+-- department's programme; the third department's programme keeps 3, pinned on its binding. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; p4 text; v_ses text := '9460/9461'; v_off uuid := gen_random_uuid(); v_sheet uuid := gen_random_uuid();
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
+        r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r3 uuid := gen_random_uuid(); r4 uuid := gen_random_uuid();
+        u_p1 int; u_p2 int; e1_a int; e2_a int; e3_a int; menu_p2 int; e1_b int; e2_b int; e4_b int; pinned int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V460', true);
+        SELECT p.dept_code, p.code INTO v_dept, p1 FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        SELECT p.code INTO p2 FROM ref.programme p WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.dept_code IS NOT NULL AND p.dept_code <> v_dept ORDER BY p.code LIMIT 1;
+        SELECT p.code INTO p4 FROM ref.programme p WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.dept_code IS NOT NULL AND p.dept_code <> v_dept AND p.code <> p2 ORDER BY p.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9460-10-01', date '9461-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZU 101', 'Units per programme', 3, 1, 100, v_dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZU 101', p1, 100, 'Core'), ('ZZU 101', p2, 100, 'Borrowed'), ('ZZU 101', p4, 100, 'Borrowed');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_off, 'ZZU 101', v_ses, 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+          (s1, 'MOAUM/ADM/60/946001', 'CHECKUNITS', 'One', p1, 'UTME', v_ses, 100, 100, 'ADMITTED'),
+          (s2, 'MOAUM/ADM/60/946002', 'CHECKUNITS', 'Two', p2, 'UTME', v_ses, 100, 100, 'ADMITTED'),
+          (s3, 'MOAUM/ADM/60/946003', 'CHECKUNITS', 'Three', p2, 'UTME', v_ses, 100, 100, 'ADMITTED'),
+          (s4, 'MOAUM/ADM/60/946004', 'CHECKUNITS', 'Four', p4, 'UTME', v_ses, 100, 100, 'ADMITTED');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES
+          (r1, s1, v_ses, 1, 100), (r2, s2, v_ses, 1, 100), (r3, s3, v_ses, 1, 100), (r4, s4, v_ses, 1, 100);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
+          (r1, v_off, 3, 'CURRENT'), (r2, v_off, 3, 'CURRENT'), (r3, v_off, 3, 'CURRENT'), (r4, v_off, 3, 'CURRENT');
+        -- the third student is already scored on the class
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (v_sheet, v_off);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (v_sheet, s3, 20, 40);
+        -- the second department's programme takes the course at 2 units
+        UPDATE catalogue.course_offer SET units = 2 WHERE course_code = 'ZZU 101' AND programme_code = p2 AND level = 100;
+        u_p1 := catalogue.units_for('ZZU 101', p1, 100);
+        u_p2 := catalogue.units_for('ZZU 101', p2, 100);
+        SELECT units INTO e1_a FROM registration.entry WHERE registration_id = r1;
+        SELECT units INTO e2_a FROM registration.entry WHERE registration_id = r2;
+        SELECT units INTO e3_a FROM registration.entry WHERE registration_id = r3;
+        menu_p2 := (SELECT m.units FROM registration.student_menu(s2, v_ses, 1) m WHERE m.course_code = 'ZZU 101');
+        -- the course's own units change, on its page: its own department's programme follows; the others keep theirs
+        UPDATE catalogue.course SET units = 4 WHERE code = 'ZZU 101';
+        SELECT units INTO e1_b FROM registration.entry WHERE registration_id = r1;
+        SELECT units INTO e2_b FROM registration.entry WHERE registration_id = r2;
+        SELECT units INTO e4_b FROM registration.entry WHERE registration_id = r4;
+        SELECT units INTO pinned FROM catalogue.course_offer WHERE course_code = 'ZZU 101' AND programme_code = p4 AND level = 100;
+        RAISE EXCEPTION 'the V460 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V460 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V460: a course''s units are per programme and a change is the department''s that sees it — a programme''s own units reach only its unscored students; the course''s own change only its department''s programmes, another department''s kept and pinned; a scored student keeps the units examined',
+        coalesce(u_p1 = 3 AND u_p2 = 2 AND e1_a = 3 AND e2_a = 2 AND e3_a = 3 AND (menu_p2 IS NULL OR menu_p2 = 2)
+                 AND e1_b = 4 AND e2_b = 2 AND e4_b = 3 AND pinned = 3, false),
+        format('units_for %s/%s | programme change: own dept %s, other %s, scored %s, menu %s | course change: own dept %s, own units %s, third dept %s pinned %s',
+               u_p1, u_p2, e1_a, e2_a, e3_a, menu_p2, e1_b, e2_b, e4_b, pinned));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

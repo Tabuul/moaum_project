@@ -99,10 +99,14 @@ class RegistrationRepository {
                 """).param("id", id).param("st", r.studentId()).param("s", r.session()).param("sem", r.semester())
                 .param("l", r.level()).update();
         for (RegistrationService.EntryIn e : r.entries()) {
+            // V460: a programme that takes the course at its own units registers its students at those, whatever the caller sent
             jdbc.sql("""
                     INSERT INTO registration.entry (registration_id, offering_id, units, entry_type)
-                    VALUES (:r, :o, :u, :t)
-                    """).param("r", id).param("o", e.offeringId()).param("u", e.units())
+                    VALUES (:r, :o, coalesce((SELECT co.units FROM catalogue.course_offer co
+                                                JOIN catalogue.offering o ON o.course_code = co.course_code AND o.id = :o
+                                                JOIN people.student s ON s.programme_code = co.programme_code AND s.id = :st
+                                               WHERE co.level = :l), :u), :t)
+                    """).param("r", id).param("o", e.offeringId()).param("u", e.units()).param("st", r.studentId()).param("l", r.level())
                     .param("t", e.entryType() == null ? "CURRENT" : e.entryType()).update();
         }
         return id;

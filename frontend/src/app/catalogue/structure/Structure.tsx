@@ -2,7 +2,8 @@
 /** Programme structure: what a programme offers at each level and semester (catalogue.course_offer), the
  *  units each semester carries against the level's limits, and — for the programme's own department —
  *  the binding of a course into the structure and its removal. Registration reads these rows, so a
- *  course missing here is a course no student of the programme sees. */
+ *  course missing here is a course no student of the programme sees. V460: each binding may carry the programme's own units
+ *  (one programme takes a course at 2, another at 3); registration, course forms and results follow them. */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -16,7 +17,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface ProgrammeOption { code: string; name: string; dept_code: string | null; department_name: string | null; faculty_name: string; archived: boolean }
-export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number }
+export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; own_units?: number | null; course_units?: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number }
 export interface StructureData {
   programme: { code: string; name: string; dept_code: string | null; dept_name: string | null; faculty_code: string };
   rows: StructureRow[];
@@ -39,7 +40,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Found[]>([]);
   const [pick, setPick] = useState<Found | null>(null);
-  const [f, setF] = useState({ level: "100", basis: "Core", track: "" });
+  const [f, setF] = useState({ level: "100", basis: "Core", track: "", units: "" });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rows = data ? data.rows.filter((r) => !track || !r.track || r.track === track) : [];
@@ -79,9 +80,25 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
 
   async function bind() {
     if (!pick || !data) return;
-    const ok = await call("POST", "/structure/bind", { programme: data.programme.code, course: pick.code, level: Number(f.level), basis: f.basis, track: f.track || null },
-      `${pick.code} bound into ${data.programme.code} at ${f.level} level as ${f.basis}${f.track ? ` (${f.track})` : ""}`);
-    if (ok) { setPick(null); setQ(""); setFound([]); }
+    const units = f.units.trim() ? Number(f.units) : null;
+    const ok = await call("POST", "/structure/bind", { programme: data.programme.code, course: pick.code, level: Number(f.level), basis: f.basis, track: f.track || null, units },
+      `${pick.code} bound into ${data.programme.code} at ${f.level} level as ${f.basis}${f.track ? ` (${f.track})` : ""}${units != null ? ` at ${units} units` : ""}`);
+    if (ok) { setPick(null); setQ(""); setFound([]); setF({ ...f, units: "" }); }
+  }
+
+  /** V460: the units this programme takes a bound course at; blank takes the course's own again */
+  function changeUnits(r: StructureRow) {
+    if (!data) return;
+    const own = r.course_units ?? r.units;
+    const said = window.prompt(`Units for ${r.code} in ${data.programme.code} at ${r.level} level (the course carries ${own}; leave blank for the course's own). `
+      + "Students of the programme registered on it and not yet scored follow at once.", r.own_units != null ? String(r.own_units) : "");
+    if (said === null) return;
+    const text = said.trim();
+    if (text !== "" && !/^\d{1,2}$/.test(text)) { notifyProblem({ status: 422, title: "Units are a whole number from 0 to 12" }); return; }
+    const units = text === "" ? own : Number(text);
+    if (units > 12) { notifyProblem({ status: 422, title: "Units are a whole number from 0 to 12" }); return; }
+    void call("POST", "/structure/bind", { programme: data.programme.code, course: r.code, level: r.level, basis: r.basis, track: r.track ?? null, units },
+      `${r.code} in ${data.programme.code} at ${r.level} level set to ${units} unit${units === 1 ? "" : "s"}${units === own ? " (the course's own)" : ""}`);
   }
 
   function unbind(r: StructureRow) {
@@ -143,6 +160,9 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                     <select id="st-level" className="ctl" style={{ width: 110 }} value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
                   <Field id="st-basis" label="Basis">
                     <select id="st-basis" className="ctl" style={{ width: 130 }} value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })}>{BASES.map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
+                  <Field id="st-units" label="Units" hint={pick ? `Blank: the course's ${pick.units}` : "Blank: the course's own"}>
+                    <input id="st-units" className="ctl tnum" style={{ width: 90 }} inputMode="numeric" value={f.units} placeholder={pick ? String(pick.units) : ""}
+                      onChange={(e) => setF({ ...f, units: e.target.value.replace(/[^0-9]/g, "").slice(0, 2) })} /></Field>
                   <Field id="st-btrack" label="Track">
                     <select id="st-btrack" className="ctl" style={{ width: 170 }} value={f.track} onChange={(e) => setF({ ...f, track: e.target.value })}>
                       <option value="">Every track</option>
@@ -150,7 +170,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                     </select></Field>
                   <Btn kind="primary" disabled={busy || !pick} onClick={() => void bind()}>{busy ? "Binding…" : "Bind the course"}</Btn>
                 </div>
-                <div className="sub2 mt-2">Basis: <b>Core</b> the programme requires it; <b>Elective</b> the student chooses it and a failure is not carried; <b>Borrowed</b> another department owns it; <b>GST</b> a University requirement. A binding for a track is seen by that track&rsquo;s students only.</div>
+                <div className="sub2 mt-2">Basis: <b>Core</b> the programme requires it; <b>Elective</b> the student chooses it and a failure is not carried; <b>Borrowed</b> another department owns it; <b>GST</b> a University requirement. <b>Units</b>: what this programme takes the course at, where it differs from the course&rsquo;s own &mdash; another programme keeps its own. A binding for a track is seen by that track&rsquo;s students only.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -178,12 +198,12 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                       <DTable cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Track|mid", "Owner", "State|mid", ...(may ? ["|num"] : [])]} rows={list.map((r) => [
                         <strong className="tnum" key="c">{r.code}</strong>,
                         <span key="t">{r.title}{r.both_semesters ? <span className="sub2"> · both semesters</span> : null}</span>,
-                        <span className="tnum" key="u">{r.units}</span>,
+                        <span key="u"><span className="tnum">{r.units}</span>{r.own_units != null && r.course_units != null && r.own_units !== r.course_units ? <span className="sub2"> · this programme (course {r.course_units})</span> : null}</span>,
                         <Pil key="b" kind={r.basis === "Core" ? "info" : r.basis === "GST" ? "ok" : "grey"}>{r.basis}</Pil>,
                         <span className="sub2 tnum" key="tr">{r.track ?? "every track"}</span>,
                         <span className={`sub2${ownDept && r.dept_code !== ownDept ? " ink-chrome" : ""}`} key="o">{r.dept_name ?? r.dept_code}</span>,
                         <Pil key="s" kind={r.state === "LIVE" ? "ok" : r.state === "ENDED" ? "bad" : "warn"}>{r.state === "LIVE" ? "Live" : r.state === "BOARD" || r.state === "SENATE" ? "Not yet live" : r.state}</Pil>,
-                        ...(may ? [<Btn key="x" kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn>] : []),
+                        ...(may ? [<span key="x" className="row row--tight row--right"><Btn kind="ghost" disabled={busy} onClick={() => changeUnits(r)}>Units</Btn><Btn kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn></span>] : []),
                       ])} texts={list.map((r) => `${r.code} ${r.title} ${r.basis} ${r.track ?? ""} ${r.dept_name ?? ""}`)} />
                     </div>
                   );

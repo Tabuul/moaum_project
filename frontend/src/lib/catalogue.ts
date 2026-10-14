@@ -20,6 +20,8 @@ export interface Offer {
   programme_code: string; programme: string; dept_code: string | null; dept: string | null; faculty_code: string | null; faculty: string | null;
   level: number; basis: string; track: string | null; added_at: string | null; added_by: string | null; source: string | null;
   registered_now: number; registered_ever: number; may_remove: boolean;
+  /** V460: the units this programme takes the course at, and its own where it set one */
+  units?: number; own_units?: number | null;
 }
 
 export interface Proposal {

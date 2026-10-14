@@ -16,7 +16,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
   const prog = typeof p.prog === "string" && p.prog ? p.prog : options[0]?.code ?? "";
   const data = prog ? await api<StructureData>(`/api/v1/catalogue/structure?prog=${encodeURIComponent(prog)}`) : null;
   const office = me.ok ? me.data.activeOffice : null;
-  const may = office === "hod" || office === "dean" || office === "academic" || office === "dregistrar" || office === "registrar" || office === "admin" || office === "super";
+  const may = office === "hod" || office === "dean" || office === "academic" || office === "dregistrar" || office === "registrar" || office === "admin" || office === "super" || office === "ict";
   return (
     <Shell route="t/structure" me={me.ok ? me.data : null}>
       {!programmes.ok ? <ProblemNotice problem={programmes.problem} /> : (

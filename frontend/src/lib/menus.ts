@@ -1329,6 +1329,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
         ]
       },
       {

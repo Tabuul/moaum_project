@@ -266,6 +266,7 @@ class CourseOfferingController {
         List<Map<String, Object>> offers = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
                 SELECT co.programme_code, p.name AS programme, p.dept_code, d.name AS dept, p.faculty_code, f.name AS faculty, co.level, co.basis, co.track,
+                       coalesce(co.units, c.units) AS units, co.units AS own_units,   -- V460: the units this programme takes the course at
                        co.added_at, helpdesk.person_name(co.added_by) AS added_by, co.source,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN people.student st ON st.id = r.student_id
@@ -275,6 +276,7 @@ class CourseOfferingController {
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN people.student st ON st.id = r.student_id
                          WHERE o.course_code = co.course_code AND st.programme_code = co.programme_code AND r.level = co.level) AS registered_ever
                   FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code
                   JOIN ref.programme p ON p.code = co.programme_code
                   LEFT JOIN ref.department d ON d.code = p.dept_code
                   LEFT JOIN ref.faculty f ON f.code = p.faculty_code

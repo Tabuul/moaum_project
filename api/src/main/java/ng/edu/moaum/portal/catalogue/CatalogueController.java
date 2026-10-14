@@ -30,6 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
 class CatalogueController {
 
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    /** a programme's structure is kept by the owners and, on the user's word (V460), the Director of ICT */
+    private static final String STRUCTURE = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_ict')";
     private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict')";
 
     /** the Director of ICT alone creates, uploads, archives or removes faculties, departments, programmes and course structures */
@@ -347,7 +349,8 @@ class CatalogueController {
         String p = prog.trim().toUpperCase();
         scope.bound(null, null, p);                        // a department office reads its own programmes only
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT co.level, c.semester, c.both_semesters, c.code, c.title, c.units, c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
+                SELECT co.level, c.semester, c.both_semesters, c.code, c.title, coalesce(co.units, c.units) AS units, co.units AS own_units, c.units AS course_units,
+                       c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code
@@ -362,13 +365,16 @@ class CatalogueController {
         return Map.of("programme", programme, "rows", rows, "limits", limits, "tracks", tracks);
     }
 
+    /** units (V460): the units this programme takes the course at; the course's own number takes the course's units, and none
+     *  given keeps what the binding has — so a change of basis or track never drops a programme's own units */
     public record BindIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,
-                         @NotNull @Min(100) @Max(600) Integer level, @Size(max = 12) String basis, @Size(max = 12) String track) {
+                         @NotNull @Min(100) @Max(600) Integer level, @Size(max = 12) String basis, @Size(max = 12) String track,
+                         @Min(0) @Max(12) Integer units) {
     }
 
-    /** bind a course into a programme's structure at a level, on a basis, for a track (or every track) */
+    /** bind a course into a programme's structure at a level, on a basis, for a track (or every track), at the programme's units */
     @PostMapping("/structure/bind")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(STRUCTURE)
     @Transactional
     Map<String, Object> bind(@Valid @RequestBody BindIn body) {
         String p = body.programme().trim().toUpperCase();
@@ -387,15 +393,19 @@ class CatalogueController {
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Restore the course on its department's desk first, or bind another.", "Head of Department"));
         }
         jdbc.sql("""
-                INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis, track) VALUES (:c, :p, :l, :b, :t)
-                ON CONFLICT (course_code, programme_code, level) DO UPDATE SET basis = EXCLUDED.basis, track = EXCLUDED.track
-                """).param("c", c).param("p", p).param("l", body.level()).param("b", basis).param("t", track, java.sql.Types.VARCHAR).update();
-        return Map.of("programme", p, "course", c, "level", body.level(), "basis", basis, "track", track == null ? "" : track);
+                INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis, track, units)
+                VALUES (:c, :p, :l, :b, :t, CASE WHEN CAST(:u AS int) IS DISTINCT FROM (SELECT x.units FROM catalogue.course x WHERE x.code = :c) THEN CAST(:u AS int) END)
+                ON CONFLICT (course_code, programme_code, level) DO UPDATE SET basis = EXCLUDED.basis, track = EXCLUDED.track,
+                       units = CASE WHEN :given THEN EXCLUDED.units ELSE catalogue.course_offer.units END
+                """).param("c", c).param("p", p).param("l", body.level()).param("b", basis).param("t", track, java.sql.Types.VARCHAR)
+                .param("u", body.units(), java.sql.Types.INTEGER).param("given", body.units() != null).update();
+        int units = jdbc.sql("SELECT catalogue.units_for(:c, :p, :l)").param("c", c).param("p", p).param("l", body.level()).query(Integer.class).single();
+        return Map.of("programme", p, "course", c, "level", body.level(), "basis", basis, "track", track == null ? "" : track, "units", units);
     }
 
     /** unbind a course from a programme at a level — refused while a student of that programme and level is registered on it this session */
     @DeleteMapping("/structure/bind")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(STRUCTURE)
     @Transactional
     Map<String, Object> unbind(@RequestParam String programme, @RequestParam String course, @RequestParam int level) {
         String p = programme.trim().toUpperCase();

@@ -127,12 +127,13 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
         {data.may.offer && c.state !== "ENDED" ? <Btn kind="primary" size="sm" onClick={() => { setAdding(true); setDept(ownDept); setFac(""); setPicked([]); setLevel(String(c.level)); setBasis(""); setTrack(""); }}>+ Add Department / Programme</Btn> : null}
       </span>}>
         {data.offers.length ? (
-          <DTable pageSize={0} cols={["S/N|num", "Programme", "Department", "Level|mid", "Basis|mid", "Track|mid", "Registered now|mid", "Ever|mid", "Bound", "|num"]} rows={data.offers.map((o, i) => [
+          <DTable pageSize={0} cols={["S/N|num", "Programme", "Department", "Level|mid", "Basis|mid", "Units|mid", "Track|mid", "Registered now|mid", "Ever|mid", "Bound", "|num"]} rows={data.offers.map((o, i) => [
             <span key="n" className="tnum sub2">{i + 1}</span>,
             <span key="p"><b>{o.programme}</b><div className="sub2 tnum"><Link href={`/catalogue/structure?prog=${encodeURIComponent(o.programme_code)}`} className="lnk">{o.programme_code}</Link></div></span>,
             <span key="d">{o.dept ?? o.dept_code}{o.dept_code === ownDept ? <Pil kind="info" className="ml-1">Owner</Pil> : null}<div className="sub2">{o.faculty ?? ""}</div></span>,
             <span key="l" className="tnum">{o.level}</span>,
             <Pil key="b" kind={o.basis === "Core" ? "info" : o.basis === "GST" ? "ok" : "grey"}>{o.basis}</Pil>,
+            <span key="u" className="tnum">{o.units ?? c.units}{o.own_units != null && o.own_units !== c.units ? <div className="sub2">its own</div> : null}</span>,
             <span key="t" className="sub2 tnum">{o.track ?? "every"}</span>,
             <span key="rn" className="tnum">{o.registered_now}</span>, <span key="re" className="tnum sub2">{o.registered_ever}</span>,
             <span key="w" className="sub2">{when(o.added_at)}{o.added_by ? ` · ${o.added_by}` : ""}{o.source ? ` · ${SOURCE[o.source] ?? o.source.toLowerCase()}` : ""}</span>,
@@ -215,7 +216,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           <div className="stack">
             <Field id="ed-title" label="Title" required><input id="ed-title" className="ctl" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} maxLength={120} /></Field>
             <div className="grid grid--4">
-              <Field id="ed-units" label="Units"><input id="ed-units" className="ctl tnum" inputMode="numeric" value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })} /></Field>
+              <Field id="ed-units" label="Units" hint="Reaches this department's programmes; another department's keep their own, changed on its Programme Structure"><input id="ed-units" className="ctl tnum" inputMode="numeric" value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })} /></Field>
               <Field id="ed-level" label="Level"><select id="ed-level" className="ctl" value={edit.level} onChange={(e) => setEdit({ ...edit, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
               <Field id="ed-sem" label="Semester"><select id="ed-sem" className="ctl" value={edit.semester} onChange={(e) => setEdit({ ...edit, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option><option value="both">First and second</option></select></Field>
               <Field id="ed-kind" label="Kind"><select id="ed-kind" className="ctl" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
