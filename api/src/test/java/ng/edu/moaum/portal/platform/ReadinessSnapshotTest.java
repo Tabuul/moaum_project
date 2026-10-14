@@ -64,16 +64,20 @@ class ReadinessSnapshotTest {
         assertThat(pg.get()).isEqualTo(1);
     }
 
+    /** repeated: a probe that read the stale reading just before the new one was kept must not start a second reading */
     @Test
     void aStaleReadingIsGivenAtOnceWhileOneNewReadingIsTakenBehindIt() throws Exception {
-        AtomicInteger pg = new AtomicInteger(), cce = new AtomicInteger();
-        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-14T09:00:00Z"));
-        ReadinessSnapshot snap = new ReadinessSnapshot(counting(pg), counting(cce), Duration.ofMinutes(5), now::get);
-        assertThat(snap.get().postgraduate()).containsEntry("n", 1);
-        now.set(now.get().plus(Duration.ofMinutes(6)));
-        for (int i = 0; i < 20; i++) assertThat(snap.get()).isNotNull();   // the kept one, never a wait
-        settle(pg, 2);
-        assertThat(snap.get().postgraduate()).containsEntry("n", 2);
+        for (int round = 0; round < 25; round++) {
+            AtomicInteger pg = new AtomicInteger(), cce = new AtomicInteger();
+            AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-14T09:00:00Z"));
+            ReadinessSnapshot snap = new ReadinessSnapshot(counting(pg), counting(cce), Duration.ofMinutes(5), now::get);
+            assertThat(snap.get().postgraduate()).containsEntry("n", 1);
+            now.set(now.get().plus(Duration.ofMinutes(6)));
+            for (int i = 0; i < 200; i++) assertThat(snap.get()).isNotNull();   // the kept one, never a wait
+            settle(pg, 2);
+            assertThat(snap.get().postgraduate()).containsEntry("n", 2);
+            snap.stop();
+        }
     }
 
     @Test

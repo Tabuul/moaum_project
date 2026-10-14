@@ -75,8 +75,8 @@ class ReadinessSnapshot {
     Reading get() {
         Reading r = kept;
         if (r != null) {
-            if (Duration.between(r.at(), clock.get()).compareTo(fresh) >= 0) {
-                refresh();
+            if (stale(r)) {
+                refreshIfStale();
             }
             return r;
         }
@@ -103,6 +103,18 @@ class ReadinessSnapshot {
     @EventListener(ApplicationReadyEvent.class)
     void warm() {
         refresh();
+    }
+
+    private boolean stale(Reading r) {
+        return Duration.between(r.at(), clock.get()).compareTo(fresh) >= 0;
+    }
+
+    /** a new reading behind a stale one — unless one is being taken, or one has just been kept since the caller looked */
+    private synchronized void refreshIfStale() {
+        Reading now = kept;
+        if (now == null || stale(now)) {
+            refresh();
+        }
     }
 
     /** the reading being taken, or a new one */
