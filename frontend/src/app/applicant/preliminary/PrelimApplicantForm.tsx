@@ -18,6 +18,8 @@ import { confirmedReference, openReference } from "@/lib/applicant";
 import { ACTION, BODIES, ELIGIBILITY, EXAM_TYPES, GRADES, REMEDIATION, STATE, SUBJECTS, TARGET_NOTE, fileBase64, labelOf, naira, pcall, remediationWords, when,
          type PrelimOlevel, type PrelimView } from "@/lib/preliminary";
 import { PayByCard } from "../common";
+import { ReceiptCheck } from "@/components/ReceiptCheck";
+import { applicantReceiptTitle } from "@/lib/applicant-receipt";
 
 /** the PDF papers are route handlers, not pages: plain links, opened in a new tab */
 const FORM_PDF = "/applicant/preliminary/pdf/form";
@@ -142,8 +144,12 @@ export function PrelimApplicantForm() {
     <>
       {head}
       {section(1, "Application fee", "PAYMENT", paid ? (
-        <div>Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span> · receipt {paid.receiptNo ?? "—"} · verified {when(paid.confirmedAt)}
-          {" "}<a className="lnk" href={`/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`} target="_blank" rel="noopener">View receipt</a></div>
+        <>
+          <div className="b700 mb-1">{applicantReceiptTitle("APPLICATION", "PRELIMINARY")}</div>
+          <div className="mb-2">Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span> · receipt {paid.receiptNo ?? "—"} · verified {when(paid.confirmedAt)}</div>
+          <ReceiptCheck reference={paid.reference} source={`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`}
+            pdf={`/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`} />
+        </>
       ) : !v.fees.stated || fee == null ? (
         <div className="sub2">The Bursary has not yet stated the Preliminary Science application fee for {v.session}.</div>
       ) : fee === 0 ? <div className="sub2">No application fee is charged.</div> : (
