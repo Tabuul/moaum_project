@@ -90,6 +90,10 @@ export function Student360({
   const [problem, setProblem] = useState<Problem | null>(null);
   const [levelling, setLevelling] = useState(false);
   const [newLevel, setNewLevel] = useState(String(s.currentLevel ?? 100));
+  // V455: a postgraduate student is at 700, 800 or 900 (never offered 100–600); the current level is always among the choices,
+  // so the list never shows a level the student is not at
+  const levelChoices = Array.from(new Set([...(s.entryMode === "POSTGRADUATE" || (s.currentLevel ?? 0) >= 700 ? [700, 800, 900] : [100, 200, 300, 400, 500, 600]),
+    ...(s.currentLevel ? [s.currentLevel] : [])])).sort((x, y) => x - y);
   const [levelReason, setLevelReason] = useState("");
 
   const cleared = record.convocationClearance.filter((c) => c.state === "CLEARED").length;
@@ -328,7 +332,7 @@ export function Student360({
           </Note>
           <Field id="lvl" label="Current level" full>
             <select id="lvl" className="ctl" value={newLevel} onChange={(e) => setNewLevel(e.target.value)}>
-              {[100, 200, 300, 400, 500, 600].map((x) => (
+              {levelChoices.map((x) => (
                 <option key={x} value={x}>{x} Level{x === (s.currentLevel ?? 0) ? " (current)" : ""}</option>
               ))}
             </select>

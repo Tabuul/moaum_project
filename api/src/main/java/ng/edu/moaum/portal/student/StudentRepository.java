@@ -209,6 +209,14 @@ class StudentRepository {
                 .query().singleRow();
     }
 
+    /** V455: a postgraduate student — the POSTGRADUATE entry mode, or a programme of category POST GRADUATE */
+    boolean postgraduate(UUID student) {
+        return Boolean.TRUE.equals(jdbc.sql("""
+                SELECT people.is_postgraduate(s.entry_mode, p.category)
+                  FROM people.student s JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :id
+                """).param("id", student).query(Boolean.class).optional().orElse(false));
+    }
+
     /** correct a student's current level (the reason travels on the audit spine via the request's X-Reason) */
     void correctLevel(UUID student, int level) {
         jdbc.sql("UPDATE people.student SET current_level = :lvl WHERE id = :id")

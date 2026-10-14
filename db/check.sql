@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 292
+\set EXPECTED 293
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12954,6 +12954,56 @@ BEGIN
         format('kobo: full=%s bal=%s inst=%s cleared=%s report=%s list=%s arrears=%s | naira: full=%s bal=%s cleared=%s arrears=%s | half: inst=%s full=%s | quickteller=%s/%s | new=%s | owed=%s',
                p1.paid_in_full, p1.balance, p1.instalments_paid, c1, rep, sfp, arr1, p2.paid_in_full, p2.balance, c2, arr2,
                p3.instalments_paid, p3.paid_in_full, cust.valid, cust.why, left(r_new, 60), owed));
+END $$;
+
+-- ── V455. A postgraduate student keeps a postgraduate level: either old-portal upload files a postgraduate programme's row
+--          POSTGRADUATE at 700/800/900, never lowers a postgraduate student below 700, and re-files one wrongly filed as
+--          undergraduate; an undergraduate row keeps the 100–600 rule; the repair restores a postgraduate programme's student
+--          left at 100; their level in any session is their own ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_prog text; v_rule int; v_ug text; st uuid; st2 uuid := gen_random_uuid(); v_ses text;
+        a_mode text; a_el int; a_cl int; b_cl int; c_cl int; d_mode text; d_cl int; ug_mode text; ug_cl int;
+        r_n int; r_mode int; r_lvl int; e_mode text; e_cl int; lvl_in int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V455', true);
+        v_prog := (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_rule := people.pg_level_of(v_prog);
+        v_ug := (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_ses := policy.university_current_session();
+        -- a new row of a postgraduate programme with no level: POSTGRADUATE at the programme's level
+        PERFORM people.import_students_rows(jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/PHD/55/0455', 'name', 'CHECKV455, Ada', 'programme', v_prog)));
+        SELECT id, entry_mode, entry_level, current_level INTO st, a_mode, a_el, a_cl FROM people.student WHERE matric_no = 'CHK/PG/PHD/55/0455';
+        -- at 900, as the postgraduate register would set it; the register again with the old 100, then the biodata upload blank: kept
+        UPDATE people.student SET entry_level = 900, current_level = 900 WHERE id = st;
+        PERFORM people.import_students_rows(jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/PHD/55/0455', 'name', 'CHECKV455, Ada', 'programme', v_prog, 'level', '100')));
+        b_cl := (SELECT current_level FROM people.student WHERE id = st);
+        PERFORM people.import_biography_rows(jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/PHD/55/0455', 'name', 'CHECKV455, Ada', 'programme', v_prog)));
+        c_cl := (SELECT current_level FROM people.student WHERE id = st);
+        -- a student of the postgraduate programme left as UTME at 100 is re-filed POSTGRADUATE at its level by the next upload
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st2, 'CHK/PG/MSC/55/0456', 'CHECKV455', 'Bola', v_prog, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ACTIVE', now());
+        PERFORM people.import_biography_rows(jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/MSC/55/0456', 'name', 'CHECKV455, Bola', 'programme', v_prog, 'level', '100')));
+        SELECT entry_mode, current_level INTO d_mode, d_cl FROM people.student WHERE id = st2;
+        -- an undergraduate row keeps the undergraduate rule: a level outside 100–600 is the entry level
+        PERFORM people.import_students_rows(jsonb_build_array(jsonb_build_object('matric', 'CHK/UG/ABC/55/0457', 'name', 'CHECKV455, Chi', 'programme', v_ug, 'level', '900')));
+        SELECT entry_mode, current_level INTO ug_mode, ug_cl FROM people.student WHERE matric_no = 'CHK/UG/ABC/55/0457';
+        -- the repair: the postgraduate student left as UTME at 100 is restored to the programme's level
+        UPDATE people.student SET entry_mode = 'UTME', entry_level = 100, current_level = 100 WHERE id = st;
+        SELECT * INTO r_n, r_mode, r_lvl FROM people.repair_postgraduate_levels();
+        SELECT entry_mode, current_level INTO e_mode, e_cl FROM people.student WHERE id = st;
+        lvl_in := people.level_in(st, v_ses);
+        RAISE EXCEPTION 'the V455 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V455: an old-portal upload files a postgraduate programme''s row POSTGRADUATE at 700/800/900 and never lowers one below 700; the undergraduate rule unchanged; the repair restores one left at 100; a postgraduate''s level in a session is their own',
+        coalesce(v_prog IS NOT NULL AND v_rule IN (700, 800, 900)
+             AND a_mode = 'POSTGRADUATE' AND a_el = v_rule AND a_cl = v_rule AND b_cl = 900 AND c_cl = 900
+             AND d_mode = 'POSTGRADUATE' AND d_cl = v_rule AND ug_mode = 'UTME' AND ug_cl = 100
+             AND r_n >= 1 AND r_mode >= 1 AND r_lvl >= 1 AND e_mode = 'POSTGRADUATE' AND e_cl = v_rule AND lvl_in = v_rule, false),
+        format('programme %s rule %s | new %s/%s/%s | kept %s, %s | re-filed %s %s | undergraduate %s %s | repair %s/%s/%s -> %s %s | level_in %s',
+               v_prog, v_rule, a_mode, a_el, a_cl, b_cl, c_cl, d_mode, d_cl, ug_mode, ug_cl, r_n, r_mode, r_lvl, e_mode, e_cl, lvl_in));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

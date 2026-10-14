@@ -86,7 +86,7 @@ class VerifyController {
                        trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
                        coalesce(
                          (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
-                         CASE WHEN pr.session ~ '^[0-9]{4}/[0-9]{4}$'
+                         CASE WHEN pr.session ~ '^[0-9]{4}/[0-9]{4}$' AND NOT people.is_postgraduate(s.entry_mode, pg.category)   -- V455: a postgraduate's level is their own
                               THEN least(600, greatest(100, s.entry_level + (left(pr.session, 4)::int - left(s.entry_session, 4)::int) * 100))
                               ELSE s.current_level END) AS level,
                        coalesce(

@@ -110,7 +110,14 @@ public class StudentService {
     StudentRecord correctLevel(UUID id, LevelIn in, String session) {
         students.student(id).orElseThrow(() -> new NotFound("student", id));
         int level = in.level() == null ? 0 : in.level();
-        if (level < 100 || level > 800 || level % 100 != 0) {
+        // V455: a postgraduate student is at 700, 800 or 900; an undergraduate in hundreds up to the final year (and spillover)
+        if (students.postgraduate(id)) {
+            if (level != 700 && level != 800 && level != 900) {
+                throw new DomainRuleViolation("STU_LEVEL",
+                        "A postgraduate student's level is 700 (a postgraduate diploma), 800 (a Master's) or 900 (a doctorate).",
+                        new DomainRuleViolation.Remedy("Choose 700, 800 or 900.", "Registry"));
+            }
+        } else if (level < 100 || level > 800 || level % 100 != 0) {
             throw new DomainRuleViolation("STU_LEVEL",
                     "A level is 100, 200, 300 … in hundreds, up to the programme's final year.",
                     new DomainRuleViolation.Remedy("Choose a level in hundreds.", "Registry"));
