@@ -11,13 +11,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
 
 export interface MigratedSummary { migrated: number; cleared: number; uncleared: number }
 
-export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; reload?: () => void }) {
+/** mayClear: the office may clear them (the Academic Office, the Registry, ICT); another office reads the counts and who does it */
+export function MigratedPanel({ summary, reload, mayClear = true }: { summary: MigratedSummary; reload?: () => void; mayClear?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -52,9 +53,11 @@ export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; r
           ["Not yet cleared", n(summary.uncleared).toLocaleString(), n(summary.uncleared) ? "var(--red-ink)" : "var(--green-ink)", n(summary.uncleared) ? "a unit's word is missing or held" : "nothing to clear"],
         ]} />
         <div className="row mt-1">
-          <Btn kind={n(summary.uncleared) ? "primary" : "ghost"} disabled={busy || !n(summary.uncleared)} onClick={() => void clearNow()}>
-            {busy ? "Clearing…" : n(summary.uncleared) ? `Clear the ${n(summary.uncleared).toLocaleString()} not yet cleared` : "Nothing to clear"}
-          </Btn>
+          {mayClear ? (
+            <Btn kind={n(summary.uncleared) ? "primary" : "ghost"} disabled={busy || !n(summary.uncleared)} onClick={() => void clearNow()}>
+              {busy ? "Clearing…" : n(summary.uncleared) ? `Clear the ${n(summary.uncleared).toLocaleString()} not yet cleared` : "Nothing to clear"}
+            </Btn>
+          ) : n(summary.uncleared) ? <Pil kind="warn">The Academic Office, the Registry or ICT clears them</Pil> : null}
           <span className="sub2">
             {n(summary.migrated) === 0
               ? "No student on the register came from the old portal at these levels — or every one has since been matriculated here."
@@ -69,7 +72,7 @@ export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; r
 }
 
 /** the same panel where the page cannot read the summary on the server (the migration desk): it reads it itself */
-export function MigratedPanelLive() {
+export function MigratedPanelLive({ mayClear = true }: { mayClear?: boolean }) {
   const [summary, setSummary] = useState<MigratedSummary | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -81,5 +84,5 @@ export function MigratedPanelLive() {
     return () => { live = false; };
   }, [tick]);
   if (!summary) return <Note kind="info" title="Counting the migrated students…">One moment.</Note>;
-  return <MigratedPanel summary={summary} reload={() => setTick((t) => t + 1)} />;
+  return <MigratedPanel summary={summary} reload={() => setTick((t) => t + 1)} mayClear={mayClear} />;
 }

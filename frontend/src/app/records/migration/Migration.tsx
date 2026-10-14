@@ -581,7 +581,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <Note kind="info" title="The last step: the students you brought over arrive cleared">
             Students migrated at 100 to 400 level arrive cleared at every unit; this clears any the upload missed. A unit may still hold them.
           </Note>
-          <MigratedPanelLive />
+          <MigratedPanelLive mayClear={["academic", "registrar", "dregistrar", "ict", "super"].includes(actingOffice ?? "")} />
         </>
       ) : null}
 
