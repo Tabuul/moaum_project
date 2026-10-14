@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 294
+\set EXPECTED 296
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13035,6 +13035,95 @@ BEGIN
     PERFORM pg_temp.assert('V456: every ICT support agent in service reaches JUPEB records with the support baseline (the record and its payments); taken off the desk, or without the office, none',
         coalesce(reach AND caps @> helpdesk.agent_baseline() AND helpdesk.agent_baseline() @> caps AND NOT reach_off AND cardinality(caps_off) = 0 AND NOT reach_stranger, false),
         format('reach %s caps %s | off the desk: reach %s caps %s | no office: %s', reach, caps, reach_off, caps_off, reach_stranger));
+END $$;
+
+-- ── V458. A postgraduate student's registrations and enrolments at their own level: one written at 100 (as a registration
+--          made while V455's fault held) is set to the student's level, an undergraduate's is left as it is, and the
+--          postgraduate's level in that session reads their own ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); ug uuid := gen_random_uuid();
+        v_prog text; v_ug_prog text; v_ses text; r_reg int; r_enr int; pg_reg int; pg_enr int; ug_reg int; lvl int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V458', true);
+        v_prog := (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_ug_prog := (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_ses := policy.university_current_session();
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'CHK/PG/PHD/58/0458', 'CHECKV458', 'Ada', v_prog, 'POSTGRADUATE', 'FULL_TIME', v_ses, 900, 900, 'ACTIVE', now()),
+               (ug, 'CHK/UG/ABC/58/0459', 'CHECKV458', 'Bola', v_ug_prog, 'UTME', 'FULL_TIME', v_ses, 100, 200, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status)
+        VALUES (gen_random_uuid(), st, v_ses, 1, 100, 'DRAFT'), (gen_random_uuid(), ug, v_ses, 1, 200, 'DRAFT');
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, v_ses, 100), (gen_random_uuid(), ug, v_ses, 200);
+        SELECT * INTO r_reg, r_enr FROM people.repair_postgraduate_session_levels();
+        pg_reg := (SELECT level FROM registration.course_registration WHERE student_id = st AND session = v_ses AND semester = 1);
+        pg_enr := (SELECT level FROM people.enrolment WHERE student_id = st AND session = v_ses);
+        ug_reg := (SELECT level FROM registration.course_registration WHERE student_id = ug AND session = v_ses AND semester = 1);
+        lvl := people.level_in(st, v_ses, 1);
+        RAISE EXCEPTION 'the V458 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V458: a postgraduate student''s registration and enrolment written at 100 are set to their own level, an undergraduate''s left, and their level in the session reads their own',
+        coalesce(r_reg >= 1 AND r_enr >= 1 AND pg_reg = 900 AND pg_enr = 900 AND ug_reg = 200 AND lvl = 900, false),
+        format('repaired %s/%s | postgraduate registration %s enrolment %s | undergraduate %s | level_in %s', r_reg, r_enr, pg_reg, pg_enr, ug_reg, lvl));
+END $$;
+
+-- ── V459. A register upload changes a level only when the file states one, and its preview says what it would do: a blank
+--          level (or the old 100 for a doctorate) leaves an undergraduate's level and a PhD's 900 as they stand — the
+--          postgraduate upload no longer sets a flat 800 — a stated level changes it; refused rows and new students counted ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ug uuid := gen_random_uuid(); pg uuid := gen_random_uuid();
+        v_ug_prog text; v_pg_prog text; v_ses text; f1 jsonb; f2 jsonb; f3 jsonb; f4 jsonb;
+        p1 jsonb; p2 jsonb; p3 jsonb; p4 jsonb; ug1 int; pg1 int; new1 boolean; ug2 int; pg3 int; pg4 int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.reason', 'CHECK V459', true);
+        v_ug_prog := (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_pg_prog := (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1);
+        v_ses := policy.university_current_session();
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (ug, 'CHK/UG/ABC/59/0460', 'CHECKV459', 'Ada', v_ug_prog, 'UTME', 'FULL_TIME', v_ses, 100, 300, 'ACTIVE', now()),
+               (pg, 'CHK/PG/PHD/59/0461', 'CHECKV459', 'Bola', v_pg_prog, 'POSTGRADUATE', 'FULL_TIME', v_ses, 900, 900, 'ACTIVE', now());
+        -- the Students register: the undergraduate with no level, the PhD with the old 100, a bad number, an unknown programme, a new student
+        f1 := jsonb_build_array(
+            jsonb_build_object('matric', 'CHK/UG/ABC/59/0460', 'surname', 'CHECKV459', 'otherNames', 'Ada', 'programme', v_ug_prog, 'level', ''),
+            jsonb_build_object('matric', 'CHK/PG/PHD/59/0461', 'surname', 'CHECKV459', 'otherNames', 'Bola', 'programme', v_pg_prog, 'level', '100'),
+            jsonb_build_object('matric', 'NOT A NUMBER', 'surname', 'X'),
+            jsonb_build_object('matric', 'CHK/UG/ABC/59/0462', 'surname', 'CHECKV459', 'programme', 'NO SUCH PROGRAMME'),
+            jsonb_build_object('matric', 'CHK/UG/ABC/59/0463', 'surname', 'CHECKV459', 'otherNames', 'Chi', 'programme', v_ug_prog, 'level', '100'));
+        p1 := people.preview_register_upload('students', f1);
+        PERFORM people.import_students_rows(f1);
+        ug1 := (SELECT current_level FROM people.student WHERE id = ug);
+        pg1 := (SELECT current_level FROM people.student WHERE id = pg);
+        new1 := EXISTS (SELECT 1 FROM people.student WHERE matric_no = 'CHK/UG/ABC/59/0463');
+        -- a stated level changes the undergraduate's: previewed as raised, then made
+        f2 := jsonb_build_array(jsonb_build_object('matric', 'CHK/UG/ABC/59/0460', 'surname', 'CHECKV459', 'otherNames', 'Ada', 'programme', v_ug_prog, 'level', '400'));
+        p2 := people.preview_register_upload('students', f2);
+        PERFORM people.import_students_rows(f2);
+        ug2 := (SELECT current_level FROM people.student WHERE id = ug);
+        -- the postgraduate upload with no level leaves the PhD at 900; one stating 800 lowers them, previewed as lowered
+        f3 := jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/PHD/59/0461', 'surname', 'CHECKV459', 'otherNames', 'Bola', 'programme', v_pg_prog));
+        p3 := people.preview_register_upload('postgraduate', f3);
+        PERFORM people.import_postgraduate(f3);
+        pg3 := (SELECT current_level FROM people.student WHERE id = pg);
+        f4 := jsonb_build_array(jsonb_build_object('matric', 'CHK/PG/PHD/59/0461', 'surname', 'CHECKV459', 'otherNames', 'Bola', 'programme', v_pg_prog, 'level', '800'));
+        p4 := people.preview_register_upload('postgraduate', f4);
+        PERFORM people.import_postgraduate(f4);
+        pg4 := (SELECT current_level FROM people.student WHERE id = pg);
+        RAISE EXCEPTION 'the V459 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V459: a register upload changes a level only when the file states one (never a PhD to 800 or 100), and its preview counts the rows, refusals, new students and each change it then makes',
+        coalesce((p1->>'rows')::int = 5 AND (p1->>'badNumber')::int = 1 AND (p1->>'noProgramme')::int = 1 AND (p1->>'newStudents')::int = 1
+             AND (p1->>'existing')::int = 2 AND (p1->>'unchanged')::int = 2 AND jsonb_array_length(p1->'changes') = 0
+             AND ug1 = 300 AND pg1 = 900 AND new1
+             AND (p2->>'levelRaised')::int = 1 AND p2->'changes'->0->>'from' = '300' AND p2->'changes'->0->>'to' = '400' AND ug2 = 400
+             AND jsonb_array_length(p3->'changes') = 0 AND pg3 = 900
+             AND (p4->>'levelLowered')::int = 1 AND p4->'changes'->0->>'to' = '800' AND pg4 = 800, false),
+        format('students file: %s | kept %s/%s new %s | stated: %s -> %s | postgraduate blank: %s -> %s | stated 800: %s -> %s',
+               p1 - 'changes', ug1, pg1, new1, p2->'changes', ug2, p3->'changes', pg3, p4->'changes', pg4));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

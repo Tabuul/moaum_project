@@ -9,6 +9,7 @@ import type { Problem } from "@/lib/api";
 import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
+import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { MigratedPanelLive } from "@/app/students/MigratedPanel";
 import { semesterText } from "@/lib/student-portal";
@@ -39,6 +40,9 @@ function pacer(total: number): (done: number) => string | undefined {
 
 type JobGroup = { session: string; semester: number; rows: Record<string, string>[] };
 type Job = { kind: Tab; path: string; scoped: boolean; groups: JobGroup[]; chunk: number; totalRows: number; gi: number; ci: number; sent: number; totals: Record<string, number>; firstErr: string | null };
+/** V459: a change a register upload would make to a student already on the portal */
+type RegisterChange = { matric: string; name: string; field: string; from: string | null; to: string | null };
+type Preview = { job: Job; totals: Record<string, number>; changes: RegisterChange[]; failed: Problem | null };
 
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
@@ -51,6 +55,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number; note?: string } | null>(null);
   const [resumable, setResumable] = useState<{ sent: number; of: number; where: string } | null>(null);
   const jobRef = useRef<Job | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
   const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[]; failures: string[] } | null>(null);
 
@@ -171,6 +176,38 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     return { ok: false as const, failure: last };
   }
 
+  /** V459: what a register upload (students, biodata, postgraduate) would change before it changes anyone — read 2,000
+   *  rows at a time from the rules the upload itself reads; nothing is written */
+  async function previewJob(job: Job): Promise<Preview> {
+    const rows = job.groups.flatMap((g) => g.rows);
+    const totals: Record<string, number> = {};
+    const changes: RegisterChange[] = [];
+    for (let i = 0; i < rows.length; i += 2000) {
+      setProgress({ label: "Checking what the file would change", sent: i, of: rows.length });
+      try {
+        const r = await fetch(`${job.path}/preview`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Preview of a legacy ${job.kind} upload`) }, body: JSON.stringify({ rows: rows.slice(i, i + 2000) }) });
+        const j = (await r.json().catch(() => null)) as (Record<string, unknown> & { changes?: RegisterChange[] }) | null;
+        if (!r.ok) return { job, totals, changes, failed: (j ?? { status: r.status, title: r.statusText || "The check was refused" }) as unknown as Problem };
+        for (const [k, v] of Object.entries(j ?? {})) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
+        changes.push(...(j?.changes ?? []));
+      } catch {
+        return { job, totals, changes, failed: { status: 0, title: "The connection to the portal dropped", detail: "The file could not be checked." } };
+      }
+    }
+    return { job, totals, changes, failed: null };
+  }
+
+  /** the changes the preview listed, as a spreadsheet the office can check line by line */
+  function downloadChanges() {
+    if (!preview?.changes.length) return;
+    const blob = buildXlsx(["Matriculation number", "Name", "Changes", "From", "To"], preview.changes.map((c) => [c.matric, c.name, c.field, c.from ?? "", c.to ?? ""]), "Changes");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "what this upload changes.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   /** runs (or resumes) an import from its saved position; a batch that cannot be sent stops the run with the
    *  exact rows and reason shown, and "Resume" picks up from that batch without re-reading the file */
   async function runJob(job: Job) {
@@ -230,6 +267,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setProgress(null);
     setRejected(null);
     setResumable(null);
+    setPreview(null);
     jobRef.current = null;
     try {
       setProgress({ label: "Reading the file", sent: 0, of: 0 });
@@ -301,6 +339,11 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
       const job: Job = { kind, path, scoped, groups, chunk: CHUNK, totalRows, gi: 0, ci: 0, sent: 0, totals: {}, firstErr: null };
       jobRef.current = job;
+      // V459: a register upload goes up only once the office has seen what it changes to the students already on the portal
+      if (kind === "biodata" || kind === "pgstudents" || kind === "students") {
+        setPreview(await previewJob(job));
+        return;
+      }
       await runJob(job);
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
@@ -564,7 +607,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
 
       <div className="card"><PBody>
-        <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}
+        <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); setPreview(null); }}
           items={([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => ({ id: k, label: l }))} />
       </PBody></div>
 
@@ -646,6 +689,65 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         </PBody>
       </Panel>
       )}
+
+      {preview ? (() => {
+        const t = preview.totals;
+        const num = (k: string) => Number(t[k] ?? 0);
+        const touched = new Set(preview.changes.map((c) => c.matric)).size;
+        const serious = num("levelLowered") + num("programmeChanged") + num("modeChanged");
+        const go = () => { const j = preview.job; setPreview(null); void runJob(j); };
+        return (
+          <Panel title="Before this file goes up" right={`${num("rows").toLocaleString()} rows`}>
+            <PBody>
+              {preview.failed ? (
+                <Note kind="bad" title="The file could not be checked">
+                  {preview.failed.title}{preview.failed.detail ? ` — ${preview.failed.detail}` : ""} Nothing has been uploaded.
+                </Note>
+              ) : (
+                <>
+                  <Tiles items={[
+                    ["New students", num("newStudents").toLocaleString(), null, "not on the portal yet"],
+                    ["On the portal, unchanged", num("unchanged").toLocaleString(), null, "left as they are"],
+                    ["Level changed", num("levelChanged").toLocaleString(), num("levelLowered") ? "var(--red-ink)" : null, `${num("levelLowered").toLocaleString()} lowered, ${num("levelRaised").toLocaleString()} raised`],
+                    ["Programme or entry mode changed", (num("programmeChanged") + num("modeChanged")).toLocaleString(), num("programmeChanged") + num("modeChanged") ? "var(--red-ink)" : null, `${num("programmeChanged").toLocaleString()} programme, ${num("modeChanged").toLocaleString()} entry mode`],
+                  ]} />
+                  {touched ? (
+                    <Note kind={serious ? "bad" : "info"} title={`This file changes ${touched.toLocaleString()} student${touched === 1 ? "" : "s"} already on the portal`}>
+                      Check the changes before the file goes up. A level changes only where the file states one, and a postgraduate student is never moved below 700; everything else listed here is what the file says.
+                    </Note>
+                  ) : (
+                    <Note kind="ok" title="No student already on the portal is changed">The file adds the new students and leaves every other student as they are.</Note>
+                  )}
+                  {num("badNumber") + num("noProgramme") ? (
+                    <Note kind="info" title="Some rows will not load">
+                      {[num("badNumber") ? `${num("badNumber").toLocaleString()} row${num("badNumber") === 1 ? " has" : "s have"} no valid matriculation number` : null,
+                        num("noProgramme") ? `${num("noProgramme").toLocaleString()} row${num("noProgramme") === 1 ? " names" : "s name"} no programme on record` : null]
+                        .filter(Boolean).join(", and ")}; {num("badNumber") + num("noProgramme") === 1 ? "it is" : "they are"} set aside.
+                    </Note>
+                  ) : null}
+                  {num("newProgrammes") ? <Note kind="info" title={`${num("newProgrammes")} postgraduate programme${num("newProgrammes") === 1 ? "" : "s"} will be created`}>Old-portal programme codes not on record are created as postgraduate programmes, as before.</Note> : null}
+                </>
+              )}
+            </PBody>
+            {!preview.failed && preview.changes.length ? (
+              <DTable pageSize={25} cols={["Matriculation number", "Name", "Changes", "From", "To"]}
+                texts={preview.changes.map((c) => `${c.matric} ${c.name} ${c.field}`)}
+                rows={preview.changes.map((c, i) => [<span key={`m${i}`} className="tnum">{c.matric}</span>, <span key={`n${i}`}>{c.name}</span>,
+                  <Pil key={`f${i}`} kind={c.field === "level" && Number(c.to) < Number(c.from) ? "bad" : c.field === "level" ? "info" : "warn"}>{c.field}</Pil>,
+                  <span key={`a${i}`} className="tnum">{c.from ?? "—"}</span>, <b key={`b${i}`} className="tnum">{c.to ?? "—"}</b>])} />
+            ) : null}
+            <PBody>
+              <div className="row">
+                {preview.failed
+                  ? <Btn kind="ghost" onClick={go}>Upload without the check</Btn>
+                  : <Btn kind="primary" onClick={go}>{touched ? "Upload it, with these changes" : "Upload it"}</Btn>}
+                {preview.changes.length ? <Btn kind="ghost" onClick={downloadChanges}>Download the changes</Btn> : null}
+                <Btn kind="ghost" onClick={() => { setPreview(null); jobRef.current = null; }}>Cancel</Btn>
+              </div>
+            </PBody>
+          </Panel>
+        );
+      })() : null}
 
       {tab === "passports" && pResult ? (
         <>

@@ -58,6 +58,25 @@ class ResultsController {
         return service.importStudents(body.rows());
     }
 
+    /** V459: what each register upload would change before it changes anyone — shown to the office to confirm */
+    @PostMapping("/legacy/students/preview")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> previewStudents(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.previewRegister("students", body.rows());
+    }
+
+    @PostMapping("/legacy/biodata/preview")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> previewBiography(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.previewRegister("biodata", body.rows());
+    }
+
+    @PostMapping("/legacy/pg-students/preview")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> previewPostgraduate(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.previewRegister("postgraduate", body.rows());
+    }
+
     /** the full student biography exported from the old portal — core, contact, biography and a sign-in account */
     @PostMapping("/legacy/biodata")
     @PreAuthorize(MIGRATE)

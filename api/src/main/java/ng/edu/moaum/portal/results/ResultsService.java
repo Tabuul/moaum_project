@@ -100,6 +100,15 @@ public class ResultsService {
         return repo.importStudents(json.writeValueAsString(rows));
     }
 
+    /** V459: what a register upload would change — new students, refused rows, and each change of level, programme or
+     *  entry mode to a student already on the portal — read from the rules the upload itself reads; nothing is written */
+    @Transactional(readOnly = true)
+    public Map<String, Object> previewRegister(String kind, List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return json.readValue(repo.previewRegister(kind, json.writeValueAsString(rows)),
+                new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     @Transactional
     public Map<String, Object> importBiography(List<Map<String, Object>> rows) {
         requireRows(rows);

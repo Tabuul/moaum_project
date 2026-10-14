@@ -793,6 +793,12 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.set_jamb_numbers(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
+    /** V459: what a register upload (students, biodata, postgraduate) would change, as JSON text; nothing is written */
+    String previewRegister(String kind, String rowsJson) {
+        return jdbc.sql("SELECT people.preview_register_upload(:k, :j::jsonb)::text").param("k", kind).param("j", rowsJson)
+                .query(String.class).single();
+    }
+
     java.util.Map<String, Object> importPostgraduate(String rowsJson) {
         return jdbc.sql("SELECT * FROM people.import_postgraduate(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
