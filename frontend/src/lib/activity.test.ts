@@ -102,3 +102,33 @@ test("a navigation is under way until the next screen's content has all come, no
   await new Promise((r) => setImmediate(r));
   assert.equal(activity.inFlight(), 0, "the content has all come");
 });
+
+test("the shown screen is stale only while the next one is on its way, never during an act", async () => {
+  activity.installActivity();
+  // an act: its button is busy, the screen is not stale
+  const act = window.fetch("/api/bff/api/v1/finance/fees", { method: "POST" });
+  assert.equal(activity.inFlight(), 1);
+  assert.equal(activity.screensInFlight(), 0);
+  answer();
+  await act;
+  await Promise.resolve();
+  // a filter or a page of a list: the router fetches the next screen; stale until its content has all come
+  let push: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const body = new ReadableStream<Uint8Array>({ start(c) { push = c; } });
+  const nav = window.fetch("/finance/payments?level=800&_rsc=y", { headers: { RSC: "1" } });
+  assert.equal(activity.screensInFlight(), 1);
+  answer(new Response(body));
+  const res = await nav;
+  await new Promise((r) => setImmediate(r));
+  assert.equal(activity.screensInFlight(), 1, "the headers have come, the rows have not");
+  push!.enqueue(new TextEncoder().encode("0:[]"));
+  push!.close();
+  await res.text();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(activity.screensInFlight(), 0);
+  // a prefetch is never a screen on its way
+  const pre = window.fetch("/finance/payments?_rsc=z", { headers: { RSC: "1", "Next-Router-Prefetch": "1" } });
+  assert.equal(activity.screensInFlight(), 0);
+  answer();
+  await pre;
+});

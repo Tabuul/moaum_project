@@ -2365,6 +2365,13 @@ button[data-busy]:not(.btn) { opacity: .7; }
 /* with reduced motion the bar stands still across the page (the animation rule above is switched off) */
 @media (prefers-reduced-motion: reduce) { .actbar { opacity: 1; } .actbar::before { left: 0; width: 100%; opacity: .7; } }
 @media print { .actbar { display: none; } }
+/* the screen's content while the next one is on its way — a filter, a page of a list, a link, a refresh after an act: dimmed,
+   so rows about to be replaced do not read as the answer. Like the bar, only once the wait has lasted a moment, so an answer
+   that comes at once does not flicker; it comes back the instant the new screen is there. */
+.content { transition: opacity .1s ease; }
+.content[data-stale] { opacity: .55; cursor: progress; transition: opacity .15s ease .25s; }
+@media (prefers-reduced-motion: reduce) { .content, .content[data-stale] { transition: none; } }
+@media print { .content[data-stale] { opacity: 1; } }
 
 /* sign out at the top right of every signed-in screen (Shell), beside the search; a phone keeps it on the title's row */
 .topbar .topout { flex-shrink: 0; white-space: nowrap; gap: 6px; }

@@ -13,7 +13,7 @@ import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
 import { IdleWatch } from "@/components/IdleWatch";
 import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Btn, Ico } from "./ui";
@@ -24,6 +24,7 @@ import { ShellTitle } from "./ShellTitle";
 import { ManualHelp } from "@/components/manual/ManualHelp";
 import { UniversityBrand } from "./UniversityBrand";
 import { signOut as endSession } from "@/lib/sign-out";
+import { screensInFlight, subscribe as onActivity } from "@/lib/activity";
 
 /* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
@@ -602,6 +603,8 @@ function initials(label: string): string {
 export function Shell({ route, me, children, sub, title }: { route: string; me: Me | null; children: ReactNode; sub?: string; title?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  // the next screen on its way (lib/activity): the one shown is stale until it arrives
+  const staleScreen = useSyncExternalStore(onActivity, () => screensInFlight() > 0, () => false);
   // the drawer on a phone or tablet: a body class the CSS reads, mirrored here so the menu button can say whether it is open
   const [drawer, setDrawer] = useState(false);
   const openDrawer = () => { document.body.classList.add("nav-open"); setDrawer(true); };
@@ -853,7 +856,8 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               </Btn>
             ) : null}
           </header>
-          <div className="content">
+          {/* the shown screen dimmed and aria-busy while the next one is on its way (a filter, a page, a link) */}
+          <div className="content" aria-busy={staleScreen || undefined} data-stale={staleScreen ? "" : undefined}>
             {said && (
               <div className="notice notice--info">
                 <Ico name="alert" size={18} stroke="var(--chrome)" w={2} />

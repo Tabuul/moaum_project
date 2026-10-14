@@ -9,7 +9,9 @@
  *  - any other button, and a submitted form, reads aria-busy and data-busy (a spinner on a .btn, the waiting cursor
  *    elsewhere); a second click on it, or a second submission of the form (Enter in a field), is stopped while the
  *    first is under way;
- *  - the activity bar at the top of the page shows while anything the person asked for is still loading.
+ *  - the activity bar at the top of the page shows while anything the person asked for is still loading;
+ *  - the screen's content (components/proto/Shell) is dimmed and aria-busy while the next screen is on its way — a filter,
+ *    a page of a list, a link, a refresh after an act — so rows about to be replaced do not read as the answer.
  *
  * The state is the request's own: it begins when the request is sent and ends when the server answers or the request
  * fails, never on a timer. A request is tied to a button by the event being handled when it was sent (window.event): the
@@ -23,6 +25,7 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 const owners = new Map<Element, number>();
 let inflight = 0;
+let screens = 0;
 let installed = false;
 
 function emit() {
@@ -37,6 +40,11 @@ export function subscribe(l: Listener): () => void {
 /** requests the person asked for, in flight now */
 export function inFlight(): number {
   return inflight;
+}
+
+/** the next screen's content being fetched now (a navigation, a filter or page of a list, a refresh): the shown one is stale */
+export function screensInFlight(): number {
+  return screens;
 }
 
 /** true while a request this element's click (or this form's submission) sent is in flight */
@@ -131,11 +139,15 @@ export function installActivity(): void {
   window.fetch = function watchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     if (!watched(input, init)) return original(input, init);
     const els = ownersNow();
+    // the next screen's content (the router's own fetch): the screen shown now is about to be replaced
+    const screen = header(input, init, "RSC") === "1";
     inflight++;
+    if (screen) screens++;
     hold(els);
     emit();
     const settle = () => {
       inflight--;
+      if (screen) screens--;
       release(els);
       emit();
     };
@@ -148,7 +160,6 @@ export function installActivity(): void {
     }
     // the next screen's content streams in after its headers: a navigation is under way until the last of it has come
     // (read from a copy, taken before the router reads its own); any other request has settled once the server answered
-    const screen = header(input, init, "RSC") === "1";
     p.then((r) => {
       if (screen && r.body) r.clone().arrayBuffer().then(settle, settle);
       else settle();
