@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 298
+\set EXPECTED 299
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13230,6 +13230,77 @@ BEGIN
     PERFORM pg_temp.assert('V457: students with no fee stated — the Bursary told by e-mail, on the portal and by SMS on the phone of their staff record, and once',
         coalesce(v_prog IS NOT NULL AND told1 > 0 AND told2 = 0 AND chans = 'EMAIL,PORTAL,SMS' AND sms_to LIKE '%4570' AND sms_body LIKE '%no school fee stated for ' || v_ses || '%', false),
         format('told %s then %s | channels %s | sms to %s: %s', told1, told2, chans, sms_to, left(sms_body, 90)));
+END $$;
+
+-- ── V461. A semester whose fees are not stated is not registered for, and the gap sheet comes back as lines: with the first
+--          semester's line stated and the open second semester's not, the second-semester registration is refused
+--          (REG_SEMESTER_FEES_NOT_STATED) and the semester never reads as cleared, paid or not; the filled sheet adds the line (once — again, nothing twice), leaves out a blank
+--          amount and an unknown programme, and never gives a faculty charged as another a line of its own ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); v_ses text := '9990/9991';
+        fa text; fb text; v_prog text; unstated int[]; refused1 text; refused2 text; a1 record; a2 record; a3 record; src_after text;
+        cleared_before boolean; cleared_after boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V461', true);
+        -- two faculties no rule names; A with an undergraduate programme, A to be charged as B
+        SELECT p.faculty_code, p.code INTO fa, v_prog FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.faculty_code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r UNION SELECT r.source_faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY p.faculty_code, p.code LIMIT 1;
+        SELECT f.code INTO fb FROM ref.faculty f
+         WHERE f.code <> fa AND f.code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r UNION SELECT r.source_faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY f.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9990-10-01', date '9991-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), v_ses, 1, 'CLOSED'), (gen_random_uuid(), v_ses, 2, 'OPEN')
+            ON CONFLICT (session, number) DO UPDATE SET state = excluded.state;
+        -- the student's programme has its first-semester line, not its second
+        INSERT INTO finance.fee_schedule (id, session, item, amount, level, entry_mode, faculty_code, programme_code, ord, semester, indigene, spillover, kind)
+        VALUES (gen_random_uuid(), v_ses, 'School fees (semester 1)', 100000, 100, 'UTME', fa, v_prog, 1, 1, NULL, false, 'FEE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/90/004611', NULL, 'CHECKV461', 'Ada', v_prog, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED', NULL);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, st, v_ses, 2, 100, 'DRAFT');
+        -- paid in full for both semesters' worth: the unstated second semester still never reads as cleared
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (st, v_ses, 'CHK-V461-PAID', 'School fees ' || v_ses, 160000.00, now() + interval '1 day', now(), who, 'Legacy', 'CHK-RCPT-V461');
+        unstated := finance.fee_unstated_semesters(st, v_ses);
+        cleared_before := finance.semester_cleared(st, v_ses, 2);
+        BEGIN
+            PERFORM registration.student_submit(reg); refused1 := 'submitted';
+        EXCEPTION WHEN check_violation THEN refused1 := split_part(SQLERRM, ':', 1);
+        END;
+        -- the filled sheet: the second semester's line, a blank amount, an unknown programme; then the same again
+        SELECT * INTO a1 FROM finance.add_fee_lines(v_ses, jsonb_build_array(
+            jsonb_build_object('programmeCode', v_prog, 'level', '100', 'entryMode', 'UTME', 'semester', '2', 'indigene', '', 'spillover', 'No', 'amount', '₦60,000'),
+            jsonb_build_object('programmeCode', v_prog, 'level', '200', 'entryMode', 'UTME', 'semester', '2', 'amount', ''),
+            jsonb_build_object('programmeCode', 'NO-SUCH', 'level', '100', 'semester', '1', 'amount', '5')));
+        cleared_after := finance.semester_cleared(st, v_ses, 2);
+        SELECT * INTO a2 FROM finance.add_fee_lines(v_ses, jsonb_build_array(
+            jsonb_build_object('programmeCode', v_prog, 'level', '100', 'entryMode', 'UTME', 'semester', '2', 'indigene', '', 'spillover', 'No', 'amount', '60000')));
+        -- stated now: the submission passes the semester's test (and stops on what is unpaid instead)
+        BEGIN
+            PERFORM registration.student_submit(reg); refused2 := 'submitted';
+        EXCEPTION WHEN check_violation THEN refused2 := coalesce(nullif(split_part(SQLERRM, ':', 1), SQLERRM), SQLERRM);
+        END;
+        -- a faculty charged as another is never given a line of its own by the sheet; the faculty it follows is
+        PERFORM finance.set_faculty_fee_source(fa, fb, NULL, 'CHECK V461');
+        UPDATE finance.fee_schedule SET ended_at = now() WHERE session = v_ses AND faculty_code = fa AND ended_at IS NULL;
+        SELECT * INTO a3 FROM finance.add_fee_lines(v_ses, jsonb_build_array(
+            jsonb_build_object('programmeCode', v_prog, 'level', '300', 'entryMode', 'UTME', 'semester', '1', 'amount', '1'),
+            jsonb_build_object('facultyCode', fb, 'level', '300', 'entryMode', 'UTME', 'semester', '1', 'amount', '1')));
+        src_after := finance.fee_source_of(fa, v_ses);
+        RAISE EXCEPTION 'the V461 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V461: a semester whose fees are not stated for the student is refused at registration; the filled sheet adds its line once, leaves out a blank amount and an unknown programme, and never gives a faculty charged as another a line of its own',
+        coalesce(fa IS NOT NULL AND fb IS NOT NULL AND unstated = '{2}' AND refused1 = 'REG_SEMESTER_FEES_NOT_STATED'
+             AND NOT cleared_before AND cleared_after
+             AND a1.added = 1 AND a1.no_amount = 1 AND a1.no_programme = 1 AND a2.added = 0 AND a2.already = 1
+             AND refused2 <> 'REG_SEMESTER_FEES_NOT_STATED'
+             AND a3.charged_as = 1 AND a3.added = 1 AND src_after = fb, false),
+        format('A %s B %s | unstated %s, refused %s, cleared before %s after %s | sheet %s, again %s | then %s | charged as: %s, rule after %s',
+               fa, fb, unstated, refused1, cleared_before, cleared_after, to_jsonb(a1), to_jsonb(a2), refused2, to_jsonb(a3), src_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

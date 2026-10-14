@@ -206,12 +206,29 @@ class FinanceController {
         out.put("groups", rows.size());
         out.put("openSemesters", jdbc.sql("SELECT number FROM policy.semester WHERE session = :s AND state = 'OPEN' ORDER BY number")
                 .param("s", s).query(Integer.class).list());
+        // V461: every semester of the session's calendar, for the sheet the Bursary fills (the first and second where none is dated)
+        List<Integer> semesters = jdbc.sql("SELECT number FROM policy.semester WHERE session = :s ORDER BY number").param("s", s).query(Integer.class).list();
+        out.put("semesters", semesters.isEmpty() ? List.of(1, 2) : semesters);
         out.put("scheduleLines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND ended_at IS NULL AND kind = 'FEE'")
                 .param("s", s).query(Long.class).single());
         out.put("watch", jdbc.sql("SELECT told_at, told, students, groups, checked_at FROM finance.fee_gap_watch WHERE session = :s")
                 .param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         out.put("rows", rows);
         return out;
+    }
+
+    /** V461: the Bursary's filled-in gap sheet, added as new lines of the session's schedule — never replacing the structure;
+     *  a row with no amount is left out, one the schedule already holds is not added twice */
+    @PostMapping("/sessions/{session}/{year}/fee-lines")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> addFeeLines(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("FEE_LINES_ROWS", "The sheet has no rows to read.",
+                    new DomainRuleViolation.Remedy("Fill the amounts in the sheet downloaded from Students with no school fee stated.", "Bursary"));
+        }
+        return jdbc.sql("SELECT * FROM finance.add_fee_lines(:s, :j::jsonb)")
+                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
     public record FeeSource(@NotBlank @Size(max = 12) String source, @Pattern(regexp = "\\d{4}/\\d{4}") String fromSession, @Size(max = 300) String note) {

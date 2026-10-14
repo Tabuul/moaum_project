@@ -4,6 +4,7 @@
  *  none for a semester that is open — by group of alike students, and the standing "charged as" rules: a faculty named in a
  *  rule is charged another faculty's lines while it has none of its own in a session, so each session's upload covers it. */
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
@@ -12,6 +13,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { semesterName } from "@/lib/student-portal";
+import { buildXlsx, xlsxRowsAsync } from "@/lib/xlsx";
 
 interface Gap {
   faculty_code: string; faculty: string | null; programme_code: string; programme: string; level: number | null; entry_mode: string | null;
@@ -19,6 +21,8 @@ interface Gap {
 }
 interface Gaps {
   session: string; students: number; groups: number; openSemesters: number[]; scheduleLines: number;
+  /** V461: every semester on the session's calendar, for the sheet the Bursary fills */
+  semesters?: number[];
   watch: { told_at: string | null; told: number; students: number; groups: number; checked_at: string } | null;
   rows: Gap[];
 }
@@ -34,6 +38,9 @@ const named = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).replace(/ (And|Of|For|In|The) /g, (m) => m.toLowerCase());
 const ENTRY: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich" };
 const semesters = (list: string | null) => (list ?? "").split(",").filter(Boolean).map((n) => semesterName(Number(n)).toLowerCase());
+/** V461: the sheet the Bursary fills for the students with no fee stated, and reads back */
+const SHEET = ["Faculty", "Faculty code", "Programme code", "Programme", "Level", "Entry mode", "Semester", "Indigene", "Spillover", "Students", "Amount"];
+type SheetResult = { rows: number; added: number; no_amount: number; already: number; no_programme: number; charged_as: number; skipped: number; first_error: string | null };
 
 export function FeeWatch({ session, faculties, sessions, may }: { session: string; faculties: { code: string; name: string }[]; sessions: string[]; may: boolean }) {
   const [gaps, setGaps] = useState<Gaps | null>(null);
@@ -43,6 +50,8 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
   const [form, setForm] = useState<{ faculty: string; source: string; from: string; note: string } | null>(null);
   const [ending, setEnding] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [sheet, setSheet] = useState<SheetResult | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let alive = true;
@@ -75,6 +84,83 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
       notify(reason);
       setTick((t) => t + 1);
       return true;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** V461: one row per group of students and semester not stated — programme, level, entry mode, indigeneship, spillover —
+   *  the amount left blank for the Bursary to fill; "Upload the filled sheet" adds the lines, never replacing the structure */
+  function downloadSheet() {
+    if (!gaps) return;
+    const all = gaps.semesters?.length ? gaps.semesters : [1, 2];
+    // a group of a faculty charged as another (V451) is stated on the faculty it follows, one line for both faculties:
+    // a line of its own would end the rule for every student of the faculty
+    const byKey = new Map<string, (string | number)[]>();
+    for (const g of gaps.rows) {
+      for (const sem of g.stated ? (g.missing ?? "").split(",").filter(Boolean).map(Number) : all) {
+        const fac = g.charged_as ?? g.faculty_code;
+        const prog = g.charged_as ? "" : g.programme_code;
+        const level = g.spillover ? "" : g.level ?? "";
+        const ind = g.indigene === null ? "" : g.indigene ? "Indigene" : "Non-indigene";
+        const key = [fac, prog, level, g.entry_mode ?? "", sem, ind, g.spillover].join("|");
+        const had = byKey.get(key);
+        if (had) { had[9] = Number(had[9]) + Number(g.students); continue; }
+        byKey.set(key, [named(g.charged_as ? facultyName(g.charged_as) : g.faculty ?? g.faculty_code), fac, prog,
+          g.charged_as ? `Every programme of ${facultyName(g.charged_as)} (${named(g.faculty ?? g.faculty_code)} is charged as it)` : g.programme,
+          level, g.entry_mode ?? "", sem, ind, g.spillover ? "Yes" : "No", Number(g.students), ""]);
+      }
+    }
+    const rows = [...byKey.values()];
+    const blob = buildXlsx(SHEET, rows, "Fees to state");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fees to state for ${session.replace("/", "-")}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function uploadSheet(file: File) {
+    setBusy("sheet");
+    setProblem(null);
+    setSheet(null);
+    try {
+      let grid: string[][];
+      try {
+        grid = await xlsxRowsAsync(await file.arrayBuffer());
+      } catch {
+        const p = { status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the sheet downloaded here, with the amounts filled in." };
+        setProblem(p); notifyProblem(p); return;
+      }
+      const head = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+      const at = (name: string) => head.indexOf(name.toLowerCase());
+      if (["Programme code", "Semester", "Amount"].some((h) => at(h) < 0)) {
+        const p = { status: 400, title: "That is not the sheet downloaded here.", detail: "It needs the Programme code, Semester and Amount columns. Download the sheet, fill the amounts and upload it." };
+        setProblem(p); notifyProblem(p); return;
+      }
+      const cell = (r: string[], name: string) => { const i = at(name); return i < 0 ? "" : String(r[i] ?? "").trim(); };
+      const rows = grid.slice(1).filter((r) => r.some((c) => String(c ?? "").trim() !== "")).map((r) => ({
+        facultyCode: cell(r, "Faculty code"), programmeCode: cell(r, "Programme code"), level: cell(r, "Level"), entryMode: cell(r, "Entry mode"), semester: cell(r, "Semester"),
+        indigene: cell(r, "Indigene"), spillover: cell(r, "Spillover"), amount: cell(r, "Amount"),
+      }));
+      if (!rows.length) {
+        const p = { status: 400, title: "The sheet has no rows.", detail: "Download the sheet, fill the amounts and upload it." };
+        setProblem(p); notifyProblem(p); return;
+      }
+      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-lines`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Fee lines stated for ${session} from the sheet of students with no fee stated`) },
+        body: JSON.stringify({ rows }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) {
+        const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText };
+        setProblem(p); notifyProblem(p); return;
+      }
+      const res = j as SheetResult;
+      setSheet(res);
+      notify(`${res.added.toLocaleString()} fee line${res.added === 1 ? "" : "s"} added for ${session}`);
+      setTick((t) => t + 1);
+      router.refresh();
     } finally {
       setBusy(null);
     }
@@ -115,6 +201,27 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
               <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                 {byFaculty.map(([f, n]) => <Pil key={f} kind="grey">{f} · {count(n)}</Pil>)}
               </div>
+              {may ? (
+                <div className="row mt-2" style={{ flexWrap: "wrap" }}>
+                  <Btn kind="ghost" onClick={downloadSheet}>Download a sheet to fill</Btn>
+                  <label className={`btn btn--primary m-0${busy === "sheet" ? " btn--disabled" : ""}`} style={{ cursor: busy === "sheet" ? "not-allowed" : "pointer" }}>
+                    {busy === "sheet" ? "Adding the lines…" : "Upload the filled sheet"}
+                    <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "sheet"}
+                           onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadSheet(f); e.target.value = ""; }} />
+                  </label>
+                  <span className="sub2">One row per group and semester not stated; fill the Amount, and the lines are added beside the structure (nothing in it is replaced). A row left blank is not added.</span>
+                </div>
+              ) : null}
+              {sheet ? (
+                <Note kind={sheet.added ? "ok" : "info"} title={`${sheet.added.toLocaleString()} fee line${sheet.added === 1 ? "" : "s"} added for ${session}`}>
+                  {[sheet.no_amount ? `${sheet.no_amount.toLocaleString()} row${sheet.no_amount === 1 ? "" : "s"} with no amount left out` : null,
+                    sheet.already ? `${sheet.already.toLocaleString()} already stated, not added twice` : null,
+                    sheet.no_programme ? `${sheet.no_programme.toLocaleString()} naming no programme or faculty on record` : null,
+                    sheet.charged_as ? `${sheet.charged_as.toLocaleString()} for a faculty charged as another, not added (state its line on the faculty it follows)` : null,
+                    sheet.skipped ? `${sheet.skipped.toLocaleString()} refused${sheet.first_error ? ` (${sheet.first_error})` : ""}` : null]
+                    .filter(Boolean).join("; ") || "Every row with an amount was added."}
+                </Note>
+              ) : null}
             </PBody>
             <DTable pageSize={25}
               cols={["Faculty", "Programme", "Level|num", "Entry mode", "Indigene", "Students|num", "Not stated"]}
