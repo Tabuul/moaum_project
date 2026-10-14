@@ -15,7 +15,9 @@ export interface PaymentRef {
   source_module?: string | null; responsible_office?: string | null; responsible_office_label?: string | null; ledger_semester?: number | null; gateway_reference?: string | null;
 }
 /** a portal window's state now (V288): open, scheduled, closed or expired; phase NORMAL or LATE */
-export interface PortalWindow { configured: boolean; state: "OPEN" | "SCHEDULED" | "CLOSED" | "EXPIRED"; phase: "NORMAL" | "LATE" | "NONE"; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; reason: string | null }
+export interface PortalWindow { configured: boolean; state: "OPEN" | "SCHEDULED" | "CLOSED" | "EXPIRED"; phase: "NORMAL" | "LATE" | "NONE"; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; reason: string | null;
+  /** V466: the closure message the Director of ICT wrote for school fees payment (null for other windows) */
+  message?: string | null }
 export interface Fees {
   session: string;
   /** V361: whether the Bursary has stated a school fee for the student this session (a ₦0 line on purpose counts) */

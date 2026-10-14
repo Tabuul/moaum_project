@@ -20,7 +20,9 @@ export interface WindowsPage { session: string; sessions: { name: string; state:
   /** V380: the CCE session (where the Centre's students study), the CCE calendar's open semester in this session, and how many CCE students there are */
   cce?: { session: string | null; openSemester: number; students: number };
   /** V389: the School of Postgraduate Studies' session, its open semester and how many PG students there are */
-  pg?: { session: string | null; openSemester: number; students: number } }
+  pg?: { session: string | null; openSemester: number; students: number };
+  /** V466: what a student reads on the Fees page while school fees payment is closed or on hold, the Director's words */
+  feesMessage?: { message: string; message_updated_at?: string | null; message_updated_by?: string | null; message_office?: string | null } | null }
 
 const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration", ADMISSION_STATUS_CHECKING: "Admission status checking", POST_UTME_REGISTRATION: "Post-UTME registration", POSTGRADUATE_APPLICATION: "Postgraduate application",
   CCE_SCHOOL_FEES_PAYMENT: "CCE school fees payment", CCE_COURSE_REGISTRATION: "CCE course registration",
@@ -41,6 +43,10 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
   const [act, setAct] = useState<Act | null>(null);
   const [opens, setOpens] = useState(""); const [closes, setCloses] = useState(""); const [late, setLate] = useState(""); const [lateFee, setLateFee] = useState(false); const [reason, setReason] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  // V466: the school-fees payment closure message, edited here and read on every student's Fees page while payment is closed
+  const savedMessage = page.feesMessage?.message ?? "";
+  const [message, setMessage] = useState(savedMessage);
+  const [savingMessage, setSavingMessage] = useState(false);
   const session = page.session;
   // the API leaves a null field out of the JSON: the session-wide rows arrive with no semesterAsked at all, so put the nulls back
   // before anything tests against them (without this no row matched, and the page failed on every load)
@@ -78,6 +84,19 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
       notify(`${TYPE_WORD[act.type]}: ${act.action.toLowerCase()} recorded${j?.told ? ` · ${j.told} student notice${j.told === 1 ? "" : "s"} queued` : ""}`);
       setAct(null); router.refresh();
     } finally { setBusy(false); }
+  };
+
+  const saveMessage = async () => {
+    const text = message.trim();
+    if (!text) { notifyProblem({ status: 422, title: "The closure message cannot be blank." }); return; }
+    setSavingMessage(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/portal-windows/SCHOOL_FEES_PAYMENT/message?session=${encodeURIComponent(session)}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("School fees payment: closure message") }, body: JSON.stringify({ message: text }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      notify("School fees payment: closure message saved");
+      router.refresh();
+    } finally { setSavingMessage(false); }
   };
 
   const card = (w: WindowRow, title: string, sub: string) => {
@@ -132,6 +151,19 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
         {card(fees, "SCHOOL FEES PAYMENT", `${session} · the whole session. A reference already generated is paid and confirmed as usual; closing stops new references only.`)}
         {card(reg, `COURSE REGISTRATION · SEMESTER ${page.openSemester}`, `${session} · the open semester. Closing stops drafting, changing and submitting a registration.`)}
       </div>
+      <Panel title="SCHOOL FEES PAYMENT · CLOSURE MESSAGE" right="Every student, CCE and postgraduate included">
+        <PBody>
+          <Field id="pw-fees-msg" label="Closure message" hint={`Shown on every student's Fees page while school fees payment is closed or on hold, under the dates and the reason. Blank lines make paragraphs.${page.feesMessage?.message_updated_at ? ` Last changed ${when(page.feesMessage.message_updated_at)}${page.feesMessage.message_updated_by ? ` by ${page.feesMessage.message_updated_by}` : ""}.` : ""}`}>
+            <textarea id="pw-fees-msg" className="ctl" rows={4} maxLength={2000} value={message} disabled={!may} onChange={(e) => setMessage(e.target.value)} />
+          </Field>
+          {may ? (
+            <div className="row row--inline row--tight">
+              <Btn kind="primary" size="sm" disabled={savingMessage || message === savedMessage} onClick={() => void saveMessage()}>{savingMessage ? "Saving…" : "Save message"}</Btn>
+              {message !== savedMessage ? <Btn kind="ghost" size="sm" onClick={() => setMessage(savedMessage)}>Discard changes</Btn> : null}
+            </div>
+          ) : null}
+        </PBody>
+      </Panel>
       <Panel title="CCE STUDENTS&rsquo; WINDOWS" right={page.cce?.session ? `CCE session ${page.cce.session} · ${page.cce.students} CCE student${page.cce.students === 1 ? "" : "s"}` : null}>
         <PBody>
           <div className="sub2">These govern CCE students only; the full-time windows above never do. Unset, the CCE calendar decides.

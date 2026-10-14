@@ -87,7 +87,10 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
                 {w.state === "SCHEDULED" ? `Payment for ${fees.session} opens on ${whenAt(w.opens_at)}.` : `School fees payment for ${fees.session} is currently closed.`}
                 {w.opens_at || w.closes_at ? <span className="blk">Payment window: {w.opens_at ? whenAt(w.opens_at) : "—"} – {w.closes_at ? whenAt(w.closes_at) : "no closing date"}{w.late_until ? ` · late payment until ${whenAt(w.late_until)}` : ""}.</span> : null}
                 {w.reason ? <span className="blk">{w.reason}</span> : null}
-                <span className="blk">{w.state === "SCHEDULED" ? "Check again when the window opens." : "The University has not currently opened the payment portal; please check again when it is reopened. A reference already generated is still paid and confirmed."}</span>
+                {w.state === "SCHEDULED" ? <span className="blk">Check again when the window opens.</span>
+                  // V466: the Director of ICT's closure message, paragraph by paragraph; the portal's own words until one is written
+                  : (w.message?.trim() || "The University has not currently opened the payment portal; please check again when it is reopened. A reference already generated is still paid and confirmed.")
+                      .split(/\n\s*\n/).map((p, i) => <span key={i} className="blk" style={{ whiteSpace: "pre-line" }}>{p.trim()}</span>)}
               </Note>
             ) : null}
             {w && w.state === "OPEN" && w.phase === "LATE" ? (

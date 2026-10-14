@@ -73,6 +73,34 @@ class PortalWindowsIT {
         return it.call(token, HttpMethod.POST, BASE + "/" + type, b);
     }
 
+    /** V466: the school-fees payment closure message is the Director of ICT's to write, and every student's Fees page reads it */
+    @Test
+    void theSchoolFeesClosureMessageIsTheDirectorsAndEveryStudentReadsIt() {
+        int n = new Random().nextInt(9000) + 1000;
+        UUID s = it.student("ZZMSG" + n, "C00023", "MOAUM/ADM/99/" + String.format("%06d", n), "MOAUM/SCI/99/" + n, 100);
+        String student = TestTokens.token(s, List.of("student"));
+        Map<String, Object> before = m(it.get(ict, BASE + "?session=" + SESSION).getBody().get("feesMessage"));
+        String original = before == null ? null : String.valueOf(before.get("message"));
+        try {
+            assertThat(original).as("seeded with the portal's own words").contains("has not currently opened the payment portal");
+            assertThat(it.call(bursar, HttpMethod.POST, BASE + "/SCHOOL_FEES_PAYMENT/message?session=" + SESSION, Map.of("message", "not mine")).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> reg = it.call(ict, HttpMethod.POST, BASE + "/COURSE_REGISTRATION/message?session=" + SESSION, Map.of("message", "no such message"));
+            assertThat(reg.getStatusCode().value()).isEqualTo(422);
+            assertThat(reg.getBody().get("code")).isEqualTo("WINDOW_TYPE");
+            assertThat(it.call(ict, HttpMethod.POST, BASE + "/SCHOOL_FEES_PAYMENT/message?session=" + SESSION, Map.of("message", "  ")).getStatusCode().value()).isEqualTo(400);
+            String words = "Payment reopens on Monday at 9 a.m.\n\nWhile it is closed, pay at the Bursary with your reference.";
+            ResponseEntity<Map> saved = it.call(ict, HttpMethod.POST, BASE + "/SCHOOL_FEES_PAYMENT/message?session=" + SESSION, Map.of("message", words));
+            assertThat(saved.getStatusCode().value()).as(String.valueOf(saved.getBody())).isEqualTo(200);
+            assertThat(m(saved.getBody().get("feesMessage")).get("message")).isEqualTo(words);
+            assertThat(m(it.get(student, "/api/v1/me/fees?session=" + SESSION).getBody().get("window")).get("message")).isEqualTo(words);
+            assertThat(jdbc.sql("SELECT count(*) FROM policy.portal_window_event WHERE window_type = 'SCHOOL_FEES_PAYMENT' AND action = 'MESSAGE' AND new_state LIKE 'Payment reopens%'").query(Long.class).single()).isPositive();
+        } finally {
+            if (original != null) {
+                it.call(ict, HttpMethod.POST, BASE + "/SCHOOL_FEES_PAYMENT/message?session=" + SESSION, Map.of("message", original));
+            }
+        }
+    }
+
     @Test
     void theDirectorOpensAndClosesTheWindowsAndTheGatesHold() {
         int n = new Random().nextInt(9000) + 1000;

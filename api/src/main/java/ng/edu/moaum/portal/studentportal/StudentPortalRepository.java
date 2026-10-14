@@ -315,7 +315,12 @@ class StudentPortalRepository {
 
     /** V380: the portal window that governs the student — a CCE student's school fees and course registration are the CCE windows */
     Map<String, Object> windowFor(UUID student, String type, String session, Integer semester) {
-        return jdbc.sql("SELECT configured, state, phase, opens_at, closes_at, late_until, late_fee_enabled, reason FROM policy.window_state(policy.window_type_for(:st, :t), :s, :sem)")
+        // V466: the closure message the Director wrote for the window asked for (a CCE student reads the same words)
+        return jdbc.sql("""
+                SELECT w.configured, w.state, w.phase, w.opens_at, w.closes_at, w.late_until, w.late_fee_enabled, w.reason,
+                       (SELECT m.message FROM policy.portal_window_message m WHERE m.window_type = :t) AS message
+                  FROM policy.window_state(policy.window_type_for(:st, :t), :s, :sem) w
+                """)
                 .param("st", student).param("t", type).param("s", session).param("sem", semester, Types.INTEGER).query().singleRow();
     }
 

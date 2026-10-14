@@ -119,8 +119,35 @@ class PortalWindowController {
                 """).param("s", s).query(Long.class).single());
         out.put("lateFees", jdbc.sql("SELECT kind, count(*) AS lines, sum(amount) AS total FROM finance.fee_schedule WHERE session = :s AND ended_at IS NULL AND kind <> 'FEE' GROUP BY kind ORDER BY kind").param("s", s).query().listOfRows());
         out.put("events", history(s, null, 100));
+        // V466: what a student reads while school fees payment is closed or on hold, the Director's words
+        out.put("feesMessage", feesMessage());
         out.put("now", OffsetDateTime.now());
         return out;
+    }
+
+    /** V466: the school-fees payment closure message, with who last changed it */
+    private Map<String, Object> feesMessage() {
+        return jdbc.sql("""
+                SELECT m.message, m.updated_at AS message_updated_at, m.updated_office AS message_office,
+                       (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.updated_by) AS message_updated_by
+                  FROM policy.portal_window_message m WHERE m.window_type = 'SCHOOL_FEES_PAYMENT'
+                """).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V466: the closure message a student reads while school fees payment is closed or on hold (a CCE student's too) */
+    @PostMapping("/{type}/message")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> feesMessage(@PathVariable String type, @Valid @RequestBody MessageIn body, @RequestParam(required = false) String session) {
+        String t = type.trim().toUpperCase();
+        if (!"SCHOOL_FEES_PAYMENT".equals(t)) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "Of the portal's own windows, only school fees payment carries a closure message.",
+                    new DomainRuleViolation.Remedy("An application window's message is set on Application windows.", "Directorate of ICT"));
+        }
+        AuditContext ctx = AuditContextHolder.required();
+        jdbc.sql("SELECT policy.window_message_set(:t, :m, :by, :office)")
+                .param("t", t).param("m", body.message()).param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
+        return read(session);
     }
 
     @GetMapping("/history")

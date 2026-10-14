@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 302
+\set EXPECTED 303
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13461,6 +13461,34 @@ BEGIN
                  AND after_units = '3,3,3,2,2,3' AND again.follow = 0 AND again.kept = 3
                  AND back.new_units = 3 AND back.follow = 2 AND back.kept = 0 AND back_units = '3,3,3,3,3,3', false),
         format('before %s | after %s | again %s | back %s -> %s', to_jsonb(before), after_units, to_jsonb(again), to_jsonb(back), back_units));
+END $$;
+
+-- ── V466: the school-fees payment closure message, the Directorate of ICT's to write ──
+-- It starts as the portal's present words; the Director writes another, which is kept and put on the window's history; an empty
+-- message is refused, and course registration (no student reads a closure message for it) carries none. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); seeded text; after text; logged int; r_blank text := 'accepted'; r_reg text := 'accepted'; msg text;
+BEGIN
+    SELECT m.message INTO seeded FROM policy.portal_window_message m WHERE m.window_type = 'SCHOOL_FEES_PAYMENT';
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V466', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHECK/V466/P', 'ZZWINDOWMSG', 'Invented');
+        PERFORM policy.window_message_set('SCHOOL_FEES_PAYMENT', 'CHECK V466: payment reopens on Monday.', who, 'ict');
+        SELECT m.message INTO after FROM policy.portal_window_message m WHERE m.window_type = 'SCHOOL_FEES_PAYMENT';
+        SELECT count(*) INTO logged FROM policy.portal_window_event e WHERE e.window_type = 'SCHOOL_FEES_PAYMENT' AND e.action = 'MESSAGE' AND e.new_state LIKE 'CHECK V466%';
+        BEGIN PERFORM policy.window_message_set('SCHOOL_FEES_PAYMENT', '   ', who, 'ict'); EXCEPTION WHEN check_violation THEN r_blank := SQLERRM; END;
+        BEGIN PERFORM policy.window_message_set('COURSE_REGISTRATION', 'no such message', who, 'ict'); EXCEPTION WHEN check_violation THEN r_reg := SQLERRM; END;
+        RAISE EXCEPTION 'the V466 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V466 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V466: school fees payment carries a closure message — the portal''s present words until the Director writes another, which is kept and on the window''s history; never blank; none for course registration',
+        coalesce(seeded LIKE 'The University has not currently opened the payment portal%' AND after = 'CHECK V466: payment reopens on Monday.' AND logged = 1
+                 AND r_blank LIKE '%cannot be blank%' AND r_reg LIKE 'no closure message for%', false),
+        format('seeded "%s" | after "%s", logged %s | blank: %s | registration: %s', left(seeded, 40), after, logged, r_blank, r_reg));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
