@@ -24,6 +24,7 @@ import {
 } from "@/lib/analytics";
 import { Classification } from "./Classification";
 import { RevenueBreakdown, shareWord, type BreakRow, type BreakView } from "./RevenueBreakdown";
+import { FiguresAsOf } from "./FiguresAsOf";
 
 const PALETTE = [VZ.s1, VZ.s3, VZ.s4, VZ.s2, VZ.s5, VZ.good, VZ.warn, VZ.crit, "#6b5bd6", "#2aa7b7", "#8a939e", "#c47f2a"];
 const SETTERS = new Set(["bursar", "ict", "admin", "super"]);
@@ -140,6 +141,7 @@ export function FinancialAnalytics({ data, filters }: { data: FinSummary; filter
     <>
       <PageHead title={analyticsHeading(data.scope)} description={`${words}`}
         actions={<>{canOpen ? <LinkBtn kind="primary" href={txHref()}>All transactions</LinkBtn> : null}{data.scope.owner ? null : <LinkBtn href="/stats">Student Statistics</LinkBtn>}<Btn kind="ghost" onClick={() => queryNav("/finance/analytics")}>Reset filters</Btn></>} />
+      <FiguresAsOf asOf={data.asOf} computedMs={data.computedMs} refreshing={data.refreshing} query={finQuery(filters, {}, true)} />
 
       <div className="scope">
         <div className="scope__f"><Field id="fa-preset" label="Date">

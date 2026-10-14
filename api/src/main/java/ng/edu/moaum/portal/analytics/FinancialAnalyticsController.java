@@ -18,9 +18,14 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.stats.AnalyticsScope;
 import ng.edu.moaum.portal.stats.AnalyticsScope.Bound;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -67,10 +72,15 @@ class FinancialAnalyticsController {
 
     private final JdbcClient jdbc;
     private final AnalyticsScope scope;
+    private final FinanceSummaryCache cache;
+    private final boolean warm;
 
-    FinancialAnalyticsController(JdbcClient jdbc, AnalyticsScope scope) {
+    FinancialAnalyticsController(JdbcClient jdbc, AnalyticsScope scope, FinanceSummaryCache cache,
+                                 @Value("${moaum.analytics.summary-warm:true}") boolean warm) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.cache = cache;
+        this.warm = warm;
     }
 
     /** the filters, each applied only within the bound */
@@ -180,6 +190,11 @@ class FinancialAnalyticsController {
             + " AND (:from::date IS NULL OR v.confirmed_at >= :from::date) AND (:to::date IS NULL OR v.confirmed_at < (:to::date + 1))";
 
     private JdbcClient.StatementSpec bind(JdbcClient.StatementSpec q, Bound b, Filters f, LocalDate from, LocalDate to) {
+        return bind(q, b, owner(), f, from, to);
+    }
+
+    /** the same, with the owning office named: the summary is worked out away from the request that asked for it */
+    private static JdbcClient.StatementSpec bind(JdbcClient.StatementSpec q, Bound b, String owner, Filters f, LocalDate from, LocalDate to) {
         return q.param("pg", b.pg() ? Boolean.TRUE : null, Types.BOOLEAN).param("chs", b.chs() ? Boolean.TRUE : null, Types.BOOLEAN)
                 .param("bf", b.faculty(), Types.VARCHAR).param("bd", b.dept(), Types.VARCHAR)
                 .param("types", f.types(), Types.VARCHAR).param("sex", f.sex(), Types.VARCHAR)
@@ -187,7 +202,7 @@ class FinancialAnalyticsController {
                 .param("level", f.level(), Types.INTEGER).param("session", f.session(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR)
                 .param("channel", f.channel(), Types.VARCHAR).param("q", f.q(), Types.VARCHAR)
                 .param("from", from, Types.DATE).param("to", to, Types.DATE)
-                .param("bo", owner(), Types.VARCHAR).param("ptype", f.ptype(), Types.VARCHAR).param("purpose", f.purpose(), Types.VARCHAR)
+                .param("bo", owner, Types.VARCHAR).param("ptype", f.ptype(), Types.VARCHAR).param("purpose", f.purpose(), Types.VARCHAR)
                 .param("module", f.module(), Types.VARCHAR).param("office", f.office(), Types.VARCHAR).param("semester", f.semester(), Types.INTEGER);
     }
 
@@ -211,17 +226,68 @@ class FinancialAnalyticsController {
                                 @RequestParam(required = false) String granularity, @RequestParam(defaultValue = "true") boolean compare,
                                 @RequestParam(required = false) String ptype, @RequestParam(required = false) String purpose,
                                 @RequestParam(required = false) String module, @RequestParam(required = false) String office,
-                                @RequestParam(required = false) Integer semester) {
+                                @RequestParam(required = false) Integer semester, @RequestParam(defaultValue = "false") boolean fresh) {
         Bound b = scope.bound();
+        String own = owner();
         Filters f = classified(filters(from, to, types, sex, fac, dept, prog, level, session, entry, channel, q, granularity), ptype, purpose, module, office, semester);
+        // Oct 2026: the figures are kept for a few minutes per scope and filters (FinanceSummaryCache); what the acting
+        // office may open of them is read for every request
+        FinanceSummaryCache.Answer a = cache.get(new SummaryKey(b.kind(), b.faculty(), b.dept(), own, f, compare), fresh, () -> figuresOf(b, own, f, compare));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("scope", scopeOf(b));
         out.put("filters", filterMap(f));
-        out.put("options", options(b));
-        groups(out, b, f);
-        out.put("totals", totals((Map<String, Object>) out.get("totals"), b, f));
-        out.put("compare", compare ? comparison(b, f) : null);
+        out.putAll(a.data());
+        out.put("asOf", a.at().toString());
+        out.put("computedMs", a.millis());
+        out.put("refreshing", a.refreshing());
         return out;
+    }
+
+    /** what the summary's figures depend on: the scope's predicates, the owning office, the filters and the comparison */
+    record SummaryKey(String kind, String faculty, String dept, String owner, Filters filters, boolean compare) {
+    }
+
+    /** the figures of a summary: the filter bar's options, the totals, every breakdown and the comparison */
+    private Map<String, Object> figuresOf(Bound b, String own, Filters f, boolean compare) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("options", options(b));
+        groups(out, b, own, f);
+        out.put("totals", totals((Map<String, Object>) out.get("totals"), b, own, f));
+        out.put("compare", compare ? comparison(b, own, f) : null);
+        return out;
+    }
+
+    /**
+     * The University's summary for the current session (the screen's default, with and without the comparison), worked out
+     * when the API starts, so the first person to open it after a deploy does not wait for the ledger.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    void warmSummary() {
+        if (!warm) return;
+        try {
+            Bound b = new Bound("UNIVERSITY", "University", null, null, true);
+            Filters f = classified(filters(null, null, null, null, null, null, null, null, null, null, null, null, null), null, null, null, null, null);
+            if (f.session() == null) return;
+            for (boolean compare : new boolean[] {true, false}) {
+                cache.warm(new SummaryKey(b.kind(), b.faculty(), b.dept(), null, f, compare), () -> figuresOf(b, null, f, compare));
+            }
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(FinancialAnalyticsController.class).warn("the financial summary was not prepared ahead: {}", e.toString());
+        }
+    }
+
+    /** the kept summaries dropped once a change to what classifies the figures is committed */
+    private void dropSummariesOnCommit() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cache.clear();
+                }
+            });
+        } else {
+            cache.clear();
+        }
     }
 
     private Map<String, Object> scopeOf(Bound b) {
@@ -330,8 +396,8 @@ class FinancialAnalyticsController {
     private static final String LEDGER = ledgerSql();
 
     /** the totals and every breakdown — one statement, one read of the revenue rows */
-    private void groups(Map<String, Object> out, Bound b, Filters f) {
-        List<Map<String, Object>> rows = bind(jdbc.sql(LEDGER), b, f, f.from(), f.to()).param("g", f.granularity()).query().listOfRows();
+    private void groups(Map<String, Object> out, Bound b, String own, Filters f) {
+        List<Map<String, Object>> rows = bind(jdbc.sql(LEDGER), b, own, f, f.from(), f.to()).param("g", f.granularity()).query().listOfRows();
         Map<String, List<Map<String, Object>>> lists = new LinkedHashMap<>();
         for (Breakdown bd : BREAKDOWNS) if (!bd.cols().isEmpty()) lists.put(bd.key(), new ArrayList<>());
         Map<String, Object> totals = null;
@@ -379,7 +445,7 @@ class FinancialAnalyticsController {
      * Failed attempts and refunds are found first, in the window, and only the payments they name are read from the
      * ledger (by reference, which the view restricts in each of its sources) — never the whole ledger to find a handful.
      */
-    private Map<String, Object> totals(Map<String, Object> revenue, Bound b, Filters f) {
+    private Map<String, Object> totals(Map<String, Object> revenue, Bound b, String own, Filters f) {
         Map<String, Object> t = new LinkedHashMap<>(revenue);
         t.put("revenue", revenue.get("amount"));
         Map<String, Object> pending = bind(jdbc.sql("""
@@ -387,7 +453,7 @@ class FinancialAnalyticsController {
                 ) SELECT count(*) AS n, coalesce(sum(amount), 0) AS amount FROM r v
                    WHERE v.confirmed_at IS NULL AND v.expires_at > now()
                      AND (:from::date IS NULL OR v.generated_at >= :from::date) AND (:to::date IS NULL OR v.generated_at < (:to::date + 1))
-                """), b, f, f.from(), f.to()).query().singleRow();
+                """), b, own, f, f.from(), f.to()).query().singleRow();
         t.put("pending_count", pending.get("n"));
         t.put("pending_amount", pending.get("amount"));
         String[] failedRefs = jdbc.sql("""
@@ -404,7 +470,7 @@ class FinancialAnalyticsController {
                     ) SELECT count(*) AS n FROM finance.gateway_event e JOIN r v ON v.reference = e.reference
                        WHERE e.outcome = ANY (string_to_array(:failed, ','))
                          AND (:from::date IS NULL OR e.received_at >= :from::date) AND (:to::date IS NULL OR e.received_at < (:to::date + 1))
-                    """), b, f, f.from(), f.to()).param("refs", failedRefs).param("failed", String.join(",", FAILED)).query().singleRow().get("n")).longValue();
+                    """), b, own, f, f.from(), f.to()).param("refs", failedRefs).param("failed", String.join(",", FAILED)).query().singleRow().get("n")).longValue();
         }
         t.put("failed_count", failed);
         String[] refundRefs = jdbc.sql("""
@@ -421,7 +487,7 @@ class FinancialAnalyticsController {
                     ) SELECT count(*) AS n, coalesce(sum(rf.amount), 0) AS amount FROM finance.refund rf JOIN r v ON v.reference = rf.reference
                        WHERE rf.state = 'PAID'
                          AND (:from::date IS NULL OR rf.paid_at >= :from::date) AND (:to::date IS NULL OR rf.paid_at < (:to::date + 1))
-                    """), b, f, f.from(), f.to()).param("refs", refundRefs).query().singleRow();
+                    """), b, own, f, f.from(), f.to()).param("refs", refundRefs).query().singleRow();
             refunded = ((Number) refunds.get("n")).longValue();
             refundedAmount = (BigDecimal) refunds.get("amount");
         }
@@ -432,7 +498,7 @@ class FinancialAnalyticsController {
     }
 
     /** the period before: the same length of days before the window, or the session before the session asked for */
-    private Map<String, Object> comparison(Bound b, Filters f) {
+    private Map<String, Object> comparison(Bound b, String own, Filters f) {
         LocalDate from = f.from(), to = f.to();
         Filters prev;
         String label;
@@ -452,7 +518,7 @@ class FinancialAnalyticsController {
                 WITH r AS (""" + ROWS + CONFIRMED + """
                 ) SELECT coalesce(sum(x.n), 0)::bigint AS transactions, count(*) AS payers, coalesce(sum(x.amt), 0) AS amount
                     FROM (SELECT payer_key, count(*) AS n, sum(amount) AS amt FROM r GROUP BY payer_key) x
-                """), b, prev, prev.from(), prev.to()).query().singleRow();
+                """), b, own, prev, prev.from(), prev.to()).query().singleRow();
         Map<String, Object> m = figures(row);
         m.put("label", label);
         m.put("from", prev.from() == null ? "" : prev.from().toString());
@@ -606,6 +672,7 @@ class FinancialAnalyticsController {
                     new DomainRuleViolation.Remedy("For example GST or CONVOCATION.", "Bursary"));
         }
         AuditContextHolder.required();
+        dropSummariesOnCommit();
         String[] kinds = body.kinds() == null ? new String[0] : body.kinds().stream().map(k -> k.trim().toUpperCase()).filter(k -> !k.isEmpty()).toArray(String[]::new);
         String purpose = body.purpose() == null || body.purpose().isBlank() ? null : code(body.purpose());
         if (body.purpose() != null && !body.purpose().isBlank()
@@ -667,6 +734,7 @@ class FinancialAnalyticsController {
                     new DomainRuleViolation.Remedy("For example SANDWICH or PRELIMINARY.", "Bursary"));
         }
         AuditContextHolder.required();
+        dropSummariesOnCommit();
         String mode = body.studyMode() == null || body.studyMode().isBlank() ? null : body.studyMode().trim().toUpperCase();
         if (mode != null && !Set.of("FULL_TIME", "PART_TIME", "SANDWICH").contains(mode)) {
             throw new DomainRuleViolation("PAY_TYPE_MODE", "A study mode is full-time, part-time or sandwich.", new DomainRuleViolation.Remedy("Choose one, or leave it blank.", "Bursary"));
@@ -705,6 +773,7 @@ class FinancialAnalyticsController {
                     new DomainRuleViolation.Remedy("Choose an income account (4010–4090) from the chart of accounts.", "Bursary"));
         }
         java.util.UUID by = AuditContextHolder.required().actorId();
+        dropSummariesOnCommit();
         return jdbc.sql("""
                 INSERT INTO finance.payment_purpose (code, label, ord, active, gl_account, entitlement, updated_by, updated_at)
                 VALUES (:c, :l, coalesce(:o, 100), coalesce(:a, true), :g, nullif(btrim(coalesce(:e, '')), ''), :by, now())
@@ -725,6 +794,7 @@ class FinancialAnalyticsController {
     @Transactional
     Map<String, Object> setRule(@Valid @RequestBody RuleIn body) {
         AuditContextHolder.required();
+        dropSummariesOnCommit();
         String purpose = body.purpose() == null || body.purpose().isBlank() ? null : code(body.purpose());
         String type = body.programmeType() == null || body.programmeType().isBlank() ? null : code(body.programmeType());
         String module = code(body.sourceModule());

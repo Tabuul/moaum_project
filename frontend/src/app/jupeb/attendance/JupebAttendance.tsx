@@ -16,6 +16,7 @@ import { Btn, KvGrid, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/componen
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 import { day, jcall, when } from "@/lib/jupeb";
 import { LecturesDue } from "./LecturesDue";
 import { CoveragePanel, RegisterTopics } from "./Coverage";
@@ -209,6 +210,8 @@ export function RegisterView({ id, onBack }: { id: string; onBack: () => void })
   const editable = r.mayMark;
   return (
     <>
+      {/* new marks can be saved from the idle-timeout warning; a correction of a saved mark waits for its reason */}
+      <Unsaved name="jupeb-register" dirty={editable && changed.length > 0} save={corrections.length ? null : () => save(null)} />
       <div className="row"><Btn kind="ghost" onClick={onBack}>← All registers</Btn><span className="grow" />
         {r.locked_at ? <Pil kind="grey">{`Locked ${when(r.locked_at)}${r.locked_by ? ` by ${r.locked_by}` : ""}`}</Pil> : null}</div>
       <Panel title={`${r.subject_title} (${r.subject_code}) · ${day(r.held_on)}`}>

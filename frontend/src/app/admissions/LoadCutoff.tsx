@@ -13,6 +13,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 
 export function LoadCutoff({ session, cutoff, may }: { session: string; cutoff: number | null; may: boolean }) {
   const router = useRouter();
@@ -43,6 +44,7 @@ export function LoadCutoff({ session, cutoff, may }: { session: string; cutoff: 
   return (
     <Panel title="General UTME cut-off for loading the JAMB lists" right={cutoff === null ? <Pil kind="bad">Not stated · nothing loads</Pil> : <Pil kind="ok">{cutoff} · in force for loading</Pil>}>
       <PBody>
+        <Unsaved name="load-cutoff" dirty={may && dirty} save={state} />
         <div className="sub2 mb-3">
           A candidate with a UTME score under it is held back and <b>not loaded</b>. Faculty and programme cut-offs apply at screening.
         </div>

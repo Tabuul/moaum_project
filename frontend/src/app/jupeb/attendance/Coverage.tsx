@@ -12,6 +12,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day, jcall } from "@/lib/jupeb";
+import { Unsaved } from "@/components/Unsaved";
 
 const BASE = "/api/v1/attendance/jupeb";
 interface Topic { topic_id: string; unit_id: string; unit_code: string; unit_title: string; ord: number; sn: string | null; topic: string | null; sub_topic: string | null; here: boolean; first_on: string | null }
@@ -37,6 +38,8 @@ export function RegisterTopics({ registerId, heldOn, editable }: { registerId: s
     } finally { setBusy(false); }
   }
   return (
+    <>
+    <Unsaved name="jupeb-topics" dirty={editable && dirty} save={save} />
     <Panel title="Topics covered in this lecture" right={<span className="row"><Pil kind="info">{`${ticked.size} ticked`}</Pil>
       {editable ? <Btn kind="primary" disabled={busy || !dirty} onClick={() => void save()}>{busy ? "Saving…" : "Save the topics"}</Btn> : null}</span>}>
       <PBody>
@@ -53,6 +56,7 @@ export function RegisterTopics({ registerId, heldOn, editable }: { registerId: s
         })} />
       </PBody>
     </Panel>
+    </>
   );
 }
 

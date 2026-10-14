@@ -13,6 +13,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 
 export interface CalendarRow { level: number; phase: string; ordinal: number; name: string; length_weeks: number | null; starts_on: string | null; ends_on: string | null; subjects: string | null; open_years?: number }
 
@@ -114,6 +115,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
 
   return (
     <>
+      <Unsaved name="college-calendar" dirty={mayEdit && pending > 0} save={saveAll} />
       <div className="scope">
         <div className="scope__f"><label htmlFor="cal-session">Session</label>
           <select id="cal-session" className="ws__select" value={session} onChange={(e) => go(`/college/calendar?session=${encodeURIComponent(e.target.value)}`)}>{sessions.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>

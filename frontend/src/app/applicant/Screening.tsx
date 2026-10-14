@@ -15,6 +15,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/prot
 import { DTable } from "@/components/proto/DTable";
 import { Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 import { DOC_WORD, STATE_WORD, dayOf, parseTracker, whenAt, type Facts, type Institution, type ScreeningView } from "@/lib/screening";
 import { Tracker, stepHref, useAdmission } from "./Admission";
 import { Eligibility } from "./Eligibility";
@@ -116,6 +117,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
 
   return (
     <>
+      <Unsaved name="screening-schools" dirty={editable && dirty} save={saveSchools} />
       <Panel title={`Screening · ${f.screening_no}`} right={<Pil kind={STATE_WORD[f.state][1]}>{STATE_WORD[f.state][0]}</Pil>}>
         <PBody>
           <div className="sub2">Enter the schools you attended, with their dates. You are told the outcome here and by email.</div>

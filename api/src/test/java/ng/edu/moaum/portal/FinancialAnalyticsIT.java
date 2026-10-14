@@ -146,6 +146,27 @@ class FinancialAnalyticsIT {
         assertThat(((Number) ((Map<String, Object>) chs.get("totals")).get("revenue")).doubleValue()).isEqualTo(150000.0);
         assertThat(((Number) ((Map<String, Object>) summary(ItSupport.token("provost"), "session=" + SESSION + "&q=" + tag + "&fac=" + science).get("totals")).get("revenue")).doubleValue()).isEqualTo(0.0);
         assertThat(((Number) ((Map<String, Object>) summary(ItSupport.token("pgschool"), "session=" + SESSION + "&q=" + tag).get("totals")).get("revenue")).doubleValue()).isEqualTo(0.0);
+
+        // Oct 2026: the figures are kept a few minutes per scope and filters, and say when they were worked out — a payment
+        // confirmed meanwhile shows once Refresh asks again; another office of the same scope reads the same kept figures
+        String same = "session=" + SESSION + "&q=" + tag;
+        Map<String, Object> before = summary(bursar, same);
+        assertThat((String) before.get("asOf")).isNotBlank();
+        double was = ((Number) ((Map<String, Object>) before.get("totals")).get("revenue")).doubleValue();
+        pay(d, 7000, "Transcript TRN2-" + tag);
+        Map<String, Object> kept = summary(bursar, same);
+        assertThat(kept.get("asOf")).isEqualTo(before.get("asOf"));
+        assertThat(((Number) ((Map<String, Object>) kept.get("totals")).get("revenue")).doubleValue()).isEqualTo(was);
+        Map<String, Object> anew = summary(bursar, same + "&fresh=true");
+        assertThat(((Number) ((Map<String, Object>) anew.get("totals")).get("revenue")).doubleValue()).isEqualTo(was + 7000);
+        assertThat(java.time.Instant.parse((String) anew.get("asOf"))).isAfterOrEqualTo(java.time.Instant.parse((String) before.get("asOf")));
+        assertThat(anew.get("refreshing")).isEqualTo(false);
+        Map<String, Object> registrar = summary(ItSupport.token("registrar"), same);
+        assertThat(registrar.get("asOf")).isEqualTo(anew.get("asOf"));
+        assertThat(((Map<String, Object>) registrar.get("scope")).get("office")).isEqualTo("registrar");
+        // the College's figures are its own question, never the University's kept ones
+        assertThat(((Number) ((Map<String, Object>) summary(ItSupport.token("provost"), same).get("totals")).get("revenue")).doubleValue()).isEqualTo(150000.0);
+
         // the Head of Department and the Academic Office no longer read the finance figures at all (Oct 2026); a lecturer never did
         String hod = it.officer("hod", "department", "MTC");
         assertThat(it.get(hod, "/api/v1/analytics/finance/summary?session=" + SESSION).getStatusCode().value()).isEqualTo(403);

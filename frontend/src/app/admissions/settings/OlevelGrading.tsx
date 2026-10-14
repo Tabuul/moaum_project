@@ -14,6 +14,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 
 export interface Grading {
   session: string;
@@ -107,6 +108,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
       right={grading ? (grading.stated ? <Pil kind="ok">Stated for {session}</Pil> : <Pil kind="info">Defaults · not yet stated for {session}</Pil>) : "reading…"}
     >
       <PBody>
+        <Unsaved name="olevel-grading" dirty={may && dirty} save={save} />
         <div className="sub2 mb-3">
           Points per grade over the relevant subjects (the better grade of a subject sat twice), plus a sittings bonus.
           <b> Stated by the Academic Office</b> per session; the score is shown to the Academic Office only, never the applicant.

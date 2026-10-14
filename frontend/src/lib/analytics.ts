@@ -35,6 +35,8 @@ export interface FinSummary {
   byCategory: FinCategoryRow[]; byFaculty: FinFacultyRow[]; byDepartment: FinDepartmentRow[]; byProgramme: FinProgrammeRow[]; byLevel: FinLevelRow[];
   byGender: FinGenderRow[]; byEntry: FinEntryRow[]; bySession: FinSessionRow[]; byChannel: FinChannelRow[]; trend: FinTrendRow[]; compare: FinCompare | null;
   byProgrammeType?: FinTypeRow[]; byPurpose?: FinPurposeRow[]; byTypeAndPurpose?: FinTypePurposeRow[]; bySourceModule?: FinModuleRow[]; byResponsibleOffice?: FinOfficeRow[];
+  /** Oct 2026: the figures are kept a few minutes: when they were worked out, how long that took, and whether newer ones are being prepared */
+  asOf?: string; computedMs?: number; refreshing?: boolean;
 }
 export interface FinTransaction {
   source: string; reference: string; receipt_no: string | null; number: string | null; student_id: string | null; application_id: string | null; pg_application_id: string | null;

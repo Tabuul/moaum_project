@@ -18,6 +18,10 @@ import {
 
 const POLICY_TTL_MS = 5 * 60_000;
 const MOVE_THROTTLE_MS = 5_000;
+/** the warning's own buttons: a press on one is that button's decision, so it must not first close the warning as ordinary activity
+ *  (the dialog would be gone before the click landed, and Save changes or Log out now would never happen) */
+const OWN_ACT = "data-idle-act";
+const ownAct = (e: Event) => e.target instanceof Element && e.target.closest(`[${OWN_ACT}]`) !== null;
 
 function readStored(key: string): number {
   try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
@@ -95,7 +99,7 @@ export function IdleWatch() {
   useEffect(() => {
     if (exempt) return;
     mark();
-    const deliberate = () => { mark(); closeWarning(); };
+    const deliberate = (e: Event) => { if (ownAct(e)) return; mark(); closeWarning(); };
     const moved = () => {
       if (warningRef.current) return;
       const now = Date.now();
@@ -183,10 +187,10 @@ export function IdleWatch() {
     <Modal title="Session timeout warning" sub={unsaved ? "You have unsaved changes" : "You have been inactive"} onClose={() => void keepGoing()}
       foot={<>
         {policy.allowContinue !== false ? (
-          <button ref={continueBtn} type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void keepGoing()}>Continue session</button>
+          <button ref={continueBtn} type="button" className="btn btn--primary btn--sm" data-idle-act="" disabled={busy} onClick={() => void keepGoing()}>Continue session</button>
         ) : null}
-        {unsaved && canSaveUnsaved() ? <button type="button" className="btn btn--secondary btn--sm" disabled={busy} onClick={() => void saveThenGo()}>Save changes</button> : null}
-        <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => void end("out")}>Log out now</button>
+        {unsaved && canSaveUnsaved() ? <button type="button" className="btn btn--secondary btn--sm" data-idle-act="" disabled={busy} onClick={() => void saveThenGo()}>Save changes</button> : null}
+        <button type="button" className="btn btn--ghost btn--sm" data-idle-act="" disabled={busy} onClick={() => void end("out")}>Log out now</button>
       </>}>
       <p style={{ marginTop: 0 }}>
         {unsaved ? "You have unsaved changes. Your session will expire and they will be lost unless you continue or save." : "You will be automatically logged out in:"}

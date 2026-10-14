@@ -49,13 +49,12 @@ export function canSaveUnsaved(): boolean {
   return [...unsaved.values()].some((s) => s !== null);
 }
 
-/** every registered form saved, where it said how */
+/** every registered form saved, where it said how; a saver answering false did not save, and its form stays listed */
 export async function saveUnsaved(): Promise<void> {
   for (const [key, save] of [...unsaved.entries()]) {
     if (!save) continue;
     try {
-      await save();
-      unsaved.delete(key);
+      if ((await save()) !== false) unsaved.delete(key);
     } catch {
       /* the form shows its own problem; the person decides what to do */
     }

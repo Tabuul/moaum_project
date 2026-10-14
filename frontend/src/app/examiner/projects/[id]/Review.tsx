@@ -11,6 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 import { Documents, History, RECOMMENDATION, RecommendationPil, StatusPil, daysWords, dayOf, when, type Assessment, type Doc, type Event, type Line, type MyAssignment } from "@/lib/examiners";
 
 export interface ReviewData extends Omit<MyAssignment, "documents"> {
@@ -79,6 +80,7 @@ export function Review({ d }: { d: ReviewData }) {
       <PageHead eyebrow={`${d.kind === "POSTGRADUATE" ? "Postgraduate" : "Undergraduate"} project · ${d.session}`} title={d.title} description={`${d.student} (${d.number}) · ${d.programme}, ${d.department}`}
         actions={<><StatusPil status={d.status} />{d.overdue ? <Pil kind="bad">Overdue</Pil> : null}<LinkBtn href="/examiner/projects">My Projects</LinkBtn></>} />
       {problem ? <ProblemNotice problem={problem} /> : null}
+      <Unsaved name="examiner-assessment" dirty={!readOnly && dirty} save={saveDraft} />
 
       {readOnly ? (
         <Note kind={a?.state === "LOCKED" ? "ok" : "info"} title={a?.state === "LOCKED" ? "Your assessment has been approved and locked by the University" : "Your assessment has been submitted and is read-only"}>

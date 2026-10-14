@@ -15,6 +15,7 @@ import { OUTCOMES, RS_STAGES, STAGE_LABEL, csv, download, type RollRow, type She
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { Unsaved } from "@/components/Unsaved";
 import { semesterName } from "@/lib/student-portal";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
 
@@ -257,6 +258,8 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         </Note>
       ) : null}
 
+      {/* the idle-timeout warning saves the draft where nothing more is needed; a changed saved mark waits for its reason */}
+      <Unsaved name="score-entry" dirty={dirty.length > 0} save={atEntry && own && !invalid.length && !needReason.length && !behalfMissing ? save : null} />
       <div className="row">
         <Pil kind={ready ? "ok" : atEntry ? "bad" : "info"}>{!atEntry ? RS_STAGES[stageIdx]?.[0] ?? s.stage : ready ? "Complete — not yet submitted" : blank ? `Draft — ${blank} candidate${blank === 1 ? "" : "s"} without a mark` : "Draft — unsaved changes"}</Pil>
         {saved ? <span className="sk__saved"><Ico name="check" size={14} /> {saved}</span> : dirty.length ? <span className="sub2">{dirty.length} unsaved</span> : null}
