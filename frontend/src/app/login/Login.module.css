@@ -125,6 +125,25 @@
 
 .foot { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #e2e8f0; font-size: 14px; color: var(--muted); }
 .foot a { font-weight: 700; color: var(--crimson); text-decoration: underline; text-underline-offset: 4px; }
+/* "Cannot sign in?" — the question on its own line, the two ways out as links that never break mid-phrase */
+.help { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #e2e8f0; font-size: 14px; color: var(--muted); }
+.helpLabel { display: block; margin-bottom: 10px; }
+.helpLinks { display: flex; flex-wrap: wrap; gap: 8px; }
+.helpLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  font-weight: 700;
+  color: var(--crimson);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.helpLink:hover, .helpLink:focus-visible { border-color: var(--crimson); background: rgba(197, 30, 40, 0.05); }
+.legalNarrow { margin-top: 1.25rem; }
+@media (min-width: 1024px) { .legalNarrow { display: none; } }
 
 
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

@@ -87,7 +87,7 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
   const who = whoIs(uid);
 
   return (
-    <AuthLayout bare lead={<>Sign-in for students, staff and applicants.</>}>
+    <AuthLayout bare legal lead={<>Sign-in for students, staff and applicants.</>}>
         <div className={css.formWrap}>
           <p className={css.eyebrow}><Icon name="shield" className={css.eyebrowIcon} />Secure sign-in</p>
           <h2 className={css.heading}>Portal Login</h2>
@@ -138,8 +138,15 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
             {sso?.enabled ? <a className={css.sso} href="/api/auth/sso/start">{sso.label}</a> : null}
           </form>
 
-          <p className={css.foot}>Cannot sign in? <Link href="/login/help">Ask ICT Support for help</Link> · <Link href="/track">Track a request</Link></p>
-          <p className={css.foot}><Link href="/privacy-policy">Privacy policy</Link> · <Link href="/privacy-policy#s-cookies">Cookies</Link></p>
+          <div className={css.help}>
+            <span className={css.helpLabel}>Cannot sign in?</span>
+            <div className={css.helpLinks}>
+              <Link href="/login/help" className={css.helpLink}>Ask ICT Support for help</Link>
+              <Link href="/track" className={css.helpLink}>Track a request</Link>
+            </div>
+          </div>
+          {/* on a phone the brand card hides its motto, so the links stay here; on a wide screen they sit under the motto */}
+          <p className={`${css.foot} ${css.legalNarrow}`}><Link href="/privacy-policy">Privacy policy</Link> · <Link href="/privacy-policy#s-cookies">Cookies</Link></p>
         </div>
     </AuthLayout>
   );

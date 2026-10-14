@@ -185,7 +185,11 @@
 .lead { display: none; max-width: 24rem; margin: 1.25rem auto 0; font-size: 15px; line-height: 1.65; color: #cbd5e1; }
 .motto { display: none; margin: 0; padding: 8px 32px 32px; text-align: center; }
 .motto span:first-child { display: block; font-family: "IBM Plex Serif", Georgia, serif; font-size: 15px; font-style: italic; color: #e2e8f0; }
-.motto span:last-child { display: block; margin-top: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #94a3b8; }
+.motto > span:nth-child(2) { display: block; margin-top: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #94a3b8; }
+/* the Privacy policy and Cookies links under the motto */
+.legal { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 14px; font-size: 12px; color: #94a3b8; }
+.legal a { font-weight: 600; color: #e2e8f0; text-decoration: underline; text-decoration-color: rgba(226, 232, 240, 0.35); text-underline-offset: 4px; }
+.legal a:hover, .legal a:focus-visible { color: #fff; text-decoration-color: #fbbf24; }
 @media (min-width: 1024px) { .bar, .lead, .motto { display: block; } }
 
 /* ── the form, on white ── */

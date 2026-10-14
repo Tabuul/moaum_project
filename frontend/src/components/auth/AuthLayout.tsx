@@ -5,6 +5,7 @@
  * form go in the panel as they are, and take the CMS's look from here.
  */
 import type { ReactNode } from "react";
+import Link from "next/link";
 import css from "./AuthLayout.module.css";
 
 function Shield() {
@@ -16,7 +17,7 @@ function Shield() {
   );
 }
 
-export function AuthLayout({ lead, stats, eyebrow, wide = false, bare = false, children }: {
+export function AuthLayout({ lead, stats, eyebrow, wide = false, bare = false, legal = false, children }: {
   /** the card's paragraph under "MOAUM Portal" */
   lead?: ReactNode;
   /** the page's figures on the card: [figure, what it counts] */
@@ -27,6 +28,8 @@ export function AuthLayout({ lead, stats, eyebrow, wide = false, bare = false, c
   wide?: boolean;
   /** the page draws its own panel (the sign-in form) */
   bare?: boolean;
+  /** the Privacy policy and Cookies links under the motto, on the card (wide screens, where the motto shows) */
+  legal?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -77,6 +80,13 @@ export function AuthLayout({ lead, stats, eyebrow, wide = false, bare = false, c
           <p className={css.motto}>
             <span>Scientia Liberatio Populorum</span>
             <span>Knowledge for the liberation of the people</span>
+            {legal ? (
+              <span className={css.legal}>
+                <Link href="/privacy-policy">Privacy policy</Link>
+                <span aria-hidden="true">·</span>
+                <Link href="/privacy-policy#s-cookies">Cookies</Link>
+              </span>
+            ) : null}
           </p>
         </div>
       </aside>
