@@ -176,7 +176,7 @@ class CourseReviewController {
                        count(DISTINCT b.takes) AS "distinctUnits",
                        count(*) FILTER (WHERE b.own IS NOT NULL) AS "ownCount",
                        json_agg(json_build_object('programme', b.programme_code, 'name', p.name, 'level', b.level, 'units', b.takes,
-                                                  'own', b.own IS NOT NULL, 'department', pd.name)
+                                                  'own', b.own IS NOT NULL, 'department', pd.name, 'deptCode', p.dept_code)
                                 ORDER BY b.takes, p.name, b.level)::text AS programmes
                   FROM catalogue.course c
                   JOIN b ON b.course_code = c.code

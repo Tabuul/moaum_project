@@ -464,6 +464,53 @@ class CatalogueController {
         return Map.of("programme", p, "course", c, "level", level, "removed", n);
     }
 
+    /** V464: what setting a programme's units for a course at a level would reach — the units now and after, how many
+     *  registrations follow, and how many keep theirs (a closed session, or a class whose results are worked on) */
+    private Map<String, Object> impactOf(String c, String p, int level, int units) {
+        boolean bound = jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l)")
+                .param("c", c).param("p", p).param("l", level).query(Boolean.class).single();
+        if (!bound) throw new ng.edu.moaum.portal.shared.NotFound("binding", c + " → " + p + " at " + level);
+        return jdbc.sql("""
+                SELECT now_units AS "nowUnits", new_units AS "newUnits", follow, kept FROM catalogue.units_change_impact(:c, :p, :l, :u)
+                """).param("c", c).param("p", p).param("l", level).param("u", units).query().singleRow();
+    }
+
+    @GetMapping("/structure/units-impact")
+    @PreAuthorize(STRUCTURE)
+    @Transactional(readOnly = true)
+    Map<String, Object> unitsImpact(@RequestParam String programme, @RequestParam String course, @RequestParam int level, @RequestParam int units) {
+        String p = programme.trim().toUpperCase();
+        String c = course.trim().toUpperCase();
+        assertHodOwns(programmeDept(p));
+        if (units < 0 || units > 12) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_UNITS", "A programme takes a course at 0 to 12 units.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Give a number from 0 to 12.", "Head of Department"));
+        }
+        return impactOf(c, p, level, units);
+    }
+
+    public record UnitsIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,
+                          @NotNull @Min(100) @Max(900) Integer level, @NotNull @Min(0) @Max(12) Integer units) {
+    }
+
+    /** V464: set the units a programme takes a course at, at a level — the binding's basis and track untouched, the course's own
+     *  number taking the course's units again; the registrations not yet examined follow, and the answer says how many */
+    @PostMapping("/structure/units")
+    @PreAuthorize(STRUCTURE)
+    @Transactional
+    Map<String, Object> setUnits(@Valid @RequestBody UnitsIn body) {
+        String p = body.programme().trim().toUpperCase();
+        String c = body.course().trim().toUpperCase();
+        assertHodOwns(programmeDept(p));
+        Map<String, Object> impact = impactOf(c, p, body.level(), body.units());
+        jdbc.sql("""
+                UPDATE catalogue.course_offer co SET units = nullif(:u, (SELECT x.units FROM catalogue.course x WHERE x.code = co.course_code))
+                 WHERE co.course_code = :c AND co.programme_code = :p AND co.level = :l
+                """).param("u", body.units()).param("c", c).param("p", p).param("l", body.level()).update();
+        int units = jdbc.sql("SELECT catalogue.units_for(:c, :p, :l)").param("c", c).param("p", p).param("l", body.level()).query(Integer.class).single();
+        return Map.of("programme", p, "course", c, "level", body.level(), "units", units, "followed", impact.get("follow"), "kept", impact.get("kept"));
+    }
+
     /** a course anywhere in the University, by code or title, for the structure's picker */
     @GetMapping("/courses/search")
     @PreAuthorize(READERS)

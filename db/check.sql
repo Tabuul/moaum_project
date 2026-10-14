@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 301
+\set EXPECTED 302
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13128,10 +13128,11 @@ END $$;
 -- V460: a course's units per programme, and a change is the department's that sees it. An invented 3-unit course is taken by
 -- a programme of its own department, by another department's programme at 2 units of its own, and by a third department's
 -- programme at the course's units. The second programme's change reaches its unscored student at once and no one else; a
--- student already scored keeps the units examined. A change of the course's own units (3 → 4) reaches only its own
+-- student already scored keeps the units examined (on a class of their own since V464, which holds a whole examined class). A change of the course's own units (3 → 4) reaches only its own
 -- department's programme; the third department's programme keeps 3, pinned on its binding. The block undoes its writes.
 DO $$
 DECLARE who uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; p4 text; v_ses text := '9460/9461'; v_off uuid := gen_random_uuid(); v_sheet uuid := gen_random_uuid();
+        v_off3 uuid := gen_random_uuid();
         s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
         r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r3 uuid := gen_random_uuid(); r4 uuid := gen_random_uuid();
         u_p1 int; u_p2 int; e1_a int; e2_a int; e3_a int; menu_p2 int; e1_b int; e2_b int; e4_b int; pinned int; msg text;
@@ -13149,18 +13150,18 @@ BEGIN
         INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9460-10-01', date '9461-08-31') ON CONFLICT (name) DO NOTHING;
         INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZU 101', 'Units per programme', 3, 1, 100, v_dept, 'Core', 'LIVE');
         INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZU 101', p1, 100, 'Core'), ('ZZU 101', p2, 100, 'Borrowed'), ('ZZU 101', p4, 100, 'Borrowed');
-        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_off, 'ZZU 101', v_ses, 1);
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_off, 'ZZU 101', v_ses, 1), (v_off3, 'ZZU 101', v_ses, 2);
         INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
           (s1, 'MOAUM/ADM/60/946001', 'CHECKUNITS', 'One', p1, 'UTME', v_ses, 100, 100, 'ADMITTED'),
           (s2, 'MOAUM/ADM/60/946002', 'CHECKUNITS', 'Two', p2, 'UTME', v_ses, 100, 100, 'ADMITTED'),
           (s3, 'MOAUM/ADM/60/946003', 'CHECKUNITS', 'Three', p2, 'UTME', v_ses, 100, 100, 'ADMITTED'),
           (s4, 'MOAUM/ADM/60/946004', 'CHECKUNITS', 'Four', p4, 'UTME', v_ses, 100, 100, 'ADMITTED');
         INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES
-          (r1, s1, v_ses, 1, 100), (r2, s2, v_ses, 1, 100), (r3, s3, v_ses, 1, 100), (r4, s4, v_ses, 1, 100);
+          (r1, s1, v_ses, 1, 100), (r2, s2, v_ses, 1, 100), (r3, s3, v_ses, 2, 100), (r4, s4, v_ses, 1, 100);
         INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
-          (r1, v_off, 3, 'CURRENT'), (r2, v_off, 3, 'CURRENT'), (r3, v_off, 3, 'CURRENT'), (r4, v_off, 3, 'CURRENT');
-        -- the third student is already scored on the class
-        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (v_sheet, v_off);
+          (r1, v_off, 3, 'CURRENT'), (r2, v_off, 3, 'CURRENT'), (r3, v_off3, 3, 'CURRENT'), (r4, v_off, 3, 'CURRENT');
+        -- the third student is already scored, on a class of their own
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (v_sheet, v_off3);
         INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (v_sheet, s3, 20, 40);
         -- the second department's programme takes the course at 2 units
         UPDATE catalogue.course_offer SET units = 2 WHERE course_code = 'ZZU 101' AND programme_code = p2 AND level = 100;
@@ -13404,6 +13405,62 @@ BEGIN
                  AND c3 = cb AND c4 <> c3 AND one_many AND nested, false),
         format('created %s, fresh %s/%s, defer after "%s" | same file %s→%s, raised %s level %s | rewrite %s→%s, moved %s | one=many %s, nested %s',
                r.created, same_a, same_b, defer_after, c0, c1, c2, lvl_after, cb, c3, c4, one_many, nested));
+END $$;
+-- ── V464. Units held for a class whose results are worked on, and a programme's change reaching its carry-overs: an
+--          invented 3-unit course bound into a programme at 100 level. Its classes: one with a classmate already scored,
+--          one whose sheet has left ENTRY, and one of another session with a student of the programme at 100 level, a
+--          carry-over taken at 200 and a student of another programme. Before the programme takes it at 2 units the
+--          impact says 2 follow and 3 keep theirs; after, exactly those two moved, the examined classes and the other
+--          programme kept 3, and back to the course's own number the two return. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; v_s1 text := '9464/9465'; v_s2 text := '9466/9467';
+        o_a uuid := gen_random_uuid(); o_b uuid := gen_random_uuid(); o_d uuid := gen_random_uuid(); sh_a uuid := gen_random_uuid(); sh_b uuid := gen_random_uuid();
+        st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        rg uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        before record; again record; back record; after_units text; back_units text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V464', true);
+        SELECT p.dept_code, p.code INTO v_dept, p1 FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        SELECT p.code INTO p2 FROM ref.programme p WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE'
+           AND p.dept_code IS NOT NULL AND p.code <> p1 ORDER BY p.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+          (gen_random_uuid(), v_s1, date '9464-10-01', date '9465-08-31'), (gen_random_uuid(), v_s2, date '9466-10-01', date '9467-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZV 101', 'Units held by class', 3, 1, 100, v_dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZV 101', p1, 100, 'Core'), ('ZZV 101', p2, 100, 'Borrowed');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_a, 'ZZV 101', v_s1, 1), (o_b, 'ZZV 101', v_s1, 2), (o_d, 'ZZV 101', v_s2, 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        SELECT st[i], 'MOAUM/ADM/60/94640' || i, 'CHECKV464', 'S' || i, CASE WHEN i = 6 THEN p2 ELSE p1 END, 'UTME', v_s1, 100, CASE WHEN i = 4 THEN 200 ELSE 100 END, 'ADMITTED'
+          FROM generate_series(1, 6) i;
+        -- 1 and 2 on class A (2 scored), 3 on class B (its sheet past ENTRY, no score), 4 a carry-over at 200, 5 at 100 and 6 of the other programme on class D
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES
+          (rg[1], st[1], v_s1, 1, 100), (rg[2], st[2], v_s1, 1, 100), (rg[3], st[3], v_s1, 2, 100),
+          (rg[4], st[4], v_s2, 1, 200), (rg[5], st[5], v_s2, 1, 100), (rg[6], st[6], v_s2, 1, 100);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
+          (rg[1], o_a, 3, 'CURRENT'), (rg[2], o_a, 3, 'CURRENT'), (rg[3], o_b, 3, 'CURRENT'), (rg[4], o_d, 3, 'CURRENT'), (rg[5], o_d, 3, 'CURRENT'), (rg[6], o_d, 3, 'CURRENT');
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh_a, o_a);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh_a, st[2], 20, 40);
+        INSERT INTO assessment.score_sheet (id, offering_id, stage) VALUES (sh_b, o_b, 'VERIFICATION');
+        SELECT * INTO before FROM catalogue.units_change_impact('ZZV 101', p1, 100, 2);
+        UPDATE catalogue.course_offer SET units = 2 WHERE course_code = 'ZZV 101' AND programme_code = p1 AND level = 100;
+        after_units := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 6) i JOIN registration.entry e ON e.registration_id = rg[i]);
+        SELECT * INTO again FROM catalogue.units_change_impact('ZZV 101', p1, 100, 2);
+        SELECT * INTO back FROM catalogue.units_change_impact('ZZV 101', p1, 100, 3);
+        UPDATE catalogue.course_offer SET units = NULL WHERE course_code = 'ZZV 101' AND programme_code = p1 AND level = 100;
+        back_units := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 6) i JOIN registration.entry e ON e.registration_id = rg[i]);
+        RAISE EXCEPTION 'the V464 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V464 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V464: a class whose results are worked on keeps its units, a programme''s change reaches its carry-overs, and the impact says beforehand what follows and what keeps',
+        coalesce(before.now_units = 3 AND before.new_units = 2 AND before.follow = 2 AND before.kept = 3
+                 AND after_units = '3,3,3,2,2,3' AND again.follow = 0 AND again.kept = 3
+                 AND back.new_units = 3 AND back.follow = 2 AND back.kept = 0 AND back_units = '3,3,3,3,3,3', false),
+        format('before %s | after %s | again %s | back %s -> %s', to_jsonb(before), after_units, to_jsonb(again), to_jsonb(back), back_units));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

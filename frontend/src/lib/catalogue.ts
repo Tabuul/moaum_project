@@ -102,8 +102,11 @@ export const EVIDENCE: Record<string, string> = {
 /** V460: a course some programme takes at units of its own, and every programme that takes it at the units it takes it at */
 export interface UnitsByProgramme {
   code: string; title: string; courseUnits: number; deptCode: string | null; department: string | null; distinctUnits: number; ownCount: number;
-  programmes: { programme: string; name: string; level: number; units: number; own: boolean; department: string | null }[];
+  programmes: { programme: string; name: string; level: number; units: number; own: boolean; department: string | null; deptCode?: string | null }[];
 }
+
+/** V464: what setting a programme's units for a course would reach, before it is set */
+export interface UnitsImpact { nowUnits: number; newUnits: number; follow: number; kept: number }
 
 export interface DuplicatePair {
   evidence: string; keep_code: string; merge_code: string; keep_title: string; merge_title: string; keep_dept: string | null; merge_dept: string | null;

@@ -101,6 +101,25 @@ class StructureUnitsIT {
         assertThat(changes.get(0)).containsEntry("change", "PROGRAMME_OWN").containsEntry("fileUnits", 2).containsEntry("courseUnits", 3).containsEntry("nowUnits", 3);
         Map<String, Object> same = Map.of("programme", programme, "rows", List.of(Map.of("code", code, "units", "3", "level", "100")));
         assertThat((List<?>) it.call(ict, HttpMethod.POST, "/api/v1/catalogue/import/units", Map.of("groups", List.of(same))).getBody().get("rows")).isEmpty();
+
+        // V464: the review's Change — what setting the programme's units would reach, counted first; then set, basis kept;
+        // the course's own number takes the course's units again; a programme that does not take the course is not found
+        ResponseEntity<Map> impact = it.get(ict, b -> b.path("/api/v1/catalogue/structure/units-impact").queryParam("programme", programme)
+                .queryParam("course", code).queryParam("level", 100).queryParam("units", 2).build());
+        assertThat(impact.getStatusCode().value()).as(String.valueOf(impact.getBody())).isEqualTo(200);
+        assertThat(impact.getBody()).containsEntry("nowUnits", 3).containsEntry("newUnits", 2).containsEntry("follow", 0).containsEntry("kept", 0);
+        ResponseEntity<Map> set = it.call(ict, HttpMethod.POST, "/api/v1/catalogue/structure/units", Map.of("programme", programme, "course", code, "level", 100, "units", 2));
+        assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+        assertThat(set.getBody()).containsEntry("units", 2).containsEntry("followed", 0);
+        r = row(it.get(ict, "/api/v1/catalogue/structure?prog=" + programme), code);
+        assertThat(r).containsEntry("basis", "Elective").containsEntry("units", 2).containsEntry("own_units", 2);
+        assertThat(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/structure/units", Map.of("programme", programme, "course", code, "level", 100, "units", 3))
+                .getBody()).containsEntry("units", 3);
+        assertThat(row(it.get(ict, "/api/v1/catalogue/structure?prog=" + programme), code).get("own_units")).isNull();
+        assertThat(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/structure/units", Map.of("programme", programme, "course", code, "level", 300, "units", 2))
+                .getStatusCode().value()).isEqualTo(404);
+        assertThat(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/structure/units", Map.of("programme", programme, "course", code, "level", 100, "units", 13))
+                .getStatusCode().value()).isEqualTo(400);
         it.db(() -> jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c").param("c", code).update());
     }
 }

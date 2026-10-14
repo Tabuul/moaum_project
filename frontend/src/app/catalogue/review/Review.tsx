@@ -3,7 +3,7 @@
 /** V445: the ownership review of the course pool. One place to see every course, who owns it, who offers it, what the review flags —
  *  and to say the word on each (correct, incorrect owner, requires review), correct an owner one by one or in bulk with a reason,
  *  and take the report away. A flag never changes an owner; a person does, on the trail. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
@@ -16,12 +16,14 @@ import { Field, Modal, day } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { ISSUE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type CourseListRow, type Directory, type DuplicatePair, type ReviewStatus, type ReviewSummary, type UnitsByProgramme } from "@/lib/catalogue";
+import { ISSUE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type CourseListRow, type Directory, type DuplicatePair, type ReviewStatus, type ReviewSummary, type UnitsByProgramme, type UnitsImpact } from "@/lib/catalogue";
 
 export type ReviewFilters = Record<"q" | "fac" | "dept" | "prog" | "level" | "semester" | "kind" | "state" | "session" | "review" | "issue" | "sort" | "dir" | "size", string>;
 
 const CENTRAL = ["academic", "registrar", "dregistrar", "admin", "super"];
 const REVIEWERS = [...CENTRAL, "hod", "dean"];
+/** the offices that keep a programme's structure, its units included (CatalogueController STRUCTURE); a Head of Department their own */
+const STRUCTURE = [...CENTRAL, "hod", "dean", "ict"];
 
 export function Review({ list, directory, summary, sessions, filters, page, duplicates, unitsByProgramme = [], actingOffice, generatedBy }: {
   list: CourseList; directory: Directory | null; summary: ReviewSummary | null; sessions: string[]; filters: ReviewFilters; page: number;
@@ -37,6 +39,24 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
   const [marking, setMarking] = useState<{ row: CourseListRow; status: ReviewStatus; note: string } | null>(null);
   const [owning, setOwning] = useState<{ row: CourseListRow; dept: string; why: string } | null>(null);
   const [bulk, setBulk] = useState<{ dept: string; why: string; preview: BulkPreview | null } | null>(null);
+  const [unitsEdit, setUnitsEdit] = useState<{ course: UnitsByProgramme; prog: UnitsByProgramme["programmes"][number]; units: string; impact: UnitsImpact | null } | null>(null);
+  const mayChangeUnits = (x: UnitsByProgramme["programmes"][number]) =>
+    STRUCTURE.includes(actingOffice ?? "") && (actingOffice !== "hod" || (x.deptCode ?? "") === list.scope.dept);
+  const unitsValue = unitsEdit && /^\d{1,2}$/.test(unitsEdit.units.trim()) && Number(unitsEdit.units) <= 12 ? Number(unitsEdit.units) : null;
+
+  // what the change would reach, counted as the number is typed
+  useEffect(() => {
+    if (!unitsEdit || unitsValue == null) return;
+    const { course, prog } = unitsEdit;
+    const t = setTimeout(async () => {
+      const qs = new URLSearchParams({ programme: prog.programme, course: course.code, level: String(prog.level), units: String(unitsValue) });
+      const r = await fetch(`/api/bff/api/v1/catalogue/structure/units-impact?${qs.toString()}`, { cache: "no-store" });
+      const j = r.ok ? ((await r.json().catch(() => null)) as UnitsImpact | null) : null;
+      setUnitsEdit((e) => (e && e.course.code === course.code && e.prog.programme === prog.programme && e.prog.level === prog.level
+        && Number(e.units.trim()) === unitsValue ? { ...e, impact: j } : e));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [unitsEdit?.course.code, unitsEdit?.prog.programme, unitsEdit?.prog.level, unitsValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function nav(patch: Partial<ReviewFilters & { page: string }>) {
     const next: Record<string, string> = { ...filters, page: "1", ...patch };
@@ -73,6 +93,19 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
     if (!owning) return;
     const j = await send("POST", `/courses/${encodeURIComponent(owning.row.code)}/owner`, { department: owning.dept, programme: null, reason: owning.why.trim() }, `${owning.row.code} moved to ${owning.dept}`);
     if (j) { notify(`${owning.row.code} now belongs to ${deptName(owning.dept)}`); setOwning(null); router.refresh(); }
+  }
+
+  async function saveUnits() {
+    if (!unitsEdit || unitsValue == null) return;
+    const { course, prog } = unitsEdit;
+    const j = await send("POST", "/structure/units", { programme: prog.programme, course: course.code, level: prog.level, units: unitsValue },
+      `${course.code} units for ${prog.programme} at ${prog.level} level set to ${unitsValue}`);
+    if (j) {
+      const followed = Number(j.followed ?? 0);
+      notify(`${course.code} for ${prog.programme}: ${j.units} unit${Number(j.units) === 1 ? "" : "s"} · ${followed} registration${followed === 1 ? "" : "s"} followed`);
+      setUnitsEdit(null);
+      router.refresh();
+    }
   }
 
   async function bulkPreview(dept: string) {
@@ -204,7 +237,7 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
       {unitsByProgramme.length ? (
         <Panel title="Units taken differently by programme" right={`${unitsByProgramme.length} course${unitsByProgramme.length === 1 ? "" : "s"} some programme takes at units of its own`}>
           <PBody>
-            <div className="sub2">Each programme takes a course at the units its structure says; a number left behind by an old upload shows here. Put it right on that programme&rsquo;s Programme Structure (Units), or on the course&rsquo;s page for its own department.</div>
+            <div className="sub2">Each programme takes a course at the units its structure says; a number left behind by an old upload shows here. Change a programme&rsquo;s number here or on its Programme Structure; the course&rsquo;s own number is changed on the course&rsquo;s page. Registrations not yet examined follow; a closed session, or a class whose results are being worked on, keeps its units.</div>
           </PBody>
           <DTable cols={["Course", "Owner", "Course units|mid", "Programmes and the units they take", "Differs|mid"]} rows={unitsByProgramme.map((u) => [
             <span key="c"><Link className="lnk tnum b600" href={`/catalogue/course?code=${encodeURIComponent(u.code)}`}>{u.code}</Link><div className="sub2">{u.title}</div></span>,
@@ -213,6 +246,7 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
             <span key="p">{u.programmes.map((x, i) => (
               <div key={`${x.programme}-${x.level}-${i}`} className="sub2">
                 <Link className="lnk tnum" style={{ textDecoration: "underline" }} href={`/catalogue/structure?prog=${encodeURIComponent(x.programme)}`}>{x.programme}</Link> {x.name} · {x.level} level · <b className="tnum">{x.units}</b> unit{x.units === 1 ? "" : "s"}{x.own ? " (its own)" : ""}
+                {mayChangeUnits(x) ? <> <Btn kind="ghost" size="sm" aria-label={`Change the units of ${u.code} for ${x.programme} at ${x.level} level`} onClick={() => setUnitsEdit({ course: u, prog: x, units: String(x.units), impact: null })}>Change</Btn></> : null}
               </div>
             ))}</span>,
             <span className="tnum" key="d">{u.distinctUnits > 1 ? <Pil kind="warn">{u.distinctUnits} different numbers</Pil>
@@ -220,6 +254,22 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
               : <Pil kind="grey">the course&rsquo;s own</Pil>}</span>,
           ])} texts={unitsByProgramme.map((u) => `${u.code} ${u.title} ${u.department ?? ""} ${u.programmes.map((x) => `${x.programme} ${x.name}`).join(" ")}`)} />
         </Panel>
+      ) : null}
+
+      {unitsEdit ? (
+        <Modal title={`Units of ${unitsEdit.course.code} for ${unitsEdit.prog.programme}`} sub={`${unitsEdit.prog.name} · ${unitsEdit.prog.level} level · the course carries ${unitsEdit.course.courseUnits}`} onClose={() => setUnitsEdit(null)}
+          foot={<><Btn kind="primary" disabled={busy || unitsValue == null || !unitsEdit.impact || (unitsValue === unitsEdit.impact.nowUnits && unitsEdit.impact.follow === 0)} onClick={() => void saveUnits()}>{busy ? "Saving…" : "Save"}</Btn><Btn kind="ghost" onClick={() => setUnitsEdit(null)}>Cancel</Btn></>}>
+          <div className="row row--inline row--tight" style={{ alignItems: "flex-end" }}>
+            <Field id="ue-units" label="Units this programme takes it at" hint="0 to 12; the course's own number takes the course's units"><input id="ue-units" className="ctl tnum" inputMode="numeric" style={{ width: 90 }} value={unitsEdit.units} onChange={(e) => setUnitsEdit({ ...unitsEdit, units: e.target.value, impact: null })} /></Field>
+            {unitsValue !== unitsEdit.course.courseUnits ? <Btn kind="ghost" size="sm" onClick={() => setUnitsEdit({ ...unitsEdit, units: String(unitsEdit.course.courseUnits), impact: null })}>Use the course&rsquo;s {unitsEdit.course.courseUnits}</Btn> : null}
+          </div>
+          <div className="sub2" aria-live="polite">
+            {unitsValue == null ? "Give a number from 0 to 12."
+              : !unitsEdit.impact ? "Counting what this reaches…"
+              : unitsValue === unitsEdit.impact.nowUnits && unitsEdit.impact.follow === 0 ? `${unitsEdit.prog.programme} takes it at ${unitsValue} already; nothing would change.`
+              : <>{unitsEdit.prog.programme} takes it at <b className="tnum">{unitsEdit.impact.nowUnits}</b> now, <b className="tnum">{unitsEdit.impact.newUnits}</b> after. <b className="tnum">{unitsEdit.impact.follow.toLocaleString()}</b> registration{unitsEdit.impact.follow === 1 ? "" : "s"} not yet examined will follow{unitsEdit.impact.kept ? <>; <b className="tnum">{unitsEdit.impact.kept.toLocaleString()}</b> keep the units they were examined at (a closed session, or the class&rsquo;s results being worked on)</> : null}.</>}
+          </div>
+        </Modal>
       ) : null}
 
       {marking ? (
