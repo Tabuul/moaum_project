@@ -72,7 +72,7 @@ export interface Application {
   entryLevel: number;
   listKind: string | null;
   /** V379: CCE for an applicant from JAMB's CCE list to the Centre for Continuing Education, UTME otherwise */
-  route?: "CCE" | "UTME";
+  route?: "CCE" | "UTME" | "PRELIMINARY_SCIENCE";
   /** the candidate's offer state; PROPOSED to the applicant until the offer is read through Admission Status Checking (V295) */
   offerState: string;
   email: string;

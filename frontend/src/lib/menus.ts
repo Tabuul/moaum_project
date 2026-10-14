@@ -147,7 +147,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
         ]
       },
       {
@@ -233,7 +234,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
         ]
       },
       {
@@ -635,7 +637,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
-          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
+          { "id": "prelim/config", "icon": "book", "label": "Preliminary Science Settings" }
         ]
       },
       {
@@ -735,7 +739,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cashdesk", "icon": "card", "label": "Cash Office & Assets" },
           { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
-          { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" }
+          { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
+          { "id": "prelim/config", "icon": "card", "label": "Preliminary Science Fees" }
         ]
       },
       {
@@ -1254,7 +1259,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
-          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
         ]
       },
       {
@@ -1818,6 +1824,53 @@ export const MENUS: Record<string, Menu> = {
           { "id": "a/admission", "icon": "check", "label": "Admission Status" },
           { "id": "a/accept", "icon": "check", "label": "Accept Your Offer" },
           { "id": "a/matric", "icon": "user", "label": "Matriculation" }
+        ]
+      }
+    ]
+  },
+  "prelim": {
+    "label": "Preliminary Science Office",
+    "home": "prelim/dashboard",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "prelim/dashboard", "icon": "home", "label": "Preliminary Science" },
+          { "id": "prelim/reports", "icon": "chart", "label": "Preliminary Science Reports" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" }
+        ]
+      },
+      {
+        "name": "Administration",
+        "items": [
+          { "id": "prelim/config", "icon": "book", "label": "Preliminary Science Settings" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "prelimapplicant": {
+    "label": "Preliminary Science Applicant",
+    "home": "a/preliminary",
+    "groups": [
+      {
+        "name": "My application",
+        "open": true,
+        "items": [
+          { "id": "a/preliminary", "icon": "doc", "label": "Preliminary Science Application" }
+        ]
+      },
+      {
+        "name": "Admission",
+        "open": true,
+        "items": [
+          { "id": "a/status", "icon": "cap", "label": "Admission Status" }
         ]
       }
     ]

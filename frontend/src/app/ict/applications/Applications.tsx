@@ -41,8 +41,8 @@ const CHECKING = new Set([PG_CHECKING, JUPEB_CHECKING]);
 const PUTME_CBT = "POST_UTME_CBT";
 const PUTME_RESULTS = "POST_UTME_RESULT_CHECKING";
 const PUTME = new Set([PUTME_CBT, PUTME_RESULTS]);
-const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking", CCE_APPLICATION: "CCE Application", [PUTME_CBT]: "Post-UTME CBT Examination", [PUTME_RESULTS]: "Post-UTME Result Checking" };
-const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee", CCE_APPLICATION: "CCE registration", [PUTME_CBT]: "examination sitting", [PUTME_RESULTS]: "result check" };
+const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking", CCE_APPLICATION: "CCE Application", PRELIMINARY_SCIENCE_APPLICATION: "Preliminary Science Application", [PUTME_CBT]: "Post-UTME CBT Examination", [PUTME_RESULTS]: "Post-UTME Result Checking" };
+const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee", CCE_APPLICATION: "CCE registration", PRELIMINARY_SCIENCE_APPLICATION: "Preliminary Science application", [PUTME_CBT]: "examination sitting", [PUTME_RESULTS]: "result check" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
@@ -108,7 +108,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
     const noun = NOUN[w.type];
     const checking = CHECKING.has(w.type);
     const putme = PUTME.has(w.type);
-    const closedByDefault = putme || w.type === "JUPEB_APPLICATION" || checking || w.type === "CCE_APPLICATION";
+    const closedByDefault = putme || w.type === "JUPEB_APPLICATION" || checking || w.type === "CCE_APPLICATION" || w.type === "PRELIMINARY_SCIENCE_APPLICATION";
     return (
       <Panel key={w.type} title={`${WORD[w.type].toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>

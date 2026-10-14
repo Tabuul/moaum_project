@@ -50,7 +50,7 @@ public class ApplicantService {
     /** V379: a JAMB number or reference on the CCE list, as the list carries it */
     static final Pattern CCE_SHAPE = Pattern.compile("^[A-Z0-9/-]{6,24}$");
     static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "OLEVEL_STATEMENT_2", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT",
-            "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER");
+            "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER", "PASSPORT_2");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
     public record SignedIn(String token, Instant expiresAt, UUID accountId, String applicationNo, String surname, String otherNames) {
@@ -342,7 +342,9 @@ public class ApplicantService {
         v.put("listKind", a.get("list_kind"));
         /* V379: a CCE applicant applies from the CCE list to the Centre for Continuing Education, not through Post-UTME */
         boolean cce = "CCE".equals(a.get("entry_mode"));
-        v.put("route", cce ? "CCE" : "UTME");
+        /* V446: a Preliminary Science applicant applies to the programme online, with no JAMB number, and is reviewed by its Office */
+        boolean prelim = "PRELIMINARY".equals(a.get("entry_mode"));
+        v.put("route", cce ? "CCE" : prelim ? "PRELIMINARY_SCIENCE" : "UTME");
         /* the released decision opens to the applicant through Admission Status Checking (V271, V295): a valid application, checking
            open, the checking fee confirmed — or an admission already under way; the office always reads it. Until then nothing in the
            view says what the decision is: not the decision, nor the candidate's offer state (ADMITTED once an offer is released) */
@@ -392,6 +394,15 @@ public class ApplicantService {
             feeMap.put("acceptanceFee", cf == null ? null : cf.get("acceptance_fee"));
             feeMap.put("checkingFee", cf == null ? null : cf.get("checking_fee"));
             feeMap.put("stated", cf != null);
+        }
+        if (prelim) {
+            // V446: the Preliminary Science fees the Bursary stated for the route — only the application fee unless the University gives more
+            Map<String, Object> pf = repo.prelimFees(session);
+            feeMap.put("applicationFee", pf == null || pf.get("application_fee") == null ? null : ((java.math.BigDecimal) pf.get("application_fee")).add((java.math.BigDecimal) pf.get("portal_charge")));
+            feeMap.put("portalCharge", java.math.BigDecimal.ZERO);
+            feeMap.put("acceptanceFee", pf == null ? null : pf.get("acceptance_fee"));
+            feeMap.put("checkingFee", pf == null ? null : pf.get("checking_fee"));
+            feeMap.put("stated", pf != null);
         }
         v.put("fees", feeMap);
         v.put("feeReferences", repo.feeReferences(applicationId));
@@ -513,6 +524,27 @@ public class ApplicantService {
         Map<String, Object> a = repo.application(app).orElseThrow();
         /* V379: a CCE applicant's documents, the passport among them, change only while the application is theirs — a draft, or
            back with them because the Centre asked; otherwise a verified document could be swapped behind the Centre's back */
+        /* V446: a Preliminary Science applicant's documents change while the application is theirs (a draft, or back for a
+           correction) and once the fee is paid; only the kinds the programme asks for */
+        Optional<String> prelimState = repo.prelimState(app);
+        if (prelimState.isPresent()) {
+            if (!List.of("DRAFT", "CORRECTION_REQUIRED").contains(prelimState.get())) {
+                throw new DomainRuleViolation("PRELIM_NOT_EDITABLE", "The application is with the Preliminary Science Office; documents change only when the Office asks.",
+                        new DomainRuleViolation.Remedy("If something is wrong, write to the Preliminary Science Office quoting your application number.", "Preliminary Science Office"));
+            }
+            if (!repo.prelimFeeSettled(app)) {
+                throw new DomainRuleViolation("PRELIM_FEE_FIRST", "Pay the application fee first; the documents are uploaded once the payment is verified.",
+                        new DomainRuleViolation.Remedy("Generate a reference for the application fee and pay it; the form opens when it is verified.", "You"));
+            }
+            List<String> kinds = repo.prelimDocumentKinds(app);
+            if (kind == null || !kinds.contains(kind)) {
+                throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the documents of the Preliminary Science application.",
+                        new DomainRuleViolation.Remedy(String.join(", ", kinds) + ".", "Preliminary Science Office"));
+            }
+        } else if ("PASSPORT_2".equals(kind)) {
+            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "A second passport photograph is a document of the Preliminary Science application.",
+                    new DomainRuleViolation.Remedy("Upload your passport photograph as PASSPORT.", "You"));
+        }
         Optional<String> cceState = repo.cceState(app);
         if (cceState.isPresent() && !List.of("DRAFT", "DOCUMENTS_PENDING", "VERIFICATION_REQUIRED").contains(cceState.get())) {
             throw new DomainRuleViolation("CCE_NOT_EDITABLE", "The application is with the Centre for Continuing Education; documents change only when the Centre asks.",
@@ -523,13 +555,13 @@ public class ApplicantService {
             throw new DomainRuleViolation("CCE_FEE_FIRST", "Pay the CCE application fee first; the documents are uploaded once the payment is confirmed.",
                     new DomainRuleViolation.Remedy("Generate a reference for the application fee and pay it; the form opens when it is confirmed.", "You"));
         }
-        if ("OLEVEL_STATEMENT_2".equals(kind) && cceState.isEmpty()) {
+        if ("OLEVEL_STATEMENT_2".equals(kind) && cceState.isEmpty() && prelimState.isEmpty()) {
             throw new DomainRuleViolation("APP_DOCUMENT_KIND", "The second sitting's result is a document of the CCE application.",
                     new DomainRuleViolation.Remedy("Upload your O'Level result as OLEVEL_STATEMENT.", "You"));
         }
         /* the passport photograph comes whenever the applicant has one (V022); everything else is part of the declaration —
            or of the online screening form while that form is the applicant's to edit (V269) */
-        if (cceState.isEmpty() && a.get("submitted_at") != null && !"PASSPORT".equals(kind) && !repo.screeningOpen(app)) {
+        if (cceState.isEmpty() && prelimState.isEmpty() && a.get("submitted_at") != null && !"PASSPORT".equals(kind) && !repo.screeningOpen(app)) {
             throw new DomainRuleViolation("APP_SUBMITTED", "The application was submitted and can no longer be edited.",
                     new DomainRuleViolation.Remedy("Write to the Registry quoting your application number. The passport photograph can still be replaced.", "Registry"));
         }
@@ -574,8 +606,10 @@ public class ApplicantService {
             throw new DomainRuleViolation("APP_DECLARATION", "The declaration was not accepted.",
                     new DomainRuleViolation.Remedy("Tick the declaration that the particulars given are true.", "You"));
         }
-        // V379: a CCE application is submitted to the Centre (or sent back to it with what it asked for)
-        if (repo.cceState(app).isPresent()) {
+        // V446: a Preliminary Science application is submitted to its Office (or sent back with the correction asked for)
+        if (repo.prelimState(app).isPresent()) {
+            repo.prelimSubmit(app, ip);
+        } else if (repo.cceState(app).isPresent()) {
             repo.cceSubmit(app, ip);
         } else {
             repo.submit(app, ip);

@@ -316,6 +316,11 @@ export const ROUTES: Record<string, string> = {
   "a/matric": "/applicant/matric",
   /* V379: the CCE applicant's application, and the CCE desk of the Academic Office and the Centre for Continuing Education */
   "a/cce": "/applicant/cce",
+  /* V446: the Preliminary Science Programme */
+  "a/preliminary": "/applicant/preliminary",
+  "prelim/dashboard": "/preliminary",
+  "prelim/config": "/preliminary/config",
+  "prelim/reports": "/preliminary/reports",
   "cce/dashboard": "/cce",
   "cce/upload": "/cce/upload",
   "cce/imports": "/cce/imports",
@@ -518,6 +523,10 @@ const OVERRIDES: Record<string, string> = {
   "t/unpaidreg": "Registrations without fees cleared",
   /* V379: the Centre for Continuing Education */
   "a/cce": "CCE application",
+  "a/preliminary": "Preliminary Science application",
+  "prelim/dashboard": "Preliminary Science",
+  "prelim/config": "Preliminary Science settings",
+  "prelim/reports": "Preliminary Science reports",
   "cce/dashboard": "CCE overview",
   "cce/upload": "CCE candidate list upload",
   "cce/imports": "CCE import history",

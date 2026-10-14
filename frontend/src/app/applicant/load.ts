@@ -25,8 +25,9 @@ export async function loadApplication(): Promise<{ me: Me; app: Application } | 
     sessionId: who.ok ? who.data.sessionId ?? null : null,
     waiting: {},
     /* V379: a CCE applicant reads the CCE application's menu — no Post-UTME screening */
-    menu: mine.data.route === "CCE" ? "cceapplicant" : null,
-    unit: mine.data.route === "CCE" ? `Centre for Continuing Education · ${mine.data.session}` : null,
+    menu: mine.data.route === "CCE" ? "cceapplicant" : mine.data.route === "PRELIMINARY_SCIENCE" ? "prelimapplicant" : null,
+    unit: mine.data.route === "CCE" ? `Centre for Continuing Education · ${mine.data.session}`
+      : mine.data.route === "PRELIMINARY_SCIENCE" ? `Preliminary Science · ${mine.data.session}` : null,
   };
   return { me, app: mine.data };
 }

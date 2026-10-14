@@ -30,6 +30,8 @@ export async function GET(req: Request) {
   const me = await api<Application>("/api/v1/applicant/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const a = me.data;
+  /* V446: a Preliminary Science admission has its own letter — the programme, and the target only as an intended progression */
+  if (a.route === "PRELIMINARY_SCIENCE") return NextResponse.redirect(new URL("/applicant/preliminary/pdf/letter", req.url));
   if (!a.decisionReleasedAt || a.decision !== "OFFERED") {
     return NextResponse.json({ status: 409, title: "No offer to print", detail: "The letter is issued when the Admissions Board's offer is released." }, { status: 409 });
   }

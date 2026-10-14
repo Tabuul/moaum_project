@@ -303,6 +303,31 @@ class ApplicantRepository {
                 .param("h", hash).query(UUID.class).single();
     }
 
+    /** V446: the review state of a Preliminary Science application, or empty for any other application */
+    Optional<String> prelimState(UUID applicationId) {
+        return jdbc.sql("SELECT state FROM admissions.prelim_review WHERE application_id = :a").param("a", applicationId).query(String.class).optional();
+    }
+
+    boolean prelimFeeSettled(UUID applicationId) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT admissions.prelim_fee_settled(:a)").param("a", applicationId).query(Boolean.class).single());
+    }
+
+    /** the document kinds the application's programme asks for (the second sitting's only with two sittings) */
+    List<String> prelimDocumentKinds(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT d.kind FROM admissions.prelim_document d JOIN admissions.prelim_review r ON r.route = d.route
+                 WHERE r.application_id = :a ORDER BY d.ord
+                """).param("a", applicationId).query(String.class).list();
+    }
+
+    String prelimSubmit(UUID applicationId, String ip) {
+        return jdbc.sql("SELECT admissions.prelim_submit(:a, :ip)").param("a", applicationId).param("ip", ip).query(String.class).single();
+    }
+
+    Map<String, Object> prelimFees(String session) {
+        return jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, 'PRELIMINARY_SCIENCE')").param("s", session).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
     /** the Centre's review state of a CCE application, or empty for any other application */
     Optional<String> cceState(UUID applicationId) {
         return jdbc.sql("SELECT state FROM admissions.cce_review WHERE application_id = :a").param("a", applicationId).query(String.class).optional();

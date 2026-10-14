@@ -121,6 +121,8 @@ class ApplicantsController {
                   LEFT JOIN admissions.screening_batch sb ON sb.id = a.screening_batch_id
                   LEFT JOIN people.student st ON st.candidate_id = c.id
                  WHERE a.session = :s
+                   -- V446: the Preliminary Science applicants are their Office's, never on the Post-UTME list
+                   AND c.entry_mode <> 'PRELIMINARY'
                 UNION ALL
                 SELECT NULL, NULL, r.surname, r.other_names, r.jamb_reg_no, coalesce(p.name, r.jamb_code), r.entry_mode,
                        0, NULL, NULL, NULL, NULL, NULL, NULL,
@@ -140,7 +142,7 @@ class ApplicantsController {
                   FROM admissions.fee_reference f
                   JOIN admissions.application a ON a.id = f.application_id
                   JOIN admissions.candidate c ON c.id = a.candidate_id
-                 WHERE a.session = :s AND f.confirmed_at IS NULL
+                 WHERE a.session = :s AND f.confirmed_at IS NULL AND c.entry_mode <> 'PRELIMINARY'
                  ORDER BY f.generated_at DESC
                 """).param("s", s).query().listOfRows();
         Map<String, Object> fees = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", s).query().singleRow();

@@ -11,6 +11,7 @@ export default async function Page() {
   const loaded = await loadApplication();
   /* V379: a CCE applicant's form is the CCE application */
   if (loaded.app?.route === "CCE") redirect("/applicant/cce");
+  if (loaded.app?.route === "PRELIMINARY_SCIENCE") redirect("/applicant/preliminary");
   return (
     <Shell route="a/apply" me={loaded.me}>
       {loaded.app ? <Apply a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}

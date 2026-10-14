@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 283
+\set EXPECTED 284
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 42, n || ' offices (39 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379 and the Alumni Relations Office V415; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 43, n || ' offices (40 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415 and the Preliminary Science Office V446; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -12376,6 +12376,160 @@ BEGIN
                rv.review_status, rv.reviewed_office, rv.review_note, issues1, issues2, issues3, dup.evidence, dup.keep_code, dup.merge_code, hist_fields,
                r_empty, r_bulk, own_untouched, bulk_n, own_after, own_b, trail_src, hist_owner, summ.total, summ.not_reviewed, summ.requires_review, summ.with_issues));
 END $$;
+-- ── V446. Preliminary Science on the shared applicant stack: an applicant with no JAMB number registers while the programme's
+--          window is open and gets an ordinary application number; the application fee comes from the route's fees (no other
+--          fee is invented) and is paid before the form opens; an awaiting result is refused; the eligibility (four credits, at most
+--          two sittings, three of Mathematics, Chemistry, Physics and Biology) and the completion remediation are worked out by the
+--          backend; a target is an existing undergraduate programme; the Office recommends only on accepted documents, a verified
+--          O'Level and an eligible record, someone else approves, the Academic Office publishes; the letter names Preliminary
+--          Science and the target as an intended progression; the application stays out of every Post-UTME flow ──
+DO $$
+DECLARE a_off uuid := gen_random_uuid(); b_off uuid := gen_random_uuid(); acc uuid; app uuid; v_session text; fac text; d_code text := 'CKP' || chr(65 + extract(second FROM now())::int % 26);
+        prog text; prog_pg text; r record; c record; v_ref text; v_ref2 text; v_amt numeric; v_chk text := 'accepted'; v_first text := 'accepted'; v_await text := 'accepted';
+        v_await2 text := 'accepted'; v_three text := 'accepted'; e_a text; e_b text; e_c text; e_d text; e_max1 text; e_f text; rem_a text[]; rem_a_status text;
+        v_bad_target text := 'accepted'; v_pg_target text := 'accepted'; v_dup_target text := 'accepted'; v_closed text := 'accepted'; v_sub text;
+        v_unver text := 'accepted'; v_olev text := 'accepted'; v_own text := 'accepted'; v_office text := 'accepted'; pub jsonb; st record; letter credentials.issued;
+        v_dup text := 'accepted'; v_mail text := 'accepted'; notices int; utme_aud boolean; scr boolean; rows_ict int; cls record; stats jsonb; v_sub_at timestamptz;
+        v_sitting_word text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', a_off::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V446', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (a_off, 'CHK/V446A', 'CHECKV446', 'Officer'), (b_off, 'CHK/V446B', 'CHECKV446', 'Approver');
+        v_session := policy.route_session('PRELIMINARY_SCIENCE');
+        -- the window open for the check whatever its state on this database
+        PERFORM policy.window_act('PRELIMINARY_SCIENCE_APPLICATION', v_session, NULL, 'OPEN', NULL, NULL, NULL, false, 'CHECK V446', a_off, 'ict');
+        -- a target programme of the check's own: an undergraduate programme of a department of its own
+        SELECT faculty_code INTO fac FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (d_code, 'CHECK V446 DEPARTMENT', fac);
+        SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+         WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY random() LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score) VALUES (prog, 'B.Sc. CHECK V446 SCIENCE', d_code, fac, 'UNDER GRADUATE', 0);
+        SELECT 'C' || lpad(x::text, 5, '0') INTO prog_pg FROM generate_series(90000, 99999) x
+         WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY random() LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score) VALUES (prog_pg, 'M.Sc. CHECK V446', d_code, fac, 'POST GRADUATE', 0);
+        PERFORM admissions.prelim_add_target('PRELIMINARY_SCIENCE', prog, 'Check', 999, 'CHECK V446');
+        BEGIN PERFORM admissions.prelim_add_target('PRELIMINARY_SCIENCE', prog, 'Check', 999, 'CHECK V446'); EXCEPTION WHEN check_violation THEN v_dup_target := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.prelim_add_target('PRELIMINARY_SCIENCE', prog_pg, 'Check', 999, 'CHECK V446'); EXCEPTION WHEN check_violation THEN v_pg_target := split_part(SQLERRM, ':', 1); END;
+        -- (1) the applicant registers: no JAMB number, an ordinary application number, the fee first
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        acc := admissions.prelim_register('PRELIMINARY_SCIENCE', 'Checkv446', 'Ada', 'Ene', 'F', DATE '2007-03-01', 'v446.check@example.test', '08031234567',
+                                          '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        SELECT a.id INTO app FROM admissions.application a WHERE a.account_id = acc;
+        SELECT a.application_no, ca.jamb_reg_no, ca.entry_mode, ca.entry_level, ca.sex, rv.state, acct.jamb_key INTO c
+          FROM admissions.application a JOIN admissions.candidate ca ON ca.id = a.candidate_id JOIN admissions.prelim_review rv ON rv.application_id = a.id
+          JOIN admissions.applicant_account acct ON acct.id = a.account_id WHERE a.id = app;
+        BEGIN PERFORM admissions.prelim_register('PRELIMINARY_SCIENCE', 'CHECKV446', 'ada', NULL, 'F', DATE '2007-03-01', 'v446.other@example.test', '08031234568',
+                                                 '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        EXCEPTION WHEN check_violation THEN v_dup := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.prelim_register('PRELIMINARY_SCIENCE', 'OTHERV446', 'Bola', NULL, 'M', DATE '2006-03-01', 'V446.CHECK@example.test', '08031234569',
+                                                 '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        EXCEPTION WHEN unique_violation THEN v_mail := 'DUPLICATE_EMAIL'; END;
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"4250101001","exam_year":"2024","subjects":[{"subject":"Mathematics","grade":"C5"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_first := split_part(SQLERRM, ':', 1); END;
+        -- (2) the fee: the route's application fee, one open reference at a time; no checking fee was ever stated
+        v_ref := admissions.new_fee_reference(app, 'APPLICATION');
+        v_ref2 := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT amount INTO v_amt FROM admissions.fee_reference WHERE reference = v_ref;
+        BEGIN PERFORM admissions.new_fee_reference(app, 'CHECKING'); EXCEPTION WHEN check_violation THEN v_chk := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM admissions.confirm_fee(v_ref, 'WEBPAY', 'CHECK V446');
+        -- (3) the form: an awaiting result refused, a third sitting refused; the eligibility read on every save
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', acc::text, true);
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"4250101001","exam_year":"2024","awaiting":true,"subjects":[{"subject":"Mathematics","grade":"C5"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_await := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"4250101001","exam_year":"2024","subjects":[{"subject":"Mathematics","grade":"AR"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_await2 := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"1","exam_year":"2024","subjects":[{"subject":"Mathematics","grade":"C5"}]},{"sitting":2,"exam_body":"NECO","exam_number":"2","exam_year":"2024","subjects":[{"subject":"Physics","grade":"C5"}]},{"sitting":2,"exam_body":"NECO","exam_number":"3","exam_year":"2025","subjects":[{"subject":"Biology","grade":"C5"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_three := split_part(SQLERRM, ':', 1); END;
+        -- (a) four credits, three of the core: eligible, Physics to be made up
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_type":"SSCE","exam_number":"4250101001","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"C5"},{"subject":"Chemistry","grade":"C6"},{"subject":"Physics","grade":"D7"},{"subject":"Biology","grade":"C5"}]}]'::jsonb);
+        SELECT eligibility_status, remediation_subjects, remediation_status INTO e_a, rem_a, rem_a_status FROM admissions.prelim_review WHERE application_id = app;
+        -- (b) four credits, two of the core: not eligible
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"4250101001","exam_year":"2024","subjects":[{"subject":"English Language","grade":"B3"},{"subject":"Mathematics","grade":"C5"},{"subject":"Chemistry","grade":"C6"},{"subject":"Economics","grade":"C4"},{"subject":"Physics","grade":"D7"},{"subject":"Biology","grade":"E8"}]}]'::jsonb);
+        SELECT eligibility_status INTO e_b FROM admissions.prelim_review WHERE application_id = app;
+        -- (c) three credits: not eligible
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"NECO","exam_number":"4250101001","exam_year":"2024","subjects":[{"subject":"Mathematics","grade":"C5"},{"subject":"Chemistry","grade":"C6"},{"subject":"Physics","grade":"C4"},{"subject":"Biology","grade":"D7"},{"subject":"English Language","grade":"E8"}]}]'::jsonb);
+        SELECT eligibility_status INTO e_c FROM admissions.prelim_review WHERE application_id = app;
+        -- (d) two sittings, each kept apart, the better grade of a subject counted once: five credits, all four core — eligible, nothing to make up
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_number":"4250101001","exam_year":"2023","subjects":[{"subject":"Mathematics","grade":"C6"},{"subject":"English Language","grade":"C5"},{"subject":"Chemistry","grade":"D7"}]},{"sitting":2,"exam_body":"NECO","exam_type":"GCE","exam_number":"9988776655","exam_year":"2024","subjects":[{"subject":"Chemistry","grade":"C5"},{"subject":"Physics","grade":"C4"},{"subject":"Biology","grade":"B3"},{"subject":"English Language","grade":"C6"}]}]'::jsonb);
+        SELECT eligibility_status || '/' || coalesce(remediation_status, '-') || '/' || sittings || '/' || total_credits || '/' || core_credits INTO e_d FROM admissions.prelim_review WHERE application_id = app;
+        SELECT string_agg(DISTINCT exam_body || ':' || sitting, ',' ORDER BY exam_body || ':' || sitting) INTO v_sitting_word FROM admissions.screening_olevel WHERE application_id = app AND active;
+        -- (e) the Academic Office allows one sitting only: the two-sitting record is no longer eligible; then two again
+        PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM admissions.prelim_set_rules('PRELIMINARY_SCIENCE', '{"max_sittings": 1}'::jsonb, 'CHECK V446: one sitting');
+        SELECT eligibility_status INTO e_max1 FROM admissions.prelim_review WHERE application_id = app;
+        PERFORM admissions.prelim_set_rules('PRELIMINARY_SCIENCE', '{"max_sittings": 2}'::jsonb, 'CHECK V446: two sittings again');
+        SELECT eligibility_status INTO e_f FROM admissions.prelim_review WHERE application_id = app;
+        -- (4) the rest of the form: biodata, the target (a configured one only), the documents of two sittings
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', acc::text, true);
+        PERFORM admissions.prelim_save_biodata(app, '{"home_address":"1 Check Road, Makurdi","state_of_origin":"Benue","lga":"Makurdi","nationality":"Nigerian","kin_name":"Ene Checkv446","kin_relationship":"Mother","kin_mobile":"08031230000"}'::jsonb, 'F');
+        BEGIN PERFORM admissions.prelim_set_target(app, prog_pg, NULL); EXCEPTION WHEN check_violation THEN v_bad_target := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.prelim_set_target(app, prog, NULL);
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status)
+        SELECT gen_random_uuid(), app, k, lower(k) || '.pdf', 'application/pdf', 100, 'PENDING'
+          FROM unnest(ARRAY['PASSPORT', 'PASSPORT_2', 'OLEVEL_STATEMENT', 'OLEVEL_STATEMENT_2', 'LGA_ID', 'BIRTH_CERT']) k;
+        -- (5) submitted only while the window is open
+        PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM policy.window_act('PRELIMINARY_SCIENCE_APPLICATION', v_session, NULL, 'CLOSE', NULL, NULL, NULL, false, 'CHECK V446: closed', a_off, 'ict');
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', acc::text, true);
+        BEGIN PERFORM admissions.prelim_submit(app, '127.0.0.1'); EXCEPTION WHEN check_violation THEN v_closed := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM policy.window_act('PRELIMINARY_SCIENCE_APPLICATION', v_session, NULL, 'REOPEN', NULL, NULL, NULL, false, 'CHECK V446: reopened', a_off, 'ict');
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', acc::text, true);
+        v_sub := admissions.prelim_submit(app, '127.0.0.1');
+        SELECT submitted_at INTO v_sub_at FROM admissions.application WHERE id = app;
+        -- (6) the review: the wrong office refused; documents, then the O'Level, before a recommendation; someone else approves
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        BEGIN PERFORM admissions.prelim_act(app, 'START', NULL); EXCEPTION WHEN check_violation THEN v_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'prelim', true);
+        PERFORM admissions.prelim_act(app, 'START', NULL);
+        BEGIN PERFORM admissions.prelim_act(app, 'RECOMMEND', NULL); EXCEPTION WHEN check_violation THEN v_unver := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.prelim_review_document(d.id, 'ACCEPTED', NULL) FROM admissions.application_document d WHERE d.application_id = app AND d.superseded_at IS NULL;
+        BEGIN PERFORM admissions.prelim_act(app, 'RECOMMEND', NULL); EXCEPTION WHEN check_violation THEN v_olev := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.prelim_verify_olevel(app, 'VERIFIED', NULL);
+        PERFORM admissions.prelim_act(app, 'RECOMMEND', 'meets the entry requirement');
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM admissions.prelim_act(app, 'APPROVE', NULL); EXCEPTION WHEN check_violation THEN v_own := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', b_off::text, true);
+        PERFORM admissions.prelim_act(app, 'APPROVE', NULL);
+        pub := admissions.prelim_publish('PRELIMINARY_SCIENCE', v_session, ARRAY[app]);
+        SELECT * INTO st FROM admissions.admission_status(app);
+        letter := admissions.issue_admission_letter(app);
+        SELECT count(*) INTO notices FROM platform.notice n WHERE n.about_kind = 'application' AND n.about_id = app AND n.template_key LIKE 'PRELIMINARY_SCIENCE%';
+        -- (7) kept apart from Post-UTME
+        utme_aud := EXISTS (SELECT 1 FROM platform.applicant_window_audience('POST_UTME_REGISTRATION', v_session, NULL, 100000) x WHERE x = app);
+        scr := admissions.screening_required(app);
+        SELECT count(*) INTO rows_ict FROM admissions.status_checking_rows(v_session, false) x WHERE x.application_id = app;
+        SELECT programme_type, source_module, responsible_office INTO cls FROM reporting.payments WHERE reference = v_ref;
+        stats := admissions.prelim_stats('PRELIMINARY_SCIENCE', v_session);
+        RAISE EXCEPTION 'the V446 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V446: a Preliminary Science applicant registers with no JAMB number for an ordinary application number while the window is open; the route''s application fee is paid before the form opens and no other fee is invented; an awaiting result is refused; the backend reads four credits, at most two sittings and three of the core (remediation for what the completion rule lacks); a target is an existing undergraduate programme; the Office recommends on accepted documents and a verified O''Level, someone else approves, the Academic Office publishes; the letter names the programme and the target as a progression; Post-UTME never takes it up',
+        coalesce(c.application_no ~ '^APP/[0-9]{2}/[0-9]{6}$' AND c.jamb_reg_no IS NULL AND c.entry_mode = 'PRELIMINARY' AND c.entry_level = 0 AND c.sex = 'F' AND c.state = 'DRAFT' AND c.jamb_key IS NULL
+                 AND v_dup = 'PRELIM_DUPLICATE' AND v_mail = 'DUPLICATE_EMAIL' AND v_first = 'PRELIM_FEE_FIRST'
+                 AND v_amt = 5000 AND v_ref = v_ref2 AND v_chk = 'PRELIM_FEE_NOT_CONFIGURED'
+                 AND v_await = 'PRELIM_AWAITING_RESULT' AND v_await2 = 'PRELIM_AWAITING_RESULT' AND v_three = 'PRELIM_OLEVEL_SITTINGS'
+                 AND e_a = 'ELIGIBLE_WITH_REMEDIATION' AND rem_a = ARRAY['Physics'] AND rem_a_status = 'REQUIRED' AND e_b = 'NOT_ELIGIBLE' AND e_c = 'NOT_ELIGIBLE'
+                 AND e_d = 'ELIGIBLE/NOT_REQUIRED/2/5/4' AND v_sitting_word = 'NECO:2,WAEC:1' AND e_max1 = 'NOT_ELIGIBLE' AND e_f = 'ELIGIBLE'
+                 AND v_dup_target = 'PRELIM_TARGET_DUPLICATE' AND v_pg_target = 'PRELIM_TARGET_NOT_UNDERGRADUATE' AND v_bad_target = 'PRELIM_TARGET_NOT_OFFERED'
+                 AND v_closed = 'APPLICATION_CLOSED' AND v_sub = 'submitted' AND v_sub_at IS NULL
+                 AND v_office = 'PRELIM_OFFICE' AND v_unver = 'PRELIM_DOCUMENTS_UNVERIFIED' AND v_olev = 'PRELIM_OLEVEL_UNVERIFIED' AND v_own = 'PRELIM_APPROVE_OWN'
+                 AND (pub->>'admitted')::int = 1 AND st.status = 'ADMITTED' AND st.label LIKE '%Preliminary Science%'
+                 AND letter.statement->>'admissionRoute' = 'PRELIMINARY_SCIENCE' AND letter.statement->>'degreeType' = 'PRELIMINARY / REMEDIAL'
+                 AND letter.statement->>'targetProgramme' = 'B.Sc. CHECK V446 SCIENCE' AND letter.statement->>'targetNote' LIKE '%does not constitute admission%'
+                 AND notices >= 4 AND NOT utme_aud AND NOT scr AND rows_ict = 0
+                 AND cls.programme_type = 'PRELIMINARY' AND cls.source_module = 'PRELIMINARY_SCIENCE' AND cls.responsible_office = 'prelim'
+                 AND (stats->>'admitted')::int >= 1, false),
+        format('reg=%s/%s/%s/%s/%s/%s/%s dup=%s/%s first=%s fee=%s/%s/%s await=%s/%s three=%s elig=%s/%s/%s/%s/%s sittings=%s max1=%s/%s target=%s/%s/%s closed=%s sub=%s/%s office=%s unver=%s/%s own=%s pub=%s status=%s/%s letter=%s/%s/%s notices=%s apart=%s/%s/%s class=%s/%s/%s stats=%s',
+               c.application_no, c.jamb_reg_no, c.entry_mode, c.entry_level, c.sex, c.state, c.jamb_key, v_dup, v_mail, v_first, v_amt, v_ref = v_ref2, v_chk,
+               v_await, v_await2, v_three, e_a, rem_a, rem_a_status, e_b, e_c, e_d || ' ' || coalesce(v_sitting_word, ''), e_max1, e_f, v_dup_target, v_pg_target, v_bad_target,
+               v_closed, v_sub, v_sub_at, v_office, v_unver, v_olev, v_own, pub, st.status, st.label,
+               letter.statement->>'admissionRoute', letter.statement->>'degreeType', letter.statement->>'targetProgramme', notices, utme_aud, scr, rows_ict,
+               cls.programme_type, cls.source_module, cls.responsible_office, stats->>'admitted'));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

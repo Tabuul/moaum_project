@@ -24,7 +24,9 @@ public class ApplicationWindows {
     public static final String JUPEB = "JUPEB_APPLICATION";
     /** V379: the Centre for Continuing Education's application (only those on JAMB's CCE list); closed until first opened */
     public static final String CCE = "CCE_APPLICATION";
-    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB, CCE);
+    /** V446: the Preliminary Science Programme's online application; closed until the Director of ICT first sets it */
+    public static final String PRELIMINARY_SCIENCE = "PRELIMINARY_SCIENCE_APPLICATION";
+    public static final List<String> TYPES = List.of(POST_UTME, POSTGRADUATE, JUPEB, CCE, PRELIMINARY_SCIENCE);
     /** V385: the Post-UTME CBT examination's door (may candidates sit) and the result-checking page (may candidates read a released score);
      *  the Director's windows over the admission exercise, closed until first opened, independent of Post-UTME registration */
     public static final String POST_UTME_CBT = "POST_UTME_CBT";
@@ -46,6 +48,7 @@ public class ApplicationWindows {
 
     public static String word(String type) {
         return POST_UTME.equals(type) ? "Post-UTME registration" : JUPEB.equals(type) ? "JUPEB application" : CCE.equals(type) ? "The CCE application"
+                : PRELIMINARY_SCIENCE.equals(type) ? "The Preliminary Science application"
                 : POST_UTME_CBT.equals(type) ? "The Post-UTME CBT examination" : POST_UTME_RESULTS.equals(type) ? "Post-UTME result checking" : "Postgraduate application";
     }
 
@@ -71,6 +74,7 @@ public class ApplicationWindows {
         out.put(POSTGRADUATE, read(POSTGRADUATE, null));
         out.put(JUPEB, read(JUPEB, null));
         out.put(CCE, read(CCE, null));
+        out.put(PRELIMINARY_SCIENCE, read(PRELIMINARY_SCIENCE, null));
         return out;
     }
 
