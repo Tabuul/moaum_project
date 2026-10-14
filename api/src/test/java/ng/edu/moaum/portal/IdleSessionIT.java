@@ -120,4 +120,21 @@ class IdleSessionIT {
             policy(it, ict, Boolean.TRUE.equals(before.get("enabled")), ((Number) before.get("idleSeconds")).intValue(), ((Number) before.get("warningSeconds")).intValue());
         }
     }
+
+    /** Oct 2026: a release no longer signs everyone out — a session issued before this instance started still stands */
+    @Test
+    void aSessionIssuedBeforeThisInstanceStartedStands() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        UUID person = it.person("ZZ-IDLE-DEPLOY", "ZZDEPLOY");
+        byte[] id = new byte[32];
+        new SecureRandom().nextBytes(id);
+        it.db(() -> jdbc.sql("""
+                INSERT INTO platform.session (id, person_id, active_office, issued_at, absolute_end, last_seen_at)
+                VALUES (:id, :p, 'registrar', now() - interval '1 day', now() + interval '12 hours', now())
+                """).param("id", id).param("p", person).update());
+        String token = TestTokens.token(person, List.of("registrar"), HexFormat.of().formatHex(id));
+        ResponseEntity<Map> me = it.get(token, "/api/v1/iam/me");
+        assertThat(status(me)).as(String.valueOf(me.getBody())).isEqualTo(200);
+        assertThat(status(it.get(token, "/api/v1/iam/session"))).isEqualTo(204);
+    }
 }

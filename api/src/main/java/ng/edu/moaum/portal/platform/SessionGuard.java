@@ -1,6 +1,5 @@
 package ng.edu.moaum.portal.platform;
 
-import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 
@@ -13,10 +12,11 @@ import org.springframework.stereotype.Component;
  * token whose session has ended is refused however valid its signature. A
  * token with no session (a development token) is not the portal's concern.
  *
- * <p>A deploy is a fresh start: every session issued before this instance
- * started is refused, so a new version is met with a fresh sign-in rather
- * than a token minted against the code that was replaced. The floor is this
- * instance's start; a restart has the same effect, which is the intent.
+ * <p>Oct 2026: a session outlives a release. Until then every session issued
+ * before this instance started was refused, so each deploy (and each restart)
+ * signed everyone out mid-work, and two instances started at different
+ * moments disagreed about the same session. A session now ends only as above:
+ * by the person, by an office, by its absolute end, or by inactivity.
  *
  * <p>V437: a session left alone ends. The Directorate of ICT's policy
  * (platform.session_policy) says after how long without activity; the server's
@@ -33,8 +33,6 @@ public class SessionGuard {
     public static final String EXPIRED_IDLE = "SESSION_EXPIRED_IDLE";
 
     private final JdbcClient jdbc;
-    /** the moment this instance started; sessions older than it are from before the deploy */
-    private final Instant startedAt = Instant.now();
 
     public SessionGuard(JdbcClient jdbc) {
         this.jdbc = jdbc;
@@ -44,7 +42,7 @@ public class SessionGuard {
     public record Refusal(String code, String detail) {
     }
 
-    record State(boolean ended, boolean expired, boolean stale, boolean idle) {
+    record State(boolean ended, boolean expired, boolean idle) {
     }
 
     /**
@@ -60,12 +58,12 @@ public class SessionGuard {
             return Optional.of(new Refusal("SESSION_INVALID", "The token names a session that cannot exist."));
         }
         State state = jdbc.sql("""
-                SELECT s.ended_at IS NOT NULL AS ended, s.absolute_end < now() AS expired, s.issued_at < :floor AS stale,
+                SELECT s.ended_at IS NOT NULL AS ended, s.absolute_end < now() AS expired,
                        p.idle_enabled AND s.last_seen_at < now() - make_interval(secs => p.idle_seconds) AS idle
                   FROM platform.session s
                  CROSS JOIN LATERAL platform.session_policy_for(s.active_office) AS p
                  WHERE s.id = :id
-                """).param("id", id).param("floor", java.sql.Timestamp.from(startedAt)).query(State.class).optional().orElse(null);
+                """).param("id", id).query(State.class).optional().orElse(null);
         if (state == null) {
             return Optional.of(new Refusal("SESSION_UNKNOWN", "The token names a session this portal does not hold. Sign in again."));
         }
@@ -74,9 +72,6 @@ public class SessionGuard {
         }
         if (state.expired()) {
             return Optional.of(new Refusal("SESSION_EXPIRED", "This session reached its end. Sign in again."));
-        }
-        if (state.stale()) {
-            return Optional.of(new Refusal("SESSION_STALE", "The portal was updated. Sign in again."));
         }
         if (state.idle()) {
             jdbc.sql("SELECT platform.session_expire_idle(:id)").param("id", id).query(Boolean.class).optional();

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 285
+\set EXPECTED 286
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12582,6 +12582,60 @@ BEGIN
                n1, n2, n_cm, n_same, n_prog, n_ended, n3, v_prog, charged, stated));
 END $$;
 
+
+-- ── V447: the live PG students with no fee line stated, counted once per group of alike students ──
+-- finance.pg_unstated asks finance.fee_stated once per group of students alike in what it reads (programme, level, entry
+-- mode, home-state origin); its count is the per-student count, row for row: here with indigenes and non-indigenes of one
+-- programme and level split by an indigene-only PG line, a second level of the programme left unstated, and a second
+-- programme stated whole. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S text := '9947/9948'; pa text; pb text; lvl int; lvl_b int; home text;
+        only_grouped int; only_each int; u_pa int; u_pa2 int; u_pb int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V447', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT home_state INTO home FROM finance.fee_setting WHERE id = 1;
+        SELECT code, admissions.pg_award_level(pg_award) INTO pa, lvl FROM ref.programme
+         WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) AND faculty_code IS NOT NULL ORDER BY code LIMIT 1;
+        SELECT code, admissions.pg_award_level(pg_award) INTO pb, lvl_b FROM ref.programme
+         WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) AND faculty_code IS NOT NULL AND code <> pa ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHECK/V447/P', 'ZZPGALIKE', 'Invented', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9947-10-01', date '9948-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, state_of_origin)
+        VALUES (gen_random_uuid(), 'MOAUM/ADM/47/990471', NULL, 'ZZPG447', 'Indigene', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED', NULL, ' ' || upper(home) || ' '),
+               (gen_random_uuid(), 'MOAUM/ADM/47/990472', NULL, 'ZZPG447', 'Indigene Two', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED', NULL, home),
+               (gen_random_uuid(), 'MOAUM/ADM/47/990473', NULL, 'ZZPG447', 'Other State', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED', NULL, 'Lagos'),
+               (gen_random_uuid(), 'MOAUM/ADM/47/990474', NULL, 'ZZPG447', 'No State', pa, 'POSTGRADUATE', S, lvl, lvl, 'ADMITTED', NULL, NULL),
+               (gen_random_uuid(), 'MOAUM/ADM/47/990475', NULL, 'ZZPG447', 'Next Level', pa, 'POSTGRADUATE', S, lvl, lvl + 100, 'ADMITTED', NULL, home),
+               (gen_random_uuid(), 'MOAUM/ADM/47/990476', NULL, 'ZZPG447', 'Programme B', pb, 'POSTGRADUATE', S, lvl_b, lvl_b, 'ADMITTED', NULL, 'Lagos');
+        INSERT INTO finance.fee_schedule (session, item, amount, entry_mode, programme_code, level, indigene) VALUES
+            (S, 'Check V447: indigenes of A at the level', 1000, 'POSTGRADUATE', pa, lvl, 'INDIGENE'),
+            (S, 'Check V447: all of B', 1000, 'POSTGRADUATE', pb, NULL, NULL);
+        -- the grouped count against the per-student count, over every live PG student
+        WITH each AS (
+            SELECT st.current_level AS level, st.programme_code, p.name AS programme, count(*) AS students
+              FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+             WHERE people.is_postgraduate(st.entry_mode, p.category) AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
+               AND NOT finance.fee_stated(st.id, S)
+             GROUP BY st.current_level, st.programme_code, p.name),
+             grouped AS (SELECT * FROM finance.pg_unstated(S))
+        SELECT (SELECT count(*) FROM (SELECT * FROM grouped EXCEPT ALL SELECT * FROM each) x),
+               (SELECT count(*) FROM (SELECT * FROM each EXCEPT ALL SELECT * FROM grouped) x)
+          INTO only_grouped, only_each;
+        SELECT coalesce(sum(students), 0) INTO u_pa FROM finance.pg_unstated(S) WHERE programme_code = pa AND level = lvl;
+        SELECT coalesce(sum(students), 0) INTO u_pa2 FROM finance.pg_unstated(S) WHERE programme_code = pa AND level = lvl + 100;
+        SELECT coalesce(sum(students), 0) INTO u_pb FROM finance.pg_unstated(S) WHERE programme_code = pb;
+        RAISE EXCEPTION 'the V447 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V447 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V447: the live PG students with no fee line stated are counted once per group of students alike in what finance.fee_stated reads (programme, level, entry mode, home-state origin), and the count is the per-student count row for row: indigenes stated by an indigene-only line, the other students of the level and the next level not, a programme stated whole',
+        coalesce(only_grouped = 0 AND only_each = 0 AND u_pa = 2 AND u_pa2 = 1 AND u_pb = 0, false),
+        format('only grouped=%s only each=%s | A at the level=%s (expected 2: other state, no state) A next level=%s B=%s', only_grouped, only_each, u_pa, u_pa2, u_pb));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -53,6 +53,8 @@ class ApiIT {
         Map<?, ?> db = (Map<?, ?>) r.getBody().get("database");
         assertThat(db.get("reachable")).isEqualTo(true);
         assertThat(((Number) db.get("migrationsApplied")).intValue()).isGreaterThanOrEqualTo(10);
+        // the PG and CCE readiness as last read, never read on every call (ReadinessSnapshot)
+        assertThat(r.getBody().get("readinessReadAt")).isNotNull();
         assertThat(r.getHeaders().getFirst("X-Correlation-Id")).isNotBlank();
     }
 

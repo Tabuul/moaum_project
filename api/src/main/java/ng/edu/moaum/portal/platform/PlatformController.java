@@ -41,12 +41,14 @@ class PlatformController {
     private final String commit;
     private final tools.jackson.databind.ObjectMapper json;
     private final ApplicationWindows windows;
+    private final ReadinessSnapshot readiness;
 
-    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows,
+    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows, ReadinessSnapshot readiness,
                        @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
         this.jdbc = jdbc;
         this.json = json;
         this.windows = windows;
+        this.readiness = readiness;
         this.commit = commit;
     }
 
@@ -280,6 +282,9 @@ class PlatformController {
                 "OPEN".equals(cce.get("window")) ? "Open for " + cs : "The CCE application window is " + String.valueOf(cce.get("window")).toLowerCase() + " for " + cs,
                 "/ict/applications?session=" + cs));
 
+        // read live here: what was read replaces the reading the public status keeps
+        this.readiness.offer(pg, cce);
+
         long bad = checks.stream().filter(c -> "bad".equals(c.get("status"))).count();
         long warn = checks.stream().filter(c -> "warn".equals(c.get("status"))).count();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -311,9 +316,13 @@ class PlatformController {
         body.put("commit", commit == null || commit.isBlank() ? null : commit);
         body.put("startedAt", STARTED.toString());
         body.put("database", database());
+        // the PG and CCE readiness as last read (ReadinessSnapshot): at most five minutes old, never read on every probe
+        ReadinessSnapshot.Reading kept = readiness.get();
+        body.put("readinessReadAt", kept == null ? null : kept.at().toString());
         // V393: whether postgraduate registration can open — the School's session and yes/no answers only, nothing personal
         try {
-            Map<String, Object> pg = pgReadiness();
+            Map<String, Object> pg = kept == null ? null : kept.postgraduate();
+            if (pg == null) throw new IllegalStateException("the PG readiness has not been read");
             Map<String, Object> pub = new LinkedHashMap<>();
             pub.put("session", pg.get("session"));
             pub.put("current", pg.get("current"));
@@ -327,7 +336,8 @@ class PlatformController {
         }
         // V412: whether CCE admission can run — the CCE session and yes/no answers only
         try {
-            Map<String, Object> cce = cceReadiness();
+            Map<String, Object> cce = kept == null ? null : kept.cce();
+            if (cce == null) throw new IllegalStateException("the CCE readiness has not been read");
             Map<String, Object> pub = new LinkedHashMap<>();
             pub.put("session", cce.get("session"));
             pub.put("feesStated", cce.get("feesStated"));
@@ -343,16 +353,14 @@ class PlatformController {
         return body;
     }
 
-    /** V412: admissions.cce_readiness(), read */
+    /** V412: admissions.cce_readiness(), read live */
     private Map<String, Object> cceReadiness() {
-        String text = jdbc.sql("SELECT admissions.cce_readiness()::text").query(String.class).single();
-        return this.json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        return ReadinessSnapshot.read(jdbc, json, "admissions.cce_readiness()");
     }
 
-    /** V393: admissions.pg_readiness(), read */
+    /** V393: admissions.pg_readiness(), read live */
     private Map<String, Object> pgReadiness() {
-        String text = jdbc.sql("SELECT admissions.pg_readiness()::text").query(String.class).single();
-        return this.json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        return ReadinessSnapshot.read(jdbc, json, "admissions.pg_readiness()");
     }
 
     /** the migration ledger: what has been applied to this database, in order */

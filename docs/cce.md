@@ -317,7 +317,8 @@ nothing, a checking fee never stated; 244). `CceIT` follows the same path throug
 **Go-live readiness.** A *CCE admission* panel for the CCE session (`admissions.cce_readiness`): the three CCE applicant fees
 stated by the Bursary (application, admission checking, acceptance), the CCE list loaded, programmes offered to CCE, and the
 CCE application window. Fees not stated are *blocking* once CCE is in use (a list loaded, the window open or applications
-filed) and a warning before that. `/api/v1/platform/status` carries `cce` (session and yes/no answers only).
+filed) and a warning before that. `/api/v1/platform/status` carries `cce` (session and yes/no answers only), as last read: at most five minutes old, read in the
+background and never on every probe (`readinessReadAt` says when).
 
 **Missing documents.** The Centre's applications list has a *Documents* column: how many required documents an application
 lacks (`admissions.cce_missing_documents`: not uploaded, or rejected) and how many wait to be checked. On an application,

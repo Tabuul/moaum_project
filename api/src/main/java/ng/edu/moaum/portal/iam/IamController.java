@@ -126,7 +126,7 @@ class IamController {
 
     /**
      * Whether the session still stands, and nothing else: the token verified, and its server-side session neither ended,
-     * expired nor issued before this deploy — the security chain refuses each with 401 (AuditContextFilter, SessionGuard)
+     * expired nor idle past the policy — the security chain refuses each with 401 (AuditContextFilter, SessionGuard)
      * before this method runs. The portal asks it on every page it opens, so it reads no person and counts no queue.
      */
     @GetMapping("/session")
