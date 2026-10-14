@@ -10,7 +10,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { EVIDENCE, KINDS, LEVELS, STATE, courseSemName, type CourseList, type Directory, type DuplicatePair } from "@/lib/catalogue";
+import { EVIDENCE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type Directory, type DuplicatePair } from "@/lib/catalogue";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; semester: string; kind: string; state: string; session: string; sort: string; dir: string; size: string }
 
@@ -40,7 +40,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
   return (
     <>
       <PageHead title="All courses" description={`Every course ${scoped ? "your department owns or carries" : "on the catalogue"}, with the programmes that offer it.`}
-        actions={<><LinkBtn href="/catalogue">Department courses</LinkBtn><LinkBtn href="/catalogue/structure">Programme structure</LinkBtn></>} />
+        actions={<><LinkBtn href="/catalogue/review">Course ownership review</LinkBtn><LinkBtn href="/catalogue">Department courses</LinkBtn><LinkBtn href="/catalogue/structure">Programme structure</LinkBtn></>} />
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ q: String(f.get("q") ?? "") }); }}>
         <div className="row">
           <Field id="ac-q" label="Search" style={{ flex: "2 1 220px" }}><input id="ac-q" name="q" className="ctl" type="search" defaultValue={filters.q} placeholder="Code or title" /></Field>
@@ -93,7 +93,10 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
             <span key="o">{r.dept_name ?? r.dept_code ?? "—"}<div className="sub2">{r.owner_programme_name ? `${r.owner_programme_name} · ` : ""}{r.faculty_name ?? ""}</div></span>,
             <span key="p">{r.programmes.length ? <>{r.programmes.slice(0, 3).map((p) => <div key={`${p.code}-${p.level}`} className="sub2"><Link href={`/catalogue/structure?prog=${encodeURIComponent(p.code)}`} className="lnk">{p.name}</Link> · {p.level}{p.basis !== "Core" ? ` · ${p.basis}` : ""}</div>)}{r.programmes.length > 3 ? <Link href={`/catalogue/course?code=${encodeURIComponent(r.code)}`} className="lnk sub2">+{r.programmes.length - 3} more</Link> : null}</> : <span className="sub2 ink-red">None</span>}</span>,
             <span key="ls" className="tnum sub2">{r.last_session ?? "—"}</span>,
-            <Pil key="st" kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>,
+            <span key="st"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>
+              {/* V445: the ownership review's word, and when the course last changed */}
+              {r.review_status && r.review_status !== "NOT_REVIEWED" ? <div className="mt-1"><Pil kind={REVIEW[r.review_status][0]}>{REVIEW[r.review_status][1]}</Pil></div> : null}
+              {r.updated_at ? <div className="sub2 tnum">updated {new Date(r.updated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</div> : null}</span>,
             <LinkBtn key="a" size="sm" href={`/catalogue/course?code=${encodeURIComponent(r.code)}`}>Details</LinkBtn>,
           ])} />
         ) : <PBody><div className="sub2">No course matches these filters.</div></PBody>}

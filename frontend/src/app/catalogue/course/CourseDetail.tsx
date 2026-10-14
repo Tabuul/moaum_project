@@ -12,11 +12,11 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import { BASES, EVIDENCE, KINDS, LEVELS, PROPOSAL_STATE, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type Directory } from "@/lib/catalogue";
+import { BASES, EVIDENCE, ISSUE, KINDS, LEVELS, PROPOSAL_STATE, REVIEW, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type CourseHistoryData, type Directory } from "@/lib/catalogue";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-export function CourseDetail({ data, directory }: { data: Detail; directory: Directory | null }) {
+export function CourseDetail({ data, directory, history = null }: { data: Detail; directory: Directory | null; history?: CourseHistoryData | null }) {
   const router = useRouter();
   const c = data.course;
   const [busy, setBusy] = useState(false);
@@ -236,14 +236,33 @@ export function CourseDetail({ data, directory }: { data: Detail; directory: Dir
           <DTable pageSize={0} noPrint cols={["S/N|num", "From", "To", "How", "Reason", "By", "When"]} rows={(data.ownerHistory ?? []).map((h, i) => [
             <span key="n" className="tnum sub2">{i + 1}</span>, <span key="f" className="sub2">{h.from_dept_name ?? h.from_dept ?? "—"}{h.from_programme ? ` · ${h.from_programme}` : ""}</span>,
             <span key="t"><b>{h.to_dept_name ?? h.to_dept ?? "—"}</b>{h.to_programme_name ? <div className="sub2">{h.to_programme_name}</div> : null}</span>,
-            <span key="s" className="sub2">{h.source === "IMPORT" ? "Catalogue upload" : "On the desk"}</span>,
+            <span key="s" className="sub2">{({ IMPORT: "Catalogue upload", BULK: "Bulk correction", CODE: "By the code rule (V443)", RESET: "Catalogue reset" } as Record<string, string>)[h.source ?? ""] ?? "On the desk"}</span>,
             <span key="r" className="sub2">{h.reason ?? ""}</span>, <span key="b" className="sub2">{h.changed_by ?? ""}{h.changed_office ? ` (${h.changed_office})` : ""}</span>,
             <span key="w" className="tnum sub2">{new Date(h.changed_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
           ])} />
         </Panel>
       ) : null}
+      {history ? (
+        <Panel title="Change history" right={<span className="row row--inline row--tight">
+          {history.review_status ? <Pil kind={REVIEW[history.review_status][0]}>{REVIEW[history.review_status][1]}</Pil> : null}
+          <span className="sub2">Created {history.created_at ? new Date(history.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}{history.created_by ? ` by ${history.created_by}` : ""} · last updated {history.updated_at ? new Date(history.updated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}{history.updated_by ? ` by ${history.updated_by}` : ""}</span>
+        </span>}>
+          {(history.issues ?? []).length ? <PBody><div className="sub2">The ownership review flags: {(history.issues ?? []).map((k) => ISSUE[k] ?? k).join("; ")}.{history.review_note ? ` Note: ${history.review_note}` : ""} <Link className="lnk" href={`/catalogue/review?q=${encodeURIComponent(c.code)}`}>Open the review</Link></div></PBody> : null}
+          {history.rows.length ? (
+            <DTable pageSize={25} noPrint cols={["When|mid", "What", "Field", "From", "To", "By", "Reason"]} rows={history.rows.map((h, i) => [
+              <span key="w" className="tnum sub2">{new Date(h.at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
+              <span key="a">{({ CHANGED: "Changed", CREATED: "Created", OWNER_CHANGED: "Owner changed", OFFER_ADDED: "Programme added", OFFER_ENDED: "Programme binding ended" } as Record<string, string>)[h.action] ?? h.action}{h.source && h.source !== "AUDIT" ? <span className="sub2"> · {({ DESK: "on the desk", IMPORT: "catalogue upload", BULK: "bulk correction", CODE: "by the code rule", RESET: "catalogue reset", UPLOAD: "structure upload" } as Record<string, string>)[h.source] ?? h.source.toLowerCase()}</span> : null}</span>,
+              <span key="f" className="sub2">{h.field ?? ""}</span>,
+              <span key="o" className="sub2">{h.old_value ?? ""}</span>,
+              <span key="n"><b>{h.new_value ?? ""}</b></span>,
+              <span key="b" className="sub2">{h.actor}{h.actor_office ? ` (${h.actor_office})` : ""}</span>,
+              <span key="r" className="sub2">{h.reason ?? ""}</span>,
+            ].map((cell, j) => <span key={`${i}-${j}`}>{cell}</span>))} />
+          ) : <PBody><div className="sub2">No change is on the record yet.</div></PBody>}
+        </Panel>
+      ) : null}
       {owning ? (
-        <Modal title={`Change the owner of ${c.code}`} sub="Every offering, registration and result stays on the course" onClose={() => setOwning(null)}
+        <Modal title={`Change the owner of ${c.code}`} sub={`${used ? `This course carries ${used}; none of it changes. ` : ""}Every offering, registration and result stays on the course; the change goes on the owner trail`} onClose={() => setOwning(null)}
           foot={<><Btn kind="ghost" onClick={() => setOwning(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !owning.dept || owning.why.trim().length < 3 || (owning.dept === ownDept && owning.prog === (c.owner_programme ?? ""))} onClick={async () => {
             const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/owner`, { department: owning.dept, programme: owning.prog || null, reason: owning.why.trim() }, `${c.code} moved to ${owning.dept}`);
             if (j) setOwning(null);

@@ -110,6 +110,7 @@ export const TITLES: Record<string, string> = {
   "t/deptcourses": "Department courses",
   "t/structure": "Programme structure",
   "t/allcourses": "All Courses",
+  "t/coursereview": "Course ownership review",
   "t/courseupload": "Upload course structure",
   "t/facultyupload": "Faculties",
   "t/programmeupload": "Programmes",

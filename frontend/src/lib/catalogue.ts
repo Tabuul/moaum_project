@@ -54,8 +54,30 @@ export interface CourseListRow {
   id: string; code: string; title: string; units: number; level: number; semester: number; both_semesters?: boolean; kind: string; state: string; ended_on: string | null; curriculum: string | null; general_office: string | null;
   dept_code: string | null; dept_name: string | null; faculty_name: string | null; programme_count: number; owner_programme?: string | null; owner_programme_name?: string | null;
   programmes: { code: string; name: string; dept: string | null; deptName?: string | null; faculty?: string | null; level: number; basis: string }[]; last_session: string | null; pending: number;
+  /** V445: the ownership review's word, the stamps, and what the review flags */
+  review_status?: ReviewStatus; review_note?: string | null; reviewed_at?: string | null; reviewed_office?: string | null;
+  updated_at?: string | null; updated_by?: string | null; created_at?: string | null; issues?: string[] | null;
 }
 export interface CourseList { total: number; page: number; size: number; rows: CourseListRow[]; scope: { dept: string; fac: string } }
+
+/** V445: the ownership review */
+export type ReviewStatus = "NOT_REVIEWED" | "REVIEWED" | "CORRECT" | "INCORRECT_OWNER" | "REQUIRES_REVIEW";
+export const REVIEW: Record<ReviewStatus, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
+  NOT_REVIEWED: ["grey", "Not reviewed"], REVIEWED: ["info", "Reviewed"], CORRECT: ["ok", "Correct"], INCORRECT_OWNER: ["bad", "Incorrect owner"], REQUIRES_REVIEW: ["warn", "Requires review"],
+};
+export const ISSUE: Record<string, string> = {
+  CODE_NAMES_OTHER: "The code names another department", OWNER_OFFERS_NOTHING: "The owner offers it to no programme of its own", NOT_IN_STRUCTURE: "In no programme's structure",
+  MOVED_BY_RULE: "Moved to the department its code names (V443) — confirm or revert", POSSIBLE_DUPLICATE: "Possible duplicate", OWNER_NOT_LIVE: "The owning department has ended",
+};
+export interface ReviewSummary {
+  total: number; live: number; ended: number; not_reviewed: number; reviewed: number; correct: number; incorrect_owner: number; requires_review: number;
+  with_issues: number; code_names_other: number; owner_offers_nothing: number; not_in_structure: number; moved_by_rule: number; possible_duplicates: number; departments: number;
+}
+export interface CourseHistoryRow { at: string; action: string; field: string | null; old_value: string | null; new_value: string | null; actor: string; actor_office: string | null; reason: string | null; source: string | null }
+export interface CourseHistoryData {
+  code: string; rows: CourseHistoryRow[]; created_at: string | null; created_by: string | null; updated_at: string | null; updated_by: string | null;
+  review_status: ReviewStatus | null; review_note: string | null; reviewed_at: string | null; reviewed_office: string | null; reviewed_by: string | null; issues: string[] | null;
+}
 
 export interface Exists { byCode: CourseHead | null; byTitle: CourseHead[] }
 

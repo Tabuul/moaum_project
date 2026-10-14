@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 282
+\set EXPECTED 283
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12300,6 +12300,81 @@ BEGIN
         format('units %s/%s/%s/%s/%s ext %s/%s uni %s/%s empty %s | cost on=%s each=%s rcpt=%s total=%s covers=%s | refused=%s job=%s | q=%s jupeb a=%s b=%s pg=%s subj=%s sms=%s done jb=%s pg=%s',
                u_short, u_160, u_161, u_306, u_307, u_ext80, u_ext81, u_uni70, u_uni71, u_empty, k.sms_on, k.units_each, k.recipients, k.units_total, k.covers,
                left(r_credit, 20), job IS NOT NULL, q1, told_ja, told_jb, told_pg, subj_j, left(sms_pg, 60), done_jb, done_pg));
+END $$;
+-- ── V445. Central course management completed: a course carries a review status set by the central offices or the owning
+--          department's Head (a Head outside the owner refused; INCORRECT_OWNER needs a note), created/updated stamps kept
+--          by trigger; the review flags issues without deciding — the code names another department, the owner offers it
+--          to no programme of its own, it is in no structure, a possible duplicate by title; possible duplicates by title
+--          are listed, never merged; a course's history reads its field changes, its owner changes and its bindings from the
+--          spine; many courses move to one owner in one act, all or none, each on the trail as BULK ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); d_a text := 'CKQ' || chr(65 + extract(minute FROM now())::int % 26); d_b text := 'CKY' || chr(65 + extract(second FROM now())::int % 26);
+        fac text; prog_a text; stamp_created timestamptz; stamp_updated timestamptz; stamp_after timestamptz; by_after uuid;
+        r_status text := 'accepted'; r_office text := 'accepted'; r_scope text := 'accepted'; r_note text := 'accepted'; rv record;
+        issues1 text[]; issues2 text[]; issues3 text[]; dup record; hist_fields text; hist_owner int; summ record;
+        r_empty text := 'accepted'; bulk_n int; own_after text; own_b text; trail_src text; r_bulk text := 'accepted'; own_untouched text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V445', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V445', 'CHECKV445', 'Academic');
+        SELECT faculty_code INTO fac FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO ref.department (code, name, faculty_code) VALUES (d_a, 'CHECK V445 DEPARTMENT A', fac), (d_b, 'CHECK V445 DEPARTMENT B', fac);
+        SELECT 'C' || lpad(x::text, 5, '0') INTO prog_a FROM generate_series(90000, 99999) x
+         WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY random() LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score) VALUES (prog_a, 'CHECK V445 PROGRAMME A', d_a, fac, 'UNDER GRADUATE', 0);
+        -- (1) stamps by trigger
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (d_a || ' 101', 'Introduction to Checking', 2, 1, 100, d_a, 'Core', 'LIVE');
+        SELECT created_at, updated_at INTO stamp_created, stamp_updated FROM catalogue.course WHERE code = d_a || ' 101';
+        PERFORM pg_sleep(0.01);
+        UPDATE catalogue.course SET title = 'Introduction to Checking I' WHERE code = d_a || ' 101';
+        SELECT updated_at, updated_by INTO stamp_after, by_after FROM catalogue.course WHERE code = d_a || ' 101';
+        -- (2) the review: a bad status, a wrong office, a Head outside the owner, INCORRECT_OWNER without a note — refused; then set
+        BEGIN PERFORM catalogue.set_course_review(d_a || ' 101', 'MAYBE', NULL, who, 'academic', NULL); EXCEPTION WHEN check_violation THEN r_status := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.set_course_review(d_a || ' 101', 'CORRECT', NULL, who, 'bursar', NULL); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.set_course_review(d_a || ' 101', 'CORRECT', NULL, who, 'hod', d_b); EXCEPTION WHEN check_violation THEN r_scope := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.set_course_review(d_a || ' 101', 'INCORRECT_OWNER', NULL, who, 'academic', NULL); EXCEPTION WHEN check_violation THEN r_note := split_part(SQLERRM, ':', 1); END;
+        SELECT review_status, reviewed_office, review_note INTO rv FROM catalogue.set_course_review(d_a || ' 101', 'REQUIRES_REVIEW', 'owner to be confirmed', who, 'hod', d_a);
+        -- (3) the issues: in no structure; owned by B under A's code (the rule disabled to plant it) → CODE_NAMES_OTHER; a title twin → POSSIBLE_DUPLICATE
+        issues1 := catalogue.course_issues(d_a || ' 101');
+        ALTER TABLE catalogue.course DISABLE TRIGGER trg_course_owner_by_code;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (d_a || ' 202', 'Checking Two', 3, 2, 200, d_b, 'Core', 'LIVE');
+        ALTER TABLE catalogue.course ENABLE TRIGGER trg_course_owner_by_code;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (d_a || ' 202', prog_a, 200, 'Borrowed');
+        issues2 := catalogue.course_issues(d_a || ' 202');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (d_a || ' 303', 'Intro to Checking I', 2, 1, 100, d_a, 'Core', 'LIVE');
+        issues3 := catalogue.course_issues(d_a || ' 101');
+        SELECT p.evidence, p.keep_code, p.merge_code INTO dup FROM catalogue.possible_duplicates() p WHERE p.keep_code IN (d_a || ' 101', d_a || ' 303') LIMIT 1;
+        -- (4) the history: the title change on the spine, the binding added
+        SELECT string_agg(h.field || ':' || coalesce(h.old_value, '') || '>' || coalesce(h.new_value, ''), ',' ORDER BY h.at) INTO hist_fields
+          FROM catalogue.course_history(d_a || ' 101') h WHERE h.action = 'CHANGED' AND h.field = 'title';
+        -- (5) bulk: empty refused; a wrong department refuses the whole act (nothing moved); then both to B with one reason, each on the trail as BULK
+        BEGIN PERFORM catalogue.change_owner_bulk(ARRAY[]::text[], d_b, NULL, 'CHECK'); EXCEPTION WHEN check_violation THEN r_empty := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.change_owner_bulk(ARRAY[d_a || ' 101', d_a || ' 303'], 'NO SUCH DEPARTMENT', NULL, 'CHECK'); EXCEPTION WHEN check_violation THEN r_bulk := split_part(SQLERRM, ':', 1); END;
+        SELECT dept_code INTO own_untouched FROM catalogue.course WHERE code = d_a || ' 101';
+        SELECT count(*) INTO bulk_n FROM catalogue.change_owner_bulk(ARRAY[d_a || ' 101', d_a || ' 303'], d_b, NULL, 'CHECK: uploaded under the wrong department');
+        SELECT dept_code INTO own_after FROM catalogue.course WHERE code = d_a || ' 101';
+        SELECT dept_code INTO own_b FROM catalogue.course WHERE code = d_a || ' 303';
+        SELECT h.source INTO trail_src FROM catalogue.course_owner_history h JOIN catalogue.course c ON c.id = h.course_id WHERE c.code = d_a || ' 101' ORDER BY h.changed_at DESC LIMIT 1;
+        SELECT count(*) INTO hist_owner FROM catalogue.course_history(d_a || ' 101') h WHERE h.action = 'OWNER_CHANGED';
+        SELECT s.total, s.not_reviewed, s.requires_review, s.with_issues INTO summ FROM catalogue.review_summary() s;
+        RAISE EXCEPTION 'the V445 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V445: a course carries created/updated stamps by trigger and a review status set by the central offices or the owning department''s Head with a note where the status needs one; the review flags issues (code names another department, in no structure, possible duplicate by title) without changing anything; possible duplicates by title are listed; the history reads field changes and owner changes; many courses move to one owner in one act, all or none, on the trail as BULK',
+        coalesce(stamp_created IS NOT NULL AND stamp_updated IS NOT NULL AND stamp_after >= stamp_updated AND by_after = who
+                 AND r_status = 'REVIEW_STATUS' AND r_office = 'REVIEW_OFFICE' AND r_scope = 'REVIEW_SCOPE' AND r_note = 'REVIEW_NOTE'
+                 AND rv.review_status = 'REQUIRES_REVIEW' AND rv.reviewed_office = 'hod' AND rv.review_note = 'owner to be confirmed'
+                 AND 'NOT_IN_STRUCTURE' = ANY (issues1) AND 'CODE_NAMES_OTHER' = ANY (issues2) AND 'POSSIBLE_DUPLICATE' = ANY (issues3)
+                 AND dup.evidence = 'SAME_TITLE_LEVEL_AND_SEMESTER'
+                 AND hist_fields LIKE '%title:Introduction to Checking>Introduction to Checking I%'
+                 AND r_empty = 'CAT_OWNER_BULK_EMPTY' AND r_bulk = 'CAT_OWNER_DEPT' AND own_untouched = d_a
+                 AND bulk_n = 2 AND own_after = d_b AND own_b = d_b AND trail_src = 'BULK' AND hist_owner >= 1
+                 AND summ.total >= 3 AND summ.requires_review >= 1 AND summ.with_issues >= 1, false),
+        format('stamps=%s/%s/%s/%s refused=%s/%s/%s/%s review=%s/%s/%s issues=%s/%s/%s dup=%s/%s/%s hist=%s bulk=%s/%s/%s/%s/%s/%s/%s/%s summary=%s/%s/%s/%s',
+               stamp_created IS NOT NULL, stamp_updated IS NOT NULL, stamp_after >= stamp_updated, by_after = who, r_status, r_office, r_scope, r_note,
+               rv.review_status, rv.reviewed_office, rv.review_note, issues1, issues2, issues3, dup.evidence, dup.keep_code, dup.merge_code, hist_fields,
+               r_empty, r_bulk, own_untouched, bulk_n, own_after, own_b, trail_src, hist_owner, summ.total, summ.not_reviewed, summ.requires_review, summ.with_issues));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

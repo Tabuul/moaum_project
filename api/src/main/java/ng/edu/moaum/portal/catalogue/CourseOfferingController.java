@@ -46,7 +46,7 @@ class CourseOfferingController {
 
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict')";
-    private static final Set<String> SORTS = Set.of("code", "title", "level", "dept", "programmes", "state");
+    private static final Set<String> SORTS = Set.of("code", "title", "level", "dept", "programmes", "state", "updated", "review");
     /** V386: the University's offices that merge one course into another */
     private static final String MERGERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
@@ -142,7 +142,8 @@ class CourseOfferingController {
                              @RequestParam(required = false) String state, @RequestParam(required = false) String session,
                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "code") String sort,
                              @RequestParam(defaultValue = "asc") String dir, @RequestParam(defaultValue = "1") int page,
-                             @RequestParam(defaultValue = "50") int size) {
+                             @RequestParam(defaultValue = "50") int size,
+                             @RequestParam(required = false) String review, @RequestParam(required = false) String issue) {
         OfficeScope.Bound b = scope.bound(fac, dept, prog);          // a department office within its department, a faculty office within its faculty
         String scopeDept = scope.actingDepartmentOffice() ? b.dept() : null;
         String scopeFac = scope.actingFacultyOffice() ? b.fac() : null;
@@ -154,6 +155,8 @@ class CourseOfferingController {
             case "dept" -> "d.name, c.code";
             case "programmes" -> "programme_count";
             case "state" -> "c.state, c.code";
+            case "updated" -> "c.updated_at";      // V445
+            case "review" -> "c.review_status, c.code";
             default -> "c.code";
         };
         String where = """
@@ -174,10 +177,33 @@ class CourseOfferingController {
                    AND (:kind::text IS NULL OR c.kind = :kind)
                    AND (:state::text IS NULL OR c.state = :state)
                    AND (:session::text IS NULL OR EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :session))
-                   AND (:q::text IS NULL OR c.code ILIKE :q OR c.title ILIKE :q)
+                   -- V445: a search reads the code, the title, the description, the owner's department and faculty, and the programmes offering it
+                   AND (:q::text IS NULL OR c.code ILIKE :q OR replace(c.code, ' ', '') ILIKE replace(:q, ' ', '') OR c.title ILIKE :q OR c.description ILIKE :q
+                        OR d.name ILIKE :q OR f.name ILIKE :q
+                        OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                    LEFT JOIN ref.department pd ON pd.code = p.dept_code
+                                   WHERE co.course_code = c.code AND (p.name ILIKE :q OR p.code ILIKE :q OR pd.name ILIKE :q)))
+                   AND (:review::text IS NULL OR c.review_status = :review)
+                   AND (:issue::text IS NULL OR (:issue = 'ANY' AND cardinality(catalogue.course_issues(c.code)) > 0) OR :issue = ANY (catalogue.course_issues(c.code)))
                    AND c.code NOT LIKE 'DMO %'
                 """;
+        // V445: "100 level" and "first semester" typed into the search box are read as the level and semester filters
+        String qText = blank(q) == null ? null : q.trim();
+        if (qText != null) {
+            var lv = java.util.regex.Pattern.compile("^\\s*([1-6]00)\\s*(level|l)?\\s*$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(qText);
+            if (lv.matches() && level == null) { level = Integer.parseInt(lv.group(1)); qText = null; }
+            else {
+                var sm = java.util.regex.Pattern.compile("^\\s*(first|second|third|1st|2nd|3rd|1|2|3)\\s*semester\\s*$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(qText);
+                if (sm.matches() && semester == null) {
+                    String w = sm.group(1).toLowerCase();
+                    semester = w.startsWith("f") || w.startsWith("1") ? 1 : w.startsWith("s") || w.startsWith("2") ? 2 : 3;
+                    qText = null;
+                }
+            }
+        }
         var params = new LinkedHashMap<String, Object>();
+        params.put("review", blank(review) == null ? null : review.trim().toUpperCase());
+        params.put("issue", blank(issue) == null ? null : issue.trim().toUpperCase());
         params.put("sd", scopeDept);
         params.put("sf", scopeFac);
         params.put("fac", blank(fac) == null ? null : fac.trim().toUpperCase());
@@ -188,7 +214,7 @@ class CourseOfferingController {
         params.put("kind", blank(kind));
         params.put("state", blank(state) == null ? null : state.trim().toUpperCase());
         params.put("session", blank(session));
-        params.put("q", blank(q) == null ? null : "%" + q.trim() + "%");
+        params.put("q", qText == null ? null : "%" + qText + "%");
         var count = jdbc.sql("SELECT count(*) " + where);
         var rows = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.level, c.semester, c.both_semesters, c.kind, c.state, c.ended_on, c.curriculum, c.general_office,
@@ -201,7 +227,9 @@ class CourseOfferingController {
                                    LEFT JOIN ref.department pd ON pd.code = p.dept_code LEFT JOIN ref.faculty pf ON pf.code = p.faculty_code
                                   WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
                        (SELECT max(o.session) FROM catalogue.offering o WHERE o.course_code = c.code) AS last_session,
-                       (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending
+                       (SELECT count(*) FROM catalogue.offer_proposal pr WHERE pr.course_code = c.code AND pr.state = 'PENDING') AS pending,
+                       c.review_status, c.review_note, c.reviewed_at, c.reviewed_office, c.updated_at, helpdesk.person_name(c.updated_by) AS updated_by,
+                       c.created_at, catalogue.course_issues(c.code) AS issues
                 """ + where + " ORDER BY " + order + ("desc".equalsIgnoreCase(dir) ? " DESC" : " ASC") + ", c.code LIMIT :lim OFFSET :off");
         for (var e : params.entrySet()) {
             Object v = e.getValue();

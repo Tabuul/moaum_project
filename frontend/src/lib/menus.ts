@@ -109,6 +109,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deptcourses", "icon": "book", "label": "Department Courses", "badge": "2" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "4" },
           { "id": "t/approvals", "icon": "check", "label": "Departmental Approvals" },
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
@@ -600,6 +601,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -941,6 +943,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/graduation", "icon": "cap", "label": "Graduation Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
         ]
       },
       {
@@ -1013,6 +1016,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
@@ -1065,6 +1069,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
         ]
       },
       {
@@ -1155,6 +1160,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/users", "icon": "user", "label": "Users & Roles" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/templates", "icon": "doc", "label": "Notification Templates" },
@@ -1228,6 +1234,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -1315,6 +1322,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
         ]
       },
       {
@@ -1495,6 +1503,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
+          { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
         ]
       },
