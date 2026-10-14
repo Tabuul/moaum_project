@@ -169,6 +169,43 @@ class PgPortalController {
         return view(me);
     }
 
+    /** the postgraduate applicant's confirmed fees — application, admission checking, acceptance — each with its receipt */
+    @GetMapping("/me/receipts")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> myReceipts(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        return Map.of("rows", jdbc.sql("""
+                SELECT fr.reference, fr.kind, fr.amount, fr.confirmed_at, fr.channel
+                  FROM admissions.pg_fee_reference fr JOIN admissions.pg_application a ON a.id = fr.application_id
+                 WHERE a.applicant_id = :me AND fr.confirmed_at IS NOT NULL
+                 ORDER BY fr.confirmed_at
+                """).param("me", me).query().listOfRows());
+    }
+
+    /** one of them, as the receipt prints it: the applicant, the programme, the fee, and the code the API signs over the reference
+     *  for the receipt's QR (the public verification page answers it) */
+    @GetMapping("/me/receipts/{reference}")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> myReceipt(Authentication authentication, @PathVariable String reference) {
+        UUID me = UUID.fromString(authentication.getName());
+        Map<String, Object> r = firstOrNull(jdbc.sql("""
+                SELECT fr.reference, fr.kind, fr.amount, fr.confirmed_at, NULL::text AS receipt_no, fr.channel, fr.generated_at,
+                       a.application_no, a.session, p.surname, p.other_names, NULL::text AS jamb_reg_no,
+                       g.name || coalesce(' (' || g.pg_award || ')', '') AS programme, 'POSTGRADUATE' AS route
+                  FROM admissions.pg_fee_reference fr
+                  JOIN admissions.pg_application a ON a.id = fr.application_id
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                  JOIN ref.programme g ON g.code = a.programme_code
+                 WHERE a.applicant_id = :me AND fr.reference = :r AND fr.confirmed_at IS NOT NULL
+                """).param("me", me).param("r", reference).query().listOfRows());
+        if (r == null) {
+            throw new NotFound("receipt", reference);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("check_code", codes.sign(ng.edu.moaum.portal.shared.CheckCodes.Kind.APPLICANT_RECEIPT, String.valueOf(r.get("reference"))));
+        return out;
+    }
+
     /** V389: the PG student's own application, as the applicant read it — for the offer of admission in the student's documents */
     @GetMapping("/student/application")
     @PreAuthorize("hasAuthority('OFFICE_student')")

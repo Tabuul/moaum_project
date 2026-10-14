@@ -1,8 +1,8 @@
 /** The receipt of an applicant's fee, named for what was paid: the Post-UTME application fee (UTME, Direct Entry and
- *  transfer applicants alike — the same screening), the CCE and Preliminary Science application fees, the admission
- *  checking fee and the acceptance fee. One name on the screen, the PDF and the public verification page. */
+ *  transfer applicants alike — the same screening), the CCE, Preliminary Science and postgraduate application fees, the
+ *  admission checking fee and the acceptance fee. One name on the screen, the PDF and the public verification page. */
 
-const ROUTE: Record<string, string> = { CCE: "CCE", PRELIMINARY: "Preliminary Science" };
+const ROUTE: Record<string, string> = { CCE: "CCE", PRELIMINARY: "Preliminary Science", POSTGRADUATE: "Postgraduate" };
 
 /** the fee in words, sentence case: "Post-UTME application fee" */
 export function applicantFeeName(kind: string | null | undefined, route?: string | null): string {

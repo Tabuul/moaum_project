@@ -18,6 +18,8 @@ import { esc, printDocument } from "@/lib/document/html";
 import { confirmedReference, openReference, type Application } from "@/lib/applicant";
 import { ACTION_LABEL, DOC_LABEL, REVIEW_LABEL, ccall, day, fileBase64, labelOf, naira, when } from "@/lib/cce";
 import { PayByCard } from "../common";
+import { ReceiptCheck } from "@/components/ReceiptCheck";
+import { applicantReceiptTitle } from "@/lib/applicant-receipt";
 
 interface Listed {
   session: string; jamb_reg_no: string; surname: string; first_name: string; middle_name: string | null; date_of_birth: string; sex: string | null;
@@ -180,7 +182,12 @@ export function CceApplicantForm() {
     <>
       {head}
       {section(1, "Application fee", "PAYMENT", paid ? (
-        <div>Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span> · confirmed {when(paid.confirmedAt)}</div>
+        <>
+          <div className="b700 mb-1">{applicantReceiptTitle("APPLICATION", "CCE")}</div>
+          <div className="mb-2">Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span>{paid.receiptNo ? <> · receipt <span className="tnum">{paid.receiptNo}</span></> : null} · confirmed {when(paid.confirmedAt)}</div>
+          <ReceiptCheck reference={paid.reference} source={`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`}
+            pdf={`/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`} />
+        </>
       ) : !v.fees.stated ? (
         <div className="sub2">The Bursary has not yet stated the CCE application fee for {l.session}. You pay before you submit.</div>
       ) : total === 0 ? <div className="sub2">No application fee is charged.</div> : (

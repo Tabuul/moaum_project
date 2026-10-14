@@ -9,8 +9,11 @@ test("the application fee's receipt is the Post-UTME application receipt, whiche
   }
 });
 
-test("the CCE and Preliminary Science routes name their own fee; the admission fees keep theirs", () => {
+test("the CCE, Preliminary Science and postgraduate routes name their own fee; the admission fees keep theirs", () => {
   assert.equal(applicantReceiptTitle("APPLICATION", "CCE"), "CCE application receipt");
+  assert.equal(applicantReceiptTitle("APPLICATION", "POSTGRADUATE"), "Postgraduate application receipt");
+  assert.equal(applicantReceiptTitle("CHECKING", "POSTGRADUATE"), "Postgraduate admission checking fee receipt");
+  assert.equal(applicantFeeName("ACCEPTANCE", "POSTGRADUATE"), "Postgraduate acceptance fee");
   assert.equal(applicantReceiptTitle("APPLICATION", "PRELIMINARY"), "Preliminary Science application receipt");
   assert.equal(applicantReceiptTitle("CHECKING", "UTME"), "Admission checking fee receipt");
   assert.equal(applicantReceiptTitle("ACCEPTANCE", "CCE"), "CCE acceptance fee receipt");

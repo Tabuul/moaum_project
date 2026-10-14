@@ -148,9 +148,9 @@ class VerifyController {
         return out;
     }
 
-    /** the receipt of an applicant's fee (the Post-UTME application fee, the admission checking fee, the acceptance fee):
-     *  the same page answers it, found by its reference or receipt number, by the code signed over the reference — there was
-     *  never an older code to honour */
+    /** the receipt of an applicant's fee — the Post-UTME (or CCE) application fee, the admission checking fee, the acceptance
+     *  fee, or a postgraduate applicant's: the same page answers it, found by its reference (or an undergraduate receipt number),
+     *  by the code signed over the reference — there was never an older code to honour */
     private Map<String, Object> applicantReceiptAnswer(String reference, String c) {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
@@ -178,6 +178,25 @@ class VerifyController {
                  ORDER BY upper(fr.reference) = upper(:ref) DESC
                  LIMIT 1
                 """).param("ref", reference).query().listOfRows();
+        if (rows.isEmpty()) {
+            // a postgraduate applicant's fee: its own references, no receipt number, the passport among the application's documents
+            rows = jdbc.sql("""
+                    SELECT fr.reference, NULL::text AS receipt_no, fr.kind, fr.amount, fr.channel, fr.confirmed_at, a.session, a.application_no,
+                           trim(upper(p.surname) || ', ' || p.other_names) AS name, g.name || coalesce(' (' || g.pg_award || ')', '') AS programme,
+                           'POSTGRADUATE' AS entry_mode,
+                           (SELECT 'data:' || coalesce(nullif(btrim(d.content_type), ''), 'image/jpeg') || ';base64,' || encode(d.bytes, 'base64')
+                              FROM admissions.pg_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.bytes IS NOT NULL
+                             ORDER BY d.uploaded_at DESC LIMIT 1) AS passport,
+                           (SELECT d.object_id FROM admissions.pg_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.object_id IS NOT NULL
+                             ORDER BY d.uploaded_at DESC LIMIT 1) AS passport_object
+                      FROM admissions.pg_fee_reference fr
+                      JOIN admissions.pg_application a ON a.id = fr.application_id
+                      JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                      JOIN ref.programme g ON g.code = a.programme_code
+                     WHERE upper(fr.reference) = upper(:ref) AND fr.confirmed_at IS NOT NULL
+                     LIMIT 1
+                    """).param("ref", reference).query().listOfRows();
+        }
         if (rows.isEmpty() || !codes.signed(c, CheckCodes.Kind.APPLICANT_RECEIPT, String.valueOf(rows.get(0).get("reference")))) {
             out.put("genuine", false);
             return out;

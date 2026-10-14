@@ -6,10 +6,10 @@
  * database says the application is. Nothing invented: every date, number
  * and name is the record's, and where the record has none, the screen says so.
  */
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { useState } from "react";
 import { at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application, type FeeReference } from "@/lib/applicant";
-import { applicantReceiptTitle, applicantReceiptVerifyPath } from "@/lib/applicant-receipt";
+import { applicantReceiptTitle } from "@/lib/applicant-receipt";
+import { ReceiptCheck } from "@/components/ReceiptCheck";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Gate, Gates, money, Passport } from "@/components/proto/blocks";
@@ -205,19 +205,6 @@ export function Apply({ a }: { a: Application }) {
 /** the application fee's receipt: titled for the fee, the QR the PDF carries (to the public verification page, with the code
  *  the API signed over the reference), and the PDF to download or open for printing */
 function FeeReceipt({ a, paid }: { a: Application; paid: FeeReference }) {
-  const [check, setCheck] = useState<{ code: string; qr: string } | null>(null);
-  useEffect(() => {
-    let live = true;
-    fetch(`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(async (x: { check_code?: string | null } | null) => {
-        if (!x?.check_code) return;
-        const qr = await QRCode.toDataURL(`${window.location.origin}${applicantReceiptVerifyPath(paid.reference, x.check_code)}`, { errorCorrectionLevel: "M", margin: 1, width: 220 });
-        if (live) setCheck({ code: x.check_code, qr });
-      })
-      .catch(() => undefined);
-    return () => { live = false; };
-  }, [paid.reference]);
   const pdf = `/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`;
   return (
     <Panel title={applicantReceiptTitle("APPLICATION", a.entryMode)} right={paid.reference}>
@@ -232,21 +219,7 @@ function FeeReceipt({ a, paid }: { a: Application; paid: FeeReference }) {
         ["Status", <Pil kind="ok" key="s">Paid</Pil>],
       ]} />
       <PBody>
-        <div className="row row--top" style={{ gap: "var(--s-4)" }}>
-          {check
-            // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={check.qr} alt={`QR code that verifies receipt ${paid.reference}`} width={132} height={132} style={{ flexShrink: 0 }} />
-            : <div className="sub2" style={{ width: 132, height: 132, display: "grid", placeItems: "center", border: "1px dashed var(--line)", flexShrink: 0 }}>QR code…</div>}
-          <div style={{ minWidth: 200, flex: 1 }}>
-            <div className="eyebrow">Scan to verify</div>
-            <div className="sub2 mt-1">The QR opens the University&rsquo;s verification page, which shows the Bursary&rsquo;s record of this payment: the payer, the fee and the amount there prevail over any copy.</div>
-            {check ? <div className="mt-1">Check code <b className="tnum">{check.code}</b></div> : null}
-            <div className="row row--inline row--tight mt-2">
-              <a className="btn btn--primary btn--sm" href={`${pdf}&download=1`}>Download receipt (PDF)</a>
-              <a className="btn btn--ghost btn--sm" href={pdf} target="_blank" rel="noopener">Open to print</a>
-            </div>
-          </div>
-        </div>
+        <ReceiptCheck reference={paid.reference} source={`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`} pdf={pdf} />
       </PBody>
     </Panel>
   );

@@ -16,6 +16,8 @@ import { Field } from "@/components/proto/blocks";
 import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
+import { ReceiptCheck } from "@/components/ReceiptCheck";
+import { applicantReceiptTitle } from "@/lib/applicant-receipt";
 
 interface Referee { name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; submitted_at: string | null }
 interface PriorDegree { kind: string; institution: string | null; award: string | null; field?: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
@@ -98,6 +100,37 @@ const DOC_TYPES: { kind: string; label: string; optional?: boolean; multi?: bool
   { kind: "LGA_CERTIFICATE", label: "LGA / indigene certificate" },
   { kind: "NAME_CHANGE", label: "Change of name / marriage certificate", optional: true },
 ];
+
+interface PgReceiptRow { reference: string; kind: string; amount: number; confirmed_at: string; channel: string | null }
+
+/** the applicant's receipts: each fee paid — application, admission checking, acceptance — titled for the fee, with the QR to
+ *  the public verification page and the PDF to download or print */
+function PgReceipts() {
+  const [rows, setRows] = useState<PgReceiptRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/bff/api/v1/pg/me/receipts", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { rows?: PgReceiptRow[] } | null) => { if (live) setRows(j?.rows ?? []); })
+      .catch(() => { if (live) setRows([]); });
+    return () => { live = false; };
+  }, []);
+  if (!rows || !rows.length) return null;
+  return (
+    <Panel title={rows.length === 1 ? applicantReceiptTitle(rows[0].kind, "POSTGRADUATE") : "Your receipts"} right={rows.length === 1 ? rows[0].reference : `${rows.length} fees paid`}>
+      {rows.map((r, i) => (
+        <div key={r.reference} style={i ? { borderTop: "1px solid var(--line)" } : undefined}>
+          <PBody>
+            {rows.length > 1 ? <div className="b700 mb-1">{applicantReceiptTitle(r.kind, "POSTGRADUATE")}</div> : null}
+            <div className="mb-2">Paid <b>{naira(r.amount)}</b> · <span className="tnum">{r.reference}</span> · confirmed {new Date(r.confirmed_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}{r.channel ? ` · ${r.channel}` : ""}</div>
+            <ReceiptCheck reference={r.reference} source={`/api/bff/api/v1/pg/me/receipts/${encodeURIComponent(r.reference)}`}
+              pdf={`/pg/portal/receipt?reference=${encodeURIComponent(r.reference)}`} />
+          </PBody>
+        </div>
+      ))}
+    </Panel>
+  );
+}
 
 export function PgPortal() {
   const [me, setMe] = useState<Me | null>(null);
@@ -401,7 +434,7 @@ export function PgPortal() {
       ) : null}
 
       {/* Payment comes first; the academic record, credentials and passport unlock once the fee is confirmed */}
-      {paid ? null : reference ? (
+      {paid ? <PgReceipts key={`${me.feeConfirmedAt}|${me.checkingConfirmedAt ?? ""}|${me.acceptanceConfirmedAt ?? ""}`} /> : reference ? (
         <Panel title="Application fee">
           <PBody>
             <div className="sub2 mb-2">Pay {naira(me.applicationFee)} by card, bank transfer or USSD. <b>Upload your credentials and passport after payment.</b></div>

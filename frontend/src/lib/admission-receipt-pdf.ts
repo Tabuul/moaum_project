@@ -1,5 +1,5 @@
-/** The receipt of an applicant's fee — the Post-UTME application fee, the admission checking fee or the acceptance fee — as a
- *  PDF (V282): the same facts as the screen, on one A4 page, under the University's crest, titled for what was paid, with a QR
+/** The receipt of an applicant's fee — the Post-UTME (or CCE) application fee, the admission checking fee or the acceptance
+ *  fee, and a postgraduate applicant's — as a PDF (V282): the same facts as the screen, on one A4 page, under the University's crest, titled for what was paid, with a QR
  *  to the public verification page and the check code the API signed over the reference. */
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { currentInstitution } from "./document/institution-cache.ts";
@@ -9,7 +9,8 @@ import { applicantFeeName, applicantReceiptTitle, applicantReceiptVerifyPath } f
 
 export interface AdmissionReceipt {
   reference: string; kind: string; amount: number; confirmed_at: string; receipt_no: string | null; channel: string | null; generated_at: string;
-  application_no: string; session: string; surname: string; other_names: string; jamb_reg_no: string; programme: string;
+  /** a postgraduate applicant has no JAMB number: the row is left out */
+  application_no: string; session: string; surname: string; other_names: string; jamb_reg_no: string | null; programme: string;
   /** V412: the admission route (entry mode); a CCE applicant's receipt names the CCE fee */
   route?: string | null;
   /** the code the API signed over the reference, which the QR's verification address carries */
@@ -31,7 +32,7 @@ export function admissionReceiptPdf(r: AdmissionReceipt, origin: string): Uint8A
   y -= 30;
   const rows: [string, string][] = [
     ["Received from", `${r.surname.toUpperCase()}, ${r.other_names}`],
-    ["JAMB registration number", r.jamb_reg_no ?? "—"],
+    ...(r.jamb_reg_no ? [["JAMB registration number", r.jamb_reg_no] as [string, string]] : []),
     ["Application number", r.application_no],
     ["Programme applied for", r.programme ?? "—"],
     ["Session", r.session],

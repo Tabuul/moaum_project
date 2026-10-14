@@ -171,4 +171,46 @@ class CheckCodesIT {
         assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + unpaid + "?c=" + code, null).getBody()).containsOnlyKeys("genuine").containsEntry("genuine", false);
         assertThat(it.get(me, "/api/v1/applicant/me/receipts/" + unpaid).getStatusCode().value()).isEqualTo(404);
     }
+
+    /** a postgraduate applicant's fee receipt: listed with the applicant's own receipts, signed the same way, answered by the same
+     *  verification page with the programme and the postgraduate route; another applicant cannot read it */
+    @Test
+    void aPostgraduateApplicantsFeeReceiptIsListedSignedAndVerified() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        it.session(SESSION, 2079);
+        String n = String.format("%06d", new java.util.Random().nextInt(900_000) + 100_000);
+        String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        String reference = "PGAPP-ZZ" + tag;
+        String applicationNo = "PG/79/" + n;
+        UUID applicant = UUID.randomUUID(), other = UUID.randomUUID(), app = UUID.randomUUID();
+        it.db(() -> {
+            jdbc.sql("INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, phone, password_hash) VALUES (:id, :s, :sn, 'Receipt Person', :e, '08060000000', crypt('x', gen_salt('bf', 12)))")
+                    .param("id", applicant).param("s", SESSION).param("sn", "ZZPGRECEIPT-" + tag).param("e", "pg-receipt-" + tag.toLowerCase() + "@example.test").update();
+            jdbc.sql("INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, phone, password_hash) VALUES (:id, :s, 'ZZPGOTHER', 'Other Person', :e, '08060000001', crypt('x', gen_salt('bf', 12)))")
+                    .param("id", other).param("s", SESSION).param("e", "pg-other-" + tag.toLowerCase() + "@example.test").update();
+            jdbc.sql("INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state) VALUES (:id, :ap, :s, :no, 'C00023', 800, 'SUBMITTED')")
+                    .param("id", app).param("ap", applicant).param("s", SESSION).param("no", applicationNo).update();
+            return jdbc.sql("""
+                    INSERT INTO admissions.pg_fee_reference (application_id, kind, reference, amount, expires_at, confirmed_at, channel)
+                    VALUES (:a, 'APPLICATION', :r, 15000, now() + interval '7 days', now(), 'Card')
+                    """).param("a", app).param("r", reference).update();
+        });
+        String me = TestTokens.token(applicant, List.of("applicant"));
+
+        Map<String, Object> list = it.get(me, "/api/v1/pg/me/receipts").getBody();
+        assertThat((List<Map<String, Object>>) list.get("rows")).extracting(r -> r.get("reference")).containsExactly(reference);
+        Map<String, Object> receipt = it.get(me, "/api/v1/pg/me/receipts/" + reference).getBody();
+        String code = String.valueOf(receipt.get("check_code"));
+        assertThat(code).matches("[0-9A-F]{12}");
+        assertThat(receipt).containsEntry("route", "POSTGRADUATE").containsEntry("kind", "APPLICATION").containsEntry("application_no", applicationNo);
+        Map<String, Object> v = it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + reference + "?c=" + code, null).getBody();
+        assertThat(v).containsEntry("genuine", true).containsEntry("holder", "APPLICANT").containsEntry("route", "POSTGRADUATE")
+                .containsEntry("feeKind", "APPLICATION").containsEntry("applicationNo", applicationNo).containsEntry("reference", reference);
+        assertThat(String.valueOf(v.get("name"))).startsWith("ZZPGRECEIPT-" + tag);
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + reference + "?c=000000000000", null).getBody()).containsOnlyKeys("genuine").containsEntry("genuine", false);
+        // another applicant reads none of it
+        String theirs = TestTokens.token(other, List.of("applicant"));
+        assertThat(it.get(theirs, "/api/v1/pg/me/receipts/" + reference).getStatusCode().value()).isEqualTo(404);
+        assertThat((List<?>) it.get(theirs, "/api/v1/pg/me/receipts").getBody().get("rows")).isEmpty();
+    }
 }
