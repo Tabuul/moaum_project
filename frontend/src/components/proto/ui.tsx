@@ -7,6 +7,7 @@
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { IcoBtn as ActIcoBtn, type BtnKind, type BtnSize } from "./Btn";
 import Link from "next/link";
+import { LinkPending } from "./LinkPending";
 import { roleLabel } from "@/lib/offices";
 import { PageHeadBody } from "./ShellTitle";
 
@@ -128,13 +129,15 @@ export function Note({ kind, title, children, action }: { kind: NoteKind; title:
 export { Btn, Spinner, doingLabel } from "./Btn";
 export type { BtnKind, BtnSize } from "./Btn";
 
-/** a link that looks like a button — the same hierarchy and sizes, for a route rather than an act */
+/** a link that looks like a button — the same hierarchy and sizes, for a route rather than an act; from the click until the
+ *  next screen is there it shows the busy buttons' spinner (./LinkPending) */
 export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, prefetch, className, "aria-label": ariaLabel }: {
   kind?: BtnKind; size?: BtnSize; href: string; children: ReactNode; title?: string; prefetch?: boolean; className?: string; "aria-label"?: string;
 }) {
   return (
     <Link href={href} className={`btn btn--${kind} btn--${size}${className ? " " + className : ""}`} title={title} prefetch={prefetch} aria-label={ariaLabel}>
       {children}
+      <LinkPending />
     </Link>
   );
 }
