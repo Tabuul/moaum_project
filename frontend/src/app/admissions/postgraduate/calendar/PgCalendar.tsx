@@ -159,7 +159,7 @@ function SessionForm({ row, onClose, onSaved, send }: { row: SessionRow | null; 
   const set = (k: string, v: string) => setD((p) => ({ ...p, [k]: v }));
 
   async function save() {
-    if (!/^[0-9]{4}\/[0-9]{4}$/.test(d.name)) { alert("The session name reads like 2026/2027."); return; }
+    if (!/^[0-9]{4}\/[0-9]{4}$/.test(d.name)) { notifyProblem({ status: 422, title: "The session name reads like 2026/2027." }); return; }
     const [a, b] = parts(d.name);
     setBusy(true);
     const ok = await send(`/api/bff/api/v1/pg/calendar/sessions/${a}/${b}`, "PUT", {

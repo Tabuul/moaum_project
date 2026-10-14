@@ -285,7 +285,7 @@
   .notice--info { background: var(--sky-bg); border: 1px solid var(--sky-line); }
   .notice--ok { background: var(--green-bg); border: 1px solid var(--green-line); }
   .notice__t { font-weight: 700; margin-bottom: 4px; }
-  .notice p { margin: 0; line-height: 1.55; font-size: 13px; }
+  .notice p, .notice__p { margin: 0; line-height: 1.55; font-size: 13px; }
 
   /* No table is scrolled sideways. Every column is on screen: the header
      wraps, the cell wraps, the padding tightens as the viewport narrows,
@@ -1802,7 +1802,7 @@ a:not([class]), a.lnk,
 /* a card body laid out as a row (the body is a column by default) */
 .card__body--row { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--s-4); }
 /* a notice with a title and no body carries no empty line */
-.notice p:empty { display: none; }
+.notice p:empty, .notice__p:empty { display: none; }
 .notice__t:last-child { margin-bottom: 0; }
 /* a document's own table header, in the chrome */
 .doc th { background: var(--chrome); color: var(--surface); }
@@ -2188,7 +2188,7 @@ html[data-density="normal"] {
 /* a figure's caption or a notice may hold one long unbroken token (a file name, a reference); it breaks rather than
    widening its tile, and with it the page */
 .tile { min-width: 0; }
-.tile .c, .tile .eyebrow, .notice p, .notice__t, .card__title { overflow-wrap: anywhere; }
+.tile .c, .tile .eyebrow, .notice p, .notice__p, .notice__t, .card__title { overflow-wrap: anywhere; }
 .ubrand--plain .ubrand__crest { width: auto; height: 40px; object-fit: contain; }
 .ubrand--plain .ubrand__name { font-family: var(--serif); font-weight: 700; font-size: 15px; }
 

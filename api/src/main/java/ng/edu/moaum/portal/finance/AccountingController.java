@@ -108,8 +108,11 @@ class AccountingController {
         Map<String, Object> acct = jdbc.sql("SELECT code, name, type FROM finance.gl_account WHERE code = :c")
                 .param("c", account).query().listOfRows().stream().findFirst().orElseThrow(() -> new DomainRuleViolation("GL_ACCOUNT",
                         "No such account.", new DomainRuleViolation.Remedy("Pick an account from the chart.", "Bursary")));
-        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM finance.gl_ledger(:c, :f, :t)")
-                .param("c", account).param("f", f).param("t", t).query().listOfRows();
+        // the day as the books keep it: a date, not a timestamp a time zone can move to the day before
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT to_char(entry_date, 'YYYY-MM-DD') AS entry_date, journal_no, memo, narration, debit, credit, balance
+                  FROM finance.gl_ledger(:c, :f, :t)
+                """).param("c", account).param("f", f).param("t", t).query().listOfRows();
         return Map.of("account", acct, "from", f, "to", t, "rows", rows);
     }
 
@@ -132,7 +135,8 @@ class AccountingController {
                 "rows", jdbc.sql("SELECT * FROM finance.balance_sheet(:t)").param("t", t).query().listOfRows());
     }
 
-    /** the journal book: recent journals with their lines nested */
+    /** the journal book: recent journals with their lines nested — a list, not the database's jsonb wrapper, which the
+     *  screen could not read (Lines on any journal failed) — and each entry date as the day it is */
     @GetMapping("/journals")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -140,18 +144,21 @@ class AccountingController {
             @RequestParam(defaultValue = "100") int limit) {
         LocalDate f = from == null ? LocalDate.now().minusMonths(1) : from;
         LocalDate t = to == null ? LocalDate.now() : to;
-        return jdbc.sql("""
-                SELECT j.id, j.journal_no, j.entry_date, j.memo, j.source, j.source_type, j.status,
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT j.id, j.journal_no, to_char(j.entry_date, 'YYYY-MM-DD') AS entry_date, j.memo, j.source, j.source_type, j.status,
                        (SELECT coalesce(sum(debit),0) FROM finance.gl_posting p WHERE p.journal_id = j.id) AS total,
-                       (SELECT jsonb_agg(jsonb_build_object('account', p.account, 'name', a.name,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('account', p.account, 'name', a.name,
                                 'debit', p.debit, 'credit', p.credit, 'narration', p.narration) ORDER BY p.line)
                           FROM finance.gl_posting p JOIN finance.gl_account a ON a.code = p.account
-                         WHERE p.journal_id = j.id) AS lines
+                         WHERE p.journal_id = j.id), '[]'::jsonb)::text AS lines
                   FROM finance.gl_journal j
                  WHERE j.entry_date BETWEEN :f AND :t
                  ORDER BY j.journal_no DESC
                  LIMIT :lim
                 """).param("f", f).param("t", t).param("lim", Math.min(limit, 500)).query().listOfRows();
+        for (Map<String, Object> r : rows)
+            r.put("lines", json.readValue(String.valueOf(r.get("lines")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+        return rows;
     }
 
     /* ── posting ── */

@@ -18,12 +18,12 @@ const PAGE = 10;
  * unhide every row (print the full list, not just the current page), and print it on its own in a
  * hidden same-origin iframe with its own minimal stylesheet — so the button works everywhere.
  */
-function printTable(tableEl: HTMLTableElement | null) {
-  if (!tableEl) { window.print(); return; }
+function printTable(tableEl: HTMLTableElement | null): Promise<void> {
+  if (!tableEl) { window.print(); return Promise.resolve(); }
   // V320: the table prints under the official document header, through the central print
   const heading = (tableEl.closest(".card")?.querySelector(".card__title")?.textContent
     ?? tableEl.getAttribute("data-title") ?? document.title ?? "").trim();
-  void printElement(tableEl, { title: heading || "List" });
+  return printElement(tableEl, { title: heading || "List" });
 }
 
 export interface DTableProps {
@@ -50,6 +50,13 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DT
   const [size, setSize] = useState<number>(pageSize ?? PAGE); // rows per page; 0 = all
   const wrap = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
+  // only the page in view is in the document — a list of 20,000 applicants once put 20,000 hidden rows in the page; Print
+  // draws every row for the moment it takes to copy the table, then the page is back to its one page of rows
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (!printing) return;
+    void printTable(table.current).finally(() => setPrinting(false));
+  }, [printing]);
 
   const searchable = rows.length > 8 && !!texts;
   const terms = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
@@ -148,9 +155,9 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DT
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, ri) => (
+            {(printing ? rows.map((_, ri) => ri) : [...shown]).map((ri) => (
               <tr key={ri} hidden={!shown.has(ri)}>
-                {r.map((cell, ci) => (
+                {rows[ri].map((cell, ci) => (
                   <td key={ci} className={cls[ci]} data-l={labels[ci] || undefined}>
                     {cell}
                   </td>
@@ -221,7 +228,7 @@ export function DTable({ cols, rows, texts, title, noPrint, pageSize, foot }: DT
             ) : null}
           </div>
         )}
-        {noPrint ? null : <button className="btn btn--ghost btn--sm tfoot__x" title="Print this table" onClick={() => printTable(table.current)}>
+        {noPrint ? null : <button className="btn btn--ghost btn--sm tfoot__x" title="Print this table" disabled={printing} onClick={() => setPrinting(true)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" />
           </svg>
