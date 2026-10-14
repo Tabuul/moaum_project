@@ -16,16 +16,16 @@ import { Field, Modal, day } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { ISSUE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type CourseListRow, type Directory, type DuplicatePair, type ReviewStatus, type ReviewSummary } from "@/lib/catalogue";
+import { ISSUE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type CourseListRow, type Directory, type DuplicatePair, type ReviewStatus, type ReviewSummary, type UnitsByProgramme } from "@/lib/catalogue";
 
 export type ReviewFilters = Record<"q" | "fac" | "dept" | "prog" | "level" | "semester" | "kind" | "state" | "session" | "review" | "issue" | "sort" | "dir" | "size", string>;
 
 const CENTRAL = ["academic", "registrar", "dregistrar", "admin", "super"];
 const REVIEWERS = [...CENTRAL, "hod", "dean"];
 
-export function Review({ list, directory, summary, sessions, filters, page, duplicates, actingOffice, generatedBy }: {
+export function Review({ list, directory, summary, sessions, filters, page, duplicates, unitsByProgramme = [], actingOffice, generatedBy }: {
   list: CourseList; directory: Directory | null; summary: ReviewSummary | null; sessions: string[]; filters: ReviewFilters; page: number;
-  duplicates: DuplicatePair[]; actingOffice: string | null; generatedBy: string | null;
+  duplicates: DuplicatePair[]; unitsByProgramme?: UnitsByProgramme[]; actingOffice: string | null; generatedBy: string | null;
 }) {
   const go = useQueryNav();
   const router = useRouter();
@@ -198,6 +198,27 @@ export function Review({ list, directory, summary, sessions, filters, page, dupl
             <span className="sub2" key="o">{deptName(d.keep_dept)} · {deptName(d.merge_dept)}</span>,
             <span className="sub2" key="d">{d.differences.length ? d.differences.join(", ").toLowerCase() : "none"}</span>,
           ])} texts={duplicates.map((d) => `${d.keep_code} ${d.merge_code} ${d.keep_title}`)} />
+        </Panel>
+      ) : null}
+
+      {unitsByProgramme.length ? (
+        <Panel title="Units taken differently by programme" right={`${unitsByProgramme.length} course${unitsByProgramme.length === 1 ? "" : "s"} some programme takes at units of its own`}>
+          <PBody>
+            <div className="sub2">Each programme takes a course at the units its structure says; a number left behind by an old upload shows here. Put it right on that programme&rsquo;s Programme Structure (Units), or on the course&rsquo;s page for its own department.</div>
+          </PBody>
+          <DTable cols={["Course", "Owner", "Course units|mid", "Programmes and the units they take", "Differs|mid"]} rows={unitsByProgramme.map((u) => [
+            <span key="c"><Link className="lnk tnum b600" href={`/catalogue/course?code=${encodeURIComponent(u.code)}`}>{u.code}</Link><div className="sub2">{u.title}</div></span>,
+            <span className="sub2" key="o">{u.department ?? u.deptCode ?? "—"}</span>,
+            <span className="tnum" key="u">{u.courseUnits}</span>,
+            <span key="p">{u.programmes.map((x, i) => (
+              <div key={`${x.programme}-${x.level}-${i}`} className="sub2">
+                <Link className="lnk tnum" style={{ textDecoration: "underline" }} href={`/catalogue/structure?prog=${encodeURIComponent(x.programme)}`}>{x.programme}</Link> {x.name} · {x.level} level · <b className="tnum">{x.units}</b> unit{x.units === 1 ? "" : "s"}{x.own ? " (its own)" : ""}
+              </div>
+            ))}</span>,
+            <span className="tnum" key="d">{u.distinctUnits > 1 ? <Pil kind="warn">{u.distinctUnits} different numbers</Pil>
+              : u.programmes[0] && u.programmes[0].units !== u.courseUnits ? <Pil kind="warn">{u.programmes[0].units}, not the course&rsquo;s {u.courseUnits}</Pil>
+              : <Pil kind="grey">the course&rsquo;s own</Pil>}</span>,
+          ])} texts={unitsByProgramme.map((u) => `${u.code} ${u.title} ${u.department ?? ""} ${u.programmes.map((x) => `${x.programme} ${x.name}`).join(" ")}`)} />
         </Panel>
       ) : null}
 

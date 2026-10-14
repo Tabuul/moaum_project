@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import type { CourseList, Directory, DuplicatePair, ReviewSummary } from "@/lib/catalogue";
+import type { CourseList, Directory, DuplicatePair, ReviewSummary, UnitsByProgramme } from "@/lib/catalogue";
 import { Review, type ReviewFilters } from "./Review";
 
 export const dynamic = "force-dynamic";
@@ -19,20 +19,21 @@ export default async function CourseReviewPage({ searchParams }: { searchParams:
   qs.set("page", String(page));
   if (!filters.size) qs.set("size", "50");
   if (!filters.sort) qs.set("sort", "dept");
-  const [me, list, directory, summary, sessions, duplicates] = await Promise.all([
+  const [me, list, directory, summary, sessions, duplicates, unitsByProgramme] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<CourseList>(`/api/v1/catalogue/courses/list?${qs.toString()}`),
     api<Directory>("/api/v1/catalogue/directory"),
     api<ReviewSummary>("/api/v1/catalogue/review/summary"),
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions").then((r) => (r.ok ? r.data.map((s) => s.name) : [])).catch(() => [] as string[]),
     api<DuplicatePair[]>("/api/v1/catalogue/possible-duplicates").then((r) => (r.ok ? r.data : [])).catch(() => [] as DuplicatePair[]),
+    api<UnitsByProgramme[]>("/api/v1/catalogue/units-by-programme").then((r) => (r.ok ? r.data : [])).catch(() => [] as UnitsByProgramme[]),
   ]);
   const acting = me.ok ? me.data.activeOffice : null;
   return (
     <Shell route="t/coursereview" me={me.ok ? me.data : null}>
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
         <Review list={list.data} directory={directory.ok ? directory.data : null} summary={summary.ok ? summary.data : null} sessions={sessions} filters={filters} page={page}
-          duplicates={duplicates} actingOffice={acting} generatedBy={me.ok ? me.data.name ?? null : null} />
+          duplicates={duplicates} unitsByProgramme={unitsByProgramme} actingOffice={acting} generatedBy={me.ok ? me.data.name ?? null : null} />
       )}
     </Shell>
   );

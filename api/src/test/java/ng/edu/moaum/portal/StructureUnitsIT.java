@@ -69,6 +69,13 @@ class StructureUnitsIT {
         Map<String, Object> r = row(it.get(ict, "/api/v1/catalogue/structure?prog=" + programme), code);
         assertThat(r).containsEntry("units", 2).containsEntry("own_units", 2).containsEntry("course_units", 3);
 
+        // the review's report lists the course, with the programme at its own units
+        List<Map<String, Object>> report = (List<Map<String, Object>>) (List<?>) it.getList(ict, "/api/v1/catalogue/units-by-programme").getBody();
+        Map<String, Object> mine = report.stream().filter(x -> code.equals(x.get("code"))).findFirst().orElseThrow();
+        assertThat(mine).containsEntry("courseUnits", 3);
+        assertThat((List<Map<String, Object>>) mine.get("programmes")).anySatisfy(x ->
+                assertThat(x).containsEntry("programme", programme).containsEntry("units", 2).containsEntry("own", true));
+
         // a change of basis alone keeps the programme's units
         assertThat(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/structure/bind", bind(programme, code, "Elective", null)).getStatusCode().value()).isEqualTo(200);
         r = row(it.get(ict, "/api/v1/catalogue/structure?prog=" + programme), code);

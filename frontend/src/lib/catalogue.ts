@@ -99,6 +99,12 @@ export const EVIDENCE: Record<string, string> = {
   SAME_TITLE_AND_LEVEL: "the same title, level, semester and owner",
 };
 /** V386: a pair of codes the pool holds for one course, with the code to keep */
+/** V460: a course some programme takes at units of its own, and every programme that takes it at the units it takes it at */
+export interface UnitsByProgramme {
+  code: string; title: string; courseUnits: number; deptCode: string | null; department: string | null; distinctUnits: number; ownCount: number;
+  programmes: { programme: string; name: string; level: number; units: number; own: boolean; department: string | null }[];
+}
+
 export interface DuplicatePair {
   evidence: string; keep_code: string; merge_code: string; keep_title: string; merge_title: string; keep_dept: string | null; merge_dept: string | null;
   keep_state: string; merge_state: string; keep_uses: number; merge_uses: number; differences: string[];

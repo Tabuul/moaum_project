@@ -7,6 +7,7 @@ import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { docxBlocks } from "@/lib/docx";
+import { structureRowsFromDocx } from "@/lib/structure-docx";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
@@ -104,27 +105,10 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  /* the document's tables, their columns found by their headings (a leading S/N passed over, a table that runs on to the
+     next page read with the columns before it) — lib/structure-docx */
   async function rowsFromDocx(buf: ArrayBuffer): Promise<Row[]> {
-    const blocks = await docxBlocks(buf);
-    const rows: Row[] = [];
-    let level: number | null = null;
-    let semester: number | null = null;
-    for (const b of blocks) {
-      if (b.kind === "p") {
-        const lm = b.text.match(/(\d{3})\s*level/i);
-        if (lm) level = Number(lm[1]);
-        if (/first|1st/i.test(b.text) && /semester/i.test(b.text)) semester = 1;
-        else if (/second|2nd/i.test(b.text) && /semester/i.test(b.text)) semester = 2;
-        else if (/third|3rd/i.test(b.text) && /semester/i.test(b.text)) semester = 3;
-        continue;
-      }
-      for (const r of b.rows) {
-        const code = (r[0] ?? "").trim();
-        if (!code || /^course\s*code$/i.test(code) || /^total$/i.test((r[1] ?? "").trim())) continue;
-        rows.push({ code, title: (r[1] ?? "").trim(), units: (r[2] ?? "").trim(), status: (r[3] ?? "").trim(), level, semester, lh: (r[4] ?? "").trim(), ph: (r[5] ?? "").trim() });
-      }
-    }
-    return rows;
+    return structureRowsFromDocx(await docxBlocks(buf));
   }
 
   async function rowsFromXlsx(buf: ArrayBuffer): Promise<Row[]> {

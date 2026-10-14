@@ -160,4 +160,41 @@ class CourseReviewController {
         List<Map<String, Object>> rows = new ArrayList<>(jdbc.sql("SELECT * FROM catalogue.possible_duplicates()").query().listOfRows());
         return rows;
     }
+
+    /** V460: the courses some programme takes at units of its own — every programme that takes each, at the units it takes it at,
+     *  the programme's own marked — so a programme left at another number by an old upload is seen and put right on its structure */
+    @GetMapping("/units-by-programme")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> unitsByProgramme() {
+        return jdbc.sql("""
+                WITH b AS (
+                    SELECT co.course_code, co.programme_code, co.level, co.units AS own,
+                           catalogue.units_for(co.course_code, co.programme_code, co.level) AS takes
+                      FROM catalogue.course_offer co)
+                SELECT c.code, c.title, c.units AS "courseUnits", c.dept_code AS "deptCode", d.name AS department,
+                       count(DISTINCT b.takes) AS "distinctUnits",
+                       count(*) FILTER (WHERE b.own IS NOT NULL) AS "ownCount",
+                       json_agg(json_build_object('programme', b.programme_code, 'name', p.name, 'level', b.level, 'units', b.takes,
+                                                  'own', b.own IS NOT NULL, 'department', pd.name)
+                                ORDER BY b.takes, p.name, b.level)::text AS programmes
+                  FROM catalogue.course c
+                  JOIN b ON b.course_code = c.code
+                  JOIN ref.programme p ON p.code = b.programme_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                  LEFT JOIN ref.department pd ON pd.code = p.dept_code
+                 WHERE c.state <> 'ENDED'
+                 GROUP BY c.code, c.title, c.units, c.dept_code, d.name
+                HAVING count(*) FILTER (WHERE b.own IS NOT NULL) > 0
+                 ORDER BY count(DISTINCT b.takes) DESC, c.code
+                """).query().listOfRows().stream().map(r -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            try {
+                m.put("programmes", new tools.jackson.databind.ObjectMapper().readValue(String.valueOf(r.get("programmes")), List.class));
+            } catch (Exception e) {
+                m.put("programmes", List.of());
+            }
+            return m;
+        }).toList();
+    }
 }
