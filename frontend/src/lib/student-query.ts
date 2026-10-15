@@ -132,6 +132,16 @@ export const SPILLOVER_WORD: Record<string, string> = {
 export const SEX_WORD: Record<string, string> = { M: "Male", F: "Female" };
 export const awardWord = (a: string) => (a === "-" ? "Award not stated" : a);
 
+/** V475: where a student stands past the programme's length, as the cohort engine says — SP1, SP2 (each a session, both semesters),
+ *  SP3 where the limit allows it, or the limit reached; nothing for a student within the programme's length */
+export function spilloverWord(state: string | null | undefined): { short: string; long: string } | null {
+  if (!state) return null;
+  const m = /^SPILLOVER_YEAR_(\d)$/.exec(state);
+  if (m) return { short: `SP${m[1]}`, long: `Spillover year ${m[1]} (SP${m[1]})` };
+  if (state === "SPILLOVER_LIMIT_REACHED") return { short: "SP limit", long: "Spillover limit reached" };
+  return null;
+}
+
 /** "Undergraduate Student", "JUPEB Student" — the learner named by type where the context needs it */
 export const typeStudentWord = (name: string | null | undefined) => (name ? `${name} Student` : "Requires classification");
 

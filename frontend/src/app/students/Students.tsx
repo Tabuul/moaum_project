@@ -11,6 +11,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Register } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
+import { spilloverWord } from "@/lib/student-query";
 import type { Scope } from "@/lib/scope";
 import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -56,6 +57,7 @@ export function Students({
     </span>,
     <span className="tnum" key="l">
       {s.currentLevel}
+      {spilloverWord(s.spilloverState) ? <div className="sub2" title={spilloverWord(s.spilloverState)?.long}>{spilloverWord(s.spilloverState)?.short}</div> : null}
     </span>,
     <Pil kind={statusPill(s.status)} key="s">
       {statusLabel(s.status)}

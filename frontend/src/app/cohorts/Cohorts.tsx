@@ -15,11 +15,12 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { StudentOpen } from "@/components/StudentModal";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { STUDENT_LEVELS } from "@/lib/levels";
+import { LevelCorrections } from "./LevelCorrections";
 import { CLASS, CONF, ISSUE, RULE, SPILL, STATUSES, classWord, fullName, issuesOf, statusWord, type CohortList, type CohortRow, type CohortSettings, type CohortStudent, type CohortSummary } from "@/lib/cohorts";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; cohort: string; entry: string; jamb: string; level: string; duration: string; status: string; grad: string; spill: string; conf: string; issue: string; sex: string; entryMode: string; sort: string; dir: string; size: string }
-type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "all" | "quality" | "settings";
-const TAB_TITLE: Record<Tab, string> = { overview: "Overview", current: "Current students", graduated: "Graduated students", spillover: "Spillover students", review: "Reconciliation review", all: "Every student", quality: "Data quality", settings: "Policy and sessions" };
+type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "all" | "levels" | "quality" | "settings";
+const TAB_TITLE: Record<Tab, string> = { overview: "Overview", current: "Current students", graduated: "Graduated students", spillover: "Spillover students", review: "Reconciliation review", all: "Every student", levels: "Level corrections", quality: "Data quality", settings: "Policy and sessions" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
 export function Cohorts({ tab, summary, list, listProblem, settings, structure, filters, page, canDecide, canSet, generatedBy }: {
@@ -80,6 +81,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
       <Tabs label="View" items={[
         { id: "overview", label: "Overview" }, { id: "current", label: "Current", count: n(t.current) }, { id: "graduated", label: "Graduated", count: n(t.graduated) },
         { id: "spillover", label: "Spillover", count: n(t.spillover) + n(t.spillover_limit) }, { id: "review", label: "Review", count: n(t.review) }, { id: "all", label: "All" },
+        { id: "levels", label: "Level corrections" },
         { id: "quality", label: "Data quality", count: summary.byIssue.reduce((a, b) => a + n(b.n), 0) }, { id: "settings", label: "Policy & sessions" },
       ]} value={tab as Tab} onChange={(v) => nav({ tab: v })} />
 
@@ -211,6 +213,8 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
           ) : null}
         </Panel>
       ) : null}
+
+      {tab === "levels" ? <LevelCorrections fac={filters.fac} dept={filters.dept} canApply={canSet} /> : null}
 
       {tab === "quality" ? (
         <Panel title="Data quality" right="What the reconciliation found on the migrated register">

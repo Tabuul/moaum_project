@@ -184,3 +184,28 @@ it, being derived. `people.academic_position` cascades on the student, so the op
 
 Nothing in these steps edits a JAMB year, an admission session, a matriculation number or a level: those are corrected,
 if at all, on the student's own record with the instrument that justifies it, and the position follows.
+
+## 10. Levels brought to the cohort (V475)
+
+The engine's level is not copied onto the record by itself, so a student who came over from the old portal at 100 Level
+stayed at 100 Level on every screen, list, registration menu and level-based fee line, even two sessions into spillover.
+On the live-shaped copy of 15 October 2026 that was 10,748 spillover students (most at 100 Level, computed 400–600),
+8 others whose own latest registration is at the computed level, and 537 whose level only the count of sessions supports.
+
+**Student Cohorts → Level corrections** lists every record in study below the computed level, with its basis:
+
+| Basis | Meaning | Applied |
+|---|---|---|
+| Spillover | past the programme's length, so at its final level | by default |
+| Own registration | the student's latest registration is at the computed level | by default |
+| Sessions counted only | the count of sessions alone (a repeated year or a gap reads the same) | only when chosen, after review |
+
+The Academic Office, the Registry or the platform corrects them on one reason, in batches of 500. No level is ever
+lowered (a record above its computed level is never listed), and each change is on the student's cohort decision history
+(`LEVEL_SPILLOVER`, `LEVEL_REGISTRATION` or `LEVEL_ARITHMETIC`, previous and new level, batch) and on the audit spine.
+Postgraduate students, whose level does not advance, are left out.
+
+Spillover is named where a level is read: the student record's header ("400 Level (SP2)" and a "Spillover year 2 (SP2)"
+mark), the student register and the Student Query list. SP1 and SP2 are each a session of both semesters; the limit is
+the policy's (two sessions by default), and an approved deferment pushes the expected completion on by the sessions
+deferred.

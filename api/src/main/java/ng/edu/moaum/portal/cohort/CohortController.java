@@ -271,6 +271,84 @@ class CohortController {
         return Map.of("computed", n);
     }
 
+    /* ── V475: records below the level the engine computes, and the one act that raises them ── */
+
+    private static final String LEVEL_SETTERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+    private static final Set<String> BASES = Set.of("SPILLOVER", "REGISTRATION", "ARITHMETIC");
+
+    /** the records below their computed level within the scope: the figures by basis and a page of the students, names A–Z */
+    @GetMapping("/levels")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> levels(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
+                               @RequestParam(required = false) String basis, @RequestParam(required = false) String q,
+                               @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size) {
+        OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        String bs = blank(basis) == null ? null : basis.trim().toUpperCase();
+        if (bs != null && !BASES.contains(bs)) bs = null;
+        String from = """
+                 FROM people.level_correction c
+                 JOIN people.student s ON s.id = c.student_id
+                 JOIN ref.programme p ON p.code = s.programme_code
+                 JOIN ref.department d ON d.code = p.dept_code
+                 JOIN ref.faculty f ON f.code = p.faculty_code
+                WHERE (:fac::text IS NULL OR f.code = :fac) AND (:dept::text IS NULL OR d.code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                  AND (:like::text IS NULL OR s.matric_no ILIKE :like OR s.surname ILIKE :like OR s.other_names ILIKE :like OR (s.surname || ' ' || s.other_names) ILIKE :like)
+                """;
+        String like = blank(q) == null ? null : "%" + q.trim() + "%";
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", jdbc.sql("SELECT c.basis, count(*) AS n" + from + " GROUP BY c.basis")
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .query().listOfRows());
+        int sz = Math.max(1, Math.min(size, 500));
+        int pg = Math.max(1, page);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT count(*) OVER () AS total_rows, s.id, s.surname, s.other_names, s.matric_no, p.code AS programme_code, p.name AS programme,
+                       d.name AS department, f.name AS faculty, c.current_level, c.proposed_level, c.basis, c.spillover_state, c.spillover_years,
+                       c.expected_completion, c.effective_cohort, c.last_registration_session, c.last_registration_level""" + from + """
+                  AND (:basis::text IS NULL OR c.basis = :basis)
+                 ORDER BY lower(s.surname), lower(s.other_names), s.id
+                 LIMIT :n OFFSET :o
+                """).param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("basis", bs, Types.VARCHAR).param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
+        long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
+        rows.forEach(r -> r.remove("total_rows"));
+        out.put("total", total);
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", rows);
+        return out;
+    }
+
+    public record LevelApply(List<UUID> studentIds, List<String> bases, String fac, String dept, String prog,
+                             @Size(max = 2000) String reason, @Size(max = 60) String batch, Integer limit, Boolean dryRun) {
+    }
+
+    /** raise records to their computed level — the chosen students, or a basis within the scope — a batch at a time, never lowering,
+     *  each change on the student's cohort decision history; a dry run counts. The database holds the office and the reason. */
+    @PostMapping("/levels/apply")
+    @PreAuthorize(LEVEL_SETTERS)
+    @Transactional
+    Map<String, Object> applyLevels(@Valid @RequestBody LevelApply body) {
+        OfficeScope.Bound b = scope.bound(body.fac(), body.dept(), body.prog());
+        boolean dry = body.dryRun() == null || body.dryRun();
+        List<String> bases = body.bases() == null || body.bases().isEmpty() ? null : body.bases().stream().map(x -> x.trim().toUpperCase()).toList();
+        if (bases != null) for (String x : bases) if (!BASES.contains(x)) throw new DomainRuleViolation("LEVEL_CORRECTION_BASIS", "Unknown basis " + x + ".",
+                new DomainRuleViolation.Remedy("Choose spillover, registration or arithmetic.", "Registry"));
+        if (body.studentIds() != null && body.studentIds().size() > 5000) throw new DomainRuleViolation("LEVEL_CORRECTION_SIZE", "Choose at most 5,000 students at a time.",
+                new DomainRuleViolation.Remedy("Apply by basis, or choose fewer students.", "Registry"));
+        Map<String, Object> r = jdbc.sql("SELECT * FROM people.apply_level_corrections(CAST(:ids AS uuid[]), CAST(:bases AS text[]), :fac, :dept, :prog, :reason, :batch, :lim, :dry)")
+                .param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
+                .param("bases", bases == null ? null : bases.toArray(String[]::new), Types.ARRAY)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR)
+                .param("reason", blank(body.reason()), Types.VARCHAR).param("batch", blank(body.batch()), Types.VARCHAR)
+                .param("lim", body.limit() == null ? 500 : Math.max(1, Math.min(body.limit(), 1000)), Types.INTEGER).param("dry", dry)
+                .query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("dryRun", dry);
+        return out;
+    }
+
     /* ── the policy: the spillover limit, the programmes' lengths, the sessions merged ── */
 
     @GetMapping("/settings")

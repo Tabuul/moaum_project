@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
 import { ClassificationPanel, type Classification } from "./ClassificationPanel";
+import { spilloverWord } from "@/lib/student-query";
 
 /** V469: the offices that decide a student's classification (people.require_classifier) */
 const CLASSIFIERS = ["academic", "registrar", "dregistrar", "super"];
@@ -88,6 +89,7 @@ export function Student360({
   const cgpa = portal?.cgpa ?? null;
   const router = useRouter();
   const s = record.student;
+  const spill = spilloverWord(s.spilloverState);
   const may = actingOffice !== null && WRITERS.includes(actingOffice);
   const [changing, setChanging] = useState(false);
   const [to, setTo] = useState("ACTIVE");
@@ -169,12 +171,13 @@ export function Student360({
           <div className="grow" style={{ minWidth: 200 }}>
             <div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>{fullName(s)}</div>
             <div className="sub2 tnum">
-              {s.matricNo ?? s.admissionNo ?? "No number yet"} · {s.programmeName} · {s.currentLevel} Level · entry{" "}
+              {s.matricNo ?? s.admissionNo ?? "No number yet"} · {s.programmeName} · {s.currentLevel} Level{spill ? ` (${spill.short})` : ""} · entry{" "}
               {s.entrySession} {s.entryMode.replace("_", " ")}
             </div>
           </div>
           <div className="row">
             {classification ? <Pil kind={classification.programme_type_name ? "info" : "warn"}>{classification.programme_type_name ? `${classification.programme_type_name} Student` : "Requires classification"}</Pil> : null}
+            {spill ? <Pil kind="warn" title="Past the programme's length, as the cohort engine counts it (each spillover year a session, both semesters)">{spill.long}</Pil> : null}
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status

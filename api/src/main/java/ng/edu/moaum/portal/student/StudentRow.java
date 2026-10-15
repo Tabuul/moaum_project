@@ -7,13 +7,16 @@ import java.util.UUID;
 /**
  * One line of the register: the student, and the chain above them —
  * programme, department, faculty — because no list of students in this
- * University is a list that does not say which.
+ * University is a list that does not say which. V475: and where the student
+ * stands past the programme's length (the cohort engine's spillover state:
+ * SPILLOVER_YEAR_1 is SP1, SPILLOVER_YEAR_2 SP2, or the limit reached).
  */
 record StudentRow(UUID id, String matricNo, String admissionNo, String jambRegNo,
                   String surname, String otherNames, String sex, LocalDate dateOfBirth,
                   String programmeCode, String programmeName, String deptCode, String deptName,
                   String facultyCode, String facultyName,
-                  String entryMode, String entrySession, int entryLevel, int currentLevel, String status) {
+                  String entryMode, String entrySession, int entryLevel, int currentLevel, String status,
+                  String spilloverState) {
 
     /**
      * The register in a scope, and the register entire: {@code rows} is what

@@ -50,6 +50,8 @@ export interface StudentRow {
   facultyName: string;
   currentLevel: number;
   status: string;
+  /** V475: the cohort engine's spillover state (SPILLOVER_YEAR_1 is SP1 …), when the student is past the programme's length */
+  spilloverState?: string | null;
 }
 
 export interface Register {

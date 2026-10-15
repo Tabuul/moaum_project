@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EMPTY_QUERY, PRESETS, activeFilters, applyPreset, exportHeading, levelWord, queryString, readQueryFilters, withChange, type QueryOptions } from "./student-query.ts";
+import { EMPTY_QUERY, PRESETS, activeFilters, applyPreset, exportHeading, levelWord, queryString, readQueryFilters, spilloverWord, withChange, type QueryOptions } from "./student-query.ts";
 
 const OPTIONS: QueryOptions = {
   scope: { kind: "UNIVERSITY", label: "University", programmeType: null }, currentSession: "2025/2026", type: null,
@@ -67,4 +67,13 @@ test("a Preliminary learner's level reads Preliminary, a JUPEB learner's a dash"
   assert.equal(levelWord({ source: "REGISTER", level: 300 }), "300");
   assert.equal(levelWord({ source: "PRELIMINARY", level: null }), "Preliminary");
   assert.equal(levelWord({ source: "JUPEB", level: null }), "—");
+});
+
+test("a spillover reads SP1, SP2 or the limit reached; within the programme's length nothing", () => {
+  assert.deepEqual(spilloverWord("SPILLOVER_YEAR_1"), { short: "SP1", long: "Spillover year 1 (SP1)" });
+  assert.equal(spilloverWord("SPILLOVER_YEAR_2")?.short, "SP2");
+  assert.equal(spilloverWord("SPILLOVER_LIMIT_REACHED")?.long, "Spillover limit reached");
+  assert.equal(spilloverWord("NORMAL"), null);
+  assert.equal(spilloverWord("NOT_APPLICABLE"), null);
+  assert.equal(spilloverWord(null), null);
 });

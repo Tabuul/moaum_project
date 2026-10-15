@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 311
+\set EXPECTED 312
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14061,6 +14061,76 @@ BEGIN
                  AND failed_state = 'FAILED' AND failed_err = 'the portal was busy' AND open_now AND NOT open_quiet, false),
         format('one record %s/%s, reversal apart %s, repeats %s, rows %s | claims %s/%s, held listed %s | %s %s claim left %s, then %s | failed %s "%s" listed now %s quiet %s',
                a = a2, rows_for, r <> a, reps, rows_for, first IS NOT NULL, second IS NOT NULL, open_held, st, oc, claimed_after, stays, failed_state, failed_err, open_now, open_quiet));
+END $$;
+-- ── V475. Spillover students brought to their level: a record below the level the cohort engine computes is listed with its
+--    basis — a spillover student (past the programme's length) at the programme's final level, certain; one only the count of
+--    sessions supports, for review; one above it never — and the Academic Office or the Registry raises them on a reason, the
+--    spillover and own-registration ones by default, the others only when chosen; no level is lowered; each change is on the
+--    cohort decision history ──
+DO $$
+DECLARE
+    y int := 2186; v_prog text; v_dept text; v_fac text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
+    c1 record; c2 record; in3 boolean; d record; a record; b record; e record;
+    v_hod text; v_noreason text; l1 int; l2 int; l3 int; l2b int; dec record; conflict_gone boolean;
+BEGIN
+  BEGIN   -- the check's own sessions and students, undone at the end so no later check sees them
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V475', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2186/01' WHERE name = format('%s/%s', y, y + 1);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V475', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/75/475001', 'MOAUM/ZZL/75/4751', 'CHECKV475', 'Spillover', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 100, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/75/475002', 'MOAUM/ZZL/75/4752', 'CHECKV475', 'Counted', v_prog, 'UTME', format('%s/%s', y - 2, y - 1), 100, 100, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/75/475003', 'MOAUM/ZZL/75/4753', 'CHECKV475', 'Higher', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 300, 'ACTIVE', now());
+
+    SELECT * INTO c1 FROM people.level_correction WHERE student_id = s1;
+    SELECT * INTO c2 FROM people.level_correction WHERE student_id = s2;
+    in3 := EXISTS (SELECT 1 FROM people.level_correction WHERE student_id = s3);
+
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    BEGIN PERFORM people.apply_level_corrections(ARRAY[s1], NULL, NULL, NULL, NULL, 'not mine', NULL, 500, false);
+    EXCEPTION WHEN insufficient_privilege THEN v_hod := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM people.apply_level_corrections(ARRAY[s1], NULL, NULL, NULL, NULL, ' ', NULL, 500, false);
+    EXCEPTION WHEN check_violation THEN v_noreason := split_part(SQLERRM, ':', 1); END;
+
+    SELECT * INTO d FROM people.apply_level_corrections(ARRAY[s1, s2, s3], NULL, NULL, NULL, NULL, NULL, NULL, 500, true);
+    SELECT * INTO a FROM people.apply_level_corrections(ARRAY[s1, s2, s3], NULL, NULL, NULL, NULL, 'CHECK V475: migrated at 100 Level', 'CHK-475', 500, false);
+    SELECT current_level INTO l1 FROM people.student WHERE id = s1;
+    SELECT current_level INTO l2 FROM people.student WHERE id = s2;
+    SELECT current_level INTO l3 FROM people.student WHERE id = s3;
+    SELECT * INTO dec FROM people.cohort_decision WHERE student_id = s1 ORDER BY decided_at DESC LIMIT 1;
+    conflict_gone := (SELECT current_level = computed_level AND NOT ('LEVEL_CONFLICT' = ANY (issues)) FROM people.academic_position WHERE student_id = s1);
+    SELECT * INTO b FROM people.apply_level_corrections(ARRAY[s2], ARRAY['ARITHMETIC'], NULL, NULL, NULL, 'CHECK V475: chosen after review', NULL, 500, false);
+    SELECT current_level INTO l2b FROM people.student WHERE id = s2;
+    SELECT * INTO e FROM people.apply_level_corrections(ARRAY[s3], ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, NULL, 'CHECK V475: never lowered', NULL, 500, false);
+    RAISE EXCEPTION 'CHECK_V475_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V475_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V475: a record below the computed level is listed with its basis and raised on a reason — spillover by default, a sessions-only one when chosen, never one above it, never lowered, each change on the cohort history',
+        coalesce(c1.basis = 'SPILLOVER' AND c1.proposed_level = 400 AND c1.current_level = 100 AND c1.spillover_state = 'SPILLOVER_YEAR_2'
+            AND c2.basis = 'ARITHMETIC' AND c2.proposed_level = 300 AND NOT in3
+            AND v_hod = 'LEVEL_CORRECTION_OFFICE' AND v_noreason = 'LEVEL_CORRECTION_REASON'
+            AND d.selected = 1 AND d.corrected = 0 AND d.spillover = 1
+            AND a.corrected = 1 AND a.remaining = 0 AND l1 = 400 AND l2 = 100 AND l3 = 300
+            AND dec.rule = 'LEVEL_SPILLOVER' AND dec.previous_level = 100 AND dec.new_level = 400 AND dec.batch_ref = 'CHK-475' AND conflict_gone
+            AND b.corrected = 1 AND l2b = 300 AND e.selected = 0 AND e.corrected = 0, false),
+        format('spillover %s %s→%s %s | counted %s →%s | higher listed %s | hod %s no reason %s | dry %s/%s/%s | applied %s left %s levels %s/%s/%s | decision %s %s→%s %s conflict gone %s | chosen %s → %s | higher %s/%s',
+               c1.basis, c1.current_level, c1.proposed_level, c1.spillover_state, c2.basis, c2.proposed_level, in3, v_hod, v_noreason,
+               d.selected, d.corrected, d.spillover, a.corrected, a.remaining, l1, l2, l3, dec.rule, dec.previous_level, dec.new_level, dec.batch_ref, conflict_gone,
+               b.corrected, l2b, e.selected, e.corrected));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

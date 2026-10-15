@@ -6,7 +6,7 @@ import { Cohorts, type Filters } from "./Cohorts";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["overview", "current", "graduated", "spillover", "review", "all", "quality", "settings"];
+const TABS = ["overview", "current", "graduated", "spillover", "review", "all", "levels", "quality", "settings"];
 /** what each list tab asks the server for */
 const CLASS_OF: Record<string, string> = { current: "ACTIVE", graduated: "GRADUATED", spillover: "SPILLOVER,SPILLOVER_LIMIT_REACHED", review: "REVIEW", all: "" };
 

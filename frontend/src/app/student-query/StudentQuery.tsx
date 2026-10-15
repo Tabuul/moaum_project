@@ -17,7 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
-  PRESETS, SPILLOVER_WORD, activeFilters, applyPreset, awardWord, exportHeading, levelWord, modeWord, queryString, statusWord,
+  PRESETS, SPILLOVER_WORD, activeFilters, spilloverWord, applyPreset, awardWord, exportHeading, levelWord, modeWord, queryString, statusWord,
   typeStudentWord, withChange, EMPTY_QUERY, type Breakdown, type QueryFilters, type QueryOptions, type QueryPage, type QueryRow, type QuerySummary,
 } from "@/lib/student-query";
 
@@ -81,7 +81,7 @@ export function StudentQuery({ filters, group, options, summary, list }: {
   const line = (r: QueryRow, i: number) => [
     i + 1, `${r.surname}, ${r.other_names}`, r.matric_no ?? "", r.jamb_no ?? "", r.application_no ?? "",
     r.programme_type_name ?? "Requires classification", r.admission_route_name ?? "", modeWord(r.study_mode), r.centre_name ?? "",
-    r.faculty ?? "", r.department ?? "", programmeOf(r), levelWord(r), r.admission_session ?? "", r.current_session ?? "", statusWord(r.status),
+    r.faculty ?? "", r.department ?? "", programmeOf(r), levelWord(r) + (spilloverWord(r.spillover_state) ? ` (${spilloverWord(r.spillover_state)?.short})` : ""), r.admission_session ?? "", r.current_session ?? "", statusWord(r.status),
     regWord(r), ...(f.fees ? [feeWord(r.fee_status)] : []),
   ];
 
@@ -277,7 +277,7 @@ export function StudentQuery({ filters, group, options, summary, list }: {
               <span key="f">{r.faculty ?? "—"}</span>,
               <span key="d">{r.department ?? "—"}</span>,
               <span key="p">{programmeOf(r)}{r.pg_award ? <div className="sub2">{r.pg_award}</div> : null}</span>,
-              <span key="l" className="tnum">{levelWord(r)}</span>,
+              <span key="l" className="tnum">{levelWord(r)}{spilloverWord(r.spillover_state) ? <div className="sub2" title={spilloverWord(r.spillover_state)?.long}>{spilloverWord(r.spillover_state)?.short}</div> : null}</span>,
               <span key="as" className="tnum">{r.admission_session ?? "—"}</span>,
               <span key="cs" className="tnum">{r.current_session ?? "—"}</span>,
               <Pil key="st" kind={r.status === "ACTIVE" ? "ok" : r.status === "ADMITTED" ? "info" : ["GRADUATED", "COMPLETED", "PROGRESSED"].includes(r.status) ? "grey" : "warn"}>{statusWord(r.status)}</Pil>,

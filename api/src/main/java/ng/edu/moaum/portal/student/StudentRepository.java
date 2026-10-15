@@ -27,11 +27,12 @@ class StudentRepository {
                    p.code AS programme_code, p.name AS programme_name,
                    d.code AS dept_code, d.name AS dept_name,
                    f.code AS faculty_code, f.name AS faculty_name,
-                   s.entry_mode, s.entry_session, s.entry_level, s.current_level, s.status
+                   s.entry_mode, s.entry_session, s.entry_level, s.current_level, s.status, ap.spillover_state
               FROM people.student s
               JOIN ref.programme p ON p.code = s.programme_code
               JOIN ref.department d ON d.code = p.dept_code
               JOIN ref.faculty f ON f.code = p.faculty_code
+              LEFT JOIN people.academic_position ap ON ap.student_id = s.id
             """;
 
     static final String IN_SCOPE = """
