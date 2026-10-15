@@ -187,6 +187,15 @@ class GstEpsIT {
         assertThat(it.get(registrar, "/api/v1/gst/GST/dashboard?session=" + SESSION).getStatusCode().value()).isEqualTo(200);
         Map<String, Object> list = it.get(gst, "/api/v1/gst/GST/students?session=" + SESSION + "&q=ZZGST&payment=PAID&registration=REGISTERED").getBody();
         assertThat(l(list.get("rows"))).anySatisfy(r -> { assertThat(r.get("student_id")).isEqualTo(s.toString()); assertThat(r.get("pay_state")).isEqualTo("PAID"); assertThat(String.valueOf(r.get("registered_courses"))).contains(gstCode); });
+        // V468: the count comes from the same pass over the population as the page, and a page past the last still counts
+        assertThat(((Number) list.get("total")).longValue()).isEqualTo(l(list.get("rows")).size());
+        assertThat(list.get("rows").toString()).doesNotContain("total_rows");
+        Map<String, Object> past = it.get(gst, "/api/v1/gst/GST/students?session=" + SESSION + "&q=ZZGST&payment=PAID&registration=REGISTERED&page=99").getBody();
+        assertThat(l(past.get("rows"))).isEmpty();
+        assertThat(((Number) past.get("total")).longValue()).isEqualTo(((Number) list.get("total")).longValue());
+        // the filters' options come from the whole register, whatever the dashboard is narrowed to
+        assertThat(l(m(dash.get("options")).get("programmes"))).anySatisfy(p -> assertThat(p.get("code")).isEqualTo(PROGRAMME));
+        assertThat(l(m(dash.get("options")).get("levels"))).isNotEmpty();
         assertThat(it.get(gst, "/api/v1/gst/GST/students/" + s + "?session=" + SESSION).getStatusCode().value()).isEqualTo(200);
     }
 

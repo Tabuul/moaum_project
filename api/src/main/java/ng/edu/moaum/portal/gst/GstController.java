@@ -428,11 +428,13 @@ class GstController {
         String o = office(office);
         Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, eligibility, q);
         int sz = Math.max(1, Math.min(size, 500)), pg = Math.max(0, page);
-        long total = bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT count(*) FROM r"), f).query(Long.class).single();
+        // the population is read once (V468): the page and the count of every row come from the same pass, and a student's
+        // registered courses and result stages are read only for the page
         List<Map<String, Object>> rows = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
-                )
-                SELECT r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
+                WITH x AS MATERIALIZED (""" + ROWS + """
+                ),
+                r AS (SELECT x.*, count(*) OVER () AS total_rows FROM x ORDER BY x.surname, x.other_names, x.number LIMIT :n OFFSET :off)
+                SELECT r.total_rows, r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
                        r.level, r.status, r.entry_mode, r.required, r.fee, r.stated, r.paid, r.entitled, r.pay_state, r.reference, r.paid_at,
                        r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at, r.pay_source,
                        r.office_required, r.office_reason, r.office_carryover, r.office_completed, r.office_owed, r.review, r.gst_reason, r.eps_reason,
@@ -447,8 +449,11 @@ class GstController {
                          WHERE cr.student_id = r.student_id AND cr.session = :s AND (:sem::int IS NULL OR cr.semester = :sem)) AS result_stages
                   FROM r
                  ORDER BY r.surname, r.other_names, r.number
-                 LIMIT :n OFFSET :off
                 """), f).param("n", sz).param("off", pg * sz).query().listOfRows();
+        // a page past the last has no row to carry the count: then it is counted on its own
+        long total = !rows.isEmpty() ? ((Number) rows.get(0).get("total_rows")).longValue()
+                : pg == 0 ? 0 : bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT count(*) FROM r"), f).query(Long.class).single();
+        rows.forEach(r -> r.remove("total_rows"));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("office", o);
         out.put("session", f.session());
@@ -1008,15 +1013,16 @@ class GstController {
 
     private Map<String, Object> options(Filters f) {
         Map<String, Object> o = new LinkedHashMap<>();
-        // one pass over the register (V366: the population is counted by the course engine, so it is read once, not four times)
-        List<Map<String, Object>> all = bind(jdbc.sql("""
-                WITH r AS MATERIALIZED (""" + ROWS + """
-                )
+        // one pass over the register, reading only the population's own columns (faculty, department, programme, level): the
+        // planner then leaves the course engine out, which the dashboard's figures have already run once (V468)
+        List<Map<String, Object>> all = jdbc.sql("""
+                WITH r AS MATERIALIZED (SELECT p.faculty_code, p.faculty, p.dept_code, p.department, p.programme_code, p.programme, p.level
+                                          FROM finance.gst_population(:s, :sem) p)
                 SELECT DISTINCT 'F'::text AS kind, faculty_code::text AS code, faculty::text AS name, NULL::text AS dept_code, NULL::text AS faculty_code, NULL::int AS level FROM r
                 UNION SELECT DISTINCT 'D'::text, dept_code::text, department::text, NULL::text, faculty_code::text, NULL::int FROM r
                 UNION SELECT DISTINCT 'P'::text, programme_code::text, programme::text, dept_code::text, faculty_code::text, NULL::int FROM r
                 UNION SELECT DISTINCT 'L'::text, NULL::text, NULL::text, NULL::text, NULL::text, level::int FROM r
-                """), f.withoutScope()).query().listOfRows();
+                """).param("s", f.session()).param("sem", f.semester(), Types.INTEGER).query().listOfRows();
         List<Map<String, Object>> faculties = new ArrayList<>(), departments = new ArrayList<>(), programmes = new ArrayList<>();
         List<Integer> levels = new ArrayList<>();
         for (Map<String, Object> x : all) {

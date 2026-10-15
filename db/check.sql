@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 305
+\set EXPECTED 306
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13637,6 +13637,28 @@ BEGIN
                  AND mail_units LIKE '%goes to the Documents Office%reissued%' AND mail_units NOT LIKE '%is superseded%', false),
         format('open class flagged %s | examined class flagged %s (%s) | mark e-mail %s | units e-mail %s',
                after_open IS NOT NULL, after_examined IS NOT NULL, why, mail_mark IS NOT NULL AND mail_mark LIKE '%reissued%', mail_units IS NOT NULL AND mail_units LIKE '%reissued%'));
+END $$;
+
+
+-- ── V468: the GST/EPS desk answers on a whole register ──
+-- The desk's population reads the course engine over the whole register through finance.gst_eps_rows_all, which is planned
+-- with nested loops off (a function with its own setting is planned on its own; inlined, the engine took about two minutes
+-- on live-shaped data). The wrapper gives exactly the engine's rows, and the one-student engine is left as it was.
+DO $$
+DECLARE s text := policy.university_current_session(); cfg text[]; rows_hint real; reads boolean; one_kept boolean;
+        only_all bigint; only_engine bigint; n bigint;
+BEGIN
+    SELECT p.proconfig, p.prorows INTO cfg, rows_hint FROM pg_proc p WHERE p.oid = 'finance.gst_eps_rows_all(text)'::regprocedure;
+    reads := (SELECT p.prosrc LIKE '%finance.gst_eps_rows_all(p_session)%' AND p.prosrc NOT LIKE '%finance.gst_eps_rows(p_session, NULL)%'
+                FROM pg_proc p WHERE p.oid = 'finance.gst_population(text,integer)'::regprocedure);
+    one_kept := (SELECT p.proconfig IS NULL FROM pg_proc p WHERE p.oid = 'finance.gst_eps_rows(text,uuid)'::regprocedure);
+    n := (SELECT count(*) FROM finance.gst_eps_rows_all(s));
+    only_all := (SELECT count(*) FROM (SELECT * FROM finance.gst_eps_rows_all(s) EXCEPT ALL SELECT * FROM finance.gst_eps_rows(s, NULL)) x);
+    only_engine := (SELECT count(*) FROM (SELECT * FROM finance.gst_eps_rows(s, NULL) EXCEPT ALL SELECT * FROM finance.gst_eps_rows_all(s)) x);
+    PERFORM pg_temp.assert('V468: the GST/EPS population reads the whole-register engine planned without nested loops — the engine''s own rows, the one-student engine as it was',
+        coalesce('enable_nestloop=off' = ANY (cfg) AND rows_hint >= 10000 AND reads AND one_kept AND only_all = 0 AND only_engine = 0, false),
+        format('config %s rows %s | population reads the wrapper %s | one-student engine unset %s | %s rows, only in the wrapper %s, only in the engine %s',
+               cfg, rows_hint, reads, one_kept, n, only_all, only_engine));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
