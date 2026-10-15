@@ -351,6 +351,31 @@ class PaymentsIT {
             Map<String, Object> begun = it.get(token, "/api/v1/payments/state?reference=" + reference).getBody();
             assertThat(begun.get("startedAt")).as("Quickteller's validation, not a payment").isNotNull();
             assertThat(begun.get("startedOn")).isEqualTo("QUICKTELLER");
+            assertThat(begun.get("claim")).as("no receipt reported yet").isNull();
+
+            // V480: the payer reports the receipt — the Payment Log Id, the day paid, the amount and where; it confirms nothing
+            java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos"));
+            ResponseEntity<Map> tomorrow = it.call(token, HttpMethod.POST, "/api/v1/payments/claims", Map.of("reference", reference,
+                    "paymentLogId", "PL-" + logId, "paidOn", today.plusDays(1).toString()));
+            assertThat(tomorrow.getStatusCode().value()).isEqualTo(422);
+            assertThat(String.valueOf(tomorrow.getBody())).contains("PAY_CLAIM_DATE");
+            assertThat(it.call(academic, HttpMethod.POST, "/api/v1/payments/claims", Map.of("reference", reference, "paymentLogId", "PL-" + logId,
+                    "paidOn", today.toString())).getStatusCode().value()).as("another person's reference is not theirs to report").isEqualTo(404);
+            ResponseEntity<Map> claimed = it.call(token, HttpMethod.POST, "/api/v1/payments/claims", Map.of("reference", reference.toLowerCase(),
+                    "paymentLogId", " PL-" + logId + " ", "paidOn", today.toString(), "amount", amount, "channel", "QUICKTELLER", "note", "Paid on the app"));
+            assertThat(claimed.getStatusCode().value()).as(String.valueOf(claimed.getBody())).isEqualTo(200);
+            assertThat(claimed.getBody()).containsEntry("reference", reference).containsEntry("payment_log_id", "PL-" + logId).containsEntry("channel", "QUICKTELLER")
+                    .as("the day paid as a calendar day, whatever the server's time zone").containsEntry("paid_on", today.toString());
+            Map<String, Object> reported = (Map<String, Object>) it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("claim");
+            assertThat(reported).as("the payer's screen shows the receipt reported").containsEntry("payment_log_id", "PL-" + logId);
+            assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single())
+                    .as("a receipt confirms nothing").isTrue();
+            List<Map<String, Object>> claims = (List<Map<String, Object>>) it.get(bursar, "/api/v1/payments/bursary").getBody().get("claims");
+            assertThat(claims.stream().filter(c -> reference.equals(c.get("reference"))).map(c -> String.valueOf(c.get("payment_log_id")))).containsExactly("PL-" + logId);
+            List<Map<String, Object>> ask = it.callList(bursar, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getBody();
+            assertThat(ask.stream().filter(a -> reference.equals(a.get("reference"))).map(a -> String.valueOf(a.get("payment_log_id"))))
+                    .as("the list Interswitch is sent carries the receipt").containsExactly("PL-" + logId);
+            assertThat(it.callList(academic, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getStatusCode().value()).isEqualTo(403);
 
             // the credentials, set once by the Directorate of ICT
             ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
@@ -372,6 +397,14 @@ class PaymentsIT {
             assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("feeConfirmedAt")).isNotNull();
             assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).isEqualTo(true);
             assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("startedAt")).as("paid: nothing left to check").isNull();
+            // V480: confirmed, the receipt is no longer asked about, and none is taken for it
+            assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("claim")).isNull();
+            ResponseEntity<Map> late = it.call(token, HttpMethod.POST, "/api/v1/payments/claims", Map.of("reference", reference, "paymentLogId", "PL-" + logId,
+                    "paidOn", today.toString()));
+            assertThat(late.getStatusCode().value()).isEqualTo(422);
+            assertThat(String.valueOf(late.getBody())).contains("PAY_CLAIM_CONFIRMED");
+            assertThat(it.callList(bursar, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getBody().stream()
+                    .filter(a -> reference.equals(((Map<String, Object>) a).get("reference"))).count()).as("confirmed: off the list Interswitch is sent").isZero();
             assertThat(jdbc.sql("SELECT channel FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(String.class).single()).isEqualTo("Quickteller · WEB");
             // the same payment again is received, not paid twice
             assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))

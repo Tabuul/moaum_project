@@ -1398,7 +1398,44 @@ public class PaymentsService {
         // Interswitch's report not arrived, or stopped before paying; the screen asks them to check before paying again
         out.put("startedAt", r.confirmedAt() != null ? null : repo.quicktellerStartedAt(r.reference()).map(Object::toString).orElse(null));
         out.put("startedOn", r.confirmedAt() != null || out.get("startedAt") == null ? null : "QUICKTELLER");
+        // V480: the receipt the payer reported for it, while it waits
+        out.put("claim", r.confirmedAt() != null ? null : repo.paydirectClaim(r.reference()).orElse(null));
         return out;
+    }
+
+    /**
+     * V480: the payer reports the receipt of a Pay on Quickteller payment Interswitch has not reported — the Payment Log Id,
+     * the day paid, the amount and where. Their own unconfirmed reference, or any for an office reporting on their behalf.
+     * It confirms nothing: it tells the Bursary what to look for in the collections report, or what to ask Interswitch.
+     */
+    public Map<String, Object> claimPaydirect(UUID account, boolean office, String referenceIn, String logId, java.time.LocalDate paidOn,
+                                              BigDecimal amount, String channel, String note) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+                .orElseThrow(() -> new NotFound("fee reference", reference));
+        if (!office && !r.accountId().equals(account)) {
+            throw new NotFound("fee reference", reference);
+        }
+        if (channel != null && !channel.isBlank() && !java.util.Set.of("QUICKTELLER", "BANK", "OTHER").contains(channel.trim().toUpperCase())) {
+            throw new DomainRuleViolation("PAY_CLAIM_CHANNEL", "Where it was paid is Quickteller, a bank, or somewhere else.",
+                    new DomainRuleViolation.Remedy("Choose where you paid.", "Bursary"));
+        }
+        if (amount != null && amount.signum() <= 0) {
+            throw new DomainRuleViolation("PAY_CLAIM_AMOUNT", "The amount paid is the amount on the receipt, more than nothing.",
+                    new DomainRuleViolation.Remedy("Enter the amount on the receipt, or leave it out.", "Bursary"));
+        }
+        return AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> repo.claimPaydirect(r.reference(), r.accountId(), logId, paidOn, amount, channel, note)));
+    }
+
+    /** V480: the unreported Pay on Quickteller references and the unconfirmed receipts, for Interswitch support */
+    public java.util.List<Map<String, Object>> paydirectAskList(int days) {
+        return repo.paydirectAskList(Math.max(1, Math.min(days, 120)));
+    }
+
+    /** V480: the receipts payers reported */
+    public java.util.List<Map<String, Object>> paydirectClaims(int days) {
+        return repo.paydirectClaims(Math.max(1, Math.min(days, 120)));
     }
 
     /** the student's own reference, or an office's: who may ask */
@@ -1557,6 +1594,7 @@ public class PaymentsService {
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
+        out.put("claims", repo.paydirectClaims(30));
         out.put("portalUrl", portalUrl);
         return out;
     }

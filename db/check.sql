@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 324
+\set EXPECTED 325
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14656,6 +14656,68 @@ BEGIN
         coalesce(ledger_ok = 'ACCOUNT_UNLOCKED/-/AUTHENTICATION,PASSWORD_RESET/DEFAULT_CREDENTIAL/AUTHENTICATION' AND leak = 'refused' AND unlock_leak = 'refused'
             AND bad_status = 'refused' AND module = 'AUTHENTICATION', false),
         format('ledger %s | a value on the reset %s, on the unlock %s | WITHDRAWN in the policy %s | module %s', ledger_ok, leak, unlock_leak, bad_status, module));
+END $$;
+-- ── V480. A payer's receipt for a Pay on Quickteller payment: a day paid tomorrow (Lagos) and a Payment Log Id of two
+--          characters are refused; a receipt is kept, a second replaces it (one a reference), and it confirms nothing; the
+--          Bursary's list shows it waiting; the list Interswitch is sent carries it and a reference opened on Pay on
+--          Quickteller 30 hours before with no receipt, and not a card checkout; once confirmed, it is off that list and a
+--          receipt for it is refused. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); v_ses text; today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+        refused_day text; refused_log text; refused_paid text; kept int; log_now text; still_open boolean; listed text; ask text; ask_log text;
+        after_paid text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.reason', 'check V480', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/948001', 'CHECKV480', 'Payer', (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME', v_ses, 100, 100, 'ADMITTED');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES
+          (st, v_ses, 'MOAUM-FEE-948001-0001', 'check V480', 53488.42, now() + interval '30 days'),
+          (st, v_ses, 'MOAUM-FEE-948001-0002', 'check V480', 100.00, now() + interval '30 days'),
+          (st, v_ses, 'MOAUM-FEE-948001-0003', 'check V480', 200.00, now() + interval '30 days');
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at) VALUES
+          ('MOAUM-FEE-948001-0001', 'paydirect', 'FEE', st, now() - interval '2 hours'),
+          ('MOAUM-FEE-948001-0002', 'paydirect', 'FEE', st, now() - interval '30 hours'),
+          ('MOAUM-FEE-948001-0003', 'paystack', 'FEE', st, now() - interval '30 hours');
+        BEGIN
+            PERFORM finance.paydirect_claim_set('MOAUM-FEE-948001-0001', st, 'PL-480001', today + 1, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_day = MESSAGE_TEXT;
+        END;
+        BEGIN
+            PERFORM finance.paydirect_claim_set('MOAUM-FEE-948001-0001', st, ' P4 ', today, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_log = MESSAGE_TEXT;
+        END;
+        PERFORM finance.paydirect_claim_set('moaum-fee-948001-0001', st, 'PL-480000', today - 1, NULL, 'bank', NULL);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-948001-0001', st, ' PL-480001 ', today, 53488.42, 'quickteller', 'Paid on the app');
+        SELECT count(*), max(payment_log_id) INTO kept, log_now FROM finance.paydirect_claim WHERE reference = 'MOAUM-FEE-948001-0001';
+        still_open := (SELECT confirmed_at IS NULL FROM finance.payment_reference WHERE reference = 'MOAUM-FEE-948001-0001');
+        listed := (SELECT string_agg(c.reference || ':' || c.payment_log_id || ':' || c.channel || ':' || (c.confirmed_at IS NULL), ',')
+                     FROM finance.paydirect_claims() c WHERE c.reference LIKE 'MOAUM-FEE-948001-%');
+        SELECT string_agg(a.reference, ',' ORDER BY a.reference), string_agg(coalesce(a.payment_log_id, '-'), ',' ORDER BY a.reference) INTO ask, ask_log
+          FROM finance.paydirect_ask_list() a WHERE a.reference LIKE 'MOAUM-FEE-948001-%';
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment('MOAUM-FEE-948001-0001', 'Quickteller · WEB', 'check V480');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        after_paid := coalesce((SELECT string_agg(a.reference, ',' ORDER BY a.reference) FROM finance.paydirect_ask_list() a WHERE a.reference LIKE 'MOAUM-FEE-948001-%'), '');
+        BEGIN
+            PERFORM finance.paydirect_claim_set('MOAUM-FEE-948001-0001', st, 'PL-480002', today, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_paid = MESSAGE_TEXT;
+        END;
+        RAISE EXCEPTION 'the V480 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V480 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V480: a payer reports the receipt of a Pay on Quickteller payment — one a reference, confirming nothing — and the list Interswitch is sent carries it beside the references unreported after an hour, until it is confirmed',
+        coalesce(refused_day LIKE 'PAY_CLAIM_DATE%' AND refused_log LIKE 'PAY_CLAIM_LOG_ID%' AND kept = 1 AND log_now = 'PL-480001' AND still_open
+                 AND listed = 'MOAUM-FEE-948001-0001:PL-480001:QUICKTELLER:true'
+                 AND ask = 'MOAUM-FEE-948001-0001,MOAUM-FEE-948001-0002' AND ask_log = 'PL-480001,-'
+                 AND after_paid = 'MOAUM-FEE-948001-0002' AND refused_paid LIKE 'PAY_CLAIM_CONFIRMED%', false),
+        format('tomorrow %s | two characters %s | kept %s, log id %s, open %s | Bursary list %s | ask list %s (%s) | after paid %s | receipt after paid %s',
+               refused_day, refused_log, kept, log_now, still_open, listed, ask, ask_log, after_paid, refused_paid));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

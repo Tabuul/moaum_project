@@ -221,7 +221,8 @@ class PaymentsRepository {
                 SELECT a.id, a.reference, a.gateway, a.kind, a.opened_at, a.checked_at, a.checks, st.amount, st.expires_at,
                        extract(epoch FROM now() - a.opened_at)::int / 60 AS minutes,
                        coalesce(s.surname || ', ' || s.other_names, c.surname || ', ' || c.other_names) AS payer,
-                       coalesce(s.matric_no, s.admission_no, ap.application_no) AS number
+                       coalesce(s.matric_no, s.admission_no, ap.application_no) AS number,
+                       cl.payment_log_id AS receipt_log_id, cl.paid_on::text AS receipt_paid_on, cl.amount AS receipt_amount, cl.channel AS receipt_channel
                   FROM finance.gateway_attempt a
                   LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
                   LEFT JOIN finance.payment_reference pr ON pr.reference = a.reference
@@ -229,6 +230,7 @@ class PaymentsRepository {
                   LEFT JOIN admissions.fee_reference fr ON fr.reference = a.reference
                   LEFT JOIN admissions.application ap ON ap.id = fr.application_id
                   LEFT JOIN admissions.candidate c ON c.id = ap.candidate_id
+                  LEFT JOIN finance.paydirect_claim cl ON cl.reference = a.reference
                  WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
                    AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
                  ORDER BY a.opened_at
@@ -470,6 +472,37 @@ class PaymentsRepository {
     /** V477: the Bursary told, once a day, of the Pay on Quickteller payments Interswitch has not reported after a day */
     int watchPaydirectUnreported() {
         return jdbc.sql("SELECT finance.watch_paydirect_unreported()").query(Integer.class).single();
+    }
+
+    /** V480: the payer's receipt for a Pay on Quickteller payment, kept against the reference (the latest replaces the last) */
+    Map<String, Object> claimPaydirect(String reference, UUID account, String logId, java.time.LocalDate paidOn, BigDecimal amount, String channel, String note) {
+        return jdbc.sql("""
+                SELECT reference, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at
+                  FROM finance.paydirect_claim_set(:r, :a::uuid, :l, :d::date, :m::numeric, :c::text, :n::text)
+                """).param("r", reference).param("a", account).param("l", logId).param("d", paidOn).param("m", amount)
+                .param("c", channel).param("n", note).query().singleRow();
+    }
+
+    /** V480: the receipt reported against a reference, if any */
+    Optional<Map<String, Object>> paydirectClaim(String reference) {
+        return jdbc.sql("SELECT reference, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at FROM finance.paydirect_claim WHERE reference = :r")
+                .param("r", reference).query().listOfRows().stream().findFirst();
+    }
+
+    /** V480: the receipts payers reported in the period, the unconfirmed first */
+    List<Map<String, Object>> paydirectClaims(int days) {
+        return jdbc.sql("""
+                SELECT reference, payer, number, due, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at, claimed_office, confirmed_at
+                  FROM finance.paydirect_claims(:d)
+                """).param("d", days).query().listOfRows();
+    }
+
+    /** V480: what the Bursary sends Interswitch to re-send */
+    List<Map<String, Object>> paydirectAskList(int days) {
+        return jdbc.sql("""
+                SELECT reference, payer, number, due, opened_at, payment_log_id, paid_on::text AS paid_on, paid_amount, channel
+                  FROM finance.paydirect_ask_list(:d)
+                """).param("d", days).query().listOfRows();
     }
 
     /** the gateways a reference was opened on — a reference opened only on Pay on Quickteller is Interswitch's to report */

@@ -48,8 +48,17 @@ export interface GatewayEvent {
   /** V413: the sweep's same answer for the reference, counted on this row */
   times?: number; last_at?: string | null;
 }
-export interface Hanging { id: string; reference: string; gateway: string; kind: string; opened_at: string; checked_at: string | null; checks: number; amount: number | null; expires_at: string | null; minutes: number; payer: string | null; number: string | null }
-export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; portalUrl: string }
+export interface Hanging {
+  id: string; reference: string; gateway: string; kind: string; opened_at: string; checked_at: string | null; checks: number; amount: number | null; expires_at: string | null; minutes: number; payer: string | null; number: string | null;
+  /** V480: the receipt the payer reported for it */
+  receipt_log_id?: string | null; receipt_paid_on?: string | null; receipt_amount?: number | null; receipt_channel?: string | null;
+}
+/** V480: a receipt a payer reported for a Pay on Quickteller payment (finance.paydirect_claims) */
+export interface PaydirectClaimRow {
+  reference: string; payer: string | null; number: string | null; due: number | null; payment_log_id: string; paid_on: string; amount: number | null;
+  channel: string | null; note: string | null; claimed_at: string; claimed_office: string | null; confirmed_at: string | null;
+}
+export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; claims?: PaydirectClaimRow[]; portalUrl: string }
 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
 export interface BursaryView {

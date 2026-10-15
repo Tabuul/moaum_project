@@ -203,6 +203,33 @@ class PaymentsController {
         return payments.stateFor(UUID.fromString(authentication.getName()), office, reference);
     }
 
+    public record Claim(@NotBlank String reference, @NotBlank String paymentLogId, @jakarta.validation.constraints.NotNull java.time.LocalDate paidOn,
+                        java.math.BigDecimal amount, String channel, String note) {
+    }
+
+    /** V480: the receipt of a Pay on Quickteller payment Interswitch has not reported — the payer's own reference, or any for an office */
+    @PostMapping("/claims")
+    @PreAuthorize("isAuthenticated()")
+    Map<String, Object> claim(Authentication authentication, @Valid @RequestBody Claim body) {
+        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches("OFFICE_(bursar|ict|admin|super)"));
+        return payments.claimPaydirect(UUID.fromString(authentication.getName()), office, body.reference(), body.paymentLogId(), body.paidOn(),
+                body.amount(), body.channel(), body.note());
+    }
+
+    /** V480: the receipts payers reported in the period, the unconfirmed first */
+    @GetMapping("/claims")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> claims(@RequestParam(defaultValue = "30") int days) {
+        return payments.paydirectClaims(days);
+    }
+
+    /** V480: what the Bursary sends Interswitch to re-send — unreported Pay on Quickteller references and unconfirmed receipts */
+    @GetMapping("/paydirect/ask-list")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> askList(@RequestParam(defaultValue = "14") int days) {
+        return payments.paydirectAskList(days);
+    }
+
     /** the gateway is asked what the reference settled for: the student's own, or any for an office */
     @PostMapping("/verify")
     @PreAuthorize("isAuthenticated()")

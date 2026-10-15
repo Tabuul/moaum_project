@@ -2,13 +2,17 @@
 
 /** tHanging — proto/part48.html: a payment that succeeded at the gateway has succeeded; the portal asks the gateway, not the student (V037).
  *  Oct 2026: a payment opened on Pay on Quickteller (PayDirect) cannot be asked about — Interswitch reports it to the portal, and the
- *  sweep leaves it alone; WebPAY's requery does not know it. Such a row says so, and sends the Bursary to the collections report import. */
+ *  sweep leaves it alone; WebPAY's requery does not know it. Such a row says so, and sends the Bursary to the collections report import.
+ *  V480: the receipts payers reported (Payment Log Id, day, amount, where) are listed, and the list Interswitch support is asked to
+ *  re-send notifications for is taken as Excel. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { ASK_HEADERS, CHANNEL_LABEL, askRows, paidDay, type AskRow, type ClaimChannel } from "@/lib/paydirect-claim";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/components/proto/blocks";
@@ -29,6 +33,29 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
   const settledByVerify = d.events.filter((e) => e.source === "VERIFY" && e.outcome === "SETTLED").length;
   const needsPerson = d.events.filter((e) => ["UNKNOWN_REFERENCE", "SHORT_PAID", "GATEWAY_ERROR"].includes(e.outcome) && !e.resolved_at);
   const onQuickteller = d.hanging.filter((h) => reportedOnly(h.gateway)).length;
+  const claims = d.claims ?? [];
+  const claimsOpen = claims.filter((c) => !c.confirmed_at).length;
+
+  /** V480: what Interswitch support is asked to re-send, the last fourteen days, as Excel */
+  async function askInterswitch() {
+    setBusy("ask");
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/payments/paydirect/ask-list?days=14", { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const rows = (j ?? []) as AskRow[];
+      if (!rows.length) { notify("Nothing to ask Interswitch about: every Pay on Quickteller reference of the last 14 days is reported"); return; }
+      const blob = await brandedXlsx("Payments to re-send: Pay on Quickteller", ASK_HEADERS, askRows(rows), {
+        sheetName: "Ask Interswitch", serial: docSerial("PDX"),
+        sub: "Please re-send the payment notification for each reference below, or confirm it was not paid.",
+        meta: [["Period", "The last 14 days, opened over an hour before"], ["References", String(rows.length)], ["With the payer's receipt", String(rows.filter((x) => x.payment_log_id).length)]],
+      });
+      downloadBlob(blob, `ask-interswitch-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function verify(reference: string) {
     setBusy(reference);
@@ -58,12 +85,16 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
         ["Needs a person", String(needsPerson.length), needsPerson.length ? "var(--red-ink)" : null, "Unknown reference, short paid, or the gateway silent"],
         ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
       ]} />
-      {onQuickteller ? (
-        <Note kind="info" title={`${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask`}
-          action={may ? <LinkBtn kind="primary" href={IMPORT_HREF}>Import the collections report</LinkBtn> : null}>
+      {onQuickteller || claimsOpen ? (
+        <Note kind="info" title={onQuickteller ? `${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask` : `${claimsOpen} receipt${claimsOpen === 1 ? "" : "s"} reported by payers, not yet reported by Interswitch`}
+          action={<div className="row row--tight">
+            <Btn kind="ghost" disabled={busy !== null} onClick={() => void askInterswitch()}>{busy === "ask" ? "Preparing…" : "Ask Interswitch (Excel)"}</Btn>
+            {may ? <LinkBtn kind="primary" href={IMPORT_HREF}>Import the collections report</LinkBtn> : null}
+          </div>}>
           A payment made at a bank or on Quickteller (PayDirect) reaches the portal only when Interswitch sends its payment notification. If the payer
           paid and nothing arrived, import Interswitch&rsquo;s collections report (each reference is matched and confirmed, a short payment kept open), or
-          ask Interswitch to re-send the notification for its Payment Log Id. A reference that is not in the report was not paid.
+          send Interswitch support the Excel list (every unreported reference of the last 14 days, with the Payment Log Id where the payer reported
+          the receipt) and ask them to re-send the notifications. A reference that is not in the report was not paid.
         </Note>
       ) : null}
       <Panel title="Hanging at a gateway" right="Oldest first · a card checkout is asked about after five minutes, up to twelve times; Pay on Quickteller waits for Interswitch's report">
@@ -75,13 +106,27 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
             reportedOnly(h.gateway) ? <Two key="g" a="Pay on Quickteller" b="PayDirect" /> : <span key="g" style={{ textTransform: "capitalize" }}>{h.gateway}</span>,
             <b className="tnum" key="a">{h.amount == null ? "—" : money(Number(h.amount))}</b>,
             reportedOnly(h.gateway)
-              ? <span className="sub2" key="c">Not asked: Interswitch reports it</span>
+              ? <span className="sub2" key="c">Not asked: Interswitch reports it{h.receipt_log_id ? <div>Receipt <b className="tnum" style={{ whiteSpace: "nowrap" }}>{h.receipt_log_id}</b>{h.receipt_paid_on ? ` · paid ${paidDay(h.receipt_paid_on)}` : ""}</div> : null}</span>
               : <span className="sub2 tnum" key="c">{h.checks ? `${h.checks}× · last ${when(h.checked_at)}` : "not yet"}</span>,
             !may ? <span className="sub2" key="v">—</span>
               : reportedOnly(h.gateway) ? <LinkBtn key="v" href={IMPORT_HREF}>Collections report</LinkBtn>
               : <Btn key="v" kind="primary" disabled={busy !== null} onClick={() => void verify(h.reference)}>{busy === h.reference ? "Asking…" : "Ask the gateway"}</Btn>,
           ])} texts={d.hanging.map((h) => `${h.reference} ${h.payer ?? ""} ${h.number ?? ""}`)} />
         ) : <PBody><div className="sub2">Nothing is hanging in the last three days.</div></PBody>}
+      </Panel>
+      <Panel title="Receipts reported by payers" right="Pay on Quickteller · the last 30 days · waiting first · a receipt confirms nothing until Interswitch reports the payment">
+        {claims.length ? (
+          <DTable cols={["Reported|mid", "Payer", "Reference", "Payment Log Id", "Paid|mid", "Amount|num", "Where", "State"]} rows={claims.map((c) => [
+            <span className="sub2 tnum" key="w">{when(c.claimed_at)}<div className="sub2">{c.claimed_office && !["student", "applicant"].includes(c.claimed_office) ? `by ${c.claimed_office}` : "by the payer"}</div></span>,
+            <Two key="p" a={c.payer ?? "—"} b={c.number ?? ""} />,
+            <span className="tnum sub2" key="r">{c.reference}</span>,
+            <b className="tnum" key="l" style={{ whiteSpace: "nowrap" }}>{c.payment_log_id}</b>,
+            <span className="sub2 tnum" key="d" style={{ whiteSpace: "nowrap" }}>{paidDay(c.paid_on)}</span>,
+            <span className="tnum" key="a">{c.amount == null ? "—" : money(Number(c.amount))}{c.due != null ? <div className="sub2">asks {money(Number(c.due))}</div> : null}</span>,
+            <span className="sub2" key="c">{c.channel ? CHANNEL_LABEL[c.channel as ClaimChannel] ?? c.channel : "—"}{c.note ? <div>{c.note}</div> : null}</span>,
+            c.confirmed_at ? <Pil key="s" kind="ok">Confirmed {when(c.confirmed_at)}</Pil> : <Pil key="s" kind="warn">Waiting for Interswitch</Pil>,
+          ])} texts={claims.map((c) => `${c.reference} ${c.payer ?? ""} ${c.number ?? ""} ${c.payment_log_id}`)} />
+        ) : <PBody><div className="sub2">No payer has reported a receipt in the last 30 days.</div></PBody>}
       </Panel>
       <Panel title="Needs a person" right="What the sweep could not resolve on its own">
         {needsPerson.length ? (

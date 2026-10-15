@@ -288,6 +288,32 @@ jobs:
           grep -n '^FROM' Dockerfile api/Dockerfile frontend/Dockerfile
           ! grep -E '^FROM [a-z0-9._-]+:' Dockerfile api/Dockerfile frontend/Dockerfile
 
+      # The mirror itself times out now and then (a 504 in October 2026 turned this job red with nothing wrong in
+      # the code). Each base image is pulled before the builds, three tries a little apart; if the mirror still
+      # fails, the same image comes from Docker Hub and is tagged with the mirror's name, so the builds find it
+      # locally and do not ask a registry again.
+      - name: Pull the base images, with a fallback to Docker Hub
+        run: |
+          for img in $(grep -h '^FROM' Dockerfile api/Dockerfile frontend/Dockerfile | awk '{print $2}' | sort -u); do
+            ok=""
+            for i in 1 2 3; do
+              if docker pull -q "$img"; then ok=1; break; fi
+              echo "::warning title=Base image::pulling $img failed (try $i of 3)"
+              if [ "$i" -lt 3 ]; then sleep $((i * 15)); fi
+            done
+            if [ -z "$ok" ]; then
+              hub="${img#mirror.gcr.io/library/}"
+              echo "::warning title=Base image::the mirror did not answer for $img; pulling $hub from Docker Hub"
+              if docker pull -q "$hub" || { sleep 20; docker pull -q "$hub"; }; then
+                docker tag "$hub" "$img"
+              else
+                echo "::error title=Base image::$img could be pulled from neither the mirror nor Docker Hub"
+                exit 1
+              fi
+            fi
+          done
+          docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^mirror\.gcr\.io/library/' | sort
+
       - name: Build the image
         run: docker build -t moaumpp:ci .
 

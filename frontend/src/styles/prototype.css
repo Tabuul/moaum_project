@@ -1798,7 +1798,7 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 /* WCAG 1.4.1 (portal gap audit): a link in running text is told from the text by more than its colour — a plain link and a .lnk link
    are underlined; buttons, tiles, cards and menu items carry classes of their own and keep their look */
 a:not([class]), a.lnk,
-.card__body a:not([class]), .notice a:not([class]), .card__body a.lnk, .notice a.lnk { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.card__body a:not([class]), .notice a:not([class]), .card__body a.lnk, .notice a.lnk, .notice button.lnk { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
 /* a card body laid out as a row (the body is a column by default) */
 .card__body--row { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--s-4); }
 /* a notice with a title and no body carries no empty line */
