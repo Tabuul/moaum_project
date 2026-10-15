@@ -17,6 +17,9 @@ import { OUTCOME, when, type PaydirectBiller, type PaydirectDesk } from "@/lib/b
 import { collectionRows, interswitchLink, quicktellerLink } from "@/lib/quickteller";
 import { InterswitchTestReferences, TEST_REFERENCES_ANCHOR } from "./InterswitchTestReferences";
 
+/** where the collections report is imported — the hanging list sends a PayDirect payment Interswitch did not report here */
+export const COLLECTIONS_REPORT_ANCHOR = "collections-report";
+
 type Send = (path: string, body: unknown, reason: string, method?: string) => Promise<Record<string, unknown> | null>;
 type Edit = { code: string; name: string; link: string; active: boolean; redirect: boolean; withAmount: boolean };
 
@@ -170,7 +173,8 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
       </PBody>
 
       {may ? (
-        <PBody>
+        // the hanging list's PayDirect rows link here: the way back for a payment Interswitch did not report
+        <div id={COLLECTIONS_REPORT_ANCHOR}><PBody>
           <Field id="qt-report" label="Import the collections report" hint="Rows from Interswitch's collections report: Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name (header optional).">
             <textarea id="qt-report" className="ctl tnum" rows={5} value={text} onChange={(ev) => setText(ev.target.value)} />
           </Field>
@@ -181,7 +185,7 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
             }}>{rows.length ? `Import and match ${rows.length} row${rows.length === 1 ? "" : "s"}` : "Import and match"}</Btn>
             {text.trim() && !rows.length ? <span className="sub2">No row with a reference was read from what is pasted.</span> : null}
           </div>
-        </PBody>
+        </PBody></div>
       ) : null}
       {q.collections.length ? (
         <DTable cols={["Imported|mid", "Reference", "Amount|num", "Channel", "State|mid", "Note"]} rows={q.collections.slice(0, 100).map((c) => [

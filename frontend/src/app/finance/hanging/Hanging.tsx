@@ -1,16 +1,23 @@
 "use client";
 
-/** tHanging — proto/part48.html: a payment that succeeded at the gateway has succeeded; the portal asks the gateway, not the student (V037). */
+/** tHanging — proto/part48.html: a payment that succeeded at the gateway has succeeded; the portal asks the gateway, not the student (V037).
+ *  Oct 2026: a payment opened on Pay on Quickteller (PayDirect) cannot be asked about — Interswitch reports it to the portal, and the
+ *  sweep leaves it alone; WebPAY's requery does not know it. Such a row says so, and sends the Bursary to the collections report import. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { COLLECTIONS_REPORT_ANCHOR } from "../gateways/PayOnQuickteller";
+
+/** a checkout on Pay on Quickteller: Interswitch reports it (PayDirect); nothing asks Interswitch about it */
+const reportedOnly = (gateway: string | null | undefined) => gateway === "paydirect";
+const IMPORT_HREF = `/finance/gateways#${COLLECTIONS_REPORT_ANCHOR}`;
 
 export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: string | null }) {
   const router = useRouter();
@@ -21,6 +28,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
   const settledBySweep = d.events.filter((e) => e.source === "SWEEP" && e.outcome === "SETTLED").length;
   const settledByVerify = d.events.filter((e) => e.source === "VERIFY" && e.outcome === "SETTLED").length;
   const needsPerson = d.events.filter((e) => ["UNKNOWN_REFERENCE", "SHORT_PAID", "GATEWAY_ERROR"].includes(e.outcome) && !e.resolved_at);
+  const onQuickteller = d.hanging.filter((h) => reportedOnly(h.gateway)).length;
 
   async function verify(reference: string) {
     setBusy(reference);
@@ -48,18 +56,30 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
         ["Hanging now", String(d.hanging.length), d.hanging.length ? "var(--red-ink)" : null, "Checkout opened, nothing confirmed, last three days"],
         ["Resolved without a person", String(settledBySweep + settledByVerify), "var(--green-ink)", `${settledBySweep} by the sweep, ${settledByVerify} on request`],
         ["Needs a person", String(needsPerson.length), needsPerson.length ? "var(--red-ink)" : null, "Unknown reference, short paid, or the gateway silent"],
-        ["The sweep", "Every 10 min", null, "Runs whether or not this page is open"],
+        ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
       ]} />
-      <Panel title="Hanging at a gateway" right="Oldest first · the sweep asks about each after five minutes, up to twelve times">
+      {onQuickteller ? (
+        <Note kind="info" title={`${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask`}
+          action={may ? <LinkBtn kind="primary" href={IMPORT_HREF}>Import the collections report</LinkBtn> : null}>
+          A payment made at a bank or on Quickteller (PayDirect) reaches the portal only when Interswitch sends its payment notification. If the payer
+          paid and nothing arrived, import Interswitch&rsquo;s collections report (each reference is matched and confirmed, a short payment kept open), or
+          ask Interswitch to re-send the notification for its Payment Log Id. A reference that is not in the report was not paid.
+        </Note>
+      ) : null}
+      <Panel title="Hanging at a gateway" right="Oldest first · a card checkout is asked about after five minutes, up to twelve times; Pay on Quickteller waits for Interswitch's report">
         {d.hanging.length ? (
           <DTable cols={["Opened|mid", "Payer", "Reference", "Gateway", "Amount|num", "Asked|mid", "|num"]} rows={d.hanging.map((h) => [
             <span className="sub2 tnum" key="o">{when(h.opened_at)}<div className="sub2">{h.minutes} min ago</div></span>,
             <Two key="p" a={h.payer ?? "—"} b={h.number ?? h.kind} />,
             <span className="tnum sub2" key="r">{h.reference}</span>,
-            <span key="g" style={{ textTransform: "capitalize" }}>{h.gateway}</span>,
+            reportedOnly(h.gateway) ? <Two key="g" a="Pay on Quickteller" b="PayDirect" /> : <span key="g" style={{ textTransform: "capitalize" }}>{h.gateway}</span>,
             <b className="tnum" key="a">{h.amount == null ? "—" : money(Number(h.amount))}</b>,
-            <span className="sub2 tnum" key="c">{h.checks ? `${h.checks}× · last ${when(h.checked_at)}` : "not yet"}</span>,
-            may ? <Btn key="v" kind="primary" disabled={busy !== null} onClick={() => void verify(h.reference)}>{busy === h.reference ? "Asking…" : "Ask the gateway"}</Btn> : <span className="sub2" key="v">—</span>,
+            reportedOnly(h.gateway)
+              ? <span className="sub2" key="c">Not asked: Interswitch reports it</span>
+              : <span className="sub2 tnum" key="c">{h.checks ? `${h.checks}× · last ${when(h.checked_at)}` : "not yet"}</span>,
+            !may ? <span className="sub2" key="v">—</span>
+              : reportedOnly(h.gateway) ? <LinkBtn key="v" href={IMPORT_HREF}>Collections report</LinkBtn>
+              : <Btn key="v" kind="primary" disabled={busy !== null} onClick={() => void verify(h.reference)}>{busy === h.reference ? "Asking…" : "Ask the gateway"}</Btn>,
           ])} texts={d.hanging.map((h) => `${h.reference} ${h.payer ?? ""} ${h.number ?? ""}`)} />
         ) : <PBody><div className="sub2">Nothing is hanging in the last three days.</div></PBody>}
       </Panel>
