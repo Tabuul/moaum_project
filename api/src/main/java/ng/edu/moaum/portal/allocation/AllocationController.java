@@ -36,30 +36,40 @@ class AllocationController {
      *  ICT Support Desk as well — an agent's rows held to the reach of their BULK_ALLOCATE postings (AllocationImportService); the
      *  department desk's own acts below stay the academic offices' */
     private static final String IMPORTERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super',"
-            + "'OFFICE_ict','OFFICE_helpdeskhead','OFFICE_ictagent')";
+            + "'OFFICE_ict','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_pgschool','OFFICE_pgsecretary')";   // V478: the School, its postgraduate templates only
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
     private final AllocationImportService imports;
     private final AllocationRecord record;
+    private final AllocationTemplateService templates;
+    private final AllocationReach reach;
 
-    AllocationController(JdbcClient jdbc, OfficeScope scope, AllocationImportService imports, AllocationRecord record) {
+    AllocationController(JdbcClient jdbc, OfficeScope scope, AllocationImportService imports, AllocationRecord record, AllocationTemplateService templates,
+                         AllocationReach reach) {
         this.jdbc = jdbc;
         this.scope = scope;
         this.imports = imports;
         this.record = record;
+        this.templates = templates;
+        this.reach = reach;
     }
 
     /* ── V321: bulk course allocation from a spreadsheet — validated first, imported on confirmation ── */
 
-    public record ImportIn(@NotNull List<AllocationImportService.RowIn> rows, AllocationImportService.Options options, String fileName, UUID importKey) {
+    /** V478: template — the department template the file came from, with the page's choice and the file's own context; ticket —
+     *  the support ticket the import answers */
+    public record ImportIn(@NotNull List<AllocationImportService.RowIn> rows, AllocationImportService.Options options, String fileName, UUID importKey,
+                           AllocationTemplateService.TemplateIn template, @Size(max = 60) String ticket) {
     }
 
-    /** every row judged against the register; nothing written */
+    /** every row judged against the register (and a template's file against its template); nothing written */
     @PostMapping("/import/validate")
     @PreAuthorize(IMPORTERS)
     AllocationImportService.Validation validateImport(@Valid @RequestBody ImportIn body) {
-        return imports.validate(body.rows(), body.options());
+        AllocationTemplateService.Context tpl = body.template() == null ? null : templates.check(body.template());
+        reach.ticket(body.ticket());                        // a ticket named is checked now, not first at the import
+        return imports.validate(body.rows(), body.options(), tpl);
     }
 
     /** the valid rows written in one transaction through the same allocation every desk uses; a repeated key answers
@@ -67,7 +77,47 @@ class AllocationController {
     @PostMapping("/import")
     @PreAuthorize(IMPORTERS)
     AllocationImportService.ImportResult doImport(@Valid @RequestBody ImportIn body) {
-        return imports.importRows(body.importKey(), body.fileName(), body.rows(), body.options());
+        AllocationTemplateService.Context tpl = body.template() == null ? null : templates.check(body.template());
+        return imports.importRows(body.importKey(), body.fileName(), body.rows(), body.options(), tpl, reach.ticket(body.ticket()));
+    }
+
+    /* ── V478: a department's course allocation template, issued from the register ── */
+
+    /** the faculties and departments the acting office may issue templates for, the sessions, and the kinds of programme */
+    @GetMapping("/template/options")
+    @PreAuthorize(IMPORTERS)
+    Map<String, Object> templateOptions() {
+        return templates.options();
+    }
+
+    /** what the department's template would carry now — the department summary the page shows before it is downloaded */
+    @GetMapping("/template/context")
+    @PreAuthorize(IMPORTERS)
+    Map<String, Object> templateContext(@RequestParam String dept, @RequestParam String session, @RequestParam int semester,
+                                        @RequestParam(defaultValue = "UNDERGRADUATE") String programmeType) {
+        Map<String, Object> d = templates.data(dept, programmeType, session, semester);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("context", d.get("context"));
+        out.put("summary", d.get("summary"));
+        return out;
+    }
+
+    public record TemplateRequest(@NotBlank @Size(max = 12) String dept, @NotBlank @Size(max = 9) String session, @NotNull Integer semester,
+                                  @Size(max = 20) String programmeType, @Size(max = 60) String ticket) {
+    }
+
+    /** the template issued: recorded and numbered, with its classes, lecturers and programmes for the workbook */
+    @PostMapping("/template")
+    @PreAuthorize(IMPORTERS)
+    Map<String, Object> issueTemplate(@Valid @RequestBody TemplateRequest body) {
+        return templates.issue(body.dept(), body.programmeType(), body.session(), body.semester(), body.ticket());
+    }
+
+    /** the templates issued that the acting office may see, the latest first, with the imports made from each */
+    @GetMapping("/templates")
+    @PreAuthorize(IMPORTERS)
+    List<Map<String, Object>> recentTemplates(@RequestParam(defaultValue = "20") int limit) {
+        return templates.recent(limit);
     }
 
     @GetMapping("/imports")

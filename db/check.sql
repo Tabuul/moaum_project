@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 315
+\set EXPECTED 316
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14277,6 +14277,45 @@ BEGIN
     PERFORM pg_temp.assert('V477: a Pay on Quickteller payment unreported after a day is told to the Bursary once a day, in the working day — not one opened hours ago, not a card checkout',
         coalesce(listed = 'MOAUM-FEE-947701-0001' AND told1 >= 1 AND got = 'EMAIL+list,PORTAL' AND got2 = 2 AND told3 = 0, false),
         format('listed %s | told at 10:00 %s, to the bursar by %s | three hours later %s, notices kept %s | at 07:00 %s', listed, told1, got, told2, got2, told3));
+END $$;
+
+
+-- ── V478: department course allocation templates, issued and numbered ──
+-- A template is issued for a department of the register, numbered in its year (CAT-YYYY-NNNNNN), one after another, with the
+-- department's faculty, the programme type, session and semester, and what it carried; an unknown department, or no person
+-- acting, is refused. An import record carries the template it came from, the programme type and the ticket. The block undoes
+-- its writes.
+DO $$
+DECLARE r1 record; r2 record; d text; f text; fmt_ok boolean; seq_ok boolean; rec_ok boolean; bad_dept text := ''; no_actor text := ''; cols int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V478', true);
+        SELECT code, faculty_code INTO d, f FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9998/9999', date '9998-01-01', date '9998-12-31') ON CONFLICT (name) DO NOTHING;
+        SELECT * INTO r1 FROM catalogue.issue_allocation_template(lower(d), 'UNDERGRADUATE', '9998/9999', 1, 3, 4, 2, 1, NULL);
+        SELECT * INTO r2 FROM catalogue.issue_allocation_template(d, 'POSTGRADUATE', '9998/9999', 2, 0, 0, 0, 0, NULL);
+        fmt_ok := r1.reference ~ '^CAT-[0-9]{4}-[0-9]{6}$' AND r2.reference ~ '^CAT-[0-9]{4}-[0-9]{6}$' AND r1.version = 1;
+        seq_ok := right(r2.reference, 6)::int = right(r1.reference, 6)::int + 1;
+        rec_ok := EXISTS (SELECT 1 FROM catalogue.allocation_template t WHERE t.id = r1.id AND t.dept_code = d AND t.faculty_code IS NOT DISTINCT FROM f
+                           AND t.programme_type = 'UNDERGRADUATE' AND t.session = '9998/9999' AND t.semester = 1 AND t.classes = 3 AND t.lecturers = 4
+                           AND t.programmes = 2 AND t.allocations = 1 AND t.issued_office = 'ict');
+        BEGIN PERFORM catalogue.issue_allocation_template('ZZNODEPT', 'UNDERGRADUATE', '9998/9999', 1, 0, 0, 0, 0, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS bad_dept = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', '', true);
+        BEGIN PERFORM catalogue.issue_allocation_template(d, 'UNDERGRADUATE', '9998/9999', 1, 0, 0, 0, 0, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS no_actor = MESSAGE_TEXT; END;
+        SELECT count(*) INTO cols FROM information_schema.columns
+         WHERE table_schema = 'catalogue' AND table_name = 'allocation_import' AND column_name IN ('template_id', 'programme_type', 'ticket_id');
+        RAISE EXCEPTION 'the V478 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V478 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V478: a department course allocation template is issued for a department of the register, numbered CAT-YYYY-NNNNNN one after another, with its faculty, programme type, session, semester and counts; an unknown department or no person acting refused; an import carries its template, programme type and ticket',
+        coalesce(fmt_ok AND seq_ok AND rec_ok AND bad_dept LIKE 'ALLOC_TEMPLATE_DEPT:%' AND no_actor LIKE 'ALLOC_TEMPLATE_ACTOR:%' AND cols = 3, false),
+        format('format %s sequence %s record %s | unknown department "%s" | no actor "%s" | import columns %s', fmt_ok, seq_ok, rec_ok, bad_dept, no_actor, cols));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

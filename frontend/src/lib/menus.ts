@@ -2174,7 +2174,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/structureprogrammes", "icon": "cap", "label": "PG Programmes" },
           { "id": "t/allcourses", "icon": "book", "label": "PG Courses" },
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
-          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" }
+          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" },
+          { "id": "t/allocationtemplates", "icon": "user", "label": "Course Allocation" }
         ]
       },
       {
@@ -2402,7 +2403,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/structureprogrammes", "icon": "cap", "label": "PG Programmes" },
           { "id": "t/allcourses", "icon": "book", "label": "PG Courses" },
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
-          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" }
+          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" },
+          { "id": "t/allocationtemplates", "icon": "user", "label": "Course Allocation" }
         ]
       },
       {

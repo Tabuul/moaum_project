@@ -279,7 +279,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
       {tab === "history" ? <History session={session} semester={semester} dept={dept} initialTicket={initial.ticket} onOpen={setOpen} scope={options.scope} /> : null}
       {tab === "conflicts" ? <Conflicts session={session} semester={semester} dept={dept} onOpen={setOpen} /> : null}
       {tab === "bulk" ? (
-        <BulkUpload dept={dept} deptName={deptName || "All departments in reach"} session={session} semester={semester} imports={imports} canImport={caps.has("BULK_ALLOCATE")} />
+        <BulkUpload dept={dept} deptName={deptName || "All departments in reach"} session={session} semester={semester} imports={imports} canImport={caps.has("BULK_ALLOCATE")} ticketInitial={initial.ticket} />
       ) : null}
 
       {open ? <ClassDialog id={open} caps={caps} initialTicket={initial.ticket} onClose={() => setOpen(null)} onChanged={refresh} /> : null}

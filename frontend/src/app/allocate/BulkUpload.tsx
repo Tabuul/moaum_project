@@ -1,10 +1,12 @@
 "use client";
 
-/** Bulk course allocation (V321): the official template with the register's lecturers, courses, programmes, departments
- *  and sessions as reference sheets; a file read and mapped column by column; every row validated against the register
+/** Bulk course allocation (V321): a file read and mapped column by column; every row validated against the register
  *  before anything is written; the preview with its counts; the import of the valid rows on confirmation, under a key so
- *  a second press cannot allocate twice; the error report with the original row numbers; the history of imports. */
-import { useRef, useState } from "react";
+ *  a second press cannot allocate twice; the error report with the original row numbers; the history of imports.
+ *  V478: the template is a department's, issued from the register — the faculty, department, kind of programme, session and
+ *  semester chosen first; its classes, current lecturers and the department's lecturers written in, the lecturer chosen from a
+ *  list — and its upload is checked against the template the portal issued, whatever the file says. */
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -12,10 +14,13 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { csvRows, xlsxRows } from "@/lib/xlsx";
-import { xlsx, type Cell } from "@/lib/xlsx-write";
+import { csvRows, xlsxRows, xlsxWorkbook } from "@/lib/xlsx";
+import { xlsx } from "@/lib/xlsx-write";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { getInstitution } from "@/lib/document/institution-client";
+import { Field } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
+import { readTemplate, semesterWord, templateSheets, typeWord, type IssuedTemplate, type ProgrammeType, type ReadTemplate, type TemplateSummary } from "@/lib/allocation-template";
 
 import { FIELDS, detectMapping, headerRowIndex, rowsOf, type RowIn } from "@/lib/allocation-import";
 export type { RowIn };
@@ -26,19 +31,30 @@ export interface Finding {
   codes: string[]; messages: string[]; action?: string | null;
 }
 export interface Summary { total: number; valid: number; warnings: number; errors: number; duplicates: number; existing: number; willImport: number }
-export interface Validation { summary: Summary; rows: Finding[] }
+/** V478: template — the department template the file came from, and a newer one issued since for the same context */
+export interface Validation { summary: Summary; rows: Finding[]; template?: { reference: string; deptName: string; programmeType: string; session: string; semester: number; newer: string | null } | null }
 export interface ImportResult { id: string; reference: string; status: string; repeated: boolean; imported: number; summary: Summary; rows: Finding[] }
 export interface ImportRecord {
   id: string; reference: string; file_name: string | null; session: string; semester: number | null; scope_dept: string | null; uploader_office: string;
   uploaded_at: string; uploaded_by: string | null; total_rows: number; valid_rows: number; imported: number; existing: number; skipped: number; errors: number; warnings: number; status: string;
+  /** V478 */ template_reference?: string | null; programme_type?: string | null; ticket?: string | null;
 }
+/** V478: the faculties, departments and sessions the acting office may issue templates for */
+interface TemplateOptions { faculties: { code: string; name: string }[]; departments: { code: string; name: string; faculty_code: string | null }[];
+  sessions: { name: string; state: string; semesters: number }[]; current: string | null; types: ProgrammeType[] }
+interface RecentTemplate { id: string; reference: string; dept_code: string; dept_name: string | null; programme_type: string; session: string; semester: number;
+  issued_at: string; issued_by: string | null; issued_office: string; classes: number; lecturers: number; uploads: number; imported: number; ticket: string | null }
+const PICK_FIRST = "Select faculty, department, session and semester before downloading the template.";
 
 const STATUS_PILL: Record<string, "ok" | "warn" | "bad" | "info" | "grey"> = { VALID: "ok", WARNING: "warn", ERROR: "bad", DUPLICATE: "bad", EXISTING: "info" };
 const semName = (n: number | null | undefined) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function BulkUpload({ dept, deptName, session, semester, imports, canImport }: {
+export function BulkUpload({ dept, deptName, session, semester, imports, canImport, templateOnly = false, ticketInitial = "" }: {
   dept: string; deptName: string; session: string; semester: number; imports: ImportRecord[]; canImport: boolean;
+  /** V478: the School's page — a department's postgraduate template only, no other file */
+  templateOnly?: boolean;
+  ticketInitial?: string;
 }) {
   const router = useRouter();
   const file = useRef<HTMLInputElement>(null);
@@ -54,8 +70,98 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
   const [show, setShow] = useState<"ALL" | "ERROR" | "WARNING" | "EXISTING" | "DUPLICATE" | "VALID">("ALL");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
+  /* V478: the department template — what may be chosen, what is chosen, what it would carry, the templates issued, the file read */
+  const tplFile = useRef<HTMLInputElement>(null);
+  const [opts, setOpts] = useState<TemplateOptions | null>(null);
+  const [sel, setSel] = useState({ type: "UNDERGRADUATE" as ProgrammeType, fac: "", dept: dept || "", session: session || "", semester: semester ? String(semester) : "" });
+  const [preview, setPreview] = useState<{ summary: TemplateSummary } | null>(null);
+  const [recent, setRecent] = useState<RecentTemplate[]>([]);
+  const [ticket, setTicket] = useState(ticketInitial);
+  const [tpl, setTpl] = useState<ReadTemplate | null>(null);
+  const chosen = !!(sel.fac && sel.dept && sel.session && sel.semester);
 
-  const rowsIn = (): RowIn[] => (grid ? rowsOf([grid.header, ...grid.rows], 0, mapping, { session, semester: String(semester) }).map((r, i) => ({ ...r, row: grid.rowNumbers[i] ?? r.row })) : []);
+  const loadRecent = useCallback(async () => {
+    const r = await fetch("/api/bff/api/v1/allocation/templates?limit=10", { cache: "no-store" });
+    const j = await r.json().catch(() => []);
+    setRecent(r.ok && Array.isArray(j) ? (j as RecentTemplate[]) : []);
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const r = await fetch("/api/bff/api/v1/allocation/template/options", { cache: "no-store" });
+      const o = (await r.json().catch(() => null)) as TemplateOptions | null;
+      if (!live || !r.ok || !o) return;
+      setOpts(o);
+      setSel((s) => {
+        const d = o.departments.find((x) => x.code === s.dept);
+        return { ...s, type: o.types.includes(s.type) ? s.type : o.types[0], dept: d ? s.dept : "", fac: d?.faculty_code ?? s.fac,
+          session: s.session || o.current || "", semester: s.semester || "1" };
+      });
+      await loadRecent();
+    })();
+    return () => { live = false; };
+  }, [loadRecent]);
+
+  // the department summary: what the template would carry now, read when the choice is complete
+  useEffect(() => {
+    if (!chosen) { void Promise.resolve().then(() => setPreview(null)); return; }
+    let live = true;
+    const qs = new URLSearchParams({ dept: sel.dept, session: sel.session, semester: sel.semester, programmeType: sel.type });
+    void fetch(`/api/bff/api/v1/allocation/template/context?${qs.toString()}`, { cache: "no-store" }).then(async (r) => {
+      const j = await r.json().catch(() => null);
+      if (!live) return;
+      if (r.ok && j) setPreview(j as { summary: TemplateSummary }); else { setPreview(null); if (j) notifyProblem(j as Problem); }
+    });
+    return () => { live = false; };
+  }, [chosen, sel.dept, sel.session, sel.semester, sel.type]);
+
+  /** the template, issued and recorded by the server, built into a workbook here */
+  async function downloadDeptTemplate() {
+    if (!chosen) { notifyProblem({ status: 400, title: PICK_FIRST }); return; }
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/allocation/template", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course allocation template downloaded: ${sel.dept} ${sel.session} semester ${sel.semester}`) },
+        body: JSON.stringify({ dept: sel.dept, session: sel.session, semester: Number(sel.semester), programmeType: sel.type, ticket: ticket.trim() || null }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j) { const p = (j as Problem) ?? { status: r.status, title: "Unable to generate template. Please try again." }; setProblem(p); notifyProblem(p); return; }
+      const t = j as IssuedTemplate;
+      const inst = await getInstitution();
+      const on = new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const book = xlsx(templateSheets(t, inst.name, on));
+      downloadBlob(new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `${inst.shortName} course allocation ${t.context.deptCode} ${t.context.session.replace("/", "-")} S${t.context.semester} ${t.context.reference}.xlsx`);
+      notify(`Template downloaded successfully: ${t.context.reference}`);
+      await loadRecent();
+    } catch {
+      notifyProblem({ status: 500, title: "Unable to generate template. Please try again." });
+    }
+  }
+
+  /** a completed department template: its context read from the file, checked by the server against the template it issued */
+  async function takeTemplate(read: ReadTemplate, name: string) {
+    setProblem(null); setValidation(null); setResult(null); setImportKey(null); setGrid(null);
+    setFileName(name);
+    if (opts && !sel.dept) {
+      const d = opts.departments.find((x) => x.code === read.context.dept);
+      setSel({ type: (read.context.programmeType as ProgrammeType) || sel.type, fac: d?.faculty_code ?? "", dept: read.context.dept, session: read.context.session, semester: String(read.context.semester) });
+    }
+    setTpl(read);
+    if (!read.rows.length) { setProblem({ status: 400, title: "No lecturer is chosen in this template.", detail: `${read.blank} class${read.blank === 1 ? "" : "es"} left blank: nothing to allocate.` }); return; }
+    await validate({ allowOverload, replaceExisting }, read);
+  }
+
+  function templateBody(read: ReadTemplate) {
+    const pick = sel.dept ? sel : { type: read.context.programmeType, dept: read.context.dept, session: read.context.session, semester: String(read.context.semester) };
+    return {
+      reference: read.context.reference, dept: pick.dept, session: pick.session, semester: Number(pick.semester), programmeType: pick.type,
+      fileDept: read.context.dept, fileSession: read.context.session, fileSemester: read.context.semester, fileProgrammeType: read.context.programmeType,
+    };
+  }
+
+  const rowsIn = (): RowIn[] => (tpl ? tpl.rows : grid ? rowsOf([grid.header, ...grid.rows], 0, mapping, { session, semester: String(semester) }).map((r, i) => ({ ...r, row: grid.rowNumbers[i] ?? r.row })) : []);
   const missingRequired = FIELDS.filter((f) => f.required && mapping[f.key] === undefined && !(f.key === "session" || f.key === "semester"));
 
   async function post<T>(path: string, body: unknown, reason: string): Promise<T | null> {
@@ -65,8 +171,8 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
     return j as T;
   }
 
-  /** the official template, with reference sheets read from the register as it stands now */
-  async function downloadTemplate() {
+  /** the generic template (V321), kept for a file of the same columns made elsewhere; the department's template is the one offered */
+  async function downloadGenericTemplate() {
     setPhase("Building the template from the register…");
     setProblem(null);
     try {
@@ -78,13 +184,13 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
         fetch(`/api/bff/api/v1/allocation/lecturers?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}&all=true`).then((r) => r.json()).catch(() => []),
       ]);
       const facs = (structure?.faculties ?? []) as { code: string; name: string; departments: { code: string; name: string; programmes: { code: string; name: string; archived?: boolean }[] }[] }[];
-      const depts: Cell[][] = facs.flatMap((f) => f.departments.map((d) => [d.code, d.name, f.name]));
-      const progs: Cell[][] = facs.flatMap((f) => f.departments.flatMap((d) => d.programmes.filter((p) => !p.archived).map((p) => [p.code, p.name, d.name])));
-      const crs: Cell[][] = (Array.isArray(courses) ? courses : []).map((c: { code: string; title: string; units?: number; semester?: number; level?: number; deptName?: string; dept_name?: string; deptCode?: string; dept_code?: string }) =>
+      const depts: string[][] = facs.flatMap((f) => f.departments.map((d) => [d.code, d.name, f.name]));
+      const progs: string[][] = facs.flatMap((f) => f.departments.flatMap((d) => d.programmes.filter((p) => !p.archived).map((p) => [p.code, p.name, d.name])));
+      const crs: (string | number)[][] = (Array.isArray(courses) ? courses : []).map((c: { code: string; title: string; units?: number; semester?: number; level?: number; deptName?: string; dept_name?: string; deptCode?: string; dept_code?: string }) =>
         [c.code, c.title, c.deptName ?? c.dept_name ?? c.deptCode ?? c.dept_code ?? "", c.units ?? "", c.semester ?? "", c.level ?? ""]);
-      const sess: Cell[][] = (Array.isArray(sessions) ? sessions : []).map((s: { name: string; state?: string; semesters?: number }) => [s.name, s.state ?? "", s.semesters ?? 2]);
-      const lects: Cell[][] = (Array.isArray(lecturers) ? lecturers : []).map((l: { staff_number?: string | null; name: string; department?: string | null }) => [l.staff_number ?? "", l.name, l.department ?? ""]);
-      const example: Cell[] = [lects[0]?.[0] ?? "STF001", lects[0]?.[1] ?? "SURNAME, Given Names", lects[0]?.[2] ?? deptName, crs[0]?.[0] ?? "ACC 401", crs[0]?.[1] ?? "Course title as on the catalogue", deptName, progs[0]?.[0] ?? "", crs[0]?.[5] ?? "", session, semester, "Lecturer", ""];
+      const sess: (string | number)[][] = (Array.isArray(sessions) ? sessions : []).map((s: { name: string; state?: string; semesters?: number }) => [s.name, s.state ?? "", s.semesters ?? 2]);
+      const lects: string[][] = (Array.isArray(lecturers) ? lecturers : []).map((l: { staff_number?: string | null; name: string; department?: string | null }) => [l.staff_number ?? "", l.name, l.department ?? ""]);
+      const example: (string | number)[] = [lects[0]?.[0] ?? "STF001", lects[0]?.[1] ?? "SURNAME, Given Names", lects[0]?.[2] ?? deptName, crs[0]?.[0] ?? "ACC 401", crs[0]?.[1] ?? "Course title as on the catalogue", deptName, progs[0]?.[0] ?? "", crs[0]?.[5] ?? "", session, semester, "Lecturer", ""];
       const book = xlsx([
         ["Allocations", [FIELDS.map((f) => f.label + (f.required ? " *" : "")), example, FIELDS.map(() => "")], { headerRows: [0] }],
         ["Instructions", [
@@ -128,6 +234,12 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
       const head = new Uint8Array(buf.slice(0, 2));
       const isWorkbook = (head[0] === 0x50 && head[1] === 0x4b) || /\.xlsx$/i.test(f.name);
       if (!isWorkbook && !/\.csv$/i.test(f.name)) { setProblem({ status: 400, title: "Upload the template as an Excel workbook (.xlsx), or a CSV with the same columns." }); return; }
+      // V478: a department template is read by its own sheets and checked against the template the portal issued
+      if (isWorkbook) {
+        const read = readTemplate(await xlsxWorkbook(buf));
+        if (read) { setPhase(null); await takeTemplate(read, f.name); return; }
+      }
+      if (templateOnly) { setProblem({ status: 400, title: "Upload a department course allocation template downloaded from this page." }); return; }
       const cells = (isWorkbook ? await xlsxRows(buf) : csvRows(new TextDecoder("utf-8").decode(buf))).map((row) => row.map((c) => String(c ?? "").trim()));
       const hi = headerRowIndex(cells);
       const header = cells[hi] ?? [];
@@ -143,13 +255,15 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
   }
 
   /** the options as they stand, or the ones just changed: a tick re-validates with the new value, not the stale state */
-  async function validate(opts: { allowOverload: boolean; replaceExisting: boolean } = { allowOverload, replaceExisting }) {
-    const rows = rowsIn();
+  async function validate(options: { allowOverload: boolean; replaceExisting: boolean } = { allowOverload, replaceExisting }, read: ReadTemplate | null = tpl) {
+    const rows = read ? read.rows : rowsIn();
     if (!rows.length) { setProblem({ status: 400, title: "No allocation rows to validate." }); return; }
     setBusy(true); setProblem(null); setResult(null);
-    setPhase(`Validating ${rows.length} rows: lecturers, departments, courses, programmes, sessions, semesters, offerings, duplicates…`);
+    setPhase(read ? `Validating template ${read.context.reference}: ${rows.length} rows against the register and the template…`
+      : `Validating ${rows.length} rows: lecturers, departments, courses, programmes, sessions, semesters, offerings, duplicates…`);
     try {
-      const v = await post<Validation>("/import/validate", { rows, options: opts, fileName }, `${rows.length} allocation rows validated`);
+      const v = await post<Validation>("/import/validate", { rows, options, fileName, template: read ? templateBody(read) : null, ticket: ticket.trim() || null },
+        `${rows.length} allocation rows validated${read ? ` from template ${read.context.reference}` : ""}`);
       if (v) { setValidation(v); setImportKey(crypto.randomUUID()); setShow(v.summary.errors ? "ERROR" : "ALL"); }
     } finally { setBusy(false); setPhase(null); }
   }
@@ -160,16 +274,17 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
     setBusy(true); setProblem(null);
     setPhase(`Importing ${validation.summary.willImport} allocation${validation.summary.willImport === 1 ? "" : "s"}…`);
     try {
-      const r = await post<ImportResult>("/import", { rows, options: { allowOverload, replaceExisting }, fileName, importKey }, `${validation.summary.willImport} allocations imported from ${fileName ?? "a file"}`);
-      if (r) { setResult(r); setValidation(null); notify(`${r.reference}: ${r.imported} allocation${r.imported === 1 ? "" : "s"} made`); router.refresh(); }
+      const r = await post<ImportResult>("/import", { rows, options: { allowOverload, replaceExisting }, fileName, importKey, template: tpl ? templateBody(tpl) : null, ticket: ticket.trim() || null },
+        `${validation.summary.willImport} allocations imported from ${fileName ?? "a file"}${tpl ? ` (template ${tpl.context.reference})` : ""}`);
+      if (r) { setResult(r); setValidation(null); notify(`Course allocation template imported successfully: ${r.reference}, ${r.imported} allocation${r.imported === 1 ? "" : "s"} made`); router.refresh(); void loadRecent(); }
     } finally { setBusy(false); setPhase(null); }
   }
 
   async function errorReport(rows: Finding[], reference: string) {
     const bad = rows.filter((r) => r.status !== "VALID");
-    const head = ["Original row", "Staff ID", "Lecturer", "Department", "Course code", "Course", "Session", "Semester", "Role", "Status", "Error", "Recommended action"];
-    const body = bad.map((r) => [r.row, r.staffId, r.lecturer, r.department, r.courseCode, r.course, r.session, semName(r.semester), r.role, r.status, r.messages.join("; "), r.action ?? ""]);
-    downloadBlob(await brandedXlsx("Course allocation import — error report", head, body, { sheetName: "Errors", serial: reference, sub: fileName ?? "", noSerialColumn: true }), `allocation-import-errors-${reference.replace(/[\\/]/g, "-")}.xlsx`);
+    const head = ["Row number", "Course code", "Course", "Programme", "Lecturer", "Staff ID", "Session", "Semester", "Role", "Status", "Error type", "Error message", "Correction required"];
+    const body = bad.map((r) => [r.row, r.courseCode, r.course, r.programme, r.lecturer, r.staffId, r.session, semName(r.semester), r.role, r.status, r.codes.join(", "), r.messages.join("; "), r.action ?? ""]);
+    downloadBlob(await brandedXlsx("Course allocation import — error report", head, body, { sheetName: "Errors", serial: reference, sub: fileName ?? "" }), `allocation-import-errors-${reference.replace(/[\\/]/g, "-")}.xlsx`);
   }
 
   async function historyReport(rec: ImportRecord) {
@@ -191,14 +306,69 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
     <span key="m" className="t-sm">{r.messages.length ? r.messages.map((m, i) => <div key={i}>{m}</div>) : <span className="sub2">—</span>}{r.action ? <div className="sub2">{r.action}</div> : null}</span>,
   ];
 
+  const depts = (opts?.departments ?? []).filter((d) => !sel.fac || d.faculty_code === sel.fac);
+  const s = preview?.summary;
   return (
     <>
-      <Panel title="Bulk upload — course allocation from a spreadsheet" right={<span className="row row--inline row--tight"><Btn kind="ghost" disabled={!!phase} onClick={() => void downloadTemplate()}>{phase?.startsWith("Building") ? "Building…" : "Download template"}</Btn>
+      <Panel title="Course allocation template — one department" right={<span className="row row--inline row--tight">
+        <Btn kind="primary" busyLabel="Generating template…" disabled={!opts || busy} onClick={() => downloadDeptTemplate()}>Download course allocation template</Btn>
+        <Btn kind="go" disabled={!canImport || !!phase || busy} onClick={() => tplFile.current?.click()}>{phase && tpl ? "Uploading…" : "Upload completed template"}</Btn>
+        <input ref={tplFile} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} />
+      </span>}>
+        <PBody>
+          <div className="row">
+            <Field id="tpl-type" label="Programme type" style={{ flex: "0 1 170px" }}>
+              <select id="tpl-type" className="ctl" value={sel.type} disabled={(opts?.types.length ?? 0) < 2} onChange={(e) => setSel({ ...sel, type: e.target.value as ProgrammeType })}>
+                {(opts?.types ?? ["UNDERGRADUATE"]).map((t) => <option key={t} value={t}>{typeWord(t)}</option>)}
+              </select></Field>
+            <Field id="tpl-fac" label="Faculty" style={{ flex: "1 1 200px" }}>
+              <SearchSelect id="tpl-fac" value={sel.fac} placeholder="Search a faculty…" options={(opts?.faculties ?? []).map((f) => ({ value: f.code, label: f.name }))}
+                onChange={(v) => setSel({ ...sel, fac: v, dept: "" })} /></Field>
+            <Field id="tpl-dept" label="Department" style={{ flex: "1 1 220px" }}>
+              <SearchSelect id="tpl-dept" value={sel.dept} placeholder={sel.fac ? "Search a department…" : "Choose the faculty first"} disabled={!sel.fac}
+                options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => setSel({ ...sel, dept: v })} /></Field>
+            <Field id="tpl-session" label="Academic session" style={{ flex: "0 1 150px" }}>
+              <SearchSelect id="tpl-session" value={sel.session} placeholder="Session…" options={(opts?.sessions ?? []).map((x) => ({ value: x.name, label: `${x.name}${x.state === "CURRENT" ? " (current)" : ""}` }))}
+                onChange={(v) => setSel({ ...sel, session: v })} /></Field>
+            <Field id="tpl-sem" label="Semester" style={{ flex: "0 1 150px" }}>
+              <select id="tpl-sem" className="ctl" value={sel.semester} onChange={(e) => setSel({ ...sel, semester: e.target.value })}>
+                <option value="">Semester…</option>
+                {Array.from({ length: opts?.sessions.find((x) => x.name === sel.session)?.semesters ?? 2 }, (_, i) => i + 1).map((n) => <option key={n} value={String(n)}>{semesterWord(n)}</option>)}
+              </select></Field>
+            <Field id="tpl-ticket" label="Support ticket (optional)" style={{ flex: "0 1 170px" }}>
+              <input id="tpl-ticket" className="ctl tnum" value={ticket} maxLength={60} placeholder="TICK-2026-00123" onChange={(e) => setTicket(e.target.value)} autoComplete="off" /></Field>
+          </div>
+          {!chosen ? <div className="sub2 mt-2">{PICK_FIRST}</div> : s ? (
+            <div className="mt-2">
+              <Tiles cls="grid--4" items={[
+                ["Department", depts.find((d) => d.code === sel.dept)?.name ?? sel.dept, null, `${opts?.faculties.find((f) => f.code === sel.fac)?.name ?? ""} · ${typeWord(sel.type)}`],
+                ["Courses", String(s.classes), null, `${s.open} with a class open in ${sel.session} · ${s.unallocated} without a lead`],
+                ["Lecturers", String(s.lecturers), null, "Of the department, to choose from"],
+                ["Existing allocations", String(s.allocations), null, `${s.programmes} programme${s.programmes === 1 ? "" : "s"} of this kind`],
+              ]} />
+              <div className="sub2">The template is built from the register now: these classes with their lecturers on record, the department&rsquo;s lecturers as a list, and its {typeWord(sel.type).toLowerCase()} programmes. The upload is checked against the template&rsquo;s own department, session and semester, whatever the file says.</div>
+            </div>
+          ) : <div className="row row--inline row--tight mt-2"><span className="spinner" aria-hidden /> <span className="sub2">Reading the department from the register…</span></div>}
+          {tpl && !validation && !result ? <Note kind="info" title={`Template ${tpl.context.reference}`}>{tpl.rows.length} row{tpl.rows.length === 1 ? "" : "s"} with a lecturer chosen{tpl.blank ? ` · ${tpl.blank} class${tpl.blank === 1 ? "" : "es"} left blank and left as they are` : ""}.</Note> : null}
+        </PBody>
+        {recent.length ? (
+          <DTable pageSize={0} noPrint cols={["Template ref", "Department", "Type|mid", "Session", "Generated by", "Date", "Uploads|mid", "Imported|mid", "Ticket"]} rows={recent.map((t) => [
+            <b className="tnum" key="r">{t.reference}</b>, <span key="d">{t.dept_name ?? t.dept_code}</span>, <span key="t" className="sub2">{typeWord(t.programme_type)}</span>,
+            <span key="s" className="tnum">{t.session} · {semName(t.semester)}</span>, <span key="b" className="sub2">{t.issued_by ?? ""} ({t.issued_office})</span>,
+            <span key="w" className="tnum sub2">{when(t.issued_at)}</span>, <span key="u" className="tnum">{t.uploads}</span>, <span key="i" className="tnum">{t.imported}</span>,
+            <span key="k" className="tnum sub2">{t.ticket ?? ""}</span>,
+          ])} />
+        ) : null}
+      </Panel>
+
+      <Panel title={templateOnly ? "Upload progress" : "Bulk upload — course allocation from any spreadsheet"} right={templateOnly ? undefined : <span className="row row--inline row--tight">
+        <Btn kind="ghost" disabled={!!phase} busyLabel="Building…" onClick={() => downloadGenericTemplate()}>Blank template (any department)</Btn>
         <Btn kind="primary" disabled={!canImport || !!phase || busy} onClick={() => file.current?.click()}>Upload Excel / CSV</Btn>
         <input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></span>}>
         <PBody>
           <div className="t-sm" style={{ lineHeight: 1.6 }}>
-            Fill the template&rsquo;s <b>Allocations</b> sheet (Staff ID, Course code, Session and Semester required), upload it, then import the valid rows. Nothing is written until you press Import.
+            {templateOnly ? "Upload the department's completed template above; it is checked against the register and the template before anything is written."
+              : <>A department&rsquo;s template above is the way to allocate: everything the register knows is written in. A file of the blank template&rsquo;s columns made elsewhere is read here, its columns matched by name (Staff ID, Course code, Session and Semester required). Nothing is written until you press Import.</>}
           </div>
           {phase ? <div className="row row--inline row--tight mt-2"><span className="spinner" aria-hidden /> <span className="sub2">{phase}</span></div> : null}
           {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
@@ -229,6 +399,12 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
 
       {validation ? (
         <Panel title={`Import preview · ${fileName ?? ""}`} right="Nothing has been written">
+          {validation.template ? (
+            <PBody>
+              <div className="sub2">Template <b className="tnum">{validation.template.reference}</b> · {validation.template.deptName} · {typeWord(validation.template.programmeType)} · {validation.template.session} · {semName(validation.template.semester)} semester{tpl?.blank ? ` · ${tpl.blank} class${tpl.blank === 1 ? "" : "es"} left blank` : ""}</div>
+              {validation.template.newer ? <Note kind="info" title={`A newer template, ${validation.template.newer}, was issued since`}>This file&rsquo;s rows are checked against the register as it stands now; anything changed since it was downloaded is shown below.</Note> : null}
+            </PBody>
+          ) : null}
           <Tiles cls="grid--4" items={[
             ["Rows", String(validation.summary.total), null, "In the file"],
             ["Will be imported", String(validation.summary.willImport), validation.summary.willImport ? "var(--green-ink)" : "var(--red-ink)", `${validation.summary.valid} valid · ${validation.summary.warnings} with a warning`],
@@ -253,8 +429,8 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
               </select>
               <span className="grow" />
               {validation.summary.errors + validation.summary.duplicates ? <Btn kind="ghost" onClick={() => void errorReport(validation.rows, `${docSerial("ALC")}`)}>Download error report</Btn> : null}
-              <Btn kind="go" disabled={busy || !validation.summary.willImport || !canImport} onClick={() => void doImport()}>{busy ? "Importing…" : `Import ${validation.summary.willImport} valid record${validation.summary.willImport === 1 ? "" : "s"}`}</Btn>
-              <Btn kind="ghost" disabled={busy} onClick={() => { setValidation(null); setGrid(null); setFileName(null); }}>Cancel</Btn>
+              <Btn kind="go" disabled={busy || !validation.summary.willImport || !canImport} onClick={() => void doImport()}>{busy ? "Importing…" : validation.summary.errors + validation.summary.duplicates ? `Import valid records only (${validation.summary.willImport})` : `Import ${validation.summary.willImport} record${validation.summary.willImport === 1 ? "" : "s"}`}</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => { setValidation(null); setGrid(null); setFileName(null); setTpl(null); }}>Cancel import</Btn>
             </div>
             {validation.summary.errors + validation.summary.duplicates ? <div className="sub2 mt-2">{validation.summary.willImport} record{validation.summary.willImport === 1 ? "" : "s"} will be imported; {validation.summary.errors + validation.summary.duplicates} will not.</div> : null}
           </PBody>
@@ -274,7 +450,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
             {result.repeated ? <Note kind="info" title="This file was imported already">Nothing was allocated again.</Note> : null}
             <div className="row">
               {result.summary.errors + result.summary.duplicates ? <Btn kind="primary" onClick={() => void errorReport(result.rows, result.reference)}>Download error report</Btn> : null}
-              <Btn kind="ghost" onClick={() => { setResult(null); setGrid(null); setFileName(null); }}>Done</Btn>
+              <Btn kind="ghost" onClick={() => { setResult(null); setGrid(null); setFileName(null); setTpl(null); }}>Done</Btn>
             </div>
             <div className="sub2 mt-2">Each lecturer allocated is told by e-mail.</div>
           </PBody>
@@ -284,7 +460,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
       <Panel title="Import history" right={imports.length ? `${imports.length} import${imports.length === 1 ? "" : "s"}` : "No import yet"}>
         {imports.length ? (
           <DTable cols={["Reference", "File", "Uploaded", "Session", "Rows|mid", "Imported|mid", "Existing|mid", "Errors|mid", "Status|mid", "|num"]} rows={imports.map((i) => [
-            <b className="tnum" key="r">{i.reference}</b>,
+            <span key="r"><b className="tnum">{i.reference}</b>{i.template_reference ? <div className="sub2 tnum">{i.template_reference}{i.programme_type ? ` · ${typeWord(i.programme_type)}` : ""}</div> : null}{i.ticket ? <div className="sub2 tnum">Ticket {i.ticket}</div> : null}</span>,
             <span className="sub2" key="f">{i.file_name ?? "—"}</span>,
             <span key="u"><span className="sub2">{i.uploaded_by ?? i.uploader_office}</span><div className="sub2 tnum">{when(i.uploaded_at)} · {i.uploader_office}</div></span>,
             <span className="tnum" key="s">{i.session}{i.semester ? ` · ${semName(i.semester)}` : ""}</span>,

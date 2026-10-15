@@ -131,6 +131,21 @@ class AllocationReach {
         return c;
     }
 
+    /** the support ticket an act is made on: by its number (or id), one the agent's postings reach; the head and the Director reach
+     *  every ticket; none named is none (V408, shared by the desk and the department templates of V478) */
+    UUID ticket(String ref) {
+        String t = ref == null ? "" : ref.trim();
+        if (t.isEmpty()) return null;
+        UUID id = jdbc.sql("SELECT id FROM helpdesk.ticket WHERE upper(number) = upper(:n) OR id::text = lower(:n)").param("n", t).query(UUID.class).optional()
+                .orElseThrow(() -> new DomainRuleViolation("ALLOC_TICKET", "No support ticket has the number " + t + ".",
+                        new DomainRuleViolation.Remedy("Check the ticket number, or leave it blank.", "You")));
+        if (agent() && !Boolean.TRUE.equals(jdbc.sql("SELECT helpdesk.can_view(:me, :t)").param("me", actor()).param("t", id).query(Boolean.class).single())) {
+            throw new DomainRuleViolation("ALLOC_TICKET_SCOPE", "Ticket " + t + " is outside your support scope.",
+                    new DomainRuleViolation.Remedy("Work it from a queue you are posted to, or ask the Head of the Support Desk to assign it to you.", "Head of ICT Support Desk"));
+        }
+        return id;
+    }
+
     /** a filter on a query's department and faculty columns, for lists held to the reach */
     String where(Reach r, String deptColumn, String facultyColumn) {
         if (r.all()) return "TRUE";

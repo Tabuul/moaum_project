@@ -27,6 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
  * through the same allocation every desk uses: {@code catalogue.allocate_offering} for a lead,
  * {@code offering_teacher} for a co-lecturer, the offering's second examiner. The spreadsheet never
  * creates or changes a lecturer, a course, a department, a programme, a session or a semester.
+ *
+ * <p>V478: a file made from a department's template (AllocationTemplateService) is judged against the template's own context
+ * as well: every row in the template's session and semester, every course the department's own and taught to programmes of
+ * the template's kind, every lecturer of the department unless the row says the teaching crosses departments; a postgraduate
+ * template's rows go to the School's classes (stream PG), which the School opens. The import records the template and the
+ * ticket it answers.
  */
 @Service
 public class AllocationImportService {
@@ -52,7 +58,8 @@ public class AllocationImportService {
     public record Summary(int total, int valid, int warnings, int errors, int duplicates, int existing, int willImport) {
     }
 
-    public record Validation(Summary summary, List<Finding> rows) {
+    /** V478: template — the department template the file came from, and a newer one for the same context if there is one */
+    public record Validation(Summary summary, List<Finding> rows, Map<String, Object> template) {
     }
 
     public record ImportResult(UUID id, String reference, String status, boolean repeated, int imported, Summary summary, List<Finding> rows) {
@@ -165,12 +172,12 @@ public class AllocationImportService {
         final Map<String, Set<String>> offersOfCourse = new HashMap<>();      // course → programme|level
         final Map<String, Integer> load = new HashMap<>();                    // person|session|semester → units
 
-        Register(List<RowIn> rows) {
+        Register(List<RowIn> rows, String stream) {
             for (Map<String, Object> d : jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL").query().listOfRows()) {
                 deptByCode.put(up((String) d.get("code")), d);
                 deptCodeByName.put(up((String) d.get("name")), (String) d.get("code"));
             }
-            for (Map<String, Object> p : jdbc.sql("SELECT code, name, dept_code, archived FROM ref.programme").query().listOfRows()) {
+            for (Map<String, Object> p : jdbc.sql("SELECT code, name, dept_code, archived, category FROM ref.programme").query().listOfRows()) {
                 progByCode.put(up((String) p.get("code")), p);
                 progCodeByName.putIfAbsent(up((String) p.get("name")), (String) p.get("code"));
             }
@@ -226,8 +233,8 @@ public class AllocationImportService {
             List<String> realCodes = courseByCode.values().stream().map(Course::code).toList();
             if (!realCodes.isEmpty() && !sess.isEmpty()) {
                 for (List<String> part : chunks(realCodes, 2000)) {
-                    for (Map<String, Object> o : jdbc.sql("SELECT id, course_code, session, semester, lecturer_id, second_examiner_id FROM catalogue.offering WHERE session IN (:s) AND course_code IN (:c) AND stream = 'REGULAR'")
-                            .param("s", new ArrayList<>(sess)).param("c", part).query().listOfRows()) {
+                    for (Map<String, Object> o : jdbc.sql("SELECT id, course_code, session, semester, lecturer_id, second_examiner_id FROM catalogue.offering WHERE session IN (:s) AND course_code IN (:c) AND stream = :stream")
+                            .param("s", new ArrayList<>(sess)).param("c", part).param("stream", stream).query().listOfRows()) {
                         Offering off = new Offering((UUID) o.get("id"), (String) o.get("course_code"), (String) o.get("session"), ((Number) o.get("semester")).intValue(),
                                 (UUID) o.get("lecturer_id"), (UUID) o.get("second_examiner_id"));
                         offerings.put(key(off.courseCode(), off.session(), off.semester()), off);
@@ -250,7 +257,7 @@ public class AllocationImportService {
                     for (Map<String, Object> l : jdbc.sql("""
                             SELECT o.lecturer_id, o.session, o.semester, coalesce(sum(c.units), 0) AS units
                               FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                             WHERE o.lecturer_id IN (:p) AND o.session IN (:s) AND o.stream = 'REGULAR' GROUP BY 1, 2, 3
+                             WHERE o.lecturer_id IN (:p) AND o.session IN (:s) AND o.stream IN ('REGULAR', 'PG') GROUP BY 1, 2, 3
                             """).param("p", part).param("s", new ArrayList<>(sess)).query().listOfRows()) {
                         load.put(l.get("lecturer_id") + "|" + l.get("session") + "|" + l.get("semester"), ((Number) l.get("units")).intValue());
                     }
@@ -302,7 +309,12 @@ public class AllocationImportService {
     private record Judged(Finding finding, Plan plan) {
     }
 
-    private List<Judged> judge(List<RowIn> rows, Options opts) {
+    private List<Judged> judge(List<RowIn> rows, Options opts, AllocationTemplateService.Context tpl) {
+        // V478: the School of Postgraduate Studies allocates from a postgraduate department template only
+        if (tpl == null && AllocationTemplateService.pgOffice()) {
+            throw new DomainRuleViolation("ALLOC_TEMPLATE_REQUIRED", "The School of Postgraduate Studies uploads a department's postgraduate allocation template.",
+                    new DomainRuleViolation.Remedy("Choose the department, session and semester, download its template, fill it and upload that file.", "You"));
+        }
         if (rows == null || rows.isEmpty()) {
             throw new DomainRuleViolation("ALLOC_IMPORT_EMPTY", "The file has no allocation rows.", new DomainRuleViolation.Remedy("Fill the template's Allocations sheet and upload it again.", "You"));
         }
@@ -310,7 +322,7 @@ public class AllocationImportService {
             throw new DomainRuleViolation("ALLOC_IMPORT_TOO_LARGE", "The file has " + rows.size() + " rows; the limit is " + MAX_ROWS + " in one import.",
                     new DomainRuleViolation.Remedy("Split the file by department or semester and upload each part.", "You"));
         }
-        Register reg = new Register(rows);
+        Register reg = new Register(rows, tpl == null ? "REGULAR" : tpl.stream());
         boolean hod = scope.actingHod();
         String hodDept = hod ? scope.actingHodDept() : null;
         boolean facultyOffice = scope.actingFacultyOffice();
@@ -347,6 +359,14 @@ public class AllocationImportService {
             String role = roleOf(r.role());
             if (role == null) { codes.add("INVALID_FORMAT"); messages.add("Role \"" + t(r.role()) + "\" is not Lecturer, Co-lecturer or Second examiner"); fatal = true; role = "LECTURER"; }
 
+            // V478: a template's rows are in the template's session and semester
+            if (tpl != null && session != null && !session.equals(tpl.session())) {
+                codes.add("WRONG_SESSION"); messages.add("The row says " + session + "; template " + tpl.reference() + " is for " + tpl.session()); fatal = true;
+            }
+            if (tpl != null && semester != null && semester > 0 && semester != tpl.semester()) {
+                codes.add("WRONG_SEMESTER"); messages.add("The row says semester " + semester + "; template " + tpl.reference() + " is for semester " + tpl.semester()); fatal = true;
+            }
+
             // the session and the semester
             Map<String, Object> sess = session == null ? null : reg.sessions.get(session);
             if (session != null && sess == null) { codes.add("SESSION_NOT_FOUND"); messages.add("Academic session " + session + " is not on the calendar"); action = "Choose a session the University has opened on the academic calendar."; fatal = true; }
@@ -357,11 +377,26 @@ public class AllocationImportService {
 
             // the lecturer
             Person person = up(r.staffId()).isEmpty() ? null : reg.personsByStaff.get(up(r.staffId()));
+            // V478: a template's row that repeats an allocation on record (the template writes them in) is the register's own state,
+            // reported as already on record — not refused for a lecturer of another department, or a second examiner without a
+            // lecturer's office, whom the register already has
+            boolean onRecord = false;
+            Course recorded = tpl == null || up(r.courseCode()).isEmpty() ? null : reg.course(r.courseCode());
+            if (recorded != null && person != null && session != null && semester != null && semester > 0) {
+                Offering held = reg.offerings.get(key(recorded.code(), session, semester));
+                if (held != null) {
+                    onRecord = switch (role) {
+                        case "LECTURER" -> person.id().equals(held.lecturer());
+                        case "CO_LECTURER" -> reg.teachers.getOrDefault(held.id(), Set.of()).contains(person.id());
+                        default -> person.id().equals(held.second());
+                    };
+                }
+            }
             if (!up(r.staffId()).isEmpty() && person == null) { codes.add("STAFF_ID_NOT_FOUND"); messages.add("No member of staff holds the number " + t(r.staffId())); action = "Check the staff number on the teaching staff register."; fatal = true; }
             Set<String> lecturerDepts = person == null ? Set.of() : reg.deptsOfPerson.getOrDefault(person.id(), Set.of());
             if (person != null) {
                 if (person.ended()) { codes.add("LECTURER_INACTIVE"); messages.add(person.surname() + ", " + person.givenNames() + " has left the University"); fatal = true; }
-                else if (lecturerDepts.isEmpty()) { codes.add("LECTURER_NOT_FOUND"); messages.add(person.surname() + ", " + person.givenNames() + " holds no lecturer's office at present"); action = "Grant the lecturer's office over their department on Users & Roles, or on the teaching staff register."; fatal = true; }
+                else if (lecturerDepts.isEmpty() && !onRecord) { codes.add("LECTURER_NOT_FOUND"); messages.add(person.surname() + ", " + person.givenNames() + " holds no lecturer's office at present"); action = "Grant the lecturer's office over their department on Users & Roles, or on the teaching staff register."; fatal = true; }
                 String wantName = up(r.lecturerName());
                 if (!wantName.isEmpty() && !wantName.contains(up(person.surname())) && !up(person.surname()).contains(wantName.split(" ")[0])) {
                     codes.add("LECTURER_NAME_MISMATCH"); messages.add("The file says \"" + t(r.lecturerName()) + "\"; staff number " + t(r.staffId()) + " is " + person.surname() + ", " + person.givenNames());
@@ -386,6 +421,23 @@ public class AllocationImportService {
                     codes.add("COURSE_TITLE_MISMATCH"); messages.add("The file calls " + course.code() + " \"" + t(r.courseTitle()) + "\"; the catalogue has \"" + course.title() + "\" — the catalogue stands");
                     if (!"ERROR".equals(status)) status = "WARNING";
                 }
+                if (tpl != null && !tpl.dept().equalsIgnoreCase(course.dept())) {
+                    codes.add("WRONG_DEPARTMENT"); messages.add(course.code() + " belongs to " + reg.deptName(course.dept()) + ", not " + tpl.deptName() + ", the template's department");
+                    action = "Allocate it from its own department's template."; fatal = true;
+                }
+                if (tpl != null) {
+                    Set<String> offers = reg.offersOfCourse.getOrDefault(up(course.code()), Set.of());
+                    boolean ofKind = offers.isEmpty()
+                            ? (AllocationTemplateService.PG.equals(tpl.type()) ? course.level() >= 700 : course.level() < 700)
+                            : offers.stream().anyMatch(x -> {
+                                Map<String, Object> p = reg.progByCode.get(x.substring(0, x.indexOf('|')));
+                                return p != null && tpl.category().equals(p.get("category"));
+                            });
+                    if (!ofKind) {
+                        codes.add("WRONG_PROGRAMME_TYPE"); messages.add(course.code() + " is taught to no " + (AllocationTemplateService.PG.equals(tpl.type()) ? "postgraduate" : "undergraduate") + " programme");
+                        action = "Allocate it from the template for its own kind of programme."; fatal = true;
+                    }
+                }
                 String sheetCourseDept = reg.deptCode(r.courseDept());
                 if (!up(r.courseDept()).isEmpty() && sheetCourseDept == null) { codes.add("DEPARTMENT_NOT_FOUND"); messages.add("Course department \"" + t(r.courseDept()) + "\" is not on the register"); fatal = true; }
                 else if (sheetCourseDept != null && !sheetCourseDept.equalsIgnoreCase(course.dept())) {
@@ -395,7 +447,14 @@ public class AllocationImportService {
                 // the lecturer's department against the course's: strict, unless the course is a service course (GST) or the
                 // row says so, as the allocation desk's "lecturers from other departments" does
                 boolean service = "GST".equalsIgnoreCase(course.kind()) || course.generalOffice() != null;
-                if (person != null && !lecturerDepts.isEmpty() && !lecturerDepts.contains(course.dept()) && !service && !yes(r.crossDepartment())) {
+                if (onRecord) {
+                    // as the register has it: nothing for the department rule to judge
+                } else if (tpl != null && person != null && !lecturerDepts.isEmpty() && !lecturerDepts.contains(tpl.dept()) && !service && !yes(r.crossDepartment())) {
+                    codes.add("LECTURER_NOT_IN_DEPARTMENT");
+                    messages.add("Lecturer not found or not authorised for this department: " + person.surname() + " is in " + String.join(", ", lecturerDepts.stream().map(reg::deptName).sorted().toList())
+                            + ", not " + tpl.deptName());
+                    action = "Choose a lecturer of " + tpl.deptName() + " from the template's list, or put YES in Cross-department for teaching across departments."; fatal = true;
+                } else if (person != null && !lecturerDepts.isEmpty() && !lecturerDepts.contains(course.dept()) && !service && !yes(r.crossDepartment())) {
                     codes.add("CROSS_DEPARTMENT_NOT_ALLOWED");
                     messages.add(course.code() + " belongs to " + reg.deptName(course.dept()) + "; " + person.surname() + " is in " + String.join(", ", lecturerDepts.stream().map(reg::deptName).sorted().toList()));
                     action = "Put YES in Cross-department, or choose a lecturer of the course's department."; fatal = true;
@@ -415,6 +474,10 @@ public class AllocationImportService {
                 if (prog != null) {
                     Map<String, Object> p = reg.progByCode.get(up(prog));
                     if (Boolean.TRUE.equals(p.get("archived"))) { codes.add("PROGRAMME_ARCHIVED"); messages.add("Programme " + prog + " is archived"); fatal = true; }
+                    if (tpl != null && !tpl.category().equals(p.get("category"))) {
+                        codes.add("WRONG_PROGRAMME"); messages.add(p.get("name") + " is not " + (AllocationTemplateService.PG.equals(tpl.type()) ? "a postgraduate" : "an undergraduate") + " programme");
+                        fatal = true;
+                    }
                     Set<String> offers = reg.offersOfCourse.getOrDefault(up(course.code()), Set.of());
                     boolean toProg = offers.stream().anyMatch(x -> x.startsWith(up(prog) + "|"));
                     if (!toProg) { codes.add("COURSE_NOT_OFFERED_TO_PROGRAMME"); messages.add(course.code() + " is not on the structure of " + p.get("name")); action = "Bind the course into the programme's structure on the catalogue, or leave the programme blank."; fatal = true; }
@@ -427,7 +490,11 @@ public class AllocationImportService {
             // the class: the one the session holds, or — V443: a course is never tied to a session — one the import opens when the
             // course is taught in that semester; a course not taught in that semester has no class to open
             Offering off = (course == null || session == null || semester == null) ? null : reg.offerings.get(key(course.code(), session, semester));
-            if (course != null && session != null && semester != null && sess != null && off == null && course.runsIn(semester)) {
+            if (tpl != null && AllocationTemplateService.PG.equals(tpl.type()) && course != null && session != null && semester != null && sess != null
+                    && off == null && course.runsIn(semester)) {
+                codes.add("PG_CLASS_NOT_OPEN"); messages.add(course.code() + " has no postgraduate class in " + session + " semester " + semester + " yet");
+                action = "The School of Postgraduate Studies opens its classes on Classes & course upload; allocate once it is open."; fatal = true;
+            } else if (course != null && session != null && semester != null && sess != null && off == null && course.runsIn(semester)) {
                 codes.add("CLASS_OPENS"); messages.add(course.code() + " has no class in " + session + " semester " + semester + " yet; the import opens it with this allocation");
                 if ("VALID".equals(status)) status = "WARNING";
                 off = new Offering(null, course.code(), session, semester, null, null);
@@ -512,15 +579,40 @@ public class AllocationImportService {
 
     @Transactional(readOnly = true)
     public Validation validate(List<RowIn> rows, Options opts) {
-        List<Judged> judged = judge(rows, opts == null ? new Options(false, false) : opts);
-        return new Validation(summarise(judged), judged.stream().map(Judged::finding).toList());
+        return validate(rows, opts, null);
+    }
+
+    /** V478: the same, for a file made from a department template, whose context has been checked */
+    @Transactional(readOnly = true)
+    public Validation validate(List<RowIn> rows, Options opts, AllocationTemplateService.Context tpl) {
+        List<Judged> judged = judge(rows, opts == null ? new Options(false, false) : opts, tpl);
+        return new Validation(summarise(judged), judged.stream().map(Judged::finding).toList(), templateWords(tpl));
+    }
+
+    private static Map<String, Object> templateWords(AllocationTemplateService.Context tpl) {
+        if (tpl == null) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("reference", tpl.reference());
+        m.put("dept", tpl.dept());
+        m.put("deptName", tpl.deptName());
+        m.put("programmeType", tpl.type());
+        m.put("session", tpl.session());
+        m.put("semester", tpl.semester());
+        m.put("newer", tpl.newer());
+        return m;
     }
 
     /* ── the import: the valid rows, in one transaction, through the same allocation every desk uses ── */
 
-    @SuppressWarnings("unchecked")
     @Transactional
     public ImportResult importRows(UUID importKey, String fileName, List<RowIn> rows, Options opts) {
+        return importRows(importKey, fileName, rows, opts, null, null);
+    }
+
+    /** V478: the same, from a department template (checked), on the ticket named; the record carries both */
+    @SuppressWarnings("unchecked")
+    @Transactional
+    public ImportResult importRows(UUID importKey, String fileName, List<RowIn> rows, Options opts, AllocationTemplateService.Context tpl, UUID ticket) {
         if (importKey == null) {
             throw new DomainRuleViolation("ALLOC_IMPORT_KEY", "The import has no validation key.",
                     new DomainRuleViolation.Remedy("Validate the file again and import from the preview.", "You"));
@@ -535,9 +627,10 @@ public class AllocationImportService {
                             ((Number) already.get("errors")).intValue(), 0, ((Number) already.get("existing")).intValue(), imported), findings);
         }
         Options o = opts == null ? new Options(false, false) : opts;
-        List<Judged> judged = judge(rows, o);
-        // V408: the allocation history says these came from the bulk import
+        List<Judged> judged = judge(rows, o, tpl);
+        // V408: the allocation history says these came from the bulk import; V478: and the ticket it answers
         jdbc.sql("SELECT set_config('moaum.allocation_source', 'IMPORT', true)").query().listOfRows();
+        if (ticket != null) jdbc.sql("SELECT set_config('moaum.allocation_ticket', :t, true)").param("t", ticket.toString()).query().listOfRows();
         UUID me = scope.actorId();
         int imported = 0;
         String session = null;
@@ -579,7 +672,7 @@ public class AllocationImportService {
         }
         Summary s = summarise(judged);
         String status = imported == 0 ? "NOTHING_TO_IMPORT" : s.errors() + s.duplicates() > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED";
-        String scopeDept = scope.actingHod() ? scope.actingHodDept() : null;
+        String scopeDept = tpl != null ? tpl.dept() : scope.actingHod() ? scope.actingHodDept() : null;
         List<Finding> findings = judged.stream().map(Judged::finding).toList();
         String findingsJson, optionsJson;
         try {
@@ -595,6 +688,18 @@ public class AllocationImportService {
                 .param("d", scopeDept, Types.VARCHAR).param("total", s.total()).param("valid", s.valid() + s.warnings()).param("imported", imported)
                 .param("existing", s.existing()).param("skipped", s.total() - imported).param("errors", s.errors() + s.duplicates()).param("warnings", s.warnings())
                 .param("status", status).param("opts", optionsJson).param("findings", findingsJson).query().singleRow();
+        // V478: the template the file came from, its kind of programme, and the ticket
+        if (tpl != null || ticket != null) {
+            jdbc.sql("UPDATE catalogue.allocation_import SET template_id = :t, programme_type = :p, ticket_id = :k WHERE id = :id")
+                    .param("t", tpl == null ? null : tpl.id(), Types.OTHER).param("p", tpl == null ? null : tpl.type(), Types.VARCHAR)
+                    .param("k", ticket, Types.OTHER).param("id", rec.get("id")).update();
+        }
+        if (ticket != null) {
+            jdbc.sql("SELECT helpdesk.note_allocation(:t, :s, :r)").param("t", ticket, Types.OTHER)
+                    .param("s", "Course allocation import " + rec.get("reference") + (tpl == null ? "" : " from template " + tpl.reference()) + ": " + imported
+                            + " allocation" + (imported == 1 ? "" : "s") + " made, " + (s.errors() + s.duplicates()) + " row" + (s.errors() + s.duplicates() == 1 ? "" : "s") + " refused")
+                    .param("r", AuditContextHolder.current().map(c -> c.reason()).orElse(null), Types.VARCHAR).query().listOfRows();
+        }
         return new ImportResult((UUID) rec.get("id"), (String) rec.get("reference"), (String) rec.get("status"), false, imported, s, findings);
     }
 
@@ -644,6 +749,10 @@ public class AllocationImportService {
             where = " WHERE (i.uploaded_by = :me OR i.scope_dept IN (SELECT code FROM ref.department WHERE faculty_code = :f))";
             params.put("f", scope.actingFaculty() == null ? "__none__" : scope.actingFaculty());
             params.put("me", me);
+        } else if (AllocationTemplateService.pgOffice()) {
+            // V478: the School sees its own imports and every postgraduate template's
+            where = " WHERE (i.uploaded_by = :me OR i.programme_type = 'POSTGRADUATE')";
+            params.put("me", me);
         } else if (AllocationReach.agent()) {
             // V408: an agent sees their own imports and those of the departments their postings' bulk allocation reaches
             AllocationReach.Reach r = reach.of(AllocationReach.BULK);
@@ -656,7 +765,9 @@ public class AllocationImportService {
             }
         }
         var q = jdbc.sql("""
-                SELECT i.id, i.reference, i.file_name, i.session, i.semester, i.scope_dept, i.uploader_office, i.uploaded_at,
+                SELECT i.id, i.reference, i.file_name, i.session, i.semester, i.scope_dept, i.uploader_office, i.uploaded_at, i.programme_type,
+                       (SELECT t.reference FROM catalogue.allocation_template t WHERE t.id = i.template_id) AS template_reference,
+                       (SELECT k.number FROM helpdesk.ticket k WHERE k.id = i.ticket_id) AS ticket,
                        concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS uploaded_by,
                        i.total_rows, i.valid_rows, i.imported, i.existing, i.skipped, i.errors, i.warnings, i.status
                   FROM catalogue.allocation_import i LEFT JOIN iam.person p ON p.id = i.uploaded_by

@@ -382,16 +382,7 @@ class AllocationDeskController {
 
     /** the ticket an act is made on: by its number (or id), one the agent's postings reach; the head and the Director reach every ticket */
     private UUID ticket(String ref) {
-        String t = blank(ref);
-        if (t.isEmpty()) return null;
-        UUID id = jdbc.sql("SELECT id FROM helpdesk.ticket WHERE upper(number) = upper(:n) OR id::text = lower(:n)").param("n", t).query(UUID.class).optional()
-                .orElseThrow(() -> new DomainRuleViolation("ALLOC_TICKET", "No support ticket has the number " + t + ".",
-                        new DomainRuleViolation.Remedy("Check the ticket number, or leave it blank.", "You")));
-        if (AllocationReach.agent() && !Boolean.TRUE.equals(jdbc.sql("SELECT helpdesk.can_view(:me, :t)").param("me", AllocationReach.actor()).param("t", id).query(Boolean.class).single())) {
-            throw new DomainRuleViolation("ALLOC_TICKET_SCOPE", "Ticket " + t + " is outside your support scope.",
-                    new DomainRuleViolation.Remedy("Work it from a queue you are posted to, or ask the Head of the Support Desk to assign it to you.", "Head of ICT Support Desk"));
-        }
-        return id;
+        return reach.ticket(ref);
     }
 
     /** the reason and ticket the history and the ticket's timeline carry (the triggers read them from the transaction) */
