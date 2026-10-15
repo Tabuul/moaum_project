@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import type { Register, RecordsResult, ChangeQueue } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister } from "@/lib/credentials";
 import type { SheetListing } from "@/lib/results";
@@ -63,6 +64,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
       ) : (
         <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<LinkBtn kind="primary" href="/admissions">Open admissions</LinkBtn>} />
       )}
+      <StudentTypeCards />
       <StatsPanel session={session} />
       <ClearanceAwaiting />
       <Tiles items={[

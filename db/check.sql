@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 308
+\set EXPECTED 309
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 43, n || ' offices (40 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415 and the Preliminary Science Office V446; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 44, n || ' offices (41 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446 and the Sandwich Programme Office V469; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -13823,6 +13823,125 @@ BEGIN
                  AND offer_pg AND offer_low LIKE 'CAT_PG_LEVEL:%' AND offer_ug LIKE 'CAT_BASIS:%', false),
         format('caps %s baseline %s | allocation free %s, binding free %s none %s, off the desk %s | cycle "%s" self "%s" removed %s | empty %s off-level %s cycle %s summary %s | noted %s | offer pg %s low "%s" ug "%s"',
                caps_ok, base_ok, alloc_free, bind_free, bind_none, alloc_off, cycle_msg, self_msg, removed, empty_found, off_found, cycle_found, summary_ok, noted, offer_pg, offer_low, offer_ug));
+END $$;
+-- ── V469. The central student classification: every learner classified from structured fields — a decision, the entry mode,
+--    the programme category, never a name or a number; a record nothing claims, or whose type does not admit its programme,
+--    REQUIRES_CLASSIFICATION and counts as no type; only the Academic Office or the Registry decides, with a reason, each
+--    decision kept; JUPEB and Preliminary learners in the one learner view as their own types (a Preliminary target never makes
+--    an undergraduate); a progression keeps the earlier record; the registry carries ids, centres and the offices it binds ──
+DO $$
+DECLARE
+    v_ses text := policy.university_current_session();
+    v_actor uuid := gen_random_uuid();
+    v_ug text; v_pg text; v_named text; v_fac text; v_dept text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid();
+    cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+    jacc uuid; japp uuid; jdraft uuid; jacc2 uuid;
+    c1 record; c2 record; c3 record; c4 record; c2b record;
+    lj record; lp record; lp2 record;
+    v_lecturer text; v_noreason text; v_jupeb_type text; v_centre_hod text; v_dup text; v_name text; v_bad_office text;
+    v_decisions int; v_current int; v_events int; v_kind text; v_register_ok boolean; v_draft_absent boolean;
+    v_ids_ok boolean; v_registry_ok boolean; v_future_ok boolean; v_named_ug boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V469', true);
+
+    SELECT p.code, p.faculty_code, p.dept_code INTO v_ug, v_fac, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    SELECT p.code INTO v_pg FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    -- a programme whose NAME reads postgraduate but whose category is undergraduate: the name decides nothing
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_named FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score) VALUES (v_named, 'M.Sc. CHECK V469 (A NAME ONLY)', v_dept, v_fac, 'UNDER GRADUATE', 0);
+
+    INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status) VALUES
+        (s1, 'MOAUM/ADM/69/469001', 'CHECKV469A', 'Named', v_named, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED'),
+        (s2, 'MOAUM/ADM/69/469002', 'CHECKV469B', 'Conflicting', v_ug, 'POSTGRADUATE', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED'),
+        (s3, 'MOAUM/ADM/69/469003', 'CHECKV469C', 'Continuing', v_ug, 'CCE', 'PART_TIME', v_ses, 100, 100, 'ADMITTED'),
+        (s4, 'MOAUM/ADM/69/469004', 'CHECKV469D', 'Postgraduate', v_pg, 'POSTGRADUATE', 'FULL_TIME', v_ses, 700, 700, 'ADMITTED'),
+        (s5, 'MOAUM/ADM/69/469005', 'CHECKV469P', 'Progressed', v_ug, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED');
+
+    SELECT * INTO c1 FROM people.student_classification WHERE student_id = s1;
+    SELECT * INTO c2 FROM people.student_classification WHERE student_id = s2;
+    SELECT * INTO c3 FROM people.student_classification WHERE student_id = s3;
+    SELECT * INTO c4 FROM people.student_classification WHERE student_id = s4;
+    v_named_ug := c1.programme_type = 'UNDERGRADUATE' AND c1.type_source = 'ENTRY_MODE' AND c1.admission_route = 'UTME' AND c1.centre_code = 'MAIN_CAMPUS'
+                  AND c1.centre_source = 'PROGRAMME_TYPE' AND c1.classification_status = 'CLASSIFIED';
+
+    -- only the Academic Office or the Registry decides, and never without a reason
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    BEGIN PERFORM people.classify_student(s2, 'UNDERGRADUATE', 'UTME', NULL, 'not mine'); EXCEPTION WHEN insufficient_privilege THEN v_lecturer := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM people.classify_student(s2, 'UNDERGRADUATE', 'UTME', NULL, '  '); EXCEPTION WHEN check_violation THEN v_noreason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.classify_student(s2, 'JUPEB', NULL, NULL, 'CHECK V469'); EXCEPTION WHEN check_violation THEN v_jupeb_type := split_part(SQLERRM, ':', 1); END;
+    PERFORM people.classify_student(s2, 'POSTGRADUATE', 'PG_APPLICATION', NULL, 'CHECK V469: first reading');
+    PERFORM people.classify_student(s2, 'UNDERGRADUATE', 'UTME', 'ADIKPO', 'CHECK V469: the admission letter says UTME');
+    SELECT * INTO c2b FROM people.student_classification WHERE student_id = s2;
+    SELECT count(*), count(*) FILTER (WHERE superseded_at IS NULL) INTO v_decisions, v_current FROM people.classification_decision WHERE student_id = s2;
+    SELECT count(*) INTO v_events FROM people.programme_type_event WHERE student_id = s2 AND event = 'CORRECTION';
+
+    -- a student's centre is the Academic Office's or the Registry's to record
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    BEGIN UPDATE people.student SET centre_code = 'OTHER' WHERE id = s1; EXCEPTION WHEN check_violation THEN v_centre_hod := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- the JUPEB and Preliminary learners, as their own types, in the one view
+    INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check469a@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO jacc;
+    INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check469b@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO jacc2;
+    INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state, subjects_registered_at)
+    VALUES (jacc, v_ses, 'JUPEB/APP/2069/469001', 'CHECKV469J', 'Learner', 'zz.check469a@example.com', 'STUDENT', now()) RETURNING id INTO japp;
+    INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state)
+    VALUES (jacc2, v_ses, 'JUPEB/APP/2069/469002', 'CHECKV469K', 'Applicant', 'zz.check469b@example.com', 'DRAFT') RETURNING id INTO jdraft;
+    INSERT INTO admissions.candidate (id, session, surname, other_names, programme, entry_mode, entry_level, offer_state, sex)
+    VALUES (cand, v_ses, 'CHECKV469P', 'Progressed', 'Preliminary Science', 'PRELIMINARY', 0, 'ADMITTED', 'F');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, email, phone, password_hash)
+    VALUES (acct, v_ses, cand, 'zz.check469p@example.com', '08034690001', 'SET_ON_FIRST_LOGIN');
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, v_ses, 'APP/69/469001');
+    INSERT INTO admissions.prelim_review (application_id, route, state, target_programme) VALUES (app, 'PRELIMINARY_SCIENCE', 'ADMITTED', v_ug);
+
+    SELECT * INTO lj FROM people.learner WHERE learner_id = japp;
+    SELECT * INTO lp FROM people.learner WHERE learner_id = app;
+    v_draft_absent := NOT EXISTS (SELECT 1 FROM people.learner WHERE learner_id = jdraft);
+    v_register_ok := (SELECT count(*) FROM people.learner WHERE source = 'REGISTER') = (SELECT count(*) FROM people.student WHERE duplicate_of IS NULL)
+                     AND NOT EXISTS (SELECT learner_id FROM people.learner GROUP BY learner_id HAVING count(*) > 1);
+
+    -- a progression keeps the earlier record and names both types; once only; never to another surname
+    PERFORM people.record_progression(s5, 'PRELIMINARY', 'app/69/469001', 'CHECK V469: admitted to the degree after Preliminary Science');
+    SELECT * INTO lp2 FROM people.learner WHERE learner_id = app;
+    SELECT kind INTO v_kind FROM people.programme_type_event WHERE application_id = app AND event = 'PROGRESSION';
+    BEGIN PERFORM people.record_progression(s5, 'PRELIMINARY', 'APP/69/469001', 'again'); EXCEPTION WHEN unique_violation THEN v_dup := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.record_progression(s1, 'JUPEB', 'JUPEB/APP/2069/469001', 'CHECK V469'); EXCEPTION WHEN check_violation THEN v_name := split_part(SQLERRM, ':', 1); END;
+
+    -- the registry: a uuid id on every type, the centres and offices it binds, the future types present and switched off
+    v_ids_ok := (SELECT count(DISTINCT id) = count(*) AND bool_and(id IS NOT NULL) FROM finance.programme_type);
+    v_registry_ok := (SELECT count(*) = 6 FROM finance.programme_type
+                       WHERE code IN ('UNDERGRADUATE', 'POSTGRADUATE', 'CCE', 'PRELIMINARY', 'SANDWICH', 'JUPEB') AND active AND default_centre IS NOT NULL)
+                     AND (SELECT offices FROM finance.programme_type WHERE code = 'SANDWICH') = ARRAY['sandwich']
+                     AND EXISTS (SELECT 1 FROM ref.office WHERE code = 'sandwich');
+    v_future_ok := (SELECT count(*) = 4 AND NOT bool_or(active) FROM finance.programme_type WHERE code IN ('PRE_DEGREE', 'DIPLOMA', 'CERTIFICATE', 'PROFESSIONAL'));
+    BEGIN UPDATE finance.programme_type SET offices = ARRAY['nosuchoffice'] WHERE code = 'OTHER'; EXCEPTION WHEN foreign_key_violation THEN v_bad_office := split_part(SQLERRM, ':', 1); END;
+
+    PERFORM pg_temp.assert('V469: every learner is classified from structured fields — never a name; a record nothing claims or whose type does not admit its programme requires classification and counts as no type; only the Academic Office or the Registry decides, with a reason, every decision kept; JUPEB and Preliminary learners are their own types; a progression keeps the earlier record',
+        coalesce(v_named_ug
+            AND c2.programme_type IS NULL AND c2.proposed_type = 'POSTGRADUATE' AND c2.classification_status = 'REQUIRES_CLASSIFICATION' AND c2.classification_issue = 'CONFLICTING'
+            AND c3.programme_type = 'CCE' AND c3.admission_route = 'CCE_JAMB' AND c3.centre_code = 'CCE' AND c3.study_mode = 'PART_TIME'
+            AND c4.programme_type = 'POSTGRADUATE' AND c4.admission_route = 'PG_APPLICATION' AND c4.classification_status = 'CLASSIFIED'
+            AND v_lecturer = 'CLASSIFICATION_OFFICE' AND v_noreason = 'CLASSIFICATION_REASON' AND v_jupeb_type = 'CLASSIFICATION_TYPE'
+            AND c2b.programme_type = 'UNDERGRADUATE' AND c2b.type_source = 'DECISION' AND c2b.admission_route = 'UTME' AND c2b.centre_code = 'ADIKPO' AND c2b.centre_source = 'RECORDED'
+            AND v_decisions = 2 AND v_current = 1 AND v_events = 2 AND v_centre_hod = 'STUDENT_CENTRE_LOCKED'
+            AND lj.programme_type = 'JUPEB' AND lj.faculty_code IS NULL AND lj.status = 'ACTIVE' AND lj.admission_route = 'JUPEB_APPLICATION' AND lj.jupeb_registered AND v_draft_absent
+            AND lp.programme_type = 'PRELIMINARY' AND lp.programme_is_target AND lp.programme_code = v_ug AND lp.faculty_code = v_fac AND lp.status = 'ADMITTED'
+            AND lp.admission_route = 'PRELIMINARY_APPLICATION' AND lp.study_mode = 'FULL_TIME'
+            AND lp2.status = 'PROGRESSED' AND v_kind = 'PRELIMINARY_TO_UNDERGRADUATE' AND v_dup = 'PROGRESSION_RECORDED' AND v_name = 'PROGRESSION_NAME'
+            AND v_register_ok AND v_ids_ok AND v_registry_ok AND v_future_ok AND v_bad_office = 'PROGRAMME_TYPE_OFFICE', false),
+        format('named %s | conflicting %s/%s/%s/%s | cce %s/%s/%s/%s | pg %s/%s | refusals %s, %s, %s | decided %s/%s/%s/%s/%s, decisions %s current %s events %s, hod centre %s | jupeb %s/%s/%s/%s/%s, draft absent %s | prelim %s/%s/%s/%s/%s/%s | progressed %s, kind %s, again %s, other surname %s | register %s ids %s registry %s future %s bad office %s',
+               v_named_ug, c2.programme_type, c2.proposed_type, c2.classification_status, c2.classification_issue,
+               c3.programme_type, c3.admission_route, c3.centre_code, c3.study_mode, c4.programme_type, c4.admission_route,
+               v_lecturer, v_noreason, v_jupeb_type, c2b.programme_type, c2b.type_source, c2b.admission_route, c2b.centre_code, c2b.centre_source,
+               v_decisions, v_current, v_events, v_centre_hod,
+               lj.programme_type, lj.faculty_code, lj.status, lj.admission_route, lj.jupeb_registered, v_draft_absent,
+               lp.programme_type, lp.programme_is_target, lp.programme_code = v_ug, lp.status, lp.admission_route, lp.study_mode,
+               lp2.status, v_kind, v_dup, v_name, v_register_ok, v_ids_ok, v_registry_ok, v_future_ok, v_bad_office));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

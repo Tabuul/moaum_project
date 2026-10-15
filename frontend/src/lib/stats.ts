@@ -10,12 +10,14 @@ export interface StatGender extends StatCounts { sex: string | null }
 export interface StatEntry extends StatCounts { entry_mode: string | null }
 export interface StatLevel extends StatCounts { level: number | null }
 export interface StatEntrySession extends StatCounts { entry_session: string | null }
+/** V469: the figures by programme type, from the one classification; null for the students that require classification */
+export interface StatProgrammeType extends StatCounts { programme_type: string | null }
 export interface StatScope { kind: "UNIVERSITY" | "PG_SCHOOL" | "COLLEGE" | "FACULTY" | "DEPARTMENT"; label: string; faculty?: string; department?: string; money: boolean }
 export interface StatSummary {
   scope: StatScope; session: string; semester: number | null; totals: StatCounts;
   byFaculty: StatFaculty[]; byDepartment: StatDepartment[]; byProgramme: StatProgramme[]; byDegreeType: StatDegree[];
-  byGender: StatGender[]; byEntryMode: StatEntry[]; byLevel: StatLevel[]; byEntrySession: StatEntrySession[];
-  options: { sessions: string[]; semesters: number[]; programmes: { faculty_code: string; faculty: string; dept_code: string; department: string; programme_code: string; programme: string }[]; levels: number[]; statuses: string[]; degreeTypes: string[]; genders: string[]; entryModes: string[]; entrySessions: string[] };
+  byGender: StatGender[]; byEntryMode: StatEntry[]; byLevel: StatLevel[]; byEntrySession: StatEntrySession[]; byProgrammeType?: StatProgrammeType[];
+  options: { programmeTypes?: { code: string; name: string }[]; sessions: string[]; semesters: number[]; programmes: { faculty_code: string; faculty: string; dept_code: string; department: string; programme_code: string; programme: string }[]; levels: number[]; statuses: string[]; degreeTypes: string[]; genders: string[]; entryModes: string[]; entrySessions: string[] };
   window: { number: number; registration_opens: string | null; registration_closes: string | null; state: string }[];
 }
 export interface StatRow {
@@ -23,6 +25,7 @@ export interface StatRow {
   programme_code: string; programme: string; level: number; status: string; entry_mode: string; is_pg: boolean; is_chs: boolean; degree_type: string | null;
   payable?: number; paid_amount?: number; outstanding?: number; pay_status: string; paid: boolean; last_paid_at: string | null; last_reference?: string | null;
   registered: boolean; registration_status: string | null; registered_at: string | null; sex?: string | null; entry_session?: string | null; matriculated_at?: string | null;
+  programme_type?: string | null; programme_type_name?: string | null;
 }
 export interface StatPage { scope: StatScope; session: string; semester: number | null; which: Which; total: number; page: number; size: number; rows: StatRow[] }
 
@@ -37,13 +40,14 @@ export const entryWord = (e: string | null | undefined) => (e ? e.replace(/_/g, 
 export const DEGREE_WORD: Record<string, string> = { PGD: "Postgraduate Diploma", MASTERS: "Master", MPHIL: "M.Phil.", PHD: "Ph.D." };
 export const SEMESTER_WORD = (n: number | null | string) => (n == null || n === "" ? "Whole session" : Number(n) === 1 ? "First semester" : Number(n) === 2 ? "Second semester" : "Third semester");
 
-export interface StatFilters { session: string; semester: string; fac: string; dept: string; prog: string; level: string; status: string; degree: string; sex: string; entry: string; entrySession: string }
-export const EMPTY_FILTERS: StatFilters = { session: "", semester: "", fac: "", dept: "", prog: "", level: "", status: "", degree: "", sex: "", entry: "", entrySession: "" };
+export interface StatFilters { type: string; session: string; semester: string; fac: string; dept: string; prog: string; level: string; status: string; degree: string; sex: string; entry: string; entrySession: string }
+export const EMPTY_FILTERS: StatFilters = { type: "", session: "", semester: "", fac: "", dept: "", prog: "", level: "", status: "", degree: "", sex: "", entry: "", entrySession: "" };
 
 /** the filters as the address carries them; anything malformed is dropped rather than sent */
 export function readStatFilters(p: Record<string, string | string[] | undefined>): StatFilters {
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
   return {
+    type: /^[A-Z][A-Z_]{1,30}$/.test(s("type")) && s("type") !== "ALL" ? s("type") : "",
     session: /^\d{4}\/\d{4}$/.test(s("session")) ? s("session") : "",
     semester: /^[123]$/.test(s("semester")) ? s("semester") : "",
     fac: s("fac").slice(0, 20), dept: s("dept").slice(0, 20), prog: s("prog").slice(0, 20),

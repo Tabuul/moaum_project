@@ -26,17 +26,17 @@ export function Detail({ data, filters, which, q: initialQ }: { data: StatPage; 
   const f: StatFilters = { ...filters, session: data.session, semester: data.semester == null ? "" : String(data.semester) };
   const money = data.scope.money;
   const pages = Math.max(1, Math.ceil(data.total / data.size));
-  const scopeWords = [data.scope.label, data.session, SEMESTER_WORD(data.semester), f.fac, f.dept, f.prog, f.level ? `${f.level} Level` : null, f.degree ? DEGREE_WORD[f.degree] : null, initialQ ? `search “${initialQ}”` : null].filter(Boolean).join(" · ");
+  const scopeWords = [data.scope.label, f.type ? `Student type: ${data.rows[0]?.programme_type_name ?? f.type}` : null, data.session, SEMESTER_WORD(data.semester), f.fac, f.dept, f.prog, f.level ? `${f.level} Level` : null, f.degree ? DEGREE_WORD[f.degree] : null, initialQ ? `search “${initialQ}”` : null].filter(Boolean).join(" · ");
   const go = (extra: Record<string, string | number | undefined>) => queryNav(`/stats/students?${statQuery(f, { which, q: initialQ, ...extra })}`);
 
   /* the columns follow the figure opened */
   const showPay = which !== "REGISTERED";
   const showReg = which !== "PAID" && which !== "NOT_PAID";
-  const HEAD = ["S/N", "Student ID", "Student Name", "Faculty", "Department", "Programme", "Level", "Academic Session", "Semester",
+  const HEAD = ["S/N", "Student ID", "Student Name", "Student Type", "Faculty", "Department", "Programme", "Level", "Academic Session", "Semester",
     ...(showPay ? ["School Fees Status", ...(money ? ["Amount Payable", "Amount Paid", "Outstanding Balance", "Payment Reference"] : []), "Payment Date"] : []),
     ...(showReg ? ["Course Registration Status", "Registration Date"] : [])];
   const line = (r: StatRow, i: number) => [
-    i + 1, r.number, `${r.surname}, ${r.other_names}`, r.faculty, r.department, r.programme, r.level, data.session, SEMESTER_WORD(data.semester),
+    i + 1, r.number, `${r.surname}, ${r.other_names}`, r.programme_type_name ?? "Requires classification", r.faculty, r.department, r.programme, r.level, data.session, SEMESTER_WORD(data.semester),
     ...(showPay ? [PAY[r.pay_status]?.[0] ?? r.pay_status, ...(money ? [Number(r.payable ?? 0), Number(r.paid_amount ?? 0), Number(r.outstanding ?? 0), r.last_reference ?? ""] : []), r.last_paid_at ? dayOf(r.last_paid_at) : ""] : []),
     ...(showReg ? [r.registered ? (REG[r.registration_status ?? ""]?.[0] ?? "Registered") : "Not registered", r.registered_at ? dayOf(r.registered_at) : ""] : []),
   ];
@@ -101,7 +101,7 @@ export function Detail({ data, filters, which, q: initialQ }: { data: StatPage; 
               const [rw, rk] = r.registered ? (REG[r.registration_status ?? ""] ?? ["Registered", "ok"]) : ["Not registered", "bad"];
               return [
                 <span key="sn" className="tnum sub2">{data.page * data.size + i + 1}</span>,
-                <span key="s"><strong>{r.surname}, {r.other_names}</strong><div className="sub2 tnum">{r.number}{r.degree_type ? ` · ${DEGREE_WORD[r.degree_type] ?? r.degree_type}` : ""}</div></span>,
+                <span key="s"><strong>{r.surname}, {r.other_names}</strong><div className="sub2 tnum">{r.number}{r.programme_type_name ? ` · ${r.programme_type_name}` : ""}{r.degree_type ? ` · ${DEGREE_WORD[r.degree_type] ?? r.degree_type}` : ""}</div></span>,
                 <span key="p">{r.programme}<div className="sub2">{r.department} · {r.faculty}</div></span>,
                 <span key="l" className="tnum">{r.level}</span>,
                 ...(showPay ? [

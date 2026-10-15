@@ -5,6 +5,7 @@ import java.util.Set;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.OfficeScope;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 /**
@@ -40,9 +41,11 @@ public class AnalyticsScope {
     }
 
     private final OfficeScope scope;
+    private final JdbcClient jdbc;
 
-    AnalyticsScope(OfficeScope scope) {
+    AnalyticsScope(OfficeScope scope, JdbcClient jdbc) {
         this.scope = scope;
+        this.jdbc = jdbc;
     }
 
     public String office() {
@@ -63,6 +66,18 @@ public class AnalyticsScope {
             return new Bound("DEPARTMENT", "Department", null, d == null ? "__none__" : d, money);
         }
         return new Bound("UNIVERSITY", "University", null, null, money);
+    }
+
+    /**
+     * V469: the programme type the acting office's student scope is — finance.programme_type.offices: the School of Postgraduate
+     * Studies POSTGRADUATE, the Centre for Continuing Education CCE, the JUPEB, Preliminary and Sandwich offices their own; null
+     * for an office whose students are not one type. Read from the registry on the server, never from the request.
+     */
+    public String programmeType() {
+        String office = office();
+        if (office.isEmpty()) return null;
+        return jdbc.sql("SELECT code FROM finance.programme_type WHERE :o = ANY (offices) ORDER BY ord, code LIMIT 1")
+                .param("o", office).query(String.class).optional().orElse(null);
     }
 
     /** whether the acting office may open the individual transactions of its scope (not only the summary) */

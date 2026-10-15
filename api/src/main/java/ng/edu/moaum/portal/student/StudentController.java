@@ -51,10 +51,11 @@ class StudentController {
     private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final ClassificationService classification;
 
     StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
                       ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc,
-                      ng.edu.moaum.portal.shared.OfficeScope scope) {
+                      ng.edu.moaum.portal.shared.OfficeScope scope, ClassificationService classification) {
         this.students = students;
         this.changes = changes;
         this.search = search;
@@ -62,6 +63,7 @@ class StudentController {
         this.portal = portal;
         this.jdbc = jdbc;
         this.scope = scope;
+        this.classification = classification;
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -180,6 +182,14 @@ class StudentController {
     StudentRecord record(@PathVariable UUID id, @RequestParam(required = false) String session) {
         reachStudent(id);
         return students.record(id, blankToNull(session));
+    }
+
+    /** V469: the record's classification — programme type, admission route, study mode, centre — and its history, in the record's own scope */
+    @GetMapping("/students/{id}/classification")
+    @PreAuthorize(READERS)
+    java.util.Map<String, Object> classification(@PathVariable UUID id) {
+        reachStudent(id);
+        return classification.of(id);
     }
 
     /** The student's own portal view of themselves — fees, GPA and CGPA, standing, carryovers, this session's

@@ -58,18 +58,19 @@ class StudentStatsController {
 
     /** the filters, each applied only within the bound: a faculty outside a Dean's own is simply empty */
     record Filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
-                   String sex, String entry, String entrySession) {
+                   String sex, String entry, String entrySession, String type) {
     }
 
     private Filters filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
-                            String sex, String entry, String entrySession) {
+                            String sex, String entry, String entrySession, String type) {
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session : currentSession();
         Integer sem = semester == null ? null : semester >= 1 && semester <= 3 ? semester : null;
         String sx = sex == null ? null : sex.trim().toUpperCase();
         return new Filters(s, sem, blank(fac), blank(dept), blank(prog), level, status == null ? null : STATUSES.contains(status.toUpperCase()) ? status.toUpperCase() : null, blank(degree),
                 q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%",
                 "M".equals(sx) || "F".equals(sx) ? sx : null, blank(entry) == null ? null : entry.trim().toUpperCase(),
-                entrySession != null && entrySession.matches("\\d{4}/\\d{4}") ? entrySession : null);
+                entrySession != null && entrySession.matches("\\d{4}/\\d{4}") ? entrySession : null,
+                type != null && type.trim().toUpperCase().matches("[A-Z][A-Z_]{1,30}") && !"ALL".equalsIgnoreCase(type.trim()) ? type.trim().toUpperCase() : null);
     }
 
     private static String blank(String v) {
@@ -81,9 +82,14 @@ class StudentStatsController {
                 .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
     }
 
+    /** V469: each row carries the student's programme type from the one classification (people.student_classification), and
+     *  the Postgraduate School's scope is that type — a record whose entry mode and programme disagree is in no type's figures
+     *  until the Academic Office decides it */
     private static final String ROWS = """
-            SELECT * FROM reporting.student_positions(:s, :sem) r
-             WHERE (:pg::boolean IS NULL OR r.is_pg = :pg)
+            SELECT r.*, c.programme_type, pt.label AS programme_type_name FROM reporting.student_positions(:s, :sem) r
+              LEFT JOIN people.student_classification c ON c.student_id = r.student_id
+              LEFT JOIN finance.programme_type pt ON pt.code = c.programme_type
+             WHERE (:pg::boolean IS NULL OR c.programme_type = 'POSTGRADUATE')
                AND (:chs::boolean IS NULL OR r.is_chs = :chs)
                AND (:bf::text IS NULL OR r.faculty_code = :bf)
                AND (:bd::text IS NULL OR r.dept_code = :bd)
@@ -96,6 +102,7 @@ class StudentStatsController {
                AND (:sex::text IS NULL OR r.sex = :sex)
                AND (:entry::text IS NULL OR r.entry_mode = :entry)
                AND (:es::text IS NULL OR r.entry_session = :es)
+               AND (:ptype::text IS NULL OR c.programme_type = :ptype)
                AND (:q::text IS NULL OR lower(r.surname || ' ' || r.other_names) LIKE :q OR lower(coalesce(r.number, '')) LIKE :q
                     OR lower(coalesce(r.last_reference, '')) LIKE :q OR lower(r.programme) LIKE :q OR lower(r.department) LIKE :q OR lower(r.faculty) LIKE :q)
             """;
@@ -108,7 +115,8 @@ class StudentStatsController {
                 .param("fac", f.fac(), Types.VARCHAR).param("dept", f.dept(), Types.VARCHAR).param("prog", f.prog(), Types.VARCHAR)
                 .param("level", f.level(), Types.INTEGER).param("status", f.status(), Types.VARCHAR).param("degree", f.degree(), Types.VARCHAR)
                 .param("q", f.q(), Types.VARCHAR)
-                .param("sex", f.sex(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR).param("es", f.entrySession(), Types.VARCHAR);
+                .param("sex", f.sex(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR).param("es", f.entrySession(), Types.VARCHAR)
+                .param("ptype", f.type(), Types.VARCHAR);
     }
 
     /** the figures: in all, and by faculty, department, programme and degree type — one pass over the rows */
@@ -120,9 +128,10 @@ class StudentStatsController {
                                 @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                                 @RequestParam(required = false) String status, @RequestParam(required = false) String degree,
                                 @RequestParam(required = false) String q, @RequestParam(required = false) String sex,
-                                @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession) {
+                                @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession,
+                                @RequestParam(required = false) String type) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type);
         String key = b + "|" + f;
         Cached hit = summaries.get(key);
         if (hit != null && System.currentTimeMillis() - hit.at() < SUMMARY_TTL_MS) return hit.value();
@@ -138,7 +147,8 @@ class StudentStatsController {
                 )
                 SELECT grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p, grouping(degree_type) AS g_t,
                        grouping(sex) AS g_s, grouping(entry_mode) AS g_e, grouping(level) AS g_l, grouping(entry_session) AS g_es,
-                       faculty_code, faculty, dept_code, department, programme_code, programme, degree_type, sex, entry_mode, level, entry_session,
+                       grouping(programme_type) AS g_pt,
+                       faculty_code, faculty, dept_code, department, programme_code, programme, degree_type, sex, entry_mode, level, entry_session, programme_type,
                        count(*) AS total,
                        count(*) FILTER (WHERE paid) AS paid,
                        count(*) FILTER (WHERE registered) AS registered,
@@ -155,16 +165,17 @@ class StudentStatsController {
                   FROM r
                  GROUP BY GROUPING SETS ((), (faculty_code, faculty), (faculty_code, faculty, dept_code, department),
                                          (faculty_code, faculty, dept_code, department, programme_code, programme), (degree_type),
-                                         (sex), (entry_mode), (level), (entry_session))
-                 ORDER BY faculty, department, programme, degree_type, sex, entry_mode, level, entry_session
+                                         (sex), (entry_mode), (level), (entry_session), (programme_type))
+                 ORDER BY faculty, department, programme, degree_type, sex, entry_mode, level, entry_session, programme_type
                 """), b, f).query().listOfRows();
         Map<String, Object> totals = null;
         List<Map<String, Object>> byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(), byDegree = new ArrayList<>(),
-                byGender = new ArrayList<>(), byEntry = new ArrayList<>(), byLevel = new ArrayList<>(), byEntrySession = new ArrayList<>();
+                byGender = new ArrayList<>(), byEntry = new ArrayList<>(), byLevel = new ArrayList<>(), byEntrySession = new ArrayList<>(), byType = new ArrayList<>();
         for (Map<String, Object> g : groups) {
             int gf = ((Number) g.get("g_f")).intValue(), gd = ((Number) g.get("g_d")).intValue(), gp = ((Number) g.get("g_p")).intValue(), gt = ((Number) g.get("g_t")).intValue();
             int gs = ((Number) g.get("g_s")).intValue(), ge = ((Number) g.get("g_e")).intValue(), gl = ((Number) g.get("g_l")).intValue(), ges = ((Number) g.get("g_es")).intValue();
             Map<String, Object> row = counts(g, b.money());
+            if (((Number) g.get("g_pt")).intValue() == 0) { row.put("programme_type", g.get("programme_type")); byType.add(row); continue; }
             if (gs == 0) { row.put("sex", g.get("sex")); byGender.add(row); continue; }
             if (ge == 0) { row.put("entry_mode", g.get("entry_mode")); byEntry.add(row); continue; }
             if (gl == 0) { row.put("level", g.get("level")); byLevel.add(row); continue; }
@@ -191,6 +202,7 @@ class StudentStatsController {
         out.put("byEntryMode", byEntry);
         out.put("byLevel", byLevel);
         out.put("byEntrySession", byEntrySession);
+        out.put("byProgrammeType", byType);
         out.put("options", options(b, f));
         out.put("window", jdbc.sql("""
                 SELECT number, registration_opens, registration_closes, state FROM policy.semester WHERE session = :s ORDER BY number
@@ -232,6 +244,7 @@ class StudentStatsController {
         o.put("statuses", List.of("ACTIVE", "PROBATION", "ADMITTED"));
         o.put("degreeTypes", "PG_SCHOOL".equals(b.kind()) || "UNIVERSITY".equals(b.kind()) ? List.of("PGD", "MASTERS", "MPHIL", "PHD") : List.of());
         o.put("genders", List.of("M", "F"));
+        o.put("programmeTypes", jdbc.sql("SELECT code, label AS name FROM finance.programme_type WHERE active ORDER BY ord, code").query().listOfRows());
         o.put("entryModes", jdbc.sql("SELECT DISTINCT entry_mode FROM people.student WHERE entry_mode IS NOT NULL ORDER BY entry_mode").query(String.class).list());
         o.put("entrySessions", jdbc.sql("SELECT DISTINCT entry_session FROM people.student WHERE entry_session ~ '^[0-9]{4}/[0-9]{4}$' ORDER BY entry_session DESC").query(String.class).list());
         return o;
@@ -247,9 +260,10 @@ class StudentStatsController {
                                  @RequestParam(required = false) String status, @RequestParam(required = false) String degree,
                                  @RequestParam(defaultValue = "ALL") String which, @RequestParam(required = false) String q,
                                  @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-                                 @RequestParam(required = false) String sex, @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession) {
+                                 @RequestParam(required = false) String sex, @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession,
+                                 @RequestParam(required = false) String type) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type);
         String w = WHICH.contains(which.toUpperCase()) ? which.toUpperCase() : "ALL";
         String pred = switch (w) {
             case "PAID" -> " AND r.paid";

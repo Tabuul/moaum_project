@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Overview, type OverviewData } from "./Overview";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import { currentSession } from "@/lib/sessions";
 
@@ -24,6 +25,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   ]);
   return (
     <Shell route="t/overview" me={me.ok ? me.data : null}>
+      <StudentTypeCards />
       <StatsPanel session={session} title="Student statistics" />
       <FinancePanel />
       {data.ok ? <Overview d={data.data} semester={semester} session={session} sessions={list.map((s) => s.name)} due={due.ok ? due.data : null} /> : <ProblemNotice problem={data.problem} />}

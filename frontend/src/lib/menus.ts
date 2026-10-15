@@ -99,6 +99,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/hod", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -193,7 +194,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/dean", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
-          { "id": "t/search", "icon": "user", "label": "Search" }
+          { "id": "t/search", "icon": "user", "label": "Search" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -523,7 +525,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/exams", "icon": "home", "label": "Dashboard" },
-          { "id": "t/search", "icon": "user", "label": "Search" }
+          { "id": "t/search", "icon": "user", "label": "Search" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -573,6 +576,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/academic", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -695,6 +700,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/bursar", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -881,7 +887,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "9" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
-          { "id": "t/search", "icon": "user", "label": "Search" }
+          { "id": "t/search", "icon": "user", "label": "Search" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -929,7 +936,9 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/examsrec", "icon": "home", "label": "Dashboard" },
-          { "id": "t/search", "icon": "user", "label": "Search" }
+          { "id": "t/search", "icon": "user", "label": "Search" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" }
         ]
       },
       {
@@ -990,6 +999,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/mgmt", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1063,7 +1074,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/mgmt", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
-          { "id": "t/search", "icon": "user", "label": "Search" }
+          { "id": "t/search", "icon": "user", "label": "Search" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" }
         ]
       },
       {
@@ -1111,6 +1124,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/setup", "icon": "server", "label": "Setup Console" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1209,6 +1224,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/registrar", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
@@ -1308,6 +1325,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/platform", "icon": "server", "label": "Platform & Integrations", "badge": "!" },
           { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1485,6 +1504,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/admin", "icon": "home", "label": "Administrator Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/readiness", "icon": "chart", "label": "Go-Live Readiness" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
@@ -1593,6 +1614,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/overview", "icon": "home", "label": "Institutional Overview" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1840,7 +1863,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "prelim/dashboard", "icon": "home", "label": "Preliminary Science" },
           { "id": "prelim/reports", "icon": "chart", "label": "Preliminary Science Reports" },
-          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" }
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -1887,7 +1911,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "cce/dashboard", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
-          { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" }
+          { "id": "cce/reports", "icon": "chart", "label": "CCE Reports" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -2056,6 +2081,25 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "sandwich": {
+    "label": "Sandwich Programme Office",
+    "home": "t/studentquery",
+    "groups": [
+      {
+        "name": "Students",
+        "items": [
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
   "jupeb": {
     "label": "JUPEB Office",
     "home": "jupeb/dashboard",
@@ -2067,7 +2111,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
           { "id": "jupeb/reports", "icon": "chart", "label": "Reports" },
           { "id": "jupeb/announcements", "icon": "bell", "label": "Announcements" },
-          { "id": "jupeb/calendar", "icon": "calendar", "label": "Calendar" }
+          { "id": "jupeb/calendar", "icon": "calendar", "label": "Calendar" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
       },
       {
@@ -2117,6 +2162,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2189,6 +2235,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2229,6 +2276,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2305,6 +2353,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2341,6 +2390,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]

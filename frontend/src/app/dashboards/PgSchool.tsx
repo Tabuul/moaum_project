@@ -3,6 +3,7 @@ import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ConfirmFee } from "./ConfirmFee";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import { PgStructurePanel } from "@/components/catalogue/PgStructurePanel";
 
@@ -73,6 +74,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
         </Note>
       )}
 
+      <StudentTypeCards />
       <StatsPanel session={home.session} title="Postgraduate student statistics" />
 
       <FinancePanel />
@@ -157,6 +159,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
         <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<LinkBtn kind="ghost" href={registrationDesk}>Registration desk</LinkBtn>} />
       )}
 
+      <StudentTypeCards />
       <StatsPanel session={home.session} title="Postgraduate student statistics" />
 
       <FinancePanel />

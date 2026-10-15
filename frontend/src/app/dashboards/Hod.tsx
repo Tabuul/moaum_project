@@ -8,6 +8,7 @@ import type { Problem } from "@/lib/api";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { DTable } from "@/components/proto/DTable";
 import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
@@ -107,6 +108,7 @@ export function HodDashboard({ me, home, homeProblem = null, requestsOpen, histo
           <div className="mt-1">Figures that depend on the clearance scheme appear once the Bursary has a scheme in force.</div>
         </Note>
       ) : null}
+      <StudentTypeCards />
       <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
       {home.cceApprovals && home.cceApprovals.count > 0 && home.cceApprovals.session ? (
         <Note kind="bad" title={`${home.cceApprovals.count} CCE course registration${home.cceApprovals.count === 1 ? "" : "s"} waiting for your approval`}

@@ -16,6 +16,10 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
+import { ClassificationPanel, type Classification } from "./ClassificationPanel";
+
+/** V469: the offices that decide a student's classification (people.require_classifier) */
+const CLASSIFIERS = ["academic", "registrar", "dregistrar", "super"];
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import { semesterText, type Me as Portal } from "@/lib/student-portal";
 import { money } from "@/lib/format";
@@ -70,12 +74,15 @@ export function Student360({
   portal,
   session,
   actingOffice,
+  classification,
 }: {
   record: StudentRecord;
   /** V360: the student's own figures (fees for the offices that read them, CGPA, standing); null when not read */
   portal: Portal | null;
   session: string;
   actingOffice: string | null;
+  /** V469: the record's classification — programme type, admission route, study mode, centre and history — when read */
+  classification?: Classification | null;
 }) {
   const fees = portal?.fees ?? null;
   const cgpa = portal?.cgpa ?? null;
@@ -167,6 +174,7 @@ export function Student360({
             </div>
           </div>
           <div className="row">
+            {classification ? <Pil kind={classification.programme_type_name ? "info" : "warn"}>{classification.programme_type_name ? `${classification.programme_type_name} Student` : "Requires classification"}</Pil> : null}
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
@@ -189,6 +197,7 @@ export function Student360({
         </div>
       </div>
 
+      {classification ? <ClassificationPanel data={classification} decides={actingOffice !== null && CLASSIFIERS.includes(actingOffice)} /> : null}
 
       <MatriculationPanel studentId={s.id} />
 

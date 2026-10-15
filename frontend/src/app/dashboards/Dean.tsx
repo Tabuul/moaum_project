@@ -5,6 +5,7 @@ import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 
 export interface DeanHome {
   resolved: boolean;
@@ -48,6 +49,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", 
         </Note>
       )}
       <ClearanceAwaiting />
+      <StudentTypeCards title={`Students in the ${scopeNoun}, by type`} />
 
       <Tiles items={[
         [`Students in the ${scopeNoun}`, students.toLocaleString(), null, `${dept.length} department${dept.length === 1 ? "" : "s"}`],

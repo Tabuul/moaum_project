@@ -1,5 +1,6 @@
 import { api, API_URL } from "@/lib/api";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import type { Me } from "@/components/proto/Shell";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -61,6 +62,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
     <>
       {cov ? (
         <>
+          <StudentTypeCards />
           <StatsPanel />
           <FinancePanel />
           <Tiles items={[

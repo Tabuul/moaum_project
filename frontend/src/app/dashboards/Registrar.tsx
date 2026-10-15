@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import type { Register } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister, GraduationView } from "@/lib/credentials";
@@ -38,6 +39,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
         action={<LinkBtn kind="urgent" href="/people">Open users &amp; roles</LinkBtn>}>
         Filed by the Data Protection Officer under your signature.
       </Note>
+      <StudentTypeCards />
       <StatsPanel session={session} />
       <FinancePanel />
       <ClearanceAwaiting />

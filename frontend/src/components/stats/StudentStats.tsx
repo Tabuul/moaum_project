@@ -69,7 +69,8 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
   const faculties = [...new Map(opts.programmes.map((p) => [p.faculty_code, p.faculty])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const depts = [...new Map(opts.programmes.filter((p) => !f.fac || p.faculty_code === f.fac).map((p) => [p.dept_code, p.department])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const progs = opts.programmes.filter((p) => (!f.fac || p.faculty_code === f.fac) && (!f.dept || p.dept_code === f.dept));
-  const scopeWords = [data.scope.label, data.session, SEMESTER_WORD(data.semester),
+  const typeName = (code: string | null | undefined) => (code ? (opts.programmeTypes ?? []).find((x) => x.code === code)?.name ?? code : "Requires classification");
+  const scopeWords = [data.scope.label, f.type ? `${typeName(f.type)} students` : null, data.session, SEMESTER_WORD(data.semester),
     f.fac ? faculties.find((x) => x[0] === f.fac)?.[1] : null, f.dept ? depts.find((x) => x[0] === f.dept)?.[1] : null,
     f.prog ? opts.programmes.find((x) => x.programme_code === f.prog)?.programme : null, f.level ? `${f.level} Level` : null,
     f.status ? f.status.charAt(0) + f.status.slice(1).toLowerCase() : null, f.degree ? DEGREE_WORD[f.degree] : null].filter(Boolean).join(" · ");
@@ -108,6 +109,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
   const sexRows = (data.byGender ?? []).map((x) => ({ ...x, key: String(x.sex), label: sexWord(x.sex), next: { sex: x.sex ?? "" } as Partial<StatFilters> }));
   const entryRows = (data.byEntryMode ?? []).map((x) => ({ ...x, key: String(x.entry_mode), label: entryWord(x.entry_mode), next: { entry: x.entry_mode ?? "" } as Partial<StatFilters> }));
   const levelRows = (data.byLevel ?? []).map((x) => ({ ...x, key: String(x.level), label: x.level == null ? "No level" : `${x.level} Level`, next: { level: x.level == null ? "" : String(x.level) } as Partial<StatFilters> }));
+  const typeRows = (data.byProgrammeType ?? []).map((x) => ({ ...x, key: String(x.programme_type), label: typeName(x.programme_type), next: (x.programme_type ? { type: x.programme_type } : {}) as Partial<StatFilters> }));
   const esRows = (data.byEntrySession ?? []).map((x) => ({ ...x, key: String(x.entry_session), label: x.entry_session ?? "Unknown", next: { entrySession: x.entry_session ?? "" } as Partial<StatFilters> }));
 
   return (
@@ -116,6 +118,13 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
         actions={<><LinkBtn kind="primary" href={detailHref(f, "PAID_NOT_REGISTERED")}>Paid Not Registered</LinkBtn><LinkBtn href={detailHref(f, "NOT_PAID")}>Not Paid</LinkBtn><LinkBtn href={detailHref(f, "ALL")}>All Students</LinkBtn></>} />
 
       <div className="scope">
+        {(opts.programmeTypes ?? []).length ? (
+          <div className="scope__f"><Field id="st-type" label="Student type">
+            <select id="st-type" className="ctl" value={f.type} onChange={(e) => go({ type: e.target.value })}>
+              <option value="">All student types</option>{(opts.programmeTypes ?? []).map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+            </select>
+          </Field></div>
+        ) : null}
         <div className="scope__f"><Field id="st-session" label="Academic session">
           <select id="st-session" className="ctl" value={f.session} onChange={(e) => go({ session: e.target.value, semester: "" })}>
             {(opts.sessions.includes(f.session) ? opts.sessions : [f.session, ...opts.sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -224,6 +233,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
             </Panel>
           ) : null}
 
+          {!f.type && typeRows.length ? <Panel title="By student type" right="Programme type, from the one classification">{table(typeRows, "Student type")}</Panel> : null}
           {showFac ? <Panel title="By faculty" right={`${data.byFaculty.length} facult${data.byFaculty.length === 1 ? "y" : "ies"}`}>{table(facRows, "Faculty")}</Panel> : null}
           {showDept ? <Panel title="By department" right={`${data.byDepartment.length} department${data.byDepartment.length === 1 ? "" : "s"}`}>{table(deptRows, "Department")}</Panel> : null}
           <Panel title="By programme" right={`${data.byProgramme.length} programme${data.byProgramme.length === 1 ? "" : "s"}`}>{table(progRows, "Programme")}</Panel>
