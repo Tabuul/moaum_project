@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 306
+\set EXPECTED 307
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13659,6 +13659,90 @@ BEGIN
         coalesce('enable_nestloop=off' = ANY (cfg) AND rows_hint >= 10000 AND reads AND one_kept AND only_all = 0 AND only_engine = 0, false),
         format('config %s rows %s | population reads the wrapper %s | one-student engine unset %s | %s rows, only in the wrapper %s, only in the engine %s',
                cfg, rows_hint, reads, one_kept, n, only_all, only_engine));
+END $$;
+
+
+-- ── V470: score reads stay fast — the grading read once a sheet, the same grades ──
+-- A full-time and a postgraduate class's scores read by assessment.latest_scores come out as the per-score reading gives
+-- them (grace_total and grade_of on the class's scope): the grace mark at each scheme's own pass mark (the University's
+-- and the School's), an absence ungraded, an imported total taken as it is. grace_total is grace_apply on pass_floor,
+-- and pass_floor is the lowest passing band of the version in force. The block undoes its writes.
+DO $$
+DECLARE dept text; o_ft uuid := gen_random_uuid(); o_pg uuid := gen_random_uuid(); sh_ft uuid := gen_random_uuid(); sh_pg uuid := gen_random_uuid();
+        st uuid[] := ARRAY[]::uuid[]; t int[] := ARRAY[0, 38, 39, 40, 48, 49, 50, 100]; i int; s uuid;
+        floor_u int; floor_p int; mismatched int; read int; graced_ft text; graced_pg text; absent_ok boolean; imported_ok boolean;
+        rule_bad int; floor_bad int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V470', true);
+        SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max)
+        VALUES ('ZZG 470', 'Check grading read once a sheet', 3, 1, 100, dept, 'Core', 'LIVE', 30);
+        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (o_ft, 'ZZG 470', '9999/0000', 1, 'REGULAR'), (o_pg, 'ZZG 470', '9999/0000', 2, 'PG');
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh_ft, o_ft), (sh_pg, o_pg);
+        FOR i IN 1 .. array_length(t, 1) + 2 LOOP
+            s := gen_random_uuid();
+            st := st || s;
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (s, 'MOAUM/ADM/99/4700' || lpad(i::text, 2, '0'), 'MOAUM/CHK/99/47' || lpad(i::text, 2, '0'), 'CHECKV470', 'Invented ' || i, 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        END LOOP;
+        -- each total on both sheets, split within the course's 30/70; then an absence and an imported total
+        FOR i IN 1 .. array_length(t, 1) LOOP
+            INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES
+                (sh_ft, st[i], least(t[i], 30), t[i] - least(t[i], 30)), (sh_pg, st[i], least(t[i], 30), t[i] - least(t[i], 30));
+        END LOOP;
+        i := array_length(t, 1);
+        INSERT INTO assessment.score (sheet_id, student_id, outcome, reason) VALUES (sh_ft, st[i + 1], 'ABSENT', 'check V470'), (sh_pg, st[i + 1], 'ABSENT', 'check V470');
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, total, imported) VALUES (sh_ft, st[i + 2], 29, 10, 39, true), (sh_pg, st[i + 2], 29, 20, 49, true);
+
+        -- the per-score reading, as V389 gave it
+        WITH sc AS (SELECT sh.id AS sheet, x.*, policy.grading_scope(sh.offering_id) AS scope
+                      FROM assessment.score_sheet sh
+                      CROSS JOIN LATERAL (SELECT DISTINCT ON (student_id) * FROM assessment.score WHERE sheet_id = sh.id ORDER BY student_id, version DESC) x
+                     WHERE sh.id IN (sh_ft, sh_pg)),
+             was AS (SELECT sc.sheet, sc.student_id, t.total, g.grade, g.points FROM sc
+                      CROSS JOIN LATERAL (SELECT CASE WHEN sc.outcome <> 'GRADED' THEN NULL
+                                                      WHEN sc.ca IS NOT NULL AND sc.exam IS NOT NULL AND NOT sc.imported
+                                                        THEN CASE WHEN sc.ca + sc.exam = (SELECT min(b.low) FROM policy.grade_band b
+                                                                                             WHERE b.version_id = coalesce(policy.in_force('grading', sc.scope, current_date), policy.in_force('grading', 'UNIVERSITY', current_date))
+                                                                                               AND b.points > 0) - 1
+                                                                  THEN sc.ca + sc.exam + 1 ELSE sc.ca + sc.exam END
+                                                      ELSE coalesce(sc.ca + sc.exam, sc.total) END AS total) t
+                      LEFT JOIN LATERAL policy.grade_of(t.total, current_date, sc.scope) g ON true),
+             now_ AS (SELECT sh AS sheet, x.student_id, x.total, x.grade, x.points FROM unnest(ARRAY[sh_ft, sh_pg]) sh CROSS JOIN LATERAL assessment.latest_scores(sh) x)
+        SELECT (SELECT count(*) FROM (SELECT * FROM was EXCEPT ALL SELECT * FROM now_) a) + (SELECT count(*) FROM (SELECT * FROM now_ EXCEPT ALL SELECT * FROM was) b),
+               (SELECT count(*) FROM now_)
+          INTO mismatched, read;
+
+        floor_u := (SELECT min(b.low) FROM policy.grade_band b WHERE b.version_id = policy.in_force('grading', 'UNIVERSITY', current_date) AND b.points > 0);
+        floor_p := (SELECT min(b.low) FROM policy.grade_band b WHERE b.version_id = coalesce(policy.in_force('grading', 'POSTGRADUATE', current_date), policy.in_force('grading', 'UNIVERSITY', current_date)) AND b.points > 0);
+        graced_ft := (SELECT string_agg(x.total::text, ',' ORDER BY x.total) FROM assessment.latest_scores(sh_ft) x JOIN assessment.score sc ON sc.sheet_id = sh_ft AND sc.student_id = x.student_id
+                       WHERE NOT sc.imported AND sc.ca + sc.exam IN (floor_u - 1, floor_p - 1));
+        graced_pg := (SELECT string_agg(x.total::text, ',' ORDER BY x.total) FROM assessment.latest_scores(sh_pg) x JOIN assessment.score sc ON sc.sheet_id = sh_pg AND sc.student_id = x.student_id
+                       WHERE NOT sc.imported AND sc.ca + sc.exam IN (floor_u - 1, floor_p - 1));
+        absent_ok := (SELECT bool_and(x.total IS NULL AND x.grade IS NULL) FROM assessment.latest_scores(sh_ft) x WHERE x.outcome = 'ABSENT');
+        imported_ok := (SELECT x.total FROM assessment.latest_scores(sh_ft) x WHERE x.student_id = st[array_length(t, 1) + 2]) = 39;
+        -- the rule and the floor read alone, for each total and scope
+        rule_bad := (SELECT count(*) FROM generate_series(0, 100) r CROSS JOIN unnest(ARRAY['UNIVERSITY', 'POSTGRADUATE', NULL]) sc
+                      WHERE assessment.grace_total(r, current_date, sc) IS DISTINCT FROM
+                            CASE WHEN r = (CASE WHEN sc = 'POSTGRADUATE' THEN floor_p ELSE floor_u END) - 1 THEN r + 1 ELSE r END)
+                  + (SELECT count(*) FROM generate_series(0, 100) r WHERE assessment.grace_total(r) IS DISTINCT FROM CASE WHEN r = floor_u - 1 THEN r + 1 ELSE r END);
+        floor_bad := (CASE WHEN assessment.pass_floor(current_date, 'UNIVERSITY') = floor_u THEN 0 ELSE 1 END)
+                   + (CASE WHEN assessment.pass_floor(current_date, 'POSTGRADUATE') = floor_p THEN 0 ELSE 1 END)
+                   + (CASE WHEN assessment.pass_floor(current_date, NULL) = floor_u THEN 0 ELSE 1 END);
+        RAISE EXCEPTION 'the V470 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V470 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V470: a class''s scores read with its grading resolved once a sheet are the per-score reading''s — the grace mark at the University''s and the School''s own pass marks, an absence ungraded, an imported total as it is; grace_total is the rule on pass_floor',
+        coalesce(mismatched = 0 AND read = 20 AND graced_ft = format('%s,%s', floor_u, floor_p - 1) AND graced_pg = format('%s,%s', floor_u - 1, floor_p)
+                 AND absent_ok AND imported_ok AND rule_bad = 0 AND floor_bad = 0, false),
+        format('mismatched %s of %s read | full-time graced %s, postgraduate graced %s (floors %s/%s) | absence ungraded %s | imported as is %s | rule %s floor %s',
+               mismatched, read, graced_ft, graced_pg, floor_u, floor_p, absent_ok, imported_ok, rule_bad, floor_bad));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
