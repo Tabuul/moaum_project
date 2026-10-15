@@ -242,7 +242,7 @@ class DocumentsController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dashboard", jdbc.sql("SELECT credentials.office_dashboard()::text").query(String.class).single());
         out.put("policies", jdbc.sql("SELECT * FROM credentials.document_policy ORDER BY kind").query().listOfRows());
-        out.put("flagged", jdbc.sql("SELECT * FROM credentials.document_rows() WHERE flagged_at IS NOT NULL AND status = 'ACTIVE' ORDER BY flagged_at DESC LIMIT 100").query().listOfRows());
+        out.put("flagged", jdbc.sql("SELECT * FROM credentials.document_rows() WHERE flagged_at IS NOT NULL AND status = 'ACTIVE' ORDER BY flagged_at DESC LIMIT 500").query().listOfRows());
         out.put("suspected", jdbc.sql("SELECT * FROM credentials.suspected_forgeries()").query().listOfRows());
         // V416: the list's convocation clearance in one pass (clearance.cleared_many), not a workflow per row
         out.put("awaitingCertificate", jdbc.sql("""
@@ -465,6 +465,51 @@ class DocumentsController {
     Map<String, Object> clearFlag(@PathVariable UUID id, @Valid @RequestBody(required = false) ReasonIn body) {
         jdbc.sql("SELECT credentials.clear_flag(:id, :n)").param("id", id).param("n", body == null ? "Reviewed; the document stands" : blank(body.reason()), Types.VARCHAR).query().listOfRows();
         return Map.of("ok", true);
+    }
+
+    public record BatchIn(@NotNull @Size(min = 1, max = 500) List<UUID> ids, @Size(max = 600) String reason) {
+    }
+
+    private String[] distinctIds(BatchIn body) {
+        return body.ids().stream().filter(java.util.Objects::nonNull).distinct().map(UUID::toString).toArray(String[]::new);
+    }
+
+    /** the documents flagged after one correction (a mark or the units of a class, V467) reissued in one act: one reason, each a
+     *  new version under the same number, the earlier copy then verifying as replaced, each holder told — all of them or none */
+    @PostMapping("/api/v1/documents/issued/reissue-batch")
+    @PreAuthorize(SIGNERS)
+    @Transactional
+    Map<String, Object> reissueBatch(@Valid @RequestBody BatchIn body) {
+        if (blank(body.reason()) == null) throw new DomainRuleViolation("DOC_REASON", "A reissue carries its reason.", new DomainRuleViolation.Remedy("Say what was corrected.", "The Registry"));
+        String[] ids = distinctIds(body);
+        List<Map<String, Object>> found = jdbc.sql("""
+                SELECT i.id, coalesce(i.number, i.verification_code) AS number, credentials.document_status(i.id) AS status
+                  FROM credentials.issued i WHERE i.id = ANY (CAST(:ids AS uuid[]))
+                """).param("ids", ids).query().listOfRows();
+        if (found.size() < ids.length) throw new NotFound("document", (ids.length - found.size()) + " of the chosen");
+        List<String> stale = found.stream().filter(r -> !"ACTIVE".equals(r.get("status"))).map(r -> r.get("number") + " (" + String.valueOf(r.get("status")).toLowerCase() + ")").toList();
+        if (!stale.isEmpty()) {
+            throw new DomainRuleViolation("DOC_NOT_CURRENT", stale.size() + " of the chosen documents " + (stale.size() == 1 ? "is" : "are") + " no longer current: " + String.join(", ", stale)
+                    + ". Only a current document is reissued.", new DomainRuleViolation.Remedy("Take " + (stale.size() == 1 ? "it" : "them") + " out of the choice and reissue the rest.", "The Registry"));
+        }
+        List<Map<String, Object>> done = new ArrayList<>();
+        for (String id : ids) {
+            UUID n = jdbc.sql("SELECT credentials.reissue_document(CAST(:id AS uuid), :r)").param("id", id).param("r", body.reason().trim()).query(UUID.class).single();
+            done.add(jdbc.sql("SELECT id, number, version FROM credentials.issued WHERE id = :i").param("i", n).query().singleRow());
+        }
+        return Map.of("reissued", done.size(), "documents", done);
+    }
+
+    /** the flags of the chosen documents cleared in one act, with one note — the review found each still matches the record */
+    @PostMapping("/api/v1/documents/issued/clear-flags")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> clearFlags(@Valid @RequestBody BatchIn body) {
+        String note = blank(body.reason()) == null ? "Reviewed; the document stands" : body.reason().trim();
+        List<UUID> flagged = jdbc.sql("SELECT id FROM credentials.issued WHERE id = ANY (CAST(:ids AS uuid[])) AND flagged_at IS NOT NULL")
+                .param("ids", distinctIds(body)).query(UUID.class).list();
+        for (UUID id : flagged) jdbc.sql("SELECT credentials.clear_flag(:id, :n)").param("id", id).param("n", note).query().listOfRows();
+        return Map.of("cleared", flagged.size());
     }
 
     public record CertificateIn(@NotNull UUID studentId, @Size(max = 400) String note) {

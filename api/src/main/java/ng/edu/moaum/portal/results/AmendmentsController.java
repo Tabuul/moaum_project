@@ -170,7 +170,13 @@ class AmendmentsController {
                 SELECT m.id, m.ref, m.kind, m.stage, m.sheet_id, m.raised_at, m.reason, m.outcome, m.ca, m.exam, m.was_ca, m.was_exam, m.was_outcome,
                        o.course_code, o.session, o.semester, coalesce(st.matric_no, st.admission_no) AS number, upper(st.surname) || ', ' || st.other_names AS name,
                        m.programme_code, pr.name AS programme_name, m.units, m.was_units,
-                       (SELECT d.actor_id FROM assessment.amendment_decision d WHERE d.amendment_id = m.id AND d.kind IN ('RAISE', 'ADVANCE') ORDER BY d.decided_at DESC LIMIT 1) AS last_actor
+                       (SELECT d.actor_id FROM assessment.amendment_decision d WHERE d.amendment_id = m.id AND d.kind IN ('RAISE', 'ADVANCE') ORDER BY d.decided_at DESC LIMIT 1) AS last_actor,
+                       -- the list printed for the desk (for Senate, its agenda): who raised it and each approval before it
+                       (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.raised_by) AS raised_by_name, m.raised_office,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('kind', d.kind, 'from', d.from_stage, 'to', d.to_stage, 'office', d.actor_office, 'comment', d.comment,
+                                                                     'at', d.decided_at, 'by', (SELECT x.surname || ', ' || x.given_names FROM iam.person x WHERE x.id = d.actor_id))
+                                                   ORDER BY d.decided_at), '[]'::jsonb)
+                          FROM assessment.amendment_decision d WHERE d.amendment_id = m.id)::text AS decisions_text
                   FROM assessment.amendment m JOIN assessment.score_sheet s ON s.id = m.sheet_id JOIN catalogue.offering o ON o.id = s.offering_id
                   LEFT JOIN people.student st ON st.id = m.student_id     -- V465: a units correction has a programme and no student
                   LEFT JOIN ref.programme pr ON pr.code = m.programme_code
@@ -178,7 +184,10 @@ class AmendmentsController {
                 """).param("stages", stages.toArray(new String[0])).query().listOfRows()) {
             try {
                 results.reach((UUID) r.get("sheet_id"));
-                out.add(r);
+                Map<String, Object> m = new LinkedHashMap<>(r);
+                m.remove("decisions_text");
+                m.put("decisions", json.readValue(String.valueOf(r.get("decisions_text")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+                out.add(m);
             } catch (AccessDeniedException | NotFound outside) {
                 // outside this desk's scope: not theirs to see
             }

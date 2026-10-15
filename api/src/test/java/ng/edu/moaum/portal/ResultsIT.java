@@ -286,6 +286,12 @@ class ResultsIT {
             ResponseEntity<List> r = it.callList(desks.get(desk), HttpMethod.POST, "/api/v1/results/amendments/" + uaId + "/advance", Map.of("comment", "seen"));
             assertThat(r.getStatusCode().value()).as(desk + ": " + r.getBody()).isEqualTo(200);
         }
+        // the Senate desk's list, printed as its agenda, names who raised each and every approval before it
+        assertThat((List<Map<String, Object>>) (List<?>) it.getList(registrar, "/api/v1/results/amendments").getBody()).anySatisfy(x -> {
+            assertThat(x).containsEntry("id", uaId).containsEntry("stage", "SENATE");
+            assertThat(x.get("raised_by_name")).isNotNull();
+            assertThat((List<Map<String, Object>>) x.get("decisions")).filteredOn(d -> "ADVANCE".equals(d.get("kind"))).hasSize(6);
+        });
         ResponseEntity<List> uApplied = it.callList(registrar, HttpMethod.POST, "/api/v1/results/amendments/" + uaId + "/advance", Map.of("minute", "SEN/2095/03"));
         assertThat(uApplied.getStatusCode().value()).as(String.valueOf(uApplied.getBody())).isEqualTo(200);
         assertThat(((List<Map<String, Object>>) (List<?>) uApplied.getBody()).stream().filter(x -> uaId.equals(String.valueOf(x.get("id")))).findFirst().orElseThrow())

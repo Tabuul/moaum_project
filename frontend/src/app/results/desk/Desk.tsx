@@ -97,7 +97,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
           </div>
         </PBody>
       </Panel>
-      <AmendmentsWaiting />
+      <AmendmentsWaiting stage={d.stage} />
       <Panel title="On this desk" right="Open a set to read it, then decide">
         {here.length === 0 ? <div className="card__body sub2">Nothing is waiting at {STAGE_LABEL[d.stage]?.[0].toLowerCase() ?? d.stage} in this scope.</div> : (
           <DTable cols={["Course", "Department", "Candidates|mid", "Fail rate|mid", "Lecturer", "Action|num"]}

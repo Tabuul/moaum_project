@@ -256,6 +256,28 @@ class DocumentsIT {
         assertThat(it.get(tAda, "/api/v1/me/documents/" + cert2 + "/link").getStatusCode().value()).isIn(404, 405);
         assertThat(it.call(tAda, HttpMethod.POST, "/api/v1/me/documents/" + cert2 + "/link", Map.of("days", 7)).getStatusCode().value()).isEqualTo(422); // revoked: no link
 
+        // ── 6b · documents flagged after one correction, decided in one act: Records may clear flags but not reissue; a choice
+        //         holding a document no longer current is refused whole; the Registrar reissues the rest with one reason ──
+        String bobMini = String.valueOf(((List<Map<String, Object>>) mine(tBob).get("documents")).stream()
+                .filter(d -> "MINI_TRANSCRIPT".equals(d.get("kind")) && "ACTIVE".equals(d.get("status"))).findFirst().orElseThrow().get("id"));
+        it.db(() -> jdbc.sql("UPDATE credentials.issued SET flagged_at = now(), flag_reason = 'A result of the student changed after issue' WHERE id IN (:a, :b)")
+                .param("a", UUID.fromString(docId)).param("b", UUID.fromString(bobMini)).update());
+        Map<String, Object> batch = Map.of("ids", List.of(docId), "reason", "Units of a course corrected on the Senate's approval");
+        assertThat(it.call(records, HttpMethod.POST, "/api/v1/documents/issued/reissue-batch", batch).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> withRevoked = it.call(registrar, HttpMethod.POST, "/api/v1/documents/issued/reissue-batch",
+                Map.of("ids", List.of(docId, cert2), "reason", "Units of a course corrected on the Senate's approval"));
+        assertThat(withRevoked.getStatusCode().value()).as(String.valueOf(withRevoked.getBody())).isEqualTo(422);
+        assertThat(withRevoked.getBody().get("code")).isEqualTo("DOC_NOT_CURRENT");
+        assertThat(verify(code).get("status")).isEqualTo("VALID");
+        ResponseEntity<Map> reissued = it.call(registrar, HttpMethod.POST, "/api/v1/documents/issued/reissue-batch", batch);
+        assertThat(reissued.getStatusCode().value()).as(String.valueOf(reissued.getBody())).isEqualTo(200);
+        assertThat(reissued.getBody().get("reissued")).isEqualTo(1);
+        assertThat(verify(code).get("status")).isEqualTo("REPLACED");
+        ResponseEntity<Map> cleared = it.call(records, HttpMethod.POST, "/api/v1/documents/issued/clear-flags", Map.of("ids", List.of(bobMini), "reason", "The correction does not touch this document"));
+        assertThat(cleared.getStatusCode().value()).as(String.valueOf(cleared.getBody())).isEqualTo(200);
+        assertThat(cleared.getBody().get("cleared")).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT flagged_at IS NULL FROM credentials.issued WHERE id = :i").param("i", UUID.fromString(bobMini)).query(Boolean.class).single()).isTrue();
+
         // ── 7 · the office reads the figures; the register lists the documents; the verification log holds the strangers' checks ──
         Map<String, Object> dash = it.get(registrar, "/api/v1/documents/dashboard").getBody();
         assertThat(String.valueOf(dash.get("dashboard"))).contains("\"completed\"").contains("\"revoked\"");
