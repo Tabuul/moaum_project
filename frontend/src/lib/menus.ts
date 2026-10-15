@@ -149,7 +149,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -237,7 +238,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -642,6 +644,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
@@ -916,7 +919,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -1046,7 +1050,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -1172,7 +1177,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -1277,6 +1283,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
         ]
@@ -1360,7 +1367,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putmecbt", "icon": "doc", "label": "Post-UTME CBT Examinations" },
           { "id": "t/putmebank", "icon": "book", "label": "Post-UTME Question Bank" },
           { "id": "t/putmescores", "icon": "chart", "label": "Post-UTME CBT Scores" },
-          { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" }
+          { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
       {
@@ -1543,6 +1551,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
         ]
       },

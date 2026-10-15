@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 316
+\set EXPECTED 318
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14316,6 +14316,92 @@ BEGIN
     PERFORM pg_temp.assert('V478: a department course allocation template is issued for a department of the register, numbered CAT-YYYY-NNNNNN one after another, with its faculty, programme type, session, semester and counts; an unknown department or no person acting refused; an import carries its template, programme type and ticket',
         coalesce(fmt_ok AND seq_ok AND rec_ok AND bad_dept LIKE 'ALLOC_TEMPLATE_DEPT:%' AND no_actor LIKE 'ALLOC_TEMPLATE_ACTOR:%' AND cols = 3, false),
         format('format %s sequence %s record %s | unknown department "%s" | no actor "%s" | import columns %s', fmt_ok, seq_ok, rec_ok, bad_dept, no_actor, cols));
+END $$;
+-- ── V479. The Post-UTME paid applicants report: one row an application; paid only when an APPLICATION fee reference is
+--    confirmed — a pending, a reversed or an acceptance-only payment is never paid, a second confirmed attempt is counted and
+--    never a second row; a Preliminary applicant is not a Post-UTME applicant; JAMB's aggregate and gender from CAPS, a Direct
+--    Entry candidate without an aggregate, the old portal's placeholder contacts said to be missing; each download recorded ──
+DO $$
+DECLARE
+    ses text := '9479/9480'; who uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); pcode text; pname text;
+    r record; cand uuid; acct uuid; app uuid; apps jsonb := '{}'::jsonb;
+    n_rows int; n_apps int; n_paid int; st text; p1 record; d1 record; prelim_in boolean; ex_rows int; ex_bad text; ex_filters jsonb;
+BEGIN
+  BEGIN   -- the check's own applicants, undone at the end
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V479', true);
+    SELECT code, name INTO pcode, pname FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\xB479'::bytea, 1, current_date, who, 'academic');
+    -- P1 paid on two attempts (gender and aggregate only on JAMB's record), P2 pending, P3 reversed, P4 acceptance fee only,
+    -- D1 Direct Entry paid with the old portal's placeholder contacts, R1 a Preliminary applicant who paid
+    FOR r IN SELECT * FROM (VALUES
+        ('P1', 'UTME', '20947990001', 100, 'zz.check479p1@example.com', '08034790001', '479001'),
+        ('P2', 'UTME', '20947990002', 100, 'zz.check479p2@example.com', '08034790002', '479002'),
+        ('P3', 'UTME', '20947990003', 100, 'zz.check479p3@example.com', '08034790003', '479003'),
+        ('P4', 'UTME', '20947990004', 100, 'zz.check479p4@example.com', '08034790004', '479004'),
+        ('D1', 'DIRECT_ENTRY', '20947990005', 200, '20947990005@migrate.moau.local', '00000000000', '479005'),
+        ('R1', 'PRELIMINARY', NULL, 0, 'zz.check479r1@example.com', '08034790006', '479006')
+    ) AS t(tag, mode, jamb, lvl, email, phone, seq)
+    LOOP
+        cand := gen_random_uuid(); acct := gen_random_uuid(); app := gen_random_uuid();
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, sex)
+        VALUES (cand, ses, r.jamb, 'CHECKV479', r.tag, CASE WHEN r.mode = 'PRELIMINARY' THEN 'Preliminary Science' ELSE pname END, r.mode, r.lvl, 'PROPOSED',
+                CASE WHEN r.tag = 'P1' THEN NULL ELSE 'M' END);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, ses, cand, r.jamb, r.email, r.phone, 'SET_ON_FIRST_LOGIN');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (app, acct, cand, ses, 'APP/79/' || r.seq);
+        apps := apps || jsonb_build_object(r.tag, app);
+    END LOOP;
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex)
+    VALUES (gen_random_uuid(), v_batch, ses, '20947990001', '{}'::jsonb, 'CHECKV479', 'P1', pcode, 260, 'UTME', 'F');
+    INSERT INTO admissions.fee_reference (id, application_id, kind, reference, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (gen_random_uuid(), (apps->>'P1')::uuid, 'APPLICATION', 'CHK479-P1-A', 2000, now() + interval '1 day', now() - interval '2 days', who, 'CARD', 'RC479-P1-A'),
+        (gen_random_uuid(), (apps->>'P1')::uuid, 'APPLICATION', 'CHK479-P1-B', 2000, now() + interval '1 day', now() - interval '1 day', who, 'CARD', 'RC479-P1-B'),
+        (gen_random_uuid(), (apps->>'P1')::uuid, 'APPLICATION', 'CHK479-P1-C', 2000, now() + interval '1 day', NULL, NULL, NULL, NULL),
+        (gen_random_uuid(), (apps->>'P2')::uuid, 'APPLICATION', 'CHK479-P2-A', 2000, now() + interval '1 day', NULL, NULL, NULL, NULL),
+        (gen_random_uuid(), (apps->>'P3')::uuid, 'APPLICATION', 'CHK479-P3-A', 2000, now() + interval '1 day', NULL, NULL, NULL, NULL),
+        (gen_random_uuid(), (apps->>'P4')::uuid, 'ACCEPTANCE', 'CHK479-P4-A', 5000, now() + interval '1 day', now() - interval '1 day', who, 'CARD', 'RC479-P4-A'),
+        (gen_random_uuid(), (apps->>'D1')::uuid, 'APPLICATION', 'CHK479-D1-A', 2000, now() + interval '1 day', now() - interval '1 day', who, 'BANK', 'RC479-D1-A'),
+        (gen_random_uuid(), (apps->>'R1')::uuid, 'APPLICATION', 'CHK479-R1-A', 2000, now() + interval '1 day', now() - interval '1 day', who, 'CARD', 'RC479-R1-A');
+    -- the Bursary reversed P3's payment: the reversal keeps what was confirmed, the reference no longer is
+    INSERT INTO admissions.fee_reversal (fee_reference_id, application_id, reference, kind, amount, confirmed_at, confirmed_by, channel, receipt_no, reason, reversed_by, reversed_office)
+    SELECT f.id, f.application_id, f.reference, f.kind, f.amount, now() - interval '3 days', who, 'CARD', 'RC479-P3-A', 'CHECK V479: paid on a wrong reference', who, 'bursar'
+      FROM admissions.fee_reference f WHERE f.reference = 'CHK479-P3-A';
+
+    SELECT count(*), count(DISTINCT application_id), count(*) FILTER (WHERE payment_status = 'VERIFIED') INTO n_rows, n_apps, n_paid
+      FROM admissions.post_utme_paid_applicants(ses);
+    SELECT string_agg(other_names || '=' || payment_status, ',' ORDER BY other_names) INTO st FROM admissions.post_utme_paid_applicants(ses);
+    SELECT * INTO p1 FROM admissions.post_utme_paid_applicants(ses) WHERE other_names = 'P1';
+    SELECT * INTO d1 FROM admissions.post_utme_paid_applicants(ses) WHERE other_names = 'D1';
+    prelim_in := EXISTS (SELECT 1 FROM admissions.post_utme_paid_applicants(ses) WHERE other_names = 'R1');
+
+    -- a download is recorded with its filters and rows; a format the report does not offer is refused
+    INSERT INTO admissions.report_export (report, session, format, filters, row_count, exported_by, office)
+    VALUES ('POST_UTME_PAID_APPLICANTS', ses, 'XLSX', '{"status": "VERIFIED", "gender": "F"}', 2, who, 'academic');
+    SELECT count(*), (array_agg(filters))[1] INTO ex_rows, ex_filters FROM admissions.report_export WHERE session = ses AND exported_by = who;
+    BEGIN
+        INSERT INTO admissions.report_export (report, session, format, row_count) VALUES ('POST_UTME_PAID_APPLICANTS', ses, 'CSV', 0);
+        ex_bad := 'accepted';
+    EXCEPTION WHEN check_violation THEN ex_bad := 'refused';
+    END;
+    RAISE EXCEPTION 'CHECK_V479_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V479_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V479: a Post-UTME applicant is paid only on a confirmed APPLICATION fee — one row an application, attempts counted, a reversal or an acceptance fee never paid, Preliminary not listed; JAMB''s aggregate and gender, placeholder contacts missing',
+        coalesce(n_rows = 5 AND n_apps = 5 AND n_paid = 2 AND NOT prelim_in
+            AND st = 'D1=VERIFIED,P1=VERIFIED,P2=PENDING,P3=REVERSED,P4=NOT_STARTED'
+            AND p1.verified_payments = 2 AND p1.payment_reference = 'CHK479-P1-A' AND p1.receipt_no = 'RC479-P1-A' AND p1.sex = 'F' AND p1.utme_aggregate = 260
+            AND p1.programme_code = pcode AND p1.faculty_code IS NOT NULL AND p1.full_name = 'CHECKV479, P1' AND cardinality(p1.missing) = 0
+            AND d1.utme_aggregate IS NULL AND d1.phone IS NULL AND d1.email IS NULL AND array_to_string(d1.missing, ',') = 'PHONE,EMAIL', false),
+        format('rows %s (apps %s, paid %s) | %s | P1 attempts %s ref %s sex %s agg %s prog %s missing %s | D1 agg %s phone %s email %s missing %s | prelim listed %s',
+               n_rows, n_apps, n_paid, st, p1.verified_payments, p1.payment_reference, p1.sex, p1.utme_aggregate, p1.programme_code, p1.missing,
+               d1.utme_aggregate, d1.phone, d1.email, d1.missing, prelim_in));
+    PERFORM pg_temp.assert('V479: each download of the report is recorded — the session, the format, the filters and the rows; only Excel or PDF',
+        coalesce(ex_rows = 1 AND ex_filters->>'gender' = 'F' AND ex_bad = 'refused', false),
+        format('recorded %s filters %s | CSV %s', ex_rows, ex_filters, ex_bad));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

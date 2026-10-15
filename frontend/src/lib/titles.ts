@@ -23,6 +23,7 @@ export const TITLES: Record<string, string> = {
   "s/deferment": "Deferment",
   "t/studentstats": "Student statistics",
   "t/studentquery": "Student query",
+  "t/paidapplicants": "Paid Post-UTME applicants",
   "t/classification": "Student classification",
   "t/staffupload": "Non-Academic Staff",
   "s/tickets": "ICT Support",
