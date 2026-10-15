@@ -107,6 +107,20 @@ class ResultsController {
         return service.importRegistration(body.session(), body.semester(), body.rows());
     }
 
+    /** V472: what a course registration upload would do, row by row, before it does it — nothing is written */
+    @PostMapping("/legacy/registration/preview")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> previewRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.previewLegacy(body.session(), body.semester(), body.rows(), false);
+    }
+
+    /** V472: what a past results upload would do, row by row, before it does it — nothing is written */
+    @PostMapping("/legacy/results/preview")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> previewResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.previewLegacy(body.session(), body.semester(), body.rows(), true);
+    }
+
     /** the past results of a semester, imported as final under a legacy minute */
     @PostMapping("/legacy/results")
     @PreAuthorize(MIGRATE)

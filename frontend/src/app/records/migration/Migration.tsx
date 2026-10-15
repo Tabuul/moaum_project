@@ -39,10 +39,34 @@ function pacer(total: number): (done: number) => string | undefined {
 }
 
 type JobGroup = { session: string; semester: number; rows: Record<string, string>[] };
-type Job = { kind: Tab; path: string; scoped: boolean; groups: JobGroup[]; chunk: number; totalRows: number; gi: number; ci: number; sent: number; totals: Record<string, number>; firstErr: string | null };
+/** V472: one row of a registration or results upload, as the loader read it against the record */
+type LegacyLine = { line: string | null; matric: string; course: string; session: string; semester: number; status: string; detail: string | null };
+type Job = { kind: Tab; path: string; scoped: boolean; groups: JobGroup[]; chunk: number; totalRows: number; gi: number; ci: number; sent: number; totals: Record<string, number>; firstErr: string | null; lines: LegacyLine[] };
 /** V459: a change a register upload would make to a student already on the portal */
 type RegisterChange = { matric: string; name: string; field: string; from: string | null; to: string | null };
 type Preview = { job: Job; totals: Record<string, number>; changes: RegisterChange[]; failed: Problem | null };
+type LegacyPreview = { job: Job; totals: Record<string, number>; lines: LegacyLine[]; failed: Problem | null };
+
+/** V472: each row's status in words — what the upload did, or (on the check before it) what it will do */
+const LINE_WORD: Record<string, [string, string]> = {
+  ADDED: ["Added", "Will be added"],
+  ADDED_TO_OPEN_REGISTRATION: ["Added to a registration open on the portal", "Will be added to a registration open on the portal"],
+  ALREADY_ON_RECORD: ["Already on record", "Already on record — nothing changes"],
+  UNITS_DIFFER: ["On record at other units — left as it is", "On record at other units — left as it is"],
+  DROPPED_ON_RECORD: ["Dropped on record — left as it is", "Dropped on record — left as it is"],
+  NO_STUDENT: ["No such student", "No such student"],
+  NO_COURSE: ["No such course", "No such course"],
+  DUPLICATE_IN_FILE: ["Repeated in the file", "Repeated in the file"],
+  REFUSED: ["Refused", "Will be refused"],
+  RESULT_POSTED: ["Result posted", "Result will be posted"],
+  HELD: ["Held — student not loaded yet", "Will be held — student not loaded yet"],
+  NO_MARK: ["No mark, or a mark out of range", "No mark, or a mark out of range"],
+};
+const lineWord = (status: string, preview: boolean) => (LINE_WORD[status] ?? [status, status])[preview ? 1 : 0];
+/** the rows the check lists for the office to read: everything but a plain addition, a posted result or a course already on record */
+const QUIET = new Set(["ADDED", "RESULT_POSTED", "ALREADY_ON_RECORD"]);
+/** a refusal in words, without the portal's code in front of it ("REGISTRATION_ONCE_A_SESSION: …") */
+const plainDetail = (d: string | null | undefined) => (d ?? "").replace(/^[A-Z][A-Z_]+:\s*/, "");
 
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
@@ -51,11 +75,12 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [semester, setSemester] = useState("1");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
+  const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null; lines?: LegacyLine[] } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number; note?: string } | null>(null);
   const [resumable, setResumable] = useState<{ sent: number; of: number; where: string } | null>(null);
   const jobRef = useRef<Job | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [lpreview, setLpreview] = useState<LegacyPreview | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
   const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[]; failures: string[] } | null>(null);
 
@@ -197,6 +222,44 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     return { job, totals, changes, failed: null };
   }
 
+  /** V472: what a registration or results upload would do, row by row — the loader runs each batch and undoes it, so
+   *  this is what the upload itself will do; nothing is written */
+  async function previewLegacyJob(job: Job): Promise<LegacyPreview> {
+    const totals: Record<string, number> = {};
+    const lines: LegacyLine[] = [];
+    let done = 0;
+    for (const g of job.groups) {
+      for (let i = 0; i < g.rows.length; i += job.chunk) {
+        setProgress({ label: "Checking the file against the record", sent: done, of: job.totalRows });
+        const chunk = g.rows.slice(i, i + job.chunk);
+        try {
+          const r = await fetch(`${job.path}/preview`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Check of a legacy ${job.kind} upload for ${g.session} semester ${g.semester}`) },
+            body: JSON.stringify({ session: g.session, semester: g.semester, rows: chunk }) });
+          const j = (await r.json().catch(() => null)) as (Record<string, unknown> & { lines?: LegacyLine[] }) | null;
+          if (!r.ok) return { job, totals, lines, failed: (j ?? { status: r.status, title: r.statusText || "The check was refused" }) as unknown as Problem };
+          for (const [k, v] of Object.entries(j ?? {})) if (typeof v === "number" && k !== "semester") totals[k] = (totals[k] ?? 0) + v;
+          lines.push(...(j?.lines ?? []));
+        } catch {
+          return { job, totals, lines, failed: { status: 0, title: "The connection to the portal dropped", detail: "The file could not be checked." } };
+        }
+        done += chunk.length;
+      }
+    }
+    return { job, totals, lines, failed: null };
+  }
+
+  /** V472: rows with their status, as a spreadsheet — every row of the check, or the rows an upload did not load */
+  function downloadLines(lines: LegacyLine[], previewed: boolean, name: string) {
+    if (!lines.length) return;
+    const blob = buildXlsx(["Row in the file", "Matriculation number", "Course", "Session", "Semester", "Status", "Detail"],
+      lines.map((l) => [l.line ?? "", l.matric, l.course, l.session, semesterText(Number(l.semester)), lineWord(l.status, previewed), plainDetail(l.detail)]), "Rows");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   /** the changes the preview listed, as a spreadsheet the office can check line by line */
   function downloadChanges() {
     if (!preview?.changes.length) return;
@@ -226,11 +289,12 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             const where = `Rows ${(job.sent + 1).toLocaleString()} to ${(job.sent + chunk.length).toLocaleString()} of ${job.totalRows.toLocaleString()}${job.scoped ? ` (${g.session} semester ${g.semester})` : ""}`;
             const p = { ...f.problem, detail: `${where} could not be imported${f.status ? ` (HTTP ${f.status})` : ""}${f.problem.detail ? `: ${f.problem.detail}` : ""}. ${job.sent.toLocaleString()} rows are already in. Press Resume to carry on from this batch; the import is idempotent, so nothing duplicates.` };
             setProblem(p); notifyProblem(p);
-            if (Object.keys(job.totals).length) setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr });
+            if (Object.keys(job.totals).length) setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr, lines: job.lines });
             setResumable({ sent: job.sent, of: job.totalRows, where });
             return;
           }
-          for (const [k, v] of Object.entries(res.counts)) if (typeof v === "number") job.totals[k] = (job.totals[k] ?? 0) + v;
+          for (const [k, v] of Object.entries(res.counts)) if (typeof v === "number" && k !== "semester") job.totals[k] = (job.totals[k] ?? 0) + v;
+          if (Array.isArray(res.counts.lines)) job.lines.push(...(res.counts.lines as LegacyLine[]));
           if (!job.firstErr && typeof res.counts.first_error === "string" && res.counts.first_error) job.firstErr = res.counts.first_error;
           job.ci += chunk.length; job.sent += chunk.length;
           setProgress({ label: "Importing", sent: job.sent, of: job.totalRows, note: pace(job.sent - base) });
@@ -238,7 +302,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         job.gi++; job.ci = 0;
       }
       jobRef.current = null;
-      setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr });
+      setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr, lines: job.lines });
       notify(`Legacy ${job.kind} import complete`);
       /* a student upload may satisfy results that were held earlier for a student not on the register
          yet — reconcile them now, so results and biodata can be uploaded in either order (V204) */
@@ -268,6 +332,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setRejected(null);
     setResumable(null);
     setPreview(null);
+    setLpreview(null);
     jobRef.current = null;
     try {
       setProgress({ label: "Reading the file", sent: 0, of: 0 });
@@ -287,6 +352,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         const r = dataRows[i];
         if (r.some((c) => String(c ?? "").trim() !== "")) {
           const o = applyRow(cols, r);
+          // V472: the row's place in the spreadsheet, so a row the upload sets aside can be found in the file
+          if (kind === "registration" || kind === "results") o.line = String(i + 2);
           if (o.matric && !/^matric/i.test(o.matric)) {
             /* on the matric-keyed imports, hold back a row with no valid matriculation number so the
                officer can download and fix it, rather than send it only for the server to reject it */
@@ -337,11 +404,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
          would queue on the same audit chain (and could deadlock), so nothing would be gained. */
       const CHUNK = kind === "biodata" || kind === "pgstudents" ? 50 : 400;
       const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
-      const job: Job = { kind, path, scoped, groups, chunk: CHUNK, totalRows, gi: 0, ci: 0, sent: 0, totals: {}, firstErr: null };
+      const job: Job = { kind, path, scoped, groups, chunk: CHUNK, totalRows, gi: 0, ci: 0, sent: 0, totals: {}, firstErr: null, lines: [] };
       jobRef.current = job;
       // V459: a register upload goes up only once the office has seen what it changes to the students already on the portal
       if (kind === "biodata" || kind === "pgstudents" || kind === "students") {
         setPreview(await previewJob(job));
+        return;
+      }
+      // V472: a registration or results upload goes up only once the office has seen what it does against the record
+      if (kind === "registration" || kind === "results") {
+        setLpreview(await previewLegacyJob(job));
         return;
       }
       await runJob(job);
@@ -382,8 +454,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     },
     registration: {
       name: "Course registration",
-      headers: ["Matriculation Number", "Course Code", "Units", "Level", "Session", "Semester"],
-      example: ["MOAUM/CSC/22/0001", "CSC 301", "3", "300", "2024/2025", "First"],
+      headers: ["Matriculation Number", "Course Code", "Level", "Session", "Semester"],
+      example: ["MOAUM/CSC/22/0001", "CSC 301", "300", "2024/2025", "First"],
     },
     results: {
       name: "Past results",
@@ -453,8 +525,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     biodata: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     pgstudents: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
-    registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
-    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
+    registration: [["rows", "Rows read"], ["entries", "Courses added"], ["registrations", "New registrations"], ["already", "Already on record"], ["units_differ", "Units differ — left as they are"], ["dropped_kept", "Dropped on record — left as they are"], ["added_to_open", "Added to an open registration"], ["no_student", "No such student"], ["no_course", "No such course"], ["duplicate", "Repeated in the file"], ["refused", "Refused"]],
+    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["entries", "Courses added"], ["registrations", "Registrations made"], ["already", "Course already on record"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["duplicate", "Repeated in the file"], ["refused", "Refused"]],
     pgregistration: [["rows", "Rows read"], ["students", "Students"], ["courses", "New courses"], ["registrations", "Registrations made"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
     pgresults: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["courses", "New courses"], ["held", "Held (student not loaded yet)"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
     pgresearch: [["rows", "Rows read"], ["matched", "Records set"], ["created", "New records"], ["updated", "Updated"], ["supervisors", "Supervisors set"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
@@ -607,7 +679,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
 
       <div className="card"><PBody>
-        <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); setPreview(null); }}
+        <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); setPreview(null); setLpreview(null); }}
           items={([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => ({ id: k, label: l }))} />
       </PBody></div>
 
@@ -663,7 +735,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level, and — for the Centre for Continuing Education's students — route (CCE) or study mode (part-time): such a student comes over as CCE and part-time. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
-              : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
+              : tab === "registration" ? "Columns read: matriculation number, course code, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many. The file is first checked against the record — each row shown as to be added, already on record, on record differently (other units, or dropped), or not loadable and why — and goes up only when you confirm. Only what is missing is added: a course already on a student's registration keeps its units and status, and a new course takes the units the student's programme takes it at (a Units column in the file is ignored). Student name and programme are not needed: the student is matched by matriculation number."
               : tab === "pgregistration" ? "Columns read: matriculation number, course code, course title, units, kind (CORE/ELECTIVE/DEFICIENCY/RESEARCH), mode (full/part-time), session (YYYY/YYYY) and semester (First/Second or 1/2 — postgraduate study has two semesters). The student must be a postgraduate already on the register (upload the postgraduate students first). A course not yet in the postgraduate catalogue is created for the student's programme from the title/units/kind; an endorsed registration and its entries are created for each session/semester."
               : tab === "pgresults" ? "Columns read: matriculation number, course code, course title, units, kind, session, semester, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). The result is graded on the postgraduate scale (A 70+, B 60–69, C 50–59, F below 50 — no D/E, Policy 16), so it counts on the postgraduate register's CGPA. A row whose student is not on the register yet is HELD and posts automatically once that student is uploaded (in either order)."
               : tab === "pgresearch" ? "Columns read: matriculation number, topic, stage, supervisor(s), viva score/grade/outcome, plagiarism %, and the milestone dates (proposal approved, seminar, title registered, viva held, final submitted, cleared, award). The student must be a postgraduate on the register. The research record is created if absent (its degree kind — Project/Dissertation/Thesis — derived from the programme) and set from the row; the stage is taken as stated, else inferred from the furthest milestone present (an award date ⇒ AWARDED). Supervisors named on the row replace the record's current ones, so a re-upload updates rather than duplicates."
@@ -749,6 +821,65 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         );
       })() : null}
 
+      {lpreview && lpreview.job.kind === tab ? (() => {
+        const t = lpreview.totals;
+        const num = (k: string) => Number(t[k] ?? 0);
+        const isResults = lpreview.job.kind === "results";
+        const notLoaded = num("no_student") + num("no_course") + num("refused") + num("duplicate") + (isResults ? num("no_mark") : 0);
+        const issues = lpreview.lines.filter((l) => !QUIET.has(l.status));
+        const go = () => { const j = lpreview.job; setLpreview(null); void runJob(j); };
+        return (
+          <Panel title="Before this file goes up" right={`${num("rows").toLocaleString()} rows checked against the record`}>
+            <PBody>
+              {lpreview.failed ? (
+                <Note kind="bad" title="The file could not be checked">
+                  {lpreview.failed.title}{lpreview.failed.detail ? ` — ${lpreview.failed.detail}` : ""} Nothing has been uploaded.
+                </Note>
+              ) : (
+                <>
+                  <Tiles items={isResults ? [
+                    ["Results to post", num("results").toLocaleString(), num("results") ? "var(--green-ink)" : null, `${num("entries").toLocaleString()} course${num("entries") === 1 ? "" : "s"} to be registered with them`],
+                    ["Held", num("held").toLocaleString(), null, "student not loaded yet — posts once they are"],
+                    ["Course already on record", num("already").toLocaleString(), null, "the result is posted; the registration is not touched"],
+                    ["Will not load", notLoaded.toLocaleString(), notLoaded ? "var(--red-ink)" : null, "no student or course, a bad mark, repeated, or refused"],
+                  ] : [
+                    ["Courses to add", num("entries").toLocaleString(), num("entries") ? "var(--green-ink)" : null, `${num("registrations").toLocaleString()} new registration${num("registrations") === 1 ? "" : "s"} for a semester`],
+                    ["Already on record", num("already").toLocaleString(), null, "nothing changes"],
+                    ["On record, differently", (num("units_differ") + num("dropped_kept")).toLocaleString(), num("units_differ") + num("dropped_kept") ? "var(--amber-ink)" : null, `${num("units_differ").toLocaleString()} at other units, ${num("dropped_kept").toLocaleString()} dropped — left as they are`],
+                    ["Will not load", notLoaded.toLocaleString(), notLoaded ? "var(--red-ink)" : null, `${num("no_student").toLocaleString()} no student, ${num("no_course").toLocaleString()} no course, ${num("duplicate").toLocaleString()} repeated, ${num("refused").toLocaleString()} refused`],
+                  ]} />
+                  {num("added_to_open") ? (
+                    <Note kind="info" title={`${num("added_to_open").toLocaleString()} course${num("added_to_open") === 1 ? " goes" : "s go"} onto a registration the student made on the portal`}>
+                      Those semesters already have a registration on the portal that is not approved yet; the file&rsquo;s courses are added to it, approved. Check them in the list below.
+                    </Note>
+                  ) : null}
+                  <Note kind="ok" title="What is on record is never rewritten">
+                    A course already on a student&rsquo;s registration keeps its units and its status — a dropped course stays dropped{isResults ? " (unless a result for it is posted, which approves it)" : ""}. New courses take the units the student&rsquo;s programme takes them at.
+                  </Note>
+                </>
+              )}
+            </PBody>
+            {!lpreview.failed && issues.length ? (
+              <DTable pageSize={25} cols={["Row|num", "Matriculation number", "Course", "Session|mid", "Semester|mid", "Status", "Detail"]}
+                texts={issues.map((l) => `${l.matric} ${l.course} ${lineWord(l.status, true)} ${plainDetail(l.detail)}`)}
+                rows={issues.map((l, i) => [<span key={`r${i}`} className="tnum sub2">{l.line ?? "—"}</span>, <span key={`m${i}`} className="tnum">{l.matric}</span>, <span key={`c${i}`} className="tnum">{l.course}</span>,
+                  <span key={`s${i}`} className="tnum">{l.session}</span>, <span key={`e${i}`}>{semesterText(Number(l.semester))}</span>,
+                  <Pil key={`p${i}`} kind={l.status === "UNITS_DIFFER" || l.status === "DROPPED_ON_RECORD" || l.status === "ADDED_TO_OPEN_REGISTRATION" || l.status === "HELD" ? "warn" : "bad"}>{lineWord(l.status, true)}</Pil>,
+                  <span key={`d${i}`} className="sub2">{plainDetail(l.detail)}</span>])} />
+            ) : null}
+            <PBody>
+              <div className="row">
+                {lpreview.failed
+                  ? <Btn kind="ghost" onClick={go}>Upload without the check</Btn>
+                  : <Btn kind="primary" onClick={go}>{notLoaded ? "Upload it — the rows that will not load are set aside" : "Upload it"}</Btn>}
+                {lpreview.lines.length ? <Btn kind="ghost" onClick={() => downloadLines(lpreview.lines, true, `${isResults ? "past results" : "course registration"} — check of every row.xlsx`)}>Download every row&rsquo;s status</Btn> : null}
+                <Btn kind="ghost" onClick={() => { setLpreview(null); jobRef.current = null; }}>Cancel</Btn>
+              </div>
+            </PBody>
+          </Panel>
+        );
+      })() : null}
+
       {tab === "passports" && pResult ? (
         <>
           <Tiles items={[
@@ -780,22 +911,28 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         <>
           <Tiles items={CARDS[tab].map(([k, label]) => {
             const v = Number(result.counts[k] ?? 0);
-            const bad = (/no_|bad_|skipped/.test(k)) && v > 0;
-            return [label, String(v), bad ? "var(--red-ink)" : /created|results|registrations|students/.test(k) ? "var(--green-ink)" : null, ""] as [string, string, string | null, string];
+            const bad = (/no_|bad_|skipped|refused|duplicate/.test(k)) && v > 0;
+            return [label, String(v), bad ? "var(--red-ink)" : /created|results|registrations|students|entries/.test(k) ? "var(--green-ink)" : null, ""] as [string, string, string | null, string];
           })} />
           <Note kind="ok" title="Imported">
             {tab === "biodata" || tab === "pgstudents" ? `${result.counts.created ?? 0} ${tab === "pgstudents" ? "postgraduate students" : "students"} created, ${result.counts.updated ?? 0} updated; ${result.counts.contacts ?? 0} contacts and ${result.counts.biography ?? 0} biography values saved; ${result.counts.accounts ?? 0} sign-in accounts provisioned.`
               : tab === "students" ? `${result.counts.created ?? 0} students created, ${result.counts.updated ?? 0} updated.`
               : tab === "jamb" ? `${result.counts.updated ?? 0} JAMB number${result.counts.updated === 1 ? "" : "s"} set on the register. You can now upload passport photos named by JAMB number.`
-              : tab === "registration" ? `${result.counts.registrations ?? 0} registrations across ${result.counts.offerings ?? 0} courses.`
+              : tab === "registration" ? `${result.counts.entries ?? 0} course${result.counts.entries === 1 ? "" : "s"} added (${result.counts.registrations ?? 0} new registration${result.counts.registrations === 1 ? "" : "s"}); ${result.counts.already ?? 0} already on record. Nothing on record was rewritten.`
               : tab === "pgregistration" ? `${result.counts.registrations ?? 0} postgraduate registrations for ${result.counts.students ?? 0} students${(result.counts.courses ?? 0) > 0 ? `; ${result.counts.courses} new courses added to the postgraduate catalogue` : ""}.`
               : tab === "pgresearch" ? `${result.counts.matched ?? 0} research records set (${result.counts.created ?? 0} new, ${result.counts.updated ?? 0} updated); ${result.counts.supervisors ?? 0} supervisors recorded.`
               : tab === "pgresults" ? `${result.counts.results ?? 0} postgraduate results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}. These count on the postgraduate register's CGPA.`
               : `${result.counts.results ?? 0} results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}.`}
             {" "}Fix unmatched rows at source and re-upload.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
-            {(result.counts.skipped ?? 0) > 0 ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
+            {(result.counts.skipped ?? 0) > 0 && !result.lines?.length ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
           </Note>
+          {result.lines && result.lines.length ? (
+            <Note kind="info" title={`${result.lines.length.toLocaleString()} row${result.lines.length === 1 ? " was" : "s were"} not loaded or left as on record`}
+                  action={<Btn kind="ghost" onClick={() => downloadLines(result.lines ?? [], false, `${tab === "results" ? "past results" : "course registration"} — rows not loaded.xlsx`)}>Download these rows</Btn>}>
+              Each row has its row number in the file and the reason: no such student or course, repeated in the file, refused by the portal&rsquo;s rules, or on record already at other units or dropped (left as it is).
+            </Note>
+          ) : null}
         </>
       ) : null}
 
@@ -808,7 +945,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
 
       <Note kind="info" title="Order matters, and re-uploading is safe">
         <Pil kind="grey">1</Pil> Students &rarr; <Pil kind="grey">2</Pil> Registration &rarr; <Pil kind="grey">3</Pil> Results.
-        Re-uploading updates rather than duplicates; large files are sent in batches.
+        Re-uploading updates rather than duplicates (course registration adds only what is missing and never rewrites what is on record); large files are sent in batches.
       </Note>
 
       {may ? (

@@ -133,16 +133,33 @@ public class ResultsService {
         return repo.setJambNumbers(json.writeValueAsString(rows));
     }
 
+    /** V472: the course registration of a past semester; what is on record keeps its units and status, and every row not
+     *  loaded or left as it was comes back with its reason */
     @Transactional
     public Map<String, Object> importRegistration(String session, int semester, List<Map<String, Object>> rows) {
         requireRows(rows);
-        return repo.importLegacy(session, semester, json.writeValueAsString(rows), false);
+        return loadLegacy(session, semester, rows, false, false);
     }
 
     @Transactional
     public Map<String, Object> importResults(String session, int semester, List<Map<String, Object>> rows) {
         requireRows(rows);
-        return repo.importLegacy(session, semester, json.writeValueAsString(rows), true);
+        return loadLegacy(session, semester, rows, true, false);
+    }
+
+    /** V472: what a registration (or results) upload would do, row by row — the load run and undone; nothing stays */
+    @Transactional
+    public Map<String, Object> previewLegacy(String session, int semester, List<Map<String, Object>> rows, boolean withResults) {
+        requireRows(rows);
+        Map<String, Object> out = loadLegacy(session, semester, rows, withResults, true);
+        // the load undoes itself; the transaction is rolled back as well, so a preview can never leave a trace
+        org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+        return out;
+    }
+
+    private Map<String, Object> loadLegacy(String session, int semester, List<Map<String, Object>> rows, boolean withResults, boolean preview) {
+        return json.readValue(repo.loadLegacy(session, semester, json.writeValueAsString(rows), withResults, preview),
+                new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */

@@ -811,9 +811,12 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
-    java.util.Map<String, Object> importLegacy(String session, int semester, String rowsJson, boolean withResults) {
-        return jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, :sem, :j::jsonb, :wr)")
-                .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).query().singleRow();
+    /** V472: the past semester's registration (and results) loaded — or, with preview, loaded and undone — as JSON text: the
+     *  counts and each row's status (every row on a preview; on an import, the rows not loaded or left as they were) */
+    String loadLegacy(String session, int semester, String rowsJson, boolean withResults, boolean preview) {
+        return jdbc.sql("SELECT assessment.legacy_semester_load(:s, :sem, :j::jsonb, :wr, :pv)::text")
+                .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).param("pv", preview)
+                .query(String.class).single();
     }
 
     java.util.Map<String, Object> importLegacyPg(String session, int semester, String rowsJson, boolean withResults) {

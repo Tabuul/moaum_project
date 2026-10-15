@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 309
+\set EXPECTED 310
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13942,6 +13942,82 @@ BEGIN
                lj.programme_type, lj.faculty_code, lj.status, lj.admission_route, lj.jupeb_registered, v_draft_absent,
                lp.programme_type, lp.programme_is_target, lp.programme_code = v_ug, lp.status, lp.admission_route, lp.study_mode,
                lp2.status, v_kind, v_dup, v_name, v_register_ok, v_ids_ok, v_registry_ok, v_future_ok, v_bad_office));
+END $$;
+-- ── V472. The course registration history upload is checked before it writes, and never rewrites what is on record: the check
+--    runs the load and undoes it (nothing stays); the upload adds only what is missing, a new course at the units the programme
+--    takes it at; a re-upload leaves a dropped course dropped and a course's units as they are, saying so row by row; the old
+--    import keeps its counts over the loader ──
+DO $$
+DECLARE
+    v_prog text; v_dept text; st uuid := gen_random_uuid(); v_ses text := '9989/9990';
+    v_rows jsonb; pv jsonb; up jsonb; again jsonb; g record;
+    before_e bigint; before_r bigint; before_s bigint; after_e bigint; after_r bigint; after_s bigint;
+    u1 int; u2 int; st1 text; u2b int; st_after text;
+    statuses text; again_statuses text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK V472', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZQ 101', 'Check V472 one', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZZQ 102', 'Check V472 two', 2, 1, 100, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, units) VALUES ('ZZQ 101', v_prog, 100, 4);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/89/472001', 'MOAUM/ZZQ/89/4721', 'CHECKV472', 'One', v_prog, 'UTME', '9989/9990', 100, 100, 'ACTIVE', now());
+    v_rows := jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZQ/89/4721', 'course', 'ZZQ 101', 'level', '100'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZZQ/89/4721', 'course', 'zzq101'),
+        jsonb_build_object('line', '4', 'matric', 'MOAUM/ZZQ/89/4721', 'course', 'ZZQ102'),
+        jsonb_build_object('line', '5', 'matric', 'MOAUM/ZZQ/89/9999', 'course', 'ZZQ 101'),
+        jsonb_build_object('line', '6', 'matric', 'MOAUM/ZZQ/89/4721', 'course', 'ZZQ 999'));
+
+    SELECT count(*) INTO before_e FROM registration.entry;
+    SELECT count(*) INTO before_r FROM registration.course_registration;
+    SELECT count(*) INTO before_s FROM policy.academic_session;
+    pv := assessment.legacy_semester_load(v_ses, 1, v_rows, false, true);
+    SELECT count(*) INTO after_e FROM registration.entry;
+    SELECT count(*) INTO after_r FROM registration.course_registration;
+    SELECT count(*) INTO after_s FROM policy.academic_session;
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
+
+    up := assessment.legacy_semester_load(v_ses, 1, v_rows, false, false);
+    SELECT e.units INTO u1 FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = st AND o.course_code = 'ZZQ 101';
+    SELECT e.units INTO u2 FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = st AND o.course_code = 'ZZQ 102';
+
+    -- on record, differently: ZZQ 101 dropped, ZZQ 102 at 5 units; the same file again leaves both
+    UPDATE registration.entry e SET status = CASE o.course_code WHEN 'ZZQ 101' THEN 'DROPPED' ELSE e.status END,
+                                    units = CASE o.course_code WHEN 'ZZQ 102' THEN 5 ELSE e.units END
+      FROM registration.course_registration r, catalogue.offering o
+     WHERE r.id = e.registration_id AND o.id = e.offering_id AND r.student_id = st;
+    again := assessment.legacy_semester_load(v_ses, 1, v_rows, false, false);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO again_statuses FROM jsonb_array_elements(again->'lines') l;
+    SELECT e.status INTO st1 FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = st AND o.course_code = 'ZZQ 101';
+    SELECT e.units INTO u2b FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = st AND o.course_code = 'ZZQ 102';
+
+    -- the old import's counts, over the loader: a result for the dropped course approves it, a missing student is held
+    SELECT * INTO g FROM assessment.import_legacy_semester(v_ses, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/ZZQ/89/4721', 'course', 'ZZQ 101', 'total', '70'),
+        jsonb_build_object('matric', 'MOAUM/ZZQ/89/9998', 'course', 'ZZQ 101', 'total', '50')), true);
+    SELECT e.status INTO st_after FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = st AND o.course_code = 'ZZQ 101';
+
+    PERFORM pg_temp.assert('V472: the registration history upload is checked first and the check leaves nothing; only what is missing is added, at the programme''s units; a re-upload leaves a dropped course and a course''s units as they are, row by row; the old import keeps its counts',
+        coalesce(before_e = after_e AND before_r = after_r AND before_s = after_s
+            AND statuses = '2:ADDED,3:DUPLICATE_IN_FILE,4:ADDED,5:NO_STUDENT,6:NO_COURSE'
+            AND (pv->>'entries')::int = 2 AND (up->>'entries')::int = 2 AND (up->>'registrations')::int = 1
+            AND (SELECT string_agg(l->>'status', ',' ORDER BY (l->>'line')) FROM jsonb_array_elements(up->'lines') l) = 'DUPLICATE_IN_FILE,NO_STUDENT,NO_COURSE'
+            AND u1 = 4 AND u2 = 2
+            AND again_statuses = '2:DROPPED_ON_RECORD,3:DUPLICATE_IN_FILE,4:UNITS_DIFFER,5:NO_STUDENT,6:NO_COURSE' AND (again->>'entries')::int = 0
+            AND st1 = 'DROPPED' AND u2b = 5
+            AND g.results = 1 AND g.held = 1 AND g.rows = 2 AND st_after = 'APPROVED', false),
+        format('check left entries %s→%s regs %s→%s sessions %s→%s | check %s | upload entries %s regs %s, units %s/%s | again %s, dropped kept %s, units kept %s | old import results %s held %s rows %s, approved %s',
+               before_e, after_e, before_r, after_r, before_s, after_s, statuses, up->>'entries', up->>'registrations', u1, u2,
+               again_statuses, st1, u2b, g.results, g.held, g.rows, st_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
