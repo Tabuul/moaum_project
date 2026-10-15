@@ -605,9 +605,46 @@ class StudentSupportController {
         return out;
     }
 
-    /* ── the password: the portal's own reset; a temporary one only at the desk, on a ticket ── */
+    /* ── the password: the portal's own reset; a temporary one only at the desk, on a ticket; the default credential (V485) ── */
 
-    public record PasswordIn(@NotBlank String method, @NotBlank @Size(max = 2000) String reason, UUID ticket) {
+    public record PasswordIn(@NotBlank String method, @NotBlank @Size(max = 2000) String reason, UUID ticket, Boolean unlock) {
+    }
+
+    /** a reset's reason is written down in words, as a fee reversal's is */
+    static final int RESET_REASON_MIN = 10;
+
+    /** V485: the desk's policy for resets to the default credential, from its settings row */
+    private Map<String, Object> resetPolicy() {
+        return jdbc.sql("""
+                SELECT coalesce(g.student_reset_enabled, true) AS enabled, coalesce(g.student_reset_unlock, true) AS unlock_by_default,
+                       coalesce(g.student_reset_ticket, 'OPTIONAL') AS ticket, coalesce(g.student_reset_hourly, 30) AS hourly,
+                       coalesce(g.student_reset_statuses, ARRAY['ACTIVE', 'PROBATION', 'DEFERRED', 'DORMANT', 'GRADUATED']) AS statuses
+                  FROM (SELECT 1) one LEFT JOIN helpdesk.setting g ON g.row_no
+                """).query().singleRow();
+    }
+
+    /** V485: the student and their account as the desk sees them before a reset — never the hash, never a password — whether the
+     *  reset to the default credential may be made, the methods this agent holds for this student, and the desk's policy */
+    @GetMapping("/students/{id}/password")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    Map<String, Object> passwordState(Authentication auth, @PathVariable UUID id) {
+        SupportAccess.Access a = support.on(auth, id);
+        if (!a.has("VIEW_STUDENT") && !a.has("RESET_PASSWORD")) can(a, "VIEW_STUDENT");
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT r.*, coalesce(r.locked_until > now(), false) AS locked FROM iam.student_reset_check(:s) r")
+                .param("s", id).query().singleRow());
+        Object refusal = out.get("refusal");
+        if (refusal != null) {
+            DomainRuleViolation why = StudentAuthService.resetRefusal(String.valueOf(refusal), (String) out.get("status"));
+            out.put("refusalWords", why.getMessage());
+        }
+        out.put("username", out.get("matric_no") != null ? out.get("matric_no") : out.get("admission_no"));
+        out.put("passwordStatus", !Boolean.TRUE.equals(out.get("has_account")) ? "NO_ACCOUNT" : Boolean.TRUE.equals(out.get("must_change")) ? "CHANGE_REQUIRED" : "NORMAL");
+        out.put("mayReset", a.has("RESET_PASSWORD"));
+        Map<String, Object> policy = new LinkedHashMap<>(resetPolicy());
+        policy.put("statuses", texts(policy.get("statuses")));
+        out.put("policy", policy);
+        return out;
     }
 
     @PostMapping("/students/{id}/password")
@@ -618,8 +655,48 @@ class StudentSupportController {
         can(a, "RESET_PASSWORD");
         String method = body.method().trim().toUpperCase();
         String reason = body.reason().trim();
+        if (reason.length() < RESET_REASON_MIN) {
+            throw new DomainRuleViolation("SUPPORT_REASON_SHORT", "Say why the password is reset, in " + RESET_REASON_MIN + " characters or more.",
+                    new DomainRuleViolation.Remedy("For example: \"Student forgot portal password; identity checked at the desk.\"", "You"));
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         switch (method) {
+            case "DEFAULT", "DEFAULT_CREDENTIAL", "MATRIC_NUMBER" -> {
+                Map<String, Object> policy = resetPolicy();
+                UUID ticket = support.ticketFor(a, body.ticket(), id, "REQUIRED".equals(policy.get("ticket")));
+                // the desk's hourly limit for each agent: a run of resets is refused before it is made, not noticed after
+                int hourly = ((Number) policy.get("hourly")).intValue();
+                long lastHour = jdbc.sql("""
+                        SELECT count(*) FROM helpdesk.support_action
+                         WHERE agent_id = :me AND action = 'PASSWORD_RESET' AND method = 'DEFAULT_CREDENTIAL' AND at >= now() - interval '1 hour'
+                        """).param("me", a.agent()).query(Long.class).single();
+                if (lastHour >= hourly) {
+                    throw new DomainRuleViolation("SUPPORT_RESET_RATE", "You have reset " + lastHour + " student passwords in the last hour, the desk's limit.",
+                            new DomainRuleViolation.Remedy("Wait a while, or ask the Head of the ICT Support Desk; the limit is in ICT Support Settings.", "Head of ICT Support Desk"));
+                }
+                boolean unlock = body.unlock() == null ? Boolean.TRUE.equals(policy.get("unlock_by_default")) : body.unlock();
+                StudentAuthService.DefaultReset r = studentAuth.resetToDefault(id, unlock);
+                out.put("method", "DEFAULT_CREDENTIAL");
+                out.put("alreadyDone", r.alreadyDone());
+                if (!r.alreadyDone()) {
+                    support.act(id, ticket, "PASSWORD_RESET", null, null, null, reason, null, null,
+                            Map.of("method", "DEFAULT_CREDENTIAL", "authEventId", r.eventId().toString(),
+                                   "summary", "Password reset to the default student credential: the student signs in with the matriculation number and must change the password at once"
+                                    + (r.opened() ? "; the portal account was opened" : "") + (r.sessionsEnded() > 0 ? "; " + r.sessionsEnded() + " open session" + (r.sessionsEnded() == 1 ? "" : "s") + " ended" : "")));
+                    if (r.unlocked()) {
+                        support.act(id, ticket, "ACCOUNT_UNLOCKED", null, null, null, reason, null, null,
+                                Map.of("summary", "Account unlocked with the password reset: the failed sign-ins cleared"));
+                    }
+                    support.tell(id, "Your portal password was reset by ICT Support",
+                            "ICT Support reset your portal password at the desk. Sign in with the details ICT Support gave you; you will be asked to choose your own "
+                            + "password at once. If you did not ask for this, contact ICT Support.");
+                }
+                out.put("unlocked", r.unlocked());
+                out.put("wasLocked", r.wasLocked());
+                out.put("sessionsEnded", r.sessionsEnded());
+                out.put("note", r.alreadyDone() ? "This student's password was reset moments ago; nothing more was done."
+                        : "Student password has been reset successfully. The student will be required to change the password at next login.");
+            }
             case "LINK", "RESET_LINK" -> {
                 UUID ticket = support.ticketFor(a, body.ticket(), id, false);
                 PasswordResetService.StudentReset sent = resets.forStudent(id);
@@ -645,8 +722,8 @@ class StudentSupportController {
                 out.put("expiresAt", t.expiresAt().toString());
                 out.put("note", "Give it to the student now; it is not shown again. It opens one sign-in, where the student must change it.");
             }
-            default -> throw new DomainRuleViolation("SUPPORT_RESET_METHOD", "A reset is a link to the student's address, or a temporary password at the desk.",
-                    new DomainRuleViolation.Remedy("Choose LINK or TEMPORARY.", "You"));
+            default -> throw new DomainRuleViolation("SUPPORT_RESET_METHOD", "A reset is the default student credential, a link to the student's address, or a temporary password at the desk.",
+                    new DomainRuleViolation.Remedy("Choose DEFAULT, LINK or TEMPORARY.", "You"));
         }
         return out;
     }

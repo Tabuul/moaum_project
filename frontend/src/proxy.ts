@@ -104,6 +104,11 @@ export async function proxy(request: NextRequest) {
           try { reason = (await r.json())?.code === "SESSION_EXPIRED_IDLE" ? "idle" : ""; } catch { /* no body */ }
           return toLogin(request, true, reason);
         }
+        /* V485: a student whose password must change (a reset by ICT Support, a temporary password, the first sign-in) reaches only
+           the change page; the API refuses everything else whatever the address, another tab, a refresh or the back button */
+        if (r.headers.get("x-password-change") === "REQUIRED" && pathname !== "/student/password") {
+          return NextResponse.redirect(new URL("/student/password", request.url));
+        }
         /* V423: a student the biodata gate holds reaches only the biodata page (and help, the notices) until it is complete.
            The API refuses everything else whatever the address; this only spares the student a page of refusals. */
         if (r.headers.get("x-biodata-gate") === "REQUIRED" && pathname.startsWith("/student") && !gateOpenPage(pathname)) {

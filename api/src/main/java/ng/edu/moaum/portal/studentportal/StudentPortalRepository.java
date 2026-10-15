@@ -64,9 +64,10 @@ class StudentPortalRepository {
         return jdbc.sql(STUDENT + " WHERE s.id = :id").param("id", id).query(Student.class).optional();
     }
 
-    /** V346: tempExpiresAt/tempUsedAt are set while the hash is a temporary password ICT Support issued — good once, until the time */
+    /** V346: tempExpiresAt/tempUsedAt are set while the hash is a temporary password ICT Support issued — good once, until the time;
+     *  V485: supportResetAt is when ICT Support last reset the account, until the student chooses a password */
     record Account(UUID id, UUID studentId, String passwordHash, boolean mustChange, int failedAttempts, OffsetDateTime lockedUntil,
-                   OffsetDateTime tempExpiresAt, OffsetDateTime tempUsedAt) {
+                   OffsetDateTime tempExpiresAt, OffsetDateTime tempUsedAt, OffsetDateTime supportResetAt) {
         boolean temporary() {
             return tempExpiresAt != null;
         }
@@ -77,7 +78,7 @@ class StudentPortalRepository {
     }
 
     Optional<Account> account(UUID student) {
-        return jdbc.sql("SELECT id, student_id, password_hash, must_change, failed_attempts, locked_until, temp_expires_at, temp_used_at FROM iam.student_account WHERE student_id = :s")
+        return jdbc.sql("SELECT id, student_id, password_hash, must_change, failed_attempts, locked_until, temp_expires_at, temp_used_at, support_reset_at FROM iam.student_account WHERE student_id = :s")
                 .param("s", student).query(Account.class).optional();
     }
 
@@ -109,8 +110,39 @@ class StudentPortalRepository {
                 INSERT INTO iam.student_account (id, student_id, password_hash, must_change, temp_expires_at, temp_issued_by)
                 VALUES (gen_random_uuid(), :s, :h, true, :until, :by)
                 ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = true, failed_attempts = 0, locked_until = NULL,
-                    temp_expires_at = EXCLUDED.temp_expires_at, temp_issued_by = EXCLUDED.temp_issued_by, temp_used_at = NULL
+                    temp_expires_at = EXCLUDED.temp_expires_at, temp_issued_by = EXCLUDED.temp_issued_by, temp_used_at = NULL, support_reset_at = now()
                 """).param("s", student).param("h", hash).param("until", until).param("by", by).update();
+    }
+
+    /** V485: the student's one account put back on its first password by ICT Support — a hash of a secret nobody holds, must-change
+     *  on, any temporary password withdrawn — so the sign-in door accepts the matriculation number once, for the forced change; the
+     *  lockout cleared only when asked. The account is opened in that state if it never was. True when the account was opened here. */
+    boolean resetToFirstPassword(UUID student, String hash, boolean unlock) {
+        return Boolean.TRUE.equals(jdbc.sql("""
+                INSERT INTO iam.student_account (id, student_id, password_hash, must_change, support_reset_at)
+                VALUES (gen_random_uuid(), :s, :h, true, now())
+                ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = true,
+                    failed_attempts = CASE WHEN :unlock THEN 0 ELSE iam.student_account.failed_attempts END,
+                    locked_until = CASE WHEN :unlock THEN NULL ELSE iam.student_account.locked_until END,
+                    temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL, support_reset_at = now()
+                RETURNING (xmax = 0)
+                """).param("s", student).param("h", hash).param("unlock", unlock).query(Boolean.class).single());
+    }
+
+    /** V485: every session the student holds is ended — a session opened on the old password does not outlive its reset */
+    int endSessions(UUID student, String reason) {
+        return jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = :r WHERE person_id = :p AND ended_at IS NULL")
+                .param("r", reason).param("p", student).update();
+    }
+
+    /** V485: the record, the account's state and whether the desk may reset it to the default credential (iam.student_reset_check) */
+    Optional<Map<String, Object>> resetCheck(UUID student) {
+        return jdbc.sql("SELECT * FROM iam.student_reset_check(:s)").param("s", student).query().listOfRows().stream().findFirst();
+    }
+
+    /** V485: the student held while a reset is made, so two clicks are one reset */
+    void holdStudent(UUID student) {
+        jdbc.sql("SELECT id FROM people.student WHERE id = :s FOR UPDATE").param("s", student).query(UUID.class).optional();
     }
 
     /** V346: the temporary password has opened its one session */
@@ -135,7 +167,7 @@ class StudentPortalRepository {
     }
 
     void changePassword(UUID student, String hash) {
-        jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE student_id = :s")
+        jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL, support_reset_at = NULL WHERE student_id = :s")
                 .param("h", hash).param("s", student).update();
     }
 

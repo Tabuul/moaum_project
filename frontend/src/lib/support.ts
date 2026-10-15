@@ -101,7 +101,7 @@ export interface PaymentDiagnosis {
 export const ACTION_WORD: Record<string, string> = {
   CONTACT_EDITED: "Contact detail changed", PERSONAL_EDITED: "Personal detail changed", FAMILY_EDITED: "Family or sponsor detail changed", PHOTO_REPLACED: "Photograph replaced",
   CHANGE_REQUESTED: "Change requested of the Registry", REGISTRATION_CHOSEN: "Registration courses chosen", COURSE_ADDED: "Course added", COURSE_DROPPED: "Course dropped",
-  REGISTRATION_SUBMITTED: "Registration submitted", RECORD_EXPORTED: "List exported", COURSE_RESTORED: "Course restored", PASSWORD_RESET: "Password reset initiated",
+  REGISTRATION_SUBMITTED: "Registration submitted", RECORD_EXPORTED: "List exported", COURSE_RESTORED: "Course restored", PASSWORD_RESET: "Password reset initiated", ACCOUNT_UNLOCKED: "Account unlocked",
   PAYMENT_INVESTIGATED: "Payment investigated", PAYMENT_VERIFIED: "Payment verified with the gateway", ENTITLEMENT_REFRESHED: "Payment entitlement refreshed",
   RECEIPT_REGENERATED: "Receipt regenerated", ESCALATED: "Escalated", TICKET_CREATED: "Ticket raised", TICKET_RESOLVED: "Ticket resolved",
 };

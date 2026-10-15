@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -64,6 +65,14 @@ class StudentAuthController {
     @PreAuthorize("hasAuthority('OFFICE_student')")
     Map<String, Object> changePassword(Authentication authentication, @Valid @RequestBody ChangePassword body) {
         return auth.changePassword(UUID.fromString(authentication.getName()), body.current(), body.next());
+    }
+
+    /** V485: the student's own account, for the forced change — whether a change is required and whether ICT Support reset it;
+     *  never the password, never what it is */
+    @GetMapping("/password-status")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    Map<String, Object> passwordStatus(Authentication authentication) {
+        return auth.passwordStatus(UUID.fromString(authentication.getName()));
     }
 
     /** the Registry opens or resets a student's portal account with a first password the student must change */

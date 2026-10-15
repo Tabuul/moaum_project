@@ -10,6 +10,8 @@ import type { StudentGate } from "@/lib/biodata-gate";
  *  and the sidebar is the gate's — the API refuses the rest whatever happens here. */
 export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ me: ShellMe; student: Me; gate: StudentGate | null } | { me: ShellMe | null; student: null; problem: import("@/lib/api").Problem; gate: StudentGate | null }> {
   const [who, mine, gateRead] = await Promise.all([api<ShellMe>("/api/v1/iam/me"), api<Me>("/api/v1/me"), api<StudentGate>("/api/v1/me/biodata/completion")]);
+  /* V485: a student whose password must change reaches only the change; the API refuses the rest whatever the address */
+  if (!mine.ok && mine.problem.code === "PASSWORD_CHANGE_REQUIRED") redirect("/student/password");
   const gate = gateRead.ok ? gateRead.data : null;
   const held = gate?.gate === "REQUIRED";
   if (held && !opts.gateOpen) redirect("/student/biodata");

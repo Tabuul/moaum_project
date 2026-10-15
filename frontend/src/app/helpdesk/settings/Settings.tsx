@@ -12,8 +12,10 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PRIORITY, parse, type Category, type Field as F } from "@/lib/helpdesk";
+import type { ResetPolicy } from "@/lib/password-reset";
+import { ResetPolicyPanel } from "./ResetPolicyPanel";
 
-export interface DeskSettings { auto_close_days: number | null; notify_agents_on_new: boolean; sla: { priority: string; first_response_hours: number; resolution_hours: number }[] }
+export interface DeskSettings { auto_close_days: number | null; notify_agents_on_new: boolean; sla: { priority: string; first_response_hours: number; resolution_hours: number }[]; passwordReset?: ResetPolicy }
 interface Draft { id: string | null; code: string; name: string; description: string; active: boolean; ordinal: string; suggestedPriority: string; attachmentHint: string; fields: (F & { optionsText?: string; keyTouched?: boolean })[] }
 const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30);
 const TYPES: [string, string][] = [["text", "Text"], ["date", "Date"], ["number", "Number"], ["select", "Choice"], ["session", "Academic session"], ["semester", "Semester"], ["level", "Level"]];
@@ -108,6 +110,8 @@ export function Settings({ categories, settings }: { categories: Category[]; set
         <Btn kind="primary" disabled={busy || slaBlank} onClick={() => void call("PUT", "/settings", { autoCloseDays: days ? Number(days) : null, notifyAgentsOnNew: tell, sla: sla.map((s) => ({ priority: s.priority, firstResponseHours: Number(s.first), resolutionHours: Number(s.res) })) }, "ICT support settings saved")}>{busy ? "Saving…" : "Save SLA and Settings"}</Btn>
         {slaBlank ? <span className="sub2">Every SLA box needs a number of hours.</span> : null}
       </div>
+
+      {settings.passwordReset ? <ResetPolicyPanel policy={settings.passwordReset} /> : null}
 
       {draft ? (
         <Modal title={draft.id ? `Edit ${draft.name}` : "New Category"} sub="What the requester chooses, and what it asks for" onClose={() => setDraft(null)} wide

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 322
+\set EXPECTED 324
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14587,6 +14587,75 @@ BEGIN
     PERFORM pg_temp.assert('V484: the structure upload binds a postgraduate programme''s rows at 700, 800 or 900 (its award level by default) and as Deficiency or Research where the status says so; an undergraduate programme''s rows as before',
         coalesce(got = format('ZQR 801@%s:Core,ZQR 802@%s:Deficiency,ZQR 811@900:Research', award, award) AND ug_got = 'ZQR 101@100:Core:Required', false),
         format('postgraduate %s (award level %s) | undergraduate %s', got, award, ug_got));
+END $$;
+-- ── V485. A student's password reset to the matriculation number at the ICT Support Desk: the desk may reset a matriculated
+--    student in a status its policy allows, never one without a number, a record merged into another, a withdrawn student, or
+--    any while the policy is off; the ledger takes the reset and the unlock without ever a value in them ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); v_prog text; act uuid := gen_random_uuid(); adm uuid := gen_random_uuid(); grad uuid := gen_random_uuid();
+    wd uuid := gen_random_uuid(); twin uuid := gen_random_uuid(); r_act text; r_adm text; r_grad text; r_wd text; r_twin text; r_off text;
+    acct_open boolean; ledger_ok text; leak text; unlock_leak text; bad_status text; module text; msg text;
+BEGIN
+  BEGIN   -- the check's own students, undone at the end
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V485', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-CHECK-V485', 'CHECKV485', 'Agent');
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (act, 'MOAUM/ADM/85/485001', 'MOAU/ZZ/CHK/85/48501', 'CHECKV485', 'Active', v_prog, 'UTME', '2085/2086', 100, 200, 'ACTIVE', now()),
+        (adm, 'MOAUM/ADM/85/485002', NULL, 'CHECKV485', 'Admitted', v_prog, 'UTME', '2085/2086', 100, 100, 'ADMITTED', NULL),
+        (grad, 'MOAUM/ADM/85/485003', 'MOAU/ZZ/CHK/85/48503', 'CHECKV485', 'Graduated', v_prog, 'UTME', '2085/2086', 100, 400, 'GRADUATED', now()),
+        (wd, 'MOAUM/ADM/85/485004', 'MOAU/ZZ/CHK/85/48504', 'CHECKV485', 'Withdrawn', v_prog, 'UTME', '2085/2086', 100, 100, 'WITHDRAWN', now()),
+        -- a record the Registry merged into the active student's (V431)
+        (twin, 'MOAUM/ADM/85/485005', NULL, 'CHECKV485', 'Merged', v_prog, 'UTME', '2085/2086', 100, 100, 'ADMITTED', NULL);
+    UPDATE people.student SET status = 'WITHDRAWN', duplicate_of = act WHERE id = twin;
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_grad FROM iam.student_reset_check(grad);
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_adm FROM iam.student_reset_check(adm);
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_wd FROM iam.student_reset_check(wd);
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_twin FROM iam.student_reset_check(twin);
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_act FROM iam.student_reset_check(act);
+    SELECT has_account INTO acct_open FROM iam.student_reset_check(act);
+    UPDATE helpdesk.setting SET student_reset_enabled = false WHERE row_no;
+    SELECT coalesce(refusal, 'ELIGIBLE') INTO r_off FROM iam.student_reset_check(act);
+    UPDATE helpdesk.setting SET student_reset_enabled = true WHERE row_no;
+    -- the ledger: the reset and the unlock, never a value in either
+    PERFORM helpdesk.record_support_action(act, NULL, 'PASSWORD_RESET', NULL, NULL, NULL, 'CHECK V485: student forgot the portal password', NULL, NULL,
+        '{"method": "DEFAULT_CREDENTIAL", "summary": "Password reset to the default student credential"}'::jsonb);
+    PERFORM helpdesk.record_support_action(act, NULL, 'ACCOUNT_UNLOCKED', NULL, NULL, NULL, 'CHECK V485: locked after failed sign-ins', NULL, NULL, '{}'::jsonb);
+    SELECT string_agg(action || '/' || coalesce(method, '-') || '/' || helpdesk.support_module(action), ',' ORDER BY action) INTO ledger_ok
+      FROM helpdesk.support_action WHERE student_id = act;
+    BEGIN
+        PERFORM helpdesk.record_support_action(act, NULL, 'PASSWORD_RESET', NULL, NULL, 'MOAU/ZZ/CHK/85/48501', 'CHECK V485: a value written', NULL, NULL,
+            '{"method": "DEFAULT_CREDENTIAL"}'::jsonb);
+        leak := 'written';
+    EXCEPTION WHEN check_violation THEN leak := 'refused';
+    END;
+    BEGIN
+        PERFORM helpdesk.record_support_action(act, NULL, 'ACCOUNT_UNLOCKED', NULL, 'LOCKED', NULL, 'CHECK V485: a value written', NULL, NULL, '{}'::jsonb);
+        unlock_leak := 'written';
+    EXCEPTION WHEN check_violation THEN unlock_leak := 'refused';
+    END;
+    BEGIN
+        UPDATE helpdesk.setting SET student_reset_statuses = ARRAY['ACTIVE', 'WITHDRAWN'] WHERE row_no;
+        bad_status := 'accepted';
+    EXCEPTION WHEN check_violation THEN bad_status := 'refused';
+    END;
+    module := helpdesk.support_module('ACCOUNT_UNLOCKED');
+    RAISE EXCEPTION 'CHECK_V485_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V485_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V485: the desk resets to the default credential only a matriculated student in an allowed status, never a merged record, while the policy is on',
+        coalesce(r_act = 'ELIGIBLE' AND NOT acct_open AND r_grad = 'ELIGIBLE' AND r_adm = 'RESET_NO_MATRIC' AND r_wd = 'RESET_STATUS'
+            AND r_twin = 'RESET_MERGED_RECORD' AND r_off = 'RESET_DISABLED', false),
+        format('active %s (account %s) | graduated %s | admitted %s | withdrawn %s | merged %s | policy off %s', r_act, acct_open, r_grad, r_adm, r_wd, r_twin, r_off));
+    PERFORM pg_temp.assert('V485: the ledger takes a reset to the default credential and an unlock, in Authentication, never with a value; a withdrawn status is never in the policy',
+        coalesce(ledger_ok = 'ACCOUNT_UNLOCKED/-/AUTHENTICATION,PASSWORD_RESET/DEFAULT_CREDENTIAL/AUTHENTICATION' AND leak = 'refused' AND unlock_leak = 'refused'
+            AND bad_status = 'refused' AND module = 'AUTHENTICATION', false),
+        format('ledger %s | a value on the reset %s, on the unlock %s | WITHDRAWN in the policy %s | module %s', ledger_ok, leak, unlock_leak, bad_status, module));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

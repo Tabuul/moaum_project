@@ -905,6 +905,14 @@ class HelpdeskController {
     Map<String, Object> settings() {
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT auto_close_days, notify_agents_on_new FROM helpdesk.setting WHERE row_no").query().singleRow());
         out.put("sla", jdbc.sql("SELECT priority, first_response_hours, resolution_hours FROM helpdesk.sla " + SLA_ORDER).query().listOfRows());
+        // V485: the policy for resets to the default student credential
+        Map<String, Object> reset = new LinkedHashMap<>(jdbc.sql("""
+                SELECT student_reset_enabled AS enabled, student_reset_unlock AS unlock_by_default, student_reset_ticket AS ticket,
+                       student_reset_hourly AS hourly, array_to_string(student_reset_statuses, ',') AS statuses
+                  FROM helpdesk.setting WHERE row_no
+                """).query().singleRow());
+        reset.put("statuses", List.of(String.valueOf(reset.get("statuses")).split(",")));
+        out.put("passwordReset", reset);
         return out;
     }
 
@@ -1199,6 +1207,39 @@ class HelpdeskController {
                 jdbc.sql("UPDATE helpdesk.sla SET first_response_hours = :f, resolution_hours = :r WHERE priority = :p").param("f", s.firstResponseHours()).param("r", s.resolutionHours()).param("p", p).update();
             }
         }
+        return settings();
+    }
+
+    /** V485: the statuses a reset to the default credential may reach; a withdrawn, expelled, transferred-out, deceased or rusticated
+     *  student, or one not yet matriculated, never */
+    static final List<String> RESET_STATUSES = List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED", "SUSPENDED");
+
+    public record PasswordResetPolicyIn(@NotNull Boolean enabled, @NotNull Boolean unlockByDefault, @NotBlank String ticket,
+                                        @NotNull @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses) {
+    }
+
+    /** V485: the desk's policy for resets to the default student credential — on or off, the lockout cleared unless the agent says
+     *  otherwise, a ticket optional or required, each agent's hourly limit, the statuses it may reach. The default credential is the
+     *  matriculation number and the change is always forced: neither is a setting. */
+    @PutMapping("/admin/settings/password-reset")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> savePasswordResetPolicy(@Valid @RequestBody PasswordResetPolicyIn body) {
+        String ticket = body.ticket().trim().toUpperCase();
+        if (!Set.of("OPTIONAL", "REQUIRED").contains(ticket)) {
+            throw new DomainRuleViolation("HELPDESK_RESET_TICKET", "A ticket is optional or required.", new DomainRuleViolation.Remedy("Choose one.", "Directorate of ICT"));
+        }
+        List<String> statuses = body.statuses().stream().map(x -> x == null ? "" : x.trim().toUpperCase()).distinct().toList();
+        if (statuses.isEmpty() || !RESET_STATUSES.containsAll(statuses)) {
+            throw new DomainRuleViolation("HELPDESK_RESET_STATUSES", "Choose at least one of the statuses a desk reset may reach: " + String.join(", ", RESET_STATUSES) + ".",
+                    new DomainRuleViolation.Remedy("A withdrawn, expelled, transferred-out, deceased or rusticated student is never reset at the desk.", "Directorate of ICT"));
+        }
+        jdbc.sql("""
+                UPDATE helpdesk.setting SET student_reset_enabled = :e, student_reset_unlock = :u, student_reset_ticket = :t, student_reset_hourly = :h,
+                       student_reset_statuses = string_to_array(:s, ',')
+                 WHERE row_no
+                """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly())
+                .param("s", String.join(",", statuses)).update();
         return settings();
     }
 

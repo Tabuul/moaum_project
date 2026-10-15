@@ -183,6 +183,8 @@ and the priority sort's secondary order by last update. Scope is the same `helpd
 - A posting is refused to anyone who does not hold the agent office; an unknown scope or office is refused.
 - The password reset is the portal's own (`PasswordResetService.forgot`): a one-hour link to the account's email and
   phone; the API returns `{sent: true}` and nothing else; the act is on the ticket history in the agent's name.
+  V485 adds the reset to the default student credential (the matriculation number, the change forced on the server) at
+  ICT Support Desk → Student Password Reset: see [student-password-reset.md](student-password-reset.md).
 - The three new tables are on the audit spine; the history stays written-once; every refusal names its code and remedy.
 
 ## 6. Tests

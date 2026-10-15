@@ -22,6 +22,7 @@ import {
 import type { RegistrationView } from "@/lib/student-portal";
 import type { GstEpsExplain } from "@/lib/gst";
 import { GstEligibilityView } from "@/components/gst/GstEligibilityView";
+import { PasswordReset } from "@/components/support/PasswordReset";
 
 type Tab = "profile" | "registration" | "payments" | "documents" | "clearance" | "history" | "tickets";
 const TABS: Tab[] = ["profile", "registration", "payments", "documents", "clearance", "history", "tickets"];
@@ -71,7 +72,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const [course, setCourse] = useState<CourseAct | null>(null);
   const [submit, setSubmit] = useState<{ reason: string; override: boolean; description: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rows: { offering_id: string; course_code: string; title: string; units: number; level: number; kind: string; department: string | null }[] } | null>(null);
-  const [reset, setReset] = useState<{ method: "LINK" | "TEMPORARY"; reason: string; result: Record<string, unknown> | null } | null>(null);
+  const [reset, setReset] = useState(false);
   const [raise, setRaise] = useState<{ category: string; subject: string; description: string; details: Record<string, string> } | null>(null);
   const [escalate, setEscalate] = useState<{ office: string; reason: string } | null>(null);
   const [resolve, setResolve] = useState<{ summary: string; details: string } | null>(null);
@@ -156,11 +157,6 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   }
 
   /* ── password, tickets ── */
-  async function confirmReset() {
-    if (!reset) return;
-    const j = await call("POST", "/password", { method: reset.method, reason: reset.reason.trim(), ticket: ticket?.id ?? null }, reset.method === "LINK" ? "Password reset link sent" : "Temporary password issued", true);
-    if (j) { setReset({ ...reset, result: j }); router.refresh(); }
-  }
   const category = raise ? data.categories.find((c) => c.code === raise.category) : undefined;
   const categoryFields: TicketField[] = (() => { try { return category ? (JSON.parse(category.fields) as TicketField[]) : []; } catch { return []; } })();
   async function confirmRaise() {
@@ -202,7 +198,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   /* ── the Support Action Center ── */
   function centreAct(code: string) {
     switch (code) {
-      case "RESET_PASSWORD": setReset({ method: "LINK", reason: "", result: null }); break;
+      case "RESET_PASSWORD": setReset(true); break;
       case "CREATE_TICKET": setRaise({ category: data.categories[0]?.code ?? "", subject: "", description: "", details: {} }); break;
       case "ESCALATE": if (ticket) setEscalate({ office: data.escalateTo[0] ?? "bursar", reason: "" }); else notifyProblem({ status: 422, title: "Escalation is made on a ticket", detail: "Open the student from their ticket, or raise one for them first." } as Problem); break;
       case "VIEW_REGISTRATION": case "ADD_COURSE": case "DROP_COURSE": case "OVERRIDE_REGISTRATION": openTab("registration"); break;
@@ -541,35 +537,9 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
         </Modal>
       ) : null}
 
-      {/* ── the password: never seen, never recorded ── */}
-      {reset ? (
-        <Modal title="RESET STUDENT PASSWORD" sub="Through the portal's own reset; the student's password is never shown and never recorded" onClose={() => setReset(null)}
-          foot={reset.result ? <Btn kind="primary" onClick={() => setReset(null)}>Done</Btn> : <><Btn kind="ghost" onClick={() => setReset(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || reset.reason.trim().length < 5 || (reset.method === "TEMPORARY" && !ticket)} onClick={() => void confirmReset()}>Reset password</Btn></>}>
-          <div className="stack">
-            <div className="grid grid--2">
-              <div className="kv"><span className="k">Student</span><span className="v">{fullName}</span></div>
-              <div className="kv"><span className="k">Matric number</span><span className="v tnum">{s.matricNo ?? s.admissionNo ?? "—"}</span></div>
-            </div>
-            {reset.result ? (reset.result.method === "TEMPORARY_PASSWORD" ? (
-              <Note kind="ok" title="Temporary password — give it to the student now">
-                <span className="tnum" style={{ display: "block", fontSize: 22, letterSpacing: 2, margin: "6px 0" }}>{String(reset.result.temporaryPassword)}</span>
-                <span className="sub2" style={{ display: "block" }}>It is not shown again and is kept only as a hash. It opens one sign-in until {when(String(reset.result.expiresAt))}, and the student must choose a new password there.</span>
-              </Note>
-            ) : <Note kind="ok" title="Reset link sent">A one-hour, single-use link went to {String(reset.result.sentTo)}. The student sets the new password; ICT Support never sees it.</Note>) : (
-              <>
-                <Field id="pw-method" label="Method">
-                  <div className="stack" style={{ gap: 4 }}>
-                    <label className="row row--inline row--tight"><input type="radio" name="pw-method" checked={reset.method === "LINK"} onChange={() => setReset({ ...reset, method: "LINK" })} /> Send a secure reset link to the student&rsquo;s email and phone (preferred)</label>
-                    <label className="row row--inline row--tight"><input type="radio" name="pw-method" checked={reset.method === "TEMPORARY"} onChange={() => setReset({ ...reset, method: "TEMPORARY" })} /> Issue a temporary password at the desk — random, one sign-in, 24 hours, changed at once (on a ticket)</label>
-                  </div>
-                </Field>
-                {reset.method === "TEMPORARY" && !ticket ? <Note kind="bad" title="A temporary password is issued on the student's ticket">Open the student from their ticket, or raise one for them first.</Note> : null}
-                <Field id="pw-reason" label="Reason" required hint={ticket ? `Recorded on ${ticket.number}` : "Recorded on the support ledger"}><input id="pw-reason" className="ctl" value={reset.reason} onChange={(e) => setReset({ ...reset, reason: e.target.value })} maxLength={2000} placeholder="e.g. identity checked at the desk; the student cannot reach the reset email" /></Field>
-              </>
-            )}
-          </div>
-        </Modal>
-      ) : null}
+      {/* ── the password: the one reset screen (V485); never seen, never recorded ── */}
+      {reset ? <PasswordReset studentId={id} ticket={ticket ? { id: ticket.id, number: ticket.number, subject: ticket.subject } : null}
+        onClose={() => setReset(false)} onDone={() => router.refresh()} /> : null}
 
       {raise ? (
         <Modal title="Create support ticket" sub={`For ${fullName}, raised at the desk; routed to its queue and answered on the student's email`} onClose={() => setRaise(null)}

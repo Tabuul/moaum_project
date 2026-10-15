@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     office = "student";
     name = `${signed.surname}, ${signed.otherNames}`;
     mustChange = signed.mustChange === true;
-    home = mustChange ? "/student/profile?change=1" : "/student";
+    home = mustChange ? "/student/password" : "/student";
   } else if (kind === "applicant") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;

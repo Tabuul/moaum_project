@@ -93,9 +93,21 @@ public class StudentAuthService {
         return a.mustChange() && !a.temporary();
     }
 
+    /** V485: said on the public sign-in page, so it never says what the default credential is */
     static DomainRuleViolation ownNumberRefused() {
         return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your own number is not your password.",
-                new DomainRuleViolation.Remedy("Signing in for the first time? The number you sign in with is your first password, and you choose your own at once. Chosen one and forgotten it? Choose \"Forgot password?\": a link goes to the email or phone the University has for you; with none on record, ICT Support gives a temporary password at the desk.", "ICT Support"));
+                new DomainRuleViolation.Remedy("Use the password you chose. Forgotten it? Choose \"Forgot password?\": a link goes to the email or phone the University has for you; with none on record, ICT Support resets it at the desk.", "ICT Support"));
+    }
+
+    /** V485: a password that carries the student's own matriculation, admission or JAMB number — the staff rule (no password that
+     *  holds the username) applied to the numbers a student signs in with */
+    static boolean holdsOwnNumber(String password, StudentPortalRepository.Student s) {
+        String p = password == null ? "" : password.toUpperCase();
+        if (p.isBlank() || s == null) return false;
+        for (String n : new String[] {s.matricNo(), s.admissionNo(), s.jambRegNo()}) {
+            if (n != null && n.trim().length() >= 6 && p.contains(n.trim().toUpperCase())) return true;
+        }
+        return false;
     }
 
     /** what the student account opens with when it is carried over from the applicant's: the applicant's own bcrypt hash — or, for an
@@ -260,9 +272,9 @@ public class StudentAuthService {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
-        if (ownNumber(next, s)) {
-            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your own number cannot be your password.",
-                    new DomainRuleViolation.Remedy("Choose a password that is not your matriculation, admission or JAMB number.", "You"));
+        if (ownNumber(next, s) || holdsOwnNumber(next, s)) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your own number cannot be your password, or part of it.",
+                    new DomainRuleViolation.Remedy("Choose a password that does not contain your matriculation, admission or JAMB number.", "You"));
         }
         repo.changePassword(student, encoder.encode(next));
         repo.event("", student, "PASSWORD_CHANGED", null);
@@ -292,8 +304,80 @@ public class StudentAuthService {
         } while (pw.equalsIgnoreCase(s.matricNo() == null ? "" : s.matricNo()) || pw.equalsIgnoreCase(s.admissionNo() == null ? "" : s.admissionNo()));
         OffsetDateTime until = OffsetDateTime.now().plus(TEMPORARY_FOR);
         repo.issueTemporary(student, encoder.encode(pw), by, until);
+        // V485: a session opened on the old password does not outlive its reset
+        repo.endSessions(student, "password reset by ICT Support");
         UUID event = repo.event("", student, "TEMP_PASSWORD_ISSUED");
         return new Temporary(pw, until, event);
+    }
+
+    /* ── V485: the reset to the default credential at the ICT Support Desk ── */
+
+    /** a second reset of the same student within this time is the same reset (a second click, a retried request) */
+    static final Duration SAME_RESET = Duration.ofSeconds(60);
+
+    /** what the desk is told: nothing about the password — whether this repeated a reset just made, whether the account was opened
+     *  by it, whether it was locked and was unlocked, how many sessions were ended, and the sign-in log's event */
+    public record DefaultReset(boolean alreadyDone, boolean opened, boolean wasLocked, boolean unlocked, int sessionsEnded, UUID eventId) {
+    }
+
+    /** the desk's words for why the reset to the default credential may not be made (iam.student_reset_check) */
+    public static DomainRuleViolation resetRefusal(String code, String status) {
+        return switch (code == null ? "" : code) {
+            case "RESET_NO_MATRIC" -> new DomainRuleViolation(code,
+                    "THIS STUDENT DOES NOT HAVE A VALID MATRICULATION NUMBER. PASSWORD RESET USING THE DEFAULT STUDENT CREDENTIAL POLICY IS NOT AVAILABLE.",
+                    new DomainRuleViolation.Remedy("Send the reset link to the student's email or phone, or issue a temporary password on the student's ticket. The Registry issues matriculation numbers.", "ICT Support"));
+            case "RESET_STATUS" -> new DomainRuleViolation(code, "THIS STUDENT ACCOUNT IS NOT ACTIVE" + (status == null ? "" : " (" + status + ")") + ".",
+                    new DomainRuleViolation.Remedy("The Registry decides a student's status; the desk resets only the statuses its policy allows.", "Registry"));
+            case "RESET_MERGED_RECORD" -> new DomainRuleViolation(code, "THIS RECORD WAS MERGED INTO ANOTHER STUDENT RECORD.",
+                    new DomainRuleViolation.Remedy("Find the student's live record and reset that one.", "ICT Support"));
+            case "RESET_DISABLED" -> new DomainRuleViolation(code, "PASSWORD RESET TO THE DEFAULT CREDENTIAL IS SWITCHED OFF.",
+                    new DomainRuleViolation.Remedy("The Head of the ICT Support Desk or the Director of ICT switches it on in ICT Support Settings.", "Head of ICT Support Desk"));
+            default -> new DomainRuleViolation("RESET_REFUSED", "PASSWORD RESET COULD NOT BE COMPLETED. PLEASE TRY AGAIN OR CONTACT THE ICT DIRECTOR.",
+                    new DomainRuleViolation.Remedy("Try again; if it fails again, tell the Director of ICT.", "Directorate of ICT"));
+        };
+    }
+
+    /**
+     * V485: ICT Support resets the student's one account to the default credential — the matriculation number, as username and,
+     * until the student chooses their own, as password. Nothing about the number is written: the account is put on its first
+     * password (a hash of a secret nobody holds, must-change on, any temporary password withdrawn), the state in which the sign-in
+     * door accepts the number the student signs in with and forces the change before anything else. The student is held while
+     * it is made, so a second click within a minute is the same reset; every session the student holds is ended; the lockout is
+     * cleared only when {@code unlock}. Refused, in the desk's words, when iam.student_reset_check says it may not be made.
+     */
+    @Transactional
+    public DefaultReset resetToDefault(UUID student, boolean unlock) {
+        repo.holdStudent(student);
+        Map<String, Object> check = repo.resetCheck(student).orElseThrow(() -> new NotFound("student", student));
+        if (!Boolean.TRUE.equals(check.get("eligible"))) {
+            throw resetRefusal((String) check.get("refusal"), (String) check.get("status"));
+        }
+        StudentPortalRepository.Account a = repo.account(student).orElse(null);
+        OffsetDateTime now = OffsetDateTime.now();
+        boolean locked = a != null && a.lockedUntil() != null && a.lockedUntil().isAfter(now);
+        if (a != null && onFirstPassword(a) && a.supportResetAt() != null && a.supportResetAt().isAfter(now.minus(SAME_RESET))) {
+            return new DefaultReset(true, false, locked, false, 0, null);
+        }
+        byte[] secret = new byte[32];
+        random.nextBytes(secret);
+        boolean opened = repo.resetToFirstPassword(student, encoder.encode(HexFormat.of().formatHex(secret)), unlock);
+        int ended = repo.endSessions(student, "password reset by ICT Support");
+        UUID event = repo.event("", student, "PASSWORD_RESET_BY_SUPPORT");
+        if (locked && unlock) {
+            repo.event("", student, "UNLOCKED_BY_SUPPORT");
+        }
+        return new DefaultReset(false, opened, locked, locked && unlock, ended, event);
+    }
+
+    /** V485: the student's own account, for the forced change: whether a change is required and whether ICT Support asked for it */
+    public Map<String, Object> passwordStatus(UUID student) {
+        StudentPortalRepository.Account a = repo.account(student).orElse(null);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("mustChange", a != null && a.mustChange());
+        out.put("resetBySupport", a != null && a.mustChange() && a.supportResetAt() != null);
+        out.put("temporary", a != null && a.temporary());
+        out.put("firstPassword", a != null && onFirstPassword(a));
+        return out;
     }
 
     /** the Registry opens or resets a student's account: a first password, changed at sign-in */
