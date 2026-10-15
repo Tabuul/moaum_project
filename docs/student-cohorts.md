@@ -197,7 +197,7 @@ On the live-shaped copy of 15 October 2026 that was 10,748 spillover students (m
 | Basis | Meaning | Applied |
 |---|---|---|
 | Spillover | past the programme's length, so at its final level | by default |
-| Own registration | the student's latest registration is at the computed level | by default |
+| Own registration | the student's latest registration is at the computed level, or was one level below in the session just before (V476) | by default |
 | Sessions counted only | the count of sessions alone (a repeated year or a gap reads the same) | only when chosen, after review |
 
 The Academic Office, the Registry or the platform corrects them on one reason, in batches of 500. No level is ever

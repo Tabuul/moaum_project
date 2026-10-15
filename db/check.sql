@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 313
+\set EXPECTED 314
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14182,6 +14182,54 @@ BEGIN
     PERFORM pg_temp.assert('V473: an issued document names a student on the register — refused for a stranger, removed with its student in one transaction, none orphaned',
         coalesce(v_valid AND v_deferrable AND together = 'accepted' AND stranger = 'refused' AND orphans = 0, false),
         format('key validated %s deferrable %s | removed together: %s | a stranger''s document: %s | orphaned %s', v_valid, v_deferrable, together, stranger, orphans));
+END $$;
+-- ── V476. A student's own progression counts as evidence for their level: one who registered in the session just before at
+--    one level below the computed level is raised by default with the spillover students; one who registered this session at
+--    a lower level, or two sessions back, stays for review ──
+DO $$
+DECLARE
+    y int := 2186; v_prog text; v_dept text; v_fac text; who uuid := gen_random_uuid();
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
+    b1 text; b2 text; b3 text; p1 int; a record; l1 int; l2 int; l3 int;
+BEGIN
+  BEGIN   -- the check's own sessions and students, undone at the end
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V476', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2186/01' WHERE name = format('%s/%s', y, y + 1);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'LL.B CHECK V476', v_dept, v_fac, 'UNDER GRADUATE', 0, 500);
+    -- three Direct Entry students of 2183/2184 at 200, a five-level programme: the engine puts each at 500 in 2186/2187
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/76/476001', 'MOAUM/ZZD/76/4761', 'CHECKV476', 'Last session', v_prog, 'DIRECT_ENTRY', format('%s/%s', y - 3, y - 2), 200, 400, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/76/476002', 'MOAUM/ZZD/76/4762', 'CHECKV476', 'This session', v_prog, 'DIRECT_ENTRY', format('%s/%s', y - 3, y - 2), 200, 400, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/76/476003', 'MOAUM/ZZD/76/4763', 'CHECKV476', 'Long ago', v_prog, 'DIRECT_ENTRY', format('%s/%s', y - 3, y - 2), 200, 300, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES
+        (gen_random_uuid(), s1, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now(), who),
+        (gen_random_uuid(), s2, format('%s/%s', y, y + 1), 1, 400, 'APPROVED', now(), now(), who),
+        (gen_random_uuid(), s3, format('%s/%s', y - 2, y - 1), 1, 300, 'APPROVED', now(), now(), who);
+    SELECT basis, proposed_level INTO b1, p1 FROM people.level_correction WHERE student_id = s1;
+    SELECT basis INTO b2 FROM people.level_correction WHERE student_id = s2;
+    SELECT basis INTO b3 FROM people.level_correction WHERE student_id = s3;
+    SELECT * INTO a FROM people.apply_level_corrections(ARRAY[s1, s2, s3], NULL, NULL, NULL, NULL, 'CHECK V476: own progression', NULL, 500, false);
+    SELECT current_level INTO l1 FROM people.student WHERE id = s1;
+    SELECT current_level INTO l2 FROM people.student WHERE id = s2;
+    SELECT current_level INTO l3 FROM people.student WHERE id = s3;
+    RAISE EXCEPTION 'CHECK_V476_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V476_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V476: a student who registered in the session just before at one level below is raised by default; one registered this session lower, or two sessions back, stays for review',
+        coalesce(b1 = 'REGISTRATION' AND p1 = 500 AND b2 = 'ARITHMETIC' AND b3 = 'ARITHMETIC'
+            AND a.corrected = 1 AND a.registration = 1 AND l1 = 500 AND l2 = 400 AND l3 = 300, false),
+        format('last session %s →%s | this session %s | long ago %s | applied %s (registration %s) | levels %s/%s/%s', b1, p1, b2, b3, a.corrected, a.registration, l1, l2, l3));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

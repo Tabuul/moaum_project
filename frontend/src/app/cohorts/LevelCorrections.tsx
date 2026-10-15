@@ -25,7 +25,7 @@ interface LevelPage { counts: { basis: Basis; n: number }[]; total: number; page
 
 const BASIS: Record<Basis, [string, string, "warn" | "info" | "grey"]> = {
   SPILLOVER: ["Spillover", "Past the programme's length, so at its final level", "info"],
-  REGISTRATION: ["Own registration", "The student's latest registration is at this level", "info"],
+  REGISTRATION: ["Own registration", "The student's latest registration is at this level, or was one level below last session", "info"],
   ARITHMETIC: ["Sessions counted only", "Only the count of sessions says so — check before applying", "warn"],
 };
 const fmt = (v: number) => Number(v).toLocaleString("en-GB");
