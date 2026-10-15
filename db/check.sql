@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 310
+\set EXPECTED 311
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14018,6 +14018,49 @@ BEGIN
         format('check left entries %s→%s regs %s→%s sessions %s→%s | check %s | upload entries %s regs %s, units %s/%s | again %s, dropped kept %s, units kept %s | old import results %s held %s rows %s, approved %s',
                before_e, after_e, before_r, after_r, before_s, after_s, statuses, up->>'entries', up->>'registrations', u1, u2,
                again_statuses, st1, u2b, g.results, g.held, g.rows, st_after));
+END $$;
+
+
+-- ── V474: PAYDirect answered on time — each notified payment recorded first, settled after ──
+-- A payment Interswitch reports is recorded once by its PaymentLogId (a repeat counted on its row, a reversal its own row);
+-- one settler takes it at a time; it ends SETTLED with its outcome, or FAILED for the sweeper, and a settled payment stays
+-- settled; what still waits is listed once it has been quiet, never what a settler holds. The block undoes its writes.
+DO $$
+DECLARE a uuid; a2 uuid; r uuid; first jsonb; second jsonb; reps int; rows_for int; st text; oc text; claimed_after boolean;
+        open_quiet boolean; open_now boolean; open_held boolean; stays text; failed_state text; failed_err text; msg text;
+        lid text := 'CHK474-' || floor(random() * 1e9)::bigint;
+BEGIN
+    BEGIN
+        a := finance.paydirect_receive(lid, false, 'moaum-fee-chk-474', 100, '{"PaymentLogId": "x", "CustReference": "MOAUM-FEE-CHK-474"}'::jsonb);
+        a2 := finance.paydirect_receive(lid, false, 'MOAUM-FEE-CHK-474', 100, '{"PaymentLogId": "x", "CustReference": "MOAUM-FEE-CHK-474"}'::jsonb);
+        r := finance.paydirect_receive(lid, true, 'MOAUM-FEE-CHK-474', 100, '{"IsReversal": "True"}'::jsonb);
+        SELECT repeats INTO reps FROM finance.paydirect_inbox WHERE id = a;
+        SELECT count(*) INTO rows_for FROM finance.paydirect_inbox WHERE payment_log_id = lid;
+        -- one settler at a time
+        first := finance.paydirect_claim(a);
+        second := finance.paydirect_claim(a);
+        open_held := a IN (SELECT finance.paydirect_open(interval '0 seconds', 1000));
+        PERFORM finance.paydirect_done(a, true, 'confirmed', NULL);
+        SELECT state, outcome, claimed_at IS NOT NULL INTO st, oc, claimed_after FROM finance.paydirect_inbox WHERE id = a;
+        PERFORM finance.paydirect_done(a, false, NULL, 'a later failure');
+        SELECT state INTO stays FROM finance.paydirect_inbox WHERE id = a;
+        -- a failure waits for the sweeper, listed once quiet
+        PERFORM finance.paydirect_claim(r);
+        PERFORM finance.paydirect_done(r, false, NULL, 'the portal was busy');
+        SELECT state, last_error INTO failed_state, failed_err FROM finance.paydirect_inbox WHERE id = r;
+        open_now := r IN (SELECT finance.paydirect_open(interval '0 seconds', 1000));
+        open_quiet := r IN (SELECT finance.paydirect_open(interval '1 hour', 1000));
+        RAISE EXCEPTION 'the V474 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V474 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V474: a notified payment is recorded once by its PaymentLogId (a repeat counted, a reversal its own record), taken by one settler at a time, ends SETTLED or FAILED for the sweeper, stays settled, and is listed to settle only when quiet and not held',
+        coalesce(a = a2 AND r <> a AND reps = 1 AND rows_for = 2 AND first IS NOT NULL AND second IS NULL AND NOT open_held
+                 AND st = 'SETTLED' AND oc = 'confirmed' AND NOT claimed_after AND stays = 'SETTLED'
+                 AND failed_state = 'FAILED' AND failed_err = 'the portal was busy' AND open_now AND NOT open_quiet, false),
+        format('one record %s/%s, reversal apart %s, repeats %s, rows %s | claims %s/%s, held listed %s | %s %s claim left %s, then %s | failed %s "%s" listed now %s quiet %s',
+               a = a2, rows_for, r <> a, reps, rows_for, first IS NOT NULL, second IS NOT NULL, open_held, st, oc, claimed_after, stays, failed_state, failed_err, open_now, open_quiet));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

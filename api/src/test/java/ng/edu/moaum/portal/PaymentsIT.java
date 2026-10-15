@@ -30,7 +30,7 @@ import ng.edu.moaum.portal.payments.PaymentsService;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET, "moaum.payments.paystack-secret=sk_test_only_for_the_it",
-                "moaum.payments.flutterwave-hash=flw-hash-only-for-the-it"})
+                "moaum.payments.flutterwave-hash=flw-hash-only-for-the-it", "moaum.paydirect.settle-budget-ms=6000"})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
 class PaymentsIT {
 
@@ -42,6 +42,8 @@ class PaymentsIT {
     JdbcClient jdbc;
     @Autowired
     PlatformTransactionManager transactions;
+    @Autowired
+    javax.sql.DataSource dataSource;
 
     ItSupport it;
     RestClient open;
@@ -520,6 +522,84 @@ class PaymentsIT {
             ResponseEntity<Map> notWithdrawn = it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references/" + paid + "/withdraw", Map.of());
             assertThat(notWithdrawn.getStatusCode().value()).isEqualTo(422);
             assertThat(notWithdrawn.getBody().get("code")).isEqualTo("GATEWAY_TEST_PAID");
+        } finally {
+            it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
+        }
+    }
+
+    /**
+     * V474: Interswitch is answered on time whatever the portal is doing. Each payment it reports is recorded first and settled
+     * on a settler; the answer waits for the settling up to its budget (six seconds here), so an ordinary payment is settled
+     * before Interswitch hears back, recorded once however often it is reported. When the portal is held up past the budget —
+     * here the reference's row is held by another transaction — Interswitch is still answered 0 within the budget, the payment
+     * waits on its record, and it settles by itself once the portal is free.
+     */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void aNotificationIsRecordedFirstAndAnsweredOnTimeWhenThePortalIsHeldUp() throws Exception {
+        String bursar = ItSupport.token("bursar");
+        String ict = ItSupport.token("ict");
+        String tag = String.format("%04d", new Random().nextInt(10_000));
+        it.student("ZZPAYDIRECTONTIME", "C00023", "MOAUM/ADM/99/99" + tag, "MOAUM/ITR/99/" + tag, 100);
+        String quick = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/" + tag, "amount", 100, "days", 2))
+                .getBody().get("reference"));
+        String held = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/" + tag, "amount", 100, "days", 2))
+                .getBody().get("reference"));
+        try {
+            ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
+                    Map.of("secret", "{\"serviceUsername\":\"moaum-it-notify\",\"servicePassword\":\"an-invented-password\"}"));
+            assertThat(creds.getStatusCode().value()).as(String.valueOf(creds.getBody())).isEqualTo(200);
+
+            // an ordinary payment: recorded, settled before the answer, recorded once however often it is reported
+            String logId = String.valueOf(1_000_000 + new Random().nextInt(8_000_000));
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", notification("moaum-it-notify", "an-invented-password", quick, logId, "100.00", false, false)))
+                    .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
+            assertThat(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = :r").param("r", quick).query(Boolean.class).single()).isTrue();
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", notification("moaum-it-notify", "an-invented-password", quick, logId, "100.00", true, false)))
+                    .contains("<Status>0</Status>");
+            Map<String, Object> rec = jdbc.sql("SELECT state, outcome, repeats, reference FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", logId).query().singleRow();
+            assertThat(rec.get("state")).isEqualTo("SETTLED");
+            assertThat(rec.get("reference")).isEqualTo(quick);
+            assertThat(((Number) rec.get("repeats")).intValue()).as("the repeat counted on the one record").isEqualTo(1);
+            assertThat(jdbc.sql("SELECT payment::text FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", logId).query(String.class).single())
+                    .doesNotContain("an-invented-password");
+
+            // the portal held up: the reference's row held by another transaction, so its settling cannot finish
+            String slowId = String.valueOf(Long.parseLong(logId) + 1);
+            String answer;
+            long took;
+            try (java.sql.Connection holder = dataSource.getConnection()) {
+                holder.setAutoCommit(false);
+                try (java.sql.PreparedStatement lock = holder.prepareStatement("SELECT 1 FROM finance.payment_reference WHERE reference = ? FOR UPDATE")) {
+                    lock.setString(1, held);
+                    lock.executeQuery().close();
+                }
+                long t0 = System.nanoTime();
+                answer = postXml("/api/v1/payments/paydirect/interswitch", notification("moaum-it-notify", "an-invented-password", held, slowId, "100.00", false, false));
+                took = (System.nanoTime() - t0) / 1_000_000;
+                // answered as received within the budget; recorded, not yet settled
+                assertThat(jdbc.sql("SELECT state FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", slowId).query(String.class).single()).isEqualTo("RECEIVED");
+                assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM finance.payment_reference WHERE reference = :r").param("r", held).query(Boolean.class).single()).isTrue();
+                holder.rollback();
+            }
+            assertThat(answer).contains("<PaymentLogId>" + slowId + "</PaymentLogId><Status>0</Status>");
+            assertThat(took).as("answered within the budget, not after the portal").isBetween(5_000L, 15_000L);
+            // the portal free again: the settling the answer did not wait for finishes by itself
+            boolean settled = false;
+            for (int i = 0; i < 60 && !settled; i++) {
+                settled = Boolean.TRUE.equals(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = :r").param("r", held).query(Boolean.class).single());
+                if (!settled) Thread.sleep(250);
+            }
+            assertThat(settled).as("settled after the answer").isTrue();
+            for (int i = 0; i < 20 && !"SETTLED".equals(jdbc.sql("SELECT state FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", slowId).query(String.class).single()); i++) {
+                Thread.sleep(250);
+            }
+            assertThat(jdbc.sql("SELECT state FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", slowId).query(String.class).single()).isEqualTo("SETTLED");
+
+            // the Bursary's desk shows the notifications' standing
+            Map<String, Object> inbox = (Map<String, Object>) it.get(bursar, "/api/v1/payments/paydirect").getBody().get("inbox");
+            assertThat(inbox).containsKeys("waiting", "failed", "settled_today");
+            assertThat(((Number) inbox.get("settled_today")).intValue()).isGreaterThanOrEqualTo(2);
         } finally {
             it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
         }

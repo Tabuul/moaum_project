@@ -48,6 +48,10 @@ public class PaymentsService {
 
     private final PaymentsRepository repo;
     private final TransactionTemplate tx;
+    /** V474: the PAYDirect door's own pool — its counter, credentials, reference questions and the record of each payment */
+    private final PayDirectLane lane;
+    private final PaymentsRepository laneRepo;
+    private final TransactionTemplate laneTx;
     private final String envPaystack;
     private final String envFlutterwave;
     private final String envFlutterwaveHash;
@@ -61,7 +65,7 @@ public class PaymentsService {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
-    PaymentsService(PaymentsRepository repo, PlatformTransactionManager transactions,
+    PaymentsService(PaymentsRepository repo, PlatformTransactionManager transactions, PayDirectLane lane,
                     @Value("${moaum.payments.paystack-secret:}") String paystackSecret,
                     @Value("${moaum.payments.flutterwave-secret:}") String flutterwaveSecret,
                     @Value("${moaum.payments.flutterwave-hash:}") String flutterwaveHash,
@@ -80,6 +84,9 @@ public class PaymentsService {
                     @Value("${moaum.payments.paydirect.password:}") String paydirectPassword) {
         this.repo = repo;
         this.tx = new TransactionTemplate(transactions);
+        this.lane = lane;
+        this.laneRepo = new PaymentsRepository(lane.jdbc());
+        this.laneTx = lane.tx();
         this.envPaystack = blank(paystackSecret) ? "" : paystackSecret.trim();
         this.envFlutterwave = blank(flutterwaveSecret) ? "" : flutterwaveSecret.trim();
         this.envFlutterwaveHash = blank(flutterwaveHash) ? "" : flutterwaveHash.trim();
@@ -637,11 +644,16 @@ public class PaymentsService {
     }
 
     PayDirectCredentials paydirectCredentials() {
+        return paydirectCredentials(repo);
+    }
+
+    /** V474: read through the given repository — the door's own pool when Interswitch is waiting */
+    private PayDirectCredentials paydirectCredentials(PaymentsRepository from) {
         String user = envPaydirectUser;
         String pass = envPaydirectPassword;
         String key = "";
         if (!configKey.isEmpty()) {
-            String db = repo.gatewaySecret("paydirect", configKey);
+            String db = from.gatewaySecret("paydirect", configKey);
             if (db != null && !db.isBlank()) {
                 try {
                     Map<String, Object> m = mapper.readValue(db, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
@@ -661,7 +673,7 @@ public class PaymentsService {
 
     /** believed by the key in the address it was posted to, or by the username and password in it */
     private boolean paydirectAuthentic(String user, String pass, String keyInAddress) {
-        PayDirectCredentials c = paydirectCredentials();
+        PayDirectCredentials c = paydirectCredentials(laneRepo);
         if (c == null) {
             return false;
         }
@@ -762,12 +774,12 @@ public class PaymentsService {
         try {
             m = PayDirectMessages.read(body);
         } catch (IllegalArgumentException unreadable) {
-            log("paydirect", "VALIDATE", "validate", null, null, null, "unreadable", true, "INVALID", json(Map.of("why", "The request could not be read")));
+            laneLog("paydirect", "VALIDATE", "validate", null, null, null, "unreadable", true, "INVALID", json(Map.of("why", "The request could not be read")));
             boolean asJson = body != null && body.strip().startsWith("{");
             return new PayDirectMessages.Answer(asJson, PayDirectMessages.customerAnswer(asJson, "", "", "", false, null, null, null, null));
         }
         String asked = m.field("CustReference").toUpperCase();
-        PaymentsRepository.Customer c = repo.paydirectCustomer(asked);
+        PaymentsRepository.Customer c = laneRepo.paydirectCustomer(asked);
         String reference = c.reference() == null ? asked : c.reference();
         Map<String, Object> said = new LinkedHashMap<>();
         said.put("merchantReference", m.field("MerchantReference"));
@@ -780,7 +792,7 @@ public class PaymentsService {
         if (c.scope() != null) {
             said.put("biller", c.scope() + " " + c.billerCode());
         }
-        log("paydirect", "VALIDATE", "validate", reference.isEmpty() ? null : reference, m.field("MerchantReference").isEmpty() ? null : m.field("MerchantReference"),
+        laneLog("paydirect", "VALIDATE", "validate", reference.isEmpty() ? null : reference, m.field("MerchantReference").isEmpty() ? null : m.field("MerchantReference"),
                 c.valid() ? c.amount() : null, c.valid() ? "0" : "1", true, c.valid() ? "VALID" : "INVALID", json(said));
         // the payer confirms the name on Quickteller's page: the surname and the first of the other names
         String first = c.otherNames() == null ? "" : c.otherNames().trim().split("\\s+")[0];
@@ -819,7 +831,7 @@ public class PaymentsService {
             return paydirectNotify(body, keyInAddress);
         }
         if (kind == PayDirectMessages.Kind.UNKNOWN) {
-            log("paydirect", "WEBHOOK", "message", null, null, null, "unrecognised", false, "IGNORED",
+            laneLog("paydirect", "WEBHOOK", "message", null, null, null, "unrecognised", false, "IGNORED",
                     json(Map.of("why", "Neither a customer validation nor a payment notification")));
             boolean asJson = body != null && body.strip().startsWith("{");
             return new PayDirectMessages.Answer(asJson, PayDirectMessages.customerAnswer(asJson, "", "", "", false, null, null, null, null));
@@ -837,7 +849,7 @@ public class PaymentsService {
         try {
             m = PayDirectMessages.read(body);
         } catch (IllegalArgumentException unreadable) {
-            log("paydirect", "WEBHOOK", "notification", null, null, null, "unreadable", false, "IGNORED", json(Map.of("why", "The notification could not be read")));
+            laneLog("paydirect", "WEBHOOK", "notification", null, null, null, "unreadable", false, "IGNORED", json(Map.of("why", "The notification could not be read")));
             boolean asJson = body != null && body.strip().startsWith("{");
             return new PayDirectMessages.Answer(asJson, PayDirectMessages.notificationAnswer(asJson, java.util.List.of()));
         }
@@ -855,20 +867,14 @@ public class PaymentsService {
             results.add(new String[] { logId, status });
         }
         if (m.payments().isEmpty()) {
-            log("paydirect", "WEBHOOK", "notification", null, null, null, "no payment", authentic, "IGNORED", json(Map.of("why", "The notification named no payment")));
+            laneLog("paydirect", "WEBHOOK", "notification", null, null, null, "no payment", authentic, "IGNORED", json(Map.of("why", "The notification named no payment")));
         }
         return new PayDirectMessages.Answer(m.json(), PayDirectMessages.wrap(m, PayDirectMessages.notificationAnswer(m.json(), results)));
     }
 
-    /** one notified payment: true when the portal has received it (0), false when it is not accepted (1) */
-    private boolean paydirectPayment(Map<String, String> p, boolean authentic) {
-        String reference = PayDirectMessages.get(p, "CustReference").toUpperCase();
-        String logId = PayDirectMessages.get(p, "PaymentLogId");
-        BigDecimal amount = PayDirectMessages.parseAmount(PayDirectMessages.get(p, "Amount"));
-        String status = PayDirectMessages.get(p, "PaymentStatus");
-        String channelName = PayDirectMessages.get(p, "ChannelName");
-        // what Interswitch said, without anything that could be a secret
-        Map<String, Object> said = new LinkedHashMap<>();
+    /** what Interswitch said of one payment, without anything that could be a secret */
+    private static Map<String, String> paydirectSaid(Map<String, String> p) {
+        Map<String, String> said = new LinkedHashMap<>();
         for (String k : new String[] { "PaymentLogId", "CustReference", "AlternateCustReference", "Amount", "PaymentStatus", "PaymentMethod", "PaymentReference",
                 "ChannelName", "Location", "IsReversal", "IsRepeated", "PaymentDate", "SettlementDate", "InstitutionName", "BranchName", "BankName",
                 "CustomerName", "ReceiptNo", "CollectionsAccount", "OriginalPaymentLogId", "OriginalPaymentReference" }) {
@@ -877,24 +883,110 @@ public class PaymentsService {
                 said.put(k, v.length() > 300 ? v.substring(0, 300) : v);
             }
         }
+        return said;
+    }
+
+    /**
+     * One notified payment: true when the portal has received it (0), false when it is not accepted (1).
+     *
+     * <p>V474: an authentic payment is recorded first (finance.paydirect_inbox, on the door's own pool) and then settled on a
+     * settler. The answer waits for the settling up to the budget, so a payment settles before Interswitch hears back as it
+     * always has; a settling that runs past the budget — the portal busy — leaves Interswitch answered "received" (it is
+     * recorded) and finishes after the answer, the sweeper retrying anything left. A payment that could not be recorded is
+     * answered 1, and Interswitch sends it again.
+     */
+    private boolean paydirectPayment(Map<String, String> p, boolean authentic) {
+        String reference = PayDirectMessages.get(p, "CustReference").toUpperCase();
+        String logId = PayDirectMessages.get(p, "PaymentLogId");
+        BigDecimal amount = PayDirectMessages.parseAmount(PayDirectMessages.get(p, "Amount"));
+        String status = PayDirectMessages.get(p, "PaymentStatus");
+        Map<String, String> said = paydirectSaid(p);
         String payload = json(said);
         String ref = reference.isEmpty() ? null : reference;
         if (!authentic) {
             // V407: with no service credentials set there is nothing to check against — a different thing from a wrong secret, with a different remedy
-            log("paydirect", "WEBHOOK", "notification", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, false,
-                paydirectCredentials() == null ? "NO_CREDENTIALS" : "BAD_SIGNATURE", payload);
+            laneLog("paydirect", "WEBHOOK", "notification", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, false,
+                paydirectCredentials(laneRepo) == null ? "NO_CREDENTIALS" : "BAD_SIGNATURE", payload);
             return false;
         }
-        if (PayDirectMessages.yes(PayDirectMessages.get(p, "IsReversal"))) {
-            log("paydirect", "WEBHOOK", "reversal", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, true, "REVERSED", payload);
+        boolean reversal = PayDirectMessages.yes(PayDirectMessages.get(p, "IsReversal"));
+        UUID recorded = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "paydirect notification " + logId, null, null),
+                () -> laneTx.execute(st -> laneRepo.paydirectReceive(logId, reversal, ref, amount, payload)));
+        java.util.concurrent.Future<String> settling = lane.settlers().submit(() -> settleRecorded(recorded));
+        try {
+            settling.get(lane.budgetMs(), java.util.concurrent.TimeUnit.MILLISECONDS);
             return true;
+        } catch (java.util.concurrent.TimeoutException slow) {
+            LOG.warn("payments: the Quickteller payment {} for {} is recorded and still settling after {} ms; answered as received", logId, reference, lane.budgetMs());
+            return true;
+        } catch (java.util.concurrent.ExecutionException failed) {
+            Throwable why = failed.getCause() == null ? failed : failed.getCause();
+            throw why instanceof RuntimeException r ? r : new IllegalStateException(why.getMessage(), why);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return true;
+        }
+    }
+
+    /**
+     * V474: a recorded payment settled — taken from the record so no two settlers act on it at once, settled as every payment
+     * is (a reversal kept for the Bursary), and the record told how it ended. Returns the outcome; nothing when another settler
+     * holds it. A failure is recorded for the sweeper and thrown.
+     */
+    String settleRecorded(UUID recorded) {
+        java.util.Optional<String> claimed = laneRepo.paydirectClaim(recorded);
+        if (claimed.isEmpty()) {
+            return null;
+        }
+        try {
+            Map<String, String> p = mapper.readValue(claimed.get(), new tools.jackson.core.type.TypeReference<Map<String, String>>() { });
+            String outcome = paydirectSettleNow(p);
+            laneRepo.paydirectDone(recorded, true, outcome, null);
+            return outcome;
+        } catch (RuntimeException e) {
+            try {
+                laneRepo.paydirectDone(recorded, false, null, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            } catch (RuntimeException notRecorded) {
+                LOG.warn("payments: the PAYDirect record {} could not be marked failed: {}", recorded, notRecorded.getMessage());
+            }
+            throw e;
+        }
+    }
+
+    /** the settling of one authentic payment, from what Interswitch said of it: the outcome for the record */
+    private String paydirectSettleNow(Map<String, String> said) {
+        String reference = PayDirectMessages.get(said, "CustReference").toUpperCase();
+        String logId = PayDirectMessages.get(said, "PaymentLogId");
+        BigDecimal amount = PayDirectMessages.parseAmount(PayDirectMessages.get(said, "Amount"));
+        String status = PayDirectMessages.get(said, "PaymentStatus");
+        String channelName = PayDirectMessages.get(said, "ChannelName");
+        String payload = json(said);
+        String ref = reference.isEmpty() ? null : reference;
+        if (PayDirectMessages.yes(PayDirectMessages.get(said, "IsReversal"))) {
+            log("paydirect", "WEBHOOK", "reversal", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, true, "REVERSED", payload);
+            return "reversal kept for the Bursary";
         }
         // PaymentStatus 0 is a successful payment; a notification is sent for one, so an absent status is read as 0
         boolean success = status.isEmpty() || "0".equals(status) || "00".equals(status);
         String channel = "Quickteller" + (channelName.isEmpty() ? "" : " · " + (channelName.length() > 40 ? channelName.substring(0, 40) : channelName));
-        settle("paydirect", "WEBHOOK", "notification", reference, amount == null ? BigDecimal.ZERO : amount, status.isEmpty() ? "0" : status, success,
-                logId.isEmpty() ? PayDirectMessages.get(p, "PaymentReference") : logId, payload, channel);
-        return true;
+        Map<String, Object> answer = settle("paydirect", "WEBHOOK", "notification", reference, amount == null ? BigDecimal.ZERO : amount, status.isEmpty() ? "0" : status, success,
+                logId.isEmpty() ? PayDirectMessages.get(said, "PaymentReference") : logId, payload, channel);
+        return String.valueOf(answer.get("outcome"));
+    }
+
+    /** V474: what is still to be settled, settled now — the sweeper's act; the number settled */
+    public int paydirectSweep() {
+        int settled = 0;
+        for (UUID id : laneRepo.paydirectOpen(60, 20)) {
+            try {
+                if (settleRecorded(id) != null) {
+                    settled++;
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("payments: the recorded PAYDirect payment {} did not settle: {}", id, e.getMessage());
+            }
+        }
+        return settled;
     }
 
     /* ── Pay on Quickteller (V299): the billers, and the collections report ── */
@@ -917,6 +1009,7 @@ public class PaymentsService {
         m.put("keyedPath", "/api/v1/payments/paydirect/interswitch/<key>");
         m.put("certification", repo.paydirectCertification());
         m.put("door", paydirectDoor());
+        m.put("inbox", repo.paydirectInboxStatus());   // V474
         return m;
     }
 
@@ -930,7 +1023,7 @@ public class PaymentsService {
         String address = ClientAddress.of(request);
         try {
             Boolean ok = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "paydirect door", null, null),
-                    () -> tx.execute(st -> repo.paydirectDoorAdmit(address, kind)));
+                    () -> laneTx.execute(st -> laneRepo.paydirectDoorAdmit(address, kind)));   // V474: the door's own pool
             return ok == null || ok;
         } catch (RuntimeException notCounted) {
             LOG.warn("payments: the PAYDirect door call from {} was not counted: {}", address, notCounted.getMessage());
@@ -1123,15 +1216,26 @@ public class PaymentsService {
     /** every event is written, signature good or bad, as an act at the Bursary's door */
     void log(String gateway, String source, String event, String reference, String providerRef, BigDecimal amount, String status, boolean signatureOk,
              String outcome, String payload) {
+        logOn(tx, repo, gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload);
+    }
+
+    /** V474: the same, on the PAYDirect door's own pool, for what the door writes while Interswitch waits */
+    private void laneLog(String gateway, String source, String event, String reference, String providerRef, BigDecimal amount, String status, boolean signatureOk,
+                         String outcome, String payload) {
+        logOn(laneTx, laneRepo, gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload);
+    }
+
+    private void logOn(TransactionTemplate on, PaymentsRepository through, String gateway, String source, String event, String reference, String providerRef,
+                       BigDecimal amount, String status, boolean signatureOk, String outcome, String payload) {
         try {
             AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " event", null, null),
-                    () -> tx.execute(st -> {
+                    () -> on.execute(st -> {
                         // V413: the sweep's same answer for the same reference is counted on its open row, not written again
                         if ("SWEEP".equalsIgnoreCase(source) && "GATEWAY_ERROR".equals(outcome) && reference != null
-                                && repo.collapseSweepRepeat(gateway, reference, status, payload)) {
+                                && through.collapseSweepRepeat(gateway, reference, status, payload)) {
                             return null;
                         }
-                        return repo.logEvent(gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload);
+                        return through.logEvent(gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload);
                     }));
         } catch (RuntimeException notLogged) {
             LOG.warn("payments: the {} event was not written to the log: {}", gateway, notLogged.getMessage());

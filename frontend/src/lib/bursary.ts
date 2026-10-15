@@ -38,7 +38,10 @@ export interface PaydirectDesk {
   testReferences: PaydirectTestReference[];
   /** V433: the door watched, and kept to Interswitch */
   door?: PaydirectDoor;
+  /** V474: the notified payments recorded before they are settled — waiting, failed (retried), settled in the last day */
+  inbox?: PaydirectInbox;
 }
+export interface PaydirectInbox { waiting: number; failed: number; settled_today: number; oldest_open: string | null; last_error: string | null }
 export interface GatewayEvent {
   id: string; gateway: string; source: string; event: string | null; reference: string | null; gateway_ref: string | null; amount: number | null; status: string | null;
   signature_ok: boolean; outcome: string; received_at: string; resolved_at: string | null; resolution: string | null; resolved_by_name: string | null;

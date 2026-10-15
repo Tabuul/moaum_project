@@ -8,7 +8,7 @@ import { useState } from "react";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { Btn, Note, PBody, Panel, Pil, Tiles } from "@/components/proto/ui";
-import { when, type PaydirectDoor as Door } from "@/lib/bursary";
+import { when, type PaydirectDoor as Door, type PaydirectInbox } from "@/lib/bursary";
 
 type Send = (path: string, body: unknown, reason: string, method?: string) => Promise<Record<string, unknown> | null>;
 
@@ -24,6 +24,19 @@ function hoursWord(h: number): string {
   if (!Number.isFinite(h)) return "—";
   if (h >= 48) return `${Math.round(h / 24)} days`;
   return `${Math.round(h * 10) / 10} h`;
+}
+
+/** V474: each payment Interswitch reports is recorded and answered at once, then settled; what is still to settle is shown here */
+export function PayDirectInbox({ inbox }: { inbox: PaydirectInbox }) {
+  const open = Number(inbox.waiting) + Number(inbox.failed);
+  return (
+    <Note kind={Number(inbox.failed) ? "bad" : "info"} title={open ? `${open} Quickteller payment${open === 1 ? "" : "s"} recorded and still to settle` : "Every Quickteller payment reported is settled"}>
+      Interswitch is answered as soon as a payment it reports is recorded, so a busy portal never makes it wait; the payment is then settled, within seconds
+      as a rule, and the portal retries every minute any that did not settle. {Number(inbox.settled_today)} settled in the last day.
+      {Number(inbox.waiting) ? ` ${inbox.waiting} waiting${inbox.oldest_open ? `, the oldest since ${when(inbox.oldest_open)}` : ""}.` : ""}
+      {Number(inbox.failed) ? ` ${inbox.failed} failed and retried${inbox.last_error ? ` (last: ${inbox.last_error})` : ""}.` : ""}
+    </Note>
+  );
 }
 
 export function PayDirectDoor({ door, mayConfigure, mayWatch, busy, send }: { door: Door; mayConfigure: boolean; mayWatch: boolean; busy: boolean; send: Send }) {

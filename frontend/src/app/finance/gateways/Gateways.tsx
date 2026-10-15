@@ -12,7 +12,7 @@ import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { PayDirectDoor } from "./PayDirectDoor";
+import { PayDirectDoor, PayDirectInbox } from "./PayDirectDoor";
 import { PayOnQuickteller } from "./PayOnQuickteller";
 
 /** V367: what a gateway's answer to the health question means */
@@ -125,6 +125,7 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
         </Panel>
       ) : null}
       {quickteller ? <PayOnQuickteller q={quickteller} may={may} busy={busy} send={send} say={setSaid} /> : null}
+      {quickteller?.inbox ? <PayDirectInbox inbox={quickteller.inbox} /> : null}
       {quickteller?.door ? <PayDirectDoor door={quickteller.door} mayConfigure={mayConfigure} mayWatch={may} busy={busy} send={send} /> : null}
       {mayConfigure ? (
         <Panel title="Configure the keys" right="Directorate of ICT and Super Administrator only">

@@ -111,6 +111,39 @@ class PaymentsRepository {
 
     /* ── V037: the gateway's words kept, the attempts, what stands for a reference ── */
 
+    /* ── V474: each notified PAYDirect payment recorded before it is settled ── */
+
+    UUID paydirectReceive(String logId, boolean reversal, String reference, BigDecimal amount, String paymentJson) {
+        return jdbc.sql("SELECT finance.paydirect_receive(:l, :v, :r, :a, :p::jsonb)")
+                .param("l", logId, Types.VARCHAR).param("v", reversal).param("r", reference, Types.VARCHAR).param("a", amount, Types.NUMERIC)
+                .param("p", paymentJson == null ? "{}" : paymentJson).query(UUID.class).single();
+    }
+
+    /** the payment Interswitch reported, taken for settling; empty when another settler holds it */
+    Optional<String> paydirectClaim(UUID id) {
+        return jdbc.sql("SELECT finance.paydirect_claim(:i)::text").param("i", id).query(String.class).optional().filter(s -> s != null && !s.isBlank());
+    }
+
+    void paydirectDone(UUID id, boolean settled, String outcome, String error) {
+        jdbc.sql("SELECT finance.paydirect_done(:i, :s, :o, :e)").param("i", id).param("s", settled)
+                .param("o", outcome, Types.VARCHAR).param("e", error, Types.VARCHAR).query().listOfRows();
+    }
+
+    List<UUID> paydirectOpen(int quietSeconds, int limit) {
+        return jdbc.sql("SELECT * FROM finance.paydirect_open(make_interval(secs => :q), :n)").param("q", quietSeconds).param("n", limit).query(UUID.class).list();
+    }
+
+    /** the notifications' standing for the Bursary's desk: how many wait to be settled, failed, and the oldest waiting */
+    Map<String, Object> paydirectInboxStatus() {
+        return jdbc.sql("""
+                SELECT count(*) FILTER (WHERE state = 'RECEIVED') AS waiting, count(*) FILTER (WHERE state = 'FAILED') AS failed,
+                       count(*) FILTER (WHERE state = 'SETTLED' AND received_at > now() - interval '1 day') AS settled_today,
+                       min(received_at) FILTER (WHERE state <> 'SETTLED') AS oldest_open,
+                       (SELECT last_error FROM finance.paydirect_inbox WHERE state = 'FAILED' ORDER BY last_received_at DESC LIMIT 1) AS last_error
+                  FROM finance.paydirect_inbox
+                """).query().singleRow();
+    }
+
     UUID logEvent(String gateway, String source, String event, String reference, String gatewayRef, BigDecimal amount, String status,
                   boolean signatureOk, String outcome, String payloadJson) {
         return jdbc.sql("SELECT finance.log_gateway_event(:g, :s, :e, :r, :gr, :a, :st, :ok, :o, :p::jsonb)")
