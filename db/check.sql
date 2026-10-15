@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 312
+\set EXPECTED 313
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -648,10 +648,16 @@ DECLARE
     k uuid := gen_random_uuid();
     c1 uuid := gen_random_uuid();   -- a good degree
     c2 uuid := gen_random_uuid();   -- one revoked for malpractice
+    h1 uuid := gen_random_uuid();   -- their holders, on the register (V473: a document names a student on it)
+    h2 uuid := gen_random_uuid();
     v jsonb; ok boolean;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+    SELECT x.id, x.adm, x.sur, x.oth, (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME',
+           (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1), 100, 100, 'ADMITTED'
+      FROM (VALUES (h1, 'MOAUM/ADM/11/000021', 'ADAMU', 'Grace Mwuese'), (h2, 'MOAUM/ADM/21/000022', 'OGBU', 'Terkula Emmanuel')) AS x(id, adm, sur, oth);
 
     INSERT INTO credentials.signing_key (id, algorithm, public_key, custody_ref,
         validity, instrument)
@@ -661,12 +667,12 @@ BEGIN
     INSERT INTO credentials.issued (id, kind, student_id, verification_code,
         statement, signature, signed_with, issuing_name, issued_on, issued_by, issued_office)
     VALUES
-     (c1, 'DEGREE_CERTIFICATE', gen_random_uuid(), '1VHBQ-P4CSE-44M5R-ABV9D-F16AM',
+     (c1, 'DEGREE_CERTIFICATE', h1, '1VHBQ-P4CSE-44M5R-ABV9D-F16AM',
       jsonb_build_object('holder','ADAMU, Grace Mwuese','award','B.Sc. (Hons) Computer Science',
                          'classOfDegree','Second Class Honours (Upper Division)'),
       '\xaa'::bytea, k, 'Benue State University, Makurdi', date '2011-11-18',
       gen_random_uuid(), 'registrar'),
-     (c2, 'DEGREE_CERTIFICATE', gen_random_uuid(), 'ZZNKF-QGFGX-60BM3-YJ66E-A6TW8',
+     (c2, 'DEGREE_CERTIFICATE', h2, 'ZZNKF-QGFGX-60BM3-YJ66E-A6TW8',
       jsonb_build_object('holder','OGBU, Terkula Emmanuel','award','LL.B. (Hons) Law',
                          'classOfDegree','Second Class Honours (Lower Division)'),
       '\xbb'::bytea, k, 'Rev. Fr. Moses Orshio Adasu University, Makurdi',
@@ -14131,6 +14137,51 @@ BEGIN
                c1.basis, c1.current_level, c1.proposed_level, c1.spillover_state, c2.basis, c2.proposed_level, in3, v_hod, v_noreason,
                d.selected, d.corrected, d.spillover, a.corrected, a.remaining, l1, l2, l3, dec.rule, dec.previous_level, dec.new_level, dec.batch_ref, conflict_gone,
                b.corrected, l2b, e.selected, e.corrected));
+END $$;
+
+-- ── V473. An issued document belongs to a student on the register: the key is there and validated; a document naming a
+--          student not on the register is refused; a student and the documents removed together in one transaction (as the
+--          operational reset does, students first) pass; no document here names a missing student. The block undoes its
+--          writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); st uuid := gen_random_uuid(); d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid();
+        v_valid boolean; v_deferrable boolean; together text := 'refused'; stranger text := 'accepted'; orphans int; msg text;
+BEGIN
+    SELECT c.convalidated, c.condeferrable INTO v_valid, v_deferrable FROM pg_constraint c WHERE c.conname = 'issued_student_id_fkey' AND c.conrelid = 'credentials.issued'::regclass;
+    orphans := (SELECT count(*) FROM credentials.orphaned_documents());
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V473', true);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/947301', 'CHECKV473', 'One', (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME',
+                (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1), 100, 100, 'ADMITTED');
+        INSERT INTO credentials.issued (id, kind, student_id, verification_code, statement, signature, issuing_name, issued_on, issued_by, issued_office)
+        VALUES (d1, 'TRANSCRIPT', st, credentials.new_code(), '{}'::jsonb, '\x00'::bytea, 'Check V473', current_date, who, 'registrar');
+        -- removed together, the student first, as the reset does: nothing is left naming a missing student
+        BEGIN
+            DELETE FROM people.student WHERE id = st;
+            DELETE FROM credentials.issued WHERE id = d1;
+            SET CONSTRAINTS credentials.issued_student_id_fkey IMMEDIATE;
+            together := 'accepted';
+        EXCEPTION WHEN foreign_key_violation THEN together := 'refused';
+        END;
+        -- a document naming a student who is not on the register
+        BEGIN
+            INSERT INTO credentials.issued (id, kind, student_id, verification_code, statement, signature, issuing_name, issued_on, issued_by, issued_office)
+            VALUES (d2, 'TRANSCRIPT', gen_random_uuid(), credentials.new_code(), '{}'::jsonb, '\x00'::bytea, 'Check V473', current_date, who, 'registrar');
+            SET CONSTRAINTS credentials.issued_student_id_fkey IMMEDIATE;
+            stranger := 'accepted';
+        EXCEPTION WHEN foreign_key_violation THEN stranger := 'refused';
+        END;
+        RAISE EXCEPTION 'the V473 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V473 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V473: an issued document names a student on the register — refused for a stranger, removed with its student in one transaction, none orphaned',
+        coalesce(v_valid AND v_deferrable AND together = 'accepted' AND stranger = 'refused' AND orphans = 0, false),
+        format('key validated %s deferrable %s | removed together: %s | a stranger''s document: %s | orphaned %s', v_valid, v_deferrable, together, stranger, orphans));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

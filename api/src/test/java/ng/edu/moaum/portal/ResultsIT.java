@@ -292,10 +292,23 @@ class ResultsIT {
             assertThat(x.get("raised_by_name")).isNotNull();
             assertThat((List<Map<String, Object>>) x.get("decisions")).filteredOn(d -> "ADVANCE".equals(d.get("kind"))).hasSize(6);
         });
-        ResponseEntity<List> uApplied = it.callList(registrar, HttpMethod.POST, "/api/v1/results/amendments/" + uaId + "/advance", Map.of("minute", "SEN/2095/03"));
+        // the Senate's decisions applied in one act on its minute: a choice holding an amendment not yet at the Senate is refused
+        // whole, nothing applied; then the one the Senate approved is applied
+        ResponseEntity<List> second = it.callList(lect, HttpMethod.POST, amend,
+                Map.of("studentId", s2.toString(), "ca", 20, "exam", 30, "reason", "The candidate sat the paper; the script was found after publication"));
+        assertThat(second.getStatusCode().value()).as(String.valueOf(second.getBody())).isEqualTo(200);
+        String am2 = String.valueOf(((List<Map<String, Object>>) (List<?>) second.getBody()).stream()
+                .filter(x -> "VERIFICATION".equals(x.get("stage")) && s2.toString().equals(String.valueOf(x.get("student_id")))).findFirst().orElseThrow().get("id"));
+        ResponseEntity<Map> mixed = it.call(registrar, HttpMethod.POST, "/api/v1/results/amendments/apply", Map.of("ids", List.of(uaId, am2), "minute", "SEN/2095/03"));
+        assertThat(mixed.getStatusCode().value()).as(String.valueOf(mixed.getBody())).isEqualTo(422);
+        assertThat(mixed.getBody().get("code")).isEqualTo("RES_AMEND_NOT_AT_SENATE");
+        assertThat(jdbc.sql("SELECT stage FROM assessment.amendment WHERE id = :a").param("a", UUID.fromString(uaId)).query(String.class).single()).isEqualTo("SENATE");
+        ResponseEntity<Map> uApplied = it.call(registrar, HttpMethod.POST, "/api/v1/results/amendments/apply", Map.of("ids", List.of(uaId), "minute", "SEN/2095/03"));
         assertThat(uApplied.getStatusCode().value()).as(String.valueOf(uApplied.getBody())).isEqualTo(200);
-        assertThat(((List<Map<String, Object>>) (List<?>) uApplied.getBody()).stream().filter(x -> uaId.equals(String.valueOf(x.get("id")))).findFirst().orElseThrow())
-                .containsEntry("stage", "APPLIED").containsEntry("applied_count", 2);
+        assertThat(uApplied.getBody()).containsEntry("applied", 1).containsEntry("minute", "SEN/2095/03");
+        assertThat(jdbc.sql("SELECT stage || ' ' || applied_count || ' ' || senate_minute FROM assessment.amendment WHERE id = :a").param("a", UUID.fromString(uaId))
+                .query(String.class).single()).isEqualTo("APPLIED 2 SEN/2095/03");
+        assertThat(it.callList(lect, HttpMethod.POST, "/api/v1/results/amendments/" + am2 + "/withdraw", Map.of("reason", "raised to prove the Senate's choice")).getStatusCode().value()).isEqualTo(200);
         assertThat(jdbc.sql("""
                 SELECT DISTINCT e.units FROM registration.entry e JOIN assessment.score_sheet sh ON sh.offering_id = e.offering_id WHERE sh.id = :s
                 """).param("s", UUID.fromString(sheet)).query(Integer.class).list()).containsExactly(3);

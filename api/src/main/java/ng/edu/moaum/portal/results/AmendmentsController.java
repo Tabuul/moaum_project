@@ -38,7 +38,8 @@ import org.springframework.web.bind.annotation.RestController;
  * refuse it with the reason; the person who raised it may withdraw it. Everything keeps to the sheet's own scope. V422: a
  * candidate on the published sheet's roll with no mark on it gets a LATE result the same way — the first mark, applied on the
  * Senate minute. V465: the units one programme's students carry on a class whose results are worked on (which a change of units
- * no longer reaches) are corrected the same way — a UNITS amendment, applied on the minute to their registrations.
+ * no longer reaches) are corrected the same way — a UNITS amendment, applied on the minute to their registrations. The Senate's
+ * decisions are applied in one act: the amendments it approved, on its minute, all of them or none.
  */
 @RestController
 @RequestMapping("/api/v1/results")
@@ -209,6 +210,37 @@ class AmendmentsController {
         jdbc.sql("SELECT assessment.advance_amendment(:a, :c, :m)").param("a", id).param("c", b == null ? null : b.comment(), Types.VARCHAR)
                 .param("m", b == null ? null : b.minute(), Types.VARCHAR).query().singleRow();
         return of((UUID) a.get("sheet_id"));
+    }
+
+    public record ApplyIn(@NotNull @Size(min = 1, max = 200) List<UUID> ids, @NotBlank @Size(max = 80) String minute, @Size(max = 2000) String comment) {
+    }
+
+    /** the amendments the Senate approved, applied on its minute in one act: each at the Senate stage and within this desk's scope,
+     *  all of them or none — one that cannot be applied (not at the Senate, or this person took its previous step) stops the run
+     *  and is named; one the Senate refused is closed on its chain, with the reason */
+    @PostMapping("/amendments/apply")
+    @PreAuthorize(DESKS)
+    @Transactional
+    Map<String, Object> applyOnMinute(@Valid @RequestBody ApplyIn b) {
+        List<UUID> ids = b.ids().stream().filter(java.util.Objects::nonNull).distinct().toList();
+        List<String> refs = new ArrayList<>();
+        for (UUID id : ids) {
+            Map<String, Object> a = amendment(id);
+            String stage = String.valueOf(a.get("stage"));
+            if (!"SENATE".equals(stage)) {
+                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("RES_AMEND_NOT_AT_SENATE",
+                        a.get("ref") + " is " + (List.of("APPLIED", "REFUSED", "WITHDRAWN").contains(stage) ? stage.toLowerCase() + " already" : "at " + stage.toLowerCase().replace('_', ' '))
+                                + "; only an amendment at the Senate is applied on its minute.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Take it out of the choice and apply the rest.", "The Registrar"));
+            }
+            ResultsService.requireStageDesk("SENATE", "Amendment " + a.get("ref"), "applied");
+            refs.add(String.valueOf(a.get("ref")));
+        }
+        for (UUID id : ids) {
+            jdbc.sql("SELECT assessment.advance_amendment(:a, :c, :m)").param("a", id).param("c", b.comment(), Types.VARCHAR)
+                    .param("m", b.minute().trim()).query().singleRow();
+        }
+        return Map.of("applied", refs.size(), "refs", refs, "minute", b.minute().trim());
     }
 
     public record ReasonIn(@NotBlank @Size(min = 5, max = 2000) String reason) {
