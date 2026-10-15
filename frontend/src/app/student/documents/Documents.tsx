@@ -127,7 +127,10 @@ export function Documents({ d, admission = [], pgOffer = null, open, wizard }: {
           <DTable cols={["Document", "Number|mid", "Issued|mid", "Status|mid", "Verification|mid", "|num"]} rows={d.documents.map((x) => [
             <span key="d"><strong>{x.kind_label}</strong><div className="sub2">{x.award ?? x.programme ?? ""}{x.graduation_session ? ` · ${x.graduation_session}` : ""}{x.version > 1 ? ` · version ${x.version}` : ""}</div></span>,
             <span key="n" className="tnum">{x.number ?? "—"}</span>, <span key="i" className="tnum sub2">{dayOf(x.issued_on)}</span>,
-            <Pil key="s" kind={DOC_STATUS[x.status]?.[1] ?? "grey"}>{DOC_STATUS[x.status]?.[0] ?? x.status}</Pil>,
+            // V467: a document whose record changed after issue (a mark or units corrected) is under the Documents Office's review
+            x.status === "ACTIVE" && x.flagged_at
+              ? <span key="s"><Pil kind="warn">Under review</Pil><div className="sub2">{`Your record changed after it was issued (${dayOf(x.flagged_at)}). The Documents Office checks it and reissues it if it no longer matches; this copy then verifies as replaced.`}</div></span>
+              : <Pil key="s" kind={DOC_STATUS[x.status]?.[1] ?? "grey"}>{DOC_STATUS[x.status]?.[0] ?? x.status}</Pil>,
             <Link key="v" className="lnk tnum" href={verifyPathFor(x.verification_code)}>{x.verification_code}</Link>,
             <span key="a" className="row row--inline row--tight">{x.status === "ACTIVE" ? <><a className="btn btn--primary btn--sm" href={`/student/documents/${x.id}/pdf`} target="_blank" rel="noopener">Download PDF</a><Btn kind="ghost" onClick={() => void makeLink(x.id)}>Secure link</Btn></> : <span className="sub2">{x.revoked_reason ?? "Superseded"}</span>}</span>,
           ])} />

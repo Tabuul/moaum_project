@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 304
+\set EXPECTED 305
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13587,6 +13587,56 @@ BEGIN
                  AND course_after = '2,2,3,4,3' AND pinned_units = 3, false),
         format('impact %s | desk %s same %s not examined %s open %s | listed %s | minute %s | after %s applied %s told %s | class %s | course impact %s -> %s pinned %s',
                to_jsonb(imp), r_desk, r_same, r_notex, r_open, listed, r_minute, units_after, applied, told, cls, to_jsonb(cimp), course_after, pinned_units));
+END $$;
+
+-- ── V467. A units change on an examined class flags the transcripts already issued, as a changed mark does: a student with
+--          an issued transcript, registered on a class with no result and on a class with a score. Units changed on the first
+--          leave the transcript unflagged; on the second they flag it, with the reason. The e-mails of a mark amendment and a
+--          units correction say the transcript goes to the Documents Office and is reissued if it no longer matches. The block
+--          undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text := '9467/9468'; v_prog text; st uuid := gen_random_uuid(); doc uuid := gen_random_uuid();
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); rg1 uuid := gen_random_uuid(); rg2 uuid := gen_random_uuid();
+        after_open timestamptz; after_examined timestamptz; why text; mail_mark text; mail_units text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V467', true);
+        SELECT code INTO v_prog FROM ref.programme WHERE NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' AND dept_code IS NOT NULL ORDER BY code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9467-10-01', date '9468-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        VALUES ('ZZX 101', 'Units flag documents', 3, 1, 100, (SELECT dept_code FROM ref.programme WHERE code = v_prog), 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZZX 101', v_ses, 1), (o2, 'ZZX 101', v_ses, 2);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/946701', 'CHECKV467', 'One', v_prog, 'UTME', v_ses, 100, 100, 'ADMITTED');
+        INSERT INTO people.student_contact (student_id, email) VALUES (st, 'zz.check467@example.com') ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (rg1, st, v_ses, 1, 100), (rg2, st, v_ses, 2, 100);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (rg1, o1, 3, 'CURRENT'), (rg2, o2, 3, 'CURRENT');
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh, o2);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st, 20, 40);
+        -- the transcript issued after the mark
+        INSERT INTO credentials.issued (id, kind, student_id, verification_code, statement, signature, issuing_name, issued_on, issued_by, issued_office)
+        VALUES (doc, 'TRANSCRIPT', st, credentials.new_code(), '{}'::jsonb, '\x00'::bytea, 'Check V467', current_date, who, 'registrar');
+        UPDATE registration.entry SET units = 2 WHERE registration_id = rg1;
+        after_open := (SELECT flagged_at FROM credentials.issued WHERE id = doc);
+        UPDATE registration.entry SET units = 2 WHERE registration_id = rg2;
+        SELECT flagged_at, flag_reason INTO after_examined, why FROM credentials.issued WHERE id = doc;
+        PERFORM assessment.tell_amended(st, 'ZZX 101', 'AMD-9467-00001');
+        PERFORM assessment.tell_units_amended(sh, v_prog, 'ZZX 101', 2, 'AMD-9467-00002');
+        mail_mark := (SELECT body FROM platform.notice WHERE about_kind = 'student' AND about_id = st AND subject = 'Your result in ZZX 101 is amended' AND channel = 'EMAIL' LIMIT 1);
+        mail_units := (SELECT body FROM platform.notice WHERE about_kind = 'student' AND about_id = st AND subject = 'Your units in ZZX 101 are corrected' LIMIT 1);
+        RAISE EXCEPTION 'the V467 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V467 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V467: a units change on an examined class flags the transcripts already issued, one on a class with no result does not; the e-mails say a transcript issued before is checked and reissued, not that it is superseded',
+        coalesce(after_open IS NULL AND after_examined IS NOT NULL AND why = 'The units of a course on the student''s record changed after issue'
+                 AND mail_mark LIKE '%goes to the Documents Office to be checked%reissued%' AND mail_mark NOT LIKE '%is superseded%'
+                 AND mail_units LIKE '%goes to the Documents Office%reissued%' AND mail_units NOT LIKE '%is superseded%', false),
+        format('open class flagged %s | examined class flagged %s (%s) | mark e-mail %s | units e-mail %s',
+               after_open IS NOT NULL, after_examined IS NOT NULL, why, mail_mark IS NOT NULL AND mail_mark LIKE '%reissued%', mail_units IS NOT NULL AND mail_units LIKE '%reissued%'));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
