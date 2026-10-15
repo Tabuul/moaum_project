@@ -18,28 +18,43 @@ class OfferAuthority {
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
+    private final StructureAccess access;
 
-    OfferAuthority(JdbcClient jdbc, OfficeScope scope) {
+    OfferAuthority(JdbcClient jdbc, OfficeScope scope, StructureAccess access) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.access = access;
     }
 
-    /** true for an office that is neither a department's nor a faculty's: the Academic Office, the Registry, the Directorate */
+    /** true for an office that is neither a department's nor a faculty's: the Academic Office, the Registry, the Directorate.
+     *  V471: never the School of Postgraduate Studies or the ICT Support Desk — StructureAccess holds them to their own reach */
     boolean central() {
-        return !scope.actingDepartmentOffice() && !scope.actingFacultyOffice();
+        return !StructureAccess.special() && !scope.actingDepartmentOffice() && !scope.actingFacultyOffice();
     }
 
-    /** may the acting office bind a course into, or unbind it from, a programme of this department directly? */
+    /** may the acting office bind a course into, or unbind it from, a programme of this department directly? (V471: the
+     *  School and the support desk bind on the programme's structure, by programme, never by department here) */
     boolean mayBindInto(String programmeDept) {
+        if (StructureAccess.special()) return false;
         return central() || (programmeDept != null && scope.within(null, programmeDept, null));
     }
 
     /** may the acting office edit, rename, end or offer out a course this department owns? */
     boolean owns(String courseDept) {
+        if (StructureAccess.special()) return false;
         return central() || (courseDept != null && scope.within(null, courseDept, null));
     }
 
+    /** V471: the same for one course — the School and the support desk by StructureAccess's reach */
+    boolean ownsCourse(String courseDept, String code) {
+        return StructureAccess.special() ? access.mayCourse(code, StructureAccess.EDIT) : owns(courseDept);
+    }
+
     void assertOwns(String courseDept, String code) {
+        if (StructureAccess.special()) {
+            access.assertCourse(code, StructureAccess.EDIT);
+            return;
+        }
         if (!owns(courseDept)) {
             throw new DomainRuleViolation("CAT_DEPT", code + " belongs to another department; its own department edits it and offers it out.",
                     new DomainRuleViolation.Remedy("Ask that department's Head, or bind the course into your own programme from the programme's structure.", "Head of Department"));
@@ -60,13 +75,12 @@ class OfferAuthority {
     java.util.Map<String, Object> offer(String courseCode, String courseDept, String programme, Integer level, String basisIn, String track, String reason) {
         String prog = programme == null ? "" : programme.trim().toUpperCase();
         String progDept = deptOfProgramme(prog);
-        String basis = basisIn == null || basisIn.isBlank() ? (progDept.equalsIgnoreCase(courseDept == null ? "" : courseDept) ? "Core" : "Borrowed") : basisIn.trim();
-        if (!java.util.Set.of("Core", "Elective", "Borrowed", "GST").contains(basis)) {
-            throw new DomainRuleViolation("CAT_BASIS", "A course is offered to a programme as Core, Elective, Borrowed or GST.",
-                    new DomainRuleViolation.Remedy("Choose one of the four.", "Head of Department"));
-        }
+        // V471: a postgraduate programme's levels and bases (700/800/900; Deficiency, Research), an undergraduate one's
+        String basis = access.basis(prog, basisIn, progDept.equalsIgnoreCase(courseDept == null ? "" : courseDept) ? "Core" : "Borrowed");
+        access.assertLevel(prog, level == null ? 0 : level);
         String t = track == null || track.isBlank() ? null : track.trim().toUpperCase();
-        if (mayBindInto(progDept)) {
+        if (StructureAccess.special()) access.assertProgramme(prog);   // V471: the School and the support desk bind within their reach, or not at all
+        if (StructureAccess.special() || mayBindInto(progDept)) {
             jdbc.sql("SELECT catalogue.bind_offer(:c, :p, :l, :b, :t, 'COURSE')").param("c", courseCode).param("p", prog).param("l", level)
                     .param("b", basis).param("t", t, java.sql.Types.VARCHAR).query().singleRow();
             return java.util.Map.of("programme", prog, "level", level, "basis", basis, "outcome", "BOUND");

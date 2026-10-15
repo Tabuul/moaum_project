@@ -44,7 +44,8 @@ export interface CourseDetail {
   /** V338: what the course requires first, and every change of its owner */
   prerequisites?: { code: string; title: string }[];
   ownerHistory?: { from_dept: string | null; from_dept_name: string | null; to_dept: string | null; to_dept_name: string | null; from_programme: string | null; to_programme: string | null; to_programme_name: string | null; source: string | null; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
-  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean };
+  /** V471: prerequisites — may add and remove what the course requires; ticket — may name the support ticket a change answers */
+  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean; prerequisites?: boolean; ticket?: boolean };
   /** V386: the code asked for (a merged or differently written code opens the course held) and the codes merged into it */
   requested?: string;
   aliases?: { alias_code: string; title: string | null; evidence: string; reason: string; merged_at: string; merged_office: string | null; merged_by: string | null; moved: string }[];
@@ -60,7 +61,8 @@ export interface CourseListRow {
   review_status?: ReviewStatus; review_note?: string | null; reviewed_at?: string | null; reviewed_office?: string | null;
   updated_at?: string | null; updated_by?: string | null; created_at?: string | null; issues?: string[] | null;
 }
-export interface CourseList { total: number; page: number; size: number; rows: CourseListRow[]; scope: { dept: string; fac: string } }
+/** V471: scope.ptype — "PG" when the list holds postgraduate courses only (the School reads no other) */
+export interface CourseList { total: number; page: number; size: number; rows: CourseListRow[]; scope: { dept: string; fac: string; ptype?: string } }
 
 /** V445: the ownership review */
 export type ReviewStatus = "NOT_REVIEWED" | "REVIEWED" | "CORRECT" | "INCORRECT_OWNER" | "REQUIRES_REVIEW";

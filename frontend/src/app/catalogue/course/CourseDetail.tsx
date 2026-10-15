@@ -34,11 +34,25 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
   /* V338: moving the course to its rightful owner */
   const [owning, setOwning] = useState<{ dept: string; prog: string; why: string } | null>(null);
   const used = usageWords(data.usage);
+  /* V471: the support ticket a change answers, and a prerequisite found by code or title */
+  const [ticket, setTicket] = useState("");
+  const [preq, setPreq] = useState("");
+  const [preqFound, setPreqFound] = useState<{ code: string; title: string; level: number; dept_name: string | null }[]>([]);
+  const mayTicket = !!data.may.ticket;
+  const withTicket = (path: string) => (mayTicket && ticket.trim() ? `${path}${path.includes("?") ? "&" : "?"}ticket=${encodeURIComponent(ticket.trim())}` : path);
+  const why = (text: string) => (mayTicket && ticket.trim() ? `Ticket ${ticket.trim().toUpperCase()}: ${text}` : text);
+  async function findPrereq(text: string) {
+    setPreq(text);
+    if (text.trim().length < 2) { setPreqFound([]); return; }
+    const r = await fetch(`/api/bff/api/v1/catalogue/courses/search?q=${encodeURIComponent(text.trim())}`, { cache: "no-store" });
+    const j = r.ok ? await r.json().catch(() => []) : [];
+    setPreqFound(Array.isArray(j) ? (j as { code: string; title: string; level: number; dept_name: string | null }[]).filter((x) => x.code !== c.code).slice(0, 8) : []);
+  }
 
   async function call(method: "POST" | "PUT" | "DELETE", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
     setBusy(true);
     try {
-      const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}) });
+      const r = await fetch(`/api/bff/api/v1/catalogue${withTicket(path)}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(why(reason)) }, body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}) });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
       if (!r.ok) { notifyProblem(j ? (j as unknown as Parameters<typeof notifyProblem>[0]) : { status: r.status, title: r.statusText }); return null; }
       notify(reason);
@@ -54,6 +68,10 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
   const ownDept = c.dept_code ?? "";
   const direct = dept && (data.may.central || (directory?.actingDept && directory.actingDept.toUpperCase() === dept.toUpperCase()));
   const defaultBasis = dept === ownDept ? "Core" : "Borrowed";
+  // V471: a department whose programmes are postgraduate takes Deficiency and Research too, at 700, 800 or 900 level
+  const pgDept = progs.length > 0 && progs.every((p) => p.category === "POST GRADUATE");
+  const offerBases = pgDept ? ["Core", "Elective", "Borrowed", "Deficiency", "Research"] : BASES;
+  const offerLevels = pgDept ? [700, 800, 900] : LEVELS;
 
   async function addOffers() {
     let bound = 0, proposed = 0;
@@ -83,6 +101,13 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           <LinkBtn href={`/catalogue?dept=${encodeURIComponent(ownDept)}`}>Department courses</LinkBtn>
           <LinkBtn href="/catalogue/all">All courses</LinkBtn>
         </>} />
+      {mayTicket ? (
+        <div className="scope">
+          <div className="scope__f"><label htmlFor="cd-ticket">Support ticket (optional)</label>
+            <input id="cd-ticket" className="ctl tnum" style={{ width: 200 }} value={ticket} onChange={(e) => setTicket(e.target.value)} placeholder="ICT-2026-001245" maxLength={40} autoComplete="off" /></div>
+          <div className="sub2" style={{ alignSelf: "flex-end" }}>A change made here is put on the ticket&rsquo;s timeline and in the course&rsquo;s history.</div>
+        </div>
+      ) : null}
       {data.requested && data.requested !== c.code ? (
         <Note kind="info" title={`${data.requested} is ${c.code}`}>
           {(data.aliases ?? []).some((a) => a.alias_code === data.requested) ? `${data.requested} was merged into ${c.code}; the pool holds the course once, under ${c.code}.` : `The pool holds this course under ${c.code}.`}
@@ -96,11 +121,36 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
         ["Awaiting a department", String(pending.length), pending.length ? "var(--amber-ink)" : null, pending.length ? "Proposals not yet decided" : "No proposal waits"],
       ]} />
 
-      {c.description || (data.prerequisites ?? []).length ? (
-        <Panel title="Course information">
+      {c.description || (data.prerequisites ?? []).length || data.may.prerequisites ? (
+        <Panel title="Course information" right={data.may.prerequisites ? "Prerequisites: what a student passes first" : undefined}>
           <PBody>
             {c.description ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{c.description}</div> : null}
-            {(data.prerequisites ?? []).length ? <div className="sub2 mt-2"><b>Prerequisites:</b> {(data.prerequisites ?? []).map((q) => `${q.code} ${q.title}`).join(" · ")}</div> : null}
+            <div className="sub2 mt-2"><b>Prerequisites:</b>{" "}
+              {(data.prerequisites ?? []).length ? (data.prerequisites ?? []).map((q) => (
+                <span key={q.code} className="row row--inline row--tight" style={{ marginRight: 12 }}>
+                  <Link className="lnk tnum" href={`/catalogue/course?code=${encodeURIComponent(q.code)}`}>{q.code}</Link> {q.title}
+                  {data.may.prerequisites ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => (window.confirm(`${c.code} no longer requires ${q.code}?`) ? call("DELETE", `/courses/${encodeURIComponent(c.code)}/prerequisites?requires=${encodeURIComponent(q.code)}`, null, `${c.code} no longer requires ${q.code}`) : undefined)}>Remove</Btn> : null}
+                </span>
+              )) : <span>none</span>}
+            </div>
+            {data.may.prerequisites ? (
+              <div className="row row--end mt-2">
+                <Field id="cd-preq" label="Add a prerequisite — a course of any department" style={{ flex: "1 1 320px" }}>
+                  <input id="cd-preq" className="ctl" value={preq} onChange={(e) => void findPrereq(e.target.value)} placeholder="Code or title" autoComplete="off" />
+                </Field>
+                {preqFound.length ? (
+                  <div className="stack" style={{ flex: "1 1 100%" }}>
+                    {preqFound.map((x) => (
+                      <div key={x.code} className="row row--inline row--tight">
+                        <b className="tnum">{x.code}</b> {x.title} <span className="sub2">· {x.level} level · {x.dept_name ?? ""}</span>
+                        <Btn kind="secondary" size="sm" disabled={busy} onClick={async () => { const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/prerequisites`, { requires: x.code }, `${c.code} now requires ${x.code}`); if (j) { setPreq(""); setPreqFound([]); } }}>Require</Btn>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="sub2" style={{ flex: "1 1 100%" }}>A course never requires itself, nor a course that already requires it however far round; the server refuses such a loop.</div>
+              </div>
+            ) : null}
           </PBody>
         </Panel>
       ) : null}
@@ -147,8 +197,8 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
               <div className="row">
                 <Field id="of-fac" label="Faculty" style={{ flex: "1 1 200px" }}><SearchSelect id="of-fac" value={fac} onChange={(v) => { setFac(v); setDept(""); setPicked([]); }} allLabel="Any faculty" options={(directory?.faculties ?? []).map((f) => ({ value: f.code, label: f.name }))} /></Field>
                 <Field id="of-dept" label="Department" style={{ flex: "2 1 260px" }}><SearchSelect id="of-dept" value={dept} onChange={(v) => { setDept(v); setPicked([]); setBasis(""); }} placeholder="Search a department…" options={depts.map((d) => ({ value: d.code, label: d.name }))} /></Field>
-                <Field id="of-level" label="Level" style={{ flex: "0 1 110px" }}><select id="of-level" className="ctl" value={level} onChange={(e) => setLevel(e.target.value)}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
-                <Field id="of-basis" label="Basis" style={{ flex: "0 1 140px" }}><select id="of-basis" className="ctl" value={basis} onChange={(e) => setBasis(e.target.value)}><option value="">{defaultBasis} (usual)</option>{BASES.map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
+                <Field id="of-level" label="Level" style={{ flex: "0 1 110px" }}><select id="of-level" className="ctl" value={level} onChange={(e) => setLevel(e.target.value)}>{offerLevels.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
+                <Field id="of-basis" label="Basis" style={{ flex: "0 1 140px" }}><select id="of-basis" className="ctl" value={basis} onChange={(e) => setBasis(e.target.value)}><option value="">{defaultBasis} (usual)</option>{offerBases.map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
                 <Field id="of-track" label="Track" style={{ flex: "0 1 160px" }}><select id="of-track" className="ctl" value={track} onChange={(e) => setTrack(e.target.value)}><option value="">Every track</option>{(directory?.tracks ?? []).map((t) => <option key={t.code} value={t.code}>{t.code}</option>)}</select></Field>
               </div>
               {dept ? (
@@ -211,7 +261,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !edit.title.trim()} onClick={async () => {
             const both = edit.semester === "both";
             const changed = Number(edit.units) !== c.units || Number(edit.level) !== c.level || (both ? !c.both_semesters : Number(edit.semester) !== c.semester || !!c.both_semesters);
-            if (changed && used && !window.confirm(`The units, level or semester change on a course that carries ${used}. Past results keep the marks they carry; registration and fees from now on read the new values. Continue?`)) return;
+            if (changed && used && !window.confirm(`This course is already used in student academic records (${used}). Changing its units, level or semester may affect existing registrations, results, transcripts or reports: past results keep the marks they carry; registration and fees from now on read the new values. Continue?`)) return;
             if (await call("PUT", `/courses/${encodeURIComponent(c.code)}`, { title: edit.title.trim(), units: Number(edit.units), semester: both ? 1 : Number(edit.semester), level: Number(edit.level), kind: edit.kind, bothSemesters: both }, `${c.code} edited`)) setEdit(null);
           }}>Save</Btn></>}>
           <div className="stack">
@@ -285,7 +335,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
       {rename !== null ? (
         <Modal title={`Rename ${c.code}`} sub="The same course under a new code; everything on it follows" onClose={() => setRename(null)}
           foot={<><Btn kind="ghost" onClick={() => setRename(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || !rename.trim() || rename.trim().toUpperCase() === c.code} onClick={async () => {
-            if (used && !window.confirm(`${c.code} carries ${used}. Every one of them will read ${rename.trim().toUpperCase()} from now on. Continue?`)) return;
+            if (used && !window.confirm(`${c.code} is already used in student academic records (${used}). Changing the course code may affect existing registrations, results, transcripts or reports: every one of them will read ${rename.trim().toUpperCase()} from now on. Continue?`)) return;
             const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/rename`, { code: rename.trim() }, `${c.code} renamed`);
             if (j) { setRename(null); router.replace(`/catalogue/course?code=${encodeURIComponent(String(j.code))}`); }
           }}>Rename</Btn></>}>

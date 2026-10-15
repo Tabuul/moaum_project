@@ -604,6 +604,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
+          { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -1330,6 +1331,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
         ]
       },
       {
@@ -2120,9 +2122,18 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Programme Structure",
+        "items": [
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/structureprogrammes", "icon": "cap", "label": "PG Programmes" },
+          { "id": "t/allcourses", "icon": "book", "label": "PG Courses" },
+          { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
+          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" }
+        ]
+      },
+      {
         "name": "Academic",
         "items": [
-          { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/pgboard", "icon": "check", "label": "School Board" },
           { "id": "t/pgscores", "icon": "doc", "label": "Course Results" },
@@ -2335,9 +2346,18 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Programme Structure",
+        "items": [
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/structureprogrammes", "icon": "cap", "label": "PG Programmes" },
+          { "id": "t/allcourses", "icon": "book", "label": "PG Courses" },
+          { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
+          { "id": "t/pgcourses", "icon": "book", "label": "Classes & Course Upload" }
+        ]
+      },
+      {
         "name": "Academic",
         "items": [
-          { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/pgregistration", "icon": "book", "label": "Registration" },
           { "id": "t/pgexams", "icon": "cap", "label": "Course Examinations" },
@@ -2478,6 +2498,10 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
 { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
+{ "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+{ "id": "t/structureprogrammes", "icon": "cap", "label": "Programme Lookup" },
+{ "id": "t/allcourses", "icon": "book", "label": "Course Lookup" },
+{ "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
           { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" },
@@ -2506,6 +2530,10 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },
 { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
+{ "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+{ "id": "t/structureprogrammes", "icon": "cap", "label": "Programme Lookup" },
+{ "id": "t/allcourses", "icon": "book", "label": "Course Lookup" },
+{ "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

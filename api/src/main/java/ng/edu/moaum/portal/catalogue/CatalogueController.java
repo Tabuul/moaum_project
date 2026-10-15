@@ -31,8 +31,12 @@ class CatalogueController {
 
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     /** a programme's structure is kept by the owners and, on the user's word (V460), the Director of ICT */
-    private static final String STRUCTURE = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_ict')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict')";
+    private static final String STRUCTURE = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
+    /** V471: a course itself — created, ended, restored, made live, its prerequisites — by its owners and, within StructureAccess's
+     *  reach, the School of Postgraduate Studies and the ICT Support Desk (never removed outright by them). The Director of ICT
+     *  keeps the structure and does not edit the course itself (V460) */
+    private static final String KEEPERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
 
     /** the Director of ICT alone creates, uploads, archives or removes faculties, departments, programmes and course structures */
     private static final String UPLOADERS = "hasAuthority('OFFICE_ict')";
@@ -44,12 +48,15 @@ class CatalogueController {
     private final tools.jackson.databind.ObjectMapper json;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
     private final OfferAuthority authority;
+    private final StructureAccess access;
 
-    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope, OfferAuthority authority) {
+    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope, OfferAuthority authority,
+                        StructureAccess access) {
         this.jdbc = jdbc;
         this.json = json;
         this.scope = scope;
         this.authority = authority;
+        this.access = access;
     }
 
     /** the department an HOD request is confined to, or null for any other office (no confinement) */
@@ -185,8 +192,9 @@ class CatalogueController {
                   JOIN ref.faculty f ON f.code = p.faculty_code
                   LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE (:hod::text IS NULL OR p.dept_code = :hod)
+                   AND (NOT :pg OR p.category = 'POST GRADUATE')   -- V471: the School's offices pick among its postgraduate programmes
                  ORDER BY f.name, p.name
-                """).param("hod", hodDept()).query().listOfRows();
+                """).param("hod", hodDept()).param("pg", StructureAccess.pg()).query().listOfRows();
     }
 
     @PostMapping("/programmes")
@@ -381,27 +389,49 @@ class CatalogueController {
     Map<String, Object> structure(@RequestParam String prog) {
         String p = prog.trim().toUpperCase();
         scope.bound(null, null, p);                        // a department office reads its own programmes only
+        access.requireView();                              // V471: an agent with VIEW_PROGRAMME_STRUCTURE (every agent in service)
+        // V471: the session the programme's students register in now (the School's own for a postgraduate programme), and
+        // whether each course has a class in it — a course bound but with no class there is still not on a student's menu
+        String session = jdbc.sql("""
+                SELECT CASE WHEN (SELECT category FROM ref.programme WHERE code = :p) = 'POST GRADUATE' THEN admissions.pg_current_session()
+                            ELSE policy.university_current_session() END
+                """).param("p", p).query(String.class).optional().orElse(null);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT co.level, c.semester, c.both_semesters, c.code, c.title, coalesce(co.units, c.units) AS units, co.units AS own_units, c.units AS course_units,
-                       c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
+                       c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max,
+                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_now
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code
                  WHERE co.programme_code = :p
                  ORDER BY co.level, c.semester, (co.basis = 'GST') DESC, (co.basis IN ('Core','GST')) DESC, c.code
-                """).param("p", p).query().listOfRows();
+                """).param("p", p).param("s", session, java.sql.Types.VARCHAR).query().listOfRows();
         List<Map<String, Object>> limits = jdbc.sql("SELECT level, min_units, max_units FROM policy.level_limit ORDER BY level").query().listOfRows();
         Map<String, Object> programme = jdbc.sql("""
-                SELECT p.code, p.name, p.dept_code, d.name AS dept_name, p.faculty_code FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code WHERE p.code = :p
+                SELECT p.code, p.name, p.dept_code, d.name AS dept_name, p.faculty_code, f.name AS faculty_name, p.category, p.pg_award,
+                       CASE WHEN p.category = 'POST GRADUATE' THEN admissions.pg_award_level(p.pg_award) END AS award_level
+                  FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code WHERE p.code = :p
                 """).param("p", p).query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("programme", prog));
         List<Map<String, Object>> tracks = jdbc.sql("SELECT code, label AS name FROM policy.curriculum_track ORDER BY ord, code").query().listOfRows();   // V332: the track carries a label, not a name
-        return Map.of("programme", programme, "rows", rows, "limits", limits, "tracks", tracks);
+        // V471: a postgraduate programme's levels and bases are its own; the screen offers what the server accepts, and says
+        // whether the acting office may change this programme's structure (each change is still checked where it lands)
+        boolean pgp = "POST GRADUATE".equals(programme.get("category"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("programme", programme);
+        out.put("rows", rows);
+        out.put("limits", limits);
+        out.put("tracks", tracks);
+        out.put("session", session == null ? "" : session);
+        out.put("levels", pgp ? List.of(700, 800, 900) : List.of(100, 200, 300, 400, 500, 600));
+        out.put("bases", pgp ? StructureAccess.PG_BASES : StructureAccess.UG_BASES);
+        out.put("may", Map.of("change", !StructureAccess.special() || access.mayProgramme(p), "ticket", StructureAccess.ticketOffice()));
+        return out;
     }
 
     /** units (V460): the units this programme takes the course at; the course's own number takes the course's units, and none
      *  given keeps what the binding has — so a change of basis or track never drops a programme's own units */
     public record BindIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,
-                         @NotNull @Min(100) @Max(600) Integer level, @Size(max = 12) String basis, @Size(max = 12) String track,
+                         @NotNull @Min(100) @Max(900) Integer level, @Size(max = 12) String basis, @Size(max = 12) String track,
                          @Min(0) @Max(12) Integer units) {
     }
 
@@ -409,15 +439,14 @@ class CatalogueController {
     @PostMapping("/structure/bind")
     @PreAuthorize(STRUCTURE)
     @Transactional
-    Map<String, Object> bind(@Valid @RequestBody BindIn body) {
+    Map<String, Object> bind(@Valid @RequestBody BindIn body, @RequestParam(required = false) String ticket) {
         String p = body.programme().trim().toUpperCase();
         String c = body.course().trim().toUpperCase();
         assertHodOwns(programmeDept(p));                    // the programme's department binds into its structure
-        String basis = body.basis() == null || body.basis().isBlank() ? "Core" : body.basis().trim();
-        if (!List.of("Core", "Elective", "Borrowed", "GST").contains(basis)) {
-            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_BASIS", "A course is offered to a programme as Core, Elective, Borrowed or GST.",
-                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose one of the four.", "Head of Department"));
-        }
+        access.assertProgramme(p);                          // V471: the School its postgraduate programmes; an agent with BIND_COURSES within its postings
+        java.util.UUID on = access.ticket(ticket);
+        String basis = access.basis(p, body.basis(), "Core");   // V471: a postgraduate programme's bases include Deficiency and Research
+        access.assertLevel(p, body.level());                // V471: 700/800/900 for a postgraduate programme, 100 to 600 otherwise
         String track = body.track() == null || body.track().isBlank() ? null : body.track().trim().toUpperCase();
         Map<String, Object> course = jdbc.sql("SELECT code, state, dept_code FROM catalogue.course WHERE code = :c").param("c", c)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", c));
@@ -433,6 +462,7 @@ class CatalogueController {
                 """).param("c", c).param("p", p).param("l", body.level()).param("b", basis).param("t", track, java.sql.Types.VARCHAR)
                 .param("u", body.units(), java.sql.Types.INTEGER).param("given", body.units() != null).update();
         int units = jdbc.sql("SELECT catalogue.units_for(:c, :p, :l)").param("c", c).param("p", p).param("l", body.level()).query(Integer.class).single();
+        access.note(on, "Bound " + c + " into " + p + " at " + body.level() + " level (" + basis + ", " + units + " units)");
         return Map.of("programme", p, "course", c, "level", body.level(), "basis", basis, "track", track == null ? "" : track, "units", units);
     }
 
@@ -440,10 +470,13 @@ class CatalogueController {
     @DeleteMapping("/structure/bind")
     @PreAuthorize(STRUCTURE)
     @Transactional
-    Map<String, Object> unbind(@RequestParam String programme, @RequestParam String course, @RequestParam int level) {
+    Map<String, Object> unbind(@RequestParam String programme, @RequestParam String course, @RequestParam int level,
+                               @RequestParam(required = false) String ticket) {
         String p = programme.trim().toUpperCase();
         String c = course.trim().toUpperCase();
         assertHodOwns(programmeDept(p));
+        access.assertProgramme(p);                          // V471
+        java.util.UUID on = access.ticket(ticket);
         long live = jdbc.sql("""
                 SELECT count(*) FROM registration.entry e
                   JOIN registration.course_registration r ON r.id = e.registration_id
@@ -461,6 +494,7 @@ class CatalogueController {
         int n = jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l")
                 .param("c", c).param("p", p).param("l", level).update();
         if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("binding", c + " → " + p + " at " + level);
+        access.note(on, "Removed " + c + " from " + p + " at " + level + " level (the course itself kept)");
         return Map.of("programme", p, "course", c, "level", level, "removed", n);
     }
 
@@ -482,6 +516,7 @@ class CatalogueController {
         String p = programme.trim().toUpperCase();
         String c = course.trim().toUpperCase();
         assertHodOwns(programmeDept(p));
+        access.assertProgramme(p);                          // V471
         if (units < 0 || units > 12) {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_UNITS", "A programme takes a course at 0 to 12 units.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Give a number from 0 to 12.", "Head of Department"));
@@ -539,16 +574,19 @@ class CatalogueController {
     @PostMapping("/structure/units")
     @PreAuthorize(STRUCTURE)
     @Transactional
-    Map<String, Object> setUnits(@Valid @RequestBody UnitsIn body) {
+    Map<String, Object> setUnits(@Valid @RequestBody UnitsIn body, @RequestParam(required = false) String ticket) {
         String p = body.programme().trim().toUpperCase();
         String c = body.course().trim().toUpperCase();
         assertHodOwns(programmeDept(p));
+        access.assertProgramme(p);                          // V471
+        java.util.UUID on = access.ticket(ticket);
         Map<String, Object> impact = impactOf(c, p, body.level(), body.units());
         jdbc.sql("""
                 UPDATE catalogue.course_offer co SET units = nullif(:u, (SELECT x.units FROM catalogue.course x WHERE x.code = co.course_code))
                  WHERE co.course_code = :c AND co.programme_code = :p AND co.level = :l
                 """).param("u", body.units()).param("c", c).param("p", p).param("l", body.level()).update();
         int units = jdbc.sql("SELECT catalogue.units_for(:c, :p, :l)").param("c", c).param("p", p).param("l", body.level()).query(Integer.class).single();
+        access.note(on, p + " takes " + c + " at " + body.level() + " level at " + units + " units");
         return Map.of("programme", p, "course", c, "level", body.level(), "units", units, "followed", impact.get("follow"), "kept", impact.get("kept"));
     }
 
@@ -1030,10 +1068,14 @@ class CatalogueController {
     }
 
     @PostMapping("/courses")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> create(@Valid @RequestBody NewCourse body) {
+    Map<String, Object> create(@Valid @RequestBody NewCourse body, @RequestParam(required = false) String ticket) {
         assertHodOwns(body.dept());                         // an HOD creates courses in their own department only
+        // V471: the School creates postgraduate courses for its programmes; an agent with EDIT_COURSES within its postings
+        access.assertNewCourse(body.dept().trim().toUpperCase(), body.level(),
+                body.offers() == null ? List.of() : body.offers().stream().map(o -> o.programme().trim().toUpperCase()).toList());
+        java.util.UUID on = access.ticket(ticket);
         if (Boolean.TRUE.equals(body.bothSemesters()) && body.semester() != null && body.semester() == 3) {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_SEMESTER_BOTH", "A course taught in both semesters is taught in the first and the second.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose the first semester with both, or the third semester alone.", "Head of Department"));
@@ -1061,15 +1103,27 @@ class CatalogueController {
         out.put("bound", outcomes.stream().filter(x -> "BOUND".equals(x.get("outcome"))).count());
         out.put("proposed", outcomes.stream().filter(x -> "PROPOSED".equals(x.get("outcome"))).count());
         out.put("offers", outcomes);
+        access.note(on, "Created " + code + " (" + body.title().trim() + ")" + (outcomes.isEmpty() ? "" : ", offered to " + outcomes.size() + " programme" + (outcomes.size() == 1 ? "" : "s")));
         return out;
     }
 
+    /** V471: the department of a course, for the checks of an act on it */
+    private String courseDept(String c, String asked) {
+        return jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", asked));
+    }
+
     @PostMapping("/courses/{code}/end")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> end(@PathVariable String code) {
-        jdbc.sql("SELECT catalogue.end_course(:c)").param("c", code).query().singleRow();
-        return Map.of("code", code, "state", "ENDED");
+    Map<String, Object> end(@PathVariable String code, @RequestParam(required = false) String ticket) {
+        String c = code.trim().toUpperCase();
+        assertHodOwns(courseDept(c, code));                 // V471: an HOD ends only their own department's courses, as they restore them
+        access.assertCourse(c, StructureAccess.EDIT);
+        java.util.UUID on = access.ticket(ticket);
+        jdbc.sql("SELECT catalogue.end_course(:c)").param("c", c).query().singleRow();
+        access.note(on, "Deactivated " + c + " (ended: it leaves registration and stays on every record that carries it)");
+        return Map.of("code", c, "state", "ENDED");
     }
 
     /** V329: a course removed outright — only when nothing carries it (no registration, result, score sheet, timetable,
@@ -1098,7 +1152,9 @@ class CatalogueController {
                   CROSS JOIN LATERAL unnest(catalogue.course_semesters(c.semester, c.both_semesters)) s(sem)   -- V386: each semester it is taught in
                   CROSS JOIN (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1) cur
                  WHERE c.code = :c AND c.state <> 'ENDED'
-                   AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
+                   -- V471: a course only postgraduate programmes take has its classes opened by the School, in its own session
+                   AND EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                WHERE co.course_code = c.code AND p.category IS DISTINCT FROM 'POST GRADUATE')
                    AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
                                     WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = s.sem AND o.stream = 'REGULAR')
                 """).param("c", code).update();
@@ -1106,30 +1162,172 @@ class CatalogueController {
 
     /** reverse an end: an ended course returns to LIVE and re-enters next session's registration */
     @PostMapping("/courses/{code}/restore")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> restore(@PathVariable String code) {
+    Map<String, Object> restore(@PathVariable String code, @RequestParam(required = false) String ticket) {
         String c = code.trim().toUpperCase();
-        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
-                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
-        assertHodOwns(dept);                                // an HOD restores only their own department's courses
+        assertHodOwns(courseDept(c, code));                 // an HOD restores only their own department's courses
+        access.assertCourse(c, StructureAccess.EDIT);       // V471
+        java.util.UUID on = access.ticket(ticket);
         jdbc.sql("SELECT catalogue.restore_course(:c)").param("c", c).query().singleRow();
         ensureCurrentOffering(c);                           // so it shows for registration without re-opening
+        access.note(on, "Activated " + c + " (restored to live)");
         return Map.of("code", c, "state", "LIVE");
     }
 
     /** make one course Live: a BOARD/SENATE course becomes LIVE (an uploaded, approved course) */
     @PostMapping("/courses/{code}/live")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> makeLive(@PathVariable String code) {
+    Map<String, Object> makeLive(@PathVariable String code, @RequestParam(required = false) String ticket) {
         String c = code.trim().toUpperCase();
-        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
-                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
-        assertHodOwns(dept);                                // an HOD acts only within their own department
+        assertHodOwns(courseDept(c, code));                 // an HOD acts only within their own department
+        access.assertCourse(c, StructureAccess.EDIT);       // V471
+        java.util.UUID on = access.ticket(ticket);
         jdbc.sql("SELECT catalogue.make_course_live(:c)").param("c", c).query().singleRow();
         ensureCurrentOffering(c);                           // so it shows for registration without re-opening
+        access.note(on, "Made " + c + " live");
         return Map.of("code", c, "state", "LIVE");
+    }
+
+    /* ── V471: prerequisites, the structure's checks, and the School's structure counted ── */
+
+    public record PrereqIn(@NotBlank @Size(max = 24) String requires) {
+    }
+
+    /** a course requires another first — never itself, nor one that already requires it however far round */
+    @PostMapping("/courses/{code}/prerequisites")
+    @PreAuthorize(KEEPERS)
+    @Transactional
+    Map<String, Object> addPrerequisite(@PathVariable String code, @Valid @RequestBody PrereqIn body, @RequestParam(required = false) String ticket) {
+        String c = code.trim().toUpperCase();
+        String r = body.requires().trim().toUpperCase();
+        String dept = courseDept(c, code);
+        if (StructureAccess.special()) access.assertCourse(c, StructureAccess.PREREQ);
+        else authority.assertOwns(dept, c);                 // the course's own department (its Dean, a central office) sets what it requires
+        java.util.UUID on = access.ticket(ticket);
+        jdbc.sql("SELECT catalogue.add_prerequisite(:c, :r)").param("c", c).param("r", r).query().singleRow();
+        access.note(on, c + " now requires " + r);
+        return Map.of("course", c, "requires", r, "prerequisites", prerequisites(c));
+    }
+
+    @DeleteMapping("/courses/{code}/prerequisites")
+    @PreAuthorize(KEEPERS)
+    @Transactional
+    Map<String, Object> removePrerequisite(@PathVariable String code, @RequestParam String requires, @RequestParam(required = false) String ticket) {
+        String c = code.trim().toUpperCase();
+        String r = requires.trim().toUpperCase();
+        String dept = courseDept(c, code);
+        if (StructureAccess.special()) access.assertCourse(c, StructureAccess.PREREQ);
+        else authority.assertOwns(dept, c);
+        java.util.UUID on = access.ticket(ticket);
+        int n = jdbc.sql("SELECT catalogue.remove_prerequisite(:c, :r)").param("c", c).param("r", r).query(Integer.class).single();
+        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("prerequisite", c + " requires " + r);
+        access.note(on, c + " no longer requires " + r);
+        return Map.of("course", c, "removed", r, "prerequisites", prerequisites(c));
+    }
+
+    private List<Map<String, Object>> prerequisites(String c) {
+        return jdbc.sql("""
+                SELECT q.requires_code AS code, x.title FROM catalogue.course_prerequisite q JOIN catalogue.course x ON x.code = q.requires_code
+                 WHERE q.course_code = :c ORDER BY q.requires_code
+                """).param("c", c).query().listOfRows();
+    }
+
+    /** what the acting office may do on the structure, for the screens (each act is still checked where it lands) */
+    @GetMapping("/structure/access")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> structureAccess() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("office", StructureAccess.office());
+        out.put("postgraduate", StructureAccess.pg());
+        out.put("support", StructureAccess.special() && !StructureAccess.pg());
+        out.put("capabilities", StructureAccess.special() ? access.held()
+                : "ict".equals(StructureAccess.office()) ? List.of(StructureAccess.VIEW, StructureAccess.BIND)   // V460: the structure, not the course
+                : List.of(StructureAccess.VIEW, StructureAccess.EDIT, StructureAccess.BIND, StructureAccess.PREREQ));
+        out.put("ticket", StructureAccess.ticketOffice());
+        return out;
+    }
+
+    /** the structure's checks (catalogue.structure_issues): every problem with its programme and course, so each can be opened.
+     *  A department or faculty office reads its own; the School its postgraduate programmes; an agent with the view capability */
+    @GetMapping("/structure/issues")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> structureIssues(@RequestParam(required = false) String category, @RequestParam(required = false) String kind) {
+        access.requireView();
+        String cat = StructureAccess.pg() ? "POST GRADUATE"
+                : category == null || category.isBlank() ? null : category.trim().toUpperCase().replace('_', ' ');
+        var b = scope.bound(null, null, null);
+        String d = scope.actingDepartmentOffice() ? b.dept() : null;
+        String f = scope.actingFacultyOffice() ? b.fac() : null;
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT i.kind, i.programme_code, i.programme, i.course_code, i.course, i.level, i.dept_code, dd.name AS dept_name,
+                       i.faculty_code, ff.name AS faculty_name, i.detail
+                  FROM catalogue.structure_issues(:cat) i
+                  LEFT JOIN ref.department dd ON dd.code = i.dept_code LEFT JOIN ref.faculty ff ON ff.code = i.faculty_code
+                 WHERE (:kind::text IS NULL OR i.kind = :kind)
+                   AND (:d::text IS NULL OR i.dept_code = :d)
+                   AND (:f::text IS NULL OR i.faculty_code = :f)
+                 ORDER BY i.kind, i.programme, i.course_code, i.level
+                """).param("cat", cat, java.sql.Types.VARCHAR).param("kind", kind == null || kind.isBlank() ? null : kind.trim().toUpperCase(), java.sql.Types.VARCHAR)
+                .param("d", d, java.sql.Types.VARCHAR).param("f", f, java.sql.Types.VARCHAR).query().listOfRows();
+        Map<String, Long> byKind = new java.util.TreeMap<>();
+        for (Map<String, Object> r : rows) byKind.merge(String.valueOf(r.get("kind")), 1L, Long::sum);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("category", cat == null ? "" : cat);
+        out.put("total", rows.size());
+        out.put("byKind", byKind);
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** the School's structure counted, for its dashboard (catalogue.pg_structure_summary) */
+    @GetMapping("/structure/pg-summary")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> pgSummary() {
+        access.requireView();
+        return jdbc.sql("SELECT * FROM catalogue.pg_structure_summary()").query().singleRow();
+    }
+
+    /** the programmes with their structure counted — courses bound, live and ended — by kind (postgraduate or undergraduate),
+     *  faculty, department or a search; the School reads its postgraduate programmes, a department office its own */
+    @GetMapping("/structure/programmes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> structureProgrammes(@RequestParam(required = false) String category, @RequestParam(required = false) String fac,
+                                                  @RequestParam(required = false) String dept, @RequestParam(required = false) String q,
+                                                  @RequestParam(required = false) Boolean empty) {
+        access.requireView();
+        String cat = StructureAccess.pg() ? "POST GRADUATE"
+                : category == null || category.isBlank() ? null : category.trim().toUpperCase().replace('_', ' ');
+        var b = scope.bound(fac, dept, null);
+        String d = scope.actingDepartmentOffice() ? b.dept() : (dept == null || dept.isBlank() ? null : dept.trim().toUpperCase());
+        String f = scope.actingFacultyOffice() ? b.fac() : (fac == null || fac.isBlank() ? null : fac.trim().toUpperCase());
+        return jdbc.sql("""
+                SELECT p.code, p.name, p.category, p.pg_award, p.dept_code, dd.name AS dept_name, coalesce(p.faculty_code, dd.faculty_code) AS faculty_code,
+                       ff.name AS faculty_name, coalesce(p.archived, false) AS archived,
+                       count(co.course_code) AS courses,
+                       count(co.course_code) FILTER (WHERE c.state <> 'ENDED') AS active_courses,
+                       count(co.course_code) FILTER (WHERE c.state = 'ENDED') AS inactive_courses,
+                       count(DISTINCT co.level) AS levels
+                  FROM ref.programme p
+                  LEFT JOIN ref.department dd ON dd.code = p.dept_code
+                  LEFT JOIN ref.faculty ff ON ff.code = coalesce(p.faculty_code, dd.faculty_code)
+                  LEFT JOIN catalogue.course_offer co ON co.programme_code = p.code
+                  LEFT JOIN catalogue.course c ON c.code = co.course_code
+                 WHERE (:cat::text IS NULL OR p.category = :cat)
+                   AND (:d::text IS NULL OR p.dept_code = :d)
+                   AND (:f::text IS NULL OR coalesce(p.faculty_code, dd.faculty_code) = :f)
+                   AND (:q::text IS NULL OR p.name ILIKE :q OR p.code ILIKE :q OR dd.name ILIKE :q)
+                 GROUP BY p.code, p.name, p.category, p.pg_award, p.dept_code, dd.name, dd.faculty_code, ff.name, p.archived
+                HAVING (:empty::boolean IS NULL OR (count(co.course_code) = 0) = :empty)
+                 ORDER BY ff.name, dd.name, p.name
+                """).param("cat", cat, java.sql.Types.VARCHAR).param("d", d, java.sql.Types.VARCHAR).param("f", f, java.sql.Types.VARCHAR)
+                .param("q", q == null || q.isBlank() ? null : "%" + q.trim() + "%", java.sql.Types.VARCHAR)
+                .param("empty", empty, java.sql.Types.BOOLEAN).query().listOfRows();
     }
 
     /** make every awaiting-approval course in a department Live in one action (optionally one level) */

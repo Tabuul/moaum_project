@@ -344,31 +344,36 @@ class PgCourseworkController {
 
     /* ── the department / School desk ─────────────────────────────────────── */
 
-    /** the courses of a programme (desk) */
+    /** the courses of a programme (desk) — V471: read from the programme's structure on the University's one course pool
+     *  (catalogue.course_offer), the list the registration menu and the results read; a course added here, or uploaded, is
+     *  bound there (V389), and one bound on the Programme Structure shows here the same */
     @GetMapping("/courses")
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam String programme) {
         programmeInBound(programme);
         return jdbc.sql("""
-                SELECT id, code, title, units, kind, semester, active FROM admissions.pg_course
-                 WHERE programme_code = :p ORDER BY semester, code
+                SELECT c.id, c.code, c.title, coalesce(co.units, c.units) AS units, upper(co.basis) AS kind, c.semester, co.level,
+                       (c.state <> 'ENDED') AS active
+                  FROM catalogue.course_offer co JOIN catalogue.course c ON c.code = co.course_code
+                 WHERE co.programme_code = :p ORDER BY co.level, c.semester, c.code
                 """).param("p", programme.trim()).query().listOfRows();
     }
 
-    /** every postgraduate course on record, with its programme — the whole catalogue for the desk */
+    /** every postgraduate programme's courses, with the programme — the School's whole structure for the desk (V471: the pool's) */
     @GetMapping("/courses/all")
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
     List<Map<String, Object>> allCourses() {
         return jdbc.sql("""
-                SELECT c.id, c.programme_code, g.name AS programme_name, f.name AS faculty_name,
-                       c.code, c.title, c.units, c.kind, c.semester, c.active
-                  FROM admissions.pg_course c
-                  JOIN ref.programme g ON g.code = c.programme_code
-                  JOIN ref.faculty f ON f.code = g.faculty_code
+                SELECT c.id, co.programme_code, g.name AS programme_name, f.name AS faculty_name,
+                       c.code, c.title, coalesce(co.units, c.units) AS units, upper(co.basis) AS kind, c.semester, co.level, (c.state <> 'ENDED') AS active
+                  FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code
+                  JOIN ref.programme g ON g.code = co.programme_code AND g.category = 'POST GRADUATE'
+                  LEFT JOIN ref.faculty f ON f.code = g.faculty_code
                  WHERE (:dept::text IS NULL OR g.dept_code = :dept)
-                 ORDER BY g.name, c.semester, c.code
+                 ORDER BY g.name, co.level, c.semester, c.code
                 """).param("dept", hodDept(), java.sql.Types.VARCHAR).query().listOfRows();
     }
 

@@ -12,7 +12,8 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { EVIDENCE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type Directory, type DuplicatePair } from "@/lib/catalogue";
 
-export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; semester: string; kind: string; state: string; session: string; sort: string; dir: string; size: string }
+/** V471: ptype — postgraduate or undergraduate courses; unbound — courses no programme takes */
+export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; semester: string; kind: string; state: string; session: string; ptype: string; unbound: string; sort: string; dir: string; size: string }
 
 export function AllCourses({ list, directory, sessions, filters, page, generatedBy, duplicates = [], mayMerge = false }: { list: CourseList; directory: Directory | null; sessions: string[]; filters: Filters; page: number; duplicates?: DuplicatePair[]; mayMerge?: boolean; generatedBy: string | null }) {
   const go = useQueryNav();
@@ -25,7 +26,10 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
   }
   const filtered = Object.entries(filters).some(([k, v]) => v && !["sort", "dir", "size"].includes(k));
   const depts = (directory?.departments ?? []).filter((d) => !filters.fac || d.faculty_code === filters.fac);
-  const progs = (directory?.programmes ?? []).filter((p) => (!filters.dept || p.dept_code === filters.dept) && (!filters.fac || p.faculty_code === filters.fac));
+  const pgOnly = list.scope.ptype === "PG";
+  const wantPg = pgOnly || filters.ptype === "PG";
+  const progs = (directory?.programmes ?? []).filter((p) => (!filters.dept || p.dept_code === filters.dept) && (!filters.fac || p.faculty_code === filters.fac)
+    && (!wantPg || p.category === "POST GRADUATE") && (filters.ptype !== "UG" || p.category !== "POST GRADUATE"));
   const scoped = list.scope.dept || list.scope.fac;
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "asc" ? "desc" : "asc" });
 
@@ -39,7 +43,7 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
 
   return (
     <>
-      <PageHead title="All courses" description={`Every course ${scoped ? "your department owns or carries" : "on the catalogue"}, with the programmes that offer it.`}
+      <PageHead title={pgOnly ? "Postgraduate courses" : "All courses"} description={pgOnly ? "Every course a postgraduate programme takes, or at 700 to 900 level, with the programmes that offer it — one record a course, whatever the programmes." : `Every course ${scoped ? "your department owns or carries" : "on the catalogue"}, with the programmes that offer it.`}
         actions={<><LinkBtn href="/catalogue/review">Course ownership review</LinkBtn><LinkBtn href="/catalogue">Department courses</LinkBtn><LinkBtn href="/catalogue/structure">Programme structure</LinkBtn></>} />
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ q: String(f.get("q") ?? "") }); }}>
         <div className="row">
@@ -53,6 +57,8 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
           <Field id="ac-sem" label="Semester" style={{ flex: "0 1 110px" }}><select id="ac-sem" className="ctl" value={filters.semester} onChange={(e) => nav({ semester: e.target.value })}><option value="">Any</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
           <Field id="ac-kind" label="Course type" style={{ flex: "0 1 120px" }}><select id="ac-kind" className="ctl" value={filters.kind} onChange={(e) => nav({ kind: e.target.value })}><option value="">Any</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
           <Field id="ac-state" label="Status" style={{ flex: "0 1 140px" }}><select id="ac-state" className="ctl" value={filters.state} onChange={(e) => nav({ state: e.target.value })}><option value="">Any</option>{Object.entries(STATE).map(([k, v]) => <option key={k} value={k}>{v[1]}</option>)}</select></Field>
+          {!pgOnly ? <Field id="ac-ptype" label="Programme type" style={{ flex: "0 1 150px" }}><select id="ac-ptype" className="ctl" value={filters.ptype} onChange={(e) => nav({ ptype: e.target.value, prog: "" })}><option value="">Any</option><option value="PG">Postgraduate</option><option value="UG">Undergraduate</option></select></Field> : null}
+          <Field id="ac-unbound" label="Binding" style={{ flex: "0 1 170px" }}><select id="ac-unbound" className="ctl" value={filters.unbound} onChange={(e) => nav({ unbound: e.target.value })}><option value="">Any</option><option value="true">Not in any programme</option><option value="false">In a programme</option></select></Field>
           <Field id="ac-session" label="Offered in session" style={{ flex: "0 1 140px" }}><select id="ac-session" className="ctl" value={filters.session} onChange={(e) => nav({ session: e.target.value })}><option value="">Any</option>{sessions.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
           <div className="row row--tight" style={{ alignSelf: "flex-end" }}>
             <Btn kind="primary" type="submit">Search</Btn>

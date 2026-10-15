@@ -45,7 +45,10 @@ import ng.edu.moaum.portal.shared.OfficeScope;
 class CourseOfferingController {
 
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
+    /** V471: a course edited, renamed or offered out by its owners and, within StructureAccess's reach, the School of Postgraduate
+     *  Studies and the ICT Support Desk (the Director of ICT keeps the structure, not the course itself — V460) */
+    private static final String KEEPERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
     private static final Set<String> SORTS = Set.of("code", "title", "level", "dept", "programmes", "state", "updated", "review");
     /** V386: the University's offices that merge one course into another */
     private static final String MERGERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
@@ -54,12 +57,14 @@ class CourseOfferingController {
     private final tools.jackson.databind.ObjectMapper json;
     private final OfficeScope scope;
     private final OfferAuthority authority;
+    private final StructureAccess access;
 
-    CourseOfferingController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, OfficeScope scope, OfferAuthority authority) {
+    CourseOfferingController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, OfficeScope scope, OfferAuthority authority, StructureAccess access) {
         this.jdbc = jdbc;
         this.json = json;
         this.scope = scope;
         this.authority = authority;
+        this.access = access;
     }
 
     private static String blank(String s) {
@@ -143,8 +148,12 @@ class CourseOfferingController {
                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "code") String sort,
                              @RequestParam(defaultValue = "asc") String dir, @RequestParam(defaultValue = "1") int page,
                              @RequestParam(defaultValue = "50") int size,
-                             @RequestParam(required = false) String review, @RequestParam(required = false) String issue) {
+                             @RequestParam(required = false) String review, @RequestParam(required = false) String issue,
+                             @RequestParam(required = false) String ptype, @RequestParam(required = false) Boolean unbound) {
         OfficeScope.Bound b = scope.bound(fac, dept, prog);          // a department office within its department, a faculty office within its faculty
+        access.requireView();                                         // V471: an agent with VIEW_PROGRAMME_STRUCTURE
+        // V471: the School reads postgraduate courses only — those a postgraduate programme takes, or at 700 to 900 level
+        String ptypeOf = StructureAccess.pg() ? "PG" : blank(ptype) == null ? null : ptype.trim().toUpperCase().startsWith("P") ? "PG" : "UG";
         String scopeDept = scope.actingDepartmentOffice() ? b.dept() : null;
         String scopeFac = scope.actingFacultyOffice() ? b.fac() : null;
         int sz = Math.max(1, Math.min(size, 2000));
@@ -185,6 +194,12 @@ class CourseOfferingController {
                                    WHERE co.course_code = c.code AND (p.name ILIKE :q OR p.code ILIKE :q OR pd.name ILIKE :q)))
                    AND (:review::text IS NULL OR c.review_status = :review)
                    AND (:issue::text IS NULL OR (:issue = 'ANY' AND cardinality(catalogue.course_issues(c.code)) > 0) OR :issue = ANY (catalogue.course_issues(c.code)))
+                   AND (:ptype::text IS NULL
+                        OR (:ptype = 'PG' AND (c.level >= 700 OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                                                          WHERE co.course_code = c.code AND p.category = 'POST GRADUATE')))
+                        OR (:ptype = 'UG' AND (c.level < 700 OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                                                         WHERE co.course_code = c.code AND p.category IS DISTINCT FROM 'POST GRADUATE'))))
+                   AND (:unbound::boolean IS NULL OR NOT EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code) = :unbound)
                    AND c.code NOT LIKE 'DMO %'
                 """;
         // V445: "100 level" and "first semester" typed into the search box are read as the level and semester filters
@@ -204,6 +219,7 @@ class CourseOfferingController {
         var params = new LinkedHashMap<String, Object>();
         params.put("review", blank(review) == null ? null : review.trim().toUpperCase());
         params.put("issue", blank(issue) == null ? null : issue.trim().toUpperCase());
+        params.put("ptype", ptypeOf);
         params.put("sd", scopeDept);
         params.put("sf", scopeFac);
         params.put("fac", blank(fac) == null ? null : fac.trim().toUpperCase());
@@ -237,12 +253,14 @@ class CourseOfferingController {
             count = count.param(e.getKey(), v, type);
             rows = rows.param(e.getKey(), v, type);
         }
+        count = count.param("unbound", unbound, Types.BOOLEAN);
+        rows = rows.param("unbound", unbound, Types.BOOLEAN);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", count.query(Long.class).single());
         out.put("page", pg);
         out.put("size", sz);
         out.put("rows", parsed(rows.param("lim", sz).param("off", (long) (pg - 1) * sz).query().listOfRows(), "programmes"));
-        out.put("scope", Map.of("dept", scopeDept == null ? "" : scopeDept, "fac", scopeFac == null ? "" : scopeFac));
+        out.put("scope", Map.of("dept", scopeDept == null ? "" : scopeDept, "fac", scopeFac == null ? "" : scopeFac, "ptype", ptypeOf == null ? "" : ptypeOf));
         return out;
     }
 
@@ -283,8 +301,8 @@ class CourseOfferingController {
                  WHERE co.course_code = :c
                  ORDER BY (p.dept_code = :d) DESC, f.name, d.name, p.name, co.level
                 """).param("c", c).param("d", dept, Types.VARCHAR).query().listOfRows();
-        for (Map<String, Object> o : offers) {
-            o.put("may_remove", authority.mayBindInto((String) o.get("dept_code")));
+        for (Map<String, Object> o : offers) {   // V471: the School and the support desk by the programme, within their reach
+            o.put("may_remove", StructureAccess.special() ? access.mayProgramme((String) o.get("programme_code")) : authority.mayBindInto((String) o.get("dept_code")));
         }
         List<Map<String, Object>> departments = jdbc.sql("""
                 SELECT d.code, d.name, f.name AS faculty, count(DISTINCT co.programme_code) AS programmes, (d.code = :d) AS owner
@@ -361,8 +379,17 @@ class CourseOfferingController {
                  WHERE h.course_id = (SELECT id FROM catalogue.course WHERE code = :c) ORDER BY h.changed_at DESC LIMIT 40
                 """).param("c", c).query().listOfRows());
         String office = ng.edu.moaum.portal.shared.AuditContextHolder.current().map(ng.edu.moaum.portal.shared.AuditContext::actorOffice).orElse("");
-        out.put("may", Map.of("edit", authority.owns(dept), "offer", authority.owns(dept), "central", authority.central(), "actingDept", mine == null ? "" : mine,
-                "changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office)));
+        boolean special = StructureAccess.special();
+        Map<String, Object> may = new LinkedHashMap<>();
+        boolean ict = "ict".equals(office);                // V460: the Director of ICT keeps the structure, not the course itself
+        may.put("edit", !ict && authority.ownsCourse(dept, c));
+        may.put("offer", special ? access.held().contains(StructureAccess.BIND) : !ict && authority.owns(dept));
+        may.put("prerequisites", special ? access.mayCourse(c, StructureAccess.PREREQ) : !ict && authority.owns(dept));   // V471
+        may.put("central", authority.central());
+        may.put("actingDept", mine == null ? "" : mine);
+        may.put("changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office));
+        may.put("ticket", StructureAccess.ticketOffice());
+        out.put("may", may);
         return out;
     }
 
@@ -373,29 +400,36 @@ class CourseOfferingController {
     }
 
     @PostMapping("/courses/{code}/offers")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> addOffer(@PathVariable String code, @Valid @RequestBody OfferIn body) {
+    Map<String, Object> addOffer(@PathVariable String code, @Valid @RequestBody OfferIn body, @RequestParam(required = false) String ticket) {
         String c = code(code);
         String dept = authority.deptOfCourse(c);
-        return authority.offer(c, dept, body.programme(), body.level(), body.basis(), body.track(), body.reason());
+        UUID on = access.ticket(ticket);
+        Map<String, Object> out = authority.offer(c, dept, body.programme(), body.level(), body.basis(), body.track(), body.reason());
+        access.note(on, ("BOUND".equals(out.get("outcome")) ? "Bound " : "Proposed ") + c + " into " + out.get("programme") + " at " + out.get("level") + " level (" + out.get("basis") + ")");
+        return out;
     }
 
     /** end a binding — the programme's department (or its Dean, or a central office) decides what its programme offers */
     @DeleteMapping("/courses/{code}/offers")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
     Map<String, Object> removeOffer(@PathVariable String code, @RequestParam String programme, @RequestParam int level,
-                                    @RequestParam(required = false) String reason) {
+                                    @RequestParam(required = false) String reason, @RequestParam(required = false) String ticket) {
         String c = code(code);
         String prog = code(programme);
         String progDept = authority.deptOfProgramme(prog);
-        if (!authority.mayBindInto(progDept)) {
+        UUID on = access.ticket(ticket);
+        if (StructureAccess.special()) {
+            access.assertProgramme(prog);                   // V471: the School its postgraduate programmes; an agent with BIND_COURSES within its postings
+        } else if (!authority.mayBindInto(progDept)) {
             throw new DomainRuleViolation("CAT_OFFER_DEPT", "What " + prog + " offers is decided by its own department.",
                     new DomainRuleViolation.Remedy("Ask that department's Head to remove the course from the programme's structure.", "Head of Department"));
         }
         String outcome = jdbc.sql("SELECT catalogue.unbind_offer(:c, :p, :l, :r)").param("c", c).param("p", prog).param("l", level)
                 .param("r", blank(reason), Types.VARCHAR).query(String.class).single();
+        access.note(on, "Removed " + c + " from " + prog + " at " + level + " level (" + outcome + "; the course itself kept)");
         return Map.of("course", c, "programme", prog, "level", level, "outcome", outcome);
     }
 
@@ -518,16 +552,19 @@ class CourseOfferingController {
     }
 
     @PutMapping("/courses/{code}")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> edit(@PathVariable String code, @Valid @RequestBody Edit body) {
+    Map<String, Object> edit(@PathVariable String code, @Valid @RequestBody Edit body, @RequestParam(required = false) String ticket) {
         String c = code(code);
         authority.assertOwns(authority.deptOfCourse(c), c);
+        access.assertEditLevel(body.level());                // V471: the School keeps its courses postgraduate
+        UUID on = access.ticket(ticket);
         jdbc.sql("SELECT catalogue.update_course(:c, :t, :u, :s, :l, :k, :b)").param("c", c).param("t", body.title().trim()).param("u", body.units())
                 .param("s", body.semester()).param("l", body.level()).param("k", blank(body.kind()), Types.VARCHAR).param("b", body.bothSemesters(), Types.BOOLEAN)
                 .query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title, units, semester, both_semesters, level, kind, state FROM catalogue.course WHERE code = :c").param("c", c).query().singleRow());
         out.put("usage", jdbc.sql("SELECT * FROM catalogue.course_usage(:c)").param("c", c).query().singleRow());
+        access.note(on, "Edited " + c + ": " + out.get("title") + ", " + out.get("units") + " units, " + out.get("level") + " level, semester " + out.get("semester"));
         return out;
     }
 
@@ -535,14 +572,16 @@ class CourseOfferingController {
     }
 
     @PostMapping("/courses/{code}/rename")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(KEEPERS)
     @Transactional
-    Map<String, Object> rename(@PathVariable String code, @Valid @RequestBody Rename body) {
+    Map<String, Object> rename(@PathVariable String code, @Valid @RequestBody Rename body, @RequestParam(required = false) String ticket) {
         String c = code(code);
         authority.assertOwns(authority.deptOfCourse(c), c);
+        UUID on = access.ticket(ticket);
         String n = jdbc.sql("SELECT catalogue.rename_course(:o, :n)").param("o", c).param("n", body.code().trim()).query(String.class).single();
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title FROM catalogue.course WHERE code = :c").param("c", n).query().singleRow());
         out.put("was", c);
+        access.note(on, "Renamed " + c + " to " + n + " (the same course: its records follow)");
         return out;
     }
 

@@ -39,7 +39,8 @@ export function HeldClasses({ held, kept }: { held: HeldClass[]; kept: number })
 export interface UnitsTarget { course: string; courseUnits: number; programme: string; programmeName: string; level: number; units: number }
 
 /** the units a programme takes a course at, at a level — counted, then saved (the binding's basis and track untouched) */
-export function UnitsChangeModal({ target, onClose, onSaved }: { target: UnitsTarget; onClose: () => void; onSaved: () => void }) {
+/** V471: `ticket` — the support ticket the change answers, put on its timeline */
+export function UnitsChangeModal({ target, onClose, onSaved, ticket = "" }: { target: UnitsTarget; onClose: () => void; onSaved: () => void; ticket?: string }) {
   const [units, setUnits] = useState(String(target.units));
   const [impact, setImpact] = useState<UnitsImpact | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,8 +66,8 @@ export function UnitsChangeModal({ target, onClose, onSaved }: { target: UnitsTa
     if (value == null) return;
     setBusy(true);
     try {
-      const r = await fetch("/api/bff/api/v1/catalogue/structure/units", {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${target.course} units for ${target.programme} at ${target.level} level set to ${value}`) },
+      const r = await fetch(`/api/bff/api/v1/catalogue/structure/units${ticket ? `?ticket=${encodeURIComponent(ticket)}` : ""}`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${ticket ? `Ticket ${ticket.toUpperCase()}: ` : ""}${target.course} units for ${target.programme} at ${target.level} level set to ${value}`) },
         body: JSON.stringify({ programme: target.programme, course: target.course, level: target.level, units: value }),
       });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;

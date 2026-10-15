@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 307
+\set EXPECTED 308
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13743,6 +13743,86 @@ BEGIN
                  AND absent_ok AND imported_ok AND rule_bad = 0 AND floor_bad = 0, false),
         format('mismatched %s of %s read | full-time graced %s, postgraduate graced %s (floors %s/%s) | absence ungraded %s | imported as is %s | rule %s floor %s',
                mismatched, read, graced_ft, graced_pg, floor_u, floor_p, absent_ok, imported_ok, rule_bad, floor_bad));
+END $$;
+
+
+-- ── V471: the postgraduate programme structure, and the ICT Support Desk's access to it ──
+-- The desk's vocabulary carries the structure's four capabilities; every agent in service holds, across the University,
+-- viewing the structure and course allocation (the bulk import and the structure's edits stay a posting's); an agent taken
+-- off the desk holds none of it. An offer from the course's side takes a postgraduate programme's bases and levels.
+-- A prerequisite never requires its own course, however far round. The checks find a
+-- postgraduate programme with no course and a binding off its levels; the School's counts see them; a change made on a
+-- ticket is on the ticket's timeline. The block undoes its writes.
+DO $$
+DECLARE caps_ok boolean; base_ok boolean; agent uuid := gen_random_uuid(); dept text; fac text; alloc_free boolean; bind_free boolean; bind_none boolean;
+        alloc_off boolean; self_msg text := ''; cycle_msg text := ''; removed int; empty_found boolean; off_found boolean; cycle_found boolean;
+        summary_ok boolean; tkt uuid; noted int; msg text; offer_pg boolean := false; offer_low text := ''; offer_ug text := '';
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V471', true);
+        caps_ok := helpdesk.support_capabilities() @> ARRAY['VIEW_PROGRAMME_STRUCTURE', 'EDIT_COURSES', 'BIND_COURSES', 'MANAGE_PREREQUISITES'];
+        base_ok := helpdesk.agent_baseline() @> ARRAY['VIEW_PROGRAMME_STRUCTURE', 'VIEW_ALLOCATIONS', 'ALLOCATE_COURSES', 'REMOVE_ALLOCATIONS']
+                   AND NOT helpdesk.agent_baseline() && ARRAY['BULK_ALLOCATE', 'EDIT_COURSES', 'BIND_COURSES', 'MANAGE_PREREQUISITES'];
+
+        -- an agent in service, never posted: allocation everywhere, binding nowhere; taken off the desk: nothing
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (agent, 'ZZ-CHK-471', 'CHECKV471', 'Invented');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), agent, 'ictagent', 'platform', NULL, 'check V471', agent, current_date);
+        SELECT global INTO alloc_free FROM helpdesk.agent_scope_for(agent, 'ALLOCATE_COURSES');
+        SELECT global, cardinality(faculties) + cardinality(departments) = 0 INTO bind_free, bind_none FROM helpdesk.agent_scope_for(agent, 'BIND_COURSES');
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities, active, effective_to)
+        VALUES (agent, (SELECT code FROM helpdesk.queue ORDER BY ordinal LIMIT 1), 'GLOBAL', NULL, ARRAY['VIEW_STUDENT'], false, current_date);
+        SELECT global INTO alloc_off FROM helpdesk.agent_scope_for(agent, 'ALLOCATE_COURSES');
+
+        -- prerequisites: a chain, then a loop and a course requiring itself refused
+        SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d WHERE d.faculty_code IS NOT NULL ORDER BY d.code LIMIT 1;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        VALUES ('ZZQ 701', 'Check prerequisite one', 3, 1, 700, dept, 'Core', 'LIVE'), ('ZZQ 702', 'Check prerequisite two', 3, 1, 700, dept, 'Core', 'LIVE'),
+               ('ZZQ 703', 'Check prerequisite three', 3, 1, 700, dept, 'Core', 'LIVE'), ('ZZQ 301', 'Check off level', 3, 1, 300, dept, 'Core', 'LIVE');
+        PERFORM catalogue.add_prerequisite('ZZQ 703', 'ZZQ 702');
+        PERFORM catalogue.add_prerequisite('ZZQ 702', 'ZZQ 701');
+        BEGIN PERFORM catalogue.add_prerequisite('ZZQ 701', 'ZZQ 703'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS cycle_msg = MESSAGE_TEXT; END;
+        BEGIN PERFORM catalogue.add_prerequisite('ZZQ 701', 'ZZQ 701'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS self_msg = MESSAGE_TEXT; END;
+
+        -- a postgraduate programme with nothing bound, then one binding off its levels; and a loop written behind the desk
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, category, pg_award)
+        VALUES ('C99471', 'Check V471 M.Sc.', dept, fac, 0, 'POST GRADUATE', 'MSC');
+        -- an offer from the course's side: Research at 800 for a postgraduate programme; 300 level, or Research for an undergraduate one, refused
+        BEGIN PERFORM catalogue.assert_offerable('ZZQ 701', 'C99471', 800, 'Research', NULL); offer_pg := true; EXCEPTION WHEN check_violation THEN offer_pg := false; END;
+        BEGIN PERFORM catalogue.assert_offerable('ZZQ 701', 'C99471', 300, 'Core', NULL); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS offer_low = MESSAGE_TEXT; END;
+        BEGIN PERFORM catalogue.assert_offerable('ZZQ 301', (SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived AND dept_code IN (SELECT code FROM ref.department WHERE ended_on IS NULL) ORDER BY code LIMIT 1), 300, 'Research', NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS offer_ug = MESSAGE_TEXT; END;
+        empty_found := EXISTS (SELECT 1 FROM catalogue.structure_issues('POST GRADUATE') i WHERE i.kind = 'PROGRAMME_WITHOUT_COURSES' AND i.programme_code = 'C99471');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZQ 301', 'C99471', 300, 'Core');
+        off_found := EXISTS (SELECT 1 FROM catalogue.structure_issues('POST GRADUATE') i WHERE i.kind = 'LEVEL_OFF_PROGRAMME' AND i.programme_code = 'C99471' AND i.course_code = 'ZZQ 301')
+                     AND NOT EXISTS (SELECT 1 FROM catalogue.structure_issues('POST GRADUATE') i WHERE i.kind = 'PROGRAMME_WITHOUT_COURSES' AND i.programme_code = 'C99471');
+        INSERT INTO catalogue.course_prerequisite (course_code, requires_code) VALUES ('ZZQ 701', 'ZZQ 703');
+        cycle_found := EXISTS (SELECT 1 FROM catalogue.structure_issues(NULL) i WHERE i.kind = 'PREREQUISITE_CYCLE' AND i.course_code = 'ZZQ 701');
+        DELETE FROM catalogue.course_prerequisite WHERE course_code = 'ZZQ 701';
+        removed := catalogue.remove_prerequisite('ZZQ 703', 'zzq 702');
+        SELECT s.programmes_with_courses >= 1 AND s.courses >= 1 AND s.issues >= 1 INTO summary_ok FROM catalogue.pg_structure_summary() s;
+
+        -- a change made on a ticket, on its timeline
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code)
+        SELECT 'TICK-0471-00001', c.id, 'Check V471', 'A course missing from a programme', 'STAFF', agent, 'CHECKV471', (SELECT code FROM helpdesk.queue ORDER BY ordinal LIMIT 1)
+          FROM helpdesk.category c ORDER BY c.code LIMIT 1
+        RETURNING id INTO tkt;
+        PERFORM helpdesk.note_structure(tkt, 'Bound ZZQ 701 into C99471 at 700 level', 'the student could not see it');
+        noted := (SELECT count(*) FROM helpdesk.ticket_event e WHERE e.ticket_id = tkt AND e.action = 'SUPPORT_PROGRAMME_STRUCTURE' AND e.detail LIKE '%Reason: the student could not see it');
+        RAISE EXCEPTION 'the V471 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V471 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V471: the desk carries the structure''s capabilities; every agent in service views the structure and allocates across the University, binding only by a posting, nothing once off the desk; a prerequisite never loops; the checks and the School''s counts find a programme with no course and a binding off its levels; a ticket''s change is on its timeline',
+        coalesce(caps_ok AND base_ok AND alloc_free AND NOT bind_free AND bind_none AND NOT alloc_off
+                 AND cycle_msg LIKE 'CAT_PREREQ_CYCLE:%' AND self_msg LIKE 'CAT_PREREQ_SELF:%' AND removed = 1
+                 AND empty_found AND off_found AND cycle_found AND summary_ok AND noted = 1
+                 AND offer_pg AND offer_low LIKE 'CAT_PG_LEVEL:%' AND offer_ug LIKE 'CAT_BASIS:%', false),
+        format('caps %s baseline %s | allocation free %s, binding free %s none %s, off the desk %s | cycle "%s" self "%s" removed %s | empty %s off-level %s cycle %s summary %s | noted %s | offer pg %s low "%s" ug "%s"',
+               caps_ok, base_ok, alloc_free, bind_free, bind_none, alloc_off, cycle_msg, self_msg, removed, empty_found, off_found, cycle_found, summary_ok, noted, offer_pg, offer_low, offer_ug));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

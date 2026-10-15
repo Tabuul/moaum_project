@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function AllCoursesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
-  const filters: Filters = { q: s("q"), fac: s("fac"), dept: s("dept"), prog: s("prog"), level: s("level"), semester: s("semester"), kind: s("kind"), state: s("state"), session: s("session"), sort: s("sort") || "code", dir: s("dir") || "asc", size: s("size") || "50" };
+  const filters: Filters = { q: s("q"), fac: s("fac"), dept: s("dept"), prog: s("prog"), level: s("level"), semester: s("semester"), kind: s("kind"), state: s("state"), session: s("session"), ptype: s("ptype"), unbound: s("unbound"), sort: s("sort") || "code", dir: s("dir") || "asc", size: s("size") || "50" };
   const page = Math.max(1, Number(s("page") || "1") || 1);
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) if (v) qs.set(k, v);

@@ -38,6 +38,8 @@ import org.springframework.web.bind.annotation.RestController;
 class CourseReviewController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict')";
+    /** V471: a course's history is read by the School of Postgraduate Studies and the ICT Support Desk too, who work the structure */
+    private static final String HISTORY_READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
     private static final String REVIEWERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     private static final String CENTRAL = "hasAnyAuthority('OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
 
@@ -134,7 +136,7 @@ class CourseReviewController {
 
     /** what changed on a course and when: every field from the audit spine, each owner change, each binding added or ended */
     @GetMapping("/courses/{code}/history")
-    @PreAuthorize(READERS)
+    @PreAuthorize(HISTORY_READERS)
     @Transactional(readOnly = true)
     Map<String, Object> history(@PathVariable String code, @RequestParam(defaultValue = "200") int limit) {
         String c = jdbc.sql("SELECT coalesce(catalogue.resolve_course_code(:c), :c)").param("c", code.trim().toUpperCase().replaceAll("\\s+", " ")).query(String.class).single();
