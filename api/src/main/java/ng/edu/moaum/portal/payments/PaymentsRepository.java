@@ -466,4 +466,14 @@ class PaymentsRepository {
     int watchPaydirect() {
         return jdbc.sql("SELECT finance.watch_paydirect()").query(Integer.class).single();
     }
+
+    /** V477: the Bursary told, once a day, of the Pay on Quickteller payments Interswitch has not reported after a day */
+    int watchPaydirectUnreported() {
+        return jdbc.sql("SELECT finance.watch_paydirect_unreported()").query(Integer.class).single();
+    }
+
+    /** the gateways a reference was opened on — a reference opened only on Pay on Quickteller is Interswitch's to report */
+    java.util.List<String> attemptGateways(String reference) {
+        return jdbc.sql("SELECT DISTINCT gateway FROM finance.gateway_attempt WHERE reference = :r").param("r", reference).query(String.class).list();
+    }
 }

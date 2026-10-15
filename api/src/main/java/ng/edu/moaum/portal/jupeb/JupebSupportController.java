@@ -387,7 +387,9 @@ class JupebSupportController {
             d.put("paymentReference", ref);
             d.put("method", "GATEWAY_VERIFY");
             d.put("outcome", !was && now ? "COMPLETED" : "NO_CHANGE");
-            d.put("summary", !was && now ? "Payment " + ref + " verified with the gateway and confirmed" : "Gateway asked about " + ref + ": " + answer.get("outcome"));
+            d.put("summary", !was && now ? "Payment " + ref + " verified with the gateway and confirmed"
+                    : "paydirect".equals(answer.get("gateway")) ? "Not asked: " + ref + " was opened on Pay on Quickteller and counts when Interswitch reports it"
+                    : "Gateway asked about " + ref + ": " + answer.get("outcome"));
             act(id, ticket, "PAYMENT_VERIFIED", null, was ? "Confirmed" : "Not confirmed", now ? "Confirmed" : "Not confirmed", reason, d);
             if (!was && now) tell(id, "Your payment issue has been resolved", "Your verified payment is now synchronized with your JUPEB portal.");
         });

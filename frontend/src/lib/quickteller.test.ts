@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { amountInLink, collectionRows, interswitchLink, isQuicktellerCheckout, quicktellerLink } from "./quickteller.ts";
+import { amountInLink, collectionRows, collectionRowsFromGrid, excelDate, gridToText, interswitchLink, isQuicktellerCheckout, quicktellerLink } from "./quickteller.ts";
 
 test("the link carries the portal's own reference in cid, and the amount in Interswitch's form", () => {
   assert.equal(quicktellerLink("https://quickteller.com/bsum", "MOAUM-FEE-CSC21001-0042", 51000, true),
@@ -51,4 +51,24 @@ test("the collections report is read without a header, in the column order the s
     ["MOAUM-APP-000124-0043", "2300", "RRN-2", "Bank Branch", "Ada"],
   ]);
   assert.deepEqual(collectionRows("   \n  "), []);
+});
+
+test("a downloaded report's title and date-range lines are passed over to its header", () => {
+  const rows = collectionRows([
+    "Quickteller Collections Report",
+    "Biller: MOAUM,From 01/10/2026 To 15/10/2026",
+    "",
+    "S/N,Customer Reference,Amount,Payment Log Id,Transaction Date,Channel Name,Customer Name",
+    "1,MOAUM-FEE-513120-7449,\"53,488.42\",PL-99001,15/10/2026 09:12,Bank Branch,ONWE PAULINA",
+  ].join("\n"));
+  assert.deepEqual(rows, [{ prn: "MOAUM-FEE-513120-7449", amount: "53488.42", rrn: "PL-99001", paidAt: "15/10/2026 09:12", channel: "Bank Branch", payer: "ONWE PAULINA" }]);
+});
+
+test("a spreadsheet's rows are read the same way, an Excel date serial becoming Lagos time", () => {
+  const grid = [["Collections"], ["Customer Reference", "Amount", "Payment Log Id", "Payment Date"], ["moaum-fee-513120-3806", "100", "PL-1", "46310.5"], ["", "", "", ""]];
+  assert.deepEqual(collectionRowsFromGrid(grid), [{ prn: "MOAUM-FEE-513120-3806", amount: "100", rrn: "PL-1", paidAt: "2026-10-15T12:00:00+01:00", channel: "", payer: "" }]);
+  assert.equal(excelDate("15/10/2026 09:12"), "15/10/2026 09:12");
+  assert.equal(excelDate("12345"), "12345");
+  // written back into the import box as tab-separated text, read again to the same rows
+  assert.deepEqual(collectionRows(gridToText(grid)), collectionRowsFromGrid(grid));
 });

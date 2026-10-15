@@ -320,6 +320,12 @@ class PaymentsIT {
             assertThat(checkout.get("gateway")).isEqualTo("paydirect");
             assertThat(jdbc.sql("SELECT count(*) FROM finance.gateway_attempt WHERE reference = :r AND gateway = 'paydirect'").param("r", reference).query(Long.class).single())
                     .as("the Bursary sees who went to pay").isEqualTo(1L);
+            // Oct 2026: the portal cannot ask Interswitch about it — a check says so and what brings it in, and counts no check
+            ResponseEntity<Map> unasked = it.call(bursar, HttpMethod.POST, "/api/v1/payments/verify", Map.of("reference", reference));
+            assertThat(unasked.getStatusCode().value()).as(String.valueOf(unasked.getBody())).isEqualTo(200);
+            assertThat(unasked.getBody()).containsEntry("outcome", "awaits Interswitch's report").containsEntry("gateway", "paydirect");
+            assertThat(String.valueOf(unasked.getBody().get("said"))).contains("collections report");
+            assertThat(jdbc.sql("SELECT checks FROM finance.gateway_attempt WHERE reference = :r AND gateway = 'paydirect'").param("r", reference).query(Integer.class).single()).isZero();
 
             // the one address Interswitch asks for takes both messages; opened in a browser it says it is reachable
             assertThat(open.get().uri("/api/v1/payments/paydirect/interswitch").retrieve().body(String.class)).contains("This address is reachable");

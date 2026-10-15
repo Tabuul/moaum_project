@@ -14,7 +14,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { Btn, KvGrid, Note, PBody, Panel, Pil } from "@/components/proto/ui";
 import { OUTCOME, when, type PaydirectBiller, type PaydirectDesk } from "@/lib/bursary";
-import { collectionRows, interswitchLink, quicktellerLink } from "@/lib/quickteller";
+import { collectionRows, gridToText, interswitchLink, quicktellerLink } from "@/lib/quickteller";
+import { xlsxRows } from "@/lib/xlsx";
 import { InterswitchTestReferences, TEST_REFERENCES_ANCHOR } from "./InterswitchTestReferences";
 
 /** where the collections report is imported — the hanging list sends a PayDirect payment Interswitch did not report here */
@@ -72,7 +73,21 @@ function Certification({ q }: { q: PaydirectDesk }) {
 export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk; may: boolean; busy: boolean; send: Send; say: (s: string) => void }) {
   const [edit, setEdit] = useState<Record<string, Edit>>({});
   const [text, setText] = useState("");
+  const [file, setFile] = useState<{ name: string; problem: string | null } | null>(null);
   const rows = collectionRows(text);
+  const total = rows.reduce((n, r) => n + (Number(r.amount) || 0), 0);
+
+  /** Interswitch's report as downloaded — .xlsx or .csv — read into the box, so what is imported is what is seen */
+  async function readReport(f: File) {
+    setFile({ name: f.name, problem: null });
+    try {
+      if (/\.xlsx$/i.test(f.name)) setText(gridToText(await xlsxRows(await f.arrayBuffer())));
+      else if (/\.(csv|txt|tsv)$/i.test(f.name)) setText(await f.text());
+      else setFile({ name: f.name, problem: "Choose the report as .xlsx or .csv. An older .xls file: open it and save it as .xlsx first." });
+    } catch (e) {
+      setFile({ name: f.name, problem: `The file could not be read: ${(e as Error).message}` });
+    }
+  }
   const validateAt = q.apiBase + q.validatePath;
   const notifyAt = q.apiBase + q.notifyPath;
   const singleAt = q.apiBase + (q.singlePath ?? "/api/v1/payments/paydirect/interswitch");
@@ -175,15 +190,29 @@ export function PayOnQuickteller({ q, may, busy, send, say }: { q: PaydirectDesk
       {may ? (
         // the hanging list's PayDirect rows link here: the way back for a payment Interswitch did not report
         <div id={COLLECTIONS_REPORT_ANCHOR}><PBody>
-          <Field id="qt-report" label="Import the collections report" hint="Rows from Interswitch's collections report: Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name (header optional).">
-            <textarea id="qt-report" className="ctl tnum" rows={5} value={text} onChange={(ev) => setText(ev.target.value)} />
+          <Field id="qt-report-file" label="Import the collections report" hint="Interswitch's collections report as downloaded (.xlsx or .csv), or its rows pasted below: Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name. Title lines above the header are passed over.">
+            <input id="qt-report-file" className="ctl" type="file" accept=".xlsx,.csv,.txt,.tsv" onChange={(ev) => { const f = ev.target.files?.[0]; if (f) void readReport(f); ev.target.value = ""; }} />
           </Field>
+          {file ? <div className="sub2 mb-1">{file.problem ? <b>{file.problem}</b> : `Read from ${file.name}.`}</div> : null}
+          <Field id="qt-report" label="The rows">
+            <textarea id="qt-report" className="ctl tnum" rows={5} value={text} onChange={(ev) => { setText(ev.target.value); setFile(null); }} />
+          </Field>
+          {rows.length ? (
+            <div className="mb-2">
+              <div className="sub2 mb-1">{`${rows.length} row${rows.length === 1 ? "" : "s"} read, ${money(total)} in all — each is matched to its reference when imported${rows.length > 8 ? "; the first 8 shown" : ""}.`}</div>
+              <DTable noPrint pageSize={0} cols={["Reference", "Amount|num", "Payment Log Id", "Paid", "Channel", "Payer"]} rows={rows.slice(0, 8).map((r, i) => [
+                <span key={"p" + i} className="tnum">{r.prn}</span>, <span key={"a" + i} className="tnum">{r.amount ? money(Number(r.amount)) : "—"}</span>,
+                <span key={"r" + i} className="tnum sub2">{r.rrn || "—"}</span>, <span key={"d" + i} className="sub2">{r.paidAt || "—"}</span>,
+                <span key={"c" + i} className="sub2">{r.channel || "—"}</span>, <span key={"n" + i} className="sub2">{r.payer || "—"}</span>,
+              ])} />
+            </div>
+          ) : null}
           <div className="row">
             <Btn kind="primary" disabled={busy || !rows.length} onClick={async () => {
               const j = await send("/paydirect/import", { rows }, `Quickteller collections report imported: ${rows.length} row${rows.length === 1 ? "" : "s"}`);
-              if (j) { say(`Imported ${j.imported}: ${j.matched} confirmed, ${j.short_paid} short and kept open, ${j.unmatched} not the portal's, ${j.duplicate} already imported`); setText(""); }
+              if (j) { say(`Imported ${j.imported}: ${j.matched} confirmed, ${j.short_paid} short and kept open, ${j.unmatched} not the portal's, ${j.duplicate} already imported`); setText(""); setFile(null); }
             }}>{rows.length ? `Import and match ${rows.length} row${rows.length === 1 ? "" : "s"}` : "Import and match"}</Btn>
-            {text.trim() && !rows.length ? <span className="sub2">No row with a reference was read from what is pasted.</span> : null}
+            {text.trim() && !rows.length ? <span className="sub2">No row with a reference was read: the report needs a Customer Reference column (or the reference first on each line).</span> : null}
           </div>
         </PBody></div>
       ) : null}

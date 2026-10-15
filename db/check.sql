@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 314
+\set EXPECTED 315
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14230,6 +14230,53 @@ BEGIN
         coalesce(b1 = 'REGISTRATION' AND p1 = 500 AND b2 = 'ARITHMETIC' AND b3 = 'ARITHMETIC'
             AND a.corrected = 1 AND a.registration = 1 AND l1 = 500 AND l2 = 400 AND l3 = 300, false),
         format('last session %s →%s | this session %s | long ago %s | applied %s (registration %s) | levels %s/%s/%s', b1, p1, b2, b3, a.corrected, a.registration, l1, l2, l3));
+END $$;
+
+-- ── V477. Pay on Quickteller payments unreported after a day: a reference opened on Pay on Quickteller 30 hours before, one
+--          opened 2 hours before and one opened on a card gateway 30 hours before. Only the first is listed; at 10:00 Lagos
+--          time a Bursary office holder is told of it by e-mail and on the portal, the same day not again, and at 07:00 nobody.
+--          The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); st uuid := gen_random_uuid(); v_ses text;
+        at10 timestamptz := (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        at07 timestamptz; listed text; told1 int; told2 int; told3 int; got text; got2 int; msg text;
+BEGIN
+    at07 := at10 + interval '21 hours';   -- 07:00 the next day
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V477', true);
+        UPDATE finance.paydirect_setting SET watch_enabled = true;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (bur, 'CHECKV477', 'Bursar', 'zz.check477@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'check V477', who, current_date - 1);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/947701', 'CHECKV477', 'Payer', (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME', v_ses, 100, 100, 'ADMITTED');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES
+          (st, v_ses, 'MOAUM-FEE-947701-0001', 'check V477', 53488.42, now() + interval '30 days'),
+          (st, v_ses, 'MOAUM-FEE-947701-0002', 'check V477', 100.00, now() + interval '30 days'),
+          (st, v_ses, 'MOAUM-FEE-947701-0003', 'check V477', 200.00, now() + interval '30 days');
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at) VALUES
+          ('MOAUM-FEE-947701-0001', 'paydirect', 'FEE', st, at10 - interval '30 hours'),
+          ('MOAUM-FEE-947701-0002', 'paydirect', 'FEE', st, at10 - interval '2 hours'),
+          ('MOAUM-FEE-947701-0003', 'paystack', 'FEE', st, at10 - interval '30 hours');
+        listed := (SELECT string_agg(u.reference, ',' ORDER BY u.reference) FROM finance.paydirect_unreported(at10) u WHERE u.reference LIKE 'MOAUM-FEE-947701-%');
+        told1 := finance.watch_paydirect_unreported(at10);
+        -- the e-mail carries the list; the portal notice says how many and what to do
+        got := (SELECT string_agg(n.channel || CASE WHEN n.body LIKE '%MOAUM-FEE-947701-0001%' THEN '+list' ELSE '' END, ',' ORDER BY n.channel)
+                  FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = bur AND n.template_key = 'PAYDIRECT_UNREPORTED');
+        told2 := finance.watch_paydirect_unreported(at10 + interval '3 hours');
+        got2 := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = bur AND n.template_key = 'PAYDIRECT_UNREPORTED');
+        told3 := finance.watch_paydirect_unreported(at07);
+        RAISE EXCEPTION 'the V477 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V477 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V477: a Pay on Quickteller payment unreported after a day is told to the Bursary once a day, in the working day — not one opened hours ago, not a card checkout',
+        coalesce(listed = 'MOAUM-FEE-947701-0001' AND told1 >= 1 AND got = 'EMAIL+list,PORTAL' AND got2 = 2 AND told3 = 0, false),
+        format('listed %s | told at 10:00 %s, to the bursar by %s | three hours later %s, notices kept %s | at 07:00 %s', listed, told1, got, told2, got2, told3));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

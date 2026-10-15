@@ -99,39 +99,66 @@ function cellsOf(line: string): string[] {
   return out;
 }
 
+/** an Excel date serial (days since 1899-12-30, the fraction the time of day) as the server reads a date — the report's
+ *  wall-clock time, Lagos time (UTC+1, no summer time); anything else as it is */
+export function excelDate(v: string): string {
+  const t = v.trim();
+  if (!/^\d{5}(\.\d+)?$/.test(t)) return t;
+  const n = Number(t);
+  if (n < 30000 || n > 80000) return t;
+  const wall = new Date(Math.round((n - 25569) * 86400) * 1000);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${wall.getUTCFullYear()}-${p(wall.getUTCMonth() + 1)}-${p(wall.getUTCDate())}T${p(wall.getUTCHours())}:${p(wall.getUTCMinutes())}:${p(wall.getUTCSeconds())}+01:00`;
+}
+
 /**
- * The collections report as pasted — with Interswitch's own header row (Customer
- * Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name …) or
- * with none, in which case the columns are taken as reference, amount, settlement
- * reference, date, channel, payer. Rows without a reference are left out.
+ * The collections report as a grid of cells — pasted text split into lines, or a spreadsheet's rows. Interswitch's own header
+ * row (Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name …) is looked for in the first ten
+ * lines, so the title and date-range lines a downloaded report begins with are passed over; with none, the columns are taken
+ * as reference, amount, settlement reference, date, channel, payer. Rows without a reference are left out; an Excel date
+ * serial becomes a date.
  */
-export function collectionRows(text: string): CollectionRow[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+export function collectionRowsFromGrid(grid: string[][]): CollectionRow[] {
+  const lines = grid.map((r) => r.map((c) => (c ?? "").trim())).filter((r) => r.some((c) => c !== ""));
   if (!lines.length) return [];
-  const head = cellsOf(lines[0]).map(norm);
+  let headAt = -1;
   const at: Partial<Record<Field, number>> = {};
-  const used = new Set<number>();
-  for (const f of ORDER) {
-    for (const name of NAMES[f]) {
-      const i = head.findIndex((h, k) => !used.has(k) && h === name);
-      if (i >= 0) { at[f] = i; used.add(i); break; }
+  for (let k = 0; k < Math.min(10, lines.length) && headAt < 0; k++) {
+    const head = lines[k].map(norm);
+    const found: Partial<Record<Field, number>> = {};
+    const used = new Set<number>();
+    for (const f of ORDER) {
+      for (const name of NAMES[f]) {
+        const i = head.findIndex((h, x) => !used.has(x) && h === name);
+        if (i >= 0) { found[f] = i; used.add(i); break; }
+      }
     }
+    // a header is a line that names the reference column or the amount column
+    if (found.prn !== undefined || found.amount !== undefined) { headAt = k; Object.assign(at, found); }
   }
-  // a header is a first line that names the reference column or the amount column
-  const hasHeader = at.prn !== undefined || at.amount !== undefined;
-  const rows = (hasHeader ? lines.slice(1) : lines).map((l) => {
-    const c = cellsOf(l);
+  const hasHeader = headAt >= 0;
+  const rows = (hasHeader ? lines.slice(headAt + 1) : lines).map((c) => {
     const pick = (f: Field, i: number) => (c[hasHeader ? at[f] ?? -1 : i] ?? "").trim();
     return {
       prn: pick("prn", 0).toUpperCase(),
       amount: pick("amount", 1).replace(/[₦,\s]|NGN/g, ""),
       rrn: pick("rrn", 2),
-      paidAt: pick("paidAt", 3),
+      paidAt: excelDate(pick("paidAt", 3)),
       channel: pick("channel", 4),
       payer: pick("payer", 5),
     };
   });
   return rows.filter((r) => r.prn !== "");
+}
+
+/** the collections report as pasted: tab- or comma-separated lines, read as a grid */
+export function collectionRows(text: string): CollectionRow[] {
+  return collectionRowsFromGrid(text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map(cellsOf));
+}
+
+/** a spreadsheet's rows written back as the tab-separated text the import box holds, so what is imported is what is seen */
+export function gridToText(grid: string[][]): string {
+  return grid.filter((r) => r.some((c) => (c ?? "").trim() !== "")).map((r) => r.map((c) => (c ?? "").replace(/[\t\r\n]+/g, " ").trim()).join("\t")).join("\n");
 }
 
 /** what a payer is told once Quickteller's page is open for them */

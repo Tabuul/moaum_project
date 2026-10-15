@@ -41,7 +41,10 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
   const act = { reason: reason.trim() || null, ticket: ticket || null };
   async function verify() {
     const j = await post(`payments/${ref}/verify`, act, "Payment verified with the gateway");
-    if (j) { notify(j.changed ? "The gateway confirmed the payment; the portal is synchronized and the student told." : `The gateway answered: ${String((j.gateway as Record<string, unknown>)?.outcome ?? "no change")}. Nothing changed.`); router.refresh(); }
+    // a reference opened on Pay on Quickteller: Interswitch reports it, the portal cannot ask (Oct 2026)
+    const g = (j?.gateway ?? {}) as Record<string, unknown>;
+    if (j) { notify(j.changed ? "The gateway confirmed the payment; the portal is synchronized and the student told."
+      : g.gateway === "paydirect" ? `Not asked: ${String(g.said ?? "Interswitch reports this payment.")}` : `The gateway answered: ${String(g.outcome ?? "no change")}. Nothing changed.`); router.refresh(); }
   }
   async function refresh() {
     const j = await post(`payments/${ref}/refresh`, act, "Payment entitlement refreshed");

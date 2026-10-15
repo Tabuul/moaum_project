@@ -359,6 +359,7 @@ class PaymentSupportController {
             d.put("method", "GATEWAY_VERIFY");
             d.put("outcome", !wasConfirmed && nowConfirmed ? "COMPLETED" : "NO_CHANGE");
             d.put("summary", !wasConfirmed && nowConfirmed ? "Payment verified with the gateway and synchronized: " + ref + " confirmed, receipt " + after.get("receipt_no")
+                    : "paydirect".equals(answer.get("gateway")) ? "Not asked: " + ref + " was opened on Pay on Quickteller and counts when Interswitch reports it"
                     : "Gateway asked about " + ref + ": " + answer.get("outcome"));
             d.put("before", Map.of("confirmed", wasConfirmed));
             d.put("after", Map.of("confirmed", nowConfirmed, "gateway", String.valueOf(answer.get("outcome"))));

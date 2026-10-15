@@ -1065,6 +1065,13 @@ public class PaymentsService {
         return n == null ? 0 : n;
     }
 
+    /** V477: the Pay on Quickteller payments unreported after a day, told to the Bursary once a day */
+    public int watchPaydirectUnreported() {
+        Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "Pay on Quickteller payments not reported", null, null),
+                () -> tx.execute(st -> repo.watchPaydirectUnreported()));
+        return n == null ? 0 : n;
+    }
+
     public Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, Boolean active, Boolean redirect, Boolean withAmount) {
         return AuditContextHolder.with(AuditContextHolder.required(),
                 () -> tx.execute(st -> repo.setPaydirectBiller(scope, code, name, link, active == null || active, redirect != null && redirect,
@@ -1281,12 +1288,23 @@ public class PaymentsService {
      * reconciler's act, and the student's "check again". Nothing is credited
      * on the callback's word alone.
      */
+    /** what a caller is told of a reference opened only on Pay on Quickteller */
+    static final String PAYDIRECT_UNASKED = "Opened on Pay on Quickteller: it counts when Interswitch reports it, and the portal cannot ask. "
+            + "If it was paid, the Bursary imports Interswitch's collections report or asks Interswitch to re-send the notification for the "
+            + "Payment Log Id on the payer's receipt.";
+
     public Map<String, Object> verify(String referenceIn, String source) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
         PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (r.confirmedAt() != null) {
             return Map.of("outcome", "already confirmed", "reference", reference);
+        }
+        // Oct 2026: a reference opened only on Pay on Quickteller (PayDirect) cannot be asked about — Interswitch reports it, the
+        // sweep leaves it alone and WebPAY's requery does not know it; the caller is told so, and what brings it in
+        java.util.List<String> opened = repo.attemptGateways(reference);
+        if (!opened.isEmpty() && opened.stream().allMatch("paydirect"::equals)) {
+            return Map.of("outcome", "awaits Interswitch's report", "reference", reference, "gateway", "paydirect", "said", PAYDIRECT_UNASKED);
         }
         Map<String, Object> out = Map.of("outcome", "no gateway", "reference", reference);
         if (paystackOn()) {

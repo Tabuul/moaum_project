@@ -290,7 +290,10 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
           foot={verify.result ? <Btn kind="primary" onClick={() => setVerify(null)}>Done</Btn> : <><Btn kind="ghost" onClick={() => setVerify(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void confirmVerify()}>{busy ? "Asking the gateway…" : "Ask the gateway"}</Btn></>}>
           {verify.result ? (
             verify.result.changed ? <Note kind="ok" title="Confirmed">The original reference now stands paid; the candidate is told.</Note>
-              : <Note kind="info" title="Nothing changed">{`The gateway answered: ${String((verify.result.gateway as Record<string, unknown> | undefined)?.outcome ?? "no confirmation")}. If the candidate holds a bank debit, escalate the ticket to the Bursary with the evidence.`}</Note>
+              : (verify.result.gateway as Record<string, unknown> | undefined)?.gateway === "paydirect"
+                // a reference opened on Pay on Quickteller: Interswitch reports it, the portal cannot ask (Oct 2026)
+                ? <Note kind="info" title="Not asked: Interswitch reports this one">{`${String((verify.result.gateway as Record<string, unknown>).said ?? "")} Escalate the ticket to the Bursary with the receipt.`}</Note>
+                : <Note kind="info" title="Nothing changed">{`The gateway answered: ${String((verify.result.gateway as Record<string, unknown> | undefined)?.outcome ?? "no confirmation")}. If the candidate holds a bank debit, escalate the ticket to the Bursary with the evidence.`}</Note>
           ) : (
             <>
               <p className="sub2">Asks the gateway about this reference. No payment is created or marked paid by hand.</p>

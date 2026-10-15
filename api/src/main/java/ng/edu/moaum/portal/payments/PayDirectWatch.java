@@ -10,7 +10,8 @@ import ng.edu.moaum.portal.shared.JobLock;
 /**
  * V433: the PAYDirect door watched. Every quarter of an hour the database judges the door's silence against its own rhythm
  * (finance.watch_paydirect) and, once per silence, tells the Directorate of ICT and the Bursary through the notification
- * engine. One instance runs it at a time (JobLock); the office may run it now from the Gateways screen.
+ * engine. One instance runs it at a time (JobLock); the office may run it now from the Gateways screen. V477: with it, the
+ * Pay on Quickteller payments Interswitch has not reported after a day are told to the Bursary once a day.
  */
 @Component
 public class PayDirectWatch {
@@ -54,6 +55,15 @@ public class PayDirectWatch {
             }
         } catch (RuntimeException e) {
             LOG.warn("payments: the PAYDirect door watch did not run: {}", e.getMessage());
+        }
+        // V477: the Pay on Quickteller payments Interswitch has not reported after a day, told to the Bursary once a day
+        try {
+            int told = payments.watchPaydirectUnreported();
+            if (told > 0) {
+                LOG.info("payments: Pay on Quickteller payments unreported after a day; {} message(s) queued to the Bursary", told);
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("payments: the unreported Pay on Quickteller watch did not run: {}", e.getMessage());
         }
     }
 }
