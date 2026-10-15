@@ -344,7 +344,7 @@ export function BulkUpload({ dept, deptName, session, semester, imports, canImpo
                 ["Department", depts.find((d) => d.code === sel.dept)?.name ?? sel.dept, null, `${opts?.faculties.find((f) => f.code === sel.fac)?.name ?? ""} · ${typeWord(sel.type)}`],
                 ["Courses", String(s.classes), null, `${s.open} with a class open in ${sel.session} · ${s.unallocated} without a lead`],
                 ["Lecturers", String(s.lecturers), null, "Of the department, to choose from"],
-                ["Existing allocations", String(s.allocations), null, `${s.programmes} programme${s.programmes === 1 ? "" : "s"} of this kind`],
+                ["Existing allocations", String(s.allocations), null, `${s.programmes} programme${s.programmes === 1 ? "" : "s"} of this kind${s.borrowed ? ` · ${s.borrowed} borrowed course${s.borrowed === 1 ? "" : "s"} (their departments allocate them; listed in the template)` : ""}`],
               ]} />
               <div className="sub2">The template is built from the register now: these classes with their lecturers on record, the department&rsquo;s lecturers as a list, and its {typeWord(sel.type).toLowerCase()} programmes. The upload is checked against the template&rsquo;s own department, session and semester, whatever the file says.</div>
             </div>

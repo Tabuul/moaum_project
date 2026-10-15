@@ -45,7 +45,7 @@ export interface CourseDetail {
   prerequisites?: { code: string; title: string }[];
   ownerHistory?: { from_dept: string | null; from_dept_name: string | null; to_dept: string | null; to_dept_name: string | null; from_programme: string | null; to_programme: string | null; to_programme_name: string | null; source: string | null; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
   /** V471: prerequisites — may add and remove what the course requires; ticket — may name the support ticket a change answers */
-  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean; prerequisites?: boolean; ticket?: boolean };
+  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean; prerequisites?: boolean; ticket?: boolean; /** the department courses desk is this office's */ deptDesk?: boolean };
   /** V386: the code asked for (a merged or differently written code opens the course held) and the codes merged into it */
   requested?: string;
   aliases?: { alias_code: string; title: string | null; evidence: string; reason: string; merged_at: string; merged_office: string | null; merged_by: string | null; moved: string }[];

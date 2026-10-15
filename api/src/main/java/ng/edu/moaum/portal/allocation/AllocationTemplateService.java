@@ -221,6 +221,23 @@ public class AllocationTemplateService {
                  ORDER BY c.level, c.code
                 """).param("d", code).param("cat", category).param("s", session).param("sem", semester).param("stream", stream).query().listOfRows();
 
+        // the courses the department's programmes take from other departments: theirs to allocate, shown so the person filling
+        // the template sees who teaches them (read only; an upload of one is refused as another department's course)
+        List<Map<String, Object>> borrowed = jdbc.sql("""
+                SELECT c.code, c.title, c.units, c.level, od.name AS owner_dept, c.dept_code AS owner_code,
+                       string_agg(DISTINCT co.programme_code, ', ' ORDER BY co.programme_code) AS programme_codes,
+                       (SELECT concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), ''))
+                          FROM catalogue.offering o JOIN iam.person lp ON lp.id = o.lecturer_id
+                         WHERE o.course_code = c.code AND o.session = :s AND o.semester = :sem AND o.stream = :stream LIMIT 1) AS lecturer
+                  FROM catalogue.course_offer co
+                  JOIN ref.programme pr ON pr.code = co.programme_code AND pr.dept_code = :d AND pr.category = :cat
+                  JOIN catalogue.course c ON c.code = co.course_code AND c.dept_code IS DISTINCT FROM :d
+                  LEFT JOIN ref.department od ON od.code = c.dept_code
+                 WHERE c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %' AND catalogue.runs_in(c.semester, c.both_semesters, :sem)
+                 GROUP BY c.code, c.title, c.units, c.level, od.name, c.dept_code
+                 ORDER BY c.level, c.code
+                """).param("d", code).param("cat", category).param("s", session).param("sem", semester).param("stream", stream).query().listOfRows();
+
         int allocations = 0;
         for (Map<String, Object> c : classes) {
             if (c.get("lecturer_id") != null) allocations++;
@@ -245,12 +262,14 @@ public class AllocationTemplateService {
         summary.put("lecturers", lecturers.size());
         summary.put("allocations", allocations);
         summary.put("unallocated", classes.stream().filter(c -> c.get("lecturer_id") == null).count());
+        summary.put("borrowed", borrowed.size());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("context", context);
         out.put("summary", summary);
         out.put("programmes", programmes);
         out.put("lecturers", lecturers);
         out.put("classes", classes);
+        out.put("borrowed", borrowed);
         return out;
     }
 

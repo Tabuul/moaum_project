@@ -170,6 +170,18 @@ public class RegistrationService {
         return Map.of("id", id, "status", "RETURNED");
     }
 
+    /** V482: whether registration refuses a course whose prerequisite the student has not passed — the Academic Office's rule */
+    @Transactional(readOnly = true)
+    public Map<String, Object> prerequisitePolicy() {
+        return repo.prerequisitePolicy();
+    }
+
+    @Transactional
+    public Map<String, Object> setPrerequisitePolicy(String mode, String reason) {
+        repo.setPrerequisiteMode(mode, reason);
+        return repo.prerequisitePolicy();
+    }
+
     @Transactional(readOnly = true)
     public ClassList classList(String course, String session, int semester, String stream) {
         RegistrationRepository.OfferingRow o = repo.offering(course.trim().toUpperCase(), session, semester, stream)

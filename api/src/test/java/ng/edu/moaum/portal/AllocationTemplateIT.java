@@ -148,6 +148,15 @@ class AllocationTemplateIT {
         assertThat(l(issued.get("classes"))).extracting(c -> c.get("code")).contains("ZZT 301", "ZZT 302").doesNotContain("ZZT 801", "ZZU 301");
         assertThat(l(issued.get("lecturers"))).extracting(x -> x.get("staff_number")).contains("ZZ-TPL-A", "ZZ-TPL-B").doesNotContain("ZZ-TPL-C");
         assertThat(jdbc.sql("SELECT issued_office FROM catalogue.allocation_template WHERE reference = :r").param("r", ref).query(String.class).single()).isEqualTo("ictagent");
+        // a course the department's programmes take from another department is listed apart, read only: its owner allocates it
+        String mtcProgramme = jdbc.sql("SELECT code FROM ref.programme WHERE dept_code = 'MTC' AND category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1")
+                .query(String.class).single();
+        ok(it.call(academic, HttpMethod.POST, "/api/v1/catalogue/structure/bind", Map.of("programme", mtcProgramme, "course", "ZZU 301", "level", 300, "basis", "Borrowed")));
+        Map<String, Object> withBorrowed = ok(it.call(agentTok, HttpMethod.POST, "/api/v1/allocation/template",
+                Map.of("dept", "MTC", "session", SESSION, "semester", 1, "programmeType", "UNDERGRADUATE")));
+        assertThat(l(withBorrowed.get("borrowed"))).anyMatch(c -> "ZZU 301".equals(c.get("code")) && otherDept.equals(c.get("owner_code")));
+        assertThat(l(withBorrowed.get("classes"))).noneMatch(c -> "ZZU 301".equals(c.get("code")));
+
         // another faculty's department is outside the posting: refused, whatever the address says
         assertThat(it.call(agentTok, HttpMethod.POST, "/api/v1/allocation/template",
                 Map.of("dept", otherDept, "session", SESSION, "semester", 1, "programmeType", "UNDERGRADUATE")).getStatusCode().value()).isEqualTo(403);

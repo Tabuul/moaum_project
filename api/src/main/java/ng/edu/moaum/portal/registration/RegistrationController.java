@@ -28,6 +28,8 @@ class RegistrationController {
     private static final String APPROVERS = "hasAnyAuthority('OFFICE_hod','OFFICE_lecturer','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     /** approval is a single step and it is the Head of Department's (super is system break-glass) */
     private static final String HOD_APPROVES = "hasAnyAuthority('OFFICE_hod','OFFICE_super')";
+    /** V482: whether prerequisites are enforced is the Academic Office's rule (the database holds the same list) */
+    private static final String PREREQUISITE_RULE = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final RegistrationService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
@@ -107,6 +109,19 @@ class RegistrationController {
             }
         }
         throw last;
+    }
+
+    /** V482: the prerequisite rule at registration (ADVISORY or ENFORCED) — read by any signed-in office, set by the Academic Office with a reason */
+    @GetMapping("/prerequisite-policy")
+    @PreAuthorize("isAuthenticated()")
+    Map<String, Object> prerequisitePolicy() {
+        return service.prerequisitePolicy();
+    }
+
+    @PutMapping("/prerequisite-policy")
+    @PreAuthorize(PREREQUISITE_RULE)
+    Map<String, Object> setPrerequisitePolicy(@RequestBody Map<String, String> body) {
+        return service.setPrerequisitePolicy(body.get("mode"), body.get("reason"));
     }
 
     /** The roll of an offering: approved registrations only, and all of them. */

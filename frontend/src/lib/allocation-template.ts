@@ -23,13 +23,16 @@ export interface TemplateClass {
   second_examiner_id: string | null; second_staff_number: string | null; second_examiner: string | null;
   co_lecturers: string; programme_codes: string; programme_names: string;
 }
-export interface TemplateSummary { programmes: number; classes: number; open: number; lecturers: number; allocations: number; unallocated: number }
+export interface TemplateSummary { programmes: number; classes: number; open: number; lecturers: number; allocations: number; unallocated: number; /** courses its programmes take from other departments */ borrowed?: number }
+/** a course the department's programmes take from another department: its owner allocates it (shown, never uploaded) */
+export interface TemplateBorrowed { code: string; title: string; units: number; level: number; owner_dept: string | null; owner_code: string | null; programme_codes: string; lecturer: string | null }
 export interface IssuedTemplate {
   context: TemplateContext; summary: TemplateSummary; programmes: TemplateProgramme[]; lecturers: TemplateLecturer[]; classes: TemplateClass[];
+  borrowed?: TemplateBorrowed[];
 }
 
 /** the sheets, by name */
-export const SHEET = { allocation: "Course Allocation", lecturers: "Lecturers", courses: "Courses", programmes: "Programmes", instructions: "Instructions", template: "Template" } as const;
+export const SHEET = { allocation: "Course Allocation", lecturers: "Lecturers", courses: "Courses", programmes: "Programmes", borrowed: "Borrowed Courses", instructions: "Instructions", template: "Template" } as const;
 /** the allocation sheet's columns, in order */
 export const COLUMNS = ["S/N", "Faculty", "Department", "Course code", "Course title", "Units", "Course type", "Level", "Programmes", "Session", "Semester",
   "Lecturer now", "Lecturer", "Role", "Cross-department", "Remarks", "Course ID"] as const;
@@ -127,6 +130,7 @@ export function templateSheets(t: IssuedTemplate, institution: string, generated
     ["3", "Cross-department: YES only when a lecturer of another department teaches the class."],
     ["4", "For a further co-lecturer or second examiner, use a row at the end: choose the course, the lecturer and the role."],
     ["5", `Upload the file on the Course Allocation page with ${c.deptName}, ${c.session} and ${sem.toLowerCase()} chosen. Nothing is written until you confirm the preview.`],
+    ["6", "Borrowed Courses lists the courses this department's programmes take from other departments: their own departments allocate them."],
     [""],
     ["The grey cells come from the register and cannot be changed here. The upload is checked against the register and against this template's reference, whatever the file says."],
   ];
@@ -149,6 +153,8 @@ export function templateSheets(t: IssuedTemplate, institution: string, generated
       ...(courseRange ? [{ sqref: `${col("Course code")}${firstExtra + 1}:${col("Course code")}${last + 1}`, range: courseRange, prompt: `A course of ${c.deptName}` }] : []),
     ],
   };
+  const borrowed: Cell[][] = [["Course code", "Course title", "Units", "Level", "Owning department", "Taken by programmes", "Lecturer now"],
+    ...(t.borrowed ?? []).map((b) => [b.code, b.title, b.units, b.level, b.owner_dept ?? b.owner_code ?? "", b.programme_codes, b.lecturer ?? "Not allocated"])];
   const context: Cell[][] = [["Key", "Value"], ["reference", c.reference ?? ""], ["version", c.version], ["faculty", c.facultyCode ?? ""], ["department", c.deptCode],
     ["programme_type", c.programmeType], ["session", c.session], ["semester", c.semester], ["generated", c.issuedAt ?? ""]];
   return [
@@ -156,6 +162,7 @@ export function templateSheets(t: IssuedTemplate, institution: string, generated
     [SHEET.lecturers, lect, { headerRows: [0], freezeBelow: 1, hiddenCols: [8], protect: { unlocked: [] } }],
     [SHEET.courses, crs, { headerRows: [0], freezeBelow: 1, hiddenCols: [10], protect: { unlocked: [] } }],
     [SHEET.programmes, progs, { headerRows: [0], freezeBelow: 1, protect: { unlocked: [] } }],
+    [SHEET.borrowed, borrowed, { headerRows: [0], freezeBelow: 1, protect: { unlocked: [] } }],
     [SHEET.instructions, instructions],
     [SHEET.template, context, { headerRows: [0], hidden: true, protect: { unlocked: [] } }],
   ];

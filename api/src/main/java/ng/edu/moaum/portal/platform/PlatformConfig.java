@@ -13,7 +13,8 @@ class PlatformConfig {
 
     /** Replaces Boot's default so that every transaction carries the audit context. */
     @Bean
-    PlatformTransactionManager transactionManager(DataSource dataSource) {
-        return new AttributedTransactionManager(dataSource);
+    PlatformTransactionManager transactionManager(DataSource dataSource,
+                                                  @org.springframework.beans.factory.annotation.Value("${moaum.db.request-read-timeout-ms:90000}") long readTimeoutMs) {
+        return new AttributedTransactionManager(dataSource, readTimeoutMs);
     }
 }

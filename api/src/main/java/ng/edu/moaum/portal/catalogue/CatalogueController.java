@@ -399,7 +399,13 @@ class CatalogueController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT co.level, c.semester, c.both_semesters, c.code, c.title, coalesce(co.units, c.units) AS units, co.units AS own_units, c.units AS course_units,
                        c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max,
-                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_now
+                       EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.course_code = c.code AND o.session = :s) AS offered_now,
+                       -- V483: the specialisations a binding is for (none: every student of the programme)
+                       (SELECT string_agg(ps.code, ', ' ORDER BY ps.code) FROM catalogue.course_offer_specialisation x
+                          JOIN catalogue.programme_specialisation ps ON ps.id = x.specialisation_id
+                         WHERE x.course_code = co.course_code AND x.programme_code = co.programme_code AND x.level = co.level) AS specialisations,
+                       (SELECT string_agg(x.specialisation_id::text, ',') FROM catalogue.course_offer_specialisation x
+                         WHERE x.course_code = co.course_code AND x.programme_code = co.programme_code AND x.level = co.level) AS specialisation_ids
                   FROM catalogue.course_offer co
                   JOIN catalogue.course c ON c.code = co.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code

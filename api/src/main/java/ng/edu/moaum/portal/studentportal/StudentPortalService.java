@@ -437,8 +437,22 @@ public class StudentPortalService {
                 m.put("gstGate", gate);
             }
         }
+        // V482: a course whose prerequisite the student has not passed says which; where the Academic Office enforces
+        // prerequisites the engine refuses it, so the form locks it (a carry-over is never held to them)
+        String prerequisiteMode = repo.prerequisiteMode();
+        Map<String, String> unmet = repo.prerequisitesUnmet(id, menu.stream().filter(m -> !Boolean.TRUE.equals(m.get("carryover")))
+                .map(m -> String.valueOf(m.get("course_code"))).distinct().toList());
+        for (Map<String, Object> m : menu) {
+            String u = Boolean.TRUE.equals(m.get("carryover")) ? null : unmet.get(String.valueOf(m.get("course_code")));
+            if (u != null) {
+                m.put("prerequisitesUnmet", u);
+                m.put("prerequisiteLocked", "ENFORCED".equals(prerequisiteMode));
+            }
+        }
+        out.put("prerequisiteMode", prerequisiteMode);
         out.put("menu", menu);
         out.put("codeFamily", repo.codeFamily(id));   // V402/V413: the cohort's code family, named on the screen
+        out.put("specialisation", repo.specialisation(id));   // V483: a postgraduate student's specialisation, which decides some courses
         out.put("gst", repo.gstEntitlement(id, session));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));

@@ -42,13 +42,15 @@ class PlatformController {
     private final tools.jackson.databind.ObjectMapper json;
     private final ApplicationWindows windows;
     private final ReadinessSnapshot readiness;
+    private final PoolWatch pool;
 
-    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows, ReadinessSnapshot readiness,
+    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows, ReadinessSnapshot readiness, PoolWatch pool,
                        @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
         this.jdbc = jdbc;
         this.json = json;
         this.windows = windows;
         this.readiness = readiness;
+        this.pool = pool;
         this.commit = commit;
     }
 
@@ -348,6 +350,8 @@ class PlatformController {
         body.put("commit", commit == null || commit.isBlank() ? null : commit);
         body.put("startedAt", STARTED.toString());
         body.put("database", database());
+        // Oct 2026: the database connections now and the busiest of the last hour (counts only)
+        body.put("databasePool", pool.status());
         // the PG and CCE readiness as last read (ReadinessSnapshot): at most five minutes old, never read on every probe
         ReadinessSnapshot.Reading kept = readiness.get();
         body.put("readinessReadAt", kept == null ? null : kept.at().toString());

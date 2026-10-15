@@ -8,8 +8,9 @@
  *  V471: a postgraduate programme's structure is worked here too — at 700, 800 or 900 level, a course taken as Core,
  *  Elective, Borrowed, Deficiency or Research — by the School of Postgraduate Studies and, within their postings, the ICT
  *  Support Desk, who may name the ticket a change answers; a course the pool does not hold yet is created here, once an
- *  existing course of that code or title has been ruled out. */
-import { useRef, useState } from "react";
+ *  existing course of that code or title has been ruled out. V483: a postgraduate programme's specialisations, the students who
+ *  read them, and for each bound course the specialisations it is for (none: every student). */
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -22,9 +23,12 @@ import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { UnitsChangeModal, type UnitsTarget } from "../UnitsChange";
+import { ForSpecialisations, Specialisations, type SpecData } from "./Specialisations";
 
 export interface ProgrammeOption { code: string; name: string; dept_code: string | null; department_name: string | null; faculty_name: string; archived: boolean; category?: string | null }
-export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; own_units?: number | null; course_units?: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number; offered_now?: boolean }
+export interface StructureRow { level: number; semester: number | null; both_semesters?: boolean; code: string; title: string; units: number; own_units?: number | null; course_units?: number; kind: string; state: string; dept_code: string; dept_name: string | null; basis: string; track: string | null; ca_max: number; offered_now?: boolean;
+  /** V483: the specialisations the binding is for (codes, and ids comma-separated); none is every student */
+  specialisations?: string | null; specialisation_ids?: string | null }
 export interface StructureData {
   programme: { code: string; name: string; dept_code: string | null; dept_name: string | null; faculty_code: string; faculty_name?: string | null; category?: string | null; pg_award?: string | null; award_level?: number | null };
   rows: StructureRow[];
@@ -70,6 +74,9 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
   const [nc, setNc] = useState({ code: "", title: "", units: "3", semester: "1", level: "", basis: "" });
   const [existing, setExisting] = useState<Existing | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // V483: a postgraduate programme's specialisations, and the binding whose specialisations are being chosen
+  const [spec, setSpec] = useState<SpecData | null>(null);
+  const [forRow, setForRow] = useState<StructureRow | null>(null);
 
   const LV = data?.levels?.length ? data.levels : UG_LEVELS;
   const BS = data?.bases?.length ? data.bases : UG_BASES;
@@ -82,6 +89,21 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
   const basis = BS.includes(f.basis) ? f.basis : BS[0];
   const ncLevel = LV.includes(Number(nc.level)) ? nc.level : defaultLevel;
   const ncBasis = BS.includes(nc.basis) ? nc.basis : BS[0];
+  const progCode = data?.programme.code ?? "";
+  const [specTick, setSpecTick] = useState(0);
+  useEffect(() => {
+    if (!pgp || !progCode) return;
+    let live = true;
+    void fetch(`/api/bff/api/v1/catalogue/structure/specialisations?prog=${encodeURIComponent(progCode)}`, { cache: "no-store" }).then(async (r) => {
+      const j = r.ok ? ((await r.json().catch(() => null)) as SpecData | null) : null;
+      if (live) setSpec(j);
+    });
+    return () => { live = false; };
+  }, [pgp, progCode, specTick, data]);
+  const loadSpec = () => setSpecTick((n) => n + 1);
+  // the specialisations of the programme in view (a list fetched for another programme is not shown)
+  const specNow = pgp && spec?.programme.code === progCode ? spec : null;
+  const hasSpec = !!specNow?.specialisations.length;
 
   const rows = data ? data.rows.filter((r) => !track || !r.track || r.track === track) : [];
   const levels = [...new Set(rows.map((r) => Number(r.level)))].sort((a, b) => a - b);
@@ -297,6 +319,7 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
                 : "Your support posting does not carry binding courses for this programme's faculty or department; the Head of the ICT Support Desk grants it with a posting."}
             </Note>
           ) : null}
+          {specNow ? <Specialisations data={specNow} ticket={mayTicket ? ticket : ""} onChanged={() => { loadSpec(); router.refresh(); }} /> : null}
           {levels.length === 0 ? (
             <Note kind="bad" title="Nothing is bound to this programme">No student of {data.programme.code} sees any course at registration.</Note>
           ) : levels.map((lv) => {
@@ -318,17 +341,18 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
                           {units} units bound · {coreUnits} core/GST{lim ? over ? ` — core alone exceeds the ${lim.max_units}-unit maximum` : under ? ` — under the ${lim.min_units}-unit minimum even with every course` : "" : ""}
                         </span>
                       </div>
-                      <DTable cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Track|mid", "Owner", "State|mid", "This session|mid", ...(mayChange ? ["|num"] : [])]} rows={list.map((r) => [
+                      <DTable cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Track|mid", ...(hasSpec ? ["For|mid"] : []), "Owner", "State|mid", "This session|mid", ...(mayChange ? ["|num"] : [])]} rows={list.map((r) => [
                         <Link className="lnk" key="c" href={`/catalogue/course?code=${encodeURIComponent(r.code)}`}><strong className="tnum">{r.code}</strong></Link>,
                         <span key="t">{r.title}{r.both_semesters ? <span className="sub2"> · both semesters</span> : null}</span>,
                         <span key="u"><span className="tnum">{r.units}</span>{r.own_units != null && r.course_units != null && r.own_units !== r.course_units ? <span className="sub2"> · this programme (course {r.course_units})</span> : null}</span>,
                         <Pil key="b" kind={r.basis === "Core" ? "info" : r.basis === "GST" || r.basis === "Research" ? "ok" : r.basis === "Deficiency" ? "warn" : "grey"}>{r.basis}</Pil>,
                         <span className="sub2 tnum" key="tr">{r.track ?? "every track"}</span>,
+                        ...(hasSpec ? [r.specialisations ? <span key="sp" className="tnum b600">{r.specialisations}</span> : <span key="sp" className="sub2">every student</span>] : []),
                         <span className={`sub2${ownDept && r.dept_code !== ownDept ? " ink-chrome" : ""}`} key="o">{r.dept_name ?? r.dept_code}</span>,
                         <Pil key="s" kind={r.state === "LIVE" ? "ok" : r.state === "ENDED" ? "bad" : "warn"}>{r.state === "LIVE" ? "Live" : r.state === "BOARD" || r.state === "SENATE" ? "Not yet live" : r.state === "ENDED" ? "Ended" : r.state}</Pil>,
                         r.offered_now == null ? <span key="n" /> : r.offered_now ? <Pil key="n" kind="ok">Class open</Pil> : <span key="n" className="sub2 ink-amber">No class yet</span>,
-                        ...(mayChange ? [<span key="x" className="row row--tight row--right"><Btn kind="ghost" disabled={busy} onClick={() => changeUnits(r)}>Units</Btn><Btn kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn></span>] : []),
-                      ])} texts={list.map((r) => `${r.code} ${r.title} ${r.basis} ${r.track ?? ""} ${r.dept_name ?? ""}`)} />
+                        ...(mayChange ? [<span key="x" className="row row--tight row--right">{hasSpec ? <Btn kind="ghost" disabled={busy} onClick={() => setForRow(r)}>For</Btn> : null}<Btn kind="ghost" disabled={busy} onClick={() => changeUnits(r)}>Units</Btn><Btn kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn></span>] : []),
+                      ])} texts={list.map((r) => `${r.code} ${r.title} ${r.basis} ${r.track ?? ""} ${r.specialisations ?? ""} ${r.dept_name ?? ""}`)} />
                     </div>
                   );
                 })}
@@ -337,6 +361,10 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
           })}
         </>
       )}
+      {forRow && specNow ? (
+        <ForSpecialisations data={specNow} course={forRow.code} level={forRow.level} chosen={(forRow.specialisation_ids ?? "").split(",").filter(Boolean)} ticket={mayTicket ? ticket : ""}
+          onClose={() => setForRow(null)} onSaved={() => { setForRow(null); loadSpec(); router.refresh(); }} />
+      ) : null}
       {unitsEdit ? <UnitsChangeModal target={unitsEdit} ticket={mayTicket ? ticket.trim() : ""} onClose={() => setUnitsEdit(null)} onSaved={() => { setUnitsEdit(null); router.refresh(); }} /> : null}
     </>
   );

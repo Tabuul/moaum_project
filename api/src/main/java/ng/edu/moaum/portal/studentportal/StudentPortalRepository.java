@@ -435,6 +435,34 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM registration.student_menu(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
     }
 
+    /** V483: the specialisation the student reads within their programme ("MON — Monetary Economics"), or null */
+    String specialisation(UUID student) {
+        return jdbc.sql("""
+                SELECT ps.code || ' — ' || ps.name FROM people.student_specialisation ss
+                  JOIN people.student st ON st.id = ss.student_id
+                  JOIN catalogue.programme_specialisation ps ON ps.id = ss.specialisation_id AND ps.programme_code = st.programme_code
+                 WHERE ss.student_id = :s
+                """).param("s", student).query(String.class).optional().orElse(null);
+    }
+
+    /** V482: the prerequisite rule in force — ADVISORY (shown) or ENFORCED (the engine refuses) */
+    String prerequisiteMode() {
+        return jdbc.sql("SELECT registration.prerequisite_mode()").query(String.class).single();
+    }
+
+    /** V482: per course, the prerequisites the student has not passed — only the courses that have one unmet */
+    Map<String, String> prerequisitesUnmet(UUID student, List<String> codes) {
+        Map<String, String> out = new java.util.HashMap<>();
+        if (codes.isEmpty()) return out;
+        jdbc.sql("""
+                SELECT c.code, array_to_string(registration.prerequisites_unmet(:s, c.code), ', ') AS unmet
+                  FROM unnest(CAST(:codes AS text[])) AS c(code)
+                 WHERE EXISTS (SELECT 1 FROM catalogue.course_prerequisite p WHERE p.course_code = c.code)
+                """).param("s", student).param("codes", codes.toArray(String[]::new)).query().listOfRows()
+                .forEach(r -> { if (r.get("unmet") != null && !String.valueOf(r.get("unmet")).isEmpty()) out.put(String.valueOf(r.get("code")), String.valueOf(r.get("unmet"))); });
+        return out;
+    }
+
     /** V402/V413: the code family the student's cohort registers — BSU or MOAU — or null while the rule is unstated */
     String codeFamily(UUID student) {
         return jdbc.sql("SELECT catalogue.student_code_family(:s)").param("s", student).query(String.class).optional().orElse(null);

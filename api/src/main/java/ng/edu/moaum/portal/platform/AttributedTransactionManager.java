@@ -30,13 +30,39 @@ import org.springframework.transaction.TransactionDefinition;
  */
 public class AttributedTransactionManager extends JdbcTransactionManager {
 
+    /** Oct 2026: how long a screen's read-only transaction may run (0: as long as it likes) */
+    private final long requestReadTimeoutMs;
+
     public AttributedTransactionManager(DataSource dataSource) {
+        this(dataSource, 0);
+    }
+
+    public AttributedTransactionManager(DataSource dataSource, long requestReadTimeoutMs) {
         super(dataSource);
+        this.requestReadTimeoutMs = Math.max(0, requestReadTimeoutMs);
+    }
+
+    /** a transaction begun for a request of a screen, not for a scheduled job */
+    private static boolean inRequest() {
+        return org.springframework.web.context.request.RequestContextHolder.getRequestAttributes() != null;
     }
 
     @Override
     protected void doBegin(Object transaction, TransactionDefinition definition) {
         super.doBegin(transaction, definition);
+        // Oct 2026: a screen's read is cut short past the limit rather than holding one of the portal's few connections for
+        // minutes while other requests (Interswitch's among them) wait for one; a scheduled job's reads are not limited
+        if (requestReadTimeoutMs > 0 && definition.isReadOnly() && inRequest()) {
+            Connection connection = DataSourceUtils.getConnection(obtainDataSource());
+            try (PreparedStatement statement = connection.prepareStatement("SELECT set_config('statement_timeout', ?, true)")) {
+                statement.setString(1, requestReadTimeoutMs + "ms");
+                statement.execute();
+            } catch (SQLException e) {
+                throw new DataAccessResourceFailureException("could not limit the read", e);
+            } finally {
+                DataSourceUtils.releaseConnection(connection, obtainDataSource());
+            }
+        }
         AuditContextHolder.current().ifPresent(context -> {
             Connection connection = DataSourceUtils.getConnection(obtainDataSource());
             try {

@@ -13,6 +13,7 @@ const issued: IssuedTemplate = {
     { id: "11111111-1111-4111-8111-111111111111", staff_number: "STF/0012", name: "DOE, John", email: "j@example.com", load: 3 },
     { id: "22222222-2222-4222-8222-222222222222", staff_number: "STF/0045", name: "SMITH, Mary", email: null, load: 0 },
   ],
+  borrowed: [{ code: "STA 301", title: "Statistics for Computing", units: 2, level: 300, owner_dept: "Statistics", owner_code: "STA", programme_codes: "C00023", lecturer: null }],
   classes: [
     { course_id: "c1", code: "CSC 301", title: "Data Structures", units: 3, kind: "Core", level: 300, course_semester: 1, offering_id: "o1",
       lecturer_id: "11111111-1111-4111-8111-111111111111", lecturer_staff_number: "STF/0012", lecturer: "DOE, John",
@@ -35,7 +36,7 @@ test("a choice carries the staff number the upload reads back", () => {
 
 test("the allocation sheet carries the register's values, locked, with the choices as lists", () => {
   const sheets = templateSheets(issued, "Rev. Fr. Moses Orshio Adasu University", "15 October 2026");
-  assert.deepEqual(sheets.map((s) => s[0]), [SHEET.allocation, SHEET.lecturers, SHEET.courses, SHEET.programmes, SHEET.instructions, SHEET.template]);
+  assert.deepEqual(sheets.map((s) => s[0]), [SHEET.allocation, SHEET.lecturers, SHEET.courses, SHEET.programmes, SHEET.borrowed, SHEET.instructions, SHEET.template]);
   const [, rows, opts] = sheets[0];
   const header = rows.findIndex((r) => r[0] === "S/N");
   assert.deepEqual(rows[header], [...COLUMNS]);
@@ -66,7 +67,7 @@ test("the template reads back as rows the server judges, its context from the hi
   const sheets = templateSheets(issued, "Rev. Fr. Moses Orshio Adasu University", "15 October 2026");
   const book = xlsx(sheets);
   const wb = new TextDecoder().decode(book);
-  assert.ok(wb.includes(`<sheet name="Template" sheetId="6" state="hidden"`), "the context sheet is hidden");
+  assert.ok(wb.includes(`<sheet name="Template" sheetId="7" state="hidden"`), "the context sheet is hidden");
   const read = readTemplate(await xlsxWorkbook(book.buffer.slice(book.byteOffset, book.byteOffset + book.byteLength) as ArrayBuffer));
   assert.ok(read);
   assert.deepEqual(read.context, { reference: "CAT-2026-000123", version: 1, faculty: "SC", dept: "MTC", programmeType: "UNDERGRADUATE", session: "2026/2027", semester: 1 });
@@ -87,7 +88,7 @@ test("a filled template: the class allocated, a further co-lecturer on an extra 
   grid[extra][L] = "SMITH, Mary — STF/0045";
   grid[extra][COLUMNS.indexOf("Role")] = "Second examiner";
   grid[extra][COLUMNS.indexOf("Cross-department")] = "NO";
-  const read = readTemplate([{ name: SHEET.allocation, rows: grid }, { name: SHEET.template, rows: sheets[5][1].map((r) => r.map((c) => String(c ?? ""))) }]);
+  const read = readTemplate([{ name: SHEET.allocation, rows: grid }, { name: SHEET.template, rows: sheets[6][1].map((r) => r.map((c) => String(c ?? ""))) }]);
   assert.ok(read);
   assert.deepEqual(read.rows.map((r) => `${r.row}|${r.courseCode}|${r.staffId}|${r.lecturerName}|${r.role}|${r.crossDepartment}`), [
     `${header + 2}|CSC 301|STF/0012|DOE, John|Lecturer|`,

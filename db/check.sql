@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 318
+\set EXPECTED 322
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14402,6 +14402,191 @@ BEGIN
     PERFORM pg_temp.assert('V479: each download of the report is recorded — the session, the format, the filters and the rows; only Excel or PDF',
         coalesce(ex_rows = 1 AND ex_filters->>'gender' = 'F' AND ex_bad = 'refused', false),
         format('recorded %s filters %s | CSV %s', ex_rows, ex_filters, ex_bad));
+END $$;
+
+
+-- ── V481: a Pay on Quickteller payment recorded and not settled is told ──
+-- A payment Interswitch reported and still not settled ten minutes after it last reported it is listed (a fresh one, or a
+-- settled one, is not); the Bursary's and the Directorate of ICT's office holders are told; told again in the same hour,
+-- nobody is (the event key). The block undoes its writes.
+DO $$
+DECLARE p uuid := gen_random_uuid(); stale uuid; fresh uuid; done uuid; listed text; told1 int; told2 int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V481', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (p, 'ZZ-CHK-481', 'CHECKV481', 'Invented', 'check481@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), p, 'bursar', 'platform', NULL, 'check V481', p, current_date);
+        stale := finance.paydirect_receive('CHK481-1', false, 'MOAUM-FEE-CHK-4811', 5000, '{"PaymentLogId": "CHK481-1"}'::jsonb);
+        fresh := finance.paydirect_receive('CHK481-2', false, 'MOAUM-FEE-CHK-4812', 5000, '{"PaymentLogId": "CHK481-2"}'::jsonb);
+        done := finance.paydirect_receive('CHK481-3', false, 'MOAUM-FEE-CHK-4813', 5000, '{"PaymentLogId": "CHK481-3"}'::jsonb);
+        UPDATE finance.paydirect_inbox SET last_received_at = now() - interval '20 minutes', received_at = now() - interval '20 minutes' WHERE id IN (stale, done);
+        PERFORM finance.paydirect_done(done, true, 'confirmed', NULL);
+        PERFORM finance.paydirect_done(stale, false, NULL, 'the database was busy');
+        SELECT string_agg(u.payment_log_id, ',' ORDER BY u.payment_log_id) INTO listed FROM finance.paydirect_unsettled(now()) u WHERE u.payment_log_id LIKE 'CHK481-%';
+        told1 := finance.watch_paydirect_inbox(now());
+        told2 := finance.watch_paydirect_inbox(now());
+        RAISE EXCEPTION 'the V481 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V481 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V481: a Pay on Quickteller payment reported and not settled past ten minutes is listed (not a fresh or settled one) and told to the Bursary and the Directorate of ICT, once an hour',
+        coalesce(listed = 'CHK481-1' AND told1 > 0 AND told2 = 0, false),
+        format('listed %s | told %s then %s', listed, told1, told2));
+END $$;
+
+
+-- ── V482: prerequisites at registration ──
+-- The rule starts ADVISORY; only the Academic Office sets it, with a reason. A course's prerequisite is unmet until a published
+-- graded pass is on the student's record, and met for a student who entered above its level; under ADVISORY the ICT Support
+-- check is advisory and names it, under ENFORCED a rule the override sets aside. The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); de uuid := gen_random_uuid(); o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid();
+        reg uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); prog text; v_ses text;
+        start_mode text; office_refused boolean := false; before text; de_unmet text; after_pass text;
+        adv_rule text; enf_rule text; enf_passed text; msg text;
+BEGIN
+    start_mode := registration.prerequisite_mode();
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.reason', 'check V482', true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN
+            PERFORM registration.set_prerequisite_mode('ENFORCED', 'check V482');
+        EXCEPTION WHEN check_violation THEN office_refused := SQLERRM LIKE 'PREREQUISITE_MODE_OFFICE:%';
+        END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        prog := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+          ('ZQP 101', 'Check prerequisite course', 2, 1, 100, (SELECT dept_code FROM ref.programme WHERE code = prog), 'LIVE'),
+          ('ZQP 201', 'Check course with a prerequisite', 2, 1, 200, (SELECT dept_code FROM ref.programme WHERE code = prog), 'LIVE');
+        INSERT INTO catalogue.course_prerequisite (course_code, requires_code) VALUES ('ZQP 201', 'ZQP 101');
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+          (st, 'MOAUM/ADM/60/948201', 'CHECKV482', 'Utme', prog, 'UTME', v_ses, 100, 200, 'ADMITTED'),
+          (de, 'MOAUM/ADM/60/948202', 'CHECKV482', 'Direct', prog, 'DIRECT_ENTRY', v_ses, 200, 200, 'ADMITTED');
+        before := array_to_string(registration.prerequisites_unmet(st, 'ZQP 201'), ',');
+        de_unmet := array_to_string(registration.prerequisites_unmet(de, 'ZQP 201'), ',');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZQP 101', v_ses, 1), (o2, 'ZQP 201', v_ses, 1);
+        -- under ADVISORY the support check is advisory and says what is not yet passed
+        SELECT k.advisory || ':' || k.overridable || ':' || k.passed || ':' || (k.message LIKE 'Not yet passed: ZQP 101.%') INTO adv_rule
+          FROM registration.support_add_checks(st, v_ses, 1, o2) k WHERE k.rule = 'PREREQUISITES';
+        PERFORM registration.set_prerequisite_mode('ENFORCED', 'check V482');
+        SELECT k.advisory || ':' || k.overridable || ':' || k.passed INTO enf_rule
+          FROM registration.support_add_checks(st, v_ses, 1, o2) k WHERE k.rule = 'PREREQUISITES';
+        -- the pass published: met
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (reg, st, v_ses, 1, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, o1, 2, 'APPROVED');
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, o1, 'PUBLISHED', 'SEN/CHK/482', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, st, 25, 45, 'GRADED');
+        after_pass := array_to_string(registration.prerequisites_unmet(st, 'ZQP 201'), ',');
+        SELECT k.passed::text INTO enf_passed FROM registration.support_add_checks(st, v_ses, 2, o2) k WHERE k.rule = 'PREREQUISITES';
+        RAISE EXCEPTION 'the V482 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V482 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V482: prerequisites start advisory and only the Academic Office enforces them; a prerequisite is unmet until a published pass (met for a student who entered above it); advisory at the support desk, then a rule the override sets aside',
+        coalesce(start_mode = 'ADVISORY' AND office_refused AND before = 'ZQP 101' AND de_unmet = '' AND adv_rule = 'true:false:true:true'
+                 AND enf_rule = 'false:true:false' AND after_pass = '' AND enf_passed = 'true' AND registration.prerequisite_mode() = 'ADVISORY', false),
+        format('start %s | hod refused %s | unmet %s | DE unmet %s | advisory %s | enforced %s | after pass %s / %s | now %s',
+               start_mode, office_refused, before, de_unmet, adv_rule, enf_rule, after_pass, enf_passed, registration.prerequisite_mode()));
+END $$;
+
+
+-- ── V483: postgraduate specialisations ──
+-- A postgraduate programme's specialisations are its own (an undergraduate programme has none); a binding named for one is on
+-- that specialisation's students' menus only, a binding named for none on every student's; a student without one sees the
+-- courses for every student; a student reads only a specialisation of their own programme. The block undoes its writes.
+DO $$
+DECLARE pg text; other text; ug text; v_ses text; lvl int; a uuid; b uuid; foreign_spec uuid; s_a uuid := gen_random_uuid(); s_b uuid := gen_random_uuid();
+        s_none uuid := gen_random_uuid(); ug_refused boolean := false; other_refused boolean := false;
+        menu_a text; menu_b text; menu_none text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        PERFORM set_config('moaum.reason', 'check V483', true);
+        SELECT p.code, admissions.pg_award_level(p.pg_award) INTO pg, lvl FROM ref.programme p
+         WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        other := (SELECT p.code FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND p.code <> pg AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        ug := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        BEGIN
+            PERFORM catalogue.save_specialisation(ug, 'OPT', 'An undergraduate option');
+        EXCEPTION WHEN check_violation THEN ug_refused := SQLERRM LIKE 'PG_SPECIALISATION_PROGRAMME:%';
+        END;
+        a := catalogue.save_specialisation(pg, 'mon', 'Check monetary');
+        b := catalogue.save_specialisation(pg, 'DEV', 'Check development');
+        foreign_spec := catalogue.save_specialisation(other, 'MON', 'Check monetary');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+          ('ZZS 801', 'Check course for every student', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE'),
+          ('ZZS 802', 'Check course for one specialisation', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZS 801', pg, lvl, 'Core'), ('ZZS 802', pg, lvl, 'Elective')
+        ON CONFLICT DO NOTHING;
+        PERFORM catalogue.set_offer_specialisations('ZZS 802', pg, lvl, ARRAY[a]);
+        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES
+          (gen_random_uuid(), 'ZZS 801', v_ses, 1, 'PG'), (gen_random_uuid(), 'ZZS 802', v_ses, 1, 'PG')
+        ON CONFLICT (course_code, session, semester, stream) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+          (s_a, 'MOAUM/ADM/60/948301', 'CHECKV483', 'Monetary', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED'),
+          (s_b, 'MOAUM/ADM/60/948302', 'CHECKV483', 'Development', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED'),
+          (s_none, 'MOAUM/ADM/60/948303', 'CHECKV483', 'None', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED');
+        PERFORM people.set_student_specialisation(s_a, a);
+        PERFORM people.set_student_specialisation(s_b, b);
+        BEGIN
+            PERFORM people.set_student_specialisation(s_none, foreign_spec);
+        EXCEPTION WHEN check_violation THEN other_refused := SQLERRM LIKE 'PG_SPECIALISATION_OTHER:%';
+        END;
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO menu_a FROM registration.student_menu(s_a, v_ses, 1) m WHERE m.course_code LIKE 'ZZS %';
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO menu_b FROM registration.student_menu(s_b, v_ses, 1) m WHERE m.course_code LIKE 'ZZS %';
+        SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) INTO menu_none FROM registration.student_menu(s_none, v_ses, 1) m WHERE m.course_code LIKE 'ZZS %';
+        RAISE EXCEPTION 'the V483 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V483 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V483: a postgraduate programme''s specialisation course reaches only its students; a course for every student reaches them all; a student reads only their own programme''s specialisation',
+        coalesce(ug_refused AND other_refused AND menu_a = 'ZZS 801,ZZS 802' AND menu_b = 'ZZS 801' AND menu_none = 'ZZS 801', false),
+        format('undergraduate refused %s | other programme''s refused %s | MON %s | DEV %s | none %s', ug_refused, other_refused, menu_a, menu_b, menu_none));
+END $$;
+
+
+-- ── V484: the structure upload reads a postgraduate programme's levels and bases ──
+-- A postgraduate programme's rows are bound at 700, 800 or 900 — the programme's own award level when a row gives none or one
+-- outside them — and as Deficiency or Research where the status says so; an undergraduate programme's rows are read as before
+-- (a level outside 100 to 600 at 100, R a Required course on a Core binding). The block undoes its writes.
+DO $$
+DECLARE pg text; ug text; award int; got text; ug_got text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V484', true);
+        SELECT p.code, admissions.pg_award_level(p.pg_award) INTO pg, award FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code
+         WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        SELECT p.code INTO ug FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        PERFORM catalogue.import_courses(pg, '[{"code": "ZQR 801", "title": "Check advanced seminar", "units": "3", "status": "C"},
+                                               {"code": "ZQR 811", "title": "Check dissertation", "units": "6", "status": "Research", "level": "900"},
+                                               {"code": "ZQR 802", "title": "Check deficiency course", "units": "2", "status": "DEF", "level": "300"}]'::jsonb, NULL);
+        SELECT string_agg(co.course_code || '@' || co.level || ':' || co.basis, ',' ORDER BY co.course_code) INTO got
+          FROM catalogue.course_offer co WHERE co.programme_code = pg AND co.course_code LIKE 'ZQR %';
+        PERFORM catalogue.import_courses(ug, '[{"code": "ZQR 101", "title": "Check undergraduate course", "units": "2", "status": "R", "level": "700"}]'::jsonb, NULL);
+        SELECT co.course_code || '@' || co.level || ':' || co.basis || ':' || c.kind INTO ug_got
+          FROM catalogue.course_offer co JOIN catalogue.course c ON c.code = co.course_code WHERE co.programme_code = ug AND co.course_code = 'ZQR 101';
+        RAISE EXCEPTION 'the V484 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V484 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V484: the structure upload binds a postgraduate programme''s rows at 700, 800 or 900 (its award level by default) and as Deficiency or Research where the status says so; an undergraduate programme''s rows as before',
+        coalesce(got = format('ZQR 801@%s:Core,ZQR 802@%s:Deficiency,ZQR 811@900:Research', award, award) AND ug_got = 'ZQR 101@100:Core:Required', false),
+        format('postgraduate %s (award level %s) | undergraduate %s', got, award, ug_got));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

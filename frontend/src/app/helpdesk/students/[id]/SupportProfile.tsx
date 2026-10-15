@@ -363,7 +363,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                   const on = live.some((e) => e.offering_id === m.offering_id);
                   return [
                     <b key="c" className="tnum">{m.course_code}</b>, <span key="t">{m.title}</span>, <span key="u" className="tnum">{m.units}</span>, <span key="b" className="sub2">{m.basis}</span>, <span key="o" className="sub2">{m.owner_dept}</span>,
-                    <span key="n" className="sub2">{on ? "Already registered" : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : "Eligible"}</span>,
+                    <span key="n" className="sub2">{on ? "Already registered" : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : m.prerequisiteLocked ? `Prerequisite not passed: ${m.prerequisitesUnmet} — the override sets it aside` : m.prerequisitesUnmet ? `Eligible · prerequisite not yet passed: ${m.prerequisitesUnmet}` : "Eligible"}</span>,
                     reg.manage && !on ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
                   ];
                 })} /> : <div className="sub2">No course is offered for this student this semester.</div>}

@@ -98,7 +98,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`); }}>End</Btn> : null}
           {data.may.edit && c.state === "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`); }}>Restore</Btn> : null}
           {data.may.changeOwner && !c.general_office ? <Btn kind="ghost" onClick={() => setOwning({ dept: ownDept, prog: c.owner_programme ?? "", why: "" })}>Change owner</Btn> : null}
-          <LinkBtn href={`/catalogue?dept=${encodeURIComponent(ownDept)}`}>Department courses</LinkBtn>
+          {data.may.deptDesk === false ? <LinkBtn href="/catalogue/structure">Programme structure</LinkBtn> : <LinkBtn href={`/catalogue?dept=${encodeURIComponent(ownDept)}`}>Department courses</LinkBtn>}
           <LinkBtn href="/catalogue/all">All courses</LinkBtn>
         </>} />
       {mayTicket ? (

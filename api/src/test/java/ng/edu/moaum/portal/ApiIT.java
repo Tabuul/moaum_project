@@ -55,6 +55,10 @@ class ApiIT {
         assertThat(((Number) db.get("migrationsApplied")).intValue()).isGreaterThanOrEqualTo(10);
         // the PG and CCE readiness as last read, never read on every call (ReadinessSnapshot)
         assertThat(r.getBody().get("readinessReadAt")).isNotNull();
+        // Oct 2026: the database connections in use and waiting, counts only (PoolWatch)
+        Map<?, ?> pool = (Map<?, ?>) r.getBody().get("databasePool");
+        assertThat(((Number) pool.get("max")).intValue()).isPositive();
+        assertThat(pool.get("waiting")).isNotNull();
         assertThat(r.getHeaders().getFirst("X-Correlation-Id")).isNotBlank();
     }
 

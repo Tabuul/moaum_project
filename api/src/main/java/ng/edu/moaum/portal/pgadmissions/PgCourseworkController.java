@@ -409,6 +409,101 @@ class PgCourseworkController {
     public record CoursesIn(@NotNull List<Map<String, Object>> rows) {
     }
 
+    /**
+     * Oct 2026: what the upload below would do, row by row, before anything is written — the programme each row names (a
+     * postgraduate programme, by code or name), the course the University's pool already holds under that code (then bound as
+     * it is: its title stays the pool's) or a new one, a course the programme already carries, a row refused and why. One
+     * read for the whole file.
+     */
+    @PostMapping("/courses/import/preview")
+    @PreAuthorize(DESK)
+    @Transactional(readOnly = true)
+    Map<String, Object> previewCourses(@Valid @RequestBody CoursesIn body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("PG_COURSE_ROWS", "The file has no rows to read.",
+                    new DomainRuleViolation.Remedy("Download the template, fill it and upload it.", "Postgraduate School"));
+        }
+        List<Map<String, Object>> read = jdbc.sql("""
+                WITH r AS (
+                    SELECT t.ord, btrim(coalesce(t.x->>'programme', '')) AS prog_in,
+                           regexp_replace(upper(btrim(coalesce(t.x->>'code', ''))), '\\s+', ' ', 'g') AS code_in,
+                           btrim(coalesce(t.x->>'title', '')) AS title, btrim(coalesce(t.x->>'units', '')) AS units,
+                           upper(btrim(coalesce(t.x->>'kind', ''))) AS kind, btrim(coalesce(t.x->>'semester', '')) AS semester
+                      FROM jsonb_array_elements(CAST(:rows AS jsonb)) WITH ORDINALITY AS t(x, ord)),
+                p AS (
+                    SELECT r.*, (SELECT g.code FROM ref.programme g
+                                  WHERE g.category = 'POST GRADUATE' AND (upper(g.code) = upper(r.prog_in) OR upper(g.name) = upper(r.prog_in))
+                                  ORDER BY g.archived, g.code LIMIT 1) AS prog
+                      FROM r),
+                q AS (
+                    SELECT p.*, coalesce(catalogue.resolve_course_code(p.code_in), p.code_in) AS code, g.name AS prog_name, g.dept_code,
+                           admissions.pg_award_level(g.pg_award) AS lvl
+                      FROM p LEFT JOIN ref.programme g ON g.code = p.prog)
+                SELECT q.ord, q.prog_in, q.prog, q.prog_name, q.dept_code, q.code, q.title, q.units, q.kind, q.semester, q.lvl,
+                       c.title AS pool_title, c.level AS pool_level, c.state AS pool_state, d.name AS pool_dept,
+                       EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = q.code AND co.programme_code = q.prog) AS bound
+                  FROM q LEFT JOIN catalogue.course c ON c.code = q.code LEFT JOIN ref.department d ON d.code = c.dept_code
+                 ORDER BY q.ord
+                """).param("rows", json(body.rows())).query().listOfRows();
+        String dept = hodDept();
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        for (String k : List.of("NEW_COURSE", "EXISTING_COURSE", "ALREADY_BOUND", "NO_PROGRAMME", "OUTSIDE_DEPARTMENT", "BAD_CODE", "SKIPPED")) counts.put(k, 0);
+        for (Map<String, Object> r : read) {
+            String code = str(r.get("code"));
+            String kind = str(r.get("kind"));
+            if (!List.of("CORE", "ELECTIVE", "DEFICIENCY", "RESEARCH").contains(kind)) kind = "CORE";
+            String outcome;
+            String message;
+            if (str(r.get("prog_in")).isBlank() || code.isBlank() || str(r.get("title")).isBlank()) {
+                outcome = "SKIPPED"; message = "A row needs the programme, the course code and the title";
+            } else if (r.get("prog") == null) {
+                outcome = "NO_PROGRAMME"; message = "\"" + r.get("prog_in") + "\" is not a postgraduate programme on record";
+            } else if (dept != null && !dept.equalsIgnoreCase(str(r.get("dept_code")))) {
+                outcome = "OUTSIDE_DEPARTMENT"; message = r.get("prog_name") + " is another department's programme";
+            } else if (!code.matches("^[A-Z][A-Z0-9 /-]{2,19}$")) {
+                outcome = "BAD_CODE"; message = code + " is not a course code";
+            } else if (Boolean.TRUE.equals(r.get("bound"))) {
+                outcome = "ALREADY_BOUND"; message = "Already in " + r.get("prog_name") + "; its type becomes " + kind.charAt(0) + kind.substring(1).toLowerCase();
+            } else if (r.get("pool_title") != null) {
+                outcome = "EXISTING_COURSE";
+                message = "Existing course found: " + code + " — " + r.get("pool_title") + " (" + (r.get("pool_dept") == null ? "no department" : r.get("pool_dept")) + ", "
+                        + r.get("pool_level") + " level), bound to " + r.get("prog_name") + " as it is"
+                        + ("ENDED".equals(r.get("pool_state")) ? "; it has ended — restore it before students can register it" : "")
+                        + (r.get("pool_level") != null && ((Number) r.get("pool_level")).intValue() < 700 ? "; an undergraduate-level course" : "");
+            } else {
+                outcome = "NEW_COURSE"; message = "A new course of the pool at " + r.get("lvl") + " level, bound to " + r.get("prog_name");
+            }
+            counts.merge(outcome, 1, Integer::sum);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("row", r.get("ord"));
+            row.put("programme", r.get("prog_name") == null ? r.get("prog_in") : r.get("prog_name"));
+            row.put("programmeCode", r.get("prog"));
+            row.put("code", code);
+            row.put("title", r.get("title"));
+            row.put("units", r.get("units"));
+            row.put("kind", kind);
+            row.put("level", r.get("lvl"));
+            row.put("outcome", outcome);
+            row.put("message", message);
+            rows.add(row);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", read.size());
+        out.put("counts", counts);
+        out.put("willWrite", counts.get("NEW_COURSE") + counts.get("EXISTING_COURSE") + counts.get("ALREADY_BOUND"));
+        out.put("rows", rows);
+        return out;
+    }
+
+    private String json(Object o) {
+        try {
+            return new tools.jackson.databind.ObjectMapper().writeValueAsString(o);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("the rows could not be read", e);
+        }
+    }
+
     /** bulk-upload the postgraduate course catalogue from a spreadsheet (desk). Each row names the
      *  programme (its code or its name), the course code, the title, units, kind and semester; it upserts
      *  on (programme, code), so a re-upload updates rather than duplicates. */

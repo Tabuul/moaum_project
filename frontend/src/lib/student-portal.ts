@@ -56,6 +56,8 @@ export interface MenuItem {
   deferred?: boolean; deferred_from?: string | null;
   /** V314: a GST/EPS course the unpaid GST fee locks, and the reason */
   gstLocked?: boolean; gstGate?: string | null;
+  /** V482: the prerequisites not yet passed; locked where the Academic Office enforces prerequisites */
+  prerequisitesUnmet?: string; prerequisiteLocked?: boolean;
 }
 /** GST & EPS (V314): the fee the Bursar stated for the student and whether a confirmed payment covers it */
 export interface GstEntitlement {
@@ -87,12 +89,18 @@ export interface RegistrationView {
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
   /** V402/V413: the code family the student's cohort registers (BSU or MOAU), null while the rule is unstated */
   codeFamily?: "BSU" | "MOAU" | null;
+  /** V482: ADVISORY (prerequisites shown) or ENFORCED (the engine refuses a course whose prerequisite is not passed) */
+  prerequisiteMode?: "ADVISORY" | "ENFORCED" | string;
+  /** V483: a postgraduate student's specialisation ("MON — Monetary Economics"), null when none is set */
+  specialisation?: string | null;
   /** V314: the GST fee's word on this student */
   gst?: GstEntitlement;
   /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */
   window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean; portal?: PortalWindow;
     /** V380: a student of the Centre for Continuing Education: the door is the CCE calendar and the CCE window */
-    cce?: boolean };
+    cce?: boolean;
+    /** V389: a postgraduate student: the door is the School's calendar and the postgraduate window */
+    pg?: boolean };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
   /** the highest open semester of the session; the student may also register any earlier one */

@@ -389,6 +389,7 @@ class CourseOfferingController {
         may.put("actingDept", mine == null ? "" : mine);
         may.put("changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office));
         may.put("ticket", StructureAccess.ticketOffice());
+        may.put("deptDesk", !special);                       // the department's own courses desk is the academic offices'; the School and the desk work the structure
         out.put("may", may);
         return out;
     }

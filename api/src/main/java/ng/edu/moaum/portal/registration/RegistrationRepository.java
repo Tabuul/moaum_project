@@ -21,6 +21,23 @@ class RegistrationRepository {
     record RegistrationRow(UUID id, UUID studentId, String session, int semester, int level, String status, String studentStatus) {
     }
 
+    /** V482: the prerequisite rule in force (ADVISORY or ENFORCED), who set it, when and why, and how many prerequisites are recorded */
+    java.util.Map<String, Object> prerequisitePolicy() {
+        return jdbc.sql("""
+                SELECT registration.prerequisite_mode() AS mode, p.changed_at, p.changed_office, p.reason,
+                       CASE WHEN pe.id IS NULL THEN NULL ELSE pe.surname || ', ' || pe.given_names END AS changed_by,
+                       (SELECT count(*) FROM catalogue.course_prerequisite) AS recorded,
+                       (SELECT count(DISTINCT q.course_code) FROM catalogue.course_prerequisite q) AS courses
+                  FROM (SELECT 1) one
+                  LEFT JOIN registration.prerequisite_policy p ON true
+                  LEFT JOIN iam.person pe ON pe.id = p.changed_by
+                """).query().singleRow();
+    }
+
+    String setPrerequisiteMode(String mode, String reason) {
+        return jdbc.sql("SELECT registration.set_prerequisite_mode(:m, :r)").param("m", mode).param("r", reason).query(String.class).single();
+    }
+
     /** the student told of a decision on their registration (V286): email and SMS where the record has them */
     void tellStudent(UUID student, String subject, String body, String sms) {
         jdbc.sql("""

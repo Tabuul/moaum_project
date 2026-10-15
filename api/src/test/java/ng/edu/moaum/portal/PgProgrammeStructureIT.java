@@ -101,6 +101,28 @@ class PgProgrammeStructureIT {
         ugDept = String.valueOf(u.get("dept_code"));
     }
 
+    /** Oct 2026: the School's course upload is shown row by row before anything is written — a new course, a course the pool
+     *  holds (bound as it is), a programme that is not a postgraduate programme on record */
+    @Test
+    void theCourseUploadIsPreviewedRowByRowBeforeAnythingIsWritten() {
+        String sec = office("pgsecretary", "PRV" + tag);
+        String fresh = newCode(8);
+        String pooled = newCode(8);
+        while (pooled.equals(fresh)) pooled = newCode(8);
+        course(pooled, 800, pgDept);
+        Map<String, Object> pv = ok(it.call(sec, HttpMethod.POST, "/api/v1/pg/coursework/courses/import/preview", Map.of("rows", List.of(
+                Map.of("programme", pg, "code", fresh, "title", "Preview new " + tag, "units", "3", "kind", "Core", "semester", "1"),
+                Map.of("programme", pg, "code", pooled, "title", "Another title", "units", "3", "kind", "Elective", "semester", "1"),
+                Map.of("programme", "No such programme " + tag, "code", fresh, "title", "Preview", "units", "3", "kind", "Core", "semester", "1"),
+                Map.of("programme", ug, "code", fresh, "title", "Preview", "units", "3", "kind", "Core", "semester", "1")))));
+        assertThat(l(pv.get("rows")).stream().map(r -> r.get("outcome")).toList()).containsExactly("NEW_COURSE", "EXISTING_COURSE", "NO_PROGRAMME", "NO_PROGRAMME");
+        assertThat(String.valueOf(l(pv.get("rows")).get(1).get("message"))).startsWith("Existing course found: " + pooled);
+        assertThat(pv.get("willWrite")).isEqualTo(2);
+        // nothing written by the preview
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", fresh).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.pg_course WHERE code IN (:a, :b)").param("a", fresh).param("b", pooled).query(Long.class).single()).isZero();
+    }
+
     @Test
     void theSchoolKeepsItsProgrammesStructuresOnTheOnePool() {
         String sec = office("pgsecretary", "SEC" + tag);

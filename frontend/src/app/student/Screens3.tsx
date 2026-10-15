@@ -156,16 +156,17 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   }
 
   const pick = (m: RegistrationView["menu"][number], fixed: boolean, on: boolean, red = false) => (
-    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked}
-      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
-      title={m.gstLocked ? "Locked until the GST fee is paid" : undefined}
-      onClick={() => { if (fixed || locked || m.gstLocked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
+    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked || (!!m.prerequisiteLocked && !on)}
+      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked || (m.prerequisiteLocked && !on) ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
+      title={m.gstLocked ? "Locked until the GST fee is paid" : m.prerequisiteLocked ? `Pass ${m.prerequisitesUnmet} first` : m.prerequisitesUnmet ? `Prerequisite not yet passed: ${m.prerequisitesUnmet}` : undefined}
+      onClick={() => { if (fixed || locked || m.gstLocked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else if (m.prerequisiteLocked) return; else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
       <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       {m.basis === "Research" || m.basis === "Deficiency" ? <Pil kind={m.basis === "Research" ? "ok" : "warn"}>{m.basis}</Pil> : null}
       {m.gstLocked ? <Pil kind="bad">GST fee required</Pil> : null}
+      {m.prerequisitesUnmet ? <Pil kind={m.prerequisiteLocked ? "bad" : "warn"}>{`Needs ${m.prerequisitesUnmet}`}</Pil> : null}
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
   );
@@ -263,6 +264,9 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
           <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
       ) : null}
+      {v.window?.pg ? (
+        <div className="sub2 mb-2">{v.specialisation ? <>Your specialisation: <b>{v.specialisation}</b>. The courses listed are your programme&rsquo;s for every student and those of your specialisation.</> : "No specialisation is set for you: the courses listed are your programme's for every student. The School of Postgraduate Studies sets a specialisation."}</div>
+      ) : null}
       {v.codeFamily ? (
         <div className="sub2 mb-2">Your cohort registers <b>{v.codeFamily}-</b> course codes{v.codeFamily === "BSU" ? " until you graduate; a carry-over keeps the code it was failed under" : ""}. Where a course is listed under one code only, that is the one to take.</div>
       ) : null}
@@ -270,6 +274,12 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
           Pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} to register GST/EPS courses. One payment covers GST and EPS.
           {v.gst.state === "PENDING" ? " A reference is open; the courses unlock when it is confirmed." : ""}
+        </Note>
+      ) : null}
+      {!locked && v.menu.some((m) => m.prerequisiteLocked) ? (
+        <Note kind="info" title="Prerequisites not yet passed">
+          A course marked &ldquo;Needs&rdquo; is locked until a pass in the course it names is published on your record. If you passed it and the result
+          is not yet published, or you were exempted, ask your department; ICT Support can add the course on your ticket.
         </Note>
       ) : null}
       {!locked ? (<>

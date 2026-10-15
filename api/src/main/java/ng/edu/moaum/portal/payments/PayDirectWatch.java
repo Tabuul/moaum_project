@@ -5,13 +5,21 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.JobLock;
+
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * V433: the PAYDirect door watched. Every quarter of an hour the database judges the door's silence against its own rhythm
  * (finance.watch_paydirect) and, once per silence, tells the Directorate of ICT and the Bursary through the notification
  * engine. One instance runs it at a time (JobLock); the office may run it now from the Gateways screen. V477: with it, the
- * Pay on Quickteller payments Interswitch has not reported after a day are told to the Bursary once a day.
+ * Pay on Quickteller payments Interswitch has not reported after a day are told to the Bursary once a day. V481: after each
+ * minute's sweep, payments Interswitch reported and still not settled past ten minutes are told to the Bursary and the
+ * Directorate of ICT, at most once an hour (finance.watch_paydirect_inbox).
  */
 @Component
 public class PayDirectWatch {
@@ -20,10 +28,14 @@ public class PayDirectWatch {
 
     private final JobLock lock;
     private final PaymentsService payments;
+    private final JdbcClient jdbc;
+    private final TransactionTemplate tx;
 
-    PayDirectWatch(JobLock lock, PaymentsService payments) {
+    PayDirectWatch(JobLock lock, PaymentsService payments, JdbcClient jdbc, PlatformTransactionManager transactions) {
         this.lock = lock;
         this.payments = payments;
+        this.jdbc = jdbc;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     @Scheduled(fixedDelayString = "${moaum.paydirect.watch-every-ms:900000}", initialDelayString = "${moaum.paydirect.watch-initial-ms:90000}")
@@ -43,6 +55,16 @@ public class PayDirectWatch {
                 }
             } catch (RuntimeException e) {
                 LOG.warn("payments: the PAYDirect sweep did not run: {}", e.getMessage());
+            }
+            // V481: what the sweep could not settle, told (the event key keeps it to once an hour)
+            try {
+                Integer told = AuditContextHolder.with(new AuditContext(PaymentsService.NOBODY, "ict", "Pay on Quickteller payments not settled", null, null),
+                        () -> tx.execute(st -> jdbc.sql("SELECT finance.watch_paydirect_inbox()").query(Integer.class).single()));
+                if (told != null && told > 0) {
+                    LOG.warn("payments: Pay on Quickteller payments reported and not settled; {} message(s) queued to the Bursary and the Directorate of ICT", told);
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("payments: the unsettled Pay on Quickteller watch did not run: {}", e.getMessage());
             }
         });
     }

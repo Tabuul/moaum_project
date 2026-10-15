@@ -1,6 +1,6 @@
 "use client";
 
-import { notifyProblem } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate course catalogue (V211): the department / School defines the courses each programme
  * carries — a three-letter prefix and a 700/800/900 number, the units, and whether the course is core,
@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -18,6 +18,13 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 interface Prog { code: string; name: string; faculty_name: string; department_name: string }
 interface Course { id: string; code: string; title: string; units: number; kind: string; semester: number; active: boolean }
 interface AllCourse extends Course { programme_code: string; programme_name: string; faculty_name: string }
+/** Oct 2026: what the upload would do, row by row, before anything is written */
+interface PreviewRow { row: number; programme: string; programmeCode: string | null; code: string; title: string; units: string; kind: string; level: number | null; outcome: string; message: string }
+interface Preview { total: number; counts: Record<string, number>; willWrite: number; rows: PreviewRow[] }
+const OUTCOME: Record<string, [string, "ok" | "info" | "warn" | "bad" | "grey"]> = {
+  NEW_COURSE: ["New course", "ok"], EXISTING_COURSE: ["Existing course found", "info"], ALREADY_BOUND: ["Already in the programme", "grey"],
+  NO_PROGRAMME: ["No such programme", "bad"], OUTSIDE_DEPARTMENT: ["Another department's", "bad"], BAD_CODE: ["Not a course code", "bad"], SKIPPED: ["Incomplete row", "bad"],
+};
 
 const KIND: Record<string, string> = { CORE: "Core", ELECTIVE: "Elective", DEFICIENCY: "Deficiency", RESEARCH: "Research" };
 const KIND_PILL: Record<string, "info" | "grey" | "ok" | "warn"> = { CORE: "info", ELECTIVE: "grey", RESEARCH: "ok", DEFICIENCY: "warn" };
@@ -31,6 +38,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
   const [busy, setBusy] = useState(false);
   const [busyUp, setBusyUp] = useState(false);
   const [upResult, setUpResult] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ rows: Record<string, string>[]; result: Preview } | null>(null);
   const [f, setF] = useState({ code: "", title: "", units: "3", kind: "CORE", semester: "1" });
 
   useEffect(() => {
@@ -116,6 +124,25 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
         if (o.programme && o.code && o.title) rows.push(o);
       }
       if (!rows.length) { setProblem({ status: 400, title: "No course rows to read.", detail: "Fill the template (delete the example row) and upload it." }); notifyProblem({ status: 400, title: "No course rows to read.", detail: "Fill the template (delete the example row) and upload it." }); return; }
+      // Oct 2026: shown first, row by row; written only when the preview is confirmed
+      const pv = await fetch("/api/bff/api/v1/pg/coursework/courses/import/preview", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG course catalogue previewed: ${rows.length} rows`) },
+        body: JSON.stringify({ rows }),
+      });
+      const pj = await pv.json().catch(() => null);
+      if (!pv.ok) { setProblem(pj && typeof pj === "object" && "status" in pj ? (pj as Problem) : { status: pv.status, title: pv.statusText }); notifyProblem(pj && typeof pj === "object" && "status" in pj ? (pj as Problem) : { status: pv.status, title: pv.statusText }); return; }
+      setPreview({ rows, result: pj as Preview });
+    } catch {
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." });
+    } finally { setBusyUp(false); }
+  }
+
+  /** the previewed rows written: each course bound into its programme's structure on the University's course pool */
+  async function confirmUpload() {
+    if (!preview) return;
+    const rows = preview.rows;
+    setBusyUp(true); setProblem(null);
+    try {
       const res = await fetch("/api/bff/api/v1/pg/coursework/courses/import", {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG course catalogue uploaded: ${rows.length} rows`) },
         body: JSON.stringify({ rows }),
@@ -124,10 +151,10 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
       const c = j as { rows: number; created: number; updated: number; no_programme: number; skipped: number };
       setUpResult(`${c.created} course${c.created === 1 ? "" : "s"} added, ${c.updated} updated${c.no_programme ? ` · ${c.no_programme} row${c.no_programme === 1 ? "" : "s"} had a programme that did not match one on record` : ""}${c.skipped ? ` · ${c.skipped} skipped` : ""}.`);
+      notify("PG course catalogue imported");
+      setPreview(null);
       if (programme) await loadCourses(programme);
       await loadAll();
-    } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." });
     } finally { setBusyUp(false); }
   }
 
@@ -165,6 +192,33 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
             </div>
             {upResult ? <div className="mt-3"><Note kind="ok" title="Course catalogue uploaded">{upResult}</Note></div> : null}
           </PBody>
+        </Panel>
+      ) : null}
+
+      {preview ? (
+        <Panel title="Upload preview" right="Nothing has been written">
+          <PBody>
+            <Tiles cls="grid--4" items={[
+              ["Rows", String(preview.result.total), null, "In the file"],
+              ["New courses", String(preview.result.counts.NEW_COURSE ?? 0), "var(--green-ink)", "Added to the University's course pool and bound"],
+              ["Existing courses found", String((preview.result.counts.EXISTING_COURSE ?? 0) + (preview.result.counts.ALREADY_BOUND ?? 0)), null, `${preview.result.counts.ALREADY_BOUND ?? 0} already in their programme · no second record made`],
+              ["Refused", String(preview.result.total - preview.result.willWrite), preview.result.total - preview.result.willWrite ? "var(--red-ink)" : null, "Not written"],
+            ]} />
+            <div className="row mt-2">
+              <Btn kind="go" disabled={busyUp || !preview.result.willWrite} busyLabel="Importing…" onClick={() => confirmUpload()}>{`Import ${preview.result.willWrite} row${preview.result.willWrite === 1 ? "" : "s"}`}</Btn>
+              <Btn kind="ghost" disabled={busyUp} onClick={() => setPreview(null)}>Cancel</Btn>
+              <span className="sub2">An existing course is bound as it is: its title and units stay the pool&rsquo;s. Refused rows are not written.</span>
+            </div>
+          </PBody>
+          <DTable cols={["S/N|num", "Programme", "Course", "Type|mid", "Level|mid", "Outcome|mid", "What happens"]} rows={preview.result.rows.map((r, i) => [
+            <span key="n" className="tnum sub2">{i + 1}</span>,
+            <span key="p">{r.programme}<div className="sub2 tnum">{r.programmeCode ?? ""}</div></span>,
+            <span key="c"><b className="tnum">{r.code}</b><div className="sub2">{r.title}</div></span>,
+            <span key="k" className="sub2">{KIND[r.kind] ?? r.kind}</span>,
+            <span key="l" className="tnum">{r.level ?? ""}</span>,
+            <Pil key="o" kind={OUTCOME[r.outcome]?.[1] ?? "grey"}>{OUTCOME[r.outcome]?.[0] ?? r.outcome}</Pil>,
+            <span key="m" className="sub2">{r.message}</span>,
+          ])} texts={preview.result.rows.map((r) => `${r.programme} ${r.code} ${r.title} ${r.outcome}`)} />
         </Panel>
       ) : null}
 

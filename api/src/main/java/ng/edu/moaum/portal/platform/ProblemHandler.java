@@ -115,6 +115,15 @@ class ProblemHandler {
             }
             return problem;
         }
+        if ("57014".equals(state)) {
+            // Oct 2026: a screen's read cut short at the limit (AttributedTransactionManager), so it never holds a connection for minutes
+            ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE,
+                    "This took longer than the portal allows a screen to read, and was stopped so other work is not kept waiting.", request);
+            problem.setProperty("code", "QUERY_TOO_LONG");
+            problem.setProperty("remedy", Map.of("message", "Narrow the list (a session, a faculty, a department) and try again; if it recurs, tell the Directorate of ICT which screen.",
+                    "office", "Directorate of ICT"));
+            return problem;
+        }
         if ("23505".equals(state) || "23503".equals(state)) {
             ProblemDetail problem = problem(HttpStatus.CONFLICT, message, request);
             problem.setProperty("code", "23505".equals(state) ? "ALREADY_EXISTS" : "REFERENCE_MISSING");
