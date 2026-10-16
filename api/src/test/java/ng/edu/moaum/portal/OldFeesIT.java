@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -36,10 +37,18 @@ class OldFeesIT {
     PlatformTransactionManager transactions;
 
     ItSupport it;
+    /** the run's own session: its fee line applies to every student of the programme, so it is taken away after the test (a
+     *  planned session with fees stated is the session a later test's student reads by default — StudentPortalIT, PortalWindowsIT) */
+    String ses;
 
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+    }
+
+    @AfterEach
+    void clean() {
+        if (ses != null) it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", ses).update());
     }
 
     private static Map<String, Object> row(String number, String session, String semester, String amount, String item, String paidOn, String payref) {
@@ -63,7 +72,7 @@ class OldFeesIT {
         Random random = new Random();
         String tag = String.format("%04d", random.nextInt(10_000));
         int year = 2140 + random.nextInt(60);
-        String ses = year + "/" + (year + 1);
+        ses = year + "/" + (year + 1);
         it.session(ses, year);
         UUID student = it.student("ZZOLDFEES" + tag, "C00023", "MOAUM/ADM/88/88" + tag, "MOAUM/OFH/88/" + tag, 100);
         // the numbers the student carries (one an earlier run made is found again by name, with that run's numbers)
