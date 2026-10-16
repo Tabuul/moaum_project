@@ -148,8 +148,10 @@ class PortalAuditIT {
         // another card's number under this card's code fails too
         Map<?, ?> swapped = it.get(any, u -> u.path("/api/v1/verify/idcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo + "1", code)).getBody();
         assertThat(swapped.get("genuine")).isEqualTo(false);
-        // the desk prints the card in force with that same address; a lecturer reads no card
-        Map<?, ?> deskCard = it.get(ItSupport.token("registrar"), "/api/v1/credentials/identity-cards/students/" + st + "/card").getBody();
+        // the desk prints the card in force with that same address — the Security Unit's print (GAP-005), not the Registry's; a
+        // lecturer reads no card
+        assertThat(it.get(ItSupport.token("registrar"), "/api/v1/credentials/identity-cards/students/" + st + "/card").getStatusCode().value()).isEqualTo(403);
+        Map<?, ?> deskCard = it.get(ItSupport.token("security"), "/api/v1/credentials/identity-cards/students/" + st + "/card").getBody();
         assertThat(deskCard.get("verify_path")).isEqualTo(path);
         assertThat(deskCard.get("card_no")).isEqualTo(cardNo);
         assertThat(it.get(any, "/api/v1/credentials/identity-cards/students/" + st + "/card").getStatusCode().value()).isEqualTo(403);
