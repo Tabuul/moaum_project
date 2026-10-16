@@ -126,6 +126,29 @@ class MeController {
         return portal.addCourse(id(auth), body.session(), body.semester(), body.offering());
     }
 
+    /** V504: Add Other Course — the courses a search finds, each judged by the engine for the signed-in student and semester */
+    @GetMapping("/registration/courses")
+    Map<String, Object> searchCourses(Authentication auth, @RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester,
+                                      @RequestParam(required = false) String q, @RequestParam(required = false) Integer level,
+                                      @RequestParam(required = false) String dept, @RequestParam(required = false) String faculty,
+                                      @RequestParam(required = false) String category, @RequestParam(defaultValue = "0") int page) {
+        if (semester < 1 || semester > 3) semester = 1;
+        return portal.searchCourses(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester,
+                q, level, dept, faculty, category, page);
+    }
+
+    /** V504: the departments and faculties the search narrows to */
+    @GetMapping("/registration/courses/filters")
+    Map<String, Object> searchFilters() {
+        return portal.searchFilters();
+    }
+
+    /** V504: the student adds a course the search found; the engine judges it, and refuses with its reason */
+    @PostMapping("/registration/courses")
+    Map<String, Object> addOtherCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
+        return portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering());
+    }
+
     /** drop a non-carryover course from a registration during the add/drop window */
     @PostMapping("/registration/drop")
     Map<String, Object> dropCourse(Authentication auth, @Valid @RequestBody AddDrop body) {

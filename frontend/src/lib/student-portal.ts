@@ -47,7 +47,10 @@ export interface Semester { session: string; semester: number; units: number; gp
   /** the level the student was at in that semester (V330), not today's */
   level?: number }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
-export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; basis?: string; lecturer?: string | null; courseSemester?: number }
+export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; basis?: string; lecturer?: string | null; courseSemester?: number;
+  /** V504: the category the University orders by (registration.entry_category), what a course the student added beside the
+   *  recommended list was added as, and whether the student added it */
+  category?: import("./course-order").CourseCategory; addedAs?: string | null; studentAdded?: boolean }
 export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null;
   /** V491: how it was approved — HOD, AUTO (by the rule), or null for an earlier approval */
   approval_mode?: "HOD" | "AUTO" | null }
@@ -117,7 +120,26 @@ export interface RegistrationView {
   registeredSemesters?: number[];
   /** true when this is the SIWES / industrial-training semester (only the SIWES course, no carryovers) */
   siwes?: boolean;
+  /** V504: the carry-overs as the published results state them, each with its class this semester or the semester it runs in */
+  outstanding?: OutstandingCourse[];
+  /** V504: the rule on adding courses beside the recommended list */
+  flex?: FlexRule;
 }
+/** V504: a carry-over (a published F or recorded absence not since passed — no result is never one) */
+export interface OutstandingCourse {
+  course_code: string; title: string; units: number; failed_in: string; course_level: number | null; course_semester: number | null;
+  offering_id: string | null; on_registration: boolean; runs_in: string | null;
+}
+/** V504: whether students add other courses (ON), how wide, and whether a higher level's course may be added (OFF) */
+export interface FlexRule { allow_other_courses: boolean; other_scope: "PROGRAMME" | "DEPARTMENT" | "FACULTY" | string; allow_higher_levels: boolean }
+/** V504: a course the Add Other Course search found, judged by the engine for the student and semester */
+export interface FoundCourse {
+  offering_id: string | null; course_code: string; title: string; units: number; kind: string; level: number; course_semester: number;
+  dept_code: string | null; department: string | null; faculty_code: string | null;
+  category: import("./course-order").CourseCategory | null; added_as: string | null; why: string | null; refusal: string | null;
+  on_registration: boolean; recommended: boolean | null;
+}
+export interface CourseSearch { session: string; semester: number; page: number; size: number; total: number; results: FoundCourse[]; needsTerm: boolean; flex: FlexRule }
 export interface ResultRow {
   session: string; semester: number; course_code: string; title: string; units: number; entry_type: string; stage: string;
   published: boolean; published_at: string | null; senate_minute: string | null;

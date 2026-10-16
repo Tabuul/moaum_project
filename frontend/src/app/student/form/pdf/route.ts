@@ -3,6 +3,7 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
+import { CATEGORY_LABEL, courseCategory, inUniversityOrder } from "@/lib/course-order";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, regVerifyPath, studentCheckCode } from "@/lib/qr";
@@ -22,21 +23,12 @@ function originOf(req: Request): string {
   try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
 }
 
-/** GST / Elective / Core (Core/Required → Core) */
-/** display order: carryover first, then GST, then Core, then Elective */
-function orderRank(e: Entry): number {
-  if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
-  const t = courseType(e);
-  return t === "GST" ? 1 : t === "Core" ? 2 : 3;
-}
-
+/** V504: the type printed — the category the University orders by (registration.entry_category), a postgraduate research or
+ *  deficiency course by its own name */
 function courseType(e: Entry): string {
-  const k = (e.kind ?? "").toLowerCase();
-  if (k === "gst") return "GST";
-  if (k === "elective") return "Elective";
-  if (k === "core" || k === "compulsory" || k === "required") return "Core";
-  const t = (e.entryType ?? "").toUpperCase();
-  return t === "GST" ? "GST" : t === "ELECTIVE" ? "Elective" : "Core";
+  if (e.basis === "Research" || e.basis === "Deficiency") return e.basis;
+  if (e.entryType === "DEFERRED") return "Deferred";
+  return CATEGORY_LABEL[courseCategory(e)];
 }
 
 /** the course registration form as a PDF: what the Head of Department approved, with the student's passport */
@@ -85,18 +77,21 @@ export async function GET(request: NextRequest) {
   }
   y = Math.min(y, ptop - ph) - 10;
 
-  // ── table: code · course title · unit · type, carryovers first ──
-  const codeX = L + 8, titleX = L + 104, unitX = A4.w - L - 92, typeX = A4.w - L - 46;
+  // ── table: S/N · code · course title · unit · type, in the University's order (V504: carry-over, GST, core, elective) ──
+  const snX = L + 8, codeX = L + 30, titleX = L + 120, unitX = A4.w - L - 92, typeX = A4.w - L - 52;
   p.fill(L, y - 4, A4.w - 2 * L, 18, 0.2);
+  p.text(snX, y, "S/N", 8, true, [1, 1, 1]);
   p.text(codeX, y, "CODE", 8, true, [1, 1, 1]);
   p.text(titleX, y, "COURSE TITLE", 8, true, [1, 1, 1]);
   p.text(unitX, y, "UNIT", 8, true, [1, 1, 1]);
   p.text(typeX, y, "TYPE", 8, true, [1, 1, 1]);
   y -= 22;
-  for (const e of [...reg.entries].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""))) {
+  let sn = 0;
+  for (const e of inUniversityOrder(reg.entries.filter((x) => x.status !== "DROPPED" && x.status !== "WITHDRAWN"))) {
     const co = e.entryType === "CARRYOVER";
+    p.text(snX, y, String(++sn), 9, false, [0.35, 0.35, 0.35]);
     p.text(codeX, y, clean(e.courseCode), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
-    p.text(titleX, y, cut(clean(e.title), 44), 9, false, [0.2, 0.2, 0.2]);
+    p.text(titleX, y, cut(clean(e.title), 42), 9, false, [0.2, 0.2, 0.2]);
     p.text(unitX, y, String(e.units), 9);
     p.text(typeX, y, courseType(e), 8.5, true, [0.35, 0.35, 0.35]);
     if (co) p.text(codeX, y - 8, "carryover", 6.5, false, [0.72, 0.11, 0.11]);

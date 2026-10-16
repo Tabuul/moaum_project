@@ -480,6 +480,10 @@ public class StudentPortalService {
         }
         out.put("prerequisiteMode", prerequisiteMode);
         out.put("menu", menu);
+        // V504: the carry-overs as the published results state them (one not offered this semester says when it runs), and the
+        // rule on adding courses beside the recommended list
+        out.put("outstanding", repo.outstanding(id, session, semester));
+        out.put("flex", repo.flexRule());
         out.put("codeFamily", repo.codeFamily(id));   // V402/V413: the cohort's code family, named on the screen
         out.put("specialisation", repo.specialisation(id));   // V483: a postgraduate student's specialisation, which decides some courses
         out.put("gst", repo.gstEntitlement(id, session));
@@ -567,6 +571,72 @@ public class StudentPortalService {
         assertWindowOpen(id, session, semester);
         repo.addCourse(id, session, semester, offering);
         return registrationView(id, session, semester);
+    }
+
+    static final java.util.Set<String> COURSE_CATEGORIES = java.util.Set.of("CARRY_OVER", "GST", "CORE", "ELECTIVE");
+    static final int COURSE_PAGE = 20;
+
+    /** V504: the Add Other Course search — the courses a code or title, a level, a department or a faculty finds, each judged by
+     *  the engine for this student and semester: the category it is registered in and why, or why it is not available */
+    @Transactional(readOnly = true)
+    public Map<String, Object> searchCourses(UUID id, String session, int semester, String q, Integer level, String dept, String faculty,
+                                             String category, int page) {
+        student(id);
+        String term = q == null ? null : q.trim().replaceAll("\\s+", " ");
+        if (term != null && term.isEmpty()) term = null;
+        if (term != null && term.length() > 60) term = term.substring(0, 60);
+        String cat = category == null || category.isBlank() ? null : category.trim().toUpperCase();
+        if (cat != null && !COURSE_CATEGORIES.contains(cat)) {
+            throw new DomainRuleViolation("REG_SEARCH_CATEGORY", "A course is CARRY_OVER, GST, CORE or ELECTIVE.",
+                    new DomainRuleViolation.Remedy("Choose one of the categories, or none.", "Directorate of ICT"));
+        }
+        if (level != null && (level < 100 || level > 900 || level % 100 != 0)) {
+            throw new DomainRuleViolation("REG_SEARCH_LEVEL", "A level is 100 to 900.", new DomainRuleViolation.Remedy("Choose a level, or none.", "Directorate of ICT"));
+        }
+        String d = dept == null || dept.isBlank() ? null : dept.trim().toUpperCase();
+        String f = faculty == null || faculty.isBlank() ? null : faculty.trim().toUpperCase();
+        int p = Math.max(0, Math.min(page, 50));
+        List<Map<String, Object>> rows = repo.searchCourses(id, session, semester, term, level, d, f, cat, COURSE_PAGE, p * COURSE_PAGE);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("page", p);
+        out.put("size", COURSE_PAGE);
+        out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
+        out.put("results", rows.stream().map(r -> { Map<String, Object> m = new LinkedHashMap<>(r); m.remove("total"); return m; }).toList());
+        out.put("needsTerm", term == null && level == null && d == null && f == null && cat == null);
+        out.put("flex", repo.flexRule());
+        return out;
+    }
+
+    /** V504: the departments and faculties the search narrows to */
+    @Transactional(readOnly = true)
+    public Map<String, Object> searchFilters() {
+        return Map.of("departments", repo.searchDepartments(), "categories", List.of("CARRY_OVER", "GST", "CORE", "ELECTIVE"));
+    }
+
+    /** V504: the student adds a course found by the search — to the draft while the registration is being made, or by add and drop
+     *  once it is submitted or approved; the engine judges it (programme, level, semester, passed, awaited, prerequisites, GST fee)
+     *  and refuses with its reason; the window and the student's standing are the API's to check first */
+    @Transactional
+    public Map<String, Object> addOtherCourse(UUID id, String session, int semester, UUID offering) {
+        StudentPortalRepository.Student s = student(id);
+        if (!List.of("ADMITTED", "ACTIVE", "PROBATION").contains(s.status())) {
+            throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
+                    new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
+        }
+        assertWindowOpen(id, session, semester);
+        String status = repo.registration(id, session, semester).map(r -> String.valueOf(r.get("status"))).orElse("DRAFT");
+        Object added;
+        if (List.of("SUBMITTED", "APPROVED", "LOCKED").contains(status)) {
+            repo.addCourse(id, session, semester, offering);   // add and drop: its own window, clearance and unit ceiling
+            added = Map.of("added", true, "addDrop", true);
+        } else {
+            added = RESET_JSON.readValue(repo.addOther(id, session, semester, offering), Map.class);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
+        out.put("added", added);
+        return out;
     }
 
     @Transactional

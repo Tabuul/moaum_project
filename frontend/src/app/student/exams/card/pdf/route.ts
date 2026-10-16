@@ -7,6 +7,7 @@ import { A4, jpegSize } from "@/lib/pdf-write";
 import { examVerifyPath, studentCheckCode } from "@/lib/qr";
 import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardTableEnd, cardTableHead, cardVerify } from "@/lib/exam-card-pdf";
 import { semesterName } from "@/lib/student-portal";
+import { inUniversityOrder } from "@/lib/course-order";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
@@ -63,12 +64,15 @@ export async function GET(request: NextRequest) {
     details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${card.registration?.level ?? s.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
   });
 
-  const titleX = L + 92, unitX = A4.w - L - 150, signX = A4.w - L - 92;
-  cardTableHead(p, y, [[L + 8, "COURSE CODE"], [titleX, "COURSE TITLE"], [unitX, "UNIT"], [signX, "SIGN / INVIGILATOR"]]);
+  // V504: numbered, in the University's order — carry-over, GST, core, elective (lib/course-order, as registration.entry_rank)
+  const codeX = L + 30, titleX = L + 114, unitX = A4.w - L - 150, signX = A4.w - L - 92;
+  cardTableHead(p, y, [[L + 8, "S/N"], [codeX, "COURSE CODE"], [titleX, "COURSE TITLE"], [unitX, "UNIT"], [signX, "SIGN / INVIGILATOR"]]);
   y -= 19;
   const titleMax = Math.floor((unitX - titleX - 6) / 4.6);   // chars that fit the title column at 8.5pt
-  for (const e of card.courses) {
-    p.text(L + 8, y, clean(e.course_code), 9, true);
+  let sn = 0;
+  for (const e of inUniversityOrder(card.courses)) {
+    p.text(L + 8, y, String(++sn), 9);
+    p.text(codeX, y, clean(e.course_code), 9, true);
     p.text(titleX, y, cut(clean(e.title), titleMax), 8.5);
     p.text(unitX + 2, y, String(e.units), 9);
     if (barred.has(e.course_code)) p.text(signX, y, "BARRED: ATTENDANCE", 8, true, [0.6, 0.1, 0.1]);
@@ -84,9 +88,9 @@ export async function GET(request: NextRequest) {
   const check = await studentCheckCode("EXAM", session, semester);
   if (!check) return NextResponse.json({ status: 503, title: "The card's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
   const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
-  cardVerify(p, y, url, check.code);
+  const beside = cardVerify(p, y, url, check.code);
 
-  cardFooter(p, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`);
+  cardFooter(p, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`, beside.y, beside.x);   // beside the QR, above the document footer
 
   const bytes = finishPdf([p], `Exam card ${matric}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="exam-card-${session.replace("/", "-")}-${semester}.pdf"` } });

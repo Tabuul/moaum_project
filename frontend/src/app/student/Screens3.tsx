@@ -17,6 +17,8 @@ import { notify } from "@/components/proto/Toast";
 import { reasonWords } from "@/lib/registration-approval";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
+import { CATEGORY_LABEL, addedAsLabel, courseCategory, inUniversityOrder, type Categorised } from "@/lib/course-order";
+import { AddOtherCourse } from "./AddOtherCourse";
 
 /** the academic type shown on the form: GST, Elective or Core (Core/Required → Core).
  *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
@@ -39,15 +41,10 @@ function courseType(e: { kind?: string; basis?: string; entryType?: string }): s
   return "Core";
 }
 
-/** display order: carryover first, then GST, then Core, then Elective */
-function orderRank(e: { kind?: string; basis?: string; entryType?: string }): number {
-  if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
-  if ((e.entryType ?? "").toUpperCase() === "DEFERRED") return 0;
-  const t = courseType(e);
-  return t === "GST" ? 1 : t === "Core" ? 2 : 3;
-}
-function byOrder<T extends { kind?: string; entryType?: string; courseCode?: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""));
+/** V504: the University's order — carry-over (and deferred), then GST, then core, then elective — as the server sends it
+ *  (registration.entry_rank); lib/course-order keeps the server's order within a category */
+function byOrder<T extends Categorised>(rows: T[]): T[] {
+  return inUniversityOrder(rows);
 }
 
 export function Register({ s, v }: { s: Me; v: RegistrationView }) {
@@ -56,20 +53,36 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   // V491: where the Head's approval is suspended, a registration that passes the rules is approved on submission
   const auto = v.approval?.mode === "AUTO_APPROVAL";
   const [askReset, setAskReset] = useState(false);
+  const [adding, setAdding] = useState(false);
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
   const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
   const carry = v.menu.filter((m) => m.carryover && !m.deferred);
   const deferredCourses = v.menu.filter((m) => m.deferred);
   // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Core for
-  // its own department yet Elective for this programme (course_offer.basis). Core/GST are required here;
-  // everything else is an elective. GST (General Studies) is a University requirement.
-  const core = v.menu.filter((m) => !m.carryover && (m.basis === "Core" || m.basis === "GST"));
+  // its own department yet Elective for this programme (course_offer.basis). GST (General Studies) is a University requirement.
+  // V504: GST, core and elective in the University's order, each from the programme's own setup (registration.entry_category)
+  const menuCategory = (m: RegistrationView["menu"][number]) => courseCategory({ basis: m.basis, kind: m.kind });
   // V389: a postgraduate programme's research and deficiency courses are neither core nor electives
   const special = v.menu.filter((m) => !m.carryover && (m.basis === "Research" || m.basis === "Deficiency"));
-  const elec = v.menu.filter((m) => !m.carryover && !core.includes(m) && !special.includes(m));
-  const chosenTotal = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0)
-    + special.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
+  const gstCourses = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "GST");
+  const core = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "CORE");
+  const elec = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "ELECTIVE");
+  // V504: the courses the student added beside the recommended list (the engine judged each; saving judges them again)
+  const menuIds = new Set(v.menu.map((m) => m.offering_id));
+  const extras = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.studentAdded && !menuIds.has(e.offeringId)));
+  // V504: the carry-overs the published results state that are not on this semester's list, and why
+  const away = (v.outstanding ?? []).filter((o) => !v.menu.some((m) => m.carryover && m.course_code === o.course_code));
+  const chosenMenu = v.menu.filter((m) => !m.carryover && chosen.has(m.offering_id));
+  const chosenExtras = extras.filter((e) => chosen.has(e.offeringId));
+  const chosenTotal = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + chosenMenu.reduce((n, m) => n + m.units, 0)
+    + chosenExtras.reduce((n, e) => n + e.units, 0);
+  // V504: the selection as it will be registered, in the University's order, numbered on
+  const selected = byOrder<{ key: string; code: string; title: string; units: number; category: string; note: string | null }>([
+    ...v.menu.filter((m) => m.carryover || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: m.units,
+      category: courseCategory({ basis: m.carryover ? (m.deferred ? "Deferred" : "Carryover") : m.basis, kind: m.kind }), note: m.deferred ? "Deferred" : m.carryover ? "Carry-over" : null })),
+    ...chosenExtras.map((e) => ({ key: e.offeringId, code: e.courseCode, title: e.title, units: e.units, category: courseCategory(e), note: addedAsLabel(e.addedAs) ?? "Added by you" })),
+  ]);
   // a registration submitted or approved is read from itself, not from today's menu: a course whose binding changed after
   // approval, or one added on the student's behalf, is not on the menu, and the page then showed nothing ticked and
   // "0 units · Below minimum" under "Approved · 15 units"
@@ -276,6 +289,12 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                 ))}
               </>) : null}
               {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
+              {v.flex?.allow_other_courses !== false ? (
+                <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
+                  <span className="sub2 grow">A course not listed here — of your programme at another level, or a University GST/EPS course?</span>
+                  <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn>
+                </div>
+              ) : null}
             </PBody>
           </Panel>
         );
@@ -296,27 +315,36 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {locked ? (
         <Panel title="Your registered courses" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg!.units} units`}>
           <PBody>
-            {registered.length ? registered.map((e) => (
+            {registered.length ? registered.map((e, i) => (
               <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                <span className="tnum sub2" style={{ minWidth: 24 }}>{i + 1}</span>
                 <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
-                <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}</span>
-                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{courseType(e)}</Pil>
+                <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}{e.studentAdded ? <span className="sub2"> · {addedAsLabel(e.addedAs) ?? "added by you"}</span> : null}</span>
+                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : CATEGORY_LABEL[courseCategory(e)]}</Pil>
                 <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
               </div>
             )) : <div className="sub2">No course is on this registration.</div>}
           </PBody>
         </Panel>
       ) : null}
-      {!locked && deferredCourses.length ? (
-        <Panel title="Deferred / catch-up courses" right="from your approved deferment · added automatically, cannot be removed">
+      {!locked && (carry.length || deferredCourses.length || away.length) ? (
+        <Panel title={<span className="ink-red">CARRY-OVER / OUTSTANDING COURSES</span>} right={carry.length || deferredCourses.length ? "added automatically, cannot be removed" : "not offered this semester"}>
           <PBody>
-            <div className="sub2 mb-1">Courses of your deferred period, now due. They count in your GPA only when taken.</div>
+            {carry.map((m) => pick(m, true, true, true))}
+            {deferredCourses.length ? <div className="sub2 mb-1 mt-1">Courses of your deferred period, now due. They count in your GPA only when taken.</div> : null}
             {deferredCourses.map((m) => pick(m, true, true))}
+            {away.map((o) => (
+              <div key={o.course_code} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", opacity: 0.85 }}>
+                <div className="pick__box" />
+                <div className="grow"><div className="pick__t tnum">{o.course_code} — {o.title}</div>
+                  <div className="pick__s" style={{ color: "var(--red-deep)" }}>Failed {o.failed_in} — {o.offering_id ? (v.siwes ? "not registered in the SIWES semester" : "not open to you this semester; ask your department")
+                    : o.runs_in ? `not offered this semester; it runs in the ${o.runs_in} semester of ${v.session}` : `not offered in ${v.session} yet`}</div></div>
+                <Pil kind="warn">Outstanding</Pil>
+                <div className="tnum b700" style={{ color: "var(--muted)" }}>{o.units}</div>
+              </div>
+            ))}
+            <div className="sub2 mt-1">Carry-overs come only from published results: a course with no result, or a result still pending, is never a carry-over.</div>
           </PBody></Panel>
-      ) : null}
-      {!locked && carry.length ? (
-        <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
-          <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
       ) : null}
       {v.window?.pg ? (
         <div className="sub2 mb-2">{v.specialisation ? <>Your specialisation: <b>{v.specialisation}</b>. The courses listed are your programme&rsquo;s for every student and those of your specialisation.</> : "No specialisation is set for you: the courses listed are your programme's for every student. The School of Postgraduate Studies sets a specialisation."}</div>
@@ -337,9 +365,13 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         </Note>
       ) : null}
       {!locked ? (<>
-      <Panel title={`${v.level} Level Core Courses`}>
+      {gstCourses.length ? (
+        <Panel title="GST COURSES" right="University requirement">
+          <PBody>{gstCourses.map((m) => pick(m, false, chosen.has(m.offering_id)))}</PBody></Panel>
+      ) : null}
+      <Panel title={`${v.level} LEVEL CORE COURSES`}>
         <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet.</div>}</PBody></Panel>
-      <Panel title="Electives" right={<>choose to reach {min}–{max} units</>}>
+      <Panel title="ELECTIVE COURSES" right={<>choose to reach {min}–{max} units</>}>
         <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           </PBody></Panel>
       </>) : null}
@@ -347,6 +379,54 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <Panel title="Research and deficiency courses">
           <PBody>{special.map((m) => pick(m, false, chosen.has(m.offering_id)))}
             <div className="sub2 mt-2">A deficiency course earns no credit; register it where the School requires it of you.</div></PBody></Panel>
+      ) : null}
+      {!locked && !v.siwes ? (
+        <Panel title="ADD OTHER COURSES" right={v.flex?.allow_other_courses !== false ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn> : "closed for now"}>
+          <PBody>
+            <div className="sub2">{v.flex?.allow_other_courses !== false
+              ? <>A course not listed above — of your programme at another level{v.flex?.allow_higher_levels ? "" : " below yours"}, an elective, or a University GST/EPS course{v.flex?.other_scope === "FACULTY" ? ", or one of your faculty" : v.flex?.other_scope === "DEPARTMENT" ? ", or one of your department" : ""}? Search for it; the University&rsquo;s rules decide whether you may add it, and your registration is approved on the same rules.</>
+              : "The Academic Office has closed adding courses beside your recommended list for now."}</div>
+            {extras.map((e) => (
+              <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center" }}>
+                <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+                <span className="grow">{e.title} <span className="sub2">· {addedAsLabel(e.addedAs) ?? "added by you"}</span></span>
+                <Pil kind="grey">{CATEGORY_LABEL[courseCategory(e)]}</Pil>
+                <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
+                <Btn kind="ghost" size="sm" disabled={busy !== null} busy={busy === `remove-${e.offeringId}`} busyLabel="Removing..." onClick={async () => {
+                  const n = new Set(chosen); n.delete(e.offeringId);
+                  const j = await act(`remove-${e.offeringId}`, "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...n] }, `Course ${e.courseCode} removed by the student`, `${e.courseCode} removed`);
+                  if (j) setChosen(n);
+                }}>Remove</Btn>
+              </div>
+            ))}
+          </PBody>
+        </Panel>
+      ) : null}
+      {!locked ? (
+        <Panel title="SELECTED COURSES" right={`${selected.length} course${selected.length === 1 ? "" : "s"} · ${total} units`}>
+          {selected.length ? (
+            <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
+              <thead><tr><th className="mid">S/N</th><th>Course code</th><th>Course title</th><th className="mid">Units</th><th>Category</th></tr></thead>
+              <tbody>
+                {selected.map((x, i) => (
+                  <tr key={x.key}>
+                    <td className="mid tnum">{i + 1}</td>
+                    <td className="tnum b600">{x.code}</td>
+                    <td>{x.title}{x.note && x.category !== "CARRY_OVER" ? <div className="sub2">{x.note}</div> : null}</td>
+                    <td className="mid tnum">{x.units}</td>
+                    <td>{x.note === "Deferred" ? "Deferred" : CATEGORY_LABEL[courseCategory({ category: x.category })]}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: "var(--bg)" }}><td colSpan={3} className="b700">TOTAL CREDIT UNITS</td><td className="mid tnum b700">{total}</td>
+                  <td className="t-xs b600" style={{ color: meter.col }}>{meter.lab} · {min}–{max}</td></tr>
+              </tbody>
+            </table></div>
+          ) : <PBody><div className="sub2">No course is selected yet.</div></PBody>}
+        </Panel>
+      ) : null}
+      {adding ? (
+        <AddOtherCourse session={v.session} semester={v.semester} level={v.level} total={total} max={max} addDrop={locked}
+          onAdded={(id) => { if (!locked) setChosen((c) => new Set(c).add(id)); }} onClose={() => setAdding(false)} />
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (
@@ -405,20 +485,21 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
         </div>
         <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
           <thead><tr>
-            {["Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "var(--surface)" }}>{h}</th>)}
+            {["S/N", "Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "var(--surface)" }}>{h}</th>)}
             <th className="mid" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Unit</th>
             <th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Type</th>
           </tr></thead>
           <tbody>
-            {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
+            {byOrder(reg.entries.filter((e) => e.status !== "DROPPED" && e.status !== "WITHDRAWN")).map((e, i) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
               <tr key={e.offeringId}>
+                <td className="tnum sub2">{i + 1}</td>
                 <td className="tnum b600">{e.courseCode}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
-                <td className="num t-xs b600 ink-muted">{courseType(e)}</td>
+                <td className="num t-xs b600 ink-muted">{e.basis === "Research" || e.basis === "Deficiency" ? courseType(e) : e.entryType === "DEFERRED" ? "Deferred" : CATEGORY_LABEL[courseCategory(e)]}</td>
               </tr>); })}
-            <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum b700" style={{ fontSize: "var(--t-base)" }}>{reg.units}</td><td /></tr>
+            <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={4}>TOTAL CREDIT UNITS</td><td className="mid tnum b700" style={{ fontSize: "var(--t-base)" }}>{reg.units}</td><td /></tr>
           </tbody>
         </table></div>
         <div className="row mt-4">

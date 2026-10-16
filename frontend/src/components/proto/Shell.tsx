@@ -45,6 +45,7 @@ export const ROUTES: Record<string, string> = {
   "t/coursereview": "/catalogue/review",
   "t/structurecheck": "/catalogue/structure/checks",
   "t/regapproval": "/registration/approval",
+  "t/regoptions": "/registration/options",   // V504
   "t/regsettings": "/registration/settings",
   "t/allocationtemplates": "/allocation/templates",
   "t/structureprogrammes": "/catalogue/structure/programmes",

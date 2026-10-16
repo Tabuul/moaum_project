@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 343
+\set EXPECTED 345
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15790,6 +15790,124 @@ BEGIN
                  AND prac.basis = 'CURRICULUM' AND prac.min_units = 15 AND prac.max_units = (SELECT max_units FROM policy.level_limit WHERE level = 600), false),
         format('attachment %s %s-%s probation %s (%s) | other semester %s %s | practicum %s %s-%s', s2.basis, s2.min_units, s2.max_units, s2.probation_max_units,
                lim2.applies_to, s1.basis, s1.min_units, prac.basis, prac.min_units, prac.max_units));
+END $$;
+-- ── V504: flexible course registration ──
+-- The University's order of a registration's courses is carry-over (and deferred), GST, core, elective, from the entry's type and
+-- the programme's own setup (course_offer.basis) — a course the programme takes as core is core though its department offers it
+-- as an elective.
+DO $$
+BEGIN
+    PERFORM pg_temp.assert('V504: a registration''s courses are ordered carry-over, GST, core, elective, the programme''s basis deciding core or elective',
+        coalesce(registration.entry_category('CARRYOVER', 'Core', NULL) = 'CARRY_OVER' AND registration.entry_category('DEFERRED', 'Core', NULL) = 'CARRY_OVER'
+                 AND registration.entry_category(NULL, 'Core', 'Carryover') = 'CARRY_OVER' AND registration.entry_category('CURRENT', 'GST', NULL) = 'GST'
+                 AND registration.entry_category(NULL, 'Core', 'GST') = 'GST' AND registration.entry_category('ELECTIVE', 'Elective', 'Core') = 'CORE'
+                 AND registration.entry_category('CURRENT', 'Core', 'Elective') = 'ELECTIVE' AND registration.entry_category('ELECTIVE', 'Core', NULL) = 'ELECTIVE'
+                 AND registration.entry_category(NULL, 'Elective', NULL) = 'ELECTIVE' AND registration.entry_category('BORROWED', 'Core', NULL) = 'CORE'
+                 AND registration.entry_rank('CARRYOVER', 'Core', NULL) < registration.entry_rank('GST', 'GST', NULL)
+                 AND registration.entry_rank('GST', 'GST', NULL) < registration.entry_rank('CURRENT', 'Core', 'Core')
+                 AND registration.entry_rank('CURRENT', 'Core', 'Core') < registration.entry_rank('ELECTIVE', 'Elective', 'Elective'), false),
+        'registration.entry_category / entry_rank');
+END $$;
+
+-- A student adds a course beside the recommended list only where the engine allows it: a course of the programme at a lower level
+-- (added, kept on saving, approved automatically), never a higher one while the rule is off, never one not part of the programme,
+-- one not offered in the semester (named with the semester it runs in), one already passed, one whose result is pending (never a
+-- carry-over), and never twice; a University-wide GST course is a GST course; with the rule off, only the recommended list. The
+-- block undoes its writes.
+DO $$
+DECLARE ses text := '2396/2397'; st uuid := gen_random_uuid(); prog text; dept text; other_dept text; reg uuid; msg text;
+        o101 uuid; o201 uuid; o301 uuid; ogst uuid; ooth uuid;
+        c101 record; c301 record; c102 record; cpassed record; cawait record; ccarry record; cgst record; coth record; coff record; cmenu record;
+        dup text; kept int; dropped int; approved text; held text; menu_order text; reg_order text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V504', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2396-10-01', DATE '2397-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 200, 1) IS NULL ORDER BY p.code LIMIT 1;
+        SELECT d.code INTO other_dept FROM ref.department d WHERE d.code <> dept ORDER BY d.code LIMIT 1;
+        PERFORM registration.set_flex_policy(true, 'PROGRAMME', false, 'check V504: the default rule');
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/96/960101', 'CHECKV504', 'Flexible', prog, 'UTME', ses, 200, 200, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+            ('ZQV 101', 'Check Flex Lower', 2, 1, 100, dept, 'Core', 'LIVE', NULL), ('ZQV 102', 'Check Flex Second Semester', 2, 2, 100, dept, 'Core', 'LIVE', NULL),
+            ('ZQV 103', 'Check Flex Passed', 2, 1, 100, dept, 'Core', 'LIVE', NULL), ('ZQV 104', 'Check Flex Pending', 2, 1, 100, dept, 'Core', 'LIVE', NULL),
+            ('ZQV 105', 'Check Flex Carry', 2, 1, 100, dept, 'Core', 'LIVE', NULL),
+            ('ZQV 201', 'Check Flex Current', 3, 1, 200, dept, 'Core', 'LIVE', NULL), ('ZQV 211', 'Check Flex Elective', 2, 1, 200, dept, 'Elective', 'LIVE', NULL),
+            ('ZQV 301', 'Check Flex Higher', 3, 1, 300, dept, 'Core', 'LIVE', NULL),
+            ('GST 396', 'Check Flex University GST', 2, 1, 200, dept, 'GST', 'LIVE', 'GST'), ('ZQX 201', 'Check Flex Elsewhere', 2, 1, 200, other_dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('ZQV 101', prog, 100, 'Core'), ('ZQV 102', prog, 100, 'Core'), ('ZQV 103', prog, 100, 'Core'), ('ZQV 104', prog, 100, 'Core'), ('ZQV 105', prog, 100, 'Core'),
+            ('ZQV 201', prog, 200, 'Core'), ('ZQV 211', prog, 200, 'Elective'), ('ZQV 301', prog, 300, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, ses, CASE c WHEN 'ZQV 102' THEN 2 ELSE 1 END
+          FROM unnest(ARRAY['ZQV 101', 'ZQV 102', 'ZQV 103', 'ZQV 104', 'ZQV 105', 'ZQV 201', 'ZQV 211', 'ZQV 301', 'GST 396', 'ZQX 201']) c;
+        SELECT id INTO o101 FROM catalogue.offering WHERE course_code = 'ZQV 101' AND session = ses;
+        SELECT id INTO o201 FROM catalogue.offering WHERE course_code = 'ZQV 201' AND session = ses;
+        SELECT id INTO o301 FROM catalogue.offering WHERE course_code = 'ZQV 301' AND session = ses;
+        SELECT id INTO ogst FROM catalogue.offering WHERE course_code = 'GST 396' AND session = ses;
+        SELECT id INTO ooth FROM catalogue.offering WHERE course_code = 'ZQX 201' AND session = ses;
+        -- the record as course_check reads it: one passed, one awaiting its result, one owed
+        SELECT * INTO c101 FROM registration.course_check(st, ses, 1, 'ZQV 101', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO c301 FROM registration.course_check(st, ses, 1, 'ZQV 301', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO c102 FROM registration.course_check(st, ses, 1, 'ZQV 102', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO cpassed FROM registration.course_check(st, ses, 1, 'ZQV 103', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO cawait FROM registration.course_check(st, ses, 1, 'ZQV 104', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO ccarry FROM registration.course_check(st, ses, 1, 'ZQV 105', '{ZQV 103}', '{ZQV 104}', '{ZQV 105}', '{}');
+        SELECT * INTO cgst FROM registration.course_check(st, ses, 1, 'GST 396', '{}', '{}', '{}', '{}');
+        SELECT * INTO coth FROM registration.course_check(st, ses, 1, 'ZQX 201', '{}', '{}', '{}', '{}');
+        SELECT * INTO cmenu FROM registration.course_check(st, ses, 1, 'ZQV 211', '{}', '{}', '{}', '{}');
+        -- the student adds the lower-level course: on the draft, as the programme's at another level; a second time is refused
+        PERFORM registration.student_add_other(st, ses, 1, o101);
+        SELECT id INTO reg FROM registration.course_registration WHERE student_id = st AND session = ses AND semester = 1;
+        BEGIN
+            PERFORM registration.student_add_other(st, ses, 1, o101);
+        EXCEPTION WHEN check_violation THEN dup := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM registration.student_add_other(st, ses, 1, o301);
+        EXCEPTION WHEN check_violation THEN held := split_part(SQLERRM, ':', 1);
+        END;
+        -- saving keeps the added course when the selection names it, and lets it go when not
+        PERFORM registration.student_choose(reg, ARRAY[o201, o101]);
+        kept := (SELECT count(*) FROM registration.entry WHERE registration_id = reg AND offering_id = o101 AND student_added_at IS NOT NULL AND added_as = 'PROGRAMME_OTHER_LEVEL');
+        reg_order := (SELECT string_agg(c.code, ',' ORDER BY registration.entry_rank(e.entry_type, c.kind, co.basis), c.code)
+                        FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                        LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = prog AND co.level = 200
+                       WHERE e.registration_id = reg);
+        -- approved automatically: the added course passes the check again
+        UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now() WHERE id = reg;
+        approved := registration.auto_approve(reg);
+        UPDATE registration.course_registration SET status = 'DRAFT', approved_at = NULL, approval_mode = NULL WHERE id = reg;
+        UPDATE registration.entry SET status = 'REGISTERED' WHERE registration_id = reg;
+        PERFORM registration.student_choose(reg, ARRAY[o201]);
+        dropped := (SELECT count(*) FROM registration.entry WHERE registration_id = reg AND offering_id = o101);
+        menu_order := (SELECT string_agg(m.course_code, ',') FROM registration.student_menu(st, ses, 1) m WHERE m.course_code IN ('ZQV 201', 'ZQV 211'));
+        -- the rule off: a course beside the list is refused, the list's own course is not
+        PERFORM registration.set_flex_policy(false, 'PROGRAMME', false, 'check V504: other courses closed');
+        SELECT * INTO coff FROM registration.course_check(st, ses, 1, 'ZQV 101', '{}', '{}', '{}', '{}');
+        SELECT * INTO cmenu FROM registration.course_check(st, ses, 1, 'ZQV 211', '{}', '{}', '{}', '{}');
+        RAISE EXCEPTION 'the V504 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V504 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V504: a student adds a course beside the list only where the engine allows it — a lower level of the programme (kept, approved), never a higher one, another programme''s, one off this semester, passed, pending or twice; a University GST course is GST; the rule off holds the list',
+        coalesce(c101.refusal IS NULL AND c101.category = 'CORE' AND c101.added_as = 'PROGRAMME_OTHER_LEVEL' AND c101.offering_id = o101
+                 AND c301.refusal LIKE 'REG_HIGHER_LEVEL:%' AND c102.refusal LIKE 'REG_NOT_OFFERED_SEMESTER:%second semester%'
+                 AND cpassed.refusal LIKE 'REG_ALREADY_PASSED:%' AND cawait.refusal LIKE 'REG_RESULT_AWAITED:%'
+                 AND ccarry.refusal IS NULL AND ccarry.category = 'CARRY_OVER'
+                 AND cgst.refusal IS NULL AND cgst.category = 'GST' AND cgst.added_as = 'UNIVERSITY_GST' AND coth.refusal LIKE 'REG_NOT_AVAILABLE:%'
+                 AND dup = 'REG_ALREADY_ADDED' AND held = 'REG_HIGHER_LEVEL' AND kept = 1 AND approved = 'approved' AND dropped = 0
+                 AND reg_order = 'ZQV 101,ZQV 201' AND menu_order = 'ZQV 201,ZQV 211'
+                 AND coff.refusal LIKE 'REG_OTHER_COURSES_OFF:%' AND cmenu.refusal IS NULL AND cmenu.added_as IS NULL AND cmenu.category = 'ELECTIVE', false),
+        format('101 %s/%s/%s | 301 %s | 102 %s | passed %s | pending %s | carry %s/%s | gst %s/%s | other %s | dup %s held %s kept %s approved %s dropped %s | order %s menu %s | off %s menu %s/%s',
+               c101.category, c101.added_as, coalesce(c101.refusal, '-'), left(c301.refusal, 20), left(c102.refusal, 30), left(cpassed.refusal, 20), left(cawait.refusal, 20),
+               ccarry.category, coalesce(ccarry.refusal, '-'), cgst.category, cgst.added_as, left(coth.refusal, 20), dup, held, kept, approved, dropped, reg_order, menu_order,
+               left(coff.refusal, 25), cmenu.category, coalesce(cmenu.refusal, '-')));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

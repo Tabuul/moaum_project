@@ -473,6 +473,42 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM registration.student_menu(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
     }
 
+    /** V504: the student's carry-overs as the published results state them, each with its class this semester (or the semester
+     *  of the session it runs in) and whether it is on the semester's registration */
+    List<Map<String, Object>> outstanding(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT * FROM registration.outstanding_courses(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester)
+                .query().listOfRows();
+    }
+
+    /** V504: whether students add courses beside their recommended list, how wide, and whether a higher level's course */
+    Map<String, Object> flexRule() {
+        return jdbc.sql("SELECT allow_other_courses, other_scope, allow_higher_levels FROM registration.flex_rule()").query().singleRow();
+    }
+
+    /** V504: the Add Other Course search — every course found judged by the engine (registration.course_check), never by the
+     *  browser; the term and filters are bound, never spliced */
+    List<Map<String, Object>> searchCourses(UUID student, String session, int semester, String q, Integer level, String dept, String faculty,
+                                            String category, int limit, int offset) {
+        return jdbc.sql("SELECT * FROM registration.course_search(:s, :ses, :sem, :q, :l, :d, :f, :c, :lim, :off)")
+                .param("s", student).param("ses", session).param("sem", semester).param("q", q, Types.VARCHAR).param("l", level, Types.INTEGER)
+                .param("d", dept, Types.VARCHAR).param("f", faculty, Types.VARCHAR).param("c", category, Types.VARCHAR)
+                .param("lim", limit).param("off", offset).query().listOfRows();
+    }
+
+    /** V504: the departments and faculties the search narrows to */
+    List<Map<String, Object>> searchDepartments() {
+        return jdbc.sql("""
+                SELECT d.code, d.name, d.faculty_code, f.name AS faculty FROM ref.department d LEFT JOIN ref.faculty f ON f.code = d.faculty_code
+                 WHERE d.ended_on IS NULL ORDER BY f.name NULLS LAST, d.name
+                """).query().listOfRows();
+    }
+
+    /** V504: the student adds one course to the semester's draft (made if there is none); the engine refuses what it does not allow */
+    String addOther(UUID student, String session, int semester, UUID offering) {
+        return jdbc.sql("SELECT registration.student_add_other(:s, :ses, :sem, :o)::text")
+                .param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(String.class).single();
+    }
+
     /** V483: the specialisation the student reads within their programme ("MON — Monetary Economics"), or null */
     String specialisation(UUID student) {
         return jdbc.sql("""
@@ -560,7 +596,11 @@ class StudentPortalRepository {
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
-                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
+                               'entryType', e.entry_type, 'status', e.status,
+                               -- V504: the category the University orders by (carry-over, GST, core, elective), and a course the student added
+                               'category', registration.entry_category(e.entry_type, c.kind, co.basis), 'addedAs', e.added_as,
+                               'studentAdded', e.student_added_at IS NOT NULL)
+                               ORDER BY registration.entry_rank(e.entry_type, c.kind, co.basis), e.entry_type = 'DEFERRED', c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                           LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level
@@ -577,7 +617,11 @@ class StudentPortalRepository {
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
-                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
+                               'entryType', e.entry_type, 'status', e.status,
+                               -- V504: the category the University orders by (carry-over, GST, core, elective), and a course the student added
+                               'category', registration.entry_category(e.entry_type, c.kind, co.basis), 'addedAs', e.added_as,
+                               'studentAdded', e.student_added_at IS NOT NULL)
+                               ORDER BY registration.entry_rank(e.entry_type, c.kind, co.basis), e.entry_type = 'DEFERRED', c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                           LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level

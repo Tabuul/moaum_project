@@ -135,8 +135,9 @@ export function cardRules(p: Page, y: number, instructions: string[], regulation
   return Math.min(endL, endR) - 14;
 }
 
-/** the small verify QR, bottom-left, with the check code beside it (and any further lines under the note) */
-export function cardVerify(p: Page, y: number, url: string, code: string, more: string[] = []): void {
+/** the small verify QR, bottom-left, with the check code beside it (and any further lines under the note); says where the text
+ *  beside the QR ends, so a line can follow it there rather than under the QR */
+export function cardVerify(p: Page, y: number, url: string, code: string, more: string[] = []): { x: number; y: number } {
   const L = CARD_L;
   const { size, dark } = qrMatrix(url);
   const cell = 1.7, qDim = size * cell, qy = Math.max(y, 96);
@@ -145,11 +146,12 @@ export function cardVerify(p: Page, y: number, url: string, code: string, more: 
   p.text(L + qDim + 12, qy - 24, `Check code  ${code}`, 8.5, true);
   p.text(L + qDim + 12, qy - 37, "Verified against the register — the invigilator checks the face against the photograph.", 7, false, [0.45, 0.45, 0.45]);
   more.forEach((t, i) => p.text(L + qDim + 12, qy - 50 - i * 12, t, 8, true));
+  return { x: L + qDim + 12, y: qy - 50 - more.length * 12 };
 }
 
 /** the line at the foot of the card: whose it is, when it was issued, what it is valid for */
-export function cardFooter(p: Page, text: string, y = 40): void {
-  p.text(CARD_L, y, text, 7, false, [0.45, 0.45, 0.45]);
+export function cardFooter(p: Page, text: string, y = 40, x = CARD_L): void {
+  p.text(x, y, text, 7, false, [0.45, 0.45, 0.45]);
 }
 
 /** text broken into lines that fit a width at a size (Helvetica's own widths), at most `max` lines, the last cut with "..." */
