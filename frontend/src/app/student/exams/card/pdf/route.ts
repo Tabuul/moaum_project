@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
+import type { Me, Docket } from "@/lib/student-portal";
+import type { ExamCardState } from "@/lib/exam-card";
 import { A4, jpegSize } from "@/lib/pdf-write";
 import { examVerifyPath, studentCheckCode } from "@/lib/qr";
 import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardTableEnd, cardTableHead, cardVerify } from "@/lib/exam-card-pdf";
@@ -31,20 +32,19 @@ export async function GET(request: NextRequest) {
   const semester = q.get("semester") === "2" ? 2 : q.get("semester") === "3" ? 3 : 1;
   const matric = s.matricNo ?? s.admissionNo ?? "";
 
+  // V501: the card's own rule (registration.exam_card_state): an approved registration carrying a course, the Bursary's clearance not
+  // refused, the card released — and every course on the registration, departmental, GST and EPS alike
   const [v, dk] = await Promise.all([
-    api<RegistrationView>(`/api/v1/me/registration?session=${encodeURIComponent(session)}&semester=${semester}`),
+    api<ExamCardState>(`/api/v1/me/exam-card?session=${encodeURIComponent(session)}&semester=${semester}`),
     api<Docket>("/api/v1/me/docket"),
   ]);
-  const reg = v.ok ? v.data.registration : null;
-  const cleared = dk.ok ? dk.data.clearsExamination : null;
+  if (!v.ok) return NextResponse.json(v.problem, { status: v.problem.status });
+  const card = v.data;
+  if (!card.available) {
+    return NextResponse.json({ status: 409, title: "Examination card not available", detail: card.reason ?? "The examination card cannot be issued yet." }, { status: 409 });
+  }
   // V381: a paper the Centre's attendance policy bars is printed as barred, with no signature line
   const barred = new Set(dk.ok ? dk.data.examSessions.filter((x) => x.session === session && x.semester === semester).flatMap((x) => x.papers.filter((pp) => pp.bar).map((pp) => pp.course_code)) : []);
-  if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
-    return NextResponse.json({ status: 409, title: "No approved registration", detail: "An examination card is issued for an approved registration." }, { status: 409 });
-  }
-  if (cleared === false) {
-    return NextResponse.json({ status: 409, title: "Not cleared for examinations", detail: "The card is issued when the Bursary clears you for the examination. Settle the fees the scheme requires." }, { status: 409 });
-  }
 
   // the passport — the invigilator checks the face against it (anti-impersonation); from /me/passport,
   // which resolves the document store OR the JAMB/attachment store, so a migrated / JAMB-loaded photo also prints
@@ -60,22 +60,22 @@ export async function GET(request: NextRequest) {
   const { p, y: top } = cardPage({ matric, institution: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", office: "Office of the Registrar", title: "EXAMINATION CARD" });
   let y = cardIdentity(p, top, {
     photo, name: clean(s.name) || matric,
-    details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
+    details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${card.registration?.level ?? s.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
   });
 
   const titleX = L + 92, unitX = A4.w - L - 150, signX = A4.w - L - 92;
   cardTableHead(p, y, [[L + 8, "COURSE CODE"], [titleX, "COURSE TITLE"], [unitX, "UNIT"], [signX, "SIGN / INVIGILATOR"]]);
   y -= 19;
   const titleMax = Math.floor((unitX - titleX - 6) / 4.6);   // chars that fit the title column at 8.5pt
-  for (const e of reg.entries) {
-    p.text(L + 8, y, clean(e.courseCode), 9, true);
+  for (const e of card.courses) {
+    p.text(L + 8, y, clean(e.course_code), 9, true);
     p.text(titleX, y, cut(clean(e.title), titleMax), 8.5);
     p.text(unitX + 2, y, String(e.units), 9);
-    if (barred.has(e.courseCode)) p.text(signX, y, "BARRED: ATTENDANCE", 8, true, [0.6, 0.1, 0.1]);
+    if (barred.has(e.course_code)) p.text(signX, y, "BARRED: ATTENDANCE", 8, true, [0.6, 0.1, 0.1]);
     else p.rule(signX, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
     y -= 16;
   }
-  y = cardTableEnd(p, y, `${reg.entries.length} paper(s) · ${reg.units} credit units`);
+  y = cardTableEnd(p, y, `${card.count} paper(s) · ${card.units} credit units`);
 
   // ── instructions and examination regulations, two compact columns ──
   y = cardRules(p, y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS);

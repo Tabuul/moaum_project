@@ -6,6 +6,7 @@ import { loadStudent } from "../load";
 export const dynamic = "force-dynamic";
 import type { Docket, RegistrationView } from "@/lib/student-portal";
 import type { PermitState } from "@/lib/gst-eps-permit";
+import type { ExamCardState } from "@/lib/exam-card";
 import { semesterName } from "@/lib/student-portal";
 import { Exams } from "../Screens5";
 
@@ -30,6 +31,10 @@ export default async function Page() {
     .filter((x): x is number => typeof x === "number"))].sort() : [];
   const permits = (await Promise.all((shown.length ? shown : [undefined]).map((n) => api<PermitState>(`/api/v1/me/gst-eps-permit${n ? `?semester=${n}` : ""}`))))
     .flatMap((r) => (r.ok ? [r.data] : []));
+  // V501: the examination card of the same semesters, by its own rule — every registered course, beside the GST & EPS permit
+  const cards = d.ok ? (await Promise.all((shown.length ? shown : [undefined]).map((n) =>
+      api<ExamCardState>(`/api/v1/me/exam-card?session=${encodeURIComponent(d.data.session)}${n ? `&semester=${n}` : ""}`))))
+    .flatMap((r) => (r.ok ? [r.data] : [])) : [];
   // a live subtitle for the header — the exam sitting the examination card actually shows, not a fixed month
   let sub: string | undefined;
   if (d.ok) {
@@ -41,7 +46,7 @@ export default async function Page() {
   }
   return (
     <Shell route="s/exams" me={loaded.me} sub={sub}>
-      {d.ok ? <Exams d={d.data} s={loaded.student} current={current} permits={permits} /> : <ProblemNotice problem={d.problem} />}
+      {d.ok ? <Exams d={d.data} s={loaded.student} current={current} permits={permits} cards={cards} /> : <ProblemNotice problem={d.problem} />}
     </Shell>
   );
 }

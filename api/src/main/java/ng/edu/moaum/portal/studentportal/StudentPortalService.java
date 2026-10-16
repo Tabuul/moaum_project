@@ -47,15 +47,13 @@ public class StudentPortalService {
             throw new DomainRuleViolation("CHECK_CODE_SESSION", "A check code is made for one session (such as 2026/2027) and one semester.");
         }
         StudentPortalRepository.Student s = student(id);
-        // V495: an examination card is the card of an approved registration — never of a draft below the minimum course load, or
-        // of one not yet approved, though the card's own page asks the same first (and the card issued is counted only then)
+        // V495/V501: an examination card's code is signed only when the card's own rule says it may be issued (an approved
+        // registration carrying a course, the Bursary's clearance not refused, the card released) — the card issued is counted only then
         if (k == CheckCodes.Kind.EXAM) {
-            String status = repo.registration(id, session, semester).map(r -> String.valueOf(r.get("status"))).orElse(null);
-            if (!"APPROVED".equals(status) && !"LOCKED".equals(status)) {
-                throw new DomainRuleViolation("EXAM_CARD_NOT_APPROVED",
-                        "An examination card is issued for an approved course registration; your registration for " + session + " semester " + semester
-                                + (status == null ? " is not made." : " is " + status.toLowerCase() + "."),
-                        new DomainRuleViolation.Remedy("Register at least the minimum credit units your curriculum requires and submit; the card follows approval.", "Academic Office"));
+            Map<String, Object> card = examCard(id, session, semester);
+            if (!Boolean.TRUE.equals(card.get("available"))) {
+                throw new DomainRuleViolation(String.valueOf(card.get("code")), String.valueOf(card.get("reason")),
+                        new DomainRuleViolation.Remedy("Register your courses, have them approved, and settle the fees the Bursary's scheme requires; the card follows.", "Academic Office"));
             }
         }
         String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
@@ -68,6 +66,13 @@ public class StudentPortalService {
         // V491: the examination card is issued with its code; counted once a student and semester, with how many times
         if (k == CheckCodes.Kind.EXAM) repo.recordExamCard(id, session, semester);
         return out;
+    }
+
+    /** V501: the examination card's state for the session and semester (registration.exam_card_state) — available or the first
+     *  rule that fails, with every course on the approved registration; nothing is counted */
+    @Transactional(readOnly = true)
+    public Map<String, Object> examCard(UUID id, String session, int semester) {
+        return GstEpsPermits.read(repo.examCardState(id, session, semester));
     }
 
     private StudentPortalRepository.Student student(UUID id) {

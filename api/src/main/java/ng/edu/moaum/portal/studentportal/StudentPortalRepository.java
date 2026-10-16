@@ -538,6 +538,12 @@ class StudentPortalRepository {
     }
 
     /** V491: the student's examination card issued once more */
+    /** V501: the examination card's rule, as JSON */
+    String examCardState(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.exam_card_state(:st, :s, :m)::text").param("st", student).param("s", session).param("m", semester)
+                .query(String.class).single();
+    }
+
     void recordExamCard(UUID student, String session, int semester) {
         jdbc.sql("SELECT registration.record_exam_card(:st, :s, :m)").param("st", student).param("s", session).param("m", semester).query().listOfRows();
     }

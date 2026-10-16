@@ -45,6 +45,13 @@ class CheckCodesIT {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8))).substring(0, 12).toUpperCase();
     }
 
+    /** V501: the session's school fees stated for the test (an examination card is the card of a student who paid), taken away after it */
+    @org.junit.jupiter.api.AfterEach
+    void clean() {
+        new ItSupport(port, jdbc, transactions).db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s AND item = 'School fees (check codes)'")
+                .param("s", SESSION).update());
+    }
+
     @Test
     void theApiSignsTheCodeAndAnOldOneIsHonouredOnlyForWhatCameBefore() throws Exception {
         ItSupport it = new ItSupport(port, jdbc, transactions);
@@ -60,14 +67,29 @@ class CheckCodesIT {
         it.db(() -> {
             // an earlier run on the same database left its examination session (cards released before the cut-over): the old code would be honoured before this run releases any
             jdbc.sql("DELETE FROM assessment.exam_session WHERE session = :ses AND NOT EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.exam_session_id = assessment.exam_session.id)").param("ses", SESSION).update();
+            // V501: the fees the payment below clears, stated, so the student's examination card is the card of a student who paid
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:ses, 'School fees (check codes)', 1000, 100, 'C00023')")
+                    .param("ses", SESSION).update();
             jdbc.sql("""
                     INSERT INTO finance.payment_reference (id, student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
                     VALUES (gen_random_uuid(), :s, :ses, :r, 'School fees (full session)', 1000, now() + interval '30 days', now(), :s, 'BANK', :rc)
                     """).param("s", student).param("ses", SESSION).param("r", reference).param("rc", receiptNo).update();
-            return jdbc.sql("""
+            UUID reg = jdbc.sql("""
                     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
-                    VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now(), now())
-                    """).param("s", student).param("ses", SESSION).update();
+                    VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now(), now()) RETURNING id
+                    """).param("s", student).param("ses", SESSION).query(UUID.class).single();
+            // V501: an examination card is the card of a registration carrying a course
+            jdbc.sql("""
+                    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+                    SELECT 'CKC 179', 'Check Code Course', 3, 1, 100, p.dept_code, 'Core', 'LIVE' FROM ref.programme p WHERE p.code = 'C00023'
+                    ON CONFLICT (code) DO NOTHING
+                    """).update();
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'CKC 179', :ses, 1) ON CONFLICT (course_code, session, semester, stream) DO NOTHING")
+                    .param("ses", SESSION).update();
+            return jdbc.sql("""
+                    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+                    SELECT :r, o.id, 3, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.course_code = 'CKC 179' AND o.session = :ses AND o.semester = 1 AND o.stream = 'REGULAR'
+                    """).param("r", reg).param("ses", SESSION).update();
         });
 
         // ── the receipt: the code comes with the receipt, and the verifier answers it in full ──

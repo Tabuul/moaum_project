@@ -19,6 +19,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { CardActions, PermitActions } from "./exams/CardActions";
 import { permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
+import { examCardStatusLabel, examCardSummary, type ExamCardState } from "@/lib/exam-card";
 
 /* ── result query ── */
 
@@ -109,29 +110,29 @@ export function Carryover({ r }: { r: Results }) {
 
 /* ── examinations (the examination card) ── */
 
-export function Exams({ d, current, permits = [] }: { d: Docket; s: Me; current?: RegistrationView | null; permits?: PermitState[] }) {
+export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; current?: RegistrationView | null; permits?: PermitState[]; cards?: ExamCardState[] }) {
   const cleared = d.clearsExamination === true;
+  const withheld = d.clearsExamination === false;
   const withPapers = d.examSessions.filter((x) => x.papers.length);
-  // V491: the registration approved this semester carries its card at once (where the rule offers the card on approval), before
-  // the examination timetable is released; dates and venues come with the timetable, never invented
-  const cur = current?.registration ?? null;
-  const curCard = !!current && !!cur && (cur.status === "APPROVED" || cur.status === "LOCKED") && current.approval?.card_on_approval !== false
-    && !withPapers.some((x) => x.session === current.session && x.semester === current.semester);
-  const mayCard = cleared || d.clearsExamination === null;
+  // V501: the examination card — the University's full examination permit — is the server's answer for each semester shown, the
+  // same rule as the GST & EPS permit's without the GST's own: every student whose registration is approved and who is not refused
+  // by the Bursary has it, with every registered course; dates and venues come with the timetable, never invented
+  const shownCards = cards.filter((c) => c.registration || c.available);
   return (
     <>
       {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
         : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
           : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
-      {curCard && current && cur ? (
-        <Panel title={`EXAMINATION CARD · ${current.session} · ${semesterName(current.semester)} semester`} right={mayCard ? "Available" : "Withheld"}>
+      {shownCards.map((card) => (
+        <Panel key={`card-${card.session}-${card.semester}`} title={`EXAMINATION CARD · ${card.session} · ${semesterName(card.semester)} semester`} right={examCardStatusLabel(card)}>
           <PBody>
-            <div className="sub2">Course registration approved{cur.approved_at ? ` on ${onDay(cur.approved_at)}` : ""} · {(cur.entries ?? []).filter((e) => e.status !== "DROPPED").length} papers · {cur.units} units. Dates and venues appear when the examination timetable is released.</div>
-            {mayCard ? <div className="mt-2"><CardActions session={current.session} semester={current.semester} /></div>
-              : <div className="mt-2 sub2 ink-red">The card prints once the Bursary clears you for the examination.</div>}
+            <div className={`sub2${card.available ? "" : " ink-red"}`}>{card.available
+              ? `Course registration approved${card.registration?.approvedAt ? ` on ${onDay(card.registration.approvedAt)}` : ""} · ${examCardSummary(card)}. The card carries every course you registered. Dates and venues appear when the examination timetable is released.`
+              : card.reason}</div>
+            {card.available ? <div className="mt-2"><CardActions session={card.session} semester={card.semester} /></div> : null}
           </PBody>
         </Panel>
-      ) : null}
+      ))}
       {/* V492: the GST & EPS examination permit, a document of its own beside the card: only the GST and EPS courses registered */}
       {permits.filter((permit) => permit.courses.length || permit.permit).map((permit) => (
         <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${semesterName(permit.semester)} semester`} right={permitStatusLabel(permit)}>
@@ -145,19 +146,21 @@ export function Exams({ d, current, permits = [] }: { d: Docket; s: Me; current?
         </Panel>
       ))}
       {!withPapers.length ? (
-        curCard ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
+        shownCards.length ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
         <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
             <Two key="c" a={p.course_code} b={p.title} />,
             <span className="tnum" key="w">{p.held_on ? `${onDay(p.held_on)} · ${String(p.starts_at).slice(0, 5)}` : "Not yet timetabled"}</span>,
             <span key="v">{p.venue ?? "—"}</span>,
-            p.bar ? <Pil kind="bad" key="s" title={p.bar.replace(/^[A-Z_]+: /, "")}>Barred: attendance</Pil> : !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
+            p.bar ? <Pil kind="bad" key="s" title={p.bar.replace(/^[A-Z_]+: /, "")}>Barred: attendance</Pil> : withheld ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
           {x.papers.some((p) => p.bar) ? <div className="card__body"><Note kind="bad" title="Attendance below the minimum">
             {x.papers.filter((p) => p.bar).map((p) => p.bar!.replace(/^[A-Z_]+: /, "").replace(/^your/, "Your")).join(". ")}. The Centre for Continuing Education&rsquo;s policy bars the examination of a class below its minimum attendance; see the Centre if a lecture you missed was excused.
           </Note></div> : null}
-          {cleared ? <div className="card__body"><CardActions session={x.session} semester={x.semester} /></div> : null}
+          {/* V501: the card's buttons are on its own panel above, by the card's rule; a sitting of another semester shown here has its own */}
+          {!shownCards.some((c) => c.session === x.session && c.semester === x.semester) && (cleared || d.clearsExamination === null)
+            ? <div className="card__body"><CardActions session={x.session} semester={x.semester} /></div> : null}
         </Panel>
       ))}
     </>

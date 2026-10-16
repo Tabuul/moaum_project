@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 341
+\set EXPECTED 342
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15688,6 +15688,65 @@ BEGIN
             AND reg_after = '100/DRAFT', false),
         format('levels %s next %s | office %s short %s | first %s again %s | outside %s stale %s corrected %s now %s | withdrawn %s | pg %s %s | history %s | registration %s',
                opts->'levels', opts->>'nextLevel', e_office, e_short, r1, r2, e_outside, e_stale, r3->>'newLevel', lvl, e_status, e_pg, pg_opts->'levels', hist, reg_after));
+END $$;
+
+
+-- ── V501: the examination card's own rule ──
+-- A student whose registration is approved and whose fees are paid has the examination card, with every course registered —
+-- departmental, GST and EPS — while the GST & EPS permit beside it carries only the GST and EPS ones; a registration not approved,
+-- one with no course, or fees unpaid has no card, each with its reason. The block undoes its writes.
+DO $$
+DECLARE ses text := '2394/2395'; sch uuid := gen_random_uuid(); st uuid := gen_random_uuid(); dr uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); dreg uuid := gen_random_uuid();
+        prog text; dept text; unpaid jsonb; paid jsonb; draft jsonb; empty jsonb; permit_n int; codes text; ref text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V501', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2394-10-01', DATE '2395-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/94/950101', 'CHECKV501', 'Card', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (dr, 'MOAUM/ADM/94/950102', 'CHECKV501', 'Draft', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('GST 391', 'Check Card English', 2, 1, 100, dept, 'GST', 'LIVE'), ('EPS 391', 'Check Card Enterprise', 2, 1, 100, dept, 'GST', 'LIVE'),
+            ('ZQC 101', 'Check Card Departmental', 3, 1, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) SELECT gen_random_uuid(), c, ses, 1 FROM unnest(ARRAY['GST 391', 'EPS 391', 'ZQC 101']) c;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (reg, st, ses, 1, 100, 'APPROVED', now(), now()), (dreg, dr, ses, 1, 100, 'SUBMITTED', now(), NULL);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT reg, o.id, c.units, 'CURRENT', 'APPROVED' FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+         WHERE o.session = ses AND o.course_code IN ('GST 391', 'EPS 391', 'ZQC 101');
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT dreg, o.id, 3, 'CURRENT', 'REGISTERED' FROM catalogue.offering o WHERE o.session = ses AND o.course_code = 'ZQC 101';
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V501)', 50000, 100, prog);
+        -- a clearance scheme in force for the reading (the examination cleared on the first instalment), where the suite has none
+        IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+            INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+            VALUES (sch, 'clearance', 'UNIVERSITY', daterange(current_date - 1, NULL), 'CHECK V501', 'bursar');
+            INSERT INTO policy.clearance_scheme VALUES (sch, true);
+            INSERT INTO policy.clearance_rule SELECT sch, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+        END IF;
+        unpaid := registration.exam_card_state(st, ses, 1);
+        ref := finance.new_purpose_reference(st, ses, 50000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V501');
+        paid := registration.exam_card_state(st, ses, 1);
+        codes := (SELECT string_agg(x->>'course_code', ',' ORDER BY x->>'course_code') FROM jsonb_array_elements(paid->'courses') x);
+        permit_n := jsonb_array_length(registration.gst_eps_permit_state(st, ses, 1)->'courses');
+        draft := registration.exam_card_state(dr, ses, 1);
+        DELETE FROM registration.entry WHERE registration_id = reg;
+        empty := registration.exam_card_state(st, ses, 1);
+        RAISE EXCEPTION 'the V501 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V501 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V501: the examination card carries every registered course for an approved, paid registration (the GST & EPS permit only its GST and EPS ones); unpaid, not approved or empty has no card, with the reason',
+        coalesce(unpaid->>'code' = 'EXAM_CARD_NOT_CLEARED' AND (paid->>'available')::boolean AND (paid->>'count')::int = 3 AND (paid->>'units')::int = 7
+                 AND (paid->>'gstEpsCount')::int = 2 AND codes = 'EPS 391,GST 391,ZQC 101' AND permit_n = 2
+                 AND draft->>'code' = 'EXAM_CARD_NOT_APPROVED' AND empty->>'code' = 'EXAM_CARD_NO_COURSES', false),
+        format('unpaid %s | paid %s %s/%s gst %s [%s] permit %s | draft %s | empty %s', unpaid->>'code', paid->>'available', paid->>'count', paid->>'units',
+               paid->>'gstEpsCount', codes, permit_n, draft->>'code', empty->>'code'));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
