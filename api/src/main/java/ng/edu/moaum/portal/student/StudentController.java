@@ -52,10 +52,12 @@ class StudentController {
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
     private final ClassificationService classification;
+    private final ng.edu.moaum.portal.shared.FigureCache figures;
 
     StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
                       ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc,
-                      ng.edu.moaum.portal.shared.OfficeScope scope, ClassificationService classification) {
+                      ng.edu.moaum.portal.shared.OfficeScope scope, ClassificationService classification,
+                      ng.edu.moaum.portal.shared.FigureCache figures) {
         this.students = students;
         this.changes = changes;
         this.search = search;
@@ -64,6 +66,18 @@ class StudentController {
         this.jdbc = jdbc;
         this.scope = scope;
         this.classification = classification;
+        this.figures = figures;
+    }
+
+    /** Oct 2026: the migrated students' figures read every clearance decision on the register (2.85 million, about forty
+     *  seconds): kept a few minutes for every office that asks, worked out ahead when the service starts */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    void warmMigrated() {
+        figures.warm(java.util.List.of("migrated", 100, 400), () -> migratedNow(100, 400));
+    }
+
+    private java.util.Map<String, Object> migratedNow(int from, int to) {
+        return jdbc.sql("SELECT * FROM clearance.migrated_summary(:f, :t)").param("f", from).param("t", to).query().singleRow();
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -82,8 +96,14 @@ class StudentController {
     /** The students migrated from the old portal at these levels: how many, how many stand cleared at every unit, how many do not (V233). */
     @GetMapping("/students/migrated")
     @PreAuthorize(READERS)
-    java.util.Map<String, Object> migrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
-        return jdbc.sql("SELECT * FROM clearance.migrated_summary(:f, :t)").param("f", from).param("t", to).query().singleRow();
+    java.util.Map<String, Object> migrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to,
+                                           @RequestParam(defaultValue = "false") boolean refresh) {
+        ng.edu.moaum.portal.shared.FigureCache.Answer<java.util.Map<String, Object>> a =
+                figures.get(java.util.List.of("migrated", from, to), refresh, () -> migratedNow(from, to));
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(a.value());
+        out.put("computedAt", a.at().toString());   // the figures as of then
+        out.put("refreshing", a.refreshing());
+        return out;
     }
 
     /** Clear the migrated students at these levels who still lack a unit's word — the old portal's clearance, carried over (V231/V233). */
@@ -93,7 +113,19 @@ class StudentController {
     java.util.Map<String, Object> clearMigrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
         java.util.Map<String, Object> done = jdbc.sql("SELECT * FROM clearance.clear_migrated(:f, :t)").param("f", from).param("t", to).query().singleRow();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(done);
-        out.putAll(migrated(from, to));
+        java.util.Map<String, Object> now = migratedNow(from, to);   // read in this transaction: the clearing just done
+        out.putAll(now);
+        out.put("computedAt", java.time.Instant.now().toString());
+        // the kept figure forgotten now, and replaced by this one once the clearing is committed
+        java.util.List<Object> key = java.util.List.of("migrated", from, to);
+        figures.forget(key);
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        figures.put(key, now);
+                    }
+                });
         return out;
     }
 

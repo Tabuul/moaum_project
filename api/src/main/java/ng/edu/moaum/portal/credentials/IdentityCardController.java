@@ -30,7 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 class IdentityCardController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_super')";
-    private static final String ISSUERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_super')";
+    /** GAP-005 (the University's decision, 16 Oct 2026): the Security Unit alone prints, issues and reports a card lost — as the
+     *  brief has it; the Library and the other offices read a card's status (super stays the system's break-glass) */
+    private static final String ISSUERS = "hasAnyAuthority('OFFICE_security','OFFICE_super')";
     /** V439: the staff cards are read by the card desk and by HR, whose staff record prints the card */
     private static final String STAFF_READERS = "hasAnyAuthority('OFFICE_library','OFFICE_security','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_hrm','OFFICE_super')";
 
@@ -105,7 +107,7 @@ class IdentityCardController {
 
     /** the live card of one student, with what the card shows, for the desk's print — none until the desk issues one */
     @GetMapping("/students/{studentId}/card")
-    @PreAuthorize(READERS)
+    @PreAuthorize(ISSUERS)   // the printable card: the Security Unit's (GAP-005)
     @Transactional(readOnly = true)
     Map<String, Object> studentCard(@PathVariable UUID studentId) {
         Map<String, Object> row = jdbc.sql("""
@@ -117,7 +119,7 @@ class IdentityCardController {
                  WHERE c.student_id = :s AND c.state = 'ISSUED'
                 """).param("s", studentId).query().listOfRows().stream().findFirst()
                 .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("ID_CARD_NONE", "No identity card is in force for this student.",
-                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card first; the print carries its number.", "Library")));
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card first; the print carries its number.", "Security Unit")));
         Map<String, Object> m = new java.util.LinkedHashMap<>(row);
         String no = String.valueOf(row.get("card_no"));
         m.put("verify_path", "/verify/idcard?no=" + java.net.URLEncoder.encode(no, java.nio.charset.StandardCharsets.UTF_8)
@@ -172,13 +174,13 @@ class IdentityCardController {
 
     /** the live card of one member of staff, for the print — none until the desk issues one */
     @GetMapping("/staff/{personId}/card")
-    @PreAuthorize(STAFF_READERS)
+    @PreAuthorize(ISSUERS)   // the printable card: the Security Unit's (GAP-005)
     @Transactional(readOnly = true)
     Map<String, Object> staffCard(@PathVariable UUID personId) {
         Map<String, Object> row = jdbc.sql(STAFF_CARD_ROWS + " WHERE c.person_id = :p AND c.state = 'ISSUED'").param("p", personId)
                 .query().listOfRows().stream().findFirst()
                 .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARD_NONE", "No staff identity card is in force for this person.",
-                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card on the card desk first; the print carries its number.", "Library")));
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card on the card desk first; the print carries its number.", "Security Unit")));
         Map<String, Object> m = new java.util.LinkedHashMap<>(row);
         m.put("verify_path", staffVerifyPath(String.valueOf(row.get("card_no"))));
         // what the card shows, and nothing more of the HR record: the desk prints from the register

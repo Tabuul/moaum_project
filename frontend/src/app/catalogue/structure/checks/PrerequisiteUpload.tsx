@@ -1,7 +1,8 @@
 "use client";
 /** V487: prerequisites uploaded in bulk — a template of (course, requires) rows, the file previewed row by row (nothing kept),
  *  then imported. A row closing a loop, naming a course the pool does not hold, or another department's course is reported and
- *  not written; a prerequisite already recorded is said so. */
+ *  not written; a prerequisite already recorded is said so. V495: also on a department's own courses page, its template
+ *  carrying the department's courses (a row each; another prerequisite of a course is another row). */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
@@ -29,7 +30,8 @@ async function post(path: string, rows: { course: string; requires: string }[], 
   return j as Loaded;
 }
 
-export function PrerequisiteUpload() {
+/** templateCourses: the department's own courses, written into the template one row each (V495) */
+export function PrerequisiteUpload({ templateCourses }: { templateCourses?: string[] } = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<{ name: string; rows: { course: string; requires: string }[] } | null>(null);
@@ -37,7 +39,8 @@ export function PrerequisiteUpload() {
   const [done, setDone] = useState<Loaded | null>(null);
 
   function template() {
-    downloadBlob(buildXlsx(["Course code", "Requires (course code)"], [["CSC 201", "CSC 101"], ["CSC 201", "MTH 101"]], "Prerequisites"), "prerequisites-template.xlsx");
+    const rows = templateCourses?.length ? templateCourses.map((c) => [c, ""]) : [["CSC 201", "CSC 101"], ["CSC 201", "MTH 101"]];
+    downloadBlob(buildXlsx(["Course code", "Requires (course code)"], rows, "Prerequisites"), "prerequisites-template.xlsx");
   }
 
   async function read(f: File) {

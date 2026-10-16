@@ -90,8 +90,9 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
 
   function downloadTemplate() {
     const blob = buildXlsx(
-      ["Programme", "Course Code", "Title", "Units", "Kind", "Semester"],
-      [["M.Sc. Computer Science", "CSC 801", "Advanced Algorithms & Complexity", "3", "Core", "First"]],
+      ["Programme", "Course Code", "Title", "Units", "Kind", "Semester", "Prerequisites"],
+      [["M.Sc. Computer Science", "CSC 801", "Advanced Algorithms & Complexity", "3", "Core", "First", ""],
+       ["M.Sc. Computer Science", "CSC 802", "Advanced Distributed Systems", "3", "Core", "Second", "CSC 801"]],
       "PG courses",
     );
     const a = document.createElement("a");
@@ -112,6 +113,8 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
         programme: at(/programme/, /program/, /course of study/), code: at(/course\s*code/, /^code$/, /^course$/),
         title: at(/title/, /^name$/, /descrip/), units: at(/unit/, /credit/, /^cu$/),
         kind: at(/kind/, /type/, /category/), semester: at(/semester/, /^sem$/),
+        // V495: the courses a course requires first, comma- or semicolon-separated (optional)
+        prerequisites: at(/prereq/, /requires/),
       };
       if (col.programme < 0 || col.code < 0 || col.title < 0) {
         setProblem({ status: 400, title: "The file needs Programme, Course Code and Title columns.", detail: "Download the template to see the exact columns." }); notifyProblem({ status: 400, title: "The file needs Programme, Course Code and Title columns.", detail: "Download the template to see the exact columns." });
@@ -120,7 +123,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       const rows: Record<string, string>[] = [];
       for (const r of grid.slice(1)) {
         const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-        const o = { programme: g(col.programme), code: g(col.code), title: g(col.title), units: g(col.units), kind: g(col.kind), semester: g(col.semester) };
+        const o = { programme: g(col.programme), code: g(col.code), title: g(col.title), units: g(col.units), kind: g(col.kind), semester: g(col.semester), prerequisites: g(col.prerequisites) };
         if (o.programme && o.code && o.title) rows.push(o);
       }
       if (!rows.length) { setProblem({ status: 400, title: "No course rows to read.", detail: "Fill the template (delete the example row) and upload it." }); notifyProblem({ status: 400, title: "No course rows to read.", detail: "Fill the template (delete the example row) and upload it." }); return; }
@@ -150,7 +153,23 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       const j = await res.json().catch(() => null);
       if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
       const c = j as { rows: number; created: number; updated: number; no_programme: number; skipped: number };
-      setUpResult(`${c.created} course${c.created === 1 ? "" : "s"} added, ${c.updated} updated${c.no_programme ? ` · ${c.no_programme} row${c.no_programme === 1 ? "" : "s"} had a programme that did not match one on record` : ""}${c.skipped ? ` · ${c.skipped} skipped` : ""}.`);
+      // V495: the prerequisites the file states, once its courses are on the pool — each checked as the course page checks it
+      const pairs = rows.flatMap((r) => (r.prerequisites ?? "").split(/[;,]/).map((q) => q.trim()).filter(Boolean).map((q) => ({ course: r.code, requires: q })));
+      let pre = "";
+      if (pairs.length) {
+        const pr = await fetch("/api/bff/api/v1/catalogue/prerequisites/upload", {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG prerequisites uploaded: ${pairs.length}`) },
+          body: JSON.stringify({ rows: pairs }),
+        });
+        const pj = (await pr.json().catch(() => null)) as { added: number; counts: Record<string, number>; rows: { course_code: string | null; requires_code: string | null; outcome: string; message: string }[] } | null;
+        if (pr.ok && pj) {
+          const refused = pj.rows.filter((x) => !["ADDED", "ALREADY"].includes(x.outcome));
+          pre = ` Prerequisites: ${pj.added} added${pj.counts.ALREADY ? `, ${pj.counts.ALREADY} already recorded` : ""}${refused.length ? `, ${refused.length} refused (${refused.slice(0, 3).map((x) => x.message).join(" ")}${refused.length > 3 ? " …" : ""})` : ""}.`;
+        } else {
+          pre = " The prerequisites were not recorded: " + (pj && typeof pj === "object" && "title" in pj ? String((pj as { title: string }).title) : "the request was refused") + ".";
+        }
+      }
+      setUpResult(`${c.created} course${c.created === 1 ? "" : "s"} added, ${c.updated} updated${c.no_programme ? ` · ${c.no_programme} row${c.no_programme === 1 ? "" : "s"} had a programme that did not match one on record` : ""}${c.skipped ? ` · ${c.skipped} skipped` : ""}.${pre}`);
       notify("PG course catalogue imported");
       setPreview(null);
       if (programme) await loadCourses(programme);

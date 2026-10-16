@@ -15,7 +15,9 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
 
-export interface MigratedSummary { migrated: number; cleared: number; uncleared: number }
+export interface MigratedSummary { migrated: number; cleared: number; uncleared: number;
+  /** Oct 2026: when the figures were counted (they are kept a few minutes: counting reads every clearance decision) */
+  computedAt?: string; refreshing?: boolean }
 
 /** mayClear: the office may clear them (the Academic Office, the Registry, ICT); another office reads the counts and who does it */
 export function MigratedPanel({ summary, reload, mayClear = true }: { summary: MigratedSummary; reload?: () => void; mayClear?: boolean }) {
@@ -43,7 +45,7 @@ export function MigratedPanel({ summary, reload, mayClear = true }: { summary: M
   const allClear = n(summary.migrated) > 0 && n(summary.uncleared) === 0;
 
   return (
-    <Panel title="Migrated from the old portal" right="100 to 400 level · a matriculation number, no matriculation run here">
+    <Panel title="Migrated from the old portal" right={`100 to 400 level · a matriculation number, no matriculation run here${summary.computedAt ? ` · counted ${new Date(summary.computedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" })}${summary.refreshing ? ", recounting" : ""}` : ""}`}>
       <PBody>
         {problem ? <ProblemNotice problem={problem} /> : null}
         {done ? <Note kind="ok" title={`${done.students.toLocaleString()} student${done.students === 1 ? "" : "s"} cleared`}>{done.positions.toLocaleString()} unit positions entered as cleared — the old portal&rsquo;s clearance, carried over.</Note> : null}

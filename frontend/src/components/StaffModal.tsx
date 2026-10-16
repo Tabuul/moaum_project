@@ -154,9 +154,13 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
     </>
   );
 
+  // GAP-005 (16 Oct 2026): the Security Unit alone prints identity cards (the pop-up opens on a click, in the browser)
+  const office = typeof document === "undefined" ? null : (document.cookie.match(/(?:^|; )moaum_office=([^;]*)/)?.[1] ?? null);
+  const printsCards = office === "security" || office === "super";
+
   return (
     <Modal wide title={p ? `${p.surname}, ${p.given_names}` : "Member of staff"} sub={p ? `${p.staff_number ?? ""}${p.rank ? ` · ${rankCase(p.rank)}` : ""}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span className="grow" />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
+      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span className="grow" />{p && printsCards ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
       {body}
     </Modal>
   );

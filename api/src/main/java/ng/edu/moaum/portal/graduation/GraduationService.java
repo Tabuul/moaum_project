@@ -48,6 +48,13 @@ public class GraduationService {
             String unmet = null;
             if (st.ungraded() != null) {
                 unmet = st.ungraded() + " not graded";
+            } else if (f.postgraduate()) {
+                // V493: a postgraduate graduand is judged by the courses the programme requires of them (theirs and their
+                // specialisation's), not by the undergraduate CGPA threshold
+                List<String> outstanding = repo.pgOutstanding(f.studentId());
+                if (!outstanding.isEmpty()) {
+                    unmet = "Required coursework not passed: " + String.join(", ", outstanding);
+                }
             } else if (st.cgpa() == null) {
                 unmet = "No published result on the record";
             } else if (st.cgpa().compareTo(new BigDecimal("1.00")) < 0) {
@@ -83,9 +90,10 @@ public class GraduationService {
             }
         }
         List<ClassRow> classes = new ArrayList<>();
-        long classified = all.stream().filter(g -> g.unmet() == null && g.cgpa() != null).count();
+        // V493: the classes are the undergraduate degrees'; a postgraduate award is not counted in them
+        long classified = all.stream().filter(g -> !g.postgraduate() && g.unmet() == null && g.cgpa() != null).count();
         for (GraduationRepository.Band b : repo.bands()) {
-            long n = all.stream().filter(g -> g.unmet() == null && g.cgpa() != null
+            long n = all.stream().filter(g -> !g.postgraduate() && g.unmet() == null && g.cgpa() != null
                     && g.cgpa().compareTo(b.low()) >= 0 && g.cgpa().compareTo(b.high()) <= 0).count();
             classes.add(new ClassRow(b.clazz(), n, classified == 0 ? 0 : (int) Math.round(100.0 * n / classified), b.low(), b.high()));
         }

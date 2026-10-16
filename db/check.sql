@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 332
+\set EXPECTED 334
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15051,6 +15051,93 @@ BEGIN
         format('reference %s / %s, permits %s, counts %s/%s | log %s, update %s | short reason %s | revoked %s, restored %s | after reset %s | again %s %s',
                ref, i2->'permit'->>'reference', n_permits, i2->'permit'->>'viewed', i2->'permit'->>'printed', events, once, short_reason,
                revoked->>'code', restored->>'available', after_reset->>'code', i3->'permit'->>'reference', courses3));
+END $$;
+
+
+-- ── V493: graduation follows the register ──
+-- A finalist is enrolled at the final level the register states for the programme — a change there is followed — and a
+-- postgraduate on a programme without research is a finalist by coursework once every required course is passed. The block
+-- undoes its writes.
+DO $$
+DECLARE ug text; pg text; lvl int; v_ses text; st uuid := gen_random_uuid(); pgs uuid := gen_random_uuid();
+        o uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); sh uuid := gen_random_uuid();
+        at400 boolean; at500 boolean; basis text; level_of int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V493', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        ug := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/949301', 'CHECKV493', 'Finalist', ug, 'UTME', v_ses, 100, 500, 'ADMITTED');
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, v_ses, 500);
+        UPDATE ref.programme SET final_level = 400 WHERE code = ug;
+        at400 := EXISTS (SELECT 1 FROM records.graduation_finalists(v_ses) f WHERE f.student_id = st);
+        UPDATE ref.programme SET final_level = 500 WHERE code = ug;   -- the register says five years now
+        at500 := EXISTS (SELECT 1 FROM records.graduation_finalists(v_ses) f WHERE f.student_id = st AND f.basis = 'LEVEL');
+        level_of := records.final_level_of(st);
+        -- a postgraduate on a programme without research, every required course passed in the session
+        SELECT p.code, admissions.pg_award_level(p.pg_award) INTO pg, lvl FROM ref.programme p
+         WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.pg_research, false) AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (pgs, 'MOAUM/ADM/60/949302', 'CHECKV493', 'Postgraduate', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state)
+        VALUES ('ZQG 801', 'Check required course', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQG 801', pg, lvl, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (o, 'ZQG 801', v_ses, 1, 'PG');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (reg, pgs, v_ses, 1, lvl, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, o, 3, 'APPROVED');
+        UPDATE people.student SET status = 'ACTIVE', matric_no = 'MOAUM/PGC/60/94930', matriculated_at = now() WHERE id = pgs;
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, o, 'PUBLISHED', 'SEN/CHK/493', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, pgs, 30, 45, 'GRADED');
+        SELECT f.basis INTO basis FROM records.graduation_finalists(v_ses) f WHERE f.student_id = pgs;
+        RAISE EXCEPTION 'the V493 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V493 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V493: a finalist is enrolled at the final level the register states (a change followed); a postgraduate without research is a finalist by coursework once every required course is passed',
+        coalesce(NOT at400 AND at500 AND level_of = 500 AND basis = 'COURSEWORK', false),
+        format('at 500 with final 400 %s | with final 500 %s (final level of %s) | postgraduate %s', at400, at500, level_of, basis));
+END $$;
+
+
+-- ── V494: a department's fee figures agree with the registration gate ──
+-- A student with no fee stated for the session, nothing due, is not cleared by the department's figures, as the gate refuses
+-- them. The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); sch uuid := gen_random_uuid(); v_ses text; set_says boolean; gate_says boolean; stated boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V494', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1);
+        -- a clearance scheme in force for the reading (the same one block 19 states), where the suite has none in force now
+        IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+            INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+            VALUES (sch, 'clearance', 'UNIVERSITY', daterange(current_date - 1, NULL), 'CHECK V494', 'bursar');
+            INSERT INTO policy.clearance_scheme VALUES (sch, true);
+            INSERT INTO policy.clearance_rule VALUES
+                (sch,'REGISTRATION','INSTALMENT_1'), (sch,'ID_CARD','INSTALMENT_1'), (sch,'LIBRARY','INSTALMENT_1'), (sch,'HOSTEL','INSTALMENT_1'),
+                (sch,'EXAMINATION','INSTALMENT_2'), (sch,'RESULTS','PAID_IN_FULL'), (sch,'TRANSCRIPT','PAID_IN_FULL'), (sch,'CONVOCATION','PAID_IN_FULL');
+        END IF;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/949401', 'CHECKV494', 'Unstated', (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1),
+                'UTME', v_ses, 100, 100, 'ADMITTED');
+        stated := finance.fee_stated(st, v_ses);
+        SELECT cl.clears INTO set_says FROM finance.session_clears(v_ses, 'REGISTRATION') cl WHERE cl.student_id = st;
+        gate_says := finance.clears(st, v_ses, 'REGISTRATION');
+        RAISE EXCEPTION 'the V494 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V494 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V494: a student with no fee stated is not counted cleared by the department''s figures, as the registration gate refuses them',
+        coalesce((stated OR (set_says IS NOT DISTINCT FROM false)) AND set_says IS NOT DISTINCT FROM gate_says, false),
+        format('fee stated %s | department figures %s | gate %s', stated, set_says, gate_says));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

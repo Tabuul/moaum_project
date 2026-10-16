@@ -26,6 +26,8 @@ export interface PgRow {
   fee_confirmed_at: string | null; submitted_at: string | null; dept_decided_at: string | null;
   spgs_decided_at: string | null; accepted_at: string | null; admitted_at: string | null; student_id: string | null;
   return_note?: string | null; returned_at?: string | null; returned_to?: string | null; screening_state?: string | null;
+  /** V488: the specialisation applied for (the student's own once admitted) */
+  specialisation?: string | null; specialisation_id?: string | null;
 }
 export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number; not_recommended?: number; returned?: number; not_offered?: number; unpaid?: number }; rows: PgRow[] }
 interface Screening { state: string; venue: string | null; scheduled_for: string | null; verified_documents: string[] | null; missing_documents: string[] | null; issues: string | null; remarks: string | null; reason: string | null; decided_at: string | null; officer: string | null; officer_office: string | null }
@@ -34,7 +36,9 @@ const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMM
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
 interface HistoryRow { kind: string; note: string | null; at: string; actor: string | null; actor_office: string | null }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null; checking_confirmed_at?: string | null; acceptance_confirmed_at?: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[]; screening?: Screening | null; screeningRequired?: boolean; student?: { admission_no: string; matric_no: string | null; status: string } | null }
+interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null; checking_confirmed_at?: string | null; acceptance_confirmed_at?: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[]; screening?: Screening | null; screeningRequired?: boolean; student?: { admission_no: string; matric_no: string | null; status: string } | null;
+  /** V488: the programme's running specialisations, for the School before admission */
+  specialisations?: { id: string; code: string; name: string }[] }
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Application opened", SUBMITTED: "Submitted", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", REFERENCE_RECEIVED: "Reference received",
   DEPT_RECOMMENDED: "Department recommended", DEPT_DECLINED: "Department declined", FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Faculty declined",
@@ -48,9 +52,9 @@ const fmtWhen = (v: string) => new Date(v).toLocaleString("en-GB", { day: "2-dig
 
 /** the applications on the desk as a branded workbook: S/N first, names A–Z as the desk lists them */
 async function exportRows(rows: PgRow[], session: string) {
-  const headers = ["S/N", "Application number", "Applicant", "Programme", "Award", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
+  const headers = ["S/N", "Application number", "Applicant", "Programme", "Award", "Specialisation", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
   const body = rows.map((r, i) => [
-    i + 1, r.application_no, `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.department_name ?? "", r.faculty_name ?? "",
+    i + 1, r.application_no, `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.specialisation ?? "", r.department_name ?? "", r.faculty_name ?? "",
     r.entry_level, session, r.fee_confirmed_at ? "Paid" : "Unpaid", stageOf(r).label, r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "",
   ]);
   const blob = await brandedXlsx("Postgraduate applications", headers, body, { sheetName: "Applications", serial: docSerial("PGAPP"), sub: session });
@@ -178,6 +182,9 @@ function ScreeningBox({ id, screening, accepted, required, office, documents, bu
   );
 }
 
+/** V488: the School's offices set the specialisation applied for */
+const SPGS_OFFICES = ["pgschool", "pgsecretary", "super"];
+
 function DetailPanel({ id, office, onChanged }: { id: string; office: string | null; onChanged: () => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -240,6 +247,19 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
           <div className="b700 t-lg">{a.surname}, {a.other_names}</div>
           <div className="sub2 mt-1">{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
           <div className="sub2">{a.email}{a.phone ? ` · ${a.phone}` : ""}</div>
+          {/* V488: the specialisation applied for; the School sets or changes it until the applicant is admitted */}
+          {a.specialisation || (d.specialisations ?? []).length ? (
+            <div className="row row--inline row--tight mt-1">
+              <span className="sub2">Specialisation:</span>
+              {SPGS_OFFICES.includes(office ?? "") && !a.student_id && (d.specialisations ?? []).length ? (
+                <select className="ctl" aria-label="Specialisation applied for" disabled={busy !== null} value={a.specialisation_id ?? ""}
+                  onChange={(e) => void act("specialisation", `Specialisation of ${a.application_no}: ${(d.specialisations ?? []).find((x) => x.id === e.target.value)?.name ?? "not decided"}`, { specialisation: e.target.value || null })}>
+                  <option value="">Not decided</option>
+                  {(d.specialisations ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+              ) : <b>{a.specialisation ?? "Not decided"}</b>}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -522,7 +542,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
                   return [
                     <span key="sn" className="tnum sub2">{i + 1}</span>,
                     <Two key="n" a={`${r.surname}, ${r.other_names}`} b={r.application_no} />,
-                    <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.pg_research ? " · research" : ""}</div></span>,
+                    <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.pg_research ? " · research" : ""}{r.specialisation ? ` · ${r.specialisation}` : ""}</div></span>,
                     <span className="tnum" key="l">{r.entry_level}</span>,
                     <span className="sub2" key="d">{r.prior_award ?? "—"}{r.prior_class ? ` · ${r.prior_class}` : ""}</span>,
                     <Pil kind={st.kind} key="s">{st.label}</Pil>,

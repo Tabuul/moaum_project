@@ -4,6 +4,10 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { DeptCourses, type CodeFix, type Course, type Dept, type Duplicate, type Programme } from "./DeptCourses";
 import type { Directory, Proposal } from "@/lib/catalogue";
 import type { Twins } from "./TwinCourses";
+import { PrerequisiteUpload } from "./structure/checks/PrerequisiteUpload";
+
+/** V495: the offices that set a course's prerequisites upload them here for the department's courses */
+const SETS_PREREQUISITES = ["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super"];
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +43,8 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
           mayLink={["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super"].includes(me.ok ? me.data.activeOffice ?? "" : "")}
           mayMerge={["academic", "registrar", "dregistrar", "super"].includes(me.ok ? me.data.activeOffice ?? "" : "")} />
       )}
+      {dept && courses && courses.ok && SETS_PREREQUISITES.includes(me.ok ? me.data.activeOffice ?? "" : "")
+        ? <PrerequisiteUpload templateCourses={courses.data.filter((c) => c.state !== "ENDED").map((c) => c.code)} /> : null}
     </Shell>
   );
 }

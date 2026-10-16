@@ -29,10 +29,12 @@ class HodController {
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
+    private final ng.edu.moaum.portal.shared.FigureCache figures;
 
-    HodController(JdbcClient jdbc, OfficeScope scope) {
+    HodController(JdbcClient jdbc, OfficeScope scope, ng.edu.moaum.portal.shared.FigureCache figures) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.figures = figures;
     }
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(HodController.class);
@@ -162,11 +164,13 @@ class HodController {
                 SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status = 'PROBATION'
                 """).param("d", dept).query(Long.class).single());
-        part(out, unavailable, "carryoverStudents", () -> jdbc.sql("""
+        // Oct 2026: reading every student's results, this took eight seconds for the largest department — the figure is kept
+        // a few minutes for the department's offices (FigureCache)
+        part(out, unavailable, "carryoverStudents", () -> figures.get(java.util.List.of("hod-carryovers", dept), false, () -> jdbc.sql("""
                 SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
                    AND EXISTS (SELECT 1 FROM registration.carryovers(st.id))
-                """).param("d", dept).query(Long.class).single());
+                """).param("d", dept).query(Long.class).single()).value());
 
         // the department's lecturers and their teaching load this session
         part(out, unavailable, "lecturers", () -> jdbc.sql("""

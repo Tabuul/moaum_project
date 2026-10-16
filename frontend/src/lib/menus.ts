@@ -154,12 +154,6 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
-        "name": "Finance",
-        "items": [
-          { "id": "t/requisitions", "icon": "box", "label": "Requisitions" }
-        ]
-      },
-      {
         "name": "Staff",
         "items": [
           { "id": "t/deptstaff", "icon": "user", "label": "Department Staff" },
@@ -794,7 +788,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Services",
         "items": [
           { "id": "t/circulation", "icon": "book", "label": "Circulation" },
-          { "id": "t/stores", "icon": "box", "label": "Stock & Acquisitions" }
         ]
       },
       {
@@ -1490,17 +1483,9 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
-        "name": "Finance",
-        "items": [
-          { "id": "t/requisitions", "icon": "box", "label": "Requisitions" },
-          { "id": "t/tenders", "icon": "box", "label": "Tenders" }
-        ]
-      },
-      {
         "name": "Services",
         "items": [
           { "id": "t/circulation", "icon": "book", "label": "Library Circulation" },
-          { "id": "t/stores", "icon": "box", "label": "Stores & Assets" }
         ]
       },
       {
@@ -2385,7 +2370,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Finance",
         "items": [
           { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
-          { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" }
         ]
       },
       {
@@ -2461,12 +2445,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" }
-        ]
-      },
-      {
-        "name": "Finance",
-        "items": [
-          { "id": "t/feesetup", "icon": "card", "label": "Fees" }
         ]
       },
       {

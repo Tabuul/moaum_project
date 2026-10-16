@@ -171,7 +171,7 @@ class PortalAuditIT {
                 INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
                 VALUES (gen_random_uuid(), :p, 'lecturer', 'department', 'MTC', 'integration test', :p, current_date)
                 """).param("p", person).update());
-        String desk = it.officer("library", "institution", "MOAUM");
+        String desk = it.officer("security", "institution", "MOAUM");   // GAP-005: the Security Unit alone issues and prints
         String any = ItSupport.token("lecturer");
 
         // V439: issued on the staff number by the card desk, never by a lecturer
@@ -183,8 +183,10 @@ class PortalAuditIT {
         Map<?, ?> live = it.get(desk, "/api/v1/credentials/identity-cards/staff/" + person + "/card").getBody();
         String path = String.valueOf(live.get("verify_path"));
         assertThat(((Map<?, ?>) live.get("face")).get("staff_number")).isEqualTo(staffNo);   // the card's face, from the register
-        // HR prints the card from the staff record too; a lecturer reads no card
-        assertThat(it.get(ItSupport.token("hrm"), "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(200);
+        // GAP-005 (16 Oct 2026): the Security Unit alone prints the card — not HR from the staff record, not the Library; a
+        // lecturer reads no card
+        assertThat(it.get(ItSupport.token("hrm"), "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("library"), HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/issue", Map.of("staffNumber", staffNo)).getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(any, "/api/v1/credentials/identity-cards/staff/" + person + "/card").getStatusCode().value()).isEqualTo(403);
         String code = path.substring(path.indexOf("&c=") + 3);
 

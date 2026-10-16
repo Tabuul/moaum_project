@@ -29,7 +29,8 @@ export interface StaffDesk {
 export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staff: StaffDesk | null; q: string; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
-  const may = ["library", "security", "super"].includes(actingOffice ?? "");
+  // GAP-005 (16 Oct 2026): the Security Unit alone prints, issues and reports a card lost; every other office reads its status
+  const may = ["security", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [search, setSearch] = useState(q);
@@ -75,7 +76,7 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
           <span key="n"><span className="tnum">{c.card_no}</span>{c.verify_path && c.state === "ISSUED" ? <div className="sub2"><a href={c.verify_path} target="_blank" rel="noopener" title="The address the card's QR carries; the public page shows the card only with this code">Check address</a></div> : null}</span>, <Two key="s" a={`${c.surname}, ${c.other_names}`} b={`${c.matric_no} · ${c.programme}`} />,
           <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
           c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
-          c.state === "ISSUED" ? <span key="l" className="row row--tight"><a className="btn btn--ghost btn--sm" href={`/credentials/idcards/student/pdf?id=${encodeURIComponent(c.student_id)}`} target="_blank" rel="noopener">Print</a><Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`lost-${c.id}`, `/students/${c.student_id}/lost`, { reason }, `Identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn></span> : <span key="l" />,
+          c.state === "ISSUED" ? <span key="l" className="row row--tight">{may ? <a className="btn btn--ghost btn--sm" href={`/credentials/idcards/student/pdf?id=${encodeURIComponent(c.student_id)}`} target="_blank" rel="noopener">Print</a> : null}<Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`lost-${c.id}`, `/students/${c.student_id}/lost`, { reason }, `Identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn></span> : <span key="l" />,
         ])} texts={desk.cards.map((c) => `${c.card_no} ${c.surname} ${c.other_names} ${c.matric_no}`)} />
         {!desk.cards.length ? <PBody><div className="sub2">No card has been issued yet.</div></PBody> : null}
       </Panel>
@@ -86,7 +87,7 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
             <Two key="s" a={`${c.surname}, ${c.given_names}`} b={`${c.staff_number ?? ""}${c.department ? ` · ${c.department}` : ""}`} />,
             <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
             c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
-            c.state === "ISSUED" ? <span key="l" className="row row--tight"><a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a>{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,
+            c.state === "ISSUED" ? <span key="l" className="row row--tight">{may ? <a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a> : null}{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,
           ])} texts={staff.cards.map((c) => `${c.card_no} ${c.surname} ${c.given_names} ${c.staff_number ?? ""}`)} />
           {!staff.cards.length ? <PBody><div className="sub2">No staff card has been issued yet. A card is issued on the staff number to a member of staff in office; its QR carries the address the public check answers.</div></PBody> : null}
         </Panel>

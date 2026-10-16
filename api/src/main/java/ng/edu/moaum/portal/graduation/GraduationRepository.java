@@ -17,22 +17,24 @@ class GraduationRepository {
         this.jdbc = jdbc;
     }
 
-    record Finalist(UUID studentId, String programmeCode, String programmeName, int level) {
+    /** V493: basis LEVEL (an undergraduate at the register's final level), RESEARCH or COURSEWORK (a postgraduate) */
+    record Finalist(UUID studentId, String programmeCode, String programmeName, int level, String basis) {
+        boolean postgraduate() {
+            return !"LEVEL".equals(basis);
+        }
     }
 
-    /** every student enrolled in the session at the final level of their programme */
+    /** V493: the session's finalists by the register's final level of each programme (and route), and its postgraduate
+     *  graduands (records.graduation_finalists) — no final year written here */
     List<Finalist> finalists(String session) {
-        return jdbc.sql("""
-                SELECT s.id AS student_id, s.programme_code, p.name AS programme_name, e.level
-                  FROM people.enrolment e
-                  JOIN people.student s ON s.id = e.student_id
-                  JOIN ref.programme p ON p.code = s.programme_code
-                 WHERE e.session = :s
-                   AND e.level = CASE WHEN p.code = 'C00061' THEN 600
-                                      WHEN upper(p.name) LIKE 'LL.B%' OR upper(p.name) LIKE '%PHARMACY%' THEN 500
-                                      ELSE 400 END
-                 ORDER BY s.surname, s.other_names
-                """).param("s", session).query(Finalist.class).list();
+        return jdbc.sql("SELECT student_id, programme_code, programme_name, level, basis FROM records.graduation_finalists(:s)")
+                .param("s", session).query(Finalist.class).list();
+    }
+
+    /** V493: the required courses a postgraduate has not passed (admissions.pg_coursework_audit), in order */
+    List<String> pgOutstanding(UUID student) {
+        return jdbc.sql("SELECT course_code FROM admissions.pg_coursework_audit(:s) WHERE state <> 'PASSED' ORDER BY level, course_code")
+                .param("s", student).query(String.class).list();
     }
 
     record Standing(BigDecimal cgpa, String ungraded) {
@@ -76,7 +78,7 @@ class GraduationRepository {
      *  its process and its overall word (NOT_STARTED when none) */
     record Graduand(UUID studentId, String number, String surname, String otherNames, String programmeName, BigDecimal cgpa,
                     String unmet, String senateState, String classOfDegree, boolean cleared, String clearanceRef, UUID clearanceProcess,
-                    String clearanceState) {
+                    String clearanceState, boolean postgraduate) {
     }
 
     List<Graduand> graduands(String session, String fac, String dept, String prog) {
@@ -85,7 +87,9 @@ class GraduationRepository {
                 WITH gl AS (
                     SELECT g.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names,
                            p.name AS programme_name, g.cgpa, g.unmet, g.senate_state,
-                           CASE WHEN g.cgpa IS NULL THEN NULL ELSE policy.class_of(g.cgpa) END AS class_of_degree
+                           -- V493: a postgraduate award is not put in an undergraduate class
+                           CASE WHEN g.cgpa IS NULL OR p.category = 'POST GRADUATE' THEN NULL ELSE policy.class_of(g.cgpa) END AS class_of_degree,
+                           p.category = 'POST GRADUATE' AS postgraduate
                       FROM records.graduand g
                       JOIN people.student s ON s.id = g.student_id
                       JOIN ref.programme p ON p.code = s.programme_code

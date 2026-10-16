@@ -149,6 +149,7 @@ class PgAdmissionsController {
                        a.fee_confirmed_at, a.checking_confirmed_at, a.acceptance_confirmed_at,
                        a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
                        a.accepted_at, a.admitted_at, a.student_id, a.return_note, a.returned_at, a.returned_to,
+                       (SELECT ps.name FROM catalogue.programme_specialisation ps WHERE ps.id = a.specialisation_id) AS specialisation,   -- V488
                        (SELECT sc.state FROM admissions.pg_screening sc WHERE sc.application_id = a.id) AS screening_state,
                        (SELECT count(*) FROM admissions.pg_document x WHERE x.application_id = a.id AND x.kind <> 'PASSPORT') AS documents,
                        (SELECT count(*) FROM admissions.pg_referee x WHERE x.application_id = a.id AND x.submitted_at IS NOT NULL) AS references_in
@@ -448,6 +449,21 @@ class PgAdmissionsController {
         return Map.of("ok", true, "status", to);
     }
 
+    public record SpecialisationIn(@jakarta.validation.constraints.Size(max = 40) String specialisation) {
+    }
+
+    /** V488: the School sets or changes the specialisation applied for (one of the programme's running ones), or clears it,
+     *  before admission; once admitted the student's own is changed on the programme structure */
+    @PostMapping("/applications/{id}/specialisation")
+    @PreAuthorize(SPGS)
+    @Transactional
+    Map<String, Object> setSpecialisation(@PathVariable UUID id, @Valid @RequestBody SpecialisationIn body) {
+        inBound(id);
+        jdbc.sql("SELECT admissions.pg_set_specialisation(:a, :s)").param("a", id)
+                .param("s", body.specialisation() == null ? "" : body.specialisation().trim()).query().listOfRows();
+        return application(id);
+    }
+
     /** one application in full: the applicant, the first degree, the proposal, its referees and documents */
     @GetMapping("/applications/{id}")
     @PreAuthorize(READERS)
@@ -462,7 +478,11 @@ class PgAdmissionsController {
                        a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.dept_note,
                        a.fac_decided_at, a.fac_note, a.spgs_decided_at, a.spgs_note,
                        a.accepted_at, a.admitted_at, a.student_id,
-                       a.checking_confirmed_at, a.acceptance_confirmed_at, a.return_note, a.returned_at, a.returned_to
+                       a.checking_confirmed_at, a.acceptance_confirmed_at, a.return_note, a.returned_at, a.returned_to,
+                       -- V488: the specialisation applied for (the student's own once admitted)
+                       a.specialisation_id,
+                       (SELECT ps.name FROM catalogue.programme_specialisation ps
+                         WHERE ps.id = coalesce((SELECT ss.specialisation_id FROM people.student_specialisation ss WHERE ss.student_id = a.student_id), a.specialisation_id)) AS specialisation
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
@@ -500,6 +520,11 @@ class PgAdmissionsController {
         out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
         out.put("history", history);
+        // V488: the programme's running specialisations, for the School to set or change the one applied for before admission
+        out.put("specialisations", jdbc.sql("""
+                SELECT ps.id, ps.code, ps.name FROM catalogue.programme_specialisation ps
+                 WHERE ps.programme_code = :p AND ps.active ORDER BY ps.name
+                """).param("p", app.get("programme_code")).query().listOfRows());
         // the physical screening (V337): whether the session requires it, and the record once opened
         out.put("screeningRequired", jdbc.sql("SELECT admissions.pg_screening_required(:id)").param("id", id).query(Boolean.class).single());
         out.put("screening", jdbc.sql("""

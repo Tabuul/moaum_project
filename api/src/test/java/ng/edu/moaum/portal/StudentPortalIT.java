@@ -243,9 +243,11 @@ class StudentPortalIT {
         Map<String, Object> docket = it.get(token, "/api/v1/me/docket").getBody();
         assertThat(docket.get("clearsExamination")).isEqualTo(true);
 
-        // the identity card: the Library issues it on the matriculation number, released at instalment 1
-        String library = ItSupport.token("library");
-        ResponseEntity<Map> card = it.call(library, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of());
+        // the identity card: the Security Unit issues it on the matriculation number, released at instalment 1 (GAP-005: not the Library)
+        assertThat(it.call(ItSupport.token("library"), HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of())
+                .getStatusCode().value()).isEqualTo(403);
+        String security = ItSupport.token("security");
+        ResponseEntity<Map> card = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of());
         assertThat(card.getStatusCode().value()).as(String.valueOf(card.getBody())).isEqualTo(200);
         assertThat(String.valueOf(card.getBody().get("cardNo"))).startsWith("MOAUM/ID/");
         Map<String, Object> myCard = it.get(token, "/api/v1/me/id-card").getBody();
