@@ -1,3 +1,4 @@
+import type { ReportedReceipt } from "./support";
 /** The Bursary's desk, as the API states it (V037). */
 export interface GatewayConfig { gateway: string; configured: boolean; has_hash: boolean; mode: string | null; last4: string | null; set_at: string | null; set_by_name: string | null }
 export interface GatewayMerchant { scope: string; productId: string; merchantCode: string; payItemId: string; identity: string; name: string }
@@ -53,11 +54,8 @@ export interface Hanging {
   /** V480: the receipt the payer reported for it */
   receipt_log_id?: string | null; receipt_paid_on?: string | null; receipt_amount?: number | null; receipt_channel?: string | null;
 }
-/** V480: a receipt a payer reported for a Pay on Quickteller payment (finance.paydirect_claims) */
-export interface PaydirectClaimRow {
-  reference: string; payer: string | null; number: string | null; due: number | null; payment_log_id: string; paid_on: string; amount: number | null;
-  channel: string | null; note: string | null; claimed_at: string; claimed_office: string | null; confirmed_at: string | null;
-}
+/** V480, V490: a receipt a payer reported for a Pay on Quickteller payment (finance.paydirect_claims), with where it stands */
+export type PaydirectClaimRow = ReportedReceipt;
 export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; claims?: PaydirectClaimRow[]; portalUrl: string }
 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }

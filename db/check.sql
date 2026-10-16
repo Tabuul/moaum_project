@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 336
+\set EXPECTED 337
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15302,6 +15302,104 @@ BEGIN
                  AND portal_left AND NOT leg_left AND kept_left AND saved = 2 AND unposted_after AND n_payment_journals = 1, false),
         format('refused %s | batch 1: %s | batch 2: %s | journal %s/%s reversals %s net %s | portal kept %s legacy left %s linked kept %s | saved %s | reload unposted %s journals %s',
                refused, r, r2, v_status, v_type, n_rev, net, portal_left, leg_left, kept_left, saved, unposted_after, n_payment_journals));
+END $$;
+-- ── V490. Reported receipts closed out: five references of one payer opened on Pay on Quickteller 30 hours before at 10:00
+--          Lagos time. 0001's receipt waits; 0002's Payment Log Id (typed with spaces and a dash) came in Interswitch's
+--          notification for 0002 short of the amount (SEEN); 0003's came in the collections report against 0009 (ELSEWHERE);
+--          0004's the Bursary marks not found — refused without a note, the payer told — then the payer corrects it (WAITING
+--          again) and the Bursary marks and reopens it; 0005 has no receipt. Interswitch is asked about 0001 and 0005 only;
+--          the Bursary's daily list holds 0001, 0002, 0003 and 0005 with the receipts named; a confirmed reference's receipt
+--          cannot be marked; the desk's act is a payment act. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); st uuid := gen_random_uuid(); v_ses text;
+        at10 timestamptz := (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+        states text; seen3 text; short_note text; no_actor text; told_payer int; reopened text; marked_again text; back text;
+        ask text; waiting text; told int; mail text; confirmed_mark text; module text; con text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V490', true);
+        UPDATE finance.paydirect_setting SET watch_enabled = true;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (bur, 'CHECKV490', 'Bursar', 'zz.check490@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'check V490', who, current_date - 1);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/60/949001', 'CHECKV490', 'Payer', (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME', v_ses, 100, 100, 'ADMITTED');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        SELECT st, v_ses, 'MOAUM-FEE-949001-000' || g, 'check V490', 1000.00 * g, now() + interval '30 days' FROM generate_series(1, 5) g;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (st, v_ses, 'MOAUM-FEE-949001-0009', 'check V490: the number the payer typed on Quickteller', 3000.00, now() + interval '30 days');
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at)
+        SELECT 'MOAUM-FEE-949001-000' || g, 'paydirect', 'FEE', st, at10 - interval '30 hours' FROM generate_series(1, 5) g;
+        -- the payer's receipts, as typed
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0001', st, 'PL-490001', today, 1000, 'QUICKTELLER', NULL);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0002', st, ' pl 490-002 ', today, 2000, 'BANK', NULL);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0003', st, 'PL-490003', today, 3000, 'QUICKTELLER', NULL);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0004', st, 'PL-490004', today, 4000, 'QUICKTELLER', NULL);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        -- what Interswitch said: 0002's notification short of the amount; 0003's Log Id in the collections report against 0009
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, gateway_ref, amount, signature_ok, outcome, received_at)
+        VALUES ('paydirect', 'WEBHOOK', 'notification', 'MOAUM-FEE-949001-0002', 'PL490002', 500.00, true, 'SHORT_PAID', at10 - interval '20 hours');
+        INSERT INTO finance.paydirect_collection (biller_code, prn, amount, paid_at, channel, rrn, payer, state, reference, why)
+        VALUES ('04255101', 'MOAUM-FEE-949001-0009', 3000.00, at10 - interval '25 hours', 'WEB', 'PL-490003', 'CHECKV490 Payer', 'MATCHED', 'MOAUM-FEE-949001-0009', NULL);
+        -- the Bursary's word on 0004: refused without a note, refused without a person, then marked and the payer told
+        BEGIN PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0004', true, 'no');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS short_note = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', '', true);
+        BEGIN PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0004', true, 'Interswitch has no payment with this Log Id');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS no_actor = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0004', true, 'Interswitch has no payment with this Log Id');
+        told_payer := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'PAYDIRECT_RECEIPT_NOT_FOUND'
+                          AND n.body LIKE '%Interswitch has no payment with this Log Id%');
+        states := (SELECT string_agg(right(c.reference, 4) || ':' || c.state, ',' ORDER BY c.reference)
+                     FROM finance.paydirect_claims() c WHERE c.reference LIKE 'MOAUM-FEE-949001-%');
+        seen3 := (SELECT c.seen_reference || '/' || c.seen_in FROM finance.paydirect_claims(30, 'moaum-fee-949001-0003') c);
+        SELECT string_agg(right(a.reference, 4) || ':' || coalesce(a.payment_log_id, '-'), ',' ORDER BY a.reference) INTO ask
+          FROM finance.paydirect_ask_list() a WHERE a.reference LIKE 'MOAUM-FEE-949001-%';
+        SELECT string_agg(right(w.reference, 4) || ':' || coalesce(w.state, '-'), ',' ORDER BY w.reference) INTO waiting
+          FROM finance.paydirect_waiting(at10) w WHERE w.reference LIKE 'MOAUM-FEE-949001-%';
+        told := finance.watch_paydirect_unreported(at10);
+        mail := (SELECT n.body FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = bur AND n.template_key = 'PAYDIRECT_UNREPORTED' AND n.channel = 'EMAIL');
+        -- the payer corrects 0004: waiting again; the Bursary marks it again and reopens it
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0004', st, 'PL-490044', today, 4000, 'QUICKTELLER', 'the Log Id corrected');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        reopened := (SELECT c.state || '/' || c.payment_log_id FROM finance.paydirect_claims(30, 'MOAUM-FEE-949001-0004') c);
+        PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0004', true, 'Interswitch has no payment with this Log Id either');
+        marked_again := (SELECT c.state FROM finance.paydirect_claims(30, 'MOAUM-FEE-949001-0004') c);
+        PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0004', false, NULL);
+        back := (SELECT c.state || coalesce('/' || c.not_found_note, '') FROM finance.paydirect_claims(30, 'MOAUM-FEE-949001-0004') c);
+        -- confirmed, a receipt is the payment's: not marked
+        PERFORM finance.confirm_payment('MOAUM-FEE-949001-0001', 'Quickteller · WEB', 'check V490');
+        BEGIN PERFORM finance.paydirect_claim_mark('MOAUM-FEE-949001-0001', true, 'Interswitch has no payment with this Log Id');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS confirmed_mark = MESSAGE_TEXT; END;
+        confirmed_mark := confirmed_mark || '/' || (SELECT c.state FROM finance.paydirect_claims(30, 'MOAUM-FEE-949001-0001') c);
+        -- the desk's act is a payment act
+        module := helpdesk.support_module('PAYMENT_RECEIPT_REPORTED');
+        con := (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_hd_sa_action');
+        RAISE EXCEPTION 'the V490 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V490 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V490: a reported receipt is matched against what Interswitch said — waiting, seen short, seen under another reference — or marked not found by the Bursary with the payer told, reopened by a corrected receipt; only what Interswitch can answer is sent to it; the daily list names the receipts; the desk''s act is a payment act',
+        coalesce(states = '0001:WAITING,0002:SEEN,0003:ELSEWHERE,0004:NOT_FOUND' AND seen3 = 'MOAUM-FEE-949001-0009/COLLECTIONS'
+                 AND short_note LIKE 'PAY_CLAIM_NOTE%' AND no_actor LIKE 'PAY_CLAIM_ACTOR%' AND told_payer >= 1
+                 AND ask = '0001:PL-490001,0005:-' AND waiting = '0001:WAITING,0002:SEEN,0003:ELSEWHERE,0005:-'
+                 AND told >= 1 AND mail LIKE '%MOAUM-FEE-949001-0001%receipt PL-490001%'
+                 AND mail LIKE '%receipt PL-490003, paid % reported by Interswitch against MOAUM-FEE-949001-0009%'
+                 AND mail LIKE '%Payers reported the receipt (its Payment Log Id) for 3 of them; Interswitch reported 1 of those against another reference%'
+                 AND mail NOT LIKE '%MOAUM-FEE-949001-0004%'
+                 AND reopened = 'WAITING/PL-490044' AND marked_again = 'NOT_FOUND' AND back = 'WAITING'
+                 AND confirmed_mark LIKE 'PAY_CLAIM_CONFIRMED%/CONFIRMED'
+                 AND module = 'PAYMENT' AND con LIKE '%PAYMENT_RECEIPT_REPORTED%', false),
+        format('states %s | 0003 seen %s | short note %s | no actor %s | payer told %s | ask %s | waiting %s | told %s | mail %s | reopened %s, again %s, back %s | confirmed %s | module %s',
+               states, seen3, short_note, no_actor, told_payer, ask, waiting, told, left(mail, 900), reopened, marked_again, back, confirmed_mark, module));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

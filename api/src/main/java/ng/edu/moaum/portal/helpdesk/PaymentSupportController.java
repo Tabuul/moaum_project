@@ -253,6 +253,22 @@ class PaymentSupportController {
         }
         if (!refunds.isEmpty()) say.accept("REFUND_RECORDED", new String[] {"A refund is recorded against this reference (" + String.valueOf(refunds.get(0).get("state")).toLowerCase() + "); the Bursary decides it.", "NONE"});
 
+        /* V490: a Pay on Quickteller payment Interswitch has not reported — the receipt the student holds is what finds it */
+        Map<String, Object> receipt = confirmed ? null : payments.paydirectClaimOf(ref);
+        boolean onQuickteller = attempts.stream().anyMatch(x -> "paydirect".equals(x.get("gateway")));
+        if (!confirmed && receipt == null && onQuickteller) {
+            say.accept("RECEIPT_ASK", new String[] {"Opened on Pay on Quickteller: Interswitch reports it, and the portal cannot ask. If the student paid, take the Payment Log Id from their receipt and record it; the Bursary looks for it in Interswitch's report.", "REPORT_RECEIPT"});
+        } else if (receipt != null) {
+            String logId = String.valueOf(receipt.get("payment_log_id"));
+            switch (String.valueOf(receipt.get("state"))) {
+                case "WAITING" -> say.accept("RECEIPT_WAITING", new String[] {"The receipt is recorded (Payment Log Id " + logId + ", paid " + day(receipt.get("paid_on")) + "); the Bursary looks for it in Interswitch's report and asks Interswitch to re-send it. Correct it only if the Log Id was mistyped.", "REPORT_RECEIPT"});
+                case "SEEN" -> say.accept("RECEIPT_SEEN", new String[] {"Interswitch reported Payment Log Id " + logId + " for this reference without settling it (" + String.valueOf(receipt.get("seen_outcome")).toLowerCase().replace('_', ' ') + "). The Bursary decides: escalate.", "ESCALATE_BURSARY"});
+                case "ELSEWHERE" -> say.accept("RECEIPT_ELSEWHERE", new String[] {"Interswitch reported Payment Log Id " + logId + " against another reference, " + receipt.get("seen_reference") + ". The Bursary settles it: escalate with both references.", "ESCALATE_BURSARY"});
+                case "NOT_FOUND" -> say.accept("RECEIPT_NOT_FOUND", new String[] {"The Bursary could not find Payment Log Id " + logId + " at Interswitch: " + receipt.get("not_found_note") + " Check the Log Id on the student's receipt; correct it if it was mistyped, or escalate to the Bursary with the bank's debit details.", "REPORT_RECEIPT"});
+                default -> { }
+            }
+        }
+
         /* the acts this agent may take on it now */
         List<String> actions = new ArrayList<>();
         actions.add("VIEW_TRANSACTION");
@@ -260,6 +276,7 @@ class PaymentSupportController {
         if (confirmed && a.has("SYNC_ENTITLEMENT")) actions.add("REFRESH_ENTITLEMENT");
         if (confirmed && (a.has("VIEW_PAYMENTS") || a.has("INVESTIGATE_PAYMENT"))) actions.add("VIEW_RECEIPT");
         if (confirmed && a.has("REGENERATE_RECEIPT")) actions.add("REGENERATE_RECEIPT");
+        if (!confirmed && a.has("INVESTIGATE_PAYMENT")) actions.add("REPORT_RECEIPT");
         actions.add("ESCALATE_BURSARY");
         actions.add("ESCALATE_ICT");
 
@@ -286,6 +303,7 @@ class PaymentSupportController {
         out.put("attempts", attempts);
         out.put("events", events);
         out.put("refunds", refunds);
+        out.put("receipt", receipt);
         out.put("related", siblings);
         out.put("advice", advice);
         out.put("actions", actions);
@@ -404,6 +422,48 @@ class PaymentSupportController {
             support.tell(student, "Your payment issue has been resolved", "Your verified payment is now synchronized with your student portal.");
         }
         Map<String, Object> out = new LinkedHashMap<>(result);
+        out.put("diagnosis", diagnose(a, reference(ref)));
+        return out;
+    }
+
+    /** a calendar day as the receipt prints it: 16 Oct 2026 */
+    private static String day(Object iso) {
+        try {
+            return java.time.LocalDate.parse(String.valueOf(iso).substring(0, 10)).format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.UK));
+        } catch (RuntimeException notADay) {
+            return String.valueOf(iso);
+        }
+    }
+
+    public record ReceiptIn(@jakarta.validation.constraints.NotBlank @Size(max = 40) String paymentLogId, @jakarta.validation.constraints.NotNull java.time.LocalDate paidOn,
+                            java.math.BigDecimal amount, @Size(max = 20) String channel, @Size(max = 500) String note, @Size(max = 2000) String reason, UUID ticket) {
+    }
+
+    /**
+     * V490: the receipt of a Pay on Quickteller payment Interswitch has not reported, taken from the student at the desk — the
+     * Payment Log Id, the day paid, the amount and where — and kept against the reference as the student's own report would be.
+     * It confirms nothing: the Bursary looks for it in Interswitch's report. The act is on the support ledger.
+     */
+    @PostMapping("/{reference}/paydirect-receipt")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> reportReceipt(Authentication auth, @PathVariable String reference, @Valid @RequestBody ReceiptIn body) {
+        Map<String, Object> r = reference(reference);
+        UUID student = (UUID) r.get("student_id");
+        SupportAccess.Access a = support.on(auth, student);
+        can(a, "INVESTIGATE_PAYMENT");
+        UUID ticket = support.ticketFor(a, body.ticket(), student, false);
+        String ref = String.valueOf(r.get("reference"));
+        Map<String, Object> before = payments.paydirectClaimOf(ref);
+        Map<String, Object> claim = payments.claimPaydirectAsOffice(ref, body.paymentLogId(), body.paidOn(), body.amount(), body.channel(), body.note());
+        String logId = String.valueOf(claim.get("payment_log_id"));
+        support.act(student, ticket, "PAYMENT_RECEIPT_REPORTED", null, before == null ? null : String.valueOf(before.get("payment_log_id")), logId,
+                blank(body.reason()) == null ? "The student paid on Quickteller and the payment is not reported" : body.reason().trim(),
+                String.valueOf(r.get("session")), null,
+                Map.of("paymentReference", ref, "method", "PAYDIRECT_RECEIPT", "outcome", "COMPLETED",
+                       "summary", "Receipt " + logId + " (paid " + day(claim.get("paid_on")) + ") recorded for " + ref + "; the Bursary looks for it in Interswitch's report"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("receipt", claim);
         out.put("diagnosis", diagnose(a, reference(ref)));
         return out;
     }

@@ -5,7 +5,8 @@
  *  for one sign-in within 24 hours, shown here once and recorded nowhere; a JUPEB payment is asked of the gateway again through
  *  the payment service (never marked paid), and the activation a paid school fee earns is re-applied by the JUPEB rule.
  *  Identity details (name, date of birth, NIN, state) are the JUPEB Office's: the candidate asks from their portal, or the
- *  ticket is escalated. Nothing here admits, grades or refunds. */
+ *  ticket is escalated. Nothing here admits, grades or refunds. V490: a payment the candidate made on Quickteller or at a bank
+ *  that Interswitch has not reported takes their receipt (its Payment Log Id) for the Bursary. */
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,8 @@ import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ACTION_WORD, RESULT_WORD } from "@/lib/support";
+import { PaydirectReceiptForm, receiptSender } from "@/components/PaydirectReceiptForm";
+import { CLAIM_STATE, paidDay, type Claim, type ClaimState } from "@/lib/paydirect-claim";
 import { FEE_KIND, STATE_SHORT, day, feeCategoryLabel, fullName, naira, stateKind, streamLabel, when, type Candidate } from "@/lib/jupeb";
 
 type Problem = Parameters<typeof notifyProblem>[0];
@@ -26,6 +29,8 @@ const OFFICES: [string, string][] = [["jupeb", "The JUPEB Office"], ["bursar", "
 interface Payment {
   reference: string; kind: string; amount: number; session: string; semester: number | null; created_at: string; expires_at: string; confirmed_at: string | null; channel: string | null;
   state: string; gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null; gateway_at: string | null; attempts: number; old_reference: string | null;
+  /** V490: opened on Pay on Quickteller, and the receipt reported for it */
+  on_quickteller: boolean | null; receipt_log_id: string | null; receipt_paid_on: string | null; receipt_state: ClaimState | null; receipt_note: string | null; receipt_seen_reference: string | null;
 }
 interface Action {
   id: string; at: string; action: string; module: string; field: string | null; old_value: string | null; new_value: string | null; reason: string; summary: string | null; outcome: string;
@@ -52,6 +57,7 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
   const [contact, setContact] = useState<Record<string, string> | null>(null);
   const [reset, setReset] = useState<{ method: "LINK" | "TEMPORARY"; reason: string; result: Record<string, unknown> | null } | null>(null);
   const [verify, setVerify] = useState<{ reference: string; reason: string; result: Record<string, unknown> | null } | null>(null);
+  const [recording, setRecording] = useState<Payment | null>(null);
   const [refresh, setRefresh] = useState<{ reason: string } | null>(null);
   const [raise, setRaise] = useState<{ subject: string; description: string; details: Record<string, string> } | null>(null);
   const [escalate, setEscalate] = useState<{ office: string; reason: string } | null>(null);
@@ -210,10 +216,19 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
                   FEE_KIND[p.kind] ?? p.kind,
                   <span key="r" className="tnum">{p.reference}{p.old_reference ? <div className="sub2">Old portal {p.old_reference}</div> : null}</span>,
                   naira(p.amount), day(p.created_at),
-                  p.confirmed_at ? <Pil key="s" kind="ok">{`Confirmed ${day(p.confirmed_at)}${p.channel ? ` · ${p.channel}` : ""}`}</Pil> : <Pil key="s" kind={p.state === "EXPIRED" ? "grey" : "warn"}>{p.state === "EXPIRED" ? "Expired" : "Awaiting payment"}</Pil>,
+                  <span key="s">
+                    {p.confirmed_at ? <Pil kind="ok">{`Confirmed ${day(p.confirmed_at)}${p.channel ? ` · ${p.channel}` : ""}`}</Pil> : <Pil kind={p.state === "EXPIRED" ? "grey" : "warn"}>{p.state === "EXPIRED" ? "Expired" : "Awaiting payment"}</Pil>}
+                    {p.receipt_log_id && p.receipt_state ? <div className="sub2 mt-1">Receipt <b className="tnum">{p.receipt_log_id}</b>{p.receipt_paid_on ? `, paid ${paidDay(p.receipt_paid_on)}` : ""} · {CLAIM_STATE[p.receipt_state]?.[0] ?? p.receipt_state}
+                      {p.receipt_state === "ELSEWHERE" && p.receipt_seen_reference ? <> (against <span className="tnum">{p.receipt_seen_reference}</span>)</> : null}
+                      {p.receipt_state === "NOT_FOUND" && p.receipt_note ? <>: {p.receipt_note}</> : null}</div> : null}
+                  </span>,
                   p.gateway ? <span key="g" className="sub2">{p.gateway} · {p.gateway_outcome ?? "—"}{p.gateway_at ? ` · ${when(p.gateway_at)}` : ""}</span> : <span key="g" className="sub2">—</span>,
                   Number(p.attempts),
-                  !p.confirmed_at && caps.has("VERIFY_PAYMENT") ? <Btn key="v" kind="secondary" size="sm" disabled={busy} onClick={() => setVerify({ reference: p.reference, reason: "", result: null })}>Verify with the gateway</Btn> : "",
+                  <span key="v" className="row row--inline row--tight" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {!p.confirmed_at && caps.has("VERIFY_PAYMENT") ? <Btn kind="secondary" size="sm" disabled={busy} onClick={() => setVerify({ reference: p.reference, reason: "", result: null })}>Verify with the gateway</Btn> : null}
+                    {!p.confirmed_at && p.state !== "EXPIRED" && caps.has("INVESTIGATE_PAYMENT") && (p.on_quickteller || p.receipt_log_id)
+                      ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => setRecording(p)}>{p.receipt_log_id ? "Correct the receipt" : "Record the receipt"}</Btn> : null}
+                  </span>,
                 ])} />
               )}
               {pending.length && !caps.has("VERIFY_PAYMENT") ? <p className="sub2 mt-2">Your postings do not carry verifying payments; escalate the ticket to the Bursary.</p> : null}
@@ -285,6 +300,11 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
         </Modal>
       ) : null}
 
+      {recording ? (
+        <PaydirectReceiptForm desk reference={recording.reference} onClose={() => setRecording(null)} onSaved={() => { setRecording(null); router.refresh(); }}
+          claim={recording.receipt_log_id ? ({ reference: recording.reference, payment_log_id: recording.receipt_log_id, paid_on: recording.receipt_paid_on ?? "", amount: null, channel: null, note: null, claimed_at: "" } as Claim) : null}
+          send={receiptSender(`/api/v1/helpdesk/support/jupeb/${id}/payments/${encodeURIComponent(recording.reference)}/paydirect-receipt`, "Quickteller receipt recorded at the desk", { ticket: ticket?.id ?? null })} />
+      ) : null}
       {verify ? (
         <Modal title={`Verify ${verify.reference} with the gateway`} onClose={() => setVerify(null)}
           foot={verify.result ? <Btn kind="primary" onClick={() => setVerify(null)}>Done</Btn> : <><Btn kind="ghost" onClick={() => setVerify(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void confirmVerify()}>{busy ? "Asking the gateway…" : "Ask the gateway"}</Btn></>}>

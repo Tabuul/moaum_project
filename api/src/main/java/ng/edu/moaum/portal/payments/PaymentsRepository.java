@@ -483,18 +483,27 @@ class PaymentsRepository {
                 .param("c", channel).param("n", note).query().singleRow();
     }
 
-    /** V480: the receipt reported against a reference, if any */
+    /** the columns of a reported receipt as the screens read it (V480, V490: its state, where its Payment Log Id was seen, the Bursary's word) */
+    private static final String CLAIM_COLUMNS = """
+            reference, payer, number, due, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at, claimed_office, confirmed_at,
+            state, seen_reference, seen_in, seen_outcome, seen_at, not_found_at, not_found_note, not_found_office
+            """;
+
+    /** V480, V490: the receipt reported against a reference, if any, whatever its age */
     Optional<Map<String, Object>> paydirectClaim(String reference) {
-        return jdbc.sql("SELECT reference, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at FROM finance.paydirect_claim WHERE reference = :r")
+        return jdbc.sql("SELECT " + CLAIM_COLUMNS + " FROM finance.paydirect_claims(30, :r)")
                 .param("r", reference).query().listOfRows().stream().findFirst();
     }
 
-    /** V480: the receipts payers reported in the period, the unconfirmed first */
+    /** V480: the receipts payers reported in the period, those needing the Bursary first */
     List<Map<String, Object>> paydirectClaims(int days) {
-        return jdbc.sql("""
-                SELECT reference, payer, number, due, payment_log_id, paid_on::text AS paid_on, amount, channel, note, claimed_at, claimed_office, confirmed_at
-                  FROM finance.paydirect_claims(:d)
-                """).param("d", days).query().listOfRows();
+        return jdbc.sql("SELECT " + CLAIM_COLUMNS + " FROM finance.paydirect_claims(:d)").param("d", days).query().listOfRows();
+    }
+
+    /** V490: the Bursary's word on a reported receipt — not found at Interswitch, with a note the payer is told; or reopened */
+    void markPaydirectClaim(String reference, boolean notFound, String note) {
+        jdbc.sql("SELECT reference FROM finance.paydirect_claim_mark(:r, :f, :n::text)").param("r", reference).param("f", notFound).param("n", note)
+                .query().singleRow();
     }
 
     /** V480: what the Bursary sends Interswitch to re-send */

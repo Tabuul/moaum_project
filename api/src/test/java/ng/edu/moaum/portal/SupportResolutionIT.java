@@ -358,6 +358,75 @@ class SupportResolutionIT {
         assertThat(jdbc.sql("SELECT escalated_office FROM helpdesk.ticket WHERE id = :t").param("t", tkt).query(String.class).single()).isEqualTo("bursar");
     }
 
+    /**
+     * V490: a payment opened on Pay on Quickteller and not reported — the desk takes the caller's receipt for the Bursary, the
+     * Bursary marks one Interswitch cannot find as not found (the student told), a corrected receipt reopens it, and a Payment
+     * Log Id Interswitch reported against another reference is the Bursary's to settle. Nothing is confirmed by any of it.
+     */
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void aCallersQuicktellerReceiptIsRecordedForTheBursaryAndClosedOut() {
+        String ref = it.db(() -> jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 41000, 'School fees ' || :ses)").param("s", student).param("ses", S).query(String.class).single());
+        String other = it.db(() -> jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 100, 'Library fine ' || :ses)").param("s", student).param("ses", S).query(String.class).single());
+        it.db(() -> jdbc.sql("INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at) VALUES (:r, 'paydirect', 'FEE', :s, now() - interval '30 hours')")
+                .param("r", ref).param("s", student).update());
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString();
+        String log = "PL-" + (4_900_000 + new java.util.Random().nextInt(90_000));
+        // the diagnosis asks for the receipt; the act is the desk's to take, and refused to a posting without payments
+        Map<String, Object> d = it.get(seniorTok, "/api/v1/helpdesk/support/payments/" + ref).getBody();
+        assertThat((List<Map>) d.get("advice")).extracting(a -> a.get("code")).contains("RECEIPT_ASK");
+        assertThat((List<String>) d.get("actions")).contains("REPORT_RECEIPT");
+        Map<String, Object> slip = new java.util.HashMap<>(Map.of("paymentLogId", log, "paidOn", today, "amount", 41000, "channel", "BANK", "note", "Paid at a bank branch"));
+        assertThat(it.call(cpoTok, HttpMethod.POST, "/api/v1/helpdesk/support/payments/" + ref + "/paydirect-receipt", slip).getStatusCode().value()).isIn(403, 404, 422);
+        ResponseEntity<Map> recorded = it.call(seniorTok, HttpMethod.POST, "/api/v1/helpdesk/support/payments/" + ref + "/paydirect-receipt", slip);
+        assertThat(recorded.getStatusCode().value()).as(String.valueOf(recorded.getBody())).isEqualTo(200);
+        assertThat((Map) recorded.getBody().get("receipt")).containsEntry("payment_log_id", log).containsEntry("state", "WAITING").containsEntry("claimed_office", "ictagent");
+        assertThat((List<Map>) ((Map) recorded.getBody().get("diagnosis")).get("advice")).extracting(a -> a.get("code")).contains("RECEIPT_WAITING");
+        assertThat(ledger("PAYMENT_RECEIPT_REPORTED")).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT helpdesk.support_module(action) FROM helpdesk.support_action WHERE student_id = :s AND action = 'PAYMENT_RECEIPT_REPORTED'").param("s", student)
+                .query(String.class).single()).isEqualTo("PAYMENT");
+        assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM finance.payment_reference WHERE reference = :r").param("r", ref).query(Boolean.class).single()).as("a receipt confirms nothing").isTrue();
+
+        // the Bursary: not found at Interswitch — a note is required; the student is told and reads it where they pay
+        String bursar = ItSupport.token("bursar");
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/payments/claims/" + ref + "/not-found", Map.of("note", "no")).getStatusCode().value()).isIn(400, 422);
+        assertThat(it.call(seniorTok, HttpMethod.POST, "/api/v1/payments/claims/" + ref + "/not-found", Map.of("note", "Interswitch has no such payment")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> nf = it.call(bursar, HttpMethod.POST, "/api/v1/payments/claims/" + ref + "/not-found", Map.of("note", "Interswitch has no payment with this Payment Log Id"));
+        assertThat(nf.getStatusCode().value()).as(String.valueOf(nf.getBody())).isEqualTo(200);
+        assertThat(nf.getBody()).containsEntry("state", "NOT_FOUND");
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND template_key = 'PAYDIRECT_RECEIPT_NOT_FOUND'").param("s", student).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
+        String studentTok = TestTokens.token(student, List.of("student"));
+        Map<String, Object> mine = (Map<String, Object>) it.get(studentTok, "/api/v1/payments/state?reference=" + ref).getBody().get("claim");
+        assertThat(mine).containsEntry("state", "NOT_FOUND").containsEntry("not_found_note", "Interswitch has no payment with this Payment Log Id")
+                .doesNotContainKeys("seen_reference", "payer", "not_found_office");
+        assertThat((List<Map>) it.get(seniorTok, "/api/v1/helpdesk/support/payments/" + ref).getBody().get("advice")).extracting(a -> a.get("code")).contains("RECEIPT_NOT_FOUND");
+        assertThat(it.callList(bursar, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getBody().stream()
+                .filter(a -> ref.equals(((Map) a).get("reference"))).count()).as("Interswitch has answered it: not asked again").isZero();
+
+        // the student calls again with the right Payment Log Id: recorded, waiting again
+        String log2 = log + "1";
+        slip.put("paymentLogId", log2);
+        ResponseEntity<Map> again = it.call(seniorTok, HttpMethod.POST, "/api/v1/helpdesk/support/payments/" + ref + "/paydirect-receipt", slip);
+        assertThat(again.getStatusCode().value()).as(String.valueOf(again.getBody())).isEqualTo(200);
+        assertThat((Map) again.getBody().get("receipt")).containsEntry("state", "WAITING").containsEntry("payment_log_id", log2);
+        assertThat(jdbc.sql("SELECT old_value || '>' || new_value FROM helpdesk.support_action WHERE student_id = :s AND action = 'PAYMENT_RECEIPT_REPORTED' ORDER BY at DESC LIMIT 1")
+                .param("s", student).query(String.class).single()).isEqualTo(log + ">" + log2);
+
+        // Interswitch reported that Payment Log Id against another reference: the Bursary's to settle, not Interswitch's to re-send
+        it.db(() -> jdbc.sql("""
+                INSERT INTO finance.gateway_event (gateway, source, event, reference, gateway_ref, amount, signature_ok, outcome)
+                VALUES ('paydirect', 'WEBHOOK', 'notification', :o, :g, 100.00, true, 'SETTLED')
+                """).param("o", other).param("g", log2.replace("-", "")).update());
+        Map<String, Object> elsewhere = it.get(seniorTok, "/api/v1/helpdesk/support/payments/" + ref).getBody();
+        assertThat((Map) elsewhere.get("receipt")).containsEntry("state", "ELSEWHERE").containsEntry("seen_reference", other);
+        assertThat((List<Map>) elsewhere.get("advice")).extracting(a -> a.get("code")).contains("RECEIPT_ELSEWHERE");
+        assertThat(((Map) it.get(studentTok, "/api/v1/payments/state?reference=" + ref).getBody().get("claim"))).containsEntry("state", "ELSEWHERE")
+                .as("another reference may be someone else's: never shown to the payer").doesNotContainKey("seen_reference");
+        // a receipt for a reference outside the desk's reach is not found
+        String outsideRef = it.db(() -> jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 100, 'Library fine ' || :ses)").param("s", outside).param("ses", S).query(String.class).single());
+        assertThat(it.call(seniorTok, HttpMethod.POST, "/api/v1/helpdesk/support/payments/" + outsideRef + "/paydirect-receipt", slip).getStatusCode().value()).isEqualTo(404);
+    }
+
     @Test
     void theDeskReachesOnlyItsScopeAndNeverResultsRefundsFeesOrAdmissions() {
         // 31, 32 · another faculty's student is not found by changing the id — read or write

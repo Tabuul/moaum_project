@@ -770,6 +770,9 @@ class JupebIT {
         ok(it.call(cpo, HttpMethod.PUT, "/api/v1/helpdesk/support/jupeb/" + app + "/contact", fix));
         assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE jupeb_application_id = :a AND action = 'CONTACT_EDITED' AND student_id IS NULL").param("a", app).query(Integer.class).single()).isEqualTo(1);
         assertThat(code(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/tickets", Map.of("subject", "x", "description", "y")))).isEqualTo("SUPPORT_CAPABILITY");
+        // V490: a caller's Quickteller receipt is recorded only by a JUPEB posting that carries investigating payments
+        assertThat(code(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/payments/MOAUM-JUP-000000-0000/paydirect-receipt",
+                Map.of("paymentLogId", "PL-490000", "paidOn", java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString())))).isEqualTo("SUPPORT_CAPABILITY");
         assertThat(code(it.call(cpo, HttpMethod.POST, "/api/v1/helpdesk/support/jupeb/" + app + "/password", Map.of("method", "TEMPORARY", "reason", "At the desk")))).isEqualTo("SUPPORT_TICKET_REQUIRED");
         String ticket = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/support", Map.of("category", "JUPEB", "subject", "I cannot sign in",
                 "description", "My password stopped working", "details", Map.of("jupeb_issue", "Other")))).get("id"));

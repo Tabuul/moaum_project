@@ -203,10 +203,14 @@ class JupebSupportController {
                        CASE WHEN f.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN f.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS state,
                        ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome, ge.received_at AS gateway_at,
                        (SELECT count(*) FROM finance.gateway_attempt g WHERE g.reference = f.reference) AS attempts,
-                       (SELECT l.old_reference FROM jupeb.legacy_payment l WHERE l.fee_reference_id = f.id) AS old_reference
+                       (SELECT l.old_reference FROM jupeb.legacy_payment l WHERE l.fee_reference_id = f.id) AS old_reference,
+                       (SELECT bool_or(g.gateway = 'paydirect') FROM finance.gateway_attempt g WHERE g.reference = f.reference) AS on_quickteller,
+                       cl.payment_log_id AS receipt_log_id, cl.paid_on::text AS receipt_paid_on, cl.state AS receipt_state, cl.not_found_note AS receipt_note,
+                       cl.seen_reference AS receipt_seen_reference
                   FROM jupeb.fee_reference f
                   LEFT JOIN LATERAL (SELECT e.gateway, e.gateway_ref, e.outcome, e.received_at FROM finance.gateway_event e WHERE e.reference = f.reference
                                       ORDER BY e.received_at DESC LIMIT 1) ge ON true
+                  LEFT JOIN LATERAL (SELECT * FROM finance.paydirect_claims(30, f.reference) x WHERE f.confirmed_at IS NULL) cl ON true
                  WHERE f.application_id = :a ORDER BY f.created_at DESC
                 """).param("a", app).query().listOfRows();
     }
@@ -394,6 +398,42 @@ class JupebSupportController {
             if (!was && now) tell(id, "Your payment issue has been resolved", "Your verified payment is now synchronized with your JUPEB portal.");
         });
         return Map.of("gateway", answer, "confirmed", now, "changed", !was && now);
+    }
+
+    /** a calendar day as the receipt prints it: 16 Oct 2026 */
+    private static String day(Object iso) {
+        try {
+            return java.time.LocalDate.parse(String.valueOf(iso).substring(0, 10)).format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.UK));
+        } catch (RuntimeException notADay) {
+            return String.valueOf(iso);
+        }
+    }
+
+    public record ReceiptIn(@jakarta.validation.constraints.NotBlank @Size(max = 40) String paymentLogId, @jakarta.validation.constraints.NotNull java.time.LocalDate paidOn,
+                            java.math.BigDecimal amount, @Size(max = 20) String channel, @Size(max = 500) String note, @Size(max = 2000) String reason, UUID ticket) {
+    }
+
+    /** V490: the receipt of a Pay on Quickteller payment Interswitch has not reported, taken from the candidate at the desk; it confirms nothing */
+    @PostMapping("/{id}/payments/{reference}/paydirect-receipt")
+    Map<String, Object> reportReceipt(Authentication auth, @PathVariable UUID id, @PathVariable String reference, @Valid @RequestBody ReceiptIn body) {
+        Agent a = on(auth, id);
+        can(a, "INVESTIGATE_PAYMENT");
+        String ref = reference.trim().toUpperCase();
+        jdbc.sql("SELECT reference FROM jupeb.fee_reference WHERE upper(reference) = :r AND application_id = :a").param("r", ref).param("a", id)
+                .query(String.class).optional().orElseThrow(() -> new NotFound("JUPEB payment reference", ref));
+        UUID ticket = ticketFor(a, body.ticket(), id, false);
+        String reason = blank(body.reason()) == null ? "The candidate paid on Quickteller and the payment is not reported" : body.reason().trim();
+        return tx.execute(st -> {
+            Map<String, Object> before = payments.paydirectClaimOf(ref);
+            Map<String, Object> claim = payments.claimPaydirectAsOffice(ref, body.paymentLogId(), body.paidOn(), body.amount(), body.channel(), body.note());
+            String logId = String.valueOf(claim.get("payment_log_id"));
+            act(id, ticket, "PAYMENT_RECEIPT_REPORTED", null, before == null ? null : String.valueOf(before.get("payment_log_id")), logId, reason,
+                    Map.of("paymentReference", ref, "method", "PAYDIRECT_RECEIPT", "outcome", "COMPLETED",
+                           "summary", "Receipt " + logId + " (paid " + day(claim.get("paid_on")) + ") recorded for " + ref + "; the Bursary looks for it in Interswitch's report"));
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("receipt", claim);
+            return out;
+        });
     }
 
     /** the studentship a paid school fee earns, re-applied by the same rule the payment applies (jupeb.activate_if_due) */

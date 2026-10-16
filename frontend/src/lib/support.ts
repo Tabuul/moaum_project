@@ -96,6 +96,16 @@ export interface PaymentDiagnosis {
   related: { reference: string; amount: number; generated_at: string; confirmed_at: string | null; receipt_no: string | null }[];
   advice: { code: string; words: string; action: string }[]; actions: string[]; capabilities: string[];
   tickets: { id: string; number: string; subject: string; status: string; category: string }[];
+  /** V490: the receipt of a Pay on Quickteller payment reported against the reference, with where it stands */
+  receipt?: ReportedReceipt | null;
+}
+
+/** V490: a reported Pay on Quickteller receipt as the desk and the Bursary read it (finance.paydirect_claims) */
+export interface ReportedReceipt {
+  reference: string; payer: string | null; number: string | null; due: number | null; payment_log_id: string; paid_on: string; amount: number | null;
+  channel: string | null; note: string | null; claimed_at: string; claimed_office: string | null; confirmed_at: string | null;
+  state: "CONFIRMED" | "NOT_FOUND" | "ELSEWHERE" | "SEEN" | "WAITING"; seen_reference: string | null; seen_in: string | null; seen_outcome: string | null;
+  seen_at: string | null; not_found_at: string | null; not_found_note: string | null; not_found_office: string | null;
 }
 
 export const ACTION_WORD: Record<string, string> = {
@@ -103,7 +113,7 @@ export const ACTION_WORD: Record<string, string> = {
   CHANGE_REQUESTED: "Change requested of the Registry", REGISTRATION_CHOSEN: "Registration courses chosen", COURSE_ADDED: "Course added", COURSE_DROPPED: "Course dropped",
   REGISTRATION_SUBMITTED: "Registration submitted", RECORD_EXPORTED: "List exported", COURSE_RESTORED: "Course restored", PASSWORD_RESET: "Password reset initiated", ACCOUNT_UNLOCKED: "Account unlocked",
   PAYMENT_INVESTIGATED: "Payment investigated", PAYMENT_VERIFIED: "Payment verified with the gateway", ENTITLEMENT_REFRESHED: "Payment entitlement refreshed",
-  RECEIPT_REGENERATED: "Receipt regenerated", ESCALATED: "Escalated", TICKET_CREATED: "Ticket raised", TICKET_RESOLVED: "Ticket resolved",
+  RECEIPT_REGENERATED: "Receipt regenerated", PAYMENT_RECEIPT_REPORTED: "Quickteller receipt recorded", ESCALATED: "Escalated", TICKET_CREATED: "Ticket raised", TICKET_RESOLVED: "Ticket resolved",
 };
 export const MODULE_WORD: Record<string, string> = { COURSE_REGISTRATION: "Course Registration", AUTHENTICATION: "Authentication", PAYMENT: "Payment", TICKET: "Ticket", STUDENT_RECORD: "Student Record", REPORTS: "Reports" };
 export const RESULT_WORD: Record<string, [string, "ok" | "info" | "grey" | "warn" | "bad"]> = {

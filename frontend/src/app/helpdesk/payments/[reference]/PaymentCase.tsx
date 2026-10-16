@@ -3,7 +3,8 @@
  *  words and a sentence — and the acts this agent's postings allow, each through the existing services: Verify (the gateway
  *  asked again; the original reference settled or left as it is), Refresh entitlement (a confirmed payment's effects
  *  re-applied; nothing paid, nothing created), the receipt, and escalation to the Bursary or the Director of ICT on the
- *  student's ticket. There is no "mark as paid" here, by design. */
+ *  student's ticket. There is no "mark as paid" here, by design. V490: a payment opened on Pay on Quickteller and not reported
+ *  takes the caller's receipt (its Payment Log Id) for the Bursary, and says where a receipt already recorded stands. */
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,8 @@ import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/compo
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { OFFICE_WORD, PAY_WORD, type PaymentDiagnosis } from "@/lib/support";
+import { PaydirectReceiptForm, receiptSender } from "@/components/PaydirectReceiptForm";
+import { CHANNEL_LABEL, CLAIM_STATE, paidDay, type Claim, type ClaimChannel } from "@/lib/paydirect-claim";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const naira = (v: unknown) => (v == null || v === "" ? "—" : `₦${Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`);
@@ -27,7 +30,9 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
   const [ticket, setTicket] = useState(ticketIn || data.tickets[0]?.id || "");
   const [reason, setReason] = useState("");
   const [escalate, setEscalate] = useState<{ office: string; reason: string } | null>(null);
+  const [recording, setRecording] = useState(false);
   const ref = encodeURIComponent(p.reference);
+  const rc = data.receipt ?? null;
 
   async function post(path: string, body: unknown, label: string): Promise<Record<string, unknown> | null> {
     setBusy(label);
@@ -69,6 +74,7 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
       case "REFRESH": return can.has("REFRESH_ENTITLEMENT") ? <Btn key={a} kind="primary" disabled={!!busy} onClick={() => void refresh()}>Refresh payment entitlement</Btn> : null;
       case "ESCALATE_BURSARY": return <Btn key={a} kind="secondary" disabled={!!busy || !ticket} onClick={() => setEscalate({ office: "bursar", reason: "" })}>Escalate to Bursary</Btn>;
       case "VIEW_RECEIPT": return can.has("VIEW_RECEIPT") ? <a key={a} className="btn btn--secondary btn--sm" href={`/helpdesk/payments/${ref}/receipt`} target="_blank" rel="noopener">View receipt</a> : null;
+      case "REPORT_RECEIPT": return can.has("REPORT_RECEIPT") ? <Btn key={a} kind="primary" disabled={!!busy} onClick={() => setRecording(true)}>{rc ? "Correct the receipt" : "Record the receipt"}</Btn> : null;
       default: return null;
     }
   };
@@ -94,7 +100,7 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
         </PBody>
         {data.advice.map((a) => (
           <PBody key={a.code}>
-            <Note kind={a.code === "IN_ORDER" ? "ok" : ["ENTITLEMENT_STALE", "GATEWAY_PAID_PORTAL_NOT", "HANGING"].includes(a.code) ? "info" : "bad"} title={a.words}
+            <Note kind={a.code === "IN_ORDER" ? "ok" : ["ENTITLEMENT_STALE", "GATEWAY_PAID_PORTAL_NOT", "HANGING", "RECEIPT_ASK", "RECEIPT_WAITING"].includes(a.code) ? "info" : "bad"} title={a.words}
               action={<span className="row row--inline row--tight">{actionButton(a.action)}</span>} />
           </PBody>
         ))}
@@ -118,12 +124,27 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
             {can.has("REFRESH_ENTITLEMENT") ? <Btn kind="primary" disabled={!!busy} onClick={() => void refresh()}>Refresh entitlement</Btn> : null}
             {can.has("VIEW_RECEIPT") ? <a className="btn btn--secondary btn--sm" href={`/helpdesk/payments/${ref}/receipt`} target="_blank" rel="noopener">View receipt</a> : null}
             {can.has("REGENERATE_RECEIPT") ? <Btn kind="secondary" disabled={!!busy} onClick={() => void receipt()}>Regenerate receipt</Btn> : null}
+            {can.has("REPORT_RECEIPT") ? <Btn kind="secondary" disabled={!!busy} onClick={() => setRecording(true)} title="The caller paid on Quickteller or at a bank and Interswitch has not reported it">{rc ? "Correct the Quickteller receipt" : "Record a Quickteller receipt"}</Btn> : null}
             <Btn kind="secondary" disabled={!!busy || !ticket} onClick={() => setEscalate({ office: "bursar", reason: "" })}>Escalate to Bursary</Btn>
             <Btn kind="ghost" disabled={!!busy || !ticket} onClick={() => setEscalate({ office: "ict", reason: "" })}>Escalate to ICT Director</Btn>
           </div>
           <div className="sub2 mt-2">No &ldquo;mark as paid&rdquo;: only the gateway or the Bursary confirms the original reference.</div>
         </PBody>
       </Panel>
+
+      {rc ? (
+        <Panel title="Quickteller receipt" right="Reported against this reference; it confirms nothing until Interswitch reports the payment">
+          <PBody>
+            <KvGrid cls="grid--4" pairs={[
+              ["Payment Log Id", <b key="l" className="tnum">{rc.payment_log_id}</b>], ["Day paid", paidDay(rc.paid_on)],
+              ["Amount", <span key="a" className="tnum">{naira(rc.amount)}</span>], ["Where", rc.channel ? CHANNEL_LABEL[rc.channel as ClaimChannel] ?? rc.channel : "—"],
+              ["Reported", when(rc.claimed_at)], ["State", <Pil key="s" kind={CLAIM_STATE[rc.state]?.[1] ?? "grey"}>{CLAIM_STATE[rc.state]?.[0] ?? rc.state}</Pil>],
+              ["Seen by Interswitch", rc.seen_reference ? <span key="v" className="sub2"><span className="tnum">{rc.seen_reference}</span> · {rc.seen_in === "COLLECTIONS" ? "collections report" : "notification"} · {String(rc.seen_outcome ?? "").toLowerCase().replace(/_/g, " ")}</span> : "Not yet"],
+              ["The Bursary's note", rc.not_found_note ?? "—"],
+            ]} />
+          </PBody>
+        </Panel>
+      ) : null}
 
       <div className="grid grid--2">
         <Panel title="Payment information">
@@ -186,6 +207,12 @@ export function PaymentCase({ data, ticket: ticketIn }: { data: PaymentDiagnosis
             ])} /> : <PBody><div className="sub2">No refund is recorded against this reference.</div></PBody>}
           </Panel>
         </div>
+      ) : null}
+
+      {recording ? (
+        <PaydirectReceiptForm desk reference={p.reference} claim={rc as unknown as Claim | null} onClose={() => setRecording(false)}
+          onSaved={() => { setRecording(false); router.refresh(); }}
+          send={receiptSender(`/api/v1/helpdesk/support/payments/${ref}/paydirect-receipt`, "Quickteller receipt recorded at the desk", { reason: reason.trim() || null, ticket: ticket || null })} />
       ) : null}
 
       {escalate ? (

@@ -12,6 +12,21 @@ export const CHANNEL_LABEL: Record<ClaimChannel, string> = {
   OTHER: "Somewhere else",
 };
 
+/**
+ * V490: where a receipt stands. CONFIRMED — the reference is paid; NOT_FOUND — the Bursary asked Interswitch and it has no
+ * such payment (with its note); ELSEWHERE — Interswitch reported the Payment Log Id against another reference; SEEN —
+ * Interswitch reported it for this reference without settling it (short of the amount); WAITING — nothing yet.
+ */
+export type ClaimState = "CONFIRMED" | "NOT_FOUND" | "ELSEWHERE" | "SEEN" | "WAITING";
+
+export const CLAIM_STATE: Record<ClaimState, [string, "ok" | "bad" | "warn" | "info" | "grey"]> = {
+  CONFIRMED: ["Confirmed", "ok"],
+  NOT_FOUND: ["Not found at Interswitch", "bad"],
+  ELSEWHERE: ["Reported against another reference", "bad"],
+  SEEN: ["Reported, not settled", "warn"],
+  WAITING: ["Waiting for Interswitch", "warn"],
+};
+
 /** the receipt as the University's record keeps it */
 export interface Claim {
   reference: string;
@@ -21,6 +36,28 @@ export interface Claim {
   channel: ClaimChannel | null;
   note: string | null;
   claimed_at: string | number;
+  /** V490: where it stands, and the Bursary's note when it is not found */
+  state?: ClaimState;
+  not_found_at?: string | null;
+  not_found_note?: string | null;
+}
+
+/** what the payer is told about their receipt, by its state (V490) */
+export function claimWords(c: Pick<Claim, "state" | "not_found_note">): { title: string; body: string; correct: boolean } {
+  switch (c.state) {
+    case "NOT_FOUND":
+      return { title: "The Bursary could not find this payment at Interswitch", correct: true,
+        body: `${c.not_found_note ?? ""} Check the Payment Log Id on your receipt and correct it if it was mistyped; otherwise contact the Bursary with the receipt and your bank's debit details. Do not pay the same reference twice.`.trim() };
+    case "ELSEWHERE":
+      return { title: "Interswitch reported this receipt against another reference", correct: false,
+        body: "The money reached the University under a different number from this reference. The Bursary has it on its list and settles it; you do not need to pay again." };
+    case "SEEN":
+      return { title: "Interswitch reported this receipt but it did not settle the reference", correct: false,
+        body: "The payment Interswitch reported for this reference is short of what it asks, or was not settled. The Bursary has it on its list and will contact you; do not pay the same reference again." };
+    default:
+      return { title: "Receipt reported", correct: true,
+        body: "The Bursary looks for it in Interswitch's report and asks Interswitch to re-send it; it is confirmed here when it arrives." };
+  }
 }
 
 export interface ClaimForm {

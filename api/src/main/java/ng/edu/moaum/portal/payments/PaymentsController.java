@@ -223,6 +223,23 @@ class PaymentsController {
         return payments.paydirectClaims(days);
     }
 
+    public record NotFoundIn(@NotBlank @jakarta.validation.constraints.Size(min = 10, max = 500) String note) {
+    }
+
+    /** V490: a reported receipt Interswitch has no payment for — the Bursary's note, which the payer is told and reads */
+    @PostMapping("/claims/{reference}/not-found")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> claimNotFound(@PathVariable String reference, @Valid @RequestBody NotFoundIn body) {
+        return payments.markPaydirectClaim(reference, true, body.note());
+    }
+
+    /** V490: a receipt marked not found, reopened */
+    @PostMapping("/claims/{reference}/reopen")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> claimReopen(@PathVariable String reference) {
+        return payments.markPaydirectClaim(reference, false, null);
+    }
+
     /** V480: what the Bursary sends Interswitch to re-send — unreported Pay on Quickteller references and unconfirmed receipts */
     @GetMapping("/paydirect/ask-list")
     @PreAuthorize(READERS)

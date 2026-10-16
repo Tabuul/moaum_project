@@ -4,7 +4,8 @@
  *  Oct 2026: a payment opened on Pay on Quickteller (PayDirect) cannot be asked about — Interswitch reports it to the portal, and the
  *  sweep leaves it alone; WebPAY's requery does not know it. Such a row says so, and sends the Bursary to the collections report import.
  *  V480: the receipts payers reported (Payment Log Id, day, amount, where) are listed, and the list Interswitch support is asked to
- *  re-send notifications for is taken as Excel. */
+ *  re-send notifications for is taken as Excel. V490: each receipt says where it stands — waiting, seen short, seen against another
+ *  reference, not found, confirmed — and the Bursary marks one Interswitch cannot find as not found, with a note the payer is told. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -12,10 +13,10 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { ASK_HEADERS, CHANNEL_LABEL, askRows, paidDay, type AskRow, type ClaimChannel } from "@/lib/paydirect-claim";
+import { ASK_HEADERS, CHANNEL_LABEL, CLAIM_STATE, askRows, paidDay, type AskRow, type ClaimChannel } from "@/lib/paydirect-claim";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { money } from "@/components/proto/blocks";
+import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { COLLECTIONS_REPORT_ANCHOR } from "../gateways/PayOnQuickteller";
 
@@ -34,7 +35,30 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
   const needsPerson = d.events.filter((e) => ["UNKNOWN_REFERENCE", "SHORT_PAID", "GATEWAY_ERROR"].includes(e.outcome) && !e.resolved_at);
   const onQuickteller = d.hanging.filter((h) => reportedOnly(h.gateway)).length;
   const claims = d.claims ?? [];
-  const claimsOpen = claims.filter((c) => !c.confirmed_at).length;
+  // V490: the receipts that wait on the Bursary — not confirmed, not marked not found
+  const claimsOpen = claims.filter((c) => ["WAITING", "SEEN", "ELSEWHERE"].includes(c.state)).length;
+  const [notFound, setNotFound] = useState<{ reference: string; log: string; note: string } | null>(null);
+  const byWhom = (office: string | null) => !office || ["student", "applicant"].includes(office) ? "by the payer"
+    : ["ictagent", "helpdeskhead"].includes(office) ? "by ICT Support" : `by ${office}`;
+
+  /** V490: the Bursary's word on a receipt: not found at Interswitch (the payer told), or reopened */
+  async function mark(reference: string, found: "NOT_FOUND" | "REOPEN", note?: string) {
+    setBusy(`mark:${reference}`);
+    setProblem(null);
+    try {
+      const path = found === "NOT_FOUND" ? "not-found" : "reopen";
+      const r = await fetch(`/api/bff/api/v1/payments/claims/${encodeURIComponent(reference)}/${path}`, { method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(found === "NOT_FOUND" ? `Receipt for ${reference} not found at Interswitch` : `Receipt for ${reference} reopened`) },
+        body: JSON.stringify(found === "NOT_FOUND" ? { note } : {}) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      notify(found === "NOT_FOUND" ? `${reference}: marked not found; the payer is told` : `${reference}: reopened`);
+      setNotFound(null);
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   /** V480: what Interswitch support is asked to re-send, the last fourteen days, as Excel */
   async function askInterswitch() {
@@ -114,18 +138,28 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
           ])} texts={d.hanging.map((h) => `${h.reference} ${h.payer ?? ""} ${h.number ?? ""}`)} />
         ) : <PBody><div className="sub2">Nothing is hanging in the last three days.</div></PBody>}
       </Panel>
-      <Panel title="Receipts reported by payers" right="Pay on Quickteller · the last 30 days · waiting first · a receipt confirms nothing until Interswitch reports the payment">
+      <Panel title="Receipts reported by payers" right="Pay on Quickteller · the last 30 days · those waiting on the Bursary first · a receipt confirms nothing until Interswitch reports the payment">
         {claims.length ? (
-          <DTable cols={["Reported|mid", "Payer", "Reference", "Payment Log Id", "Paid|mid", "Amount|num", "Where", "State"]} rows={claims.map((c) => [
-            <span className="sub2 tnum" key="w">{when(c.claimed_at)}<div className="sub2">{c.claimed_office && !["student", "applicant"].includes(c.claimed_office) ? `by ${c.claimed_office}` : "by the payer"}</div></span>,
+          <DTable cols={["Reported|mid", "Payer", "Reference", "Payment Log Id", "Paid|mid", "Amount|num", "Where", "State", "|num"]} rows={claims.map((c) => [
+            <span className="sub2 tnum" key="w">{when(c.claimed_at)}<div className="sub2">{byWhom(c.claimed_office)}</div></span>,
             <Two key="p" a={c.payer ?? "—"} b={c.number ?? ""} />,
             <span className="tnum sub2" key="r">{c.reference}</span>,
             <b className="tnum" key="l" style={{ whiteSpace: "nowrap" }}>{c.payment_log_id}</b>,
             <span className="sub2 tnum" key="d" style={{ whiteSpace: "nowrap" }}>{paidDay(c.paid_on)}</span>,
             <span className="tnum" key="a">{c.amount == null ? "—" : money(Number(c.amount))}{c.due != null ? <div className="sub2">asks {money(Number(c.due))}</div> : null}</span>,
             <span className="sub2" key="c">{c.channel ? CHANNEL_LABEL[c.channel as ClaimChannel] ?? c.channel : "—"}{c.note ? <div>{c.note}</div> : null}</span>,
-            c.confirmed_at ? <Pil key="s" kind="ok">Confirmed {when(c.confirmed_at)}</Pil> : <Pil key="s" kind="warn">Waiting for Interswitch</Pil>,
-          ])} texts={claims.map((c) => `${c.reference} ${c.payer ?? ""} ${c.number ?? ""} ${c.payment_log_id}`)} />
+            <span key="s">
+              <Pil kind={CLAIM_STATE[c.state]?.[1] ?? "grey"}>{c.state === "CONFIRMED" && c.confirmed_at ? `Confirmed ${when(c.confirmed_at)}` : CLAIM_STATE[c.state]?.[0] ?? c.state}</Pil>
+              {c.state === "ELSEWHERE" ? <div className="sub2">Interswitch reported it against <b className="tnum">{c.seen_reference}</b>{c.seen_in === "COLLECTIONS" ? " in the collections report" : ""}: settle it to this payer</div>
+                : c.state === "SEEN" ? <div className="sub2">Interswitch reported it here: {String(c.seen_outcome ?? "").toLowerCase().replace(/_/g, " ")}</div>
+                : c.state === "NOT_FOUND" ? <div className="sub2">{c.not_found_note}</div> : null}
+            </span>,
+            // "not found" is for a receipt Interswitch has said nothing about; one it reported (here short, or elsewhere) is settled by the Bursary
+            !may ? <span key="x" />
+              : c.state === "NOT_FOUND" ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={() => void mark(c.reference, "REOPEN")}>Reopen</Btn>
+              : c.state === "WAITING" ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={() => setNotFound({ reference: c.reference, log: c.payment_log_id, note: "" })}>Not found…</Btn>
+              : <span key="x" />,
+          ])} texts={claims.map((c) => `${c.reference} ${c.payer ?? ""} ${c.number ?? ""} ${c.payment_log_id} ${c.seen_reference ?? ""}`)} />
         ) : <PBody><div className="sub2">No payer has reported a receipt in the last 30 days.</div></PBody>}
       </Panel>
       <Panel title="Needs a person" right="What the sweep could not resolve on its own">
@@ -141,6 +175,17 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
         ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>}
       </Panel>
       <Note kind="ok" title="The student is told">Every settlement sends the receipt by email and SMS.</Note>
+      {notFound ? (
+        <Modal title={`Not found at Interswitch: ${notFound.log}`} sub={<>For <b className="tnum">{notFound.reference}</b></>} onClose={() => setNotFound(null)}
+          foot={<><Btn kind="ghost" onClick={() => setNotFound(null)}>Cancel</Btn>
+            <Btn kind="primary" disabled={busy !== null || notFound.note.trim().length < 10} onClick={() => void mark(notFound.reference, "NOT_FOUND", notFound.note.trim())}>Mark not found and tell the payer</Btn></>}>
+          <p>Say what Interswitch answered. The payer is told by e-mail and on the portal, and reads it where they pay; a corrected receipt from them reopens it.</p>
+          <Field id="nf-note" label="What Interswitch said" required hint="At least ten characters">
+            <textarea id="nf-note" className="ctl" rows={3} maxLength={500} value={notFound.note} onChange={(e) => setNotFound({ ...notFound, note: e.target.value })}
+              placeholder="e.g. Interswitch has no payment with this Payment Log Id on our biller" />
+          </Field>
+        </Modal>
+      ) : null}
     </>
   );
 }

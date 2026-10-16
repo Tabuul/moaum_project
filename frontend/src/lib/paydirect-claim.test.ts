@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ASK_HEADERS, askRows, claimBody, claimProblems, lagosToday, paidDay, type ClaimForm } from "./paydirect-claim.ts";
+import { ASK_HEADERS, askRows, claimBody, claimProblems, claimWords, lagosToday, paidDay, type ClaimForm } from "./paydirect-claim.ts";
 
 const form = (over: Partial<ClaimForm> = {}): ClaimForm => ({ paymentLogId: "PL-55001", paidOn: "2026-10-14", amount: "", channel: "", note: "", ...over });
 
@@ -54,4 +54,14 @@ test("the day paid reads as the receipt prints it, the same day in any time zone
   assert.equal(paidDay("2026-10-15"), "15 Oct 2026");
   assert.equal(paidDay("2026-01-01"), "1 Jan 2026");
   assert.equal(paidDay(null), "");
+});
+
+test("the payer reads where their receipt stands; a receipt Interswitch reported elsewhere or short is not theirs to correct", () => {
+  assert.match(claimWords({ state: "WAITING", not_found_note: null }).body, /re-send/);
+  const nf = claimWords({ state: "NOT_FOUND", not_found_note: "Interswitch has no payment with this Log Id." });
+  assert.equal(nf.correct, true);
+  assert.match(nf.body, /^Interswitch has no payment with this Log Id\. Check the Payment Log Id/);
+  assert.equal(claimWords({ state: "ELSEWHERE", not_found_note: null }).correct, false);
+  assert.equal(claimWords({ state: "SEEN", not_found_note: null }).correct, false);
+  assert.equal(claimWords({ not_found_note: null }).correct, true);
 });

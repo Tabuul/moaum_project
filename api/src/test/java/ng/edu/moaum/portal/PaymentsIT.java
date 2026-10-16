@@ -376,6 +376,19 @@ class PaymentsIT {
             assertThat(ask.stream().filter(a -> reference.equals(a.get("reference"))).map(a -> String.valueOf(a.get("payment_log_id"))))
                     .as("the list Interswitch is sent carries the receipt").containsExactly("PL-" + logId);
             assertThat(it.callList(academic, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getStatusCode().value()).isEqualTo(403);
+            // V490: the receipt says where it stands; the Bursary marks it not found and the payer reads the note; a corrected one reopens it
+            assertThat(claimed.getBody()).containsEntry("state", "WAITING").doesNotContainKeys("payer", "seen_reference");
+            ResponseEntity<Map> notFound = it.call(bursar, HttpMethod.POST, "/api/v1/payments/claims/" + reference + "/not-found",
+                    Map.of("note", "Interswitch has no payment with this Payment Log Id"));
+            assertThat(notFound.getStatusCode().value()).as(String.valueOf(notFound.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("claim"))
+                    .containsEntry("state", "NOT_FOUND").containsEntry("not_found_note", "Interswitch has no payment with this Payment Log Id");
+            assertThat(it.callList(bursar, HttpMethod.GET, "/api/v1/payments/paydirect/ask-list", null).getBody().stream()
+                    .filter(x -> reference.equals(((Map<String, Object>) x).get("reference"))).count()).as("Interswitch has answered it").isZero();
+            ResponseEntity<Map> corrected = it.call(token, HttpMethod.POST, "/api/v1/payments/claims", Map.of("reference", reference,
+                    "paymentLogId", "PL-" + logId, "paidOn", today.toString(), "amount", amount, "channel", "QUICKTELLER"));
+            assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
+            assertThat(corrected.getBody()).containsEntry("state", "WAITING").doesNotContainKey("not_found_note");
 
             // the credentials, set once by the Directorate of ICT
             ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
@@ -579,10 +592,12 @@ class PaymentsIT {
         String bursar = ItSupport.token("bursar");
         String ict = ItSupport.token("ict");
         String tag = String.format("%04d", new Random().nextInt(10_000));
-        it.student("ZZPAYDIRECTONTIME", "C00023", "MOAUM/ADM/99/99" + tag, "MOAUM/ITR/99/" + tag, 100);
-        String quick = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/" + tag, "amount", 100, "days", 2))
+        java.util.UUID payer = it.student("ZZPAYDIRECTONTIME", "C00023", "MOAUM/ADM/99/99" + tag, "MOAUM/ITR/99/" + tag, 100);
+        // the student an earlier run made is found again by name with that run's number: ask with the number it carries
+        String number = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", payer).query(String.class).single();
+        String quick = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", number, "amount", 100, "days", 2))
                 .getBody().get("reference"));
-        String held = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", "MOAUM/ITR/99/" + tag, "amount", 100, "days", 2))
+        String held = String.valueOf(it.call(bursar, HttpMethod.POST, "/api/v1/payments/paydirect/test-references", Map.of("number", number, "amount", 100, "days", 2))
                 .getBody().get("reference"));
         try {
             ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",

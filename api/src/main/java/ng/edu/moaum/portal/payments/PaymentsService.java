@@ -1398,8 +1398,9 @@ public class PaymentsService {
         // Interswitch's report not arrived, or stopped before paying; the screen asks them to check before paying again
         out.put("startedAt", r.confirmedAt() != null ? null : repo.quicktellerStartedAt(r.reference()).map(Object::toString).orElse(null));
         out.put("startedOn", r.confirmedAt() != null || out.get("startedAt") == null ? null : "QUICKTELLER");
-        // V480: the receipt the payer reported for it, while it waits
-        out.put("claim", r.confirmedAt() != null ? null : repo.paydirectClaim(r.reference()).orElse(null));
+        // V480: the receipt the payer reported for it, while it waits — V490: with its state and the Bursary's note, never
+        // another reference its Payment Log Id was seen against (that may be someone else's)
+        out.put("claim", r.confirmedAt() != null ? null : repo.paydirectClaim(r.reference()).map(PaymentsService::payerView).orElse(null));
         return out;
     }
 
@@ -1424,8 +1425,35 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_CLAIM_AMOUNT", "The amount paid is the amount on the receipt, more than nothing.",
                     new DomainRuleViolation.Remedy("Enter the amount on the receipt, or leave it out.", "Bursary"));
         }
-        return AuditContextHolder.with(AuditContextHolder.required(),
+        AuditContextHolder.with(AuditContextHolder.required(),
                 () -> tx.execute(st -> repo.claimPaydirect(r.reference(), r.accountId(), logId, paidOn, amount, channel, note)));
+        Map<String, Object> claim = repo.paydirectClaim(r.reference()).orElseThrow();
+        return office ? claim : payerView(claim);
+    }
+
+    /** V490: a receipt as its payer reads it — never another reference its Payment Log Id was seen against (that may be someone else's) */
+    private static Map<String, Object> payerView(Map<String, Object> claim) {
+        Map<String, Object> mine = new LinkedHashMap<>(claim);
+        for (String k : java.util.List.of("payer", "number", "seen_reference", "seen_in", "seen_outcome", "seen_at", "not_found_office", "claimed_office")) mine.remove(k);
+        return mine;
+    }
+
+    /** V490: a caller's receipt recorded by an office (the ICT Support Desk, the Bursary) on any unconfirmed reference */
+    public Map<String, Object> claimPaydirectAsOffice(String reference, String logId, java.time.LocalDate paidOn, BigDecimal amount, String channel, String note) {
+        return claimPaydirect(null, true, reference, logId, paidOn, amount, channel, note);
+    }
+
+    /** V490: the receipt reported against a reference, with its state and where its Payment Log Id was seen; null when none */
+    public Map<String, Object> paydirectClaimOf(String referenceIn) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        return repo.paydirectClaim(reference).orElse(null);
+    }
+
+    /** V490: the Bursary marks a receipt not found at Interswitch, with a note the payer is told; or reopens it */
+    public Map<String, Object> markPaydirectClaim(String referenceIn, boolean notFound, String note) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> { repo.markPaydirectClaim(reference, notFound, note); return null; }));
+        return paydirectClaimOf(reference);
     }
 
     /** V480: the unreported Pay on Quickteller references and the unconfirmed receipts, for Interswitch support */
