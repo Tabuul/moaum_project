@@ -3,15 +3,21 @@
 import { notifyProblem } from "@/components/proto/Toast";
 /** t/legacyfees — old students' school-fees history from the old portal (V087). Each row settles a past
  *  session (or semester) by the amount paid, or in full against the fee schedule when the amount is blank.
- *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only. */
+ *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only.
+ *  V498: the one way in for old payments (Payment History Upload is retired): the old portal's payment number tells one
+ *  payment from another, the payments the retired screen recorded twice are listed and withdrawn, and the old payments are
+ *  reconciled against the fee setup. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { xlsxWorkbook, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-import { legacyFeeKind, legacyFeeRows, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
+import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
+import { OldFeesDoubles } from "./OldFeesDoubles";
+import { OldFeesMislabelled } from "./OldFeesMislabelled";
+import { OldFeesReconciliation } from "./OldFeesReconciliation";
 const MAY = ["bursar", "super", "admin"];
 
 export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
@@ -28,6 +34,12 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const [resetDone, setResetDone] = useState<string | null>(null);
   const [resumeAt, setResumeAt] = useState<number | null>(null);
   const jobRef = useRef<{ rows: Row[]; at: number; totals: Record<string, number>; sample: string[] } | null>(null);
+  // V498: the old portal's payment-item codes read from the export's payment_type sheet, and how many rows they named
+  const [codesRead, setCodesRead] = useState<{ codes: number; named: number; kept: boolean } | null>(null);
+  const [codesTick, setCodesTick] = useState(0);
+  // a change made on this page — a load, a reset, a withdrawal, records put right: the lists below read again
+  const [changed, setChanged] = useState(0);
+  const bump = () => setChanged((x) => x + 1);
 
   function downloadTemplate() {
     const blob = buildXlsx(
@@ -57,10 +69,24 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     jobRef.current = null;
     setPreview(null);
     try {
-      const grid = await xlsxRows(await file.arrayBuffer());
+      const sheets = await xlsxWorkbook(await file.arrayBuffer());
       /* V326: the columns are matched by keyword in lib/legacy-fees — the old portal's export (Purpose/Payment Item,
-         Payment Date, Channel, Reference) reads as well as the template */
-      const { columns: ci, rows } = legacyFeeRows(grid);
+         Payment Date, Channel, Reference) reads as well as the template. V498: the payments are the sheet with a matriculation
+         number and a session; the export's payment_type sheet names each payment-item code, so a row carrying 10048 is read as
+         SCHOOL FEES (and the codes are kept, for what earlier uploads recorded under a code to be put right) */
+      const main = sheets.find((sh) => { const c = legacyFeeColumns(sh.rows[0] ?? []); return c.matric >= 0 && c.session >= 0; }) ?? sheets[0];
+      const codes = sheets.flatMap((sh) => itemCodes(sh.rows));
+      const { columns: ci, rows: read } = legacyFeeRows(main?.rows ?? []);
+      const { rows, named } = withItemNames(read, codes);
+      setCodesRead(codes.length ? { codes: codes.length, named, kept: false } : null);
+      if (codes.length && may) {
+        const r = await fetch("/api/bff/api/v1/finance/legacy-fees/item-codes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("The old portal's payment-item codes read from its export") },
+          body: JSON.stringify({ rows: codes }),
+        }).catch(() => null);
+        if (r?.ok) { setCodesRead({ codes: codes.length, named, kept: true }); setCodesTick((t) => t + 1); }
+      }
       if (ci.matric < 0 || ci.session < 0) {
         setProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." }); notifyProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." });
         return;
@@ -75,7 +101,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   }
 
   function downloadDuplicates() {
-    const csv = ["reference", ...duplicateSample].join("\n") + "\n";
+    const csv = ["payment number or reference", ...duplicateSample].join("\n") + "\n";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "legacy-fees-already-on-record.csv";
@@ -133,6 +159,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         job.totals.rows += c.rows ?? 0; job.totals.cleared += c.cleared ?? 0;
         job.totals.no_student += c.no_student ?? 0; job.totals.no_due += c.no_due ?? 0; job.totals.duplicates += c.duplicates ?? 0;
         job.totals.corrected += c.corrected ?? 0; job.totals.undated += c.undated ?? 0;
+        job.totals.matched += c.matched ?? 0; job.totals.separate += c.separate ?? 0;
         if (c.duplicate_sample) job.sample.push(...c.duplicate_sample.split(", "));
         job.at += batch.length;
       }
@@ -143,6 +170,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     } finally {
       setBusy(false);
       setProgress(null);
+      bump();
     }
   }
 
@@ -183,12 +211,12 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         : `${n(deleted, "imported payment", "imported payments")} deleted${loaded.session ? ` for ${loaded.session}` : ""}; ${n(reversed, "ledger posting", "ledger postings")} reversed.`
           + `${kept ? ` ${n(kept, "was", "were")} kept because a deferment fee, a refund or the GST reconciliation uses them.` : ""} Upload the file again from the start.`);
       if (!failed) { setLoaded(null); setResetWord(""); setResult(null); }
-    } finally { setBusy(false); }
+    } finally { setBusy(false); bump(); }
   }
 
   function upload() {
     if (!preview) return;
-    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0 }, sample: [] };
+    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0 }, sample: [] };
     void run();
   }
 
@@ -197,8 +225,10 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <Note kind="info" title="Clear old students' school-fees history from the old portal">
         Upload what each student already paid, by session and (optionally) semester. A blank <b>amount</b> means <b>cleared in full</b>.
         The <b>Purpose / Payment Item</b> column sets what each payment was for: <b>GST FEES</b> is the GST fee, SCHOOL FEES is
-        school fees, any other item does not clear school-fee arrears. A row already on record is skipped, never overwritten;
-        loading the same export again is safe.
+        school fees, any other item does not clear school-fee arrears. The old portal&rsquo;s <b>payment number</b> (payref) tells one
+        payment from another: a make-up or a second part-payment in the same semester is recorded beside the first, and a number already
+        on record is skipped, never overwritten, so loading the same export again is safe. This is the one way in for old payments.
+        Payment History Upload is retired.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
 
@@ -211,11 +241,17 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
           </div>
-          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (First/Second/1/2, or Session for the whole session; optional), Level (optional; otherwise worked out for that session), Amount (blank = cleared in full), Purpose / Payment Item (SCHOOL FEES, GST FEES, …), Paid On / Payment Date, Reference / Receipt No, Channel and Note (optional). Matched by name; the old portal&rsquo;s export uploads as-is.</div>
+          <div className="sub2 mt-2">Columns read: Matriculation Number (or matno), Session (YYYY/YYYY), Semester (First/Second/1/2, or Session for the whole session; optional), Level (optional; otherwise worked out for that session), Amount (blank = cleared in full), Purpose / Payment Item (SCHOOL FEES, GST FEES, …), Paid On / Payment Date, the old portal&rsquo;s payment number (payref, Reference or Receipt No), Channel (or treatedby) and Note (optional). Matched by name; the old portal&rsquo;s export uploads as-is.</div>
         </PBody>
       </Panel>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {codesRead ? (
+        <Note kind="info" title={`${codesRead.codes.toLocaleString()} payment-item codes read from the export`}>
+          The export&rsquo;s payment_type sheet names each code (10048 is SCHOOL FEES). {codesRead.named.toLocaleString()} row{codesRead.named === 1 ? "" : "s"} of this
+          file carried a code and {codesRead.named === 1 ? "is" : "are"} read as the item it names.{codesRead.kept ? " The codes are kept: what earlier uploads recorded under a code is listed below, to be put right." : ""}
+        </Note>
+      ) : null}
       {resetDone ? <Note kind="ok" title="Reset done">{resetDone}</Note> : null}
       {resumeAt !== null && preview ? (
         <Note kind="info" title={`Stopped at row ${resumeAt.toLocaleString()} of ${preview.length.toLocaleString()}`}
@@ -230,13 +266,14 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
             ["Settled", String(result.cleared ?? 0), "var(--green-ink)", "Payments recorded"],
             ["No such student", String(result.no_student ?? 0), (result.no_student ?? 0) ? "var(--red-ink)" : null, "Import the students first"],
             ["Nothing to settle", String(result.no_due ?? 0), null, "No amount and no fee schedule"],
-            ["Already on record", String(result.duplicates ?? 0), (result.duplicates ?? 0) ? "var(--red-ink)" : null, "Skipped, not overwritten"],
+            ["Already on record", String((result.duplicates ?? 0) + (result.matched ?? 0)), null, `Skipped, not overwritten${result.matched ? `; ${result.matched} given their payment number` : ""}`],
+            ["Added beside another", String(result.separate ?? 0), (result.separate ?? 0) ? "var(--green-ink)" : null, "A make-up or second part-payment in a semester already on record"],
             ["Corrected", String(result.corrected ?? 0), (result.corrected ?? 0) ? "var(--green-ink)" : null, "Date, semester or purpose fixed on a record already imported"],
             ["No usable date", String(result.undated ?? 0), (result.undated ?? 0) ? "var(--red-ink)" : null, "Loaded, dated today"],
           ]} />
           {(result.duplicates ?? 0) > 0 ? (
-            <Note kind="bad" title="Rows already on record were skipped">
-              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} already recorded; nothing changed. First references: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
+            <Note kind="info" title="Rows already on record were skipped">
+              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} already recorded (the same payment number, or the same payment again); nothing changed. First: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
             </Note>
           ) : null}
           <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
@@ -264,6 +301,12 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           </PBody>
         </Panel>
       ) : null}
+
+      <OldFeesReconciliation tick={changed} />
+
+      <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
+
+      <OldFeesDoubles may={may} tick={changed} onChanged={bump} />
 
       <Panel title="Start over" right="Delete what this import has loaded, then load it again">
         <PBody>

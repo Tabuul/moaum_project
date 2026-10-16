@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 337
+\set EXPECTED 339
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15400,6 +15400,219 @@ BEGIN
                  AND module = 'PAYMENT' AND con LIKE '%PAYMENT_RECEIPT_REPORTED%', false),
         format('states %s | 0003 seen %s | short note %s | no actor %s | payer told %s | ask %s | waiting %s | told %s | mail %s | reopened %s, again %s, back %s | confirmed %s | module %s',
                states, seen3, short_note, no_actor, told_payer, ask, waiting, told, left(mail, 900), reopened, marked_again, back, confirmed_mark, module));
+END $$;
+-- ── V498. Old-portal payments: one way in, the payment number decides, payments on record twice withdrawn, reconciled against
+--          the fee setup. X paid school fees on the old portal three times in the first semester (SCHOOL FEES, a MAKE UP, a part)
+--          and once in the second; an earlier upload recorded only the first. The export with its payment numbers adds the other
+--          two beside it, attaches the first's number to the record already there, skips the number repeated in the file, records
+--          the second semester; loaded again, nothing changes. Q's semester was summed by the 15 Sep migration in whole naira
+--          (₦200,000 for two payments of ₦99,999.80 and ₦100,000.10): both attach to it, nothing is added. The retired Payment
+--          History Upload refuses; what it wrote twice is listed with W's whole-session record repeating its semester record
+--          (the semester record keeps the number) and V's unnumbered record repeating a numbered payment; all withdrawn with a
+--          reason, another amount kept. Reconciled: X under, Z matched, Y in a programme with no fee stated. Undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); x uuid := gen_random_uuid(); y uuid := gen_random_uuid(); z uuid := gen_random_uuid();
+        q uuid := gen_random_uuid(); w uuid := gen_random_uuid(); v uuid := gen_random_uuid();
+        ses text := '9987/9988'; pa text; pb text; base text := 'MOAUM-LEG-MOAUMCHK879801-9987-9988';
+        qbase text := 'MOAUM-LEG-MOAUMCHK879804-9987-9988'; wbase text := 'MOAUM-LEG-MOAUMCHK879805-9987-9988'; vbase text := 'MOAUM-LEG-MOAUMCHK879806-9987-9988';
+        imp record; again record; qimp record; refs text; paid_x numeric; numbers text; q_refs text; q_numbers text; retired text; doubles text; short_reason text;
+        w1 record; w2 record; reg text; kept_other boolean; w_number text; rec text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V498', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9987-10-01', date '9988-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        SELECT code INTO pb FROM ref.programme WHERE NOT coalesce(archived, false) AND code <> pa ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (x, 'MOAUM/ADM/87/980001', 'MOAUM/CHK/87/9801', 'ZZCHKV498X', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (y, 'MOAUM/ADM/87/980002', 'MOAUM/CHK/87/9802', 'ZZCHKV498Y', 'Invented', pb, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (z, 'MOAUM/ADM/87/980003', 'MOAUM/CHK/87/9803', 'ZZCHKV498Z', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (q, 'MOAUM/ADM/87/980004', 'MOAUM/CHK/87/9804', 'ZZCHKV498Q', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (w, 'MOAUM/ADM/87/980005', 'MOAUM/CHK/87/9805', 'ZZCHKV498W', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (v, 'MOAUM/ADM/87/980006', 'MOAUM/CHK/87/9806', 'ZZCHKV498V', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees', 250000, NULL, pa);
+        -- what the earlier uploads left
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+          (x, ses, base || '-S1', 'School fees (legacy) · semester 1', 100000, '9987-11-02', '9987-11-02', who, 'Legacy', 'LEG-' || base || '-S1', 'Imported from the old portal'),
+          (z, ses, 'MOAUM-LEG-MOAUMCHK879803-9987-9988', 'School fees (legacy)', 250000, '9987-11-05', '9987-11-05', who, 'Legacy', 'LEG-MOAUM-LEG-MOAUMCHK879803-9987-9988', 'Imported from the old portal'),
+          (y, ses, 'MOAUM-LEG-MOAUMCHK879802-9987-9988', 'School fees (legacy)', 90000, '9987-11-06', '9987-11-06', who, 'Legacy', 'LEG-MOAUM-LEG-MOAUMCHK879802-9987-9988', 'Imported from the old portal'),
+          -- the 15 Sep migration: Q's first semester summed from two payments, in whole naira; W's first semester
+          (q, ses, qbase || '-S1', 'School fees (legacy) · semester 1', 200000, '9987-11-10', '9987-11-10', who, 'Legacy', 'LEG-' || qbase || '-S1', '2 school-fees payment(s), migrated'),
+          (w, ses, wbase || '-S1', 'School fees (legacy) · semester 1', 36556, '9987-11-12', '9987-11-12', who, 'Legacy', 'LEG-' || wbase || '-S1', '1 school-fees payment(s), migrated'),
+          -- the 5 Oct upload: W's payment again as the whole session, with its number; V's payment twice, once numbered
+          (w, ses, wbase, 'School fees (legacy)', 36555.80, '9987-11-12', '9987-11-12', who, 'Legacy', 'LEG-' || wbase, 'Imported from the old portal · old ref PRW0001'),
+          (v, ses, vbase || '-S2', 'School fees (legacy) · semester 2', 41447.17, '9988-02-03', '9988-02-03', who, 'Legacy', 'LEG-' || vbase || '-S2', 'Imported from the old portal · old ref PRV0001'),
+          (v, ses, vbase, 'School fees (legacy)', 41447, '9988-02-03', '9988-02-03', who, 'Legacy', 'LEG-' || vbase, 'Imported from the old portal');
+        INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PRW0001', wbase, 36555.80), ('PRV0001', vbase || '-S2', 41447.17);
+        -- the export, as the old portal writes it (matno, payref, treatedby)
+        SELECT * INTO imp FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '100000', 'purpose', 'SCHOOL FEES',         'paidOn', '9987-11-02', 'payref', 'PR98798010001', 'channel', 'Interswitch'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '20000',  'purpose', 'SCHOOL FEES MAKE UP', 'paidOn', '9988-01-15', 'payref', 'PR98798010002', 'channel', 'Interswitch'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '30000',  'purpose', 'SCHOOL FEES',         'paidOn', '9988-02-01', 'payref', 'PR98798010003', 'channel', 'E-Wallet'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '20000',  'purpose', 'SCHOOL FEES MAKE UP', 'paidOn', '9988-01-15', 'payref', 'PR98798010002', 'channel', 'Interswitch'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'Second', 'amount', '50000',  'purpose', 'SCHOOL FEES',         'paidOn', '9988-03-01', 'payref', 'PR98798010004', 'channel', 'Old Record')));
+        SELECT * INTO again FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '100000', 'purpose', 'SCHOOL FEES',         'paidOn', '9987-11-02', 'payref', 'PR98798010001'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'First',  'amount', '20000',  'purpose', 'SCHOOL FEES MAKE UP', 'paidOn', '9988-01-15', 'payref', 'PR98798010002'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9801', 'session', ses, 'semester', 'Second', 'amount', '50000',  'purpose', 'SCHOOL FEES',         'paidOn', '9988-03-01', 'payref', 'pr98798010004')));
+        SELECT * INTO qimp FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9804', 'session', ses, 'semester', 'First', 'amount', '99999.80',  'purpose', 'SCHOOL FEES', 'paidOn', '9987-11-10', 'payref', 'PRQ0001'),
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9804', 'session', ses, 'semester', 'First', 'amount', '100000.10', 'purpose', 'SCHOOL FEES', 'paidOn', '9987-11-10', 'payref', 'PRQ0002')));
+        refs := (SELECT string_agg(replace(reference, base, '') || '=' || amount::int, ',' ORDER BY reference) FROM finance.payment_reference WHERE student_id = x);
+        paid_x := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = x AND purpose LIKE 'School fees%' AND confirmed_at IS NOT NULL);
+        numbers := (SELECT string_agg(k.payref || '>' || replace(k.reference, base, ''), ',' ORDER BY k.payref) FROM finance.legacy_payref k WHERE k.reference LIKE base || '%');
+        q_refs := (SELECT string_agg(replace(reference, qbase, '') || '=' || amount, ',' ORDER BY reference) FROM finance.payment_reference WHERE student_id = q);
+        q_numbers := (SELECT string_agg(k.payref || '>' || replace(k.reference, qbase, '') || '=' || k.amount, ',' ORDER BY k.payref) FROM finance.legacy_payref k WHERE k.reference LIKE qbase || '%');
+        -- the retired door
+        BEGIN
+            PERFORM finance.import_payments(jsonb_build_array(jsonb_build_object('matric', 'MOAUM/CHK/87/9801', 'session', ses, 'amount', '50000')));
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS retired = MESSAGE_TEXT;
+        END;
+        -- what it wrote before it was retired: the second semester's payment again (twice), and a payment of another amount
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no) VALUES
+          (x, ses, 'MIGR-CHKV498-0001', 'School fees ' || ses, 50000, '9988-03-01', '9988-03-02', '9988-03-01', who, 'MIGRATION', 'Migrated payment history', 'RCT-MIGR-CHKV498-0001'),
+          (x, ses, 'MIGR-CHKV498-0002', 'School fees ' || ses, 50000, '9988-03-01', '9988-03-02', '9988-03-01', who, 'MIGRATION', 'Migrated payment history', 'RCT-MIGR-CHKV498-0002'),
+          (x, ses, 'MIGR-CHKV498-0003', 'School fees ' || ses, 77, '9988-03-05', '9988-03-06', '9988-03-05', who, 'MIGRATION', 'Migrated payment history', 'RCT-MIGR-CHKV498-0003');
+        doubles := (SELECT string_agg(regexp_replace(d.double_reference, '^MOAUM-LEG-MOAUMCHK8798', 'L') || ':' || d.double_kind || '>' || regexp_replace(d.kept_reference, '^MOAUM-LEG-MOAUMCHK8798', 'L'), ',' ORDER BY d.double_reference)
+                      FROM finance.old_payment_doubles() d WHERE d.student_id IN (x, q, w, v, y, z));
+        BEGIN
+            PERFORM finance.withdraw_old_payment_doubles('no');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS short_reason = MESSAGE_TEXT;
+        END;
+        SELECT * INTO w1 FROM finance.withdraw_old_payment_doubles('CHECK V498: recorded twice by the earlier uploads', 1);
+        SELECT * INTO w2 FROM finance.withdraw_old_payment_doubles('CHECK V498: recorded twice by the earlier uploads');
+        reg := (SELECT string_agg(regexp_replace(o.reference, '^MOAUM-LEG-MOAUMCHK8798', 'L') || ':' || o.double_kind, ',' ORDER BY o.reference) FROM finance.old_payment_withdrawn o WHERE o.student_id IN (x, q, w, v));
+        kept_other := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MIGR-CHKV498-0003');
+        w_number := (SELECT k.reference FROM finance.legacy_payref k WHERE k.payref = 'PRW0001');
+        -- reconciled against the fee setup
+        rec := (SELECT string_agg(right(r.number, 4) || ':' || r.state || ':' || r.due::int || '/' || r.paid::int || '/' || r.paid_old_s1::int || '+' || r.paid_old_s2::int
+                                  || '+' || r.paid_old_session::int || '+' || r.paid_payment_history::int || ':' || r.difference::int, ',' ORDER BY r.number)
+                  FROM finance.old_fees_reconciliation(ses) r WHERE r.student_id IN (x, y, z));
+        RAISE EXCEPTION 'the V498 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V498 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V498: the payment number decides (a make-up or second part beside the first, a summed record''s parts attached to it, within a naira), the retired Payment History Upload refuses, payments on record twice are withdrawn (a semester record keeps the number), and old payments are reconciled against the fee setup',
+        coalesce(imp.rows = 5 AND imp.cleared = 3 AND imp.separate = 2 AND imp.matched = 1 AND imp.duplicates = 1
+                 AND again.cleared = 0 AND again.duplicates = 3 AND again.matched = 0
+                 AND refs = '-S1=100000,-S1-PR98798010002=20000,-S1-PR98798010003=30000,-S2=50000' AND paid_x = 200000
+                 AND numbers = 'PR98798010001>-S1,PR98798010002>-S1-PR98798010002,PR98798010003>-S1-PR98798010003,PR98798010004>-S2'
+                 AND qimp.matched = 2 AND qimp.cleared = 0 AND qimp.separate = 0 AND q_refs = '-S1=200000.00'
+                 AND q_numbers = 'PRQ0001>-S1=99999.80,PRQ0002>-S1=100000.10'
+                 AND retired LIKE 'PAYMENT_HISTORY_RETIRED%'
+                 AND doubles = 'MIGR-CHKV498-0001:PAYMENT_HISTORY>L01-9987-9988-S2,MIGR-CHKV498-0002:PAYMENT_HISTORY>L01-9987-9988-S2,L05-9987-9988:WHOLE_SESSION>L05-9987-9988-S1,L06-9987-9988:UNNUMBERED>L06-9987-9988-S2'
+                 AND short_reason LIKE 'PAY_DOUBLE_REASON%' AND w1.withdrawn = 1 AND w2.withdrawn = 3 AND w2.remaining = 0
+                 AND reg = 'MIGR-CHKV498-0001:PAYMENT_HISTORY,MIGR-CHKV498-0002:PAYMENT_HISTORY,L05-9987-9988:WHOLE_SESSION,L06-9987-9988:UNNUMBERED'
+                 AND kept_other AND w_number = wbase || '-S1'
+                 AND rec = '9801:UNDER:250000/200077/150000+50000+0+77:-49923,9802:NO_FEE_STATED:0/90000/0+0+90000+0:90000,9803:MATCHED:250000/250000/0+0+250000+0:0', false),
+        format('import %s/%s/sep %s/matched %s/dup %s | again %s/%s/%s | refs %s | paid %s | numbers %s | Q %s/%s/%s %s %s | retired %s | doubles %s | short %s | withdraw %s then %s/%s left %s | register %s | other kept %s | W number on %s | rec %s',
+               imp.rows, imp.cleared, imp.separate, imp.matched, imp.duplicates, again.cleared, again.duplicates, again.matched, refs, paid_x, numbers,
+               qimp.matched, qimp.cleared, qimp.separate, q_refs, q_numbers, left(retired, 40), doubles, left(short_reason, 30), w1.withdrawn, w2.withdrawn,
+               w2.ledger_reversed, w2.remaining, reg, kept_other, w_number, rec));
+END $$;
+-- ── V498 (codes). A student as seen on AWS: the first semester paid (₦156,338) but recorded under the old portal's item code
+--          "10048 (legacy)", so not counted; the GST fee and admission checking on record under their names and again under their
+--          codes (10144, 10137) and the GST fee once more under an older label ("GST FEES (legacy)"); a POST UTME application
+--          under 10046; a code the list does not name; and the second semester recorded again by the retired Payment History
+--          Upload, dated with the day of the upload. The codes loaded, the import reads a code as its item; put right: school fees
+--          and the application renamed (school fees count), the three repeats withdrawn, the unknown code left; the retired
+--          door's row found by the day its payment number carries. The coded school fees and GST fee were posted to
+--          the ledger first: both journals reversed and freed, the renamed record left for the sync to post under its item, once.
+--          The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); m uuid := gen_random_uuid(); nn uuid := gen_random_uuid(); ses text := '9987/9988'; pa text;
+        mb text := 'MOAUM-LEG-MOAUMCHK879807-9987-9988'; nb text := 'MOAUM-LEG-MOAUMCHK879808-9987-9988';
+        loaded int; acts text; first record; again_left int; m_refs text; paid_m numeric; corrected text; withdrawn text; n_ref text;
+        ph text; no_actor text; msg text; j1 uuid; j2 uuid; led text; rev_n int; free_s1 boolean; net numeric; kept_j boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V498 codes', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9987-10-01', date '9988-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (m, 'MOAUM/ADM/87/980007', 'MOAUM/CHK/87/9807', 'ZZCHKV498M', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+          (nn, 'MOAUM/ADM/87/980008', 'MOAUM/CHK/87/9808', 'ZZCHKV498N', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        SELECT m, ses, mb || v.suffix, v.purpose, v.amount, v.day::timestamptz, v.day::timestamptz, who, 'Legacy', 'LEG-' || mb || v.suffix, 'Imported from the old portal'
+          FROM (VALUES ('-S1-10048', '10048 (legacy) · semester 1', 156338.00, '2026-02-16'),
+                       ('-S1-GST', 'GST fee ' || '9987/9988', 4000.00, '2026-02-23'),
+                       ('-S1-10144', '10144 (legacy) · semester 1', 4000.00, '2026-02-23'),
+                       ('-S1-GSTFEES', 'GST FEES (legacy) · semester 1', 4000.00, '2026-02-23'),
+                       ('-S1-ADMISSIONCHECKING', 'ADMISSION CHECKING (legacy) · semester 1', 3000.00, '2025-12-09'),
+                       ('-S1-10137', '10137 (legacy) · semester 1', 3000.00, '2025-12-09'),
+                       ('-10046', '10046 (legacy)', 2000.00, '2025-10-11'),
+                       ('-S1-77777', '77777 (legacy) · semester 1', 500.00, '2025-10-12'),
+                       ('-S2', 'School fees (legacy) · semester 2', 67002.00, '2026-10-07')) v(suffix, purpose, amount, day);
+        -- what the retired door wrote: the second semester again, its date the day of the upload, its reference the payment number
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+        VALUES (m, ses, 'PR202610077059998', 'SCHOOL FEES', 67002.00, '2026-10-16', '2026-10-17', '2026-10-16', who, 'INTERSWITCH', 'Migrated payment history', 'RCT-MIGR-CHKV498M');
+        -- the ledger posted two of them, as the sync posts a payment (under the other income account a code reads as)
+        SELECT finance.gl_post(r.confirmed_at::date, 'Fee receipt ' || r.reference, 'AUTO', 'PAYMENT', r.reference,
+                   jsonb_build_array(jsonb_build_object('account', '1010', 'debit', r.amount, 'narration', r.purpose, 'session', r.session),
+                                     jsonb_build_object('account', finance.gl_income_account(finance.payment_category(r.purpose)), 'credit', r.amount,
+                                                        'narration', r.purpose, 'session', r.session)))
+          INTO j1 FROM finance.payment_reference r WHERE r.reference = mb || '-S1-10048';
+        SELECT finance.gl_post(r.confirmed_at::date, 'Fee receipt ' || r.reference, 'AUTO', 'PAYMENT', r.reference,
+                   jsonb_build_array(jsonb_build_object('account', '1010', 'debit', r.amount, 'narration', r.purpose, 'session', r.session),
+                                     jsonb_build_object('account', finance.gl_income_account(finance.payment_category(r.purpose)), 'credit', r.amount,
+                                                        'narration', r.purpose, 'session', r.session)))
+          INTO j2 FROM finance.payment_reference r WHERE r.reference = mb || '-S1-10144';
+        -- refused without a person; then the code list from the export's payment_type sheet
+        PERFORM set_config('moaum.actor_id', '', true);
+        BEGIN PERFORM finance.legacy_item_codes_set('[{"code": "10048", "description": "SCHOOL FEES"}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS no_actor = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        loaded := finance.legacy_item_codes_set('[{"pcode": 10048, "description": "SCHOOL FEES", "school": "S001"}, {"pcode": 10144, "description": "GST FEES"},
+                                                  {"pcode": 10137, "description": "ADMISSION CHECKING"}, {"pcode": 10046, "description": "POST UTME APPLICATION"},
+                                                  {"pcode": "", "description": "nothing"}]'::jsonb);
+        acts := (SELECT string_agg(replace(x.reference, mb, '') || '>' || x.action || coalesce('>' || replace(x.target_reference, mb, ''), ''), ',' ORDER BY x.reference)
+                   FROM finance.legacy_mislabelled() x WHERE x.student_id = m);
+        ph := (SELECT d.double_kind || '>' || replace(d.kept_reference, mb, '') FROM finance.old_payment_doubles() d WHERE d.double_reference = 'PR202610077059998');
+        SELECT * INTO first FROM finance.put_right_legacy_items('CHECK V498: recorded under the old portal''s codes');
+        again_left := (SELECT count(*) FROM finance.legacy_mislabelled() x WHERE x.student_id = m AND x.action <> 'UNKNOWN_CODE');
+        m_refs := (SELECT string_agg(replace(reference, mb, '') || '=' || amount::int || ':' || purpose, ',' ORDER BY reference)
+                     FROM finance.payment_reference WHERE student_id = m AND reference LIKE 'MOAUM-LEG-%');
+        paid_m := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = m AND purpose LIKE 'School fees%' AND confirmed_at IS NOT NULL);
+        corrected := (SELECT string_agg(replace(c.old_reference, mb, '') || '>' || replace(c.new_reference, mb, '') || ':' || c.action, ',' ORDER BY c.old_reference)
+                        FROM finance.legacy_item_corrected c WHERE c.old_reference LIKE mb || '%');
+        withdrawn := (SELECT string_agg(replace(o.reference, mb, '') || '>' || replace(o.kept_reference, mb, ''), ',' ORDER BY o.reference)
+                        FROM finance.old_payment_withdrawn o WHERE o.student_id = m AND o.double_kind = 'MISLABELLED');
+        led := (SELECT string_agg(replace(split_part(g.source_ref, '#', 1), mb, '') || ':' || g.source_type || ':' || g.status, ',' ORDER BY g.source_ref)
+                  FROM finance.gl_journal g WHERE g.id IN (j1, j2));
+        rev_n := (SELECT count(*) FROM finance.gl_journal g WHERE g.reverses IN (j1, j2) AND g.status = 'POSTED');
+        net := (SELECT sum(p.debit - p.credit) FROM finance.gl_posting p JOIN finance.gl_journal g ON g.id = p.journal_id
+                 WHERE p.account <> '1010' AND (g.id IN (j1, j2) OR g.reverses IN (j1, j2)));
+        free_s1 := NOT EXISTS (SELECT 1 FROM finance.gl_journal g WHERE g.source_type = 'PAYMENT' AND g.source_ref IN (mb || '-S1', mb || '-S1-10048'));
+        kept_j := (SELECT c.ledger_journal = j1 AND c.reversal_journal IS NOT NULL FROM finance.legacy_item_corrected c WHERE c.old_reference = mb || '-S1-10048')
+                  AND (SELECT o.ledger_journal = j2 AND o.reversal_journal IS NOT NULL FROM finance.old_payment_withdrawn o WHERE o.reference = mb || '-S1-10144');
+        -- an export that carries codes: the import reads 10048 as school fees
+        PERFORM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', 'MOAUM/CHK/87/9808', 'session', ses, 'semester', 'First', 'amount', '50000', 'purpose', '10048', 'paidOn', '2026-01-20', 'payref', 'PRCHKV498N01')));
+        n_ref := (SELECT replace(reference, nb, '') || ':' || purpose FROM finance.payment_reference WHERE student_id = nn);
+        RAISE EXCEPTION 'the V498 codes check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V498 codes check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V498: a payment recorded under the old portal''s item code is put right — school fees renamed so they count, the same payment under its name withdrawn, an unknown code left — its ledger journal reversed and freed so the sync posts it under its item once, the import reads a code as its item, and the retired door''s row dated with the upload day is found by its payment number''s day',
+        coalesce(no_actor LIKE 'LEGACY_CODES_ACTOR%' AND loaded = 4
+                 AND acts = '-10046>RENAME>-POSTUTMEAPPLICATION,-S1-10048>RENAME>-S1,-S1-10137>DOUBLE>-S1-ADMISSIONCHECKING,-S1-10144>DOUBLE>-S1-GST,-S1-77777>UNKNOWN_CODE,-S1-GSTFEES>DOUBLE>-S1-GST'
+                 AND ph = 'PAYMENT_HISTORY>-S2'
+                 AND first.renamed = 2 AND first.relabelled = 0 AND first.withdrawn = 3 AND first.ledger_reversed = 2 AND first.unknown_codes >= 1 AND again_left = 0
+                 AND led = '-S1-10048:PAYMENT_CORRECTED:REVERSED,-S1-10144:PAYMENT_WITHDRAWN:REVERSED' AND rev_n = 2 AND net = 0 AND free_s1 AND kept_j
+                 AND m_refs = '-POSTUTMEAPPLICATION=2000:POST UTME APPLICATION (legacy),-S1=156338:School fees (legacy) · semester 1,-S1-77777=500:77777 (legacy) · semester 1,-S1-ADMISSIONCHECKING=3000:ADMISSION CHECKING (legacy) · semester 1,-S1-GST=4000:GST fee 9987/9988,-S2=67002:School fees (legacy) · semester 2'
+                 AND paid_m = 223340
+                 AND corrected = '-10046>-POSTUTMEAPPLICATION:RENAME,-S1-10048>-S1:RENAME'
+                 AND withdrawn = '-S1-10137>-S1-ADMISSIONCHECKING,-S1-10144>-S1-GST,-S1-GSTFEES>-S1-GST'
+                 AND n_ref = '-S1:School fees (legacy) · semester 1', false),
+        format('no actor %s | codes %s | actions %s | retired door %s | put right %s renamed, %s relabelled, %s withdrawn, %s reversed, %s unknown, %s left | records %s | paid %s | corrected %s | withdrawn %s | import of a code %s | ledger %s, %s reversals, net %s, free %s, kept %s',
+               left(no_actor, 30), loaded, acts, ph, first.renamed, first.relabelled, first.withdrawn, first.ledger_reversed, first.unknown_codes, again_left, m_refs, paid_m, corrected, withdrawn, n_ref,
+               led, rev_n, net, free_s1, kept_j));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

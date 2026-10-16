@@ -726,7 +726,6 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
-          { "id": "t/paymenthistory", "icon": "upload", "label": "Payment History Upload" },
           { "id": "t/refunds", "icon": "swap", "label": "Refunds & Credits" },
           { "id": "t/fundsources", "icon": "card", "label": "Funding Sources" },
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },

@@ -1,7 +1,9 @@
 /** The Old Fees History upload (/finance/legacy-fees): which column is which, matched by keyword so the portal's own
  *  template and the old portal's export ("paymentRECENT with pay_item": Matriculation Number, Session, Semester, Level,
  *  Amount, Purpose/Payment Item, Payment Date, Channel, Reference) both read. V326: the payment item is carried as the
- *  row's purpose — GST FEES is the GST fee for that session — and the old reference and channel travel with the row. */
+ *  row's purpose — GST FEES is the GST fee for that session — and the old reference and channel travel with the row.
+ *  V498: the old portal's raw payment download reads as it is (matno, payref, payment_item, treatedby): its payment number
+ *  (payref) is what tells one payment from another, so a make-up beside the first payment is never taken for it. */
 
 export interface LegacyFeeRow {
   matric: string;
@@ -26,15 +28,15 @@ export function legacyFeeColumns(headerCells: unknown[]): LegacyFeeColumns {
   const header = headerCells.map((c) => String(c ?? "").trim().toLowerCase());
   const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
   return {
-    matric: at(["matric", "reg"]),
+    matric: at(["matric", "reg", "matno", "mat no", "mat. no"]),
     session: at(["session"]),
     sem: at(["semester", "sem"]),
     level: at(["level"]),
     amount: at(["amount"]),
     purpose: at(["purpose", "payment item", "pay_item", "pay item", "item", "fee type", "payment type", "description"]),
     paidOn: at(["paid on", "payment date", "date"]),
-    receipt: at(["receipt", "reference", "ref no", "transaction"]),
-    channel: at(["channel", "gateway"]),
+    receipt: at(["receipt", "reference", "ref no", "transaction", "payref", "pay ref", "payment ref"]),
+    channel: at(["channel", "gateway", "treated"]),
     note: at(["note", "remark", "comment"]),
   };
 }
@@ -60,4 +62,33 @@ export function legacyFeeKind(row: LegacyFeeRow): "GST" | "SCHOOL" | "OTHER" {
   if (!text || /(school|tuition|semester fee|session fee)/i.test(text)) return "SCHOOL";
   if (row.purpose) return "OTHER";
   return /(^|[^a-z])(hostel|accommodation|transcript|library|deferment|transfer|wallet|acceptance|application|post-?utme|screening|medical|id card|convocation|late registration|clearance|siwes)/i.test(text) ? "OTHER" : "SCHOOL";
+}
+
+/** V498: the old portal's payment-item codes, from the export's second sheet (payment_type: pcode, description, school) — an
+ *  upload on AWS carried the code (10048) where the export names the item (SCHOOL FEES), and paid school fees went uncounted */
+export interface ItemCode { code: string; description: string; school: string }
+
+/** the codes a sheet holds when its header has a code column and a description column; none otherwise */
+export function itemCodes(grid: unknown[][]): ItemCode[] {
+  const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+  const code = header.findIndex((h) => h === "pcode" || h === "code" || h === "item code" || h === "payment code");
+  const desc = header.findIndex((h) => h === "description" || h === "item" || h === "payment item" || h === "name");
+  const school = header.findIndex((h) => h === "school");
+  if (code < 0 || desc < 0) return [];
+  const g = (r: unknown[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
+  return grid.slice(1).map((r) => ({ code: g(r, code), description: g(r, desc), school: g(r, school) }))
+    .filter((c) => /^[0-9A-Za-z]+$/.test(c.code) && c.description !== "");
+}
+
+/** the rows with a code read as the item it names (a code the list does not name is left as it is, for the server to read) */
+export function withItemNames(rows: LegacyFeeRow[], codes: ItemCode[]): { rows: LegacyFeeRow[]; named: number } {
+  const byCode = new Map(codes.map((c) => [c.code, c.description]));
+  let named = 0;
+  const out = rows.map((r) => {
+    const code = r.purpose.trim();
+    if (!/^[0-9]+$/.test(code) || !byCode.has(code)) return r;
+    named++;
+    return { ...r, purpose: byCode.get(code) as string };
+  });
+  return { rows: out, named };
 }

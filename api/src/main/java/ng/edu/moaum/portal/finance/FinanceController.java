@@ -67,7 +67,8 @@ class FinanceController {
         this.json = json;
     }
 
-    /** bulk-load past students' confirmed payment (school-fees) history from the old portal (V120) */
+    /** bulk-load past students' confirmed payment (school-fees) history from the old portal (V120); retired by V498 — the
+     *  database refuses (PAYMENT_HISTORY_RETIRED): old payments come in on Old Fees History alone */
     @PostMapping("/payments/import")
     @PreAuthorize(MIGRATORS)
     @Transactional
@@ -122,6 +123,126 @@ class FinanceController {
     Map<String, Object> legacyFeesLoaded(@RequestParam(required = false) String session) {
         return jdbc.sql("SELECT * FROM finance.legacy_payment_count((:s)::text)")
                 .param("s", session == null || session.isBlank() ? null : session).query().singleRow();
+    }
+
+    /** V498: every old-portal payment on record twice — what the retired Payment History Upload wrote that repeats a record, and
+     *  the Old Fees History records earlier uploads left twice: the count and amount (by kind), those something points at, and
+     *  the first rows (all of them, up to 100,000, for the Excel list) */
+    @GetMapping("/legacy-fees/doubles")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> paymentHistoryDoubles(@RequestParam(defaultValue = "200") int limit) {
+        int n = Math.max(1, Math.min(limit, 100_000));
+        String text = jdbc.sql("""
+                WITH d AS MATERIALIZED (SELECT * FROM finance.old_payment_doubles())
+                SELECT json_build_object(
+                    'count', (SELECT count(*) FROM d),
+                    'amount', (SELECT coalesce(sum(amount), 0) FROM d),
+                    'linked', (SELECT count(*) FROM d WHERE linked IS NOT NULL),
+                    'students', (SELECT count(DISTINCT student_id) FROM d),
+                    'kinds', (SELECT coalesce(json_object_agg(t.double_kind, t.n), '{}'::json) FROM (SELECT double_kind, count(*) AS n FROM d GROUP BY double_kind) t),
+                    'withdrawn', (SELECT count(*) FROM finance.old_payment_withdrawn),
+                    'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
+                        SELECT double_reference, double_kind, kept_reference, kept_kind, number, name, session, amount, paid_on::text AS paid_on, purpose, kept_purpose, linked
+                          FROM d ORDER BY session DESC, number, double_reference LIMIT :n) r))::text
+                """).param("n", n).query(String.class).single();
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    public record WithdrawDoubles(@NotBlank @Size(min = 10, max = 500) String reason, Integer limit) { }
+
+    /** V498: withdraws a batch of those doubles (the screen asks again until none is left): each one's ledger posting reversed,
+     *  the record kept on the register, then removed (a whole-session record's payment number moving to the per-semester record
+     *  that stands for it); one a deferment fee, a refund or the GST reconciliation points at is left */
+    @PostMapping("/legacy-fees/doubles/withdraw")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> withdrawPaymentHistoryDoubles(@Valid @RequestBody WithdrawDoubles body) {
+        int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));
+        return jdbc.sql("SELECT * FROM finance.withdraw_old_payment_doubles(:r, :n)").param("r", body.reason().trim()).param("n", n).query().singleRow();
+    }
+
+    /** V498: the old portal's payment-item codes (the export's payment_type sheet: pcode, description, school), kept so the import
+     *  reads a code as the item it names and what was recorded under a code can be put right */
+    @PostMapping("/legacy-fees/item-codes")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> legacyItemCodes(@Valid @RequestBody FeeRows body) {
+        int n = jdbc.sql("SELECT finance.legacy_item_codes_set(:j::jsonb)").param("j", json.writeValueAsString(body.rows())).query(Integer.class).single();
+        return Map.of("loaded", n);
+    }
+
+    /** V498: the records earlier uploads made under the old portal's item code ("10048 (legacy)"), or under a label the rules now read
+     *  otherwise, with what each is and what putting it right does; the codes the list does not name yet */
+    @GetMapping("/legacy-fees/mislabelled")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> legacyMislabelled(@RequestParam(defaultValue = "200") int limit) {
+        int n = Math.max(1, Math.min(limit, 100_000));
+        String text = jdbc.sql("""
+                WITH m AS MATERIALIZED (SELECT * FROM finance.legacy_mislabelled())
+                SELECT json_build_object(
+                    'count', (SELECT count(*) FROM m),
+                    'amount', (SELECT coalesce(sum(amount), 0) FROM m),
+                    'students', (SELECT count(DISTINCT student_id) FROM m),
+                    'actions', (SELECT coalesce(json_object_agg(t.action, t.n), '{}'::json) FROM (SELECT action, count(*) AS n FROM m GROUP BY action) t),
+                    'unknownCodes', (SELECT coalesce(json_agg(DISTINCT regexp_replace(stored_purpose, ' \\(legacy\\).*$', '')), '[]'::json) FROM m WHERE action = 'UNKNOWN_CODE'),
+                    'codes', (SELECT count(*) FROM finance.legacy_item_code),
+                    'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
+                        SELECT reference, number, name, session, amount, paid_on::text AS paid_on, stored_purpose, item, target_reference, target_purpose, action
+                          FROM m ORDER BY CASE action WHEN 'RENAME' THEN 0 WHEN 'DOUBLE' THEN 1 WHEN 'RELABEL' THEN 2 ELSE 3 END, session DESC, number, reference
+                         LIMIT :n) r))::text
+                """).param("n", n).query(String.class).single();
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    /** V498: puts a batch of them right (the screen asks again until none is left): renamed or relabelled so school fees count, or
+     *  withdrawn where the same payment is on record under its item; each kept on its register with the reason */
+    @PostMapping("/legacy-fees/mislabelled/put-right")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> putRightLegacyItems(@Valid @RequestBody WithdrawDoubles body) {
+        int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));
+        return jdbc.sql("SELECT * FROM finance.put_right_legacy_items(:r, :n)").param("r", body.reason().trim()).param("n", n).query().singleRow();
+    }
+
+    /** V498: the old-portal school-fees payments of a session reconciled against the fee setup — the states counted, then the
+     *  students, those under or over first; filtered by state and by number or name */
+    @GetMapping("/legacy-fees/reconciliation")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> oldFeesReconciliation(@RequestParam(required = false) String session, @RequestParam(required = false) String state,
+                                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page,
+                                              @RequestParam(defaultValue = "50") int size) {
+        String ses = session != null && session.matches("^[0-9]{4}/[0-9]{4}$") ? session
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).single();
+        String st = state == null || state.isBlank() ? null : state.trim().toUpperCase();
+        String term = q == null || q.isBlank() ? null : "%" + q.trim().toUpperCase() + "%";
+        int sz = Math.max(1, Math.min(size, 100_000));
+        int pg = Math.max(1, page);
+        String text = jdbc.sql("""
+                WITH x AS MATERIALIZED (SELECT * FROM finance.old_fees_reconciliation(:s)),
+                f AS (SELECT * FROM x WHERE (:st::text IS NULL OR x.state = :st) AND (:q::text IS NULL OR upper(x.number) LIKE :q OR upper(x.name) LIKE :q))
+                SELECT json_build_object(
+                    'session', :s::text,
+                    'sessions', (SELECT coalesce(json_agg(t.session ORDER BY t.session DESC), '[]'::json)
+                                   FROM (SELECT DISTINCT r.session FROM finance.payment_reference r
+                                          WHERE (r.reference LIKE 'MOAUM-LEG-%' OR r.reference NOT LIKE 'MOAUM-%') AND r.purpose LIKE 'School fees%'
+                                            AND r.session ~ '^[0-9]{4}/[0-9]{4}$') t),
+                    'summary', (SELECT coalesce(json_agg(t ORDER BY t.state), '[]'::json)
+                                  FROM (SELECT state, count(*) AS students, sum(due) AS due, sum(paid) AS paid, sum(difference) AS difference FROM x GROUP BY state) t),
+                    'total', (SELECT count(*) FROM f),
+                    'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
+                        SELECT student_id, number, name, programme_code, faculty_code, level, due, paid, paid_old_s1, paid_old_s2, paid_old_session,
+                               paid_payment_history, paid_portal, old_payments, difference, state
+                          FROM f ORDER BY CASE f.state WHEN 'UNDER' THEN 0 WHEN 'OVER' THEN 1 WHEN 'NO_FEE_STATED' THEN 2 ELSE 3 END, abs(f.difference) DESC, f.number
+                         LIMIT :n OFFSET :o) r))::text
+                """).param("s", ses).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("n", sz).param("o", (long) (pg - 1) * sz)
+                .query(String.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+        out.put("page", pg);
+        out.put("size", sz);
+        return out;
     }
 
     public record ResetLegacy(String session, String confirm) { }

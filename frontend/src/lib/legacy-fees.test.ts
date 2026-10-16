@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { legacyFeeColumns, legacyFeeKind, legacyFeeRows } from "./legacy-fees.ts";
+import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames } from "./legacy-fees.ts";
 
 test("the old portal's export is read column by column, the payment item carried as the purpose", () => {
   const grid = [
@@ -37,4 +37,40 @@ test("the portal's own template reads as before: a Note names another purpose on
   assert.equal(legacyFeeKind({ ...base, note: "Hostel accommodation" }), "OTHER");
   assert.equal(legacyFeeKind({ ...base, purpose: "ADMISSION CHECKING", note: "" }), "OTHER");
   assert.equal(legacyFeeKind({ ...base, purpose: "SCHOOL FEES MAKE UP", note: "" }), "SCHOOL");
+});
+
+test("V498: the old portal's raw payment download reads as it is — matno, payref, payment_item, treatedby", () => {
+  const grid = [
+    ["payref", "amount", "date", "matno", "payment_item", "semester", "session", "level", "treatedby"],
+    ["PR202604146965246", 100204, 46163, "MOAU/AD/MAR/24/12056", "SCHOOL FEES", "First", "2025/2026", 200, "Interswitch"],
+    ["PR2026041477173", 56400.005, 46177, "BSU/MBBS/17/771", "SCHOOLFEES MAKE UP", "First", "2023/2024", 600, "Interswitch"],
+  ];
+  const { columns, rows } = legacyFeeRows(grid);
+  assert.deepEqual([columns.matric, columns.receipt, columns.purpose, columns.channel, columns.paidOn, columns.amount], [3, 0, 4, 8, 2, 1]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].receiptNo, "PR202604146965246");
+  assert.equal(rows[1].purpose, "SCHOOLFEES MAKE UP");
+  assert.equal(legacyFeeKind(rows[1]), "SCHOOL", "a make-up is school fees: its own payment number keeps it beside the first");
+});
+
+test("V498: the payment_type sheet names each code, and a row carrying a code is read as the item it names", () => {
+  const codes = itemCodes([
+    ["pcode", "description", "amount", "school", "visibility"],
+    [10048, "SCHOOL FEES", 0, "S001", 1],
+    [10144, "GST FEES", 4000, "S001", 1],
+    ["", "nothing", 0, "", 0],
+  ]);
+  assert.deepEqual(codes, [{ code: "10048", description: "SCHOOL FEES", school: "S001" }, { code: "10144", description: "GST FEES", school: "S001" }]);
+  assert.deepEqual(itemCodes([["payref", "amount"], ["PR1", 5]]), [], "a sheet without codes has none");
+  const { rows } = legacyFeeRows([
+    ["payref", "amount", "date", "matno", "payment_item", "semester", "session", "level", "treatedby"],
+    ["PR1", 156338, 46069, "MOAU/AD/PUB/25/00001", "10048", "First", "2025/2026", 100, "Interswitch"],
+    ["PR2", 4000, 46076, "MOAU/AD/PUB/25/00001", "10144", "First", "2025/2026", 100, "Interswitch"],
+    ["PR3", 500, 46076, "MOAU/AD/PUB/25/00001", "77777", "First", "2025/2026", 100, "Interswitch"],
+  ]);
+  const named = withItemNames(rows, codes);
+  assert.equal(named.named, 2);
+  assert.deepEqual(named.rows.map((r) => r.purpose), ["SCHOOL FEES", "GST FEES", "77777"]);
+  assert.equal(legacyFeeKind(named.rows[0]), "SCHOOL");
+  assert.equal(legacyFeeKind(named.rows[1]), "GST");
 });
