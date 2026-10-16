@@ -30,7 +30,9 @@ export interface FacultyList {
   state: string;
   confirmedAt: string | null;
   minUnits: number | null;
-  rows: { studentId: string; admissionNo: string; surname: string; otherNames: string; deptCode: string; deptName: string; units: number; registrationStatus: string; queryReason: string | null; queryOffice: string | null }[];
+  rows: { studentId: string; admissionNo: string; surname: string; otherNames: string; deptCode: string; deptName: string; units: number; registrationStatus: string; queryReason: string | null; queryOffice: string | null;
+    /** V495: the student's own minimum course load (their curriculum's) */
+    minUnits?: number | null }[];
 }
 
 export interface AttachmentState {

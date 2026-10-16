@@ -64,14 +64,14 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
           rows={list.rows.map((r) => [
             <span className="tnum" key="a">{r.admissionNo}</span>, <strong key="n">{r.surname}, {r.otherNames}</strong>,
             <span className="sub2" key="d">{r.deptName}</span>,
-            <span className={`tnum${r.units < min ? " ink-red" : ""}`} key="u">{r.units}</span>,
+            <span className={`tnum${r.units < (r.minUnits ?? min) ? " ink-red" : ""}`} key="u">{r.units}</span>,
             <span className="sub2" key="f">—</span>,
             r.queryReason ? <Pil kind="bad" key="s">Query</Pil> : <Pil kind="ok" key="s">For matriculation</Pil>,
             r.queryReason
               ? <Btn kind="ghost" key="q" disabled={busy || !may || conf} onClick={() => void send("POST", `${base}/queries/${r.studentId}/withdraw`, {}, `Query withdrawn for ${r.admissionNo}`)}>Withdraw query</Btn>
               : <span key="act" className="row row--inline row--tight row--right">
                   <Btn kind="go" disabled={busy || !mayIssue} onClick={() => void send("POST", `/api/bff/api/v1/matriculation/sessions/${list.session}/students/${r.studentId}/matriculate`, {}, `Matriculation number issued for ${r.admissionNo}`)}>Issue number</Btn>
-                  <Btn kind="ghost" disabled={busy || !may || conf} onClick={() => { setQuery(r.studentId); setReason(r.units < min ? `Registered ${r.units} units. The minimum at 100 level is ${min}` : ""); }}>Query</Btn>
+                  <Btn kind="ghost" disabled={busy || !may || conf} onClick={() => { setQuery(r.studentId); setReason(r.units < (r.minUnits ?? min) ? `Registered ${r.units} units. The minimum for the student is ${r.minUnits ?? min}` : ""); }}>Query</Btn>
                 </span>,
           ])}
           texts={list.rows.map((r) => `${r.admissionNo} ${r.surname} ${r.otherNames} ${r.deptName}`)}

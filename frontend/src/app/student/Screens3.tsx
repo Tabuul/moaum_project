@@ -77,11 +77,13 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const total = locked ? Number(reg!.units) : chosenTotal;
   const min = v.limit.min_units;
   const max = v.limit.max_units;
+  // V495: the minimum is the student's curriculum's (CCMAS, BMAS), as the Directorate of ICT set it for the session and semester
+  const curriculum = v.limit.basis === "CURRICULUM" ? v.limit.curriculum ?? null : null;
   const onProbation = !!v.probation && v.probation.standing === "PROBATION";
   const ok = total >= min && total <= max;
-  const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Below minimum", hint: `You need at least ${min} credit units. Add ${min - total} more.` }
+  const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Minimum not met", hint: `${curriculum ? `Your curriculum (${curriculum}) requires` : "You need"} at least ${min} credit units: ${min - total} CU remaining. Add courses to reach it.` }
     : total > max ? { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit", hint: onProbation && v.probation?.probation_max_units != null && max === v.probation.probation_max_units ? `On probation the maximum is ${max} units. Remove ${total - max}; the courses you owe stay.` : `Maximum is ${max} units. Remove ${total - max}, or request an overload from your HOD.` }
-      : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Valid", hint: `Within the permitted range for ${v.level} Level.` };
+      : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Minimum met", hint: `Minimum requirement met${curriculum ? ` for ${curriculum}` : ""}; within the permitted range for ${v.level} Level.` };
   // a registration submitted or approved, with add/drop closed, cannot be changed by the student: say what it holds, not what to add
   if (locked && !v.addDropOpen) meter.hint = `${total} units registered; the range for ${v.level} Level is ${min}–${max}.`;
 
@@ -283,7 +285,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <div className="meter">
           <div className="row row--base">
             <span className="tnum b700" style={{ fontSize: "var(--t-3xl)", letterSpacing: "-.6px", color: meter.col }}>{total}</span>
-            <span className="ink-muted">of {min}–{max} credit units</span>
+            <span className="ink-muted tnum">/ {min} CU minimum · {max} maximum{curriculum ? <> · <b>{curriculum}</b></> : null}</span>
             <span className="grow" />
             <span className="pill" style={{ background: meter.bg, color: meter.fg }}>{meter.lab}</span>
           </div>
@@ -350,7 +352,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {!locked ? (
         <div className="row">
           <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student")}>{busy === "save" ? "Saving…" : "Save the draft"}</Btn>
-          <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) { const j = await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student", ""); if (j) notify(j.result === "approved" ? "REGISTRATION SUCCESSFUL — STATUS: APPROVED" : "Course registration submitted"); } }}>{busy === "submit" ? "Submitting registration…" : busy === "save" ? "Registering…" : auto ? "SUBMIT COURSE REGISTRATION" : "Submit for approval"}</Btn>
+          <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) { const j = await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student", ""); if (j) notify(j.result === "approved" ? "REGISTRATION SUCCESSFUL — STATUS: APPROVED" : "Course registration submitted"); } }}>{busy === "submit" ? "VALIDATING REGISTRATION..." : busy === "save" ? "Registering…" : auto ? "SUBMIT COURSE REGISTRATION" : "Submit for approval"}</Btn>
           <span className="sub2">{auto ? "Approved at once when it passes the registration rules" : "Goes to your Head of Department for approval"}</span>
         </div>
       ) : null}

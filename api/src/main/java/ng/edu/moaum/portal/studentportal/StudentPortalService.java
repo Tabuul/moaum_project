@@ -47,6 +47,17 @@ public class StudentPortalService {
             throw new DomainRuleViolation("CHECK_CODE_SESSION", "A check code is made for one session (such as 2026/2027) and one semester.");
         }
         StudentPortalRepository.Student s = student(id);
+        // V495: an examination card is the card of an approved registration — never of a draft below the minimum course load, or
+        // of one not yet approved, though the card's own page asks the same first (and the card issued is counted only then)
+        if (k == CheckCodes.Kind.EXAM) {
+            String status = repo.registration(id, session, semester).map(r -> String.valueOf(r.get("status"))).orElse(null);
+            if (!"APPROVED".equals(status) && !"LOCKED".equals(status)) {
+                throw new DomainRuleViolation("EXAM_CARD_NOT_APPROVED",
+                        "An examination card is issued for an approved course registration; your registration for " + session + " semester " + semester
+                                + (status == null ? " is not made." : " is " + status.toLowerCase() + "."),
+                        new DomainRuleViolation.Remedy("Register at least the minimum credit units your curriculum requires and submit; the card follows approval.", "Academic Office"));
+            }
+        }
         String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("kind", k.name());
@@ -431,7 +442,8 @@ public class StudentPortalService {
         Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
         // on probation, the form's ceiling is the level's probation ceiling where the Registry has set one
         Map<String, Object> standing = repo.standing(s.id(), s.currentLevel());
-        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : new java.util.LinkedHashMap<>(repo.limit(id, s.currentLevel()));
+        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes, "basis", "SIWES")
+                : new java.util.LinkedHashMap<>(repo.limit(id, s.currentLevel(), session, semester));
         if (siwes == null && "PROBATION".equals(standing.get("standing")) && standing.get("probation_max_units") != null) {
             int cap = ((Number) standing.get("probation_max_units")).intValue();
             int max = ((Number) limit.get("max_units")).intValue();

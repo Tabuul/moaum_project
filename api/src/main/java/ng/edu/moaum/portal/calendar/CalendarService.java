@@ -267,6 +267,16 @@ public class CalendarService {
                     "The maximum (" + in.maxUnits() + ") is below the minimum (" + in.minUnits() + ") for level " + level + ".",
                     new DomainRuleViolation.Remedy("State a ceiling at or above the floor.", "Academic Office"));
         }
+        // V495: an undergraduate level's ceiling never falls below a curriculum's minimum the Directorate of ICT set, or no
+        // registration under it could be valid
+        Integer floor = level <= 600 ? calendar.highestCurriculumMinimum().orElse(null) : null;
+        if (floor != null && in.maxUnits() < floor) {
+            throw new DomainRuleViolation("CAL_UNIT_RANGE_CURRICULUM",
+                    "The maximum (" + in.maxUnits() + ") for level " + level + " is below the minimum course registration load of " + floor
+                            + " credit units a curriculum requires.",
+                    new DomainRuleViolation.Remedy("State a ceiling of at least " + floor + ", or ask the Directorate of ICT to lower the curriculum's minimum on Course Registration Settings first.",
+                            "Directorate of ICT"));
+        }
         calendar.upsertLevelLimit(level, in);
         return read(null);
     }

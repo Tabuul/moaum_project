@@ -604,9 +604,12 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(Integer.class).single();
     }
 
-    /** the unit range at the level — V380: the CCE course load for a CCE student where the Academic Office stated one */
-    Map<String, Object> limit(UUID student, int level) {
-        return jdbc.sql("SELECT min_units, max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level).query().listOfRows().stream().findFirst()
+    /** the unit range at the level for the session and semester — V380: the CCE course load for a CCE student where the Academic
+     *  Office stated one; V495: else the minimum of the student's curriculum (CCMAS, BMAS) the Directorate of ICT set, with the
+     *  curriculum and what the minimum comes from (CCE, CURRICULUM or LEVEL) */
+    Map<String, Object> limit(UUID student, int level, String session, int semester) {
+        return jdbc.sql("SELECT min_units, max_units, curriculum, basis FROM registration.unit_rule(:s, :l, :ses, :sem)")
+                .param("s", student).param("l", level).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst()
                 .orElse(Map.of("min_units", 0, "max_units", 99));
     }
 

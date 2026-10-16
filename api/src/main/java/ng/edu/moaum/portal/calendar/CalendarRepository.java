@@ -193,6 +193,15 @@ class CalendarRepository {
                 .update();
     }
 
+    /** V495: the highest minimum course registration load a curriculum asks in the current session or a later one, or by its
+     *  standing rule */
+    java.util.Optional<Integer> highestCurriculumMinimum() {
+        return jdbc.sql("""
+                SELECT max(u.min_units) FROM registration.unit_minimum u
+                 WHERE u.session IS NULL OR u.session >= coalesce(policy.university_current_session(), '')
+                """).query(Integer.class).optional();
+    }
+
     void upsertLevelLimit(int level, CalendarService.LevelIn in) {
         jdbc.sql("""
                 INSERT INTO policy.level_limit (level, applies_to, min_units, max_units, carryover_counts, instrument, probation_max_units)

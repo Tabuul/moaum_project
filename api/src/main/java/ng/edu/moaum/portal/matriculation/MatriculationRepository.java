@@ -39,9 +39,11 @@ class MatriculationRepository {
 
     List<Matriculation.Row> rows(String session, String faculty) {
         return jdbc.sql("""
-                SELECT student_id, admission_no, surname, other_names, dept_code, dept_name, units, registration_status,
-                       query_reason, query_office
-                  FROM people.faculty_list_rows(:s, :f)
+                SELECT x.student_id, x.admission_no, x.surname, x.other_names, x.dept_code, x.dept_name, x.units, x.registration_status,
+                       x.query_reason, x.query_office,
+                       (SELECT l.min_units FROM people.student s, registration.unit_limit(s.id, coalesce(s.current_level, 100), :s, NULL) l
+                         WHERE s.id = x.student_id) AS min_units
+                  FROM people.faculty_list_rows(:s, :f) x
                 """).param("s", session).param("f", faculty).query(Matriculation.Row.class).list();
     }
 

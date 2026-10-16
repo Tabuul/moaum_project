@@ -30,7 +30,7 @@ public final class Matriculation {
     }
 
     public record Row(UUID studentId, String admissionNo, String surname, String otherNames, String deptCode, String deptName,
-                      int units, String registrationStatus, String queryReason, String queryOffice) {
+                      int units, String registrationStatus, String queryReason, String queryOffice, Integer minUnits) {
     }
 
     public record FacultyList(String session, String code, String name, String state, OffsetDateTime confirmedAt, Integer minUnits,

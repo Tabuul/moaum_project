@@ -87,7 +87,7 @@ export interface GstView {
   courses: GstCourseView[]; reference?: string;
 }
 export interface RegistrationView {
-  session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
+  session: string; semester: number; level: number; limit: { min_units: number; max_units: number; curriculum?: string | null; basis?: "CURRICULUM" | "LEVEL" | "CCE" | "SIWES" }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
   /** V491: how the semester's registration is approved, whether the student may reset it (and why not), what holds it for review */
   approval?: import("./registration-approval").ApprovalRule;

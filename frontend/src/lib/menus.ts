@@ -1375,6 +1375,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Portal Management",
         "items": [
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
+          { "id": "t/regsettings", "icon": "check", "label": "Course Registration Settings" },
           { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "t/applicationwindows", "icon": "check", "label": "Application Registration Control" },
@@ -1537,7 +1538,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
-          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" }
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
+          { "id": "t/regsettings", "icon": "check", "label": "Course Registration Settings" }
         ]
       },
       {

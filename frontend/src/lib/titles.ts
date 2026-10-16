@@ -64,6 +64,7 @@ export const TITLES: Record<string, string> = {
   "s/profile": "Profile",
   "s/password": "Change password",
   "t/regapproval": "Course registration approval",
+  "t/regsettings": "Course registration settings",
   "s/courses": "My courses",
   "s/timetable": "Timetable",
   "s/attendance": "Attendance",

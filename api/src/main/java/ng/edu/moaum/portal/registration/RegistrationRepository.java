@@ -174,10 +174,11 @@ class RegistrationRepository {
     record Limit(int minUnits, int maxUnits) {
     }
 
-    /** the unit range at the level — V380: the CCE course load for a CCE student where the Academic Office stated one */
-    Optional<Limit> limit(UUID student, int level) {
-        return jdbc.sql("SELECT min_units, max_units FROM registration.unit_limit(:s, :l)").param("s", student).param("l", level)
-                .query(Limit.class).optional();
+    /** the unit range at the level for the session and semester — V380: the CCE course load for a CCE student where the Academic
+     *  Office stated one; V495: else the minimum of the student's curriculum */
+    Optional<Limit> limit(UUID student, int level, String session, int semester) {
+        return jdbc.sql("SELECT min_units, max_units FROM registration.unit_limit(:s, :l, :ses, :sem)").param("s", student).param("l", level)
+                .param("ses", session).param("sem", semester).query(Limit.class).optional();
     }
 
     /** return a registration to the student with the reason they must act on */

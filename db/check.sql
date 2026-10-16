@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 334
+\set EXPECTED 335
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15138,6 +15138,107 @@ BEGIN
     PERFORM pg_temp.assert('V494: a student with no fee stated is not counted cleared by the department''s figures, as the registration gate refuses them',
         coalesce((stated OR (set_says IS NOT DISTINCT FROM false)) AND set_says IS NOT DISTINCT FROM gate_says, false),
         format('fee stated %s | department figures %s | gate %s', stated, set_says, gate_says));
+END $$;
+
+
+-- ── V495: the minimum course registration load by curriculum ──
+-- CCMAS and BMAS each bind an undergraduate to their own minimum (15 and 18 by the standing rule); a session's or a semester's own
+-- rule wins where set; a CCE load the Centre stated and a postgraduate's level keep their own; only the Directorate of ICT sets it,
+-- a whole number from 1 no higher than the lowest undergraduate maximum, with a reason; the standing rule is never removed; each
+-- change is logged with the value before and after, one rule a scope; a registration below the minimum is listed. The block undoes
+-- its writes.
+DO $$
+DECLARE s1 text := '2391/2392'; s2 text := '2392/2393'; c uuid := gen_random_uuid(); b uuid := gen_random_uuid(); g uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); ug text; pg text; pglvl int; maxu int; o uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid();
+        std_c int; std_b int; basis_c text; cur_c text; pg_basis text; pg_min int; cce_basis text; cce_min int; max_c int;
+        s1_c int; s2_c int; s1_sem2 int; s1_sem1 int; two_arg int; four_arg int; after_change int;
+        r_office text; r_zero text; r_over text; r_reason text; r_standing text; r_curr text; n_scope int; hist text; removed_back int;
+        listed_b boolean; listed_c boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V495', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s1, DATE '2391-10-01', DATE '2392-08-31'), (gen_random_uuid(), s2, DATE '2392-10-01', DATE '2393-08-31');
+        ug := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        SELECT p.code, admissions.pg_award_level(p.pg_award) INTO pg, pglvl FROM ref.programme p
+         WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        maxu := (SELECT min(max_units) FROM policy.level_limit WHERE level BETWEEN 100 AND 600);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode) VALUES
+            (c, 'MOAUM/ADM/91/949501', 'CHECKV495', 'Ccmas', ug, 'UTME', s1, 100, 100, 'ADMITTED', 'FULL_TIME'),
+            (b, 'MOAUM/ADM/91/949502', 'CHECKV495', 'Bmas', ug, 'UTME', s1, 100, 100, 'ADMITTED', 'FULL_TIME'),
+            (g, 'MOAUM/ADM/91/949503', 'CHECKV495', 'Postgraduate', pg, 'POSTGRADUATE', s1, pglvl, pglvl, 'ADMITTED', 'FULL_TIME'),
+            (e, 'MOAUM/ADM/91/949504', 'CHECKV495', 'Cce', ug, 'CCE', s1, 100, 100, 'ADMITTED', 'PART_TIME');
+        UPDATE people.student SET curriculum_version = CASE WHEN id = b OR id = g THEN 'BMAS' ELSE 'CCMAS' END WHERE id IN (c, b, g, e);
+        INSERT INTO policy.route_level_limit (route, level, min_units, max_units) VALUES ('CCE', 100, 6, 12)
+        ON CONFLICT (route, level) DO UPDATE SET min_units = 6, max_units = 12;
+
+        -- the standing rules, and who each binds
+        SELECT u.min_units, u.basis, u.curriculum, u.max_units INTO std_c, basis_c, cur_c, max_c FROM registration.unit_rule(c, 100, s1, 1) u;
+        std_b := (SELECT u.min_units FROM registration.unit_rule(b, 100, s1, 1) u);
+        SELECT u.basis, u.min_units INTO pg_basis, pg_min FROM registration.unit_rule(g, pglvl, s1, 1) u;
+        SELECT u.basis, u.min_units INTO cce_basis, cce_min FROM registration.unit_rule(e, 100, s1, 1) u;
+
+        -- a session's own, and a semester's within it
+        PERFORM registration.set_unit_minimum('CCMAS', s1, NULL, 16, 'Check: CCMAS sixteen for the session');
+        PERFORM registration.set_unit_minimum('CCMAS', s1, 2, 17, 'Check: CCMAS seventeen in the second semester');
+        s1_c := (SELECT u.min_units FROM registration.unit_rule(c, 100, s1, NULL) u);
+        s1_sem1 := (SELECT u.min_units FROM registration.unit_rule(c, 100, s1, 1) u);
+        s1_sem2 := (SELECT u.min_units FROM registration.unit_rule(c, 100, s1, 2) u);
+        s2_c := (SELECT u.min_units FROM registration.unit_rule(c, 100, s2, 1) u);
+        PERFORM registration.set_unit_minimum('CCMAS', s1, NULL, 16, 'Check: the same rule set again');
+        n_scope := (SELECT count(*) FROM registration.unit_minimum WHERE curriculum = 'CCMAS' AND session = s1 AND semester IS NULL);
+        PERFORM registration.set_unit_minimum('CCMAS', s1, NULL, 18, 'Check: CCMAS raised to eighteen');
+        after_change := (SELECT u.min_units FROM registration.unit_rule(c, 100, s1, 1) u);
+        PERFORM registration.set_unit_minimum('CCMAS', s1, 2, NULL, 'Check: the second semester follows the session again');
+        removed_back := (SELECT u.min_units FROM registration.unit_rule(c, 100, s1, 2) u);
+        hist := (SELECT string_agg(replace(x.event, 'COURSE_REGISTRATION_MIN_CREDIT_', '') || ':' || coalesce(x.semester::text, '-') || ':' || coalesce(x.before_units::text, '-') || '>' || coalesce(x.after_units::text, '-'), ' ' ORDER BY x.changed_at, x.id)
+                   FROM registration.unit_minimum_change x WHERE x.session = s1);
+        -- the two-argument form reads the student's current session
+        two_arg := (SELECT l.min_units FROM registration.unit_limit(c, 100) l);
+        four_arg := (SELECT l.min_units FROM registration.unit_limit(c, 100, people.student_current_session(c), NULL) l);
+
+        -- refusals
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM registration.set_unit_minimum('CCMAS', s1, NULL, 15, 'Check: not the Directorate'); r_office := 'SET';
+        EXCEPTION WHEN insufficient_privilege THEN r_office := 'REFUSED'; END;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN PERFORM registration.set_unit_minimum('CCMAS', s2, NULL, 0, 'Check: zero units'); r_zero := 'SET';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_zero := split_part(msg, ':', 1); END;
+        BEGIN PERFORM registration.set_unit_minimum('BMAS', s2, NULL, maxu + 1, 'Check: above the maximum'); r_over := 'SET';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_over := split_part(msg, ':', 1); END;
+        BEGIN PERFORM registration.set_unit_minimum('BMAS', s2, NULL, 18, 'short'); r_reason := 'SET';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_reason := split_part(msg, ':', 1); END;
+        BEGIN PERFORM registration.set_unit_minimum('BMAS', NULL, NULL, NULL, 'Check: the standing rule removed'); r_standing := 'REMOVED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_standing := split_part(msg, ':', 1); END;
+        BEGIN PERFORM registration.set_unit_minimum('NUCX', NULL, NULL, 12, 'Check: no such curriculum'); r_curr := 'SET';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_curr := split_part(msg, ':', 1); END;
+
+        -- the registrations below the minimum that binds them: BMAS 15 of 18 is listed, CCMAS 18 of 18 is not
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state)
+        VALUES ('ZQM 101', 'Check load course', 3, 1, 100, (SELECT dept_code FROM ref.programme WHERE code = ug), 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (o, 'ZQM 101', s1, 1, 'REGULAR');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+            (rb, b, s1, 1, 100, 'DRAFT'), (rc, c, s1, 1, 100, 'DRAFT');
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rb, o, 15, 'REGISTERED'), (rc, o, 18, 'REGISTERED');
+        listed_b := EXISTS (SELECT 1 FROM registration.below_minimum(s1, 1) x WHERE x.registration_id = rb AND x.min_units = 18 AND x.units = 15 AND x.curriculum = 'BMAS');
+        listed_c := EXISTS (SELECT 1 FROM registration.below_minimum(s1, 1) x WHERE x.registration_id = rc);
+        RAISE EXCEPTION 'the V495 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V495 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V495: the minimum course load binds by curriculum (CCMAS 15, BMAS 18 standing; a session''s and a semester''s own win), a CCE load and a postgraduate''s level keep theirs; only ICT sets it, from 1 to the maximum, with a reason; the standing rule stays; each change logged; below-minimum listed',
+        coalesce(std_c = 15 AND basis_c = 'CURRICULUM' AND cur_c = 'CCMAS' AND max_c = (SELECT max_units FROM policy.level_limit WHERE level = 100) AND std_b = 18
+                 AND pg_basis = 'LEVEL' AND pg_min = (SELECT min_units FROM policy.level_limit WHERE level = pglvl) AND cce_basis = 'CCE' AND cce_min = 6
+                 AND s1_c = 16 AND s1_sem1 = 16 AND s1_sem2 = 17 AND s2_c = 15 AND n_scope = 1 AND after_change = 18 AND removed_back = 18
+                 AND hist = 'SET:-:->16 SET:2:->17 CHANGED:-:16>18 REMOVED:2:17>-' AND two_arg = four_arg
+                 AND r_office = 'REFUSED' AND r_zero = 'REG_MIN_UNITS_POSITIVE' AND r_over = 'REG_MIN_UNITS_OVER_MAXIMUM' AND r_reason = 'REG_MIN_UNITS_REASON'
+                 AND r_standing = 'REG_MIN_UNITS_STANDING' AND r_curr = 'REG_MIN_UNITS_CURRICULUM' AND listed_b AND NOT listed_c, false),
+        format('standing %s %s %s max %s / %s | pg %s %s | cce %s %s | s1 %s sem1 %s sem2 %s s2 %s | one a scope %s | changed %s removed %s | %s | two/four %s/%s | refusals %s %s %s %s %s %s | listed %s %s',
+               std_c, basis_c, cur_c, max_c, std_b, pg_basis, pg_min, cce_basis, cce_min, s1_c, s1_sem1, s1_sem2, s2_c, n_scope, after_change, removed_back, hist,
+               two_arg, four_arg, r_office, r_zero, r_over, r_reason, r_standing, r_curr, listed_b, listed_c));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

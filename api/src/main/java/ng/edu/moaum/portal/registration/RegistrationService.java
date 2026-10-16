@@ -157,7 +157,7 @@ public class RegistrationService {
                         new DomainRuleViolation.Remedy("This is the SIWES semester — only the industrial-training course is registered.", "Head of Department"));
             }
         } else {
-            RegistrationRepository.Limit limit = repo.limit(r.studentId(), r.level()).orElse(null);
+            RegistrationRepository.Limit limit = repo.limit(r.studentId(), r.level(), r.session(), r.semester()).orElse(null);
             if (limit != null && (units < limit.minUnits() || units > limit.maxUnits())) {
                 throw new DomainRuleViolation("REG_UNITS_OUT_OF_RANGE",
                         "The registration carries " + units + " units; at " + r.level() + " level the range is "
