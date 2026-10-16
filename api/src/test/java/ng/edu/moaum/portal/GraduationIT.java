@@ -132,25 +132,32 @@ class GraduationIT {
                     .param("c", course).param("l", lvl).param("d", prog.get("dept_code")).update();
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, :l, 'Core') ON CONFLICT DO NOTHING")
                     .param("c", course).param("p", code).param("l", lvl).update();
-            UUID offering = jdbc.sql("""
-                    INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (gen_random_uuid(), :c, :sess, 1, 'PG')
-                    ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
-                    """).param("c", course).param("sess", pgSession).query(UUID.class).single();
+            // every course the programme requires of the student, this one and any other test bound to the same programme
+            // (PgCoursePoolIT binds a Core course to the first postgraduate programme), registered and passed in the session
+            List<String> required = jdbc.sql("SELECT course_code FROM admissions.pg_coursework_audit(:s) WHERE state <> 'PASSED'")
+                    .param("s", student).query(String.class).list();
             UUID reg = jdbc.sql("""
                     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
                     VALUES (gen_random_uuid(), :s, :sess, 1, :l, 'APPROVED', now())
                     ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED' RETURNING id
                     """).param("s", student).param("sess", pgSession).param("l", lvl).query(UUID.class).single();
-            jdbc.sql("INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (:r, :o, 3, 'APPROVED') ON CONFLICT (registration_id, offering_id) DO NOTHING")
-                    .param("r", reg).param("o", offering).update();
-            UUID sheet = jdbc.sql("SELECT id FROM assessment.score_sheet WHERE offering_id = :o").param("o", offering).query(UUID.class).optional().orElse(null);
-            if (sheet == null) {
-                sheet = UUID.randomUUID();
-                jdbc.sql("INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (:id, :o, 'PUBLISHED', 'SEN/2156/01', now(), now())")
-                        .param("id", sheet).param("o", offering).update();
+            for (String c : required) {
+                UUID offering = jdbc.sql("""
+                        INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (gen_random_uuid(), :c, :sess, 1, 'PG')
+                        ON CONFLICT (course_code, session, semester, stream) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
+                        """).param("c", c).param("sess", pgSession).query(UUID.class).single();
+                jdbc.sql("INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (:r, :o, 3, 'APPROVED') ON CONFLICT (registration_id, offering_id) DO NOTHING")
+                        .param("r", reg).param("o", offering).update();
+                UUID sheet = jdbc.sql("SELECT id FROM assessment.score_sheet WHERE offering_id = :o").param("o", offering).query(UUID.class).optional().orElse(null);
+                if (sheet == null) {
+                    sheet = UUID.randomUUID();
+                    jdbc.sql("INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (:id, :o, 'PUBLISHED', 'SEN/2156/01', now(), now())")
+                            .param("id", sheet).param("o", offering).update();
+                }
+                jdbc.sql("INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) SELECT :sh, :s, 30, 45, 'GRADED' WHERE NOT EXISTS (SELECT 1 FROM assessment.score WHERE sheet_id = :sh AND student_id = :s)")
+                        .param("sh", sheet).param("s", student).update();
             }
-            return jdbc.sql("INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) SELECT :sh, :s, 30, 45, 'GRADED' WHERE NOT EXISTS (SELECT 1 FROM assessment.score WHERE sheet_id = :sh AND student_id = :s)")
-                    .param("sh", sheet).param("s", student).update();
+            return required.size();
         });
 
         ResponseEntity<Map> audit = it.call(academic, HttpMethod.POST, "/api/v1/graduation/sessions/2155/2156/audit", null);
