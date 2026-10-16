@@ -102,9 +102,10 @@ class CourseRegistrationAutoApprovalIT {
         String sp = y + "/" + (y + 1);
         it.session(session, y);
         int n = 1000 + new Random().nextInt(8999);
-        String matric = "MOAUM/ITA/" + (y % 100) + "/" + n;
-        UUID student = it.student("ZZAUTO" + n, "C00061", "MOAUM/ADM/" + (y % 100) + "/49" + n, matric, 100);
-        UUID unpaid = it.student("ZZAUTOUNPAID" + n, "C00061", "MOAUM/ADM/" + (y % 100) + "/48" + n, "MOAUM/ITA/" + (y % 100) + "/9" + n, 100);
+        String yy = String.format("%02d", y % 100);  // two digits, as the admission and matric shapes ask
+        String matric = "MOAUM/ITA/" + yy + "/" + n;
+        UUID student = it.student("ZZAUTO" + n, "C00061", "MOAUM/ADM/" + yy + "/49" + n, matric, 100);
+        UUID unpaid = it.student("ZZAUTOUNPAID" + n, "C00061", "MOAUM/ADM/" + yy + "/48" + n, "MOAUM/ITA/" + yy + "/9" + n, 100);
         String token = signedIn(student, matric);
 
         // the Bursar states the session's school fees and the scheme is in force; the student pays them in full
@@ -179,7 +180,7 @@ class CourseRegistrationAutoApprovalIT {
                 .isEqualTo(payments);
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND template_key = 'REG_RESET'").param("s", student).query(Long.class).single()).isPositive();
         // TEST 22: a student resets only their own: the door takes no student or registration from the browser
-        assertThat(it.call(signedIn(unpaid, "MOAUM/ITA/" + (y % 100) + "/9" + n), HttpMethod.POST, "/api/v1/me/registration/reset", Map.of("session", session, "semester", 1))
+        assertThat(it.call(signedIn(unpaid, "MOAUM/ITA/" + yy + "/9" + n), HttpMethod.POST, "/api/v1/me/registration/reset", Map.of("session", session, "semester", 1))
                 .getBody().get("code")).isEqualTo("REG_RESET_NOTHING");
 
         // TEST 13-15: registered again, approved again
