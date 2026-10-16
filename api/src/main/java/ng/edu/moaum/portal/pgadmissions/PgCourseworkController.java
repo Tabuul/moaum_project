@@ -437,7 +437,7 @@ class PgCourseworkController {
                       FROM r),
                 q AS (
                     SELECT p.*, coalesce(catalogue.resolve_course_code(p.code_in), p.code_in) AS code, g.name AS prog_name, g.dept_code,
-                           admissions.pg_award_level(g.pg_award) AS lvl
+                           CASE WHEN g.code IS NOT NULL THEN admissions.pg_award_level(g.pg_award) END AS lvl   -- none for a programme not found
                       FROM p LEFT JOIN ref.programme g ON g.code = p.prog)
                 SELECT q.ord, q.prog_in, q.prog, q.prog_name, q.dept_code, q.code, q.title, q.units, q.kind, q.semester, q.lvl,
                        c.title AS pool_title, c.level AS pool_level, c.state AS pool_state, d.name AS pool_dept,

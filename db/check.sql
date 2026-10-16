@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 327
+\set EXPECTED 330
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14813,6 +14813,144 @@ BEGIN
             AND hist = 'APPROVED/AUTO/2/6/ICT_SUPPORT' AND (rs2->>'alreadyClear')::boolean AND r_fees = 'REG_RESET_FEES'
             AND r_marks = 'REG_RESET_HAS_RESULTS' AND r_locked = 'REG_RESET_LOCKED' AND r_off = 'REG_RESET_OFF', false),
         format('reset %s | after %s kept %s | record %s | again %s | fees %s marks %s locked %s rule %s', rs, st_after, kept, hist, rs2, r_fees, r_marks, r_locked, r_off));
+END $$;
+
+
+-- ── V486: connections waited for are told to ICT, and the slowest screens' reads stand ──
+-- While requests wait for a database connection, each Directorate of ICT office holder is told once an hour (the event key);
+-- the three restated reads still answer (a session with no applications, the course review). The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); first_told int; again int; msg text; ns int; sr int; rv bigint;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V486', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-CHK-486', 'CHECKV486', 'Director');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), who, 'ict', 'institution', NULL, 'check V486', who, current_date - 1);
+        first_told := platform.tell_pool_waiting(75, 4, 10, '2031-01-01 10:15+01');
+        again := platform.tell_pool_waiting(140, 6, 10, '2031-01-01 10:40+01');
+        SELECT count(*) INTO ns FROM admissions.non_sitter_post_utme('1901/1902');
+        SELECT count(*) INTO sr FROM admissions.screening_register('1901/1902');
+        SELECT total INTO rv FROM catalogue.review_summary();
+        RAISE EXCEPTION 'the V486 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V486 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V486: requests waiting for a database connection are told to each Directorate of ICT office holder once an hour; the restated screening and course-review reads answer',
+        coalesce(first_told > 0 AND again = 0 AND ns = 0 AND sr = 0 AND rv IS NOT NULL, false),
+        format('told %s then %s | non-sitters %s, register %s, courses reviewed %s', first_told, again, ns, sr, rv));
+END $$;
+
+
+-- ── V487: prerequisites uploaded, and whom enforcing stops ──
+-- A file's rows are written row by row: a new prerequisite added, one recorded already said so, a course requiring itself,
+-- a row closing a loop and a course the pool does not hold refused. The student's passes read as assessment.student_results
+-- reads them; whom enforcing stops lists a student of the programme who has not passed a prerequisite, and not one who has.
+-- The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); ok_st uuid := gen_random_uuid(); o1 uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+        sh uuid := gen_random_uuid(); prog text; v_ses text; outcomes text; same boolean; listed text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V487', true);
+        prog := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+          ('ZQU 101', 'Check upload first', 2, 1, 100, (SELECT dept_code FROM ref.programme WHERE code = prog), 'LIVE'),
+          ('ZQU 201', 'Check upload second', 2, 1, 200, (SELECT dept_code FROM ref.programme WHERE code = prog), 'LIVE'),
+          ('ZQU 301', 'Check upload third', 2, 1, 300, (SELECT dept_code FROM ref.programme WHERE code = prog), 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQU 201', prog, 200, 'Core');
+        SELECT string_agg(l.outcome, ',' ORDER BY l.row_no) INTO outcomes FROM catalogue.load_prerequisites(
+            '[{"course": "ZQU 201", "requires": "ZQU 101"}, {"course": "zqu 201", "requires": "ZQU 101"}, {"course": "ZQU 301", "requires": "ZQU 301"},
+              {"course": "ZQU 101", "requires": "ZQU 201"}, {"course": "ZQU 999", "requires": "ZQU 101"}, {"course": "ZQU 301", "requires": ""}]'::jsonb) l;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+          (st, 'MOAUM/ADM/60/948701', 'CHECKV487', 'Unpassed', prog, 'UTME', v_ses, 100, 200, 'ADMITTED'),
+          (ok_st, 'MOAUM/ADM/60/948702', 'CHECKV487', 'Passed', prog, 'UTME', v_ses, 100, 200, 'ADMITTED');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZQU 101', v_ses, 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (reg, ok_st, v_ses, 1, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, o1, 2, 'APPROVED');
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, o1, 'PUBLISHED', 'SEN/CHK/487', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, ok_st, 25, 45, 'GRADED');
+        -- the passes, as the results read them
+        same := registration.passed_codes(ok_st) = ARRAY(SELECT DISTINCT f.course_code FROM assessment.student_results(ok_st) f
+                                                          WHERE f.published AND f.outcome = 'GRADED' AND f.points > 0)
+                AND registration.passed_codes(ok_st, ARRAY['ZQU 101']) = ARRAY['ZQU 101'] AND registration.passed_codes(st) = '{}';
+        SELECT string_agg(i.name || ':' || i.unmet, ',') INTO listed FROM registration.prerequisite_impact('ZQU 201') i WHERE i.name LIKE 'CHECKV487%';
+        RAISE EXCEPTION 'the V487 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V487 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V487: an upload adds what is new and says what is recorded, refuses a course requiring itself, a loop and a course not in the pool; passes read as the results read them; whom enforcing stops lists the student who has not passed',
+        coalesce(outcomes = 'ADDED,ALREADY,SELF,CYCLE,NO_COURSE,INCOMPLETE' AND same AND listed = 'CHECKV487, Unpassed:ZQU 101', false),
+        format('outcomes %s | passes as the results read them %s | listed %s', outcomes, same, listed));
+END $$;
+
+
+-- ── V488: a postgraduate specialisation from the application to the transcript ──
+-- An application takes one of its programme's running specialisations (never another programme's); at admission it becomes
+-- the student's; a file sets students' specialisations row by row; the coursework audit counts the courses for every student
+-- and the student's specialisation's, never another's; the statement names the specialisation. The block undoes its writes.
+DO $$
+DECLARE pg text; lvl int; v_ses text; mon uuid; dev uuid; app_id uuid := gen_random_uuid(); applicant uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); other uuid := gen_random_uuid(); refused boolean := false; carried text; loaded text;
+        audit text; stmt text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        PERFORM set_config('moaum.reason', 'check V488', true);
+        SELECT p.code, admissions.pg_award_level(p.pg_award) INTO pg, lvl FROM ref.programme p
+         WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        mon := catalogue.save_specialisation(pg, 'CMON', 'Check monetary 488');
+        dev := catalogue.save_specialisation(pg, 'CDEV', 'Check development 488');
+        -- the application, and its specialisation
+        INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, password_hash)
+        VALUES (applicant, v_ses, 'CHECKV488', 'Applicant', 'check-v488@example.test', crypt('check v488', gen_salt('bf', 12)));
+        INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        VALUES (app_id, applicant, v_ses, 'PG/99/948801', pg, lvl, 'SUBMITTED', now());
+        BEGIN
+            PERFORM admissions.pg_set_specialisation(app_id, (SELECT ps.id::text FROM catalogue.programme_specialisation ps WHERE ps.programme_code <> pg LIMIT 1));
+            PERFORM admissions.pg_set_specialisation(app_id, 'NOPE');
+        EXCEPTION WHEN check_violation THEN refused := SQLERRM LIKE 'PG_SPECIALISATION_OTHER:%';
+        END;
+        PERFORM admissions.pg_set_specialisation(app_id, 'cmon');
+        -- admitted: the specialisation becomes the student's
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+          (st, 'MOAUM/ADM/60/948801', 'CHECKV488', 'Student', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED'),
+          (other, 'MOAUM/ADM/60/948802', 'CHECKV488', 'Other', pg, 'POSTGRADUATE', v_ses, lvl, lvl, 'ADMITTED');
+        UPDATE admissions.pg_application SET student_id = st, state = 'ADMITTED', admitted_at = now() WHERE id = app_id;
+        SELECT ps.code INTO carried FROM people.student_specialisation ss JOIN catalogue.programme_specialisation ps ON ps.id = ss.specialisation_id WHERE ss.student_id = st;
+        -- a file sets the other student's, and refuses an unknown number and code
+        SELECT string_agg(l.outcome, ',' ORDER BY l.row_no) INTO loaded FROM people.load_student_specialisations(pg,
+            '[{"number": "MOAUM/ADM/60/948802", "specialisation": "cdev"}, {"number": "MOAUM/ADM/60/948801", "specialisation": "CMON"},
+              {"number": "MOAUM/ADM/60/999999", "specialisation": "CMON"}, {"number": "MOAUM/ADM/60/948802", "specialisation": "NOPE"}]'::jsonb) l;
+        -- the coursework audit: the course for every student and the student's own specialisation's, never the other's
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+          ('ZQS 801', 'Check core for all', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE'),
+          ('ZQS 802', 'Check core for CMON', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE'),
+          ('ZQS 803', 'Check core for CDEV', 3, 1, lvl, (SELECT dept_code FROM ref.programme WHERE code = pg), 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQS 801', pg, lvl, 'Core'), ('ZQS 802', pg, lvl, 'Core'), ('ZQS 803', pg, lvl, 'Core');
+        PERFORM catalogue.set_offer_specialisations('ZQS 802', pg, lvl, ARRAY[mon]);
+        PERFORM catalogue.set_offer_specialisations('ZQS 803', pg, lvl, ARRAY[dev]);
+        SELECT string_agg(a.course_code || ':' || a.state, ',' ORDER BY a.course_code) INTO audit FROM admissions.pg_coursework_audit(st) a WHERE a.course_code LIKE 'ZQS %';
+        stmt := credentials.build_statement(st, 'TRANSCRIPT', NULL, NULL)->>'specialisation';
+        RAISE EXCEPTION 'the V488 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V488 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V488: an application takes its own programme''s specialisation and the student keeps it at admission; a file sets students'' specialisations; the coursework audit counts every student''s courses and their specialisation''s; the transcript names it',
+        coalesce(refused AND carried = 'CMON' AND loaded = 'SET,ALREADY,NO_STUDENT,NO_SPECIALISATION'
+                 AND audit = 'ZQS 801:OUTSTANDING,ZQS 802:OUTSTANDING' AND stmt = 'Check monetary 488', false),
+        format('other''s refused %s | carried %s | file %s | audit %s | transcript %s', refused, carried, loaded, audit, stmt));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

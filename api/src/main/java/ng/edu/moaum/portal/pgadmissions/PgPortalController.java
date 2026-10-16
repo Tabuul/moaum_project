@@ -286,7 +286,11 @@ class PgPortalController {
                        p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
                        p.nationality, p.contact_address,
                        g.code AS programme_code, g.name AS programme_name, g.pg_award, g.pg_research,
-                       f.name AS faculty_name, d.name AS department_name, a.session
+                       f.name AS faculty_name, d.name AS department_name, a.session,
+                       -- V488: the specialisation — the student's own once admitted, else the one applied for
+                       (SELECT ps.name FROM catalogue.programme_specialisation ps
+                         WHERE ps.id = coalesce((SELECT ss.specialisation_id FROM people.student_specialisation ss WHERE ss.student_id = a.student_id),
+                                                a.specialisation_id)) AS specialisation
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
@@ -352,6 +356,7 @@ class PgPortalController {
         out.put("programme", a.get("programme_name"));
         out.put("programmeCode", a.get("programme_code"));
         out.put("award", a.get("pg_award"));
+        out.put("specialisation", a.get("specialisation"));   // V488
         out.put("research", a.get("pg_research"));
         out.put("faculty", a.get("faculty_name"));
         out.put("department", a.get("department_name"));

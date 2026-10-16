@@ -44,7 +44,7 @@ class PrerequisitesIT {
     String academic = ItSupport.token("academic");
     String hod = ItSupport.token("hod");
     UUID s;
-    String student, before, target;
+    String student, before, target, third, dept;
     UUID targetOffering;
 
     @BeforeEach
@@ -55,14 +55,15 @@ class PrerequisitesIT {
         int pick;
         do {
             pick = new Random().nextInt(9000) + 1000;
-        } while (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code IN (:a, :b)").param("a", "ZQA " + pick).param("b", "ZQB " + pick).query(Long.class).single() > 0
+        } while (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code IN (:a, :b, :c)").param("a", "ZQA " + pick).param("b", "ZQB " + pick).param("c", "ZQC " + pick).query(Long.class).single() > 0
                 || jdbc.sql("SELECT count(*) FROM people.student WHERE matric_no = :m").param("m", "MOAUM/PRQ/51/" + pick).query(Long.class).single() > 0);
         int n = pick;
         before = "ZQA " + n;
         target = "ZQB " + n;
+        third = "ZQC " + n;
         s = it.student("ZZPRQ" + n, PROGRAMME, "MOAUM/ADM/51/" + String.format("%06d", 510000 + n), "MOAUM/PRQ/51/" + n, 200);
         student = TestTokens.token(s, List.of("student"));
-        String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single();
+        dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single();
         targetOffering = it.db(() -> {
             jdbc.sql("UPDATE people.student SET entry_session = :e, entry_level = 100, current_level = 200 WHERE id = :id").param("e", EARLIER).param("id", s).update();
             jdbc.sql("""
@@ -138,5 +139,47 @@ class PrerequisitesIT {
         assertThat(row.get("prerequisitesUnmet")).isNull();
         ResponseEntity<Map> met = choose();
         assertThat(met.getStatusCode().value()).as(String.valueOf(met.getBody())).isEqualTo(200);
+    }
+
+    /** V487: an upload previewed row by row (nothing kept), then imported; another department's row reported and not written;
+     *  whom enforcing stops listed for the Academic Office, not for a Head of Department */
+    @Test
+    void prerequisitesAreUploadedAfterAPreviewAndWhomEnforcingStopsIsListed() {
+        it.db(() -> jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, 'Prerequisite test third', 2, 1, 300, :d, 'Core', 'LIVE')")
+                .param("c", third).param("d", dept).update());
+        List<Map<String, Object>> rows = List.of(
+                Map.of("course", third, "requires", target),            // new
+                Map.of("course", third, "requires", third),             // itself
+                Map.of("course", before, "requires", third),            // would close a loop: third → target → before
+                Map.of("course", "ZQX 99999", "requires", before),      // no such course
+                Map.of("course", target.toLowerCase(), "requires", before));   // recorded already (read as the pool reads codes)
+        ResponseEntity<Map> preview = it.call(academic, HttpMethod.POST, "/api/v1/catalogue/prerequisites/upload/preview", Map.of("rows", rows));
+        assertThat(preview.getStatusCode().value()).as(String.valueOf(preview.getBody())).isEqualTo(200);
+        assertThat(((List<Map<String, Object>>) preview.getBody().get("rows")).stream().map(r -> r.get("outcome")).toList())
+                .containsExactly("ADDED", "SELF", "CYCLE", "NO_COURSE", "ALREADY");
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_prerequisite WHERE course_code = :c").param("c", third).query(Long.class).single()).isZero();
+
+        // another department's Head of Department: the row reported, nothing written
+        String otherDept = jdbc.sql("SELECT code FROM ref.department WHERE code <> :d ORDER BY code LIMIT 1").param("d", dept).query(String.class).single();
+        String otherHod = it.officer("hod", "department", otherDept);
+        ResponseEntity<Map> outside = it.call(otherHod, HttpMethod.POST, "/api/v1/catalogue/prerequisites/upload", Map.of("rows", List.of(Map.of("course", third, "requires", target))));
+        assertThat(outside.getStatusCode().value()).as(String.valueOf(outside.getBody())).isEqualTo(200);
+        assertThat(((List<Map<String, Object>>) outside.getBody().get("rows")).get(0).get("outcome")).isEqualTo("OUTSIDE_SCOPE");
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course_prerequisite WHERE course_code = :c").param("c", third).query(Long.class).single()).isZero();
+
+        // imported: what the preview said is written
+        ResponseEntity<Map> imported = it.call(academic, HttpMethod.POST, "/api/v1/catalogue/prerequisites/upload", Map.of("rows", rows));
+        assertThat(imported.getStatusCode().value()).as(String.valueOf(imported.getBody())).isEqualTo(200);
+        assertThat(imported.getBody().get("added")).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT requires_code FROM catalogue.course_prerequisite WHERE course_code = :c").param("c", third).query(String.class).list()).containsExactly(target);
+
+        // whom enforcing stops: the student of the programme at 200 level who has not passed the prerequisite
+        ResponseEntity<Map> impact = it.get(academic, u -> u.path("/api/v1/catalogue/prerequisites/impact").queryParam("course", target).build());
+        assertThat(impact.getStatusCode().value()).as(String.valueOf(impact.getBody())).isEqualTo(200);
+        assertThat((List<Map<String, Object>>) impact.getBody().get("rows")).anySatisfy(r -> {
+            assertThat(r.get("student_id")).isEqualTo(s.toString());
+            assertThat(r.get("unmet")).isEqualTo(before);
+        });
+        assertThat(it.get(hod, "/api/v1/catalogue/prerequisites/impact").getStatusCode().value()).isEqualTo(403);
     }
 }

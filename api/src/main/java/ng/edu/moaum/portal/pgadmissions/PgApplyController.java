@@ -55,7 +55,7 @@ class PgApplyController {
     /** the postgraduate programmes to apply into, for the form's picker (public) */
     @GetMapping("/programmes")
     List<Map<String, Object>> programmes() {
-        return jdbc.sql("""
+        List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT g.code, g.name, f.name AS faculty_name, d.name AS department_name, g.pg_award, g.pg_research,
                        admissions.pg_award_level(g.pg_award) AS entry_level
                   FROM ref.programme g
@@ -64,6 +64,17 @@ class PgApplyController {
                  WHERE g.category = 'POST GRADUATE' AND NOT g.archived
                  ORDER BY f.name, g.name
                 """).query().listOfRows();
+        // V488: each programme's running specialisations, chosen on the form where it has any
+        Map<Object, List<Map<String, Object>>> specs = new java.util.HashMap<>();
+        for (Map<String, Object> sp : jdbc.sql("""
+                SELECT ps.programme_code, ps.id, ps.code, ps.name FROM catalogue.programme_specialisation ps
+                  JOIN ref.programme g ON g.code = ps.programme_code AND g.category = 'POST GRADUATE'
+                 WHERE ps.active ORDER BY ps.programme_code, ps.name
+                """).query().listOfRows()) {
+            specs.computeIfAbsent(sp.get("programme_code"), k -> new java.util.ArrayList<>()).add(Map.of("id", sp.get("id"), "code", sp.get("code"), "name", sp.get("name")));
+        }
+        for (Map<String, Object> r : rows) r.put("specialisations", specs.getOrDefault(r.get("code"), List.of()));
+        return rows;
     }
 
     public record RefereeIn(@NotBlank @Size(max = 120) String name, @Email @Size(max = 160) String email, @Size(max = 20) String phone,
@@ -79,7 +90,8 @@ class PgApplyController {
                           @Size(max = 200) String priorInstitution, @Size(max = 120) String priorAward,
                           @Size(max = 60) String priorClass, @Size(max = 8) String priorCgpa, @Size(max = 8) String priorYear,
                           @Size(max = 300) String proposalTitle, @Size(max = 5000) String proposalText,
-                          @Size(max = 5) List<@Valid RefereeIn> referees) {
+                          @Size(max = 5) List<@Valid RefereeIn> referees,
+                          /** V488: the specialisation applied for (its id or code), where the programme has any */ @Size(max = 40) String specialisation) {
     }
 
     /** apply: creates the applicant account and a submitted application, and returns the fee reference to pay */
@@ -121,7 +133,15 @@ class PgApplyController {
         String j = json.writeValueAsString(form);
         try {
             return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "postgraduate application", null, null),
-                    () -> tx.execute(st -> jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow()));
+                    () -> tx.execute(st -> {
+                        Map<String, Object> made = jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow();
+                        // V488: the specialisation applied for, one of the programme's running ones
+                        if (body.specialisation() != null && !body.specialisation().isBlank()) {
+                            jdbc.sql("SELECT admissions.pg_set_specialisation(:a, :s)").param("a", made.get("application_id")).param("s", body.specialisation().trim())
+                                    .query().listOfRows();
+                        }
+                        return made;
+                    }));
         } catch (org.springframework.dao.DuplicateKeyException e) {
             // two submissions of the same email raced past the check above; the unique index decided
             throw alreadyApplied();

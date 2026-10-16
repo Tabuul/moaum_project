@@ -117,6 +117,7 @@ export function transcriptPdf(s: Statement, t: Template | null, verifyUrl: strin
       // V381: a part-time holder's record says so, and through which route — a full-time record is unchanged
       if (s.studyMode && s.studyMode !== "Full-time") rows.push(["Study mode", `${clean(s.studyMode)}${s.durationYears ? ` · ${s.durationYears} years` : ""}`]);
       if (s.route) rows.push(["Route", clean(s.route)]);
+      if (s.specialisation) rows.push(["Specialisation", clean(s.specialisation)]);   // V488
       if (s.graduationSession) rows.push(["Graduation", `${clean(s.graduationSession)}${s.graduationMinute ? ` · Senate ${clean(s.graduationMinute)}` : ""}${s.graduationDate ? ` · ${day(s.graduationDate)}` : ""}`]);
       if (s.classOfDegree && s.classOfDegree !== "Awarded") rows.push(["Class of degree", clean(s.classOfDegree)]);
       if (s.scope && s.scope !== "CUMULATIVE") rows.push(["Scope", `${clean(s.session ?? "")}${s.semester ? ` · semester ${s.semester}` : ""}`]);

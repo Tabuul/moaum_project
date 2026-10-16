@@ -16,7 +16,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 
-interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number }
+interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number;
+  /** V488: the programme's running specialisations, one chosen on the form where it has any */
+  specialisations?: { id: string; code: string; name: string }[] }
 interface Applied { application_no: string; reference: string; amount: number }
 interface Status { application_no: string; state: string; programme_name: string; pg_award: string | null; surname: string; other_names: string; fee_confirmed_at: string | null; submitted_at: string | null; spgs_note: string | null }
 
@@ -94,7 +96,7 @@ export function PgApply() {
   const nationality = f.nationality === "Other" ? (f.nationalityOther ?? "") : (f.nationality ?? "");
   const nigerian = f.nationality === "Nigerian";
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
-  function chooseProgramme(code: string) { setF({ ...f, programme: code }); }
+  function chooseProgramme(code: string) { setF({ ...f, programme: code, specialisation: "" }); }
 
   const STEPS = ["Programme", "Your details", "Account"];
   function next() {
@@ -167,6 +169,14 @@ export function PgApply() {
               <ProgrammePicker progs={progs} value={f.programme ?? ""} onPick={chooseProgramme} />
             </Field>
             {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (you can add a proposal in the last step)" : ""}</div> : <div className="hint">Search and pick the postgraduate programme you are applying for.</div>}
+            {chosen?.specialisations?.length ? (
+              <Field id="specialisation" label="Specialisation" hint="The option of the programme you wish to read; the School confirms it at admission.">
+                <select id="specialisation" className="ctl" value={f.specialisation ?? ""} onChange={set("specialisation")}>
+                  <option value="">Not decided yet</option>
+                  {chosen.specialisations.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                </select>
+              </Field>
+            ) : null}
           </>
         ) : null}
 

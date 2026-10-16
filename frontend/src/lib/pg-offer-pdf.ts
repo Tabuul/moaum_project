@@ -10,6 +10,7 @@ import { finishPdf } from "@/lib/document/pdf";
 interface PgMe {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
   entryLevel: number; programme: string; award: string | null; faculty: string; department: string;
+  /** V488: the specialisation within the programme, where one is set */ specialisation?: string | null;
   state: string; acceptanceConfirmedAt: string | null; /** V360: the check code the API signed for the offer */ offerCode?: string | null;
 }
 
@@ -60,6 +61,7 @@ export async function pgOfferResponse(req: Request, path: string): Promise<NextR
 
   const line = (k: string, v: string) => { p.text(L, y, k, 10.5, true); p.text(L + 130, y, clean(v), 10.5, true); y -= 17; };
   line("COURSE:", `${s.programme}${s.award ? ` (${s.award})` : ""}`);
+  if (s.specialisation) line("SPECIALISATION:", s.specialisation.toUpperCase());
   line("PROGRAMME:", "POSTGRADUATE");
   line("FACULTY:", s.faculty);
   line("LEVEL:", `${s.entryLevel} LEVEL`);

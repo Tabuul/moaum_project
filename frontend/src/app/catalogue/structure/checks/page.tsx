@@ -2,6 +2,12 @@ import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { Checks, type IssuesData } from "./Checks";
 import { PrerequisiteRule, type PrerequisitePolicy } from "./PrerequisiteRule";
+import { PrerequisiteUpload } from "./PrerequisiteUpload";
+import { PrerequisiteImpact } from "./PrerequisiteImpact";
+
+/** V487: the offices that set prerequisites (the upload), and those that read whom enforcing stops */
+const SETTERS = ["hod", "dean", "academic", "dregistrar", "registrar", "admin", "super", "pgschool", "pgsecretary", "ictagent", "helpdeskhead"];
+const IMPACT = ["academic", "dregistrar", "registrar", "admin", "super", "ict"];
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +31,8 @@ export default async function StructureChecksPage({ searchParams }: { searchPara
       <Checks data={data.ok ? data.data : null} problem={data.ok ? null : data.problem} kind={kind} category={category}
         pgOnly={office === "pgschool" || office === "pgsecretary"} />
       {rule.ok ? <PrerequisiteRule policy={rule.data} may={["academic", "registrar", "dregistrar", "super"].includes(office ?? "")} /> : null}
+      {rule.ok && IMPACT.includes(office ?? "") ? <PrerequisiteImpact mode={rule.data.mode} /> : null}
+      {SETTERS.includes(office ?? "") ? <PrerequisiteUpload /> : null}
     </Shell>
   );
 }

@@ -118,6 +118,7 @@ class PgProgrammeStructureIT {
         assertThat(l(pv.get("rows")).stream().map(r -> r.get("outcome")).toList()).containsExactly("NEW_COURSE", "EXISTING_COURSE", "NO_PROGRAMME", "NO_PROGRAMME");
         assertThat(String.valueOf(l(pv.get("rows")).get(1).get("message"))).startsWith("Existing course found: " + pooled);
         assertThat(pv.get("willWrite")).isEqualTo(2);
+        assertThat(l(pv.get("rows")).get(2).get("level")).isNull();   // no level read for a programme not found
         // nothing written by the preview
         assertThat(jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", fresh).query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.pg_course WHERE code IN (:a, :b)").param("a", fresh).param("b", pooled).query(Long.class).single()).isZero();

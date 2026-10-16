@@ -9,6 +9,8 @@ export interface SemesterBlock { semester: number; courses: Course[]; units: num
 export interface SessionBlock { session: string; semesters: SemesterBlock[] }
 export interface Statement {
   holder: string; matricNo: string; admissionNo?: string; programme: string; programmeCode?: string; department?: string; faculty?: string; award?: string;
+  /** V488: a postgraduate student's specialisation within the programme */
+  specialisation?: string;
   entryMode?: string; entrySession?: string; entryLevel?: number; level?: number; status?: string; postgraduate?: boolean; scope?: string; session?: string; semester?: number;
   sessions: SessionBlock[]; cgpa?: number; classOfDegree?: string; standing?: string; graduationSession?: string; graduationMinute?: string; graduationDate?: string;
   research?: { kind?: string; topic?: string; stage?: string; vivaGrade?: string; awardedAt?: string };

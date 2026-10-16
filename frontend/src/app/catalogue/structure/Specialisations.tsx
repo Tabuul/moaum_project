@@ -5,13 +5,23 @@
  *  those students' registration menus only. A student given none sees the courses for every student. */
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
+import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
+import { downloadBlob } from "@/lib/exportbrand";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 
 export interface Specialisation { id: string; code: string; name: string; active: boolean; created_at: string; ended_at: string | null; students: number; courses: number }
-export interface SpecStudent { id: string; matric_no: string | null; admission_no: string | null; name: string; level: number; status: string; specialisation_id: string | null }
+export interface SpecStudent { id: string; matric_no: string | null; admission_no: string | null; name: string; level: number; status: string; specialisation_id: string | null;
+  /** V488: the courses the programme requires of the student (theirs and their specialisation's) and how many are passed */
+  required?: number; passed?: number }
+interface LoadRow { row_no: number; number_in: string; specialisation_in: string; name: string | null; specialisation: string | null; outcome: string; message: string }
+interface Loaded { total: number; counts: Record<string, number>; set: number; rows: LoadRow[] }
+const LOAD: Record<string, [string, "ok" | "info" | "warn" | "bad" | "grey"]> = {
+  SET: ["Given", "ok"], CHANGED: ["Moved", "info"], ALREADY: ["Already reads it", "grey"], NO_STUDENT: ["No such student", "bad"],
+  OTHER_PROGRAMME: ["Another programme's", "bad"], NO_SPECIALISATION: ["No such specialisation", "bad"], ENDED: ["Ended", "bad"], INCOMPLETE: ["Incomplete row", "bad"],
+};
 export interface SpecData { programme: { code: string; name: string }; postgraduate: boolean; specialisations: Specialisation[]; students: SpecStudent[]; may: { change: boolean; ticket: boolean } }
 
 /** one request to the specialisation endpoints, with the ticket and the reason; true when it was saved */
@@ -37,6 +47,38 @@ export function Specialisations({ data, ticket, onChanged }: { data: SpecData; t
   const nameOf = (id: string | null) => data.specialisations.find((s) => s.id === id);
   const students = data.students.filter((s) => !q.trim() || `${s.name} ${s.matric_no ?? ""} ${s.admission_no ?? ""}`.toLowerCase().includes(q.trim().toLowerCase()));
   const without = data.students.filter((s) => !s.specialisation_id).length;
+  const [file, setFile] = useState<{ name: string; rows: { number: string; specialisation: string }[] } | null>(null);
+  const [loaded, setLoaded] = useState<{ result: Loaded; preview: boolean } | null>(null);
+
+  /** V488: a file of (student number, specialisation code) rows — previewed, then set */
+  async function sendRows(preview: boolean, rows: { number: string; specialisation: string }[], name: string): Promise<Loaded | null> {
+    const t = ticket.trim();
+    const r = await fetch(`/api/bff/api/v1/catalogue/structure/specialisations/students/upload${preview ? "/preview" : ""}${!preview && t ? `?ticket=${encodeURIComponent(t)}` : ""}`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${preview ? "Specialisations previewed" : "Specialisations uploaded"} for ${p} from ${name}`) },
+      body: JSON.stringify({ programme: p, rows }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem(j && typeof j === "object" && "status" in j ? j : { status: r.status, title: r.statusText }); return null; }
+    return j as Loaded;
+  }
+
+  async function readFile(f: File) {
+    setBusy(true); setLoaded(null);
+    try {
+      const grid = /\.csv$/i.test(f.name) || f.type === "text/csv" ? csvRows(await f.text()) : await xlsxRows(await f.arrayBuffer());
+      const head = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+      const ni = head.findIndex((h) => h.includes("matric") || h.includes("number") || h.includes("admission"));
+      const si = head.findIndex((h) => h.includes("specialisation") || h.includes("specialization") || h.includes("option"));
+      if (ni < 0 || si < 0) { notifyProblem({ status: 400, title: "The file needs a student number column and a specialisation column.", detail: "Download the template to see them." }); return; }
+      const rows = grid.slice(1).map((g) => ({ number: String(g[ni] ?? "").trim(), specialisation: String(g[si] ?? "").trim() })).filter((x) => x.number || x.specialisation);
+      if (!rows.length) { notifyProblem({ status: 400, title: "No rows to read." }); return; }
+      setFile({ name: f.name, rows });
+      const res = await sendRows(true, rows, f.name);
+      if (res) setLoaded({ result: res, preview: true });
+    } catch {
+      notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template, or a .csv." });
+    } finally { setBusy(false); }
+  }
 
   async function run(fn: () => Promise<boolean>) {
     setBusy(true);
@@ -89,6 +131,12 @@ export function Specialisations({ data, ticket, onChanged }: { data: SpecData; t
               <Field id="sp-q" label="Find a student" style={{ flex: "1 1 220px" }}><input id="sp-q" className="ctl" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name or number" /></Field>
               {may ? (
                 <>
+                  <Btn kind="ghost" onClick={() => downloadBlob(buildXlsx(["Matriculation or admission number", "Specialisation code"],
+                    data.students.slice(0, 2000).map((st) => [st.matric_no ?? st.admission_no ?? "", nameOf(st.specialisation_id)?.code ?? ""]), "Specialisations"), `specialisations-${p}.xlsx`)}>Template with the students</Btn>
+                  <label className={`btn btn--secondary btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                    Upload specialisations (.xlsx / .csv)
+                    <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} />
+                  </label>
                   <Field id="sp-bulk" label={`${picked.size} chosen`}>
                     <select id="sp-bulk" className="ctl" value={bulk} onChange={(e) => setBulk(e.target.value)}>
                       <option value="">No specialisation</option>
@@ -99,10 +147,33 @@ export function Specialisations({ data, ticket, onChanged }: { data: SpecData; t
               ) : null}
             </div>
             {!running.length ? <div className="mt-2"><Note kind="info" title="No specialisation is running">Restore one, or add one, to give it to students.</Note></div> : null}
+            {loaded ? (
+              <div className="mt-3">
+                <div className="row row--between">
+                  <b>{loaded.preview ? "Upload preview — nothing has been set" : "Uploaded"}: {loaded.result.total} row{loaded.result.total === 1 ? "" : "s"},{" "}
+                    {loaded.result.set} {loaded.preview ? "to set" : "set"}, {loaded.result.counts.ALREADY ?? 0} already, {loaded.result.total - loaded.result.set - (loaded.result.counts.ALREADY ?? 0)} refused</b>
+                  <span className="row row--tight">
+                    {loaded.preview ? <Btn kind="go" size="sm" disabled={busy || !loaded.result.set} busyLabel="Setting…" onClick={() => run(async () => {
+                      if (!file) return false;
+                      const res = await sendRows(false, file.rows, file.name);
+                      if (res) { notify(`${res.set} specialisation${res.set === 1 ? "" : "s"} set`); setLoaded({ result: res, preview: false }); setFile(null); }
+                      return !!res;
+                    })}>{`Set ${loaded.result.set}`}</Btn> : null}
+                    <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setLoaded(null); setFile(null); }}>{loaded.preview ? "Cancel" : "Close"}</Btn>
+                  </span>
+                </div>
+                <DTable pageSize={0} cols={["Row|num", "Number", "Student", "Specialisation|mid", "Outcome|mid", "What happens"]} rows={loaded.result.rows.map((r) => [
+                  <span key="n" className="tnum sub2">{r.row_no}</span>, <span key="m" className="tnum">{r.number_in}</span>, <span key="s">{r.name ?? ""}</span>,
+                  <span key="c" className="tnum">{r.specialisation ?? r.specialisation_in}</span>,
+                  <Pil key="o" kind={LOAD[r.outcome]?.[1] ?? "grey"}>{LOAD[r.outcome]?.[0] ?? r.outcome}</Pil>, <span key="w" className="sub2">{r.message}</span>,
+                ])} />
+              </div>
+            ) : null}
           </PBody>
-          <DTable cols={[...(may ? ["|mid"] : []), "Student", "Number", "Level|mid", "Specialisation"]} rows={students.map((s) => [
+          <DTable cols={[...(may ? ["|mid"] : []), "Student", "Number", "Level|mid", "Required courses passed|mid", "Specialisation"]} rows={students.map((s) => [
             ...(may ? [<input key="k" type="checkbox" aria-label={`Choose ${s.name}`} checked={picked.has(s.id)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(s.id); else n.delete(s.id); setPicked(n); }} />] : []),
             <span key="n">{s.name}</span>, <span key="m" className="tnum sub2">{s.matric_no ?? s.admission_no ?? ""}</span>, <span key="l" className="tnum">{s.level}</span>,
+            s.required ? <span key="q" className={`tnum${s.passed === s.required ? "" : " ink-amber"}`}>{s.passed ?? 0} of {s.required}</span> : <span key="q" className="sub2">—</span>,
             may ? (
               <select key="s" className="ctl" aria-label={`Specialisation of ${s.name}`} disabled={busy} value={s.specialisation_id ?? ""} onChange={(e) => void setStudents([s.id], e.target.value || null)}>
                 <option value="">None</option>

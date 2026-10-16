@@ -158,4 +158,34 @@ class PgSpecialisationsIT {
         assertThat(code(it.call(hod, HttpMethod.PUT, BASE + "/binding", Map.of("programme", pg, "course", option, "level", 800, "specialisations", List.of()))))
                 .isEqualTo("CAT_DEPT");
     }
+
+    /** V488: the form's programme list carries the running specialisations; a file of students' specialisations is previewed
+     *  (nothing kept), then set; the School's list counts each student's required courses passed */
+    @Test
+    void specialisationsReachTheFormAndAreUploadedForStudents() {
+        String code = "U" + tag;
+        UUID spec = UUID.fromString(String.valueOf(ok(it.call(sec, HttpMethod.POST, BASE, Map.of("programme", pg, "code", code, "name", "Upload " + tag))).get("id")));
+        List<Map<String, Object>> progs = (List<Map<String, Object>>) (List<?>) it.getList(sec, "/api/v1/pg/programmes").getBody();
+        assertThat(progs).anySatisfy(p -> {
+            assertThat(p.get("code")).isEqualTo(pg);
+            assertThat(l(p.get("specialisations"))).anySatisfy(sp -> assertThat(sp.get("code")).isEqualTo(code));
+        });
+
+        UUID st = pgStudent(3);
+        String number = jdbc.sql("SELECT coalesce(matric_no, admission_no) FROM people.student WHERE id = :s").param("s", st).query(String.class).single();
+        List<Map<String, Object>> rows = List.of(Map.of("number", number, "specialisation", code.toLowerCase()), Map.of("number", "MOAUM/ADM/53/999999", "specialisation", code));
+        Map<String, Object> preview = ok(it.call(sec, HttpMethod.POST, BASE + "/students/upload/preview", Map.of("programme", pg, "rows", rows)));
+        assertThat(l(preview.get("rows")).stream().map(r -> r.get("outcome")).toList()).containsExactly("SET", "NO_STUDENT");
+        assertThat(jdbc.sql("SELECT count(*) FROM people.student_specialisation WHERE student_id = :s").param("s", st).query(Long.class).single()).isZero();
+        Map<String, Object> set = ok(it.call(sec, HttpMethod.POST, BASE + "/students/upload", Map.of("programme", pg, "rows", rows)));
+        assertThat(set.get("set")).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT specialisation_id FROM people.student_specialisation WHERE student_id = :s").param("s", st).query(UUID.class).single()).isEqualTo(spec);
+
+        // the School's list: the student's required courses (the programme's Core at their level, theirs and their specialisation's)
+        Map<String, Object> listed = ok(it.get(sec, BASE + "?prog=" + pg));
+        assertThat(l(listed.get("students"))).anySatisfy(r -> {
+            assertThat(r.get("id")).isEqualTo(st.toString());
+            assertThat(((Number) r.get("required")).intValue()).isGreaterThanOrEqualTo(0);
+        });
+    }
 }

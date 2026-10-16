@@ -85,9 +85,12 @@ class SpecialisationController {
                 """).param("p", p).query().listOfRows());
         out.put("students", jdbc.sql("""
                 SELECT st.id, st.matric_no, st.admission_no, st.surname || ', ' || st.other_names AS name, st.current_level AS level, st.status,
-                       ss.specialisation_id
+                       ss.specialisation_id, au.required, au.passed
                   FROM people.student st
                   LEFT JOIN people.student_specialisation ss ON ss.student_id = st.id
+                  -- V488: the required courses (theirs and their specialisation's) and how many are passed
+                  LEFT JOIN LATERAL (SELECT count(*) AS required, count(*) FILTER (WHERE x.state = 'PASSED') AS passed
+                                       FROM admissions.pg_coursework_audit(st.id) x) au ON true
                  WHERE st.programme_code = :p AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
                  ORDER BY st.current_level, st.surname, st.other_names
                  LIMIT 2000
@@ -170,6 +173,58 @@ class SpecialisationController {
         }
         access.note(on, changed + " student" + (changed == 1 ? "" : "s") + " of " + p + (body.specialisation() == null ? ": specialisation cleared" : ": specialisation set"));
         return Map.of("programme", p, "students", changed);
+    }
+
+    public record StudentRowsIn(@NotBlank @Size(max = 12) String programme, @NotNull @Size(min = 1, max = 5000) List<Map<String, Object>> rows) {
+    }
+
+    /** V488: a file of (student number, specialisation code) rows, as the upload would set them; nothing is kept */
+    @PostMapping("/students/upload/preview")
+    @PreAuthorize(STRUCTURE)
+    @Transactional
+    Map<String, Object> previewStudents(@Valid @RequestBody StudentRowsIn body) {
+        Map<String, Object> out = loadStudents(body);
+        org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+        return out;
+    }
+
+    /** V488: the same rows set on the programme's students, each row's outcome returned */
+    @PostMapping("/students/upload")
+    @PreAuthorize(STRUCTURE)
+    @Transactional
+    Map<String, Object> uploadStudents(@Valid @RequestBody StudentRowsIn body, @RequestParam(required = false) String ticket) {
+        String p = keep(body.programme());
+        UUID on = access.ticket(ticket);
+        Map<String, Object> out = loadStudents(body);
+        access.note(on, "Specialisations uploaded for " + p + ": " + out.get("set") + " set or changed");
+        return out;
+    }
+
+    private Map<String, Object> loadStudents(StudentRowsIn body) {
+        String p = keep(body.programme());
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (Map<String, Object> r : body.rows()) {
+            rows.add(Map.of("number", r.get("number") == null ? "" : String.valueOf(r.get("number")).trim(),
+                    "specialisation", r.get("specialisation") == null ? "" : String.valueOf(r.get("specialisation")).trim()));
+        }
+        String json;
+        try {
+            json = new tools.jackson.databind.ObjectMapper().writeValueAsString(rows);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("the rows could not be read", e);
+        }
+        List<Map<String, Object>> out = jdbc.sql("SELECT * FROM people.load_student_specialisations(:p, CAST(:rows AS jsonb))")
+                .param("p", p).param("rows", json).query().listOfRows();
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String k : List.of("SET", "CHANGED", "ALREADY", "NO_STUDENT", "OTHER_PROGRAMME", "NO_SPECIALISATION", "ENDED", "INCOMPLETE")) counts.put(k, 0);
+        for (Map<String, Object> o : out) counts.merge(String.valueOf(o.get("outcome")), 1, Integer::sum);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("programme", p);
+        result.put("total", out.size());
+        result.put("counts", counts);
+        result.put("set", counts.get("SET") + counts.get("CHANGED"));
+        result.put("rows", out);
+        return result;
     }
 
     /** the acting office keeps this programme's structure: an HOD their own department's, the School its postgraduate
