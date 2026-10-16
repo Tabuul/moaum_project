@@ -7,6 +7,8 @@ export interface TicketRow {
   id: string; number: string; subject: string; status: string; priority: string; created_at: string; updated_at: string;
   resolved_at: string | null; closed_at: string | null; reopen_count: number;
   category_code: string; category: string; requester_kind: "STUDENT" | "STAFF" | "JUPEB" | "PUBLIC"; requester_name: string; requester_number: string | null; requester_email: string | null;
+  /** V500: the phone the University reaches the student on (the student's record — or a JUPEB candidate's application); desk and offices only */
+  student_phone?: string | null;
   department_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null;
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
   /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */
@@ -145,6 +147,12 @@ export function readBase64(file: File): Promise<string> {
 }
 export const FILE_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 export const MAX_FILE = 5 * 1024 * 1024;
+
+/** V500: the requester's phone — the student's record's, else the one given on the ticket — as a link that dials it */
+export function TicketPhone({ t }: { t: { student_phone?: string | null; requester_phone?: string | null } }) {
+  const p = t.student_phone || t.requester_phone || null;
+  return p ? <a className="lnk tnum" href={`tel:${p.replace(/[^\d+]/g, "")}`}>{p}</a> : <span className="ink-faint">—</span>;
+}
 
 export function StatusPil({ status }: { status: string }) {
   const s = STATUS[status] ?? [status, "grey"];

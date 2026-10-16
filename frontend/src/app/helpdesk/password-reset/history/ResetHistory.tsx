@@ -2,10 +2,12 @@
 
 /** Password Reset History (V485): every password reset and account unlock ICT Support made on a student — who, which student, the
  *  method, the reason, the ticket, when and the result — from the support ledger, within the reader's reach. A password, a hash or
- *  anything that would let one be guessed is never on it, and there is nothing here to download. */
+ *  anything that would let one be guessed is never on it, nor on its Excel or PDF (V500: S/N first, display only). */
 import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
-import { LinkBtn, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, LinkBtn, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
+import { notifyProblem } from "@/components/proto/Toast";
+import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { RESULT_WORD } from "@/lib/support";
@@ -22,6 +24,21 @@ export function ResetHistory({ list, page, from, to }: { list: AuditList; page: 
     go(`/helpdesk/password-reset/history${qs.toString() ? "?" + qs.toString() : ""}`);
   };
   const pages = Math.max(1, Math.ceil(list.total / (list.size || 50)));
+  // V500: the export — the same rows the reader reads here, never a password or a hash; a reset reads RESET COMPLETED
+  const HEAD = ["S/N", "Student", "Matric No", "Username", "Action", "Reset By", "Role", "Reason", "Ticket", "Date", "Result"];
+  const line = (r: AuditList["rows"][number], i: number) => [i + 1, r.student, r.number ?? "", r.number ?? "",
+    r.action === "ACCOUNT_UNLOCKED" ? "ACCOUNT UNLOCKED" : "RESET COMPLETED", r.agent, r.agent_office, r.reason, r.ticket_number ?? "", when(r.at),
+    RESULT_WORD[r.result]?.[0] ?? r.result];
+  async function all() {
+    const p = new URLSearchParams({ module: "AUTHENTICATION", export: "true", size: "5000" });
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const r = await fetch(`/api/bff/api/v1/helpdesk/support/actions?${p.toString()}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem(j ?? { status: r.status, title: "The history could not be read just now." }); return null; }
+    return (j as AuditList).rows;
+  }
+  const sub = [from ? `from ${from}` : null, to ? `to ${to}` : null].filter(Boolean).join(" · ");
   return (
     <>
       <PageHead title="Password reset history" eyebrow="ICT Support Desk"
@@ -32,7 +49,17 @@ export function ResetHistory({ list, page, from, to }: { list: AuditList; page: 
         <Field id="rh-to" label="To"><input id="rh-to" name="to" type="date" className="ctl" defaultValue={to} /></Field>
         <button type="submit" className="btn btn--primary btn--sm" style={{ alignSelf: "flex-end" }}>Filter</button>
       </form>
-      <Panel title={`${list.total.toLocaleString("en-GB")} reset${list.total === 1 ? "" : "s"} and unlock${list.total === 1 ? "" : "s"}`} right={pages > 1 ? `Page ${page} of ${pages}` : undefined}>
+      <Panel title={`${list.total.toLocaleString("en-GB")} reset${list.total === 1 ? "" : "s"} and unlock${list.total === 1 ? "" : "s"}${pages > 1 ? ` · page ${page} of ${pages}` : ""}`}
+        right={<div className="row row--inline" style={{ gap: 6 }}>
+          <Btn kind="ghost" size="sm" disabled={!list.total} busyLabel="Preparing Excel..." onClick={async () => {
+            const rows = await all();
+            if (rows) downloadBlob(await brandedXlsx("Password Reset History", HEAD, rows.map(line), { sub, serial: docSerial("PWR") }), "password-reset-history.xlsx");
+          }}>Excel</Btn>
+          <Btn kind="ghost" size="sm" disabled={!list.total} busyLabel="Preparing PDF..." onClick={async () => {
+            const rows = await all();
+            if (rows) brandedPrint("Password Reset History", sub, HEAD, rows.map(line), docSerial("PWR"));
+          }}>PDF</Btn>
+        </div>}>
         {list.rows.length ? (
           <DTable pageSize={0} cols={["S/N|num", "Student", "Matriculation number", "Reset by", "Role", "Action", "Reason", "Ticket|mid", "Date/time", "Result|mid"]}
             rows={list.rows.map((r, i) => [

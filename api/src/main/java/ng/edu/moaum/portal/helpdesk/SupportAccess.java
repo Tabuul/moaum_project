@@ -35,7 +35,9 @@ class SupportAccess {
             "OVERRIDE_REGISTRATION", "RESET_PASSWORD", "INVESTIGATE_PAYMENT", "VERIFY_PAYMENT", "SYNC_ENTITLEMENT",
             "REGENERATE_RECEIPT", "CREATE_TICKET", "VIEW_SUPPORT_AUDIT",
             // V408: course allocation, on the allocation desk within the posting's scope
-            "VIEW_ALLOCATIONS", "ALLOCATE_COURSES", "REMOVE_ALLOCATIONS", "BULK_ALLOCATE");
+            "VIEW_ALLOCATIONS", "ALLOCATE_COURSES", "REMOVE_ALLOCATIONS", "BULK_ALLOCATE",
+            // V500: a student's academic level, and the histories of level changes and password resets
+            "PROGRESS_LEVEL", "CORRECT_LEVEL", "VIEW_LEVEL_HISTORY", "VIEW_RESET_HISTORY");
     static final Map<String, String> WORDS = Map.ofEntries(
             Map.entry("VIEW_STUDENT", "viewing student records"), Map.entry("EDIT_CONTACT", "editing contact details"),
             Map.entry("EDIT_PERSONAL", "editing personal details"), Map.entry("EDIT_FAMILY", "editing family and sponsor details"),
@@ -47,7 +49,9 @@ class SupportAccess {
             Map.entry("SYNC_ENTITLEMENT", "refreshing payment entitlements"), Map.entry("REGENERATE_RECEIPT", "regenerating receipts"),
             Map.entry("CREATE_TICKET", "raising tickets for students"), Map.entry("VIEW_SUPPORT_AUDIT", "reading the support audit"),
             Map.entry("VIEW_ALLOCATIONS", "viewing course allocations"), Map.entry("ALLOCATE_COURSES", "allocating and reassigning lecturers"),
-            Map.entry("REMOVE_ALLOCATIONS", "removing a co-lecturer"), Map.entry("BULK_ALLOCATE", "bulk course allocation"));
+            Map.entry("REMOVE_ALLOCATIONS", "removing a co-lecturer"), Map.entry("BULK_ALLOCATE", "bulk course allocation"),
+            Map.entry("PROGRESS_LEVEL", "progressing a student to the next level"), Map.entry("CORRECT_LEVEL", "correcting a student's level"),
+            Map.entry("VIEW_LEVEL_HISTORY", "reading the level change history"), Map.entry("VIEW_RESET_HISTORY", "reading the password reset history"));
 
     private final JdbcClient jdbc;
     private final NoticeRepository notices;

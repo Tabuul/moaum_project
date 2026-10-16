@@ -230,6 +230,8 @@ export const ROUTES: Record<string, string> = {
   "t/supportstudents": "/helpdesk/students",
   "t/supportpassword": "/helpdesk/password-reset",
   "t/supportpwhistory": "/helpdesk/password-reset/history",
+  "t/supportlevels": "/helpdesk/levels",
+  "t/supportlevelhistory": "/helpdesk/levels/history",
   "t/supportpayments": "/helpdesk/payments",
   "t/supportaudit": "/helpdesk/audit",
   "t/allocation": "/allocation",

@@ -10,7 +10,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Attachments, DetailsGrid, PriorityPil, StatusPil, Timeline, requesterKind, requesterNumberLabel, when, type Ticket } from "@/lib/helpdesk";
+import { Attachments, DetailsGrid, PriorityPil, StatusPil, TicketPhone, Timeline, requesterKind, requesterNumberLabel, when, type Ticket } from "@/lib/helpdesk";
 
 export function OfficeTicket({ t }: { t: Ticket }) {
   const router = useRouter();
@@ -69,7 +69,7 @@ export function OfficeTicket({ t }: { t: Ticket }) {
               ["Name", <strong key="n">{t.requester_name}</strong>],
               [requesterNumberLabel(t.requester_kind), <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
               ["Email", t.requester_email ?? "—"],
-              ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
+              ["Phone", <TicketPhone key="p" t={t} />],
               ["Department", t.department ?? "—"],
               ["Faculty", t.faculty ?? "—"],
             ]} />

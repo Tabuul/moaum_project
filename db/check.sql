@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 339
+\set EXPECTED 341
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15613,6 +15613,81 @@ BEGIN
         format('no actor %s | codes %s | actions %s | retired door %s | put right %s renamed, %s relabelled, %s withdrawn, %s reversed, %s unknown, %s left | records %s | paid %s | corrected %s | withdrawn %s | import of a code %s | ledger %s, %s reversals, net %s, free %s, kept %s',
                left(no_actor, 30), loaded, acts, ph, first.renamed, first.relabelled, first.withdrawn, first.ledger_reversed, first.unknown_codes, again_left, m_refs, paid_m, corrected, withdrawn, n_ref,
                led, rev_n, net, free_s1, kept_j));
+END $$;
+-- ── V500. ICT Support: every agent in service resets a student's password and progresses or corrects a student's level — the
+--    programme's levels only, the next one for a progression, never for a student not in study, a merged record or a postgraduate
+--    progression; a stale screen refused, a second click doing nothing; on the level history with the session, never touching the
+--    registration; only ICT Support's offices; the ledger takes the two level acts ──
+DO $$
+DECLARE S text := '9500/9501'; pa text := 'C00023'; pg text; fin int; agent uuid := gen_random_uuid();
+        stu uuid := gen_random_uuid(); wd uuid := gen_random_uuid(); pgs uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+        base text[]; caps text[]; act_def text; opts jsonb; pg_opts jsonb; r1 jsonb; r2 jsonb; r3 jsonb; hist text; reg_after text; lvl int;
+        e_outside text; e_stale text; e_office text; e_status text; e_pg text; e_short text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V500', true);
+    PERFORM set_config('moaum.actor_id', agent::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    base := helpdesk.agent_baseline();
+    caps := helpdesk.support_capabilities();
+    SELECT pg_get_constraintdef(oid) INTO act_def FROM pg_constraint WHERE conname = 'ck_hd_sa_action';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9500-10-01', date '9501-08-31') ON CONFLICT (name) DO NOTHING;
+    fin := finance.final_level(pa);
+    SELECT code INTO pg FROM ref.programme WHERE category = 'POST GRADUATE' ORDER BY code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (stu, 'MOAUM/ADM/50/500001', 'MOAUM/CHK/50/5001', 'ZZV500', 'Level', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (wd, 'MOAUM/ADM/50/500002', 'MOAUM/CHK/50/5002', 'ZZV500', 'Withdrawn', pa, 'UTME', S, 100, 100, 'WITHDRAWN', now());
+    IF pg IS NOT NULL THEN
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (pgs, 'MOAUM/ADM/50/500003', 'MOAUM/CHK/50/5003', 'ZZV500', 'Postgraduate', pg, 'POSTGRADUATE', S, people.pg_level_of(pg), people.pg_level_of(pg), 'ACTIVE', now());
+        pg_opts := people.level_options(pgs);
+    END IF;
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, stu, S, 1, 100, 'DRAFT');
+    opts := people.level_options(stu);
+    -- another office is refused: the level fix of the Registry is apply_level_corrections, this is the support desk's
+    BEGIN PERFORM people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V500: progressed', S, 1, NULL); e_office := 'accepted';
+    EXCEPTION WHEN insufficient_privilege THEN e_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM people.support_set_level(stu, 'PROGRESS', NULL, 100, 'short', S, 1, NULL); e_short := 'accepted';
+    EXCEPTION WHEN check_violation THEN e_short := split_part(SQLERRM, ':', 1); END;
+    r1 := people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V500: left at 100 after promotion', S, 1, NULL);
+    r2 := people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V500: left at 100 after promotion', S, 1, NULL);
+    BEGIN PERFORM people.support_set_level(stu, 'CORRECTION', 700, 200, 'CHECK V500: outside the programme', S, 1, NULL); e_outside := 'accepted';
+    EXCEPTION WHEN check_violation THEN e_outside := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.support_set_level(stu, 'CORRECTION', fin, 100, 'CHECK V500: a stale screen', S, 1, NULL); e_stale := 'accepted';
+    EXCEPTION WHEN check_violation THEN e_stale := split_part(SQLERRM, ':', 1); END;
+    r3 := people.support_set_level(stu, 'CORRECTION', fin, 200, 'CHECK V500: recorded at the wrong level', S, 1, NULL);
+    BEGIN PERFORM people.support_set_level(wd, 'PROGRESS', NULL, 100, 'CHECK V500: not in study', S, 1, NULL); e_status := 'accepted';
+    EXCEPTION WHEN check_violation THEN e_status := split_part(SQLERRM, ':', 1); END;
+    IF pg IS NOT NULL THEN
+        BEGIN PERFORM people.support_set_level(pgs, 'PROGRESS', NULL, people.pg_level_of(pg), 'CHECK V500: postgraduate', S, 1, NULL); e_pg := 'accepted';
+        EXCEPTION WHEN check_violation THEN e_pg := split_part(SQLERRM, ':', 1); END;
+    END IF;
+    SELECT current_level INTO lvl FROM people.student WHERE id = stu;
+    SELECT string_agg(previous_level || '>' || new_level || ':' || rule || ':' || session || '/' || semester || ':' || actor_office, ',' ORDER BY decided_at, previous_level)
+      INTO hist FROM people.cohort_decision WHERE student_id = stu;
+    SELECT level || '/' || status INTO reg_after FROM registration.course_registration WHERE id = reg;
+    RAISE EXCEPTION 'CHECK_V500_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V500_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V500: every ICT support agent in service holds the password reset, the level progression and correction and the two histories, not the whole support audit, the exports or record edits; the ledger takes LEVEL_PROGRESSED and LEVEL_CORRECTED in ACADEMIC_LEVEL',
+        coalesce(base @> ARRAY['RESET_PASSWORD', 'PROGRESS_LEVEL', 'CORRECT_LEVEL', 'VIEW_LEVEL_HISTORY', 'VIEW_RESET_HISTORY', 'VIEW_STUDENT', 'MANAGE_REGISTRATION']
+            AND NOT base && ARRAY['VIEW_SUPPORT_AUDIT', 'EXPORT_STUDENTS', 'EDIT_CONTACT', 'EDIT_PERSONAL', 'OVERRIDE_REGISTRATION']
+            AND caps @> base AND act_def LIKE '%LEVEL_PROGRESSED%' AND act_def LIKE '%LEVEL_CORRECTED%' AND act_def LIKE '%PAYMENT_RECEIPT_REPORTED%'
+            AND helpdesk.support_module('LEVEL_CORRECTED') = 'ACADEMIC_LEVEL' AND helpdesk.support_module('PASSWORD_RESET') = 'AUTHENTICATION', false),
+        format('baseline %s | capabilities hold it %s | action list %s | module %s', base, caps @> base, act_def LIKE '%LEVEL_CORRECTED%', helpdesk.support_module('LEVEL_CORRECTED')));
+    PERFORM pg_temp.assert('V500: a level is progressed to the programme''s next level or corrected to another of its levels by ICT Support alone, with a reason; never outside the programme, from a stale screen, for a student not in study or a postgraduate progression; a second click does nothing; on the level history with the session; the registration left as it was',
+        coalesce((opts->'levels') = (SELECT to_jsonb(array_agg(l ORDER BY l)) FROM generate_series(100, fin, 100) l) AND (opts->>'nextLevel')::int = 200
+            AND e_office = 'LEVEL_SUPPORT_OFFICE' AND e_short = 'LEVEL_REASON'
+            AND r1->>'newLevel' = '200' AND NOT (r1->>'alreadyDone')::boolean AND (r2->>'alreadyDone')::boolean AND r2->>'decisionId' = r1->>'decisionId'
+            AND e_outside = 'LEVEL_NOT_IN_PROGRAMME' AND e_stale = 'LEVEL_CHANGED' AND r3->>'newLevel' = fin::text AND lvl = fin AND e_status = 'LEVEL_STATUS'
+            AND (pg IS NULL OR (e_pg = 'LEVEL_PG_PROGRESSION' AND jsonb_array_length(pg_opts->'levels') = 1))
+            AND hist = '100>200:LEVEL_PROGRESS:' || S || '/1:ictagent,200>' || fin || ':LEVEL_CORRECTION:' || S || '/1:ictagent'
+            AND reg_after = '100/DRAFT', false),
+        format('levels %s next %s | office %s short %s | first %s again %s | outside %s stale %s corrected %s now %s | withdrawn %s | pg %s %s | history %s | registration %s',
+               opts->'levels', opts->>'nextLevel', e_office, e_short, r1, r2, e_outside, e_stale, r3->>'newLevel', lvl, e_status, e_pg, pg_opts->'levels', hist, reg_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

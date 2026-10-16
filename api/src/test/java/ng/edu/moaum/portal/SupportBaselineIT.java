@@ -57,7 +57,9 @@ class SupportBaselineIT {
         assertThat(profile.getStatusCode().value()).as(String.valueOf(profile.getBody())).isEqualTo(200);
         assertThat((List<String>) profile.getBody().get("capabilities"))
                 .contains("VIEW_STUDENT", "MANAGE_REGISTRATION", "VIEW_PAYMENTS", "INVESTIGATE_PAYMENT", "VERIFY_PAYMENT", "SYNC_ENTITLEMENT", "REGENERATE_RECEIPT")
-                .doesNotContain("EDIT_CONTACT", "OVERRIDE_REGISTRATION", "RESET_PASSWORD");
+                // V500: the password reset and the student's level join the baseline
+                .contains("RESET_PASSWORD", "PROGRESS_LEVEL", "CORRECT_LEVEL", "VIEW_LEVEL_HISTORY", "VIEW_RESET_HISTORY")
+                .doesNotContain("EDIT_CONTACT", "OVERRIDE_REGISTRATION", "VIEW_SUPPORT_AUDIT", "EXPORT_STUDENTS");
         ResponseEntity<Map> reg = it.get(tok, "/api/v1/helpdesk/support/students/" + student + "/registration?semester=1");
         assertThat(reg.getStatusCode().value()).as(String.valueOf(reg.getBody())).isEqualTo(200);
         assertThat(reg.getBody().get("manage")).isEqualTo(true);

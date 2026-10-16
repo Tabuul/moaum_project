@@ -23,6 +23,7 @@ import type { RegistrationView } from "@/lib/student-portal";
 import type { GstEpsExplain } from "@/lib/gst";
 import { GstEligibilityView } from "@/components/gst/GstEligibilityView";
 import { PasswordReset } from "@/components/support/PasswordReset";
+import { LevelManagement } from "@/components/support/LevelManagement";
 
 type Tab = "profile" | "registration" | "payments" | "documents" | "clearance" | "history" | "tickets";
 const TABS: Tab[] = ["profile", "registration", "payments", "documents", "clearance", "history", "tickets"];
@@ -73,6 +74,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const [submit, setSubmit] = useState<{ reason: string; override: boolean; description: string } | null>(null);
   const [find, setFind] = useState<{ q: string; rows: { offering_id: string; course_code: string; title: string; units: number; level: number; kind: string; department: string | null }[] } | null>(null);
   const [reset, setReset] = useState(false);
+  const [levelOpen, setLevelOpen] = useState(false);
   const [raise, setRaise] = useState<{ category: string; subject: string; description: string; details: Record<string, string> } | null>(null);
   const [escalate, setEscalate] = useState<{ office: string; reason: string } | null>(null);
   const [resolve, setResolve] = useState<{ summary: string; details: string } | null>(null);
@@ -199,6 +201,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   function centreAct(code: string) {
     switch (code) {
       case "RESET_PASSWORD": setReset(true); break;
+      case "MANAGE_LEVEL": setLevelOpen(true); break;
       case "CREATE_TICKET": setRaise({ category: data.categories[0]?.code ?? "", subject: "", description: "", details: {} }); break;
       case "ESCALATE": if (ticket) setEscalate({ office: data.escalateTo[0] ?? "bursar", reason: "" }); else notifyProblem({ status: 422, title: "Escalation is made on a ticket", detail: "Open the student from their ticket, or raise one for them first." } as Problem); break;
       case "VIEW_REGISTRATION": case "ADD_COURSE": case "DROP_COURSE": case "OVERRIDE_REGISTRATION": openTab("registration"); break;
@@ -242,7 +245,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
         <PBody>
           <div className="row row--inline" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
             {data.center.map((c) => (
-              <Btn key={c.code} kind={["RESET_PASSWORD", "CREATE_TICKET", "ESCALATE"].includes(c.code) ? "secondary" : "ghost"} disabled={busy || (c.code === "ESCALATE" && !ticket)} onClick={() => centreAct(c.code)}
+              <Btn key={c.code} kind={["RESET_PASSWORD", "MANAGE_LEVEL", "CREATE_TICKET", "ESCALATE"].includes(c.code) ? "secondary" : "ghost"} disabled={busy || (c.code === "ESCALATE" && !ticket)} onClick={() => centreAct(c.code)}
                 title={c.code === "ESCALATE" && !ticket ? "Escalation is made on a ticket" : undefined}>{c.label}</Btn>
             ))}
           </div>
@@ -540,6 +543,13 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
       {/* ── the password: the one reset screen (V485); never seen, never recorded ── */}
       {reset ? <PasswordReset studentId={id} ticket={ticket ? { id: ticket.id, number: ticket.number, subject: ticket.subject } : null}
         onClose={() => setReset(false)} onDone={() => router.refresh()} /> : null}
+
+      {/* ── the academic level (V500): progressed or corrected, on the student's ticket where there is one ── */}
+      {levelOpen ? (
+        <Modal wide title="Student level management" sub={fullName} onClose={() => setLevelOpen(false)}>
+          <LevelManagement studentId={id} ticket={ticket ? { id: ticket.id, number: ticket.number, subject: ticket.subject } : null} onDone={() => router.refresh()} />
+        </Modal>
+      ) : null}
 
       {raise ? (
         <Modal title="Create support ticket" sub={`For ${fullName}, raised at the desk; routed to its queue and answered on the student's email`} onClose={() => setRaise(null)}

@@ -228,6 +228,7 @@ class StudentSupportController {
         if (a.has("MANAGE_REGISTRATION")) { add.accept("ADD_COURSE", "Add course"); add.accept("DROP_COURSE", "Drop course"); }
         if (a.has("OVERRIDE_REGISTRATION")) add.accept("OVERRIDE_REGISTRATION", "Support override");
         if (a.has("RESET_PASSWORD")) add.accept("RESET_PASSWORD", "Reset password");
+        if (a.has("PROGRESS_LEVEL") || a.has("CORRECT_LEVEL")) add.accept("MANAGE_LEVEL", "Manage level");
         if (a.has("INVESTIGATE_PAYMENT") || a.has("VIEW_PAYMENTS")) add.accept("INVESTIGATE_PAYMENT", a.has("INVESTIGATE_PAYMENT") ? "Investigate payment" : "View payments");
         if (a.has("VERIFY_PAYMENT")) add.accept("VERIFY_PAYMENT", "Verify payment");
         if (a.has("SYNC_ENTITLEMENT")) add.accept("REFRESH_ENTITLEMENT", "Refresh payment entitlement");
@@ -808,8 +809,14 @@ class StudentSupportController {
                               @RequestParam(required = false) java.time.LocalDate to, @RequestParam(defaultValue = "false") boolean overrides,
                               @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export) {
         SupportAccess.Access a = support.access(auth);
-        can(a, "VIEW_SUPPORT_AUDIT");
-        if (export) can(a, "EXPORT_STUDENTS");
+        // V500: the password-reset history is read with its own capability (every agent in service holds it); the rest of the
+        // ledger with the support audit, as before. The history's export is the same rows the reader already reads.
+        String mod = blank(module) == null ? null : module.trim().toUpperCase();
+        String cap = !a.has("VIEW_SUPPORT_AUDIT") && "AUTHENTICATION".equals(mod) && a.has("VIEW_RESET_HISTORY") ? "VIEW_RESET_HISTORY"
+                : !a.has("VIEW_SUPPORT_AUDIT") && "ACADEMIC_LEVEL".equals(mod) && a.has("VIEW_LEVEL_HISTORY") ? "VIEW_LEVEL_HISTORY" : "VIEW_SUPPORT_AUDIT";
+        can(a, cap);
+        boolean historyExport = ("AUTHENTICATION".equals(mod) && a.has("VIEW_RESET_HISTORY")) || ("ACADEMIC_LEVEL".equals(mod) && a.has("VIEW_LEVEL_HISTORY"));
+        if (export && !historyExport) can(a, "EXPORT_STUDENTS");
         int sz = Math.max(1, Math.min(size, export ? 5000 : 200));
         int pg = Math.max(1, page);
         String where = """
@@ -820,7 +827,7 @@ class StudentSupportController {
                   LEFT JOIN helpdesk.ticket t ON t.id = a.ticket_id
                  WHERE (:head
                         OR (a.student_id IS NOT NULL AND EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY(sc.faculties) OR p.dept_code = ANY(sc.departments)))
-                        OR (a.jupeb_application_id IS NOT NULL AND 'VIEW_SUPPORT_AUDIT' = ANY (helpdesk.agent_jupeb_capabilities(:me))))
+                        OR (a.jupeb_application_id IS NOT NULL AND :cap = ANY (helpdesk.agent_jupeb_capabilities(:me))))
                    AND (:module::text IS NULL OR helpdesk.support_module(a.action) = :module)
                    AND (:action::text IS NULL OR a.action = :action)
                    AND (:agent::uuid IS NULL OR a.agent_id = :agent)
@@ -828,9 +835,9 @@ class StudentSupportController {
                    AND (:to::date IS NULL OR a.at < :to + 1)
                    AND (NOT :overrides OR a.override)
                 """;
-        String cte = "WITH sc AS MATERIALIZED (SELECT * FROM helpdesk.agent_scope_for(:me, 'VIEW_SUPPORT_AUDIT')) ";
+        String cte = "WITH sc AS MATERIALIZED (SELECT * FROM helpdesk.agent_scope_for(:me, :cap)) ";
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
-                .param("head", a.head()).param("me", a.agent())
+                .param("head", a.head()).param("me", a.agent()).param("cap", cap)
                 .param("module", blank(module) == null ? null : module.trim().toUpperCase(), Types.VARCHAR)
                 .param("action", blank(action) == null ? null : action.trim().toUpperCase(), Types.VARCHAR)
                 .param("agent", agent, Types.OTHER).param("from", from, Types.DATE).param("to", to, Types.DATE).param("overrides", overrides);

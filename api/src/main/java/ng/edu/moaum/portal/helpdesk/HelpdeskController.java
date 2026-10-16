@@ -80,6 +80,8 @@ class HelpdeskController {
     private static final String ROW = """
             SELECT t.id, t.number, t.subject, t.status, t.priority, t.created_at, t.updated_at, t.resolved_at, t.closed_at, t.reopen_count,
                    c.code AS category_code, c.name AS category, t.requester_kind, t.requester_name, t.requester_number, t.requester_email,
+                   CASE t.requester_kind WHEN 'STUDENT' THEN (SELECT r.phone FROM people.student_reach(t.requester_id) r)
+                                         WHEN 'JUPEB' THEN (SELECT j.phone FROM jupeb.application j WHERE j.id = t.requester_id) END AS student_phone,
                    t.department_code, d.name AS department, t.faculty_code, f.name AS faculty,
                    t.assigned_to, helpdesk.person_name(t.assigned_to) AS agent, t.escalated_to IS NOT NULL AS escalated,
                    t.queue_code, qu.name AS queue, t.escalated_office, oo.label AS office, t.waiting_since,
@@ -354,7 +356,9 @@ class HelpdeskController {
         String like = q == null || q.isBlank() ? null : "%" + q.trim() + "%";
         String where = """
                  WHERE (:like::text IS NULL OR t.number ILIKE :like OR t.subject ILIKE :like OR t.requester_name ILIKE :like OR t.requester_number ILIKE :like
-                        OR t.requester_email ILIKE :like OR t.details->>'payment_reference' ILIKE :like OR t.details->>'username' ILIKE :like)
+                        OR t.requester_email ILIKE :like OR t.details->>'payment_reference' ILIKE :like OR t.details->>'username' ILIKE :like
+                        OR t.requester_phone ILIKE :like
+                        OR (t.requester_kind = 'STUDENT' AND EXISTS (SELECT 1 FROM people.student_reach(t.requester_id) r WHERE r.phone ILIKE :like)))
                    AND (:nst = 0 OR t.status = ANY(string_to_array(:st, ',')))
                    AND (:cat::text IS NULL OR c.code = :cat)
                    AND (:pri::text IS NULL OR t.priority = :pri)
@@ -1356,7 +1360,7 @@ class HelpdeskController {
                        helpdesk.response_due_at(t.created_at, t.priority) AS response_due_at, t.id,""") + " WHERE t.id = :id").param("id", id).query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>(t);
         if (!desk) {
-            for (String k : List.of("requester_id", "assigned_by", "assigned_by_name", "escalated_to", "escalated_to_name", "escalated_by_name", "escalated_at", "escalation_reason", "escalated")) out.remove(k);
+            for (String k : List.of("requester_id", "assigned_by", "assigned_by_name", "escalated_to", "escalated_to_name", "escalated_by_name", "escalated_at", "escalation_reason", "escalated", "student_phone")) out.remove(k);
         } else {
             // V328: what the ticket may be escalated to — the queue's office for a decision, the Director of ICT for a technical fault
             out.put("escalation_offices", jdbc.sql("""

@@ -13,7 +13,7 @@ is forced at the next sign-in, and the server enforces it.
 | The "first password" state | an account with `must_change` on and no temporary password: the door accepts the number the student signs in with, and nothing else (V178, V122, restored 13 Oct 2026); once a password is chosen the number opens nothing (V428) | the default credential |
 | bcrypt, cost 12 | `BCryptPasswordEncoder(12)` in `StudentAuthService`; `ck_student_hash` on the table | the hash written at the reset |
 | The desk's reset | `POST /api/v1/helpdesk/support/students/{id}/password`: `LINK` (one-hour link) and `TEMPORARY` (random, one sign-in, on a ticket) (V346) | a third method, `DEFAULT` |
-| Capability and scope | desk capability `RESET_PASSWORD` on a posting; the posting's faculty/department scope (`helpdesk.agent_capabilities_for`, `agent_may_see_student`); the Head, the Director of ICT, admin and super hold every desk capability | `RESET_STUDENT_PASSWORD` = `RESET_PASSWORD`; `VIEW_STUDENT_ACCOUNT_FOR_SUPPORT` = `VIEW_STUDENT`; `VIEW_PASSWORD_RESET_HISTORY` = `VIEW_SUPPORT_AUDIT` |
+| Capability and scope | desk capability `RESET_PASSWORD`: since V500 in the baseline every ICT support agent in service holds across the University (`helpdesk.agent_baseline`), and still grantable on a posting within its faculty/department scope (`helpdesk.agent_capabilities_for`, `agent_may_see_student`); the Head, the Director of ICT, admin and super hold every desk capability | `RESET_STUDENT_PASSWORD` = `RESET_PASSWORD`; `VIEW_STUDENT_ACCOUNT_FOR_SUPPORT` = `VIEW_STUDENT`; `VIEW_PASSWORD_RESET_HISTORY` = `VIEW_RESET_HISTORY` (V500, baseline) or `VIEW_SUPPORT_AUDIT` |
 | The support ledger | `helpdesk.support_action` via `helpdesk.record_support_action` (agent, office, IP, reason, ticket timeline), `ck_hd_sa_no_password` | the audit; action `PASSWORD_RESET` with method `DEFAULT_CREDENTIAL`, plus `ACCOUNT_UNLOCKED` |
 | The desk's settings row | `helpdesk.setting`, edited at ICT Support Settings | the reset policy |
 
@@ -24,7 +24,7 @@ is forced at the next sign-in, and the server enforces it.
 The server checks each of these in order:
 1. The office is one of the desk's (`ictagent`, `helpdeskhead`, `ict`, `admin`, `super`); otherwise 403.
 2. The student is within the agent's postings; otherwise 404. The desk never says whether such a student exists.
-3. A posting covering the student carries `RESET_PASSWORD`; otherwise 422 `SUPPORT_CAPABILITY`.
+3. The agent holds `RESET_PASSWORD` for the student: every agent in service does (V500), and a posting covering the student may carry it; otherwise 422 `SUPPORT_CAPABILITY`. An agent taken off the desk (every posting ended) holds nothing.
 4. The reason has 10 characters or more; otherwise 422 `SUPPORT_REASON_SHORT`.
 5. The ticket is the student's own and within reach, and is required when the policy says so; otherwise `SUPPORT_TICKET_REQUIRED`.
 6. The agent is under the policy's hourly limit for resets to the default credential; otherwise `SUPPORT_RESET_RATE`.

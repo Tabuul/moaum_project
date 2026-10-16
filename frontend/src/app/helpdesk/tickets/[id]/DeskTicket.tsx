@@ -3,7 +3,7 @@
  *  and the category's fields; the attachments; the conversation with internal notes kept apart from the updates the
  *  requester sees; the resolution; the history as a timeline; and the acts — take or assign, start work, change
  *  priority, escalate, note, update, attach, resolve, reopen, close on a reason. */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -11,7 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, parse, readBase64, requesterKind, requesterNumberLabel, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
+import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, TicketPhone, Timeline, parse, readBase64, requesterKind, requesterNumberLabel, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
 
 type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | "transfer" | "office" | "wait" | "reset" | null;
 
@@ -129,7 +129,8 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
                 ["Name", <strong key="n">{t.requester_name}</strong>],
                 [requesterNumberLabel(t.requester_kind), <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
                 ["Email", t.requester_email ? <a key="e" className="lnk" href={`mailto:${t.requester_email}`}>{t.requester_email}</a> : "—"],
-                ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
+                ["Phone", <TicketPhone key="p" t={t} />],
+                ...(t.requester_phone && t.student_phone && t.requester_phone !== t.student_phone ? [["Phone given on the ticket", <span key="pt" className="tnum">{t.requester_phone}</span>] as [string, ReactNode]] : []),
                 ["Department", t.department ?? "—"],
                 ["Faculty", t.faculty ?? "—"],
               ]} />
