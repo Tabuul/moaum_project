@@ -23,7 +23,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 /**
  * V498: old-portal payments come in one way — Old Fees History, the old portal's payment number telling one payment from
  * another (a make-up beside the first), never twice; the retired Payment History Upload refuses, what it wrote twice is listed
- * and withdrawn by the Bursary; and the payments are reconciled against the fee setup.
+ * and withdrawn by the Bursary; and the payments are reconciled against the fee setup. V502: what that door recorded is taken
+ * over when the export names its payment number, and what the export does not name is listed and put right.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -71,7 +72,9 @@ class OldFeesIT {
     void oldPaymentsComeInOneWayKeyedByTheirNumberNeverTwiceAndReconciled() {
         Random random = new Random();
         String tag = String.format("%04d", random.nextInt(10_000));
-        int year = 2140 + random.nextInt(60);
+        // a year no other test uses (2140–2199 met ApplicationWindowsIT's own 2139/2140–2143/2144: its current session, inserted
+        // only when absent, was never made current when this test had made 2141/2142 first)
+        int year = 2900 + random.nextInt(100);
         ses = year + "/" + (year + 1);
         it.session(ses, year);
         UUID student = it.student("ZZOLDFEES" + tag, "C00023", "MOAUM/ADM/88/88" + tag, "MOAUM/OFH/88/" + tag, 100);
@@ -163,5 +166,67 @@ class OldFeesIT {
                 .getBody().get("rows")).get(0);
         assertThat(after).as("the second semester counts now").containsEntry("state", "MATCHED");
         assertThat(((Number) after.get("paid_old_s2")).intValue()).isEqualTo(30000);
+    }
+
+    /** V502: what the retired Payment History Upload recorded — "SCHOOL FEES", dated the day of the upload, which the fee gate does
+     *  not read as school fees — is taken over when the export names its payment number; what the export does not name is listed
+     *  and put right by the Bursary */
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void whatTheRetiredPaymentHistoryUploadRecordedIsTakenOverOrPutRight() {
+        Random random = new Random();
+        String tag = String.format("%04d", random.nextInt(10_000));
+        // a year no other test uses (2140–2199 met ApplicationWindowsIT's own 2139/2140–2143/2144: its current session, inserted
+        // only when absent, was never made current when this test had made 2141/2142 first)
+        int year = 2900 + random.nextInt(100);
+        ses = year + "/" + (year + 1);
+        it.session(ses, year);
+        UUID student = it.student("ZZOLDFEESPH" + tag, "C00023", "MOAUM/ADM/87/87" + tag, "MOAUM/OPH/87/" + tag, 100);
+        String number = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", student).query(String.class).single();
+        it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 60000, NULL, 'C00023')")
+                .param("s", ses).update());
+        String bursar = ItSupport.token("bursar");
+        String audit = ItSupport.token("audit");
+        String paid = "PRIT" + year + tag + "PH1";
+        String alone = "MIGR-ITPH" + year + tag;
+        // what the retired door wrote: the payment as SCHOOL FEES on the day of the upload, and a GST fee the export does not name
+        it.db(() -> jdbc.sql("""
+                INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+                VALUES (:s, :ses, :a, 'SCHOOL FEES', 60000, now(), now() + interval '1 day', now(), :by, 'MIGRATION', 'Migrated payment history', 'RCT-' || :a),
+                       (:s, :ses, :b, 'GST FEES', 4000, now(), now() + interval '1 day', now(), :by, 'MIGRATION', 'Migrated payment history', 'RCT-' || :b)
+                """).param("s", student).param("ses", ses).param("a", paid).param("b", alone).param("by", UUID.randomUUID()).update());
+        UUID record = jdbc.sql("SELECT id FROM finance.payment_reference WHERE reference = :r").param("r", paid).query(UUID.class).single();
+        assertThat(it.get(audit, "/api/v1/finance/legacy-fees/reconciliation?session=" + ses + "&q=" + number).getBody())
+                .as("SCHOOL FEES is not school fees to the fee gate").containsEntry("total", 0);
+
+        // the export names the first: taken over, recorded once with its item, semester and day
+        ResponseEntity<Map> imp = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees",
+                Map.of("rows", List.of(row(number, ses, "First", "60000", "SCHOOL FEES", (year + 1) + "-02-10", paid))));
+        assertThat(imp.getStatusCode().value()).as(String.valueOf(imp.getBody())).isEqualTo(200);
+        assertThat(imp.getBody()).containsEntry("taken_over", 1).containsEntry("cleared", 0);
+        Map<String, Object> now = jdbc.sql("SELECT reference, purpose, channel, (confirmed_at AT TIME ZONE 'Africa/Lagos')::date::text AS day FROM finance.payment_reference WHERE id = :i")
+                .param("i", record).query().singleRow();
+        assertThat((String) now.get("reference")).endsWith("-S1");
+        assertThat(now).containsEntry("purpose", "School fees (legacy) · semester 1").containsEntry("channel", "Legacy").containsEntry("day", (year + 1) + "-02-10");
+        Map<String, Object> rec = ((List<Map<String, Object>>) it.get(audit, "/api/v1/finance/legacy-fees/reconciliation?session=" + ses + "&q=" + number)
+                .getBody().get("rows")).get(0);
+        assertThat(rec).containsEntry("state", "MATCHED");
+        assertThat(((Number) rec.get("paid_old_s1")).intValue()).isEqualTo(60000);
+        assertThat(((Number) it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees",
+                Map.of("rows", List.of(row(number, ses, "First", "60000", "SCHOOL FEES", (year + 1) + "-02-10", paid)))).getBody().get("taken_over")).intValue())
+                .as("loaded again, nothing changes").isZero();
+
+        // the other: listed as left, put right as the GST fee by the Bursary
+        ResponseEntity<Map> left = it.get(audit, "/api/v1/finance/legacy-fees/payment-history-left?limit=100000");
+        assertThat(left.getStatusCode().value()).as(String.valueOf(left.getBody())).isEqualTo(200);
+        assertThat((List<Map>) left.getBody().get("rows")).filteredOn(l -> alone.equals(l.get("reference"))).extracting(l -> l.get("counts_as")).containsExactly("OTHER");
+        assertThat((List<Map>) left.getBody().get("rows")).filteredOn(l -> paid.equals(l.get("reference"))).isEmpty();
+        assertThat((List<Map>) it.get(audit, "/api/v1/finance/legacy-fees/mislabelled?limit=100000").getBody().get("rows"))
+                .filteredOn(m -> alone.equals(m.get("reference"))).extracting(m -> m.get("action") + ">" + m.get("target_purpose")).containsExactly("RELABEL>GST fee " + ses);
+        ResponseEntity<Map> right = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/mislabelled/put-right",
+                Map.of("reason", "recorded by Payment History Upload under the old portal's names", "limit", 20000));
+        assertThat(right.getStatusCode().value()).as(String.valueOf(right.getBody())).isEqualTo(200);
+        assertThat((List<Map>) it.get(audit, "/api/v1/finance/legacy-fees/payment-history-left?limit=100000").getBody().get("rows"))
+                .filteredOn(l -> alone.equals(l.get("reference"))).extracting(l -> l.get("counts_as")).containsExactly("GST");
     }
 }

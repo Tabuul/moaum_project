@@ -206,6 +206,27 @@ class FinanceController {
         return jdbc.sql("SELECT * FROM finance.put_right_legacy_items(:r, :n)").param("r", body.reason().trim()).param("n", n).query().singleRow();
     }
 
+    /** V502: what the retired Payment History Upload recorded that nothing has matched (not taken over by Old Fees History, not a
+     *  repeat of another record), with what each counts as now: the counts, then the first rows (up to 100,000 for the Excel list) */
+    @GetMapping("/legacy-fees/payment-history-left")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> paymentHistoryLeft(@RequestParam(defaultValue = "200") int limit) {
+        int n = Math.max(1, Math.min(limit, 100_000));
+        String text = jdbc.sql("""
+                WITH l AS MATERIALIZED (SELECT * FROM finance.payment_history_left())
+                SELECT json_build_object(
+                    'count', (SELECT count(*) FROM l),
+                    'amount', (SELECT coalesce(sum(amount), 0) FROM l),
+                    'students', (SELECT count(DISTINCT student_id) FROM l),
+                    'countsAs', (SELECT coalesce(json_object_agg(t.counts_as, t.n), '{}'::json) FROM (SELECT counts_as, count(*) AS n FROM l GROUP BY counts_as) t),
+                    'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
+                        SELECT reference, number, name, session, amount, paid_on::text AS paid_on, number_day::text AS number_day, purpose, counts_as
+                          FROM l ORDER BY session DESC, number, reference LIMIT :n) r))::text
+                """).param("n", n).query(String.class).single();
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     /** V498: the old-portal school-fees payments of a session reconciled against the fee setup — the states counted, then the
      *  students, those under or over first; filtered by state and by number or name */
     @GetMapping("/legacy-fees/reconciliation")
