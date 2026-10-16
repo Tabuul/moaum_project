@@ -48,7 +48,9 @@ export interface Semester { session: string; semester: number; units: number; gp
   level?: number }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; basis?: string; lecturer?: string | null; courseSemester?: number }
-export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null }
+export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null;
+  /** V491: how it was approved — HOD, AUTO (by the rule), or null for an earlier approval */
+  approval_mode?: "HOD" | "AUTO" | null }
 export interface MenuItem {
   offering_id: string; course_code: string; title: string; units: number; kind: string; basis: string; owner_dept: string;
   carryover: boolean; failed_in: string | null; lecturer: string | null;
@@ -87,6 +89,12 @@ export interface GstView {
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** V491: how the semester's registration is approved, whether the student may reset it (and why not), what holds it for review */
+  approval?: import("./registration-approval").ApprovalRule;
+  reset?: import("./registration-approval").ResetState;
+  reviewReason?: string | null;
+  /** V491: the submission's answer — 'approved' when it was approved on submission */
+  result?: unknown;
   /** V402/V413: the code family the student's cohort registers (BSU or MOAU), null while the rule is unstated */
   codeFamily?: "BSU" | "MOAU" | null;
   /** V482: ADVISORY (prerequisites shown) or ENFORCED (the engine refuses a course whose prerequisite is not passed) */

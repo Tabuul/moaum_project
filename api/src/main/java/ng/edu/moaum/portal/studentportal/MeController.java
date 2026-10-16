@@ -107,6 +107,16 @@ class MeController {
         return portal.submit(id(auth), body.session(), body.semester());
     }
 
+    public record ResetIn(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.Size(max = 500) String reason) {
+    }
+
+    /** V491: the student resets their own registration for the semester and registers again — the student is the token's, never
+     *  a number the browser sends */
+    @PostMapping("/registration/reset")
+    Map<String, Object> resetRegistration(Authentication auth, @Valid @RequestBody ResetIn body) {
+        return portal.reset(id(auth), body.session(), body.semester(), body.reason());
+    }
+
     public record AddDrop(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.NotNull UUID offering) {
     }
 

@@ -21,6 +21,16 @@ class RegistrationRepository {
     record RegistrationRow(UUID id, UUID studentId, String session, int semester, int level, String status, String studentStatus) {
     }
 
+    /** V491: HOD_APPROVAL_REQUIRED or AUTO_APPROVAL for a session and semester */
+    String approvalMode(String session, int semester) {
+        return jdbc.sql("SELECT registration.approval_mode(:s, :m)").param("s", session).param("m", semester).query(String.class).single();
+    }
+
+    /** V491: a submitted registration judged again by the submission's checks and the automatic approval — 'approved' or the reason */
+    String autoApproveChecked(UUID id) {
+        return jdbc.sql("SELECT registration.auto_approve_checked(:id)").param("id", id).query(String.class).single();
+    }
+
     /** V482: the prerequisite rule in force (ADVISORY or ENFORCED), who set it, when and why, and how many prerequisites are recorded */
     java.util.Map<String, Object> prerequisitePolicy() {
         return jdbc.sql("""
@@ -182,7 +192,8 @@ class RegistrationRepository {
                    SET status = :st,
                        submitted_at = CASE WHEN :st = 'SUBMITTED' THEN now() ELSE submitted_at END,
                        approved_at  = CASE WHEN :st = 'APPROVED' THEN now() ELSE approved_at END,
-                       approved_by  = CASE WHEN :st = 'APPROVED' THEN :by ELSE approved_by END
+                       approved_by  = CASE WHEN :st = 'APPROVED' THEN :by ELSE approved_by END,
+                       approval_mode = CASE WHEN :st = 'APPROVED' THEN 'HOD' ELSE approval_mode END
                  WHERE id = :id
                 """).param("st", status).param("by", approvedBy, Types.OTHER).param("id", id).update();
         if ("APPROVED".equals(status)) {

@@ -115,7 +115,24 @@ public class RegistrationService {
     public Map<String, Object> submit(UUID id) {
         RegistrationRepository.RegistrationRow r = repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
         repo.setStatus(id, "SUBMITTED", null);
+        // V491: where the Head's approval is suspended, the registration is approved now by the same rules, or kept for review
+        if ("AUTO_APPROVAL".equals(repo.approvalMode(r.session(), r.semester()))) {
+            String v = repo.autoApproveChecked(id);
+            if ("approved".equals(v)) return Map.of("id", id, "status", "APPROVED", "units", repo.units(id), "approvalMode", "AUTO");
+            return Map.of("id", id, "status", "SUBMITTED", "units", repo.units(id), "review", v);
+        }
         return Map.of("id", id, "status", "SUBMITTED", "units", repo.units(id));
+    }
+
+    /** V491: while course registration is approved automatically for the semester, the Head of Department neither approves nor
+     *  returns one (super keeps the break-glass approval) */
+    private void assertHeadDecides(RegistrationRepository.RegistrationRow r) {
+        if (!"AUTO_APPROVAL".equals(repo.approvalMode(r.session(), r.semester()))) return;
+        String office = AuditContextHolder.current().map(c -> c.actorOffice()).orElse("");
+        if ("super".equals(office)) return;
+        throw new DomainRuleViolation("REG_AUTO_APPROVAL_ACTIVE",
+                "Course registration approval is currently configured for automatic approval. HOD approval is not required for " + r.session() + " semester " + r.semester() + ".",
+                new DomainRuleViolation.Remedy("A registration that passes the rules is approved when the student submits it; one that does not is on the Academic Office's review list.", "Academic Office"));
     }
 
     /** The level adviser's or Head of Department's approval: the register grows by this student. */
@@ -123,6 +140,7 @@ public class RegistrationService {
     public Map<String, Object> approve(UUID id) {
         RegistrationRepository.RegistrationRow r = repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
         assertMayDecide(id);
+        assertHeadDecides(r);
         if (!Set.of("ADMITTED", "ACTIVE", "PROBATION").contains(r.studentStatus())) {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE",
                     "A student who is " + r.studentStatus().toLowerCase() + " does not register.",
@@ -159,6 +177,7 @@ public class RegistrationService {
     public Map<String, Object> giveBack(UUID id, String comment) {
         RegistrationRepository.RegistrationRow r = repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
         assertMayDecide(id);
+        assertHeadDecides(r);
         if (comment == null || comment.isBlank()) {
             throw new DomainRuleViolation("REG_RETURN_SAYS_WHY", "A registration is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the student must change.", "Head of Department"));

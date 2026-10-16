@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 325
+\set EXPECTED 327
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14718,6 +14718,101 @@ BEGIN
                  AND after_paid = 'MOAUM-FEE-948001-0002' AND refused_paid LIKE 'PAY_CLAIM_CONFIRMED%', false),
         format('tomorrow %s | two characters %s | kept %s, log id %s, open %s | Bursary list %s | ask list %s (%s) | after paid %s | receipt after paid %s',
                refused_day, refused_log, kept, log_now, still_open, listed, ask, ask_log, after_paid, refused_paid));
+END $$;
+-- ── V491. Course registration approved automatically: the rule by session and semester (the semester's over the session's over the
+--    standing HOD rule); a submitted registration whose courses are on the student's menu approved with approval_mode AUTO and no
+--    approver, told once; a course not offered or a student not in study held for review with the reason; the waiting
+--    registrations of an AUTO semester judged, a HOD semester's left alone; a reset keeping the registration on its record,
+--    carryovers kept, a second reset doing nothing; never a locked registration, one with a mark, or where the rule closes it ──
+DO $$
+DECLARE acad uuid := gen_random_uuid(); S text := '9491/9492'; pa text := 'C00023';
+        stu uuid := gen_random_uuid(); other uuid := gen_random_uuid(); wd uuid := gen_random_uuid(); pend uuid := gen_random_uuid(); marked uuid := gen_random_uuid();
+        reg uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); reg3 uuid := gen_random_uuid(); reg4 uuid := gen_random_uuid(); reg5 uuid := gen_random_uuid();
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid(); sheet uuid := gen_random_uuid();
+        m_default text; m_session text; m_semester text; r_ok text; r_mode text; r_entries text; notices int; notices2 int; r_offer text; r_withdrawn text;
+        pend_n record; reg4_state text; rs jsonb; rs2 jsonb; st_after text; kept text; hist text; r_marks text; r_locked text; r_off text; r_fees text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V491', true);
+    PERFORM set_config('moaum.actor_id', acad::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9491-10-01', date '9492-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+    SELECT x.code, x.title, 3, 1, 100, p.dept_code, 'Core', 'LIVE' FROM ref.programme p,
+           (VALUES ('CCX 191', 'Check auto one'), ('CCX 192', 'Check auto two'), ('CCX 193', 'Check not offered')) x(code, title) WHERE p.code = pa;
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('CCX 191', pa, 100, 'Core'), ('CCX 192', pa, 100, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'CCX 191', S, 1), (o2, 'CCX 192', S, 1), (o3, 'CCX 193', S, 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (stu, 'MOAUM/ADM/49/491001', 'MOAUM/CHK/49/4911', 'ZZV491', 'Auto', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (other, 'MOAUM/ADM/49/491002', 'MOAUM/CHK/49/4912', 'ZZV491', 'Not offered', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (wd, 'MOAUM/ADM/49/491003', 'MOAUM/CHK/49/4913', 'ZZV491', 'Withdrawn', pa, 'UTME', S, 100, 100, 'WITHDRAWN', now()),
+        (pend, 'MOAUM/ADM/49/491004', 'MOAUM/CHK/49/4914', 'ZZV491', 'Second semester', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (marked, 'MOAUM/ADM/49/491005', 'MOAUM/CHK/49/4915', 'ZZV491', 'Marked', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+    -- the rule: the standing rule is the Head's; the session approves automatically, its second semester by the Head
+    m_default := registration.approval_mode(S, 1);
+    INSERT INTO registration.approval_policy (session, semester, mode, allow_student_reset, card_on_approval, reason) VALUES
+        (S, NULL, 'AUTO_APPROVAL', true, true, 'CHECK V491: approved automatically'),
+        (S, 2, 'HOD_APPROVAL_REQUIRED', false, true, 'CHECK V491: the second semester by the Head');
+    m_session := registration.approval_mode(S, 1);
+    m_semester := registration.approval_mode(S, 2);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES
+        (reg, stu, S, 1, 100, 'SUBMITTED', now()), (reg2, other, S, 1, 100, 'SUBMITTED', now()), (reg3, wd, S, 1, 100, 'SUBMITTED', now()),
+        (reg4, pend, S, 2, 100, 'SUBMITTED', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (reg5, marked, S, 1, 100, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
+        (reg, o1, 3, 'CURRENT'), (reg, o2, 3, 'CARRYOVER'), (reg2, o1, 3, 'CURRENT'), (reg2, o3, 3, 'CURRENT'), (reg3, o1, 3, 'CURRENT'),
+        (reg4, o1, 3, 'CURRENT'), (reg5, o1, 3, 'CURRENT');
+    -- a submitted registration whose courses are on the student's menu: approved by the rule, the student told once
+    r_ok := registration.auto_approve(reg);
+    SELECT status || '/' || coalesce(approval_mode, '-') || '/' || (approved_by IS NULL) INTO r_mode FROM registration.course_registration WHERE id = reg;
+    SELECT string_agg(status, ',' ORDER BY status) INTO r_entries FROM registration.entry WHERE registration_id = reg;
+    SELECT count(*) INTO notices FROM platform.notice WHERE template_key = 'REG_AUTO_APPROVED' AND about_id = stu;
+    PERFORM registration.auto_approve(reg);
+    SELECT count(*) INTO notices2 FROM platform.notice WHERE template_key = 'REG_AUTO_APPROVED' AND about_id = stu;
+    -- a course not offered to the student, a student not in study: not approved, each with its reason
+    r_offer := registration.auto_approve(reg2);
+    r_withdrawn := registration.auto_approve(reg3);
+    -- the waiting registrations: the AUTO semester's judged (the check's students' fees are not stated: held for review), the Head's left alone
+    SELECT * INTO pend_n FROM registration.auto_approve_pending(S, NULL);
+    SELECT r.status || '/' || (ar.registration_id IS NULL) INTO reg4_state
+      FROM registration.course_registration r LEFT JOIN registration.approval_review ar ON ar.registration_id = r.id WHERE r.id = reg4;
+    -- the reset: kept on its record, the chosen course gone, the carryover kept, a draft again; a second reset does nothing
+    PERFORM set_config('moaum.actor_id', stu::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    -- school fees stated for the session and not paid: the student could not register again, so the student's own reset waits;
+    -- the reset itself is the same on the desk's behalf
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'School fees', 100000, 100);
+    r_fees := split_part(registration.reset_refusal(stu, S, 1, 'STUDENT_PORTAL'), ':', 1);
+    rs := registration.student_reset(stu, S, 1, 'CHECK V491: wrong courses from the old portal', 'ICT_SUPPORT');
+    SELECT status || '/' || coalesce(approval_mode, '-') || '/' || (approved_at IS NULL) INTO st_after FROM registration.course_registration WHERE id = reg;
+    SELECT string_agg(o.course_code || ':' || e.entry_type || ':' || e.status, ',') INTO kept FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = reg;
+    SELECT previous_status || '/' || previous_approval_mode || '/' || course_count || '/' || units || '/' || source INTO hist FROM registration.registration_reset WHERE registration_id = reg;
+    rs2 := registration.student_reset(stu, S, 1, 'CHECK V491: second click', 'ICT_SUPPORT');
+    -- never reset: a mark entered, a locked registration, a semester whose rule closes the reset to students
+    INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sheet, o1);
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sheet, marked, 20, 40);
+    r_marks := split_part(registration.reset_refusal(marked, S, 1, 'STUDENT_PORTAL'), ':', 1);
+    UPDATE registration.course_registration SET status = 'LOCKED', approved_at = now() WHERE id = reg3;
+    r_locked := split_part(registration.reset_refusal(wd, S, 1, 'STUDENT_PORTAL'), ':', 1);
+    r_off := split_part(registration.reset_refusal(pend, S, 2, 'STUDENT_PORTAL'), ':', 1);
+    RAISE EXCEPTION 'CHECK_V491_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V491_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V491: a registration is approved by the rule of its semester, session or the standing HOD rule — on the student''s menu approved AUTO with no approver and told once; a course not offered or a student not in study held with the reason; a HOD semester left to the Head',
+        coalesce(m_default = 'HOD_APPROVAL_REQUIRED' AND m_session = 'AUTO_APPROVAL' AND m_semester = 'HOD_APPROVAL_REQUIRED'
+            AND r_ok = 'approved' AND r_mode = 'APPROVED/AUTO/true' AND r_entries = 'APPROVED,APPROVED' AND notices >= 1 AND notices2 = notices
+            AND r_offer LIKE 'REG_COURSE_NOT_OFFERED: CCX 193%' AND r_withdrawn LIKE 'REG_STUDENT_NOT_ELIGIBLE%'
+            AND pend_n.considered = 2 AND pend_n.approved = 0 AND pend_n.review = 2 AND reg4_state = 'SUBMITTED/true', false),
+        format('rule %s/%s/%s | %s %s entries %s notices %s→%s | not offered "%s" | withdrawn "%s" | pending %s | the Head''s semester %s',
+               m_default, m_session, m_semester, r_ok, r_mode, r_entries, notices, notices2, r_offer, r_withdrawn, pend_n, reg4_state));
+    PERFORM pg_temp.assert('V491: a reset keeps the registration on its record, removes the chosen courses, keeps the carryover, makes it a draft, and a second does nothing; never with a mark, locked, where the rule closes it, or (for the student) before the fees are cleared',
+        coalesce((rs->>'reset')::boolean AND st_after = 'DRAFT/-/true' AND kept = 'CCX 192:CARRYOVER:REGISTERED'
+            AND hist = 'APPROVED/AUTO/2/6/ICT_SUPPORT' AND (rs2->>'alreadyClear')::boolean AND r_fees = 'REG_RESET_FEES'
+            AND r_marks = 'REG_RESET_HAS_RESULTS' AND r_locked = 'REG_RESET_LOCKED' AND r_off = 'REG_RESET_OFF', false),
+        format('reset %s | after %s kept %s | record %s | again %s | fees %s marks %s locked %s rule %s', rs, st_after, kept, hist, rs2, r_fees, r_marks, r_locked, r_off));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -35,7 +35,7 @@ public class StudentPortalService {
 
     /** V360: the signed check code the student's own examination card, course form or results statement carries in its QR —
      *  over the number the document prints (the matriculation number, or the admission number before it is issued) */
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> checkCode(UUID id, String kind, String session, int semester) {
         CheckCodes.Kind k = switch (kind == null ? "" : kind.trim().toUpperCase()) {
             case "EXAM" -> CheckCodes.Kind.EXAM;
@@ -54,6 +54,8 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("code", codes.sign(k, number, session, String.valueOf(semester)));
+        // V491: the examination card is issued with its code; counted once a student and semester, with how many times
+        if (k == CheckCodes.Kind.EXAM) repo.recordExamCard(id, session, semester);
         return out;
     }
 
@@ -477,6 +479,17 @@ public class StudentPortalService {
         window.put("cce", "CCE".equals(s.entryMode()));
         window.put("pg", "POSTGRADUATE".equals(s.entryMode()));   // V389
         out.put("window", window);
+        // V491: how the registration is approved this semester, whether the student may reset it (and why not), its resets,
+        // and what holds it for review under automatic approval
+        Map<String, Object> rule = repo.approvalRule(session, semester);
+        out.put("approval", rule);
+        Map<String, Object> reset = new LinkedHashMap<>();
+        String why = gate != null ? gate : repo.resetRefusal(id, session, semester);
+        reset.put("allowed", why == null);
+        reset.put("why", why);
+        reset.put("history", repo.resets(id, session, semester));
+        out.put("reset", reset);
+        out.put("reviewReason", repo.reviewReason(id, session, semester));
         return out;
     }
 
@@ -566,8 +579,23 @@ public class StudentPortalService {
     public Map<String, Object> submit(UUID id, String session, int semester) {
         assertWindowOpen(id, session, semester);
         UUID reg = repo.draft(id, session, semester);
-        repo.submit(reg);
-        return registrationView(id, session, semester);
+        String result = repo.submit(reg);
+        Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
+        out.put("result", result);   // V491: 'approved' where the registration was approved on submission
+        return out;
+    }
+
+    private static final tools.jackson.databind.ObjectMapper RESET_JSON = new tools.jackson.databind.ObjectMapper();
+
+    /** V491: the student resets the semester's registration while the window is open and the rule allows it — the registration
+     *  as it stood is kept on its reset record, the chosen courses are cleared (carryovers stay), and it is a draft again */
+    @Transactional
+    public Map<String, Object> reset(UUID id, String session, int semester, String reason) {
+        assertWindowOpen(id, session, semester);
+        String done = repo.reset(id, session, semester, reason == null || reason.isBlank() ? "Reset by the student to register again" : reason.trim());
+        Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
+        out.put("result", RESET_JSON.readValue(done, Map.class));
+        return out;
     }
 
     /* ── results ── */

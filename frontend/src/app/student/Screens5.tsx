@@ -10,14 +10,14 @@
  * issued, the transcript request staged as the Registry stages it.
  */
 import { useState } from "react";
-import type { Card, Docket, Me, Queries, Results, Timetable, Transcripts } from "@/lib/student-portal";
+import type { Card, Docket, Me, Queries, RegistrationView, Results, Timetable, Transcripts } from "@/lib/student-portal";
 import { STAGE_LABEL, WEEKDAY, semesterName } from "@/lib/student-portal";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
-import { printNode } from "@/lib/print";
+import { CardActions } from "./exams/CardActions";
 
 /* ── result query ── */
 
@@ -108,16 +108,31 @@ export function Carryover({ r }: { r: Results }) {
 
 /* ── examinations (the examination card) ── */
 
-export function Exams({ d }: { d: Docket; s: Me }) {
+export function Exams({ d, current }: { d: Docket; s: Me; current?: RegistrationView | null }) {
   const cleared = d.clearsExamination === true;
   const withPapers = d.examSessions.filter((x) => x.papers.length);
+  // V491: the registration approved this semester carries its card at once (where the rule offers the card on approval), before
+  // the examination timetable is released; dates and venues come with the timetable, never invented
+  const cur = current?.registration ?? null;
+  const curCard = !!current && !!cur && (cur.status === "APPROVED" || cur.status === "LOCKED") && current.approval?.card_on_approval !== false
+    && !withPapers.some((x) => x.session === current.session && x.semester === current.semester);
+  const mayCard = cleared || d.clearsExamination === null;
   return (
     <>
       {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
         : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
           : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
+      {curCard && current && cur ? (
+        <Panel title={`EXAMINATION CARD · ${current.session} · ${semesterName(current.semester)} semester`} right={mayCard ? "Available" : "Withheld"}>
+          <PBody>
+            <div className="sub2">Course registration approved{cur.approved_at ? ` on ${onDay(cur.approved_at)}` : ""} · {(cur.entries ?? []).filter((e) => e.status !== "DROPPED").length} papers · {cur.units} units. Dates and venues appear when the examination timetable is released.</div>
+            {mayCard ? <div className="mt-2"><CardActions session={current.session} semester={current.semester} /></div>
+              : <div className="mt-2 sub2 ink-red">The card prints once the Bursary clears you for the examination.</div>}
+          </PBody>
+        </Panel>
+      ) : null}
       {!withPapers.length ? (
-        <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
+        curCard ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
         <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
@@ -129,11 +144,7 @@ export function Exams({ d }: { d: Docket; s: Me }) {
           {x.papers.some((p) => p.bar) ? <div className="card__body"><Note kind="bad" title="Attendance below the minimum">
             {x.papers.filter((p) => p.bar).map((p) => p.bar!.replace(/^[A-Z_]+: /, "").replace(/^your/, "Your")).join(". ")}. The Centre for Continuing Education&rsquo;s policy bars the examination of a class below its minimum attendance; see the Centre if a lecture you missed was excused.
           </Note></div> : null}
-          {cleared ? <div className="card__body row">
-            <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
-            <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination card"); }}>Print the card</Btn>
-
-          </div> : null}
+          {cleared ? <div className="card__body"><CardActions session={x.session} semester={x.semester} /></div> : null}
         </Panel>
       ))}
     </>

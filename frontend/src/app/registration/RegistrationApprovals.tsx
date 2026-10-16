@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Panel, PBody, Pil, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -33,10 +33,11 @@ function entryRank(e: RegEntry): number {
   return k === "gst" ? 1 : (k === "core" || k === "compulsory" || k === "required") ? 2 : 3;
 }
 
-export function RegistrationApprovals({ rows, session, semester, actingOffice }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null }) {
+export function RegistrationApprovals({ rows, session, semester, actingOffice, auto }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null; auto?: boolean }) {
   const router = useRouter();
-  // approval is one step and it is the Head of Department's (super is system break-glass)
-  const may = ["hod", "super"].includes(actingOffice ?? "");
+  // approval is one step and it is the Head of Department's (super is system break-glass); V491: while approval is automatic the
+  // Head neither approves nor returns (the server refuses it too)
+  const may = auto ? actingOffice === "super" : ["hod", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<RegistrationRow | null>(null);
@@ -57,7 +58,13 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
 
   return (
     <>
-    <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session}${semester ? ` · ${semesterText(semester)}` : " · all semesters"}`}>
+    {auto ? (
+      <Note kind="info" title="COURSE REGISTRATION APPROVAL: AUTOMATIC APPROVAL ACTIVE">
+        Course registration approval is currently configured for automatic approval. HOD approval is not required for the active session/semester.
+        A registration that passes the registration rules is approved when the student submits it; one that does not waits below with the Academic Office&rsquo;s review.
+      </Note>
+    ) : null}
+    <Panel title={auto ? "Course registrations held for review" : "Course registrations submitted by students"} right={`${rows.length} waiting · ${session}${semester ? ` · ${semesterText(semester)}` : " · all semesters"}`}>
       {problem ? <PBody><ProblemNotice problem={problem} /></PBody> : null}
       <DTable cols={["Student", "Programme", "Level|mid", "Semester|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
         <button key="s" onClick={() => setOpen(r)} title="View the full course registration" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}>

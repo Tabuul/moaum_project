@@ -612,6 +612,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -1042,7 +1043,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
-          { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" }
+          { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" }
         ]
       },
       {
@@ -1153,7 +1155,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" }
         ]
       },
       {
@@ -1244,6 +1247,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/approvals", "icon": "check", "label": "Senate Business" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -1360,6 +1364,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
         ]
       },
       {
@@ -1547,6 +1552,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
+          { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" }
         ]
       },
       {

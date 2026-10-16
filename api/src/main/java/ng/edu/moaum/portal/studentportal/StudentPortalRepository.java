@@ -500,9 +500,51 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT catalogue.student_code_family(:s)").param("s", student).query(String.class).optional().orElse(null);
     }
 
+    /** V491: how the semester's registration is approved, whether a student may reset it, whether the card follows approval */
+    Map<String, Object> approvalRule(String session, int semester) {
+        return jdbc.sql("""
+                SELECT coalesce(r.mode, 'HOD_APPROVAL_REQUIRED') AS mode, coalesce(r.allow_student_reset, false) AS allow_student_reset,
+                       coalesce(r.card_on_approval, true) AS card_on_approval
+                  FROM (SELECT 1) one LEFT JOIN LATERAL (SELECT * FROM registration.approval_rule(:s, :m) x WHERE x.id IS NOT NULL) r ON true
+                """).param("s", session).param("m", semester).query().singleRow();
+    }
+
+    /** V491: why the student's registration for the semester may not be reset by the student, or null */
+    String resetRefusal(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.reset_refusal(:st, :s, :m, 'STUDENT_PORTAL')").param("st", student).param("s", session).param("m", semester)
+                .query(String.class).optional().orElse(null);
+    }
+
+    /** V491: the student's own reset — the registration as it stood kept, the chosen courses cleared, back to DRAFT */
+    String reset(UUID student, String session, int semester, String reason) {
+        return jdbc.sql("SELECT registration.student_reset(:st, :s, :m, :r, 'STUDENT_PORTAL')::text").param("st", student).param("s", session).param("m", semester)
+                .param("r", reason, Types.VARCHAR).query(String.class).single();
+    }
+
+    /** V491: the resets of the student's registration for the semester, newest first */
+    List<Map<String, Object>> resets(UUID student, String session, int semester) {
+        return jdbc.sql("""
+                SELECT reset_at, previous_status, course_count, units, source FROM registration.registration_reset
+                 WHERE student_id = :st AND session = :s AND semester = :m ORDER BY reset_at DESC LIMIT 10
+                """).param("st", student).param("s", session).param("m", semester).query().listOfRows();
+    }
+
+    /** V491: what holds the registration for review under automatic approval, or null */
+    String reviewReason(UUID student, String session, int semester) {
+        return jdbc.sql("""
+                SELECT ar.reason FROM registration.approval_review ar JOIN registration.course_registration r ON r.id = ar.registration_id
+                 WHERE r.student_id = :st AND r.session = :s AND r.semester = :m AND ar.cleared_at IS NULL
+                """).param("st", student).param("s", session).param("m", semester).query(String.class).optional().orElse(null);
+    }
+
+    /** V491: the student's examination card issued once more */
+    void recordExamCard(UUID student, String session, int semester) {
+        jdbc.sql("SELECT registration.record_exam_card(:st, :s, :m)").param("st", student).param("s", session).param("m", semester).query().listOfRows();
+    }
+
     Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
         return jdbc.sql("""
-                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,
+                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, r.approval_mode, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,

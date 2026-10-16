@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { loadStudent } from "../load";
 
 export const dynamic = "force-dynamic";
-import type { Docket } from "@/lib/student-portal";
+import type { Docket, RegistrationView } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { Exams } from "../Screens5";
 
@@ -13,6 +13,17 @@ export default async function Page() {
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/exams" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const d = await api<Docket>("/api/v1/me/docket");
+  // V491: the registration of the semester open now — its examination card is offered as soon as it is approved
+  let current: RegistrationView | null = null;
+  if (d.ok) {
+    const first = await api<RegistrationView>(`/api/v1/me/registration?session=${encodeURIComponent(d.data.session)}&semester=1`);
+    current = first.ok ? first.data : null;
+    const open = current?.openSemester ?? 1;
+    if (current && open > 1) {
+      const now = await api<RegistrationView>(`/api/v1/me/registration?session=${encodeURIComponent(d.data.session)}&semester=${open}`);
+      current = now.ok && now.data.registration ? now.data : current;
+    }
+  }
   // a live subtitle for the header — the exam sitting the examination card actually shows, not a fixed month
   let sub: string | undefined;
   if (d.ok) {
@@ -24,7 +35,7 @@ export default async function Page() {
   }
   return (
     <Shell route="s/exams" me={loaded.me} sub={sub}>
-      {d.ok ? <Exams d={d.data} s={loaded.student} /> : <ProblemNotice problem={d.problem} />}
+      {d.ok ? <Exams d={d.data} s={loaded.student} current={current} /> : <ProblemNotice problem={d.problem} />}
     </Shell>
   );
 }

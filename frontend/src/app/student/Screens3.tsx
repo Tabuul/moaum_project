@@ -12,7 +12,9 @@ import { useState } from "react";
 import type { Me, RegistrationView } from "@/lib/student-portal";
 import { semesterName, semesterText } from "@/lib/student-portal";
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
-import { Gate, Gates, Passport, Row } from "@/components/proto/blocks";
+import { Gate, Gates, Modal, Passport, Row } from "@/components/proto/blocks";
+import { notify } from "@/components/proto/Toast";
+import { reasonWords } from "@/lib/registration-approval";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 
@@ -51,6 +53,9 @@ function byOrder<T extends { kind?: string; entryType?: string; courseCode?: str
 export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
+  // V491: where the Head's approval is suspended, a registration that passes the rules is approved on submission
+  const auto = v.approval?.mode === "AUTO_APPROVAL";
+  const [askReset, setAskReset] = useState(false);
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
   const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
@@ -181,15 +186,62 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         </Note>
       ) : null}
       {locked ? (
-        <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
-          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <LinkBtn kind="primary" href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`}>Course form</LinkBtn> : null}>
-          {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Head of Department for approval; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
+        reg!.status === "SUBMITTED" && auto && v.reviewReason ? (
+          <Note kind="bad" title="REGISTRATION REQUIRES REVIEW">
+            {reasonWords(v.reviewReason)}. Your registration was submitted ({reg!.units} units) and is held until this is put right; the Academic Office checks it again
+            {v.reset?.allowed ? ", or reset it below and register again" : ""}.
+          </Note>
+        ) : (
+        <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"}
+          title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? (reg!.approval_mode === "AUTO" ? `REGISTRATION SUCCESSFUL — STATUS: APPROVED (${onDay(reg!.approved_at)})` : `Approved on ${onDay(reg!.approved_at)}`)
+            : auto ? `Submitted on ${onDay(reg!.submitted_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
+          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <span className="row row--inline row--tight">
+            <LinkBtn kind="primary" href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`}>Course form</LinkBtn>
+            {v.approval?.card_on_approval !== false ? <LinkBtn kind="secondary" href="/student/exams">Examination card</LinkBtn> : null}
+          </span> : null}>
+          {reg!.units} units. {reg!.status === "SUBMITTED" ? (auto ? "It is being checked against the registration rules." : "It goes to your Head of Department for approval; a return comes back here with the reason.")
+            : reg!.approval_mode === "AUTO" ? "Your registration passed every registration rule and was approved automatically; your examination card is on Examinations once the Bursary clears you for the examination."
+            : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
+        )
       ) : reg?.status === "RETURNED" ? (
         <Note kind="bad" title="Returned to you">
           {reg.returned_comment ? <><b>Your Head of Department&rsquo;s reason:</b> {reg.returned_comment}<br /></> : null}
           Change your registration and submit it again.
         </Note>
+      ) : null}
+
+      {reg && reg.status !== "DRAFT" && v.reset?.allowed ? (
+        <Panel title="CURRENT COURSE REGISTRATION" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg.units} units`}>
+          <PBody>
+            <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <span className="sub2 grow">Courses brought over from the old portal, or chosen in error? Clear this semester&rsquo;s registration and choose your courses again. Your carryovers stay; your results, payments and earlier semesters are not touched.</span>
+              <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(true)}>RESET COURSE REGISTRATION</Btn>
+            </div>
+            {v.reset.history.length ? <div className="sub2 mt-1">Reset {v.reset.history.length} time{v.reset.history.length === 1 ? "" : "s"} this semester; last on {onDay(v.reset.history[0].reset_at)}.</div> : null}
+          </PBody>
+        </Panel>
+      ) : null}
+      {askReset && reg ? (
+        <Modal title="RESET COURSE REGISTRATION?" sub="This will remove your current editable course registration for this session/semester and allow you to register your courses again."
+          onClose={() => { if (busy === null) setAskReset(false); }}
+          foot={<>
+            <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(false)}>CANCEL</Btn>
+            <Btn kind="urgent" busy={busy === "reset"} busyLabel="Resetting registration..." onClick={async () => {
+              const j = await act("reset", "POST", "/me/registration/reset", { session: v.session, semester: v.semester, reason: "Reset by the student to register the courses again" }, "Course registration reset by the student", "");
+              if (j) { setAskReset(false); notify("Registration cleared. Select your courses and submit again."); }
+            }}>RESET AND RE-REGISTER</Btn>
+          </>}>
+          <div className="grid grid--2">
+            <div className="kv"><span className="k">Academic session</span><span className="v tnum">{v.session}</span></div>
+            <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
+            <div className="kv"><span className="k">Student</span><span className="v">{s.name}</span></div>
+            <div className="kv"><span className="k">Programme</span><span className="v">{s.programme}</span></div>
+            <div className="kv"><span className="k">Level</span><span className="v tnum">{v.level} Level</span></div>
+            <div className="kv"><span className="k">Current courses</span><span className="v tnum">{registered.length} ({reg.units} units)</span></div>
+          </div>
+          <p className="sub2" style={{ marginBottom: 0 }}>Your carryover courses stay on the registration. Your results, payments, GST/EPS entitlement and earlier semesters are not changed.</p>
+        </Modal>
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
@@ -298,8 +350,8 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {!locked ? (
         <div className="row">
           <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student")}>{busy === "save" ? "Saving…" : "Save the draft"}</Btn>
-          <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student"); }}>{busy === "submit" ? "Submitting…" : "Submit for approval"}</Btn>
-          <span className="sub2">Goes to your Head of Department for approval</span>
+          <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) { const j = await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student", ""); if (j) notify(j.result === "approved" ? "REGISTRATION SUCCESSFUL — STATUS: APPROVED" : "Course registration submitted"); } }}>{busy === "submit" ? "Submitting registration…" : busy === "save" ? "Registering…" : auto ? "SUBMIT COURSE REGISTRATION" : "Submit for approval"}</Btn>
+          <span className="sub2">{auto ? "Approved at once when it passes the registration rules" : "Goes to your Head of Department for approval"}</span>
         </div>
       ) : null}
     </>
@@ -326,13 +378,14 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return (
       <Note kind="info" title="The course form is issued when your registration is approved" action={<LinkBtn kind="primary" href="/student/register">Course registration</LinkBtn>}>
-        {reg ? `Your registration is ${reg.status.toLowerCase()}.` : "You have not registered for this semester yet."} The form prints what the Head of Department approved, and nothing else.
+        {reg ? `Your registration is ${reg.status.toLowerCase()}.` : "You have not registered for this semester yet."} The form prints the approved registration, and nothing else.
       </Note>
     );
   }
   return (
     <>
-      <Note kind="ok" title={`Approved by your Head of Department on ${onDay(reg.approved_at)}`} />
+      <Note kind="ok" title={reg.approval_mode === "HOD" ? `Approved by your Head of Department on ${onDay(reg.approved_at)}`
+        : reg.approval_mode === "AUTO" ? `Approved automatically on ${onDay(reg.approved_at)}, on the registration rules` : `Approved on ${onDay(reg.approved_at)}`} />
       <div className="doc">
         <div className="doc__head">
           {/* eslint-disable-next-line @next/next/no-img-element */}

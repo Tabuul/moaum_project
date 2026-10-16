@@ -261,9 +261,17 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           <PBody><div className="steps">
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : feesPaidStage ? "Matriculation pending" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
-              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : f.stated === false ? (s.entryMode === "CCE" ? "Waits on the Bursary's CCE school fees" : "Waits on the Bursary's fees for the session") : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
-            <Step state="todo" title="Examination card" sub="Available after approval" />
+              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : f.stated === false ? (s.entryMode === "CCE" ? "Waits on the Bursary's CCE school fees" : "Waits on the Bursary's fees for the session") : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
+            <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : "todo"} title="Examination card"
+              sub={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "Available on Examinations once the Bursary clears you" : "Available after approval"} />
           </div>
+          {reg?.status === "APPROVED" || reg?.status === "LOCKED" ? (
+            <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
+              <span className="sub2">Course registration: <b>Approved</b></span>
+              <LinkBtn kind="primary" size="sm" href="/student/exams">VIEW EXAM CARD</LinkBtn>
+              <LinkBtn kind="ghost" size="sm" href="/student/register">VIEW REGISTRATION</LinkBtn>
+            </div>
+          ) : null}
           {s.windows ? (
             <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
               <span className="sub2">School fees:</span><Pil kind={s.windows.schoolFees.state === "OPEN" ? (s.windows.schoolFees.phase === "LATE" ? "warn" : "ok") : "bad"}>{s.windows.schoolFees.state === "OPEN" ? (s.windows.schoolFees.phase === "LATE" ? "LATE PAYMENT" : "OPEN") : s.windows.schoolFees.state}</Pil>

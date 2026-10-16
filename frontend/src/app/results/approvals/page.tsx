@@ -24,9 +24,12 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const registrations = departmental
     ? await api<RegistrationRow[]>(`/api/v1/registration/course-registrations?session=${encodeURIComponent(scope.session)}&semester=0${scope.dept ? `&dept=${encodeURIComponent(scope.dept)}` : ""}&status=SUBMITTED`)
     : null;
+  // V491: whether the session's course registration is approved automatically (the Head of Department's approval suspended)
+  const rule = departmental ? await api<{ mode: string }>(`/api/v1/registration/approval/rule?session=${encodeURIComponent(scope.session)}&semester=1`) : null;
   return (
     <Shell route="t/approvals" me={me.ok ? me.data : null}>
-      {registrations && registrations.ok ? <RegistrationApprovals rows={registrations.data} session={scope.session} semester={0} actingOffice={office} /> : null}
+      {registrations && registrations.ok ? <RegistrationApprovals rows={registrations.data} session={scope.session} semester={0} actingOffice={office}
+        auto={!!rule && rule.ok && rule.data.mode === "AUTO_APPROVAL"} /> : null}
       {listing.ok ? (
         <Approvals
           scope={scope}

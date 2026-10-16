@@ -110,7 +110,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         </Note>
       ) : !registered && sem ? (
         <Note kind="info" title={reg ? `Complete your registration for ${pg?.session ?? s.session}` : `Register your courses for ${SEM[Number(sem.number)]?.toLowerCase() ?? "this semester"}`} action={<LinkBtn kind="primary" href="/student/register">Course Registration</LinkBtn>}>
-          Your Head of Department approves it.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
+          Submit it once it is complete.{sem.registration_closes ? ` Registration closes ${fmtDay(sem.registration_closes)}.` : ""} {feeLine}
         </Note>
       ) : step ? (
         <Note kind={step[2]} title={step[0]} action={<LinkBtn kind="ghost" href="/student/research">Research &amp; Thesis</LinkBtn>}>
