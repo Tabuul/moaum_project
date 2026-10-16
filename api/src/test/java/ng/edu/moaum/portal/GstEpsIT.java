@@ -62,8 +62,14 @@ class GstEpsIT {
         int n = new Random().nextInt(9000) + 1000;
         s = it.student("ZZGST" + n, PROGRAMME, "MOAUM/ADM/10/" + String.format("%06d", n), "MOAUM/GST/10/" + n, 100);
         student = TestTokens.token(s, List.of("student"));
-        gstCode = "GST " + (700 + n % 299);
-        entCode = "ENT " + (700 + n % 299);
+        // a pair of course codes no earlier test or run holds: one left by another test (passed to another office, or bound
+        // elsewhere) once put the run's EPS course on the GST desk
+        int c = 700 + n % 299;
+        for (int tries = 0; tries < 299; tries++, c = 700 + (c - 700 + 1) % 299) {
+            if (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code IN (:g, :e)").param("g", "GST " + c).param("e", "ENT " + c).query(Long.class).single() == 0) break;
+        }
+        gstCode = "GST " + c;
+        entCode = "ENT " + c;
         gstOffering = UUID.randomUUID();
         entOffering = UUID.randomUUID();
         it.db(() -> {

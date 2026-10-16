@@ -270,8 +270,19 @@ class VerifyController {
                 """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
 
         String photo = photo(sid, row.get("passport_id"));
+        // V503: a genuine card is valid only while the card's own rule holds (registration.exam_card_state: an approved
+        // registration carrying a course, the Bursary's clearance not refused, the card released) — as the GST & EPS permit's QR
+        Map<String, Object> state = jdbc.sql("SELECT (st->>'available')::boolean AS available, st->>'code' AS code, st->>'reason' AS reason"
+                + " FROM (SELECT registration.exam_card_state(:s, :session, :sem) AS st) x")
+                .param("s", sid).param("session", session).param("sem", semester).query().singleRow();
+        boolean valid = Boolean.TRUE.equals(state.get("available"));
 
         out.put("genuine", true);
+        out.put("status", valid ? "VALID" : "NOT_VALID");
+        if (!valid) {
+            out.put("code", state.get("code"));
+            out.put("reason", state.get("reason"));
+        }
         out.put("name", row.get("name"));
         out.put("matricNo", row.get("matric_no"));
         out.put("programme", row.get("programme"));

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -50,6 +51,13 @@ class SupportResolutionIT {
     UUID cpo, senior, student, outside;
     String cpoTok, seniorTok, headTok;
     final Map<String, UUID> offering = new HashMap<>();
+
+    /** the session's fee lines this test states, taken away after it: a planned session with fees stated is the session a later
+     *  test's student reads by default (StudentPortalIT, PortalWindowsIT) */
+    @AfterEach
+    void takeAwayFeeLines() {
+        if (it != null) it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", S).update());
+    }
 
     @BeforeEach
     void setUp() {

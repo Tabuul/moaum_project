@@ -9,6 +9,8 @@ interface Course { course_code: string; title: string; units: number; entry_type
 interface ExamVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; cleared?: boolean | null; photo?: string | null; courses?: Course[];
+  /** V503: VALID while the card's own rule holds; NOT_VALID with the reason when the card may not be used now */
+  status?: "VALID" | "NOT_VALID"; reason?: string | null;
 }
 
 /** /verify/exam?m=&s=&sem=&c= — the public verification of a student's examination card.
@@ -21,6 +23,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const r = await api<ExamVerify>(`/api/v1/verify/exam?matric=${encodeURIComponent(m)}&session=${encodeURIComponent(s)}&semester=${encodeURIComponent(sem)}&c=${encodeURIComponent(c)}`);
   const v = r.ok ? r.data : { genuine: false };
   const ok = v.genuine && !v.limited;
+  const valid = ok && v.status !== "NOT_VALID";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
@@ -36,10 +39,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
         <div className="card__body">
           {v.limited ? <LegacyNote document="examination card" number={v.number} session={v.session} semester={v.semester} /> : (
-          <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine card — this is the University's record" : "Not verified"}>
-              {ok
+          <Note kind={valid ? "ok" : "bad"} title={valid ? "Valid card — this is the University's record" : ok ? "Not valid now" : "Not verified"}>
+              {valid
                 ? "Check that the face below matches the candidate, and the courses match the card in hand."
-                : "No examination card matches this code. Treat the card as not genuine, and refuse admission."}
+                : ok
+                  ? `This card was issued by the University, but it may not be used now.${v.reason ? ` ${v.reason}` : ""} Refuse admission and refer the candidate to the Examinations Office.`
+                  : "No examination card matches this code. Treat the card as not genuine, and refuse admission."}
             </Note>
           )}
 

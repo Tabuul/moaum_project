@@ -229,10 +229,16 @@ class RegistrationApprovalController {
             case "DRAFT" -> "v.status = 'DRAFT'";
             default -> "(v.status <> 'DRAFT' OR v.courses > 0)";
         };
-        int sz = Math.max(1, Math.min(size, 200)), pg = Math.max(0, page);
+        // a screen's page is 50; an export asks for up to 5,000 at once
+        int sz = Math.max(1, Math.min(size, 5000)), pg = Math.max(0, page);
         String term = q == null || q.isBlank() ? null : "%" + q.trim().toUpperCase().replace("%", "") + "%";
-        List<Map<String, Object>> rows = jdbc.sql("SELECT count(*) OVER () AS total_rows, v.* FROM registration.approval_overview(:s, :m) v WHERE " + filter + " AND " + SEARCH
-                        + " ORDER BY v.full_name, v.semester LIMIT :n OFFSET :o")
+        // V503: each registration of the page with the load that binds its student (registration.unit_rule: the curriculum's
+        // minimum, the level's maximum, a SIWES or CCE load) and the units it carries — worked out for the page's rows only
+        List<Map<String, Object>> rows = jdbc.sql("SELECT p.*, u.curriculum, u.basis AS load_basis, u.min_units, u.max_units, registration.units_of(p.registration_id) AS units"
+                        + " FROM (SELECT count(*) OVER () AS total_rows, v.* FROM registration.approval_overview(:s, :m) v WHERE " + filter + " AND " + SEARCH
+                        + " ORDER BY v.full_name, v.semester LIMIT :n OFFSET :o) p"
+                        + " LEFT JOIN LATERAL registration.unit_rule(p.student_id, p.level, p.session, p.semester) u ON true"
+                        + " ORDER BY p.full_name, p.semester")
                 .param("s", session(session)).param("m", semester(semester), Types.INTEGER).param("q", term, Types.VARCHAR).param("n", sz).param("o", (long) pg * sz)
                 .query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();

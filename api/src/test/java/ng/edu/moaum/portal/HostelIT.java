@@ -67,7 +67,14 @@ class HostelIT {
 
     /** an invented student of the programme with a contact so notices queue; a sex, a level, a status */
     private UUID student(String surname, String sex, int level) {
-        UUID id = it.student(surname, "C00023", "MOAUM/ADM/96/" + String.format("%06d", new Random().nextInt(999_999)), "MOAUM/HS/96/" + String.format("%04d", new Random().nextInt(9999)), level);
+        // numbers no student holds yet: four random digits once drew another student's matriculation number
+        String adm, mat;
+        int tries = 0;
+        do {
+            adm = "MOAUM/ADM/96/" + String.format("%06d", new Random().nextInt(999_999));
+            mat = "MOAUM/HS/96/" + String.format("%04d", new Random().nextInt(9999));
+        } while (++tries < 100 && jdbc.sql("SELECT count(*) FROM people.student WHERE matric_no = :m OR admission_no = :a").param("m", mat).param("a", adm).query(Long.class).single() > 0);
+        UUID id = it.student(surname, "C00023", adm, mat, level);
         it.db(() -> {
             jdbc.sql("UPDATE people.student SET sex = :x, current_level = :l WHERE id = :id").param("x", sex).param("l", level).param("id", id).update();
             return jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (:s, '08011113333', :e, now()) ON CONFLICT (student_id) DO NOTHING").param("s", id).param("e", surname.toLowerCase() + "@example.com").update();

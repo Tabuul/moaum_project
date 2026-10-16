@@ -718,7 +718,10 @@ public class StudentPortalService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         boolean inForce = repo.schemeInForce();
-        Boolean cleared = inForce ? repo.clears(id, session, "EXAMINATION") : null;
+        // V503: the Bursary's answer as the examination card and the GST & EPS permit read it (finance.clears_or_null): refused
+        // (false) whenever the clearance refuses — also with no scheme in force when no fee is stated — and unknown (null) only
+        // where no scheme says what a payment releases
+        Boolean cleared = repo.clearsOrNull(id, session, "EXAMINATION");
         String schemeProblem = inForce ? null : "No clearance scheme is in force yet; the Bursar states it.";
         out.put("clearsExamination", cleared);
         out.put("schemeProblem", schemeProblem);

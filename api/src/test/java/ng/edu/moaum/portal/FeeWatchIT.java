@@ -79,6 +79,8 @@ class FeeWatchIT {
     @AfterEach
     void tearDown() {
         it.db(() -> jdbc.sql("DELETE FROM finance.faculty_fee_source WHERE faculty_code IN (:a, :b)").param("a", fa).param("b", fb).update());
+        // the session's fee lines too: a planned session with fees stated is the session a later test's student reads by default
+        it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SES).update());
     }
 
     private void line(String faculty, int semester, int amount) {

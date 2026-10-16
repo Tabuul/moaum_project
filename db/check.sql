@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 342
+\set EXPECTED 343
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15747,6 +15747,49 @@ BEGIN
                  AND draft->>'code' = 'EXAM_CARD_NOT_APPROVED' AND empty->>'code' = 'EXAM_CARD_NO_COURSES', false),
         format('unpaid %s | paid %s %s/%s gst %s [%s] permit %s | draft %s | empty %s', unpaid->>'code', paid->>'available', paid->>'count', paid->>'units',
                paid->>'gstEpsCount', codes, permit_n, draft->>'code', empty->>'code'));
+END $$;
+
+
+-- ── V503: the SIWES (attachment) semester ──
+-- Where the SIWES course is the programme's only required course in the semester, the load is exactly that course's units
+-- (minimum and maximum, no probation ceiling), and the other semester keeps the curriculum's minimum; where a required course sits
+-- beside it (a practicum), the semester is an ordinary one with the curriculum's minimum. The block undoes its writes.
+DO $$
+DECLARE ses text := '2395/2396'; st uuid := gen_random_uuid(); prog text; dept text; s2 record; s1 record; lim2 record; prac record; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V503', true);
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer o WHERE o.programme_code = p.code AND o.level = 600)
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/95/950301', 'CHECKV503', 'Siwes', prog, 'UTME', '2020/2021', 100, 600, 'ADMITTED');
+        UPDATE people.student SET curriculum_version = 'CCMAS' WHERE id = st;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training)
+        VALUES ('ZQW 601', 'Check Industrial Training', 6, 2, 600, dept, 'Core', 'LIVE', true);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQW 601', prog, 600, 'Core');
+        SELECT * INTO s2 FROM registration.unit_rule(st, 600, ses, 2);
+        SELECT * INTO s1 FROM registration.unit_rule(st, 600, ses, 1);
+        SELECT * INTO lim2 FROM registration.unit_limit(st, 600, ses, 2);
+        -- a required course beside it: a practicum semester, an ordinary one
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+        VALUES ('ZQW 602', 'Check Required Course', 3, 2, 600, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQW 602', prog, 600, 'Core');
+        SELECT * INTO prac FROM registration.unit_rule(st, 600, ses, 2);
+        RAISE EXCEPTION 'the V503 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V503 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V503: the attachment semester (SIWES alone) binds exactly the SIWES course''s units; the other semester, and a practicum beside required courses, keep the curriculum''s minimum',
+        coalesce(s2.basis = 'SIWES' AND s2.min_units = 6 AND s2.max_units = 6 AND s2.probation_max_units IS NULL AND lim2.applies_to = 'SIWES (industrial training)'
+                 AND s1.basis = 'CURRICULUM' AND s1.min_units = 15
+                 AND prac.basis = 'CURRICULUM' AND prac.min_units = 15 AND prac.max_units = (SELECT max_units FROM policy.level_limit WHERE level = 600), false),
+        format('attachment %s %s-%s probation %s (%s) | other semester %s %s | practicum %s %s-%s', s2.basis, s2.min_units, s2.max_units, s2.probation_max_units,
+               lim2.applies_to, s1.basis, s1.min_units, prac.basis, prac.min_units, prac.max_units));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

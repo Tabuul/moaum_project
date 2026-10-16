@@ -35,6 +35,16 @@ export interface OverviewRow {
   faculty_code: string | null; level: number | null; session: string; semester: number; status: string; approval_mode: string | null;
   submitted_at: string | null; approved_at: string | null; review_reason: string | null; resets: number; last_reset_at: string | null;
   reregistered: boolean; card_times: number | null; courses: number;
+  /** V503: the load that binds the student (the curriculum's minimum, the level's maximum, a SIWES or CCE load) and the units carried */
+  curriculum?: string | null; load_basis?: string | null; min_units?: number | null; max_units?: number | null; units?: number | null;
+}
+
+/** where a student's minimum comes from, in the words of the lists */
+export function loadWord(r: Pick<OverviewRow, "curriculum" | "load_basis">): string {
+  if (r.load_basis === "SIWES") return "SIWES";
+  if (r.load_basis === "CCE") return "CCE load";
+  if (r.load_basis === "CURRICULUM" && r.curriculum) return r.curriculum;
+  return "Level";
 }
 
 export const MODE_WORD: Record<ApprovalMode, string> = {

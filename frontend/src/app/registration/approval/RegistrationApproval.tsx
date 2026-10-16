@@ -15,8 +15,9 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
+import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
-  FIGURES, MODE_WORD, reasonWords, semesterWord, type ApprovalMode, type Overview, type OverviewRow, type Rules,
+  FIGURES, MODE_WORD, loadWord, reasonWords, semesterWord, type ApprovalMode, type Overview, type OverviewRow, type Rules,
 } from "@/lib/registration-approval";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -91,6 +92,22 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
   }
 
   const pages = list ? Math.max(1, Math.ceil(list.total / list.size)) : 1;
+
+  // V503: the whole list as the figure filters it (up to 5,000), with each student's curriculum load, for Excel or PDF
+  const HEAD = ["S/N", "Student", "Matriculation No.", "Programme", "Level", "Semester", "Curriculum", "Min CU", "Registered CU", "Max CU", "Status", "Approved by", "Held for review"];
+  async function exportRows(): Promise<(string | number)[][] | null> {
+    const qs = new URLSearchParams({ session, kind, page: "0", size: "5000" });
+    if (semester) qs.set("semester", String(semester));
+    if (q) qs.set("q", q);
+    const r = await fetch(`/api/bff/api/v1/registration/approval/overview/list?${qs.toString()}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+    return (j.rows as OverviewRow[]).map((x, i) => [i + 1, x.full_name, x.matric_no ?? "", x.programme ?? "", x.level ?? "", x.semester, loadWord(x),
+      x.min_units ?? "", x.units ?? "", x.max_units ?? "", x.status,
+      x.approval_mode === "AUTO" ? "Automatic" : x.approval_mode === "HOD" ? "Head of Department" : "", x.review_reason ? reasonWords(x.review_reason) : ""]);
+  }
+  const listTitle = `Course Registrations — ${FIGURES.find((f) => f.kind === kind)?.label ?? "All"}`;
+  const listSub = `${session}${semester ? ` · ${semesterWord(semester)}` : ""}`;
   const auto = rule?.mode === "AUTO_APPROVAL";
   return (
     <>
@@ -179,19 +196,31 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       {list ? (
         <Panel title={FIGURES.find((f) => f.kind === list.kind)?.label ?? "Registrations"} right={`${vz(list.total)} · page ${list.page + 1} of ${pages}`}>
           <PBody>
-            <form className="row row--inline" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); nav({ q: search.trim() }); }}>
-              <input className="ctl" aria-label="Search by name or matriculation number" placeholder="Name or matriculation number" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <Btn kind="ghost" type="submit">Search</Btn>
-            </form>
+            <div className="row row--between" style={{ flexWrap: "wrap", gap: 8 }}>
+              <form className="row row--inline" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); nav({ q: search.trim() }); }}>
+                <input className="ctl" aria-label="Search by name or matriculation number" placeholder="Name or matriculation number" value={search} onChange={(e) => setSearch(e.target.value)} />
+                <Btn kind="ghost" type="submit">Search</Btn>
+              </form>
+              <span className="row row--inline row--tight">
+                <Btn kind="secondary" size="sm" disabled={!list.total} onClick={async () => { const rows = await exportRows(); if (rows) downloadBlob(await brandedXlsx(listTitle, HEAD, rows, { sheetName: "Registrations", serial: docSerial("REG"), sub: listSub }), "course-registrations.xlsx"); }}>Excel</Btn>
+                <Btn kind="ghost" size="sm" disabled={!list.total} onClick={async () => { const rows = await exportRows(); if (rows) brandedPrint(listTitle, listSub, HEAD, rows, docSerial("REG")); }}>PDF</Btn>
+              </span>
+            </div>
+            {list.total > 5000 ? <div className="sub2 mt-1">Excel and PDF carry the first 5,000 of {vz(list.total)}; narrow the list by semester or search for the rest.</div> : null}
           </PBody>
           {list.rows.length ? (
-            <DTable pageSize={0} cols={["S/N|num", "Student", "Programme", "Level|mid", "Semester|mid", "Status|mid", "Approved by", "Held for review", "Resets|mid", "Card|mid", "|num"]}
+            <DTable pageSize={0} cols={["S/N|num", "Student", "Programme", "Level|mid", "Semester|mid", "Curriculum|mid", "Units|num", "Status|mid", "Approved by", "Held for review", "Resets|mid", "Card|mid", "|num"]}
               rows={list.rows.map((r, i) => [
                 <span key="n" className="tnum sub2">{list.page * list.size + i + 1}</span>,
                 <span key="s"><Link className="lnk" href={`/students/${r.student_id}`}>{r.full_name}</Link><div className="sub2 tnum">{r.matric_no ?? ""}</div></span>,
                 <span key="p" className="sub2">{r.programme ?? "—"}</span>,
                 <span key="l" className="tnum">{r.level ?? "—"}</span>,
                 <span key="m" className="tnum">{r.semester}</span>,
+                <span key="cu" className="sub2">{loadWord(r)}</span>,
+                <span key="u" className="tnum">
+                  <span className={r.units != null && r.min_units != null && r.units < r.min_units ? "ink-red b600" : undefined}>{r.units ?? "—"}</span>
+                  {r.min_units != null ? <div className="sub2">{r.min_units}–{r.max_units ?? "—"}</div> : null}
+                </span>,
                 <Pil key="st" kind={r.status === "APPROVED" || r.status === "LOCKED" ? "ok" : r.status === "SUBMITTED" ? "warn" : "grey"}>{r.status}</Pil>,
                 <span key="a" className="sub2">{r.approval_mode === "AUTO" ? "Automatic" : r.approval_mode === "HOD" ? "Head of Department" : r.status === "APPROVED" || r.status === "LOCKED" ? "Earlier approval" : "—"}</span>,
                 <span key="v" className="sub2">{r.review_reason ? reasonWords(r.review_reason) : "—"}</span>,

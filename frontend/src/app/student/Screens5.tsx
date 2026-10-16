@@ -120,8 +120,9 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
   const shownCards = cards.filter((c) => c.registration || c.available);
   return (
     <>
-      {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
-        : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
+      {/* V503: the same answer the card and the permit read — withheld only when the Bursary refuses */}
+      {withheld ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
+        : d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
           : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
       {shownCards.map((card) => (
         <Panel key={`card-${card.session}-${card.semester}`} title={`EXAMINATION CARD · ${card.session} · ${semesterName(card.semester)} semester`} right={examCardStatusLabel(card)}>

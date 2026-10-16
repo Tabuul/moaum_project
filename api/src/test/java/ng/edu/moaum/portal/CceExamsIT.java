@@ -102,6 +102,9 @@ class CceExamsIT {
         ok(it.call(academic, HttpMethod.PUT, "/api/v1/cce/session-mapping", Map.of("offset", -1, "override", SESSION, "reason", "integration test: the CCE session " + SESSION)));
         ok(it.call(academic, HttpMethod.PUT, "/api/v1/cce/programmes/" + PROGRAMME, Map.of("active", true)));
         UUID cceStudent = UUID.randomUUID();
+        // the lecturer holds the department's lecturer post before the class is given to them — on a fresh database no earlier
+        // test has given it (it.officer makes the same person, ZZ-LECTURER-MTC, and posts them)
+        it.officer("lecturer", "department", "MTC");
         UUID lecturerId = it.person("ZZ-LECTURER-MTC", "ZZLECTURERMTC");
         String dept = it.db(() -> jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single());
         UUID ftClass = it.db(() -> {
