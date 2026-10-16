@@ -30,7 +30,8 @@ export default async function RegistrationApprovalPage({ searchParams }: { searc
         : list && !list.ok ? <ProblemNotice problem={list.problem} />
         : <RegistrationApproval key={`${session}|${semester ?? ""}`} rules={rules.data} session={session} semester={semester} kind={kind} q={q}
             overview={overview && overview.ok ? overview.data : null} list={list && list.ok ? list.data : null}
-            mayChange={me.ok && ["academic", "registrar", "dregistrar", "ict", "super"].includes(me.data.activeOffice ?? "")} />}
+            mayChange={me.ok && ["academic", "registrar", "dregistrar", "ict", "super"].includes(me.data.activeOffice ?? "")}
+            mayDecide={me.ok && ["academic", "registrar", "dregistrar", "super"].includes(me.data.activeOffice ?? "")} />}
     </Shell>
   );
 }

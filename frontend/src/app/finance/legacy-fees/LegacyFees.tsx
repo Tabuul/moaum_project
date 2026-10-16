@@ -6,8 +6,7 @@ import { notifyProblem } from "@/components/proto/Toast";
  *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only.
  *  V498: the one way in for old payments (Payment History Upload is retired): the old portal's payment number tells one
  *  payment from another, the payments the retired screen recorded twice are listed and withdrawn, and the old payments are
- *  reconciled against the fee setup. V502: a payment the retired screen recorded under its number is taken over when the
- *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. */
+ *  reconciled against the fee setup. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
@@ -18,7 +17,6 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
 import { OldFeesDoubles } from "./OldFeesDoubles";
 import { OldFeesMislabelled } from "./OldFeesMislabelled";
-import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
 const MAY = ["bursar", "super", "admin"];
 
@@ -161,7 +159,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         job.totals.rows += c.rows ?? 0; job.totals.cleared += c.cleared ?? 0;
         job.totals.no_student += c.no_student ?? 0; job.totals.no_due += c.no_due ?? 0; job.totals.duplicates += c.duplicates ?? 0;
         job.totals.corrected += c.corrected ?? 0; job.totals.undated += c.undated ?? 0;
-        job.totals.matched += c.matched ?? 0; job.totals.separate += c.separate ?? 0; job.totals.taken_over += c.taken_over ?? 0;
+        job.totals.matched += c.matched ?? 0; job.totals.separate += c.separate ?? 0;
         if (c.duplicate_sample) job.sample.push(...c.duplicate_sample.split(", "));
         job.at += batch.length;
       }
@@ -218,7 +216,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
   function upload() {
     if (!preview) return;
-    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0, taken_over: 0 }, sample: [] };
+    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0 }, sample: [] };
     void run();
   }
 
@@ -230,8 +228,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         school fees, any other item does not clear school-fee arrears. The old portal&rsquo;s <b>payment number</b> (payref) tells one
         payment from another: a make-up or a second part-payment in the same semester is recorded beside the first, and a number already
         on record is skipped, never overwritten, so loading the same export again is safe. This is the one way in for old payments.
-        Payment History Upload is retired: a payment it recorded under its number is taken over here when the export names it, recorded
-        with its item, semester and the day paid.
+        Payment History Upload is retired.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
 
@@ -271,7 +268,6 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
             ["Nothing to settle", String(result.no_due ?? 0), null, "No amount and no fee schedule"],
             ["Already on record", String((result.duplicates ?? 0) + (result.matched ?? 0)), null, `Skipped, not overwritten${result.matched ? `; ${result.matched} given their payment number` : ""}`],
             ["Added beside another", String(result.separate ?? 0), (result.separate ?? 0) ? "var(--green-ink)" : null, "A make-up or second part-payment in a semester already on record"],
-            ["Taken over", String(result.taken_over ?? 0), (result.taken_over ?? 0) ? "var(--green-ink)" : null, "Recorded by Payment History Upload: now with its item, semester and day"],
             ["Corrected", String(result.corrected ?? 0), (result.corrected ?? 0) ? "var(--green-ink)" : null, "Date, semester or purpose fixed on a record already imported"],
             ["No usable date", String(result.undated ?? 0), (result.undated ?? 0) ? "var(--red-ink)" : null, "Loaded, dated today"],
           ]} />
@@ -280,7 +276,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               {result.duplicates} row{result.duplicates === 1 ? "" : "s"} already recorded (the same payment number, or the same payment again); nothing changed. First: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
             </Note>
           ) : null}
-          <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.taken_over ?? 0) > 0 ? ` ${result.taken_over} recorded by Payment History Upload taken over, each once, with its item and semester; its ledger posting is made again under that item.` : ""}{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
+          <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
         </>
       ) : null}
 
@@ -311,8 +307,6 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
 
       <OldFeesDoubles may={may} tick={changed} onChanged={bump} />
-
-      <OldFeesPaymentHistoryLeft tick={changed} />
 
       <Panel title="Start over" right="Delete what this import has loaded, then load it again">
         <PBody>

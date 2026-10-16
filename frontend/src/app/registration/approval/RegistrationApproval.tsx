@@ -14,18 +14,18 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field } from "@/components/proto/blocks";
+import { Field, Modal } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
-  FIGURES, MODE_WORD, loadWord, reasonWords, semesterWord, type ApprovalMode, type Overview, type OverviewRow, type Rules,
+  FIGURES, LIST_LABELS, MODE_WORD, loadWord, reasonWords, semesterWord, type ApprovalMode, type Overview, type OverviewRow, type Rules,
 } from "@/lib/registration-approval";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const vz = (n: number | null | undefined) => Number(n ?? 0).toLocaleString("en-GB");
 
-export function RegistrationApproval({ rules, session, semester, kind, q, overview, list, mayChange }: {
+export function RegistrationApproval({ rules, session, semester, kind, q, overview, list, mayChange, mayDecide = false }: {
   rules: Rules; session: string; semester: number | null; kind: string; q: string; overview: Overview | null;
-  list: { kind: string; total: number; page: number; size: number; rows: OverviewRow[] } | null; mayChange: boolean;
+  list: { kind: string; total: number; page: number; size: number; rows: OverviewRow[] } | null; mayChange: boolean; mayDecide?: boolean;
 }) {
   const router = useRouter();
   const go = useQueryNav();
@@ -42,6 +42,12 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
     reset: rule?.allow_student_reset ?? true, card: rule?.card_on_approval ?? true, reason: "",
   });
   const [cards, setCards] = useState<{ available: number; approved: number } | null>(null);
+  // V505: submitted or approved registrations below the minimum that binds the student, and the decision being taken on one
+  const [below, setBelow] = useState<number | null>(null);
+  const [deciding, setDeciding] = useState<{ row: OverviewRow; decision: "ACCEPTED" | "RETURNED" } | null>(null);
+  const [decisionReason, setDecisionReason] = useState("");
+  // each decision taken here reads the figures again (a registration accepted or returned leaves the list)
+  const [decided, setDecided] = useState(0);
   const [search, setSearch] = useState(q);
 
   // the cards the students may print now ask the Bursary's clearance of each one: read after the page, not before it
@@ -52,9 +58,29 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       const r = await fetch(`/api/bff/api/v1/registration/approval/overview/cards?session=${encodeURIComponent(session)}${semester ? `&semester=${semester}` : ""}`, { cache: "no-store", headers: { "X-Background": "1" } });
       const j = r.ok ? await r.json() : null;
       if (alive && j) setCards(j);
+      const b = await fetch(`/api/bff/api/v1/registration/approval/overview/below-minimum?session=${encodeURIComponent(session)}${semester ? `&semester=${semester}` : ""}`, { cache: "no-store", headers: { "X-Background": "1" } });
+      const bj = b.ok ? await b.json() : null;
+      if (alive && bj) setBelow(Number(bj.below_minimum));
     })();
     return () => { alive = false; };
-  }, [session, semester]);
+  }, [session, semester, decided]);
+
+  async function decide() {
+    if (!deciding) return;
+    const { row, decision } = deciding;
+    const r = await fetch(`/api/bff/api/v1/registration/approval/registrations/${row.registration_id}/load-decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Registration below the minimum ${decision === "ACCEPTED" ? "accepted as it stands" : "returned to the student"}: ${decisionReason.trim()}`) },
+      body: JSON.stringify({ decision, reason: decisionReason.trim() }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+    setDeciding(null);
+    setDecisionReason("");
+    setDecided((n) => n + 1);
+    notify(decision === "ACCEPTED" ? "Accepted as it stands." : "Returned to the student, who is told.");
+    router.refresh();
+  }
 
   async function saveRule() {
     const r = await fetch("/api/bff/api/v1/registration/approval/rules", {
@@ -141,6 +167,12 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
               <div className="n tnum" style={f.kind === "REVIEW" && Number(overview[f.key]) > 0 ? { color: "var(--red-ink)" } : undefined}>{vz(overview[f.key] as number)}</div>
             </button>
           ))}
+          <button type="button" className="tile stat-tile" aria-pressed={kind === "BELOW_MINIMUM"} onClick={() => nav({ kind: "BELOW_MINIMUM" })}
+            style={{ textAlign: "left", font: "inherit", border: kind === "BELOW_MINIMUM" ? "2px solid var(--chrome)" : undefined }}>
+            <div className="eyebrow">Below the minimum</div>
+            <div className="n tnum" style={below ? { color: "var(--red-ink)" } : undefined}>{below == null ? "…" : vz(below)}</div>
+            <div className="c">submitted or approved under the curriculum&rsquo;s minimum</div>
+          </button>
           <div className="tile stat-tile">
             <div className="eyebrow">Exam cards available</div>
             <div className="n tnum">{cards ? vz(cards.available) : "…"}</div>
@@ -194,7 +226,7 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       ) : null}
 
       {list ? (
-        <Panel title={FIGURES.find((f) => f.kind === list.kind)?.label ?? "Registrations"} right={`${vz(list.total)} · page ${list.page + 1} of ${pages}`}>
+        <Panel title={FIGURES.find((f) => f.kind === list.kind)?.label ?? LIST_LABELS[list.kind] ?? "Registrations"} right={`${vz(list.total)} · page ${list.page + 1} of ${pages}`}>
           <PBody>
             <div className="row row--between" style={{ flexWrap: "wrap", gap: 8 }}>
               <form className="row row--inline" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); nav({ q: search.trim() }); }}>
@@ -226,7 +258,12 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
                 <span key="v" className="sub2">{r.review_reason ? reasonWords(r.review_reason) : "—"}</span>,
                 <span key="r" className="tnum">{r.resets || "—"}{r.reregistered ? <div className="sub2">registered again</div> : null}</span>,
                 <span key="c" className="tnum">{r.card_times ?? "—"}</span>,
-                r.review_reason && r.status === "SUBMITTED" && mayChange ? <Btn key="x" kind="ghost" size="sm" busyLabel="Checking…" onClick={() => revalidate(r.registration_id)}>Validate again</Btn> : <span key="x" />,
+                list.kind === "BELOW_MINIMUM" && mayDecide && (r.status === "APPROVED" || r.status === "SUBMITTED")
+                  ? <span key="x" className="row row--inline row--tight">
+                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDeciding({ row: r, decision: "ACCEPTED" }); }}>Accept</Btn>
+                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDeciding({ row: r, decision: "RETURNED" }); }}>Return</Btn>
+                    </span>
+                  : r.review_reason && r.status === "SUBMITTED" && mayChange ? <Btn key="x" kind="ghost" size="sm" busyLabel="Checking…" onClick={() => revalidate(r.registration_id)}>Validate again</Btn> : <span key="x" />,
               ])} />
           ) : <PBody><div className="sub2">None.</div></PBody>}
           {pages > 1 ? (
@@ -240,6 +277,22 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       <div className="sub2">A course registration reset keeps what it held on the record (the status, the approval and every course). The student&rsquo;s results, payments,
         GST/EPS entitlement and earlier semesters are never touched. A registration with a mark entered, a locked one, or a closed semester&rsquo;s is not reset.
         A course brought over from the old portal under another code is merged in Course Management, not here.</div>
+      {deciding ? (
+        <Modal title={deciding.decision === "ACCEPTED" ? "ACCEPT AS IT STANDS" : "RETURN TO THE STUDENT"} onClose={() => setDeciding(null)}
+          foot={<><Btn kind="ghost" onClick={() => setDeciding(null)}>Cancel</Btn>
+            <Btn kind="primary" disabled={decisionReason.trim().length < 10} busyLabel="Saving…" onClick={() => decide()}>{deciding.decision === "ACCEPTED" ? "Accept" : "Return"}</Btn></>}>
+          <div className="stack">
+            <div><b>{deciding.row.full_name}</b> · {deciding.row.matric_no ?? ""} · {deciding.row.units ?? "—"} credit units against a minimum of {deciding.row.min_units ?? "—"} ({loadWord(deciding.row)})</div>
+            <div className="sub2">{deciding.decision === "ACCEPTED"
+              ? "The registration stays as it is and leaves the below-minimum list while it carries these units."
+              : "The registration goes back to the student, who is told why, adds courses and submits again. One with a mark entered, or a locked one, is not returned."}</div>
+            <Field id="ra-decision-reason" label="Reason" required hint="Ten characters or more; kept with the decision">
+              <input id="ra-decision-reason" className="ctl" value={decisionReason} maxLength={2000} autoFocus onChange={(e) => setDecisionReason(e.target.value)}
+                placeholder={deciding.decision === "ACCEPTED" ? "e.g. final-year student with only the project left" : "e.g. add the core courses of the semester"} />
+            </Field>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

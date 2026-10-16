@@ -46,7 +46,9 @@ class RegistrationApprovalController {
     static final String SETTERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
     static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     static final Set<String> MODES = Set.of("HOD_APPROVAL_REQUIRED", "AUTO_APPROVAL");
-    static final Set<String> KINDS = Set.of("ALL", "APPROVED", "AUTO_APPROVED", "HOD_APPROVED", "PENDING", "REVIEW", "RESET", "REREGISTERED", "CARDS_ISSUED", "DRAFT");
+    static final Set<String> KINDS = Set.of("ALL", "APPROVED", "AUTO_APPROVED", "HOD_APPROVED", "PENDING", "REVIEW", "RESET", "REREGISTERED", "CARDS_ISSUED", "DRAFT", "BELOW_MINIMUM");
+    /** V505: who decides a registration below the minimum that binds it */
+    static final String LOAD_DECIDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final JdbcClient jdbc;
 
@@ -209,6 +211,29 @@ class RegistrationApprovalController {
                 """).param("s", session(session)).param("m", semester(semester), Types.INTEGER).query().singleRow();
     }
 
+    /** V505: how many submitted or approved registrations carry fewer units than the minimum that binds the student (read after
+     *  the page, as the cards are: it judges each registration under the highest minimum) */
+    @GetMapping("/overview/below-minimum")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> belowMinimum(@RequestParam String session, @RequestParam(required = false) Integer semester) {
+        return jdbc.sql("SELECT count(*) AS below_minimum FROM registration.below_minimum(:s, :m) b WHERE b.status IN ('SUBMITTED', 'APPROVED')")
+                .param("s", session(session)).param("m", semester(semester), Types.INTEGER).query().singleRow();
+    }
+
+    public record LoadDecisionIn(@NotBlank String decision, @NotBlank @Size(min = 10, max = 2000) String reason) {
+    }
+
+    /** V505: a registration below the minimum, ACCEPTED as it stands or RETURNED to the student (who is told), with a reason */
+    @PostMapping("/registrations/{id}/load-decision")
+    @PreAuthorize(LOAD_DECIDERS)
+    @Transactional
+    Map<String, Object> decideLoad(@PathVariable UUID id, @Valid @RequestBody LoadDecisionIn body) {
+        String d = jdbc.sql("SELECT registration.decide_below_minimum(:id, :d, :r)").param("id", id).param("d", body.decision().trim().toUpperCase())
+                .param("r", body.reason().trim()).query(String.class).single();
+        return Map.of("id", id, "decision", d);
+    }
+
     /** the registrations behind a figure, names A–Z, a page at a time */
     @GetMapping("/overview/list")
     @PreAuthorize(READERS)
@@ -227,6 +252,9 @@ class RegistrationApprovalController {
             case "REREGISTERED" -> "v.reregistered";
             case "CARDS_ISSUED" -> "v.card_times IS NOT NULL";
             case "DRAFT" -> "v.status = 'DRAFT'";
+            // V505: submitted or approved registrations below the minimum that binds the student, not yet accepted as they stand (one
+            // returned is with the student, one locked is past deciding)
+            case "BELOW_MINIMUM" -> "v.status IN ('SUBMITTED', 'APPROVED') AND v.registration_id IN (SELECT b.registration_id FROM registration.below_minimum(:s, :m) b)";
             default -> "(v.status <> 'DRAFT' OR v.courses > 0)";
         };
         // a screen's page is 50; an export asks for up to 5,000 at once

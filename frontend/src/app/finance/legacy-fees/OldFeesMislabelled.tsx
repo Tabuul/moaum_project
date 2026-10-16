@@ -1,8 +1,7 @@
 "use client";
 
 /** V498: what earlier uploads recorded under the old portal's payment-item code ("10048 (legacy)" — 10048 is SCHOOL FEES), or
- *  under a label the rules now read otherwise ("GST FEES (legacy)" is the GST fee), or (V502) by the retired Payment History Upload
- *  under the old portal's item name ("SCHOOL FEES"): a paid semester recorded so is not counted.
+ *  under a label the rules now read otherwise ("GST FEES (legacy)" is the GST fee): a paid semester recorded so is not counted.
  *  Listed with what each is, taken as Excel, and put right by the Bursary with a reason — renamed or relabelled so school fees
  *  count, or withdrawn where the same payment is on record under its item; each kept on its register, its ledger posting
  *  reversed so the ledger posts it again under its item, once. */
@@ -95,7 +94,7 @@ export function OldFeesMislabelled({ may, tick: changed = 0, onChanged }: { may:
   const acts = data?.actions ?? {};
   const doable = (acts.RENAME ?? 0) + (acts.RELABEL ?? 0) + (acts.DOUBLE ?? 0);
   return (
-    <Panel title="Recorded under a code" right="Earlier uploads that carried the old portal's payment-item code (10048 is SCHOOL FEES), an old label, or the old portal's item name (Payment History Upload's SCHOOL FEES): a paid semester recorded so is not counted">
+    <Panel title="Recorded under a code" right="Earlier uploads that carried the old portal's payment-item code (10048 is SCHOOL FEES), or an old label: a paid semester recorded so is not counted">
       {said ? <PBody><Note kind="ok" title="Put right">{said} Each one is kept on its register with your reason.</Note></PBody> : null}
       {!data ? <PBody><div className="sub2">{busy === "load" ? "Looking…" : ""}</div></PBody>
         : !data.count ? (

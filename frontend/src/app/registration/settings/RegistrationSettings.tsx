@@ -46,6 +46,8 @@ export function RegistrationSettings({ rules, session, semester, below, mayChang
     Object.fromEntries(rules.inForce.map((f) => [f.curriculum, { value: f.min_units != null ? String(f.min_units) : "", scope: defaultScope(f) }])));
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState("");
+  // V505: before a change is confirmed, the registrations the new minimum would leave below it
+  const [impact, setImpact] = useState<{ toTell: number; approvedKept: number } | null>(null);
 
   const scopeOf = (s: Scope) => ({ session: s === "STANDING" ? null : session, semester: s === "SEMESTER" ? semester : null });
   /** the minimum that the chosen scope holds now: its own row, or nothing yet (the wider rule then applies) */
@@ -57,8 +59,18 @@ export function RegistrationSettings({ rules, session, semester, below, mayChang
   function ask(f: InForce) {
     const d = draft[f.curriculum];
     const sc = scopeOf(d.scope);
+    const next = Number(d.value.trim());
     setReason("");
-    setPending({ kind: "SET", curriculum: f.curriculum, current: heldAt(f.curriculum, d.scope) ?? f.min_units, next: Number(d.value.trim()), ...sc });
+    setImpact(null);
+    setPending({ kind: "SET", curriculum: f.curriculum, current: heldAt(f.curriculum, d.scope) ?? f.min_units, next, ...sc });
+    void (async () => {
+      const qs = new URLSearchParams({ curriculum: f.curriculum, minUnits: String(next) });
+      if (sc.session) qs.set("session", sc.session);
+      if (sc.semester) qs.set("semester", String(sc.semester));
+      const r = await fetch(`/api/bff/api/v1/registration/load/impact?${qs.toString()}`, { cache: "no-store", headers: { "X-Background": "1" } });
+      const j = r.ok ? await r.json() : null;
+      if (j) setImpact({ toTell: Number(j.toTell), approvedKept: Number(j.approvedKept) });
+    })();
   }
 
   async function confirm() {
@@ -74,7 +86,8 @@ export function RegistrationSettings({ rules, session, semester, below, mayChang
     const j = await r.json().catch(() => null);
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     setPending(null);
-    notify("Course registration settings updated successfully.");
+    const told = Number(j?.told ?? 0);
+    notify(`Course registration settings updated successfully.${told ? ` ${told.toLocaleString("en-GB")} student${told === 1 ? " was" : "s were"} told their registration is now short of the minimum.` : ""}`);
     router.refresh();
   }
 
@@ -230,6 +243,12 @@ export function RegistrationSettings({ rules, session, semester, below, mayChang
             <Field id="rs-reason" label="Reason" required hint="Ten characters or more; kept with the change">
               <input id="rs-reason" className="ctl" value={reason} maxLength={2000} autoFocus onChange={(e) => setReason(e.target.value)} placeholder="e.g. Senate approved a higher minimum load from this session" />
             </Field>
+            {pending.kind === "SET" ? (
+              <Note kind={impact && impact.toTell ? "bad" : "info"} title={impact == null ? "Counting who this reaches…" : `${impact.toTell.toLocaleString("en-GB")} registration${impact.toTell === 1 ? "" : "s"} not yet approved would be below ${pending.next} CU`}>
+                {impact == null ? "The registrations this minimum reaches are being counted."
+                  : <>Those students are told once the change is saved, and add courses to reach it (through add and drop where they have already submitted).{impact.approvedKept ? ` ${impact.approvedKept.toLocaleString("en-GB")} registration${impact.approvedKept === 1 ? "" : "s"} approved earlier would also be below it; they stay as they are and appear on the below-minimum list.` : ""}</>}
+              </Note>
+            ) : null}
             <div className="sub2">Registrations already made are not changed. The next submission, add or drop reads the new minimum.</div>
           </div>
         </Modal>

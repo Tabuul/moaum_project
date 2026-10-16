@@ -144,6 +144,7 @@ export const ROUTES: Record<string, string> = {
   "r/college": "/college/dashboard",
   "t/collegepayments": "/college/payments",
   "t/session": "/calendar",
+  "t/examcards": "/registration/exam-cards",   // V505
   "t/examsession": "/examinations/sessions",
   "t/clearance": "/clearance",
   "t/clearancemanage": "/clearance/manage",

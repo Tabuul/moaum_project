@@ -15909,97 +15909,87 @@ BEGIN
                ccarry.category, coalesce(ccarry.refusal, '-'), cgst.category, cgst.added_as, left(coth.refusal, 20), dup, held, kept, approved, dropped, reg_order, menu_order,
                left(coff.refusal, 25), cmenu.category, coalesce(cmenu.refusal, '-')));
 END $$;
--- ── V502. What the retired Payment History Upload recorded, put right. A student whose payments that door recorded its own way:
---          the first semester as "SCHOOL FEES" dated the day of the upload (and posted to the ledger), the GST fee as "School
---          fees <session>", a payment Old Fees History already has, two the export does not name ("SCHOOL FEES", "GST FEES"), and
---          one a refund points at; and an Old Fees History record under a code a refund points at. The export loaded: the first
---          two taken over (their item, semester and day; the ledger posting let go), the repeat left as a double, the one a refund
---          points at left (its payment recorded beside it); the two the export does not name relabelled so they count, then
---          listed as left; the coded record a refund points at relabelled, never renamed; the export again changes nothing.
---          The block undoes its writes ──
+
+-- ── V505: examination cards withheld, registrations below the minimum decided, students told of a new minimum ──
+-- The withheld list gives exactly the card's own code for each approved registration it lists (unpaid: not cleared; no course);
+-- a paid one is not listed. An approved registration below the minimum is accepted (it leaves the below-minimum list) or
+-- returned (RETURNED, the student told); a locked one is refused. A raised minimum is counted before and told after to the
+-- students whose drafts it leaves short. The block undoes its writes.
 DO $$
-DECLARE who uuid := gen_random_uuid(); m uuid := gen_random_uuid(); ses text := '9985/9986'; pa text;
-        mb text := 'MOAUM-LEG-MOAUMCHK859855-9985-9986'; j1 uuid; rows jsonb; first record; again record; done record;
-        taken text; reg text; renamed_m boolean; led text; rev_n int; free_new boolean; mis text; dbl text; left_m text; linked_f boolean; g_purpose text;
-        no_mis boolean; msg text;
+DECLARE ses text := '2396/2397'; sch uuid := gen_random_uuid(); prog text; dept text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+        ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid(); rd uuid := gen_random_uuid(); re uuid := gen_random_uuid();
+        o uuid := gen_random_uuid(); ref text; w_a text; w_b text; w_c text; st_a text; st_c text; agree boolean;
+        below_before int; below_after int; ret text; ret_status text; locked text; impact_draft int; told int; told_again int; notices int; notices_again int; msg text;
 BEGIN
     BEGIN
-        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V505', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2396-10-01', DATE '2397-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/96/950501', 'CHECKV505', 'Unpaid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/96/950502', 'CHECKV505', 'Empty', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (c, 'MOAUM/ADM/96/950503', 'CHECKV505', 'Paid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (d, 'MOAUM/ADM/96/950504', 'CHECKV505', 'Short', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (e, 'MOAUM/ADM/96/950505', 'CHECKV505', 'Draft', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        UPDATE people.student SET curriculum_version = 'CCMAS' WHERE id IN (a, b, c, d, e);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQX 101', 'Check Card Course', 6, 1, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZQX 101', ses, 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (ra, a, ses, 1, 100, 'APPROVED', now(), now()), (rb, b, ses, 1, 100, 'APPROVED', now(), now()), (rc, c, ses, 1, 100, 'APPROVED', now(), now()),
+            (rd, d, ses, 1, 100, 'APPROVED', now(), now()), (re, e, ses, 1, 100, 'DRAFT', NULL, NULL);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES
+            (ra, o, 6, 'CURRENT', 'APPROVED'), (rc, o, 6, 'CURRENT', 'APPROVED'), (rd, o, 6, 'CURRENT', 'APPROVED'), (re, o, 6, 'CURRENT', 'REGISTERED');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V505)', 50000, 100, prog);
+        IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+            INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by) VALUES (sch, 'clearance', 'UNIVERSITY', daterange(current_date - 1, NULL), 'CHECK V505', 'bursar');
+            INSERT INTO policy.clearance_scheme VALUES (sch, true);
+            INSERT INTO policy.clearance_rule SELECT sch, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+        END IF;
         PERFORM set_config('moaum.actor_office', 'bursar', true);
-        PERFORM set_config('moaum.reason', 'check V502', true);
-        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9985-10-01', date '9986-08-31') ON CONFLICT (name) DO NOTHING;
-        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
-        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
-        VALUES (m, 'MOAUM/ADM/85/985501', 'MOAUM/CHK/85/9855', 'ZZCHKV502', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
-        PERFORM finance.legacy_item_codes_set('[{"pcode": 10048, "description": "SCHOOL FEES"}]'::jsonb);
-        -- what the retired door wrote (its channel and note, a receipt of its own, the day of the upload where it could not read one)
-        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
-        SELECT m, ses, v.ref, v.purpose, v.amount, v.day::timestamptz, v.day::timestamptz + interval '1 day', v.day::timestamptz, who, 'MIGRATION', 'Migrated payment history', 'RCT-CHKV502-' || v.tag
-          FROM (VALUES ('PR202602100000001', 'SCHOOL FEES', 50000.00, '2026-10-16', 'A'),
-                       ('PR202602230000002', 'School fees ' || '9985/9986', 4000.00, '2026-10-16', 'B'),
-                       ('PR202603010000003', 'SCHOOL FEES', 20000.00, '2026-10-16', 'C'),
-                       ('MIGR-CHKV502-D', 'SCHOOL FEES', 30000.00, '2026-10-16', 'D'),
-                       ('PR202604040000005', 'GST FEES', 4500.00, '2026-10-16', 'E'),
-                       ('PR202605050000006', 'SCHOOL FEES', 10000.00, '2026-10-16', 'F')) v(ref, purpose, amount, day, tag);
-        -- Old Fees History already has the third payment, under its number; and a record under a code
-        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
-        VALUES (m, ses, mb || '-S2', 'School fees (legacy) · semester 2', 20000.00, '2026-03-01', '2026-03-01', who, 'Legacy', 'LEG-' || mb || '-S2', 'Imported from the old portal · old ref PR202603010000003'),
-               (m, ses, mb || '-S3-10048', '10048 (legacy) · semester 3', 7000.00, '2026-06-01', '2026-06-01', who, 'Legacy', 'LEG-' || mb || '-S3-10048', 'Imported from the old portal');
-        INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PR202603010000003', mb || '-S2', 20000.00);
-        -- a refund points at the sixth and at the coded record
-        INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference)
-        VALUES ('RF-CHKV502-F', m, 'ZZCHKV502', 'check V502', 1000, who, 'PR202605050000006'),
-               ('RF-CHKV502-G', m, 'ZZCHKV502', 'check V502', 1000, who, mb || '-S3-10048');
-        -- the ledger had posted the first as the sync posts a payment
-        SELECT finance.gl_post(date '2026-10-16', 'Fee receipt PR202602100000001', 'AUTO', 'PAYMENT', 'PR202602100000001',
-                   jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 50000, 'narration', 'SCHOOL FEES', 'session', ses),
-                                     jsonb_build_object('account', finance.gl_income_account(finance.payment_category('SCHOOL FEES')), 'credit', 50000, 'narration', 'SCHOOL FEES', 'session', ses)))
-          INTO j1;
-
-        -- the old portal's export, as Old Fees History reads it
-        rows := jsonb_build_array(
-            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'First', 'amount', '50000', 'purpose', '10048', 'paidOn', '2026-02-10', 'payref', 'PR202602100000001'),
-            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'First', 'amount', '4000', 'purpose', 'GST FEES', 'paidOn', '2026-02-23', 'payref', 'PR202602230000002'),
-            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'Second', 'amount', '20000', 'purpose', 'SCHOOL FEES', 'paidOn', '2026-03-01', 'payref', 'PR202603010000003'),
-            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'Second', 'amount', '10000', 'purpose', 'SCHOOL FEES MAKE UP', 'paidOn', '2026-05-05', 'payref', 'PR202605050000006'));
-        SELECT * INTO first FROM finance.import_legacy_payments(rows);
-        taken := (SELECT string_agg(replace(reference, mb, '') || '=' || amount::int || ':' || purpose || ':' || channel || ':' || (confirmed_at AT TIME ZONE 'Africa/Lagos')::date
-                                     || ':' || coalesce((SELECT k.payref FROM finance.legacy_payref k WHERE k.reference = p.reference), '-'), ',' ORDER BY reference COLLATE "C")
-                    FROM finance.payment_reference p WHERE p.student_id = m AND p.reference LIKE mb || '-S1%');
-        reg := (SELECT string_agg(c.old_reference || '>' || replace(c.new_reference, mb, ''), ',' ORDER BY c.old_reference COLLATE "C")
-                  FROM finance.legacy_item_corrected c WHERE c.action = 'TAKEN_OVER' AND c.new_reference LIKE mb || '%');
-        led := (SELECT g.source_type || ':' || g.status || ':' || split_part(g.source_ref, '#', 1) FROM finance.gl_journal g WHERE g.id = j1);
-        rev_n := (SELECT count(*) FROM finance.gl_journal g WHERE g.reverses = j1);
-        free_new := NOT EXISTS (SELECT 1 FROM finance.gl_journal g WHERE g.source_type = 'PAYMENT' AND g.source_ref IN (mb || '-S1', 'PR202602100000001'));
-        dbl := (SELECT string_agg(d.double_reference || '>' || replace(d.kept_reference, mb, '') || coalesce(':' || d.linked, ''), ',' ORDER BY d.double_reference COLLATE "C")
-                  FROM finance.old_payment_doubles() d WHERE d.student_id = m);
-        mis := (SELECT string_agg(replace(x.reference, mb, '') || '>' || x.action || '>' || x.target_purpose, ',' ORDER BY x.reference COLLATE "C")
-                  FROM finance.legacy_mislabelled() x WHERE x.student_id = m);
-        linked_f := finance.payment_reference_linked('PR202605050000006', NULL);
-        SELECT * INTO done FROM finance.put_right_legacy_items('CHECK V502: the retired door''s item names');
-        renamed_m := EXISTS (SELECT 1 FROM finance.legacy_item_corrected c WHERE c.old_reference LIKE mb || '%' AND c.action = 'RENAME');
-        no_mis := NOT EXISTS (SELECT 1 FROM finance.legacy_mislabelled() x WHERE x.student_id = m);
-        g_purpose := (SELECT p.purpose FROM finance.payment_reference p WHERE p.reference = mb || '-S3-10048');
-        left_m := (SELECT string_agg(l.reference || ':' || l.counts_as || ':' || l.purpose || ':' || coalesce(l.number_day::text, '-'), ',' ORDER BY l.reference COLLATE "C")
-                     FROM finance.payment_history_left() l WHERE l.student_id = m);
-        SELECT * INTO again FROM finance.import_legacy_payments(rows);
-        RAISE EXCEPTION 'the V502 check undoes its writes';
+        FOREACH ref IN ARRAY ARRAY[finance.new_purpose_reference(c, ses, 50000, 'School fees ' || ses), finance.new_purpose_reference(d, ses, 50000, 'School fees ' || ses)] LOOP
+            PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V505');
+        END LOOP;
+        -- 1 · the withheld list, as the card's rule says
+        SELECT w.code INTO w_a FROM registration.exam_cards_withheld(ses, 1) w WHERE w.student_id = a;
+        SELECT w.code INTO w_b FROM registration.exam_cards_withheld(ses, 1) w WHERE w.student_id = b;
+        SELECT w.code INTO w_c FROM registration.exam_cards_withheld(ses, 1) w WHERE w.student_id = c;
+        st_a := registration.exam_card_state(a, ses, 1)->>'code';
+        st_c := registration.exam_card_state(c, ses, 1)->>'code';
+        agree := NOT EXISTS (SELECT 1 FROM registration.exam_cards_withheld(ses, 1) w
+                              WHERE w.code IS DISTINCT FROM registration.exam_card_state(w.student_id, ses, 1)->>'code');
+        -- 2 · below the minimum (6 of CCMAS 15): accepted, returned, a locked one refused
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        below_before := (SELECT count(*) FROM registration.below_minimum(ses, 1) x WHERE x.registration_id IN (rc, rd));
+        PERFORM registration.decide_below_minimum(rc, 'ACCEPTED', 'Check: accepted as it stands by the Academic Office');
+        ret := registration.decide_below_minimum(rd, 'RETURNED', 'Check: add courses to reach the minimum');
+        ret_status := (SELECT status FROM registration.course_registration WHERE id = rd);
+        below_after := (SELECT count(*) FROM registration.below_minimum(ses, 1) x WHERE x.registration_id IN (rc, rd));
+        UPDATE registration.course_registration SET status = 'LOCKED' WHERE id = ra;
+        BEGIN PERFORM registration.decide_below_minimum(ra, 'RETURNED', 'Check: a locked registration'); locked := 'DECIDED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; locked := split_part(msg, ':', 1); END;
+        -- 3 · a raised minimum: counted, then told (the draft and the returned one), once for each minimum
+        impact_draft := coalesce((SELECT x.registrations FROM registration.unit_minimum_impact('CCMAS', ses, NULL, 16) x WHERE x.status = 'DRAFT'), 0);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM registration.set_unit_minimum('CCMAS', ses, NULL, 16, 'Check: CCMAS sixteen for the session');
+        told := registration.tell_unit_minimum_change('CCMAS', ses, NULL);
+        notices := (SELECT count(*) FROM platform.notice x WHERE x.about_id IN (d, e) AND x.template_key = 'REG_MIN_UNITS_RAISED');
+        told_again := registration.tell_unit_minimum_change('CCMAS', ses, NULL);
+        notices_again := (SELECT count(*) FROM platform.notice x WHERE x.about_id IN (d, e) AND x.template_key = 'REG_MIN_UNITS_RAISED');
+        RAISE EXCEPTION 'the V505 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
-        IF msg <> 'the V502 check undoes its writes' THEN RAISE; END IF;
+        IF msg <> 'the V505 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V502: Old Fees History takes over what the retired Payment History Upload recorded under the payment number (its item, semester and day; the ledger posting let go), leaves a repeat to the doubles and a record a refund points at alone, relabels what the export does not name so it counts, and never renames a record something points at',
-        coalesce(first.taken_over = 2 AND first.duplicates = 1 AND first.cleared = 1 AND again.taken_over = 0 AND again.duplicates = 4 AND again.cleared = 0
-                 AND taken = '-S1=50000:School fees (legacy) · semester 1:Legacy:2026-02-10:PR202602100000001,-S1-GST=4000:GST fee 9985/9986:Legacy:2026-02-23:PR202602230000002'
-                 AND reg = 'PR202602100000001>-S1,PR202602230000002>-S1-GST'
-                 AND led = 'PAYMENT_CORRECTED:REVERSED:PR202602100000001' AND rev_n = 1 AND free_new
-                 AND dbl = 'PR202603010000003>-S2,PR202605050000006>-S2-PR202605050000006:REFUND'
-                 AND mis = 'MIGR-CHKV502-D>RELABEL>School fees 9985/9986,-S3-10048>RELABEL>School fees (legacy) · semester 3,PR202604040000005>RELABEL>GST fee 9985/9986'
-                 AND linked_f AND done.relabelled >= 3 AND NOT renamed_m AND no_mis AND g_purpose = 'School fees (legacy) · semester 3'
-                 AND left_m = 'MIGR-CHKV502-D:SCHOOL_FEES:School fees 9985/9986:-,PR202604040000005:GST:GST fee 9985/9986:2026-04-04', false),
-        format('import %s taken, %s duplicates, %s cleared; again %s taken, %s duplicates, %s cleared | taken %s | register %s | ledger %s, %s reversals, free %s | doubles %s | to put right %s | linked %s | put right %s relabelled, renamed here %s, none left %s, coded %s | left %s',
-               first.taken_over, first.duplicates, first.cleared, again.taken_over, again.duplicates, again.cleared, taken, reg, led, rev_n, free_new, dbl, mis,
-               linked_f, done.relabelled, renamed_m, no_mis, g_purpose, left_m));
+    PERFORM pg_temp.assert('V505: the withheld list gives the card''s own code (unpaid, no course; a paid one not listed); a registration below the minimum is accepted or returned, a locked one refused; a raised minimum counted, then told once',
+        coalesce(w_a = 'EXAM_CARD_NOT_CLEARED' AND w_b = 'EXAM_CARD_NO_COURSES' AND w_c IS NULL AND st_a = w_a AND st_c IS NULL AND agree
+                 AND below_before = 2 AND ret = 'RETURNED' AND ret_status = 'RETURNED' AND below_after = 1 AND locked = 'REG_LOAD_LOCKED'
+                 AND impact_draft = 1 AND told = 2 AND notices >= 2 AND notices_again = notices, false),
+        format('withheld a %s b %s c %s (card a %s c %s, agree %s) | below %s -> %s, returned %s/%s, locked %s | impact draft %s, told %s then %s, notices %s then %s',
+               w_a, w_b, w_c, st_a, st_c, agree, below_before, below_after, ret, ret_status, locked, impact_draft, told, told_again, notices, notices_again));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

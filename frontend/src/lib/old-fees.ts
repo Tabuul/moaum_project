@@ -92,26 +92,3 @@ export function mislabelledRow(m: MislabelledRow): (string | number)[] {
   return [m.number, m.name, m.session, m.paid_on, n(m.amount), m.stored_purpose, m.reference, m.item ?? "(code not in the list)",
     m.target_purpose ?? "", m.target_reference ?? "", MISLABEL_ACTION[m.action]?.[0] ?? m.action];
 }
-
-/** V502: what a record the retired Payment History Upload made, matched by nothing, counts as now (finance.payment_history_left) */
-export type CountsAs = "SCHOOL_FEES" | "GST" | "OTHER";
-
-export const COUNTS_AS: Record<CountsAs, string> = {
-  SCHOOL_FEES: "School fees",
-  GST: "The GST fee",
-  OTHER: "Another item",
-};
-
-/** one record the retired Payment History Upload made that neither Old Fees History took over nor repeats another */
-export interface LeftRow {
-  reference: string; number: string; name: string; session: string; amount: number | string; paid_on: string;
-  number_day: string | null; purpose: string; counts_as: CountsAs;
-}
-
-export const LEFT_HEADERS = ["Matric/admission no.", "Name", "Session", "Day on record", "Day its payment number carries", "Amount (₦)",
-  "Reference", "Recorded as", "Counts as"];
-
-/** a left record as an Excel row, in the order of LEFT_HEADERS */
-export function leftRow(l: LeftRow): (string | number)[] {
-  return [l.number, l.name, l.session, l.paid_on, l.number_day ?? "", n(l.amount), l.reference, l.purpose, COUNTS_AS[l.counts_as] ?? l.counts_as];
-}

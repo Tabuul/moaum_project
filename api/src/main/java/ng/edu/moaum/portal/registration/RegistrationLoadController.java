@@ -113,7 +113,9 @@ class RegistrationLoadController {
         Integer m = semester(body.semester());
         jdbc.sql("SELECT registration.set_unit_minimum(:c, :s, :m, :u, :r)").param("c", body.curriculum().trim().toUpperCase()).param("s", s, Types.VARCHAR)
                 .param("m", m, Types.INTEGER).param("u", body.minUnits()).param("r", body.reason().trim()).query(Integer.class).single();
-        return rules(s, m);
+        Map<String, Object> out = new LinkedHashMap<>(rules(s, m));
+        out.put("told", tell(body.curriculum(), s, m));
+        return out;
     }
 
     public record RemoveIn(@NotBlank @Size(max = 10) String curriculum, @NotBlank @Size(max = 9) String session, Integer semester,
@@ -131,6 +133,39 @@ class RegistrationLoadController {
                 .param("m", m, Types.INTEGER).param("r", body.reason().trim()).query(Integer.class).single();
         Map<String, Object> out = new LinkedHashMap<>(rules(s, m));
         out.put("removed", n);
+        out.put("told", tell(body.curriculum(), s, m));
+        return out;
+    }
+
+    /** V505: the students whose draft, returned or submitted registration the minimum now in force leaves short, told (once for
+     *  each minimum); a registration approved earlier is neither rewritten nor told */
+    private int tell(String curriculum, String session, Integer semester) {
+        return jdbc.sql("SELECT registration.tell_unit_minimum_change(:c, :s, :m)").param("c", curriculum.trim().toUpperCase()).param("s", session, Types.VARCHAR)
+                .param("m", semester, Types.INTEGER).query(Integer.class).single();
+    }
+
+    /** V505: before a change is confirmed — by status, the registrations a minimum of {@code minUnits} would leave below it */
+    @GetMapping("/impact")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> impact(@RequestParam String curriculum, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
+                               @RequestParam int minUnits) {
+        if (minUnits < 1) throw new DomainRuleViolation("REG_MIN_UNITS_POSITIVE", "Minimum credit units must be greater than zero.");
+        String s = session(session, false);
+        Integer m = semester(semester);
+        java.util.List<Map<String, Object>> rows = jdbc.sql("SELECT status, registrations FROM registration.unit_minimum_impact(:c, :s, :m, :u)")
+                .param("c", curriculum.trim().toUpperCase()).param("s", s, Types.VARCHAR).param("m", m, Types.INTEGER).param("u", minUnits).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> by = new LinkedHashMap<>();
+        long notYet = 0, approved = 0;
+        for (Map<String, Object> r : rows) {
+            long k = ((Number) r.get("registrations")).longValue();
+            by.put(String.valueOf(r.get("status")), k);
+            if (java.util.Set.of("DRAFT", "RETURNED", "SUBMITTED").contains(String.valueOf(r.get("status")))) notYet += k; else approved += k;
+        }
+        out.put("byStatus", by);
+        out.put("toTell", notYet);
+        out.put("approvedKept", approved);
         return out;
     }
 

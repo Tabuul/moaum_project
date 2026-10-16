@@ -64,6 +64,9 @@ export const FIGURES: { key: keyof Overview; kind: string; label: string }[] = [
   { key: "cards_issued", kind: "CARDS_ISSUED", label: "Exam cards printed or downloaded" },
 ];
 
+/** V505: the list a figure opens that carries no count in the overview (read after the page) */
+export const LIST_LABELS: Record<string, string> = { BELOW_MINIMUM: "Below the minimum" };
+
 export const isApproved = (status: string | null | undefined) => status === "APPROVED" || status === "LOCKED";
 
 /** the registration's state as the student reads it: never "with your Head of Department" while approval is automatic */

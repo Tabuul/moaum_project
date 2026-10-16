@@ -709,6 +709,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/clearance", "icon": "check", "label": "Financial Clearance" },
+          { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
@@ -950,6 +951,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
           { "id": "t/unicbt", "icon": "cap", "label": "CBT Examinations" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
+          { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
           { "id": "t/publish", "icon": "bell", "label": "Publication" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
