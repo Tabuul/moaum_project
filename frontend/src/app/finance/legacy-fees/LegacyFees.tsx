@@ -160,17 +160,29 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   async function resetAll() {
     if (!loaded) return;
     setBusy(true); setProblem(null);
+    // V499: the server deletes a batch at a time (each record's ledger journal reversed, the record kept on file); asked again
+    // until none is left
+    let deleted = 0, reversed = 0, kept = 0, failed = false;
     try {
-      const r = await fetch("/api/bff/api/v1/finance/legacy-fees/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal fees history reset${loaded.session ? ` for ${loaded.session}` : ""} to be loaded again`) },
-        body: JSON.stringify({ session: loaded.session || null, confirm: resetWord }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem((j ?? { status: r.status, title: r.statusText }) as Problem); return; }
-      const d = j as { deleted: number; kept_in_use: number };
-      setResetDone(`${Number(d.deleted).toLocaleString()} imported payment${Number(d.deleted) === 1 ? "" : "s"} deleted${loaded.session ? ` for ${loaded.session}` : ""}.${d.kept_in_use ? ` ${d.kept_in_use} kept because a deferment fee uses them.` : ""} Upload the file again from the start.`);
-      setLoaded(null); setResetWord(""); setResult(null);
+      for (;;) {
+        const r = await fetch("/api/bff/api/v1/finance/legacy-fees/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal fees history reset${loaded.session ? ` for ${loaded.session}` : ""} to be loaded again`) },
+          body: JSON.stringify({ session: loaded.session || null, confirm: resetWord }),
+        });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) { setProblem((j ?? { status: r.status, title: r.statusText }) as Problem); failed = true; break; }
+        const d = j as { deleted: number; kept_in_use: number; ledger_reversed: number; remaining: number };
+        deleted += Number(d.deleted); reversed += Number(d.ledger_reversed ?? 0); kept = Number(d.kept_in_use);
+        setResetDone(`${deleted.toLocaleString()} deleted so far…`);
+        if (!Number(d.remaining) || !Number(d.deleted)) break;
+      }
+      const n = (x: number, one: string, many: string) => `${x.toLocaleString()} ${x === 1 ? one : many}`;
+      setResetDone(failed
+        ? (deleted ? `${n(deleted, "imported payment", "imported payments")} deleted before the error (${reversed.toLocaleString()} reversed on the ledger). Press the button again to finish.` : null)
+        : `${n(deleted, "imported payment", "imported payments")} deleted${loaded.session ? ` for ${loaded.session}` : ""}; ${n(reversed, "ledger posting", "ledger postings")} reversed.`
+          + `${kept ? ` ${n(kept, "was", "were")} kept because a deferment fee, a refund or the GST reconciliation uses them.` : ""} Upload the file again from the start.`);
+      if (!failed) { setLoaded(null); setResetWord(""); setResult(null); }
     } finally { setBusy(false); }
   }
 
@@ -257,6 +269,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         <PBody>
           <div className="sub2">
             Deletes only payments this screen imported (channel &ldquo;Legacy&rdquo;, reference MOAUM-LEG-…); gateway, bank and Bursary payments are never touched.
+            Each deleted payment&rsquo;s ledger posting is reversed and the deleted records are kept on file, so loading the file again posts each payment once.
             Leave the session blank for everything, or give one (2022/2023).
           </div>
           <div className="row mt-3">

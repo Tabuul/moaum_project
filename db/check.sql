@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 335
+\set EXPECTED 336
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15239,6 +15239,69 @@ BEGIN
         format('standing %s %s %s max %s / %s | pg %s %s | cce %s %s | s1 %s sem1 %s sem2 %s s2 %s | one a scope %s | changed %s removed %s | %s | two/four %s/%s | refusals %s %s %s %s %s %s | listed %s %s',
                std_c, basis_c, cur_c, max_c, std_b, pg_basis, pg_min, cce_basis, cce_min, s1_c, s1_sem1, s1_sem2, s2_c, n_scope, after_change, removed_back, hist,
                two_arg, four_arg, r_office, r_zero, r_over, r_reason, r_standing, r_curr, listed_b, listed_c));
+END $$;
+
+
+-- ── V499: the old-portal fees reset reverses the ledger and keeps what it deleted ──
+-- An old-portal record the ledger posted is deleted with its journal reversed (the books net to nothing for it) and kept on
+-- finance.legacy_payment_reset; a portal payment is never touched; one a deferment fee points at is kept and counted; the batch
+-- says what remains; the same payment loaded again is unposted and posts once. The block undoes its writes.
+DO $$
+DECLARE ses text := '2393/2394'; st uuid := gen_random_uuid(); leg text := 'MOAUM-LEG-CHK499-2393/2394-S1'; kept text := 'MOAUM-LEG-CHK499-2393/2394-S2';
+        portal text := 'MOAUM-CHK499-PORTAL'; leg2 text := 'MOAUM-LEG-CHK499-2393/2394-S3';
+        j uuid; r record; r2 record; v_status text; v_type text; n_rev int; net numeric; portal_left boolean; leg_left boolean; kept_left boolean;
+        saved int; unposted_after boolean; n_payment_journals int; refused text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V499', true);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/93/949901', 'CHECKV499', 'Legacy', (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1),
+                'UTME', '2020/2021', 100, 100, 'ADMITTED');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (st, ses, leg,    'School fees (legacy) first semester', 45000, now() + interval '1 day', now(), st, 'Legacy', 'CHK499-1'),
+            (st, ses, kept,   'School fees (legacy) second semester', 45000, now() + interval '1 day', now(), st, 'Legacy', 'CHK499-2'),
+            (st, ses, leg2,   'School fees (legacy) third semester', 5000, now() + interval '1 day', now(), st, 'Legacy', 'CHK499-3'),
+            (st, ses, portal, 'School fees ' || ses, 10000, now() + interval '1 day', now(), st, 'Card · Paystack', 'CHK499-4');
+        INSERT INTO people.deferment_fee (id, student_id, session, reference, amount, state, created_at) VALUES (gen_random_uuid(), st, ses, kept, 45000, 'CONFIRMED', now());
+        -- the ledger posts the legacy payment as its sync does
+        j := finance.gl_post(current_date, 'Fee receipt ' || leg, 'AUTO', 'PAYMENT', leg,
+               jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 45000, 'narration', 'check', 'session', ses),
+                                 jsonb_build_object('account', finance.gl_income_account(finance.payment_category('School fees (legacy) first semester')), 'credit', 45000, 'narration', 'check', 'session', ses)));
+        -- the word is asked for
+        BEGIN PERFORM finance.reset_legacy_payments(ses, 'yes', 10); refused := 'NO';
+        EXCEPTION WHEN check_violation THEN refused := 'REFUSED'; END;
+        -- a batch of one, then the rest
+        SELECT * INTO r FROM finance.reset_legacy_payments(ses, 'RESET', 1);
+        SELECT * INTO r2 FROM finance.reset_legacy_payments(ses, 'RESET', 10);
+        SELECT status, source_type INTO v_status, v_type FROM finance.gl_journal WHERE id = j;
+        n_rev := (SELECT count(*) FROM finance.gl_journal WHERE reverses = j);
+        net := (SELECT coalesce(sum(p.debit - p.credit), 0) FROM finance.gl_posting p
+                 WHERE p.account = '1010' AND p.journal_id IN (SELECT j UNION SELECT id FROM finance.gl_journal WHERE reverses = j));
+        portal_left := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = portal);
+        leg_left := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference IN (leg, leg2));
+        kept_left := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = kept);
+        saved := (SELECT count(*) FROM finance.legacy_payment_reset WHERE student_id = st AND ledger_journal IS NOT DISTINCT FROM CASE WHEN reference = leg THEN j END);
+        -- the same payment loaded again: unposted for the sync, and posted once
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (st, ses, leg, 'School fees (legacy) first semester', 45000, now() + interval '1 day', now(), st, 'Legacy', 'CHK499-5');
+        unposted_after := NOT EXISTS (SELECT 1 FROM finance.gl_journal g WHERE g.source_type = 'PAYMENT' AND g.source_ref = leg);
+        PERFORM finance.gl_post(current_date, 'Fee receipt ' || leg, 'AUTO', 'PAYMENT', leg,
+               jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 45000, 'narration', 'check', 'session', ses),
+                                 jsonb_build_object('account', finance.gl_income_account(finance.payment_category('School fees (legacy) first semester')), 'credit', 45000, 'narration', 'check', 'session', ses)));
+        n_payment_journals := (SELECT count(*) FROM finance.gl_journal WHERE source_type = 'PAYMENT' AND source_ref = leg);
+        RAISE EXCEPTION 'the V499 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V499 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V499: the old-portal fees reset reverses each posted record''s ledger journal and frees its reference, keeps what it deleted, never touches a portal payment, keeps one a deferment fee points at, and works in batches',
+        coalesce(refused = 'REFUSED' AND r.deleted = 1 AND r.remaining = 1 AND r.kept_in_use = 1 AND r2.deleted = 1 AND r2.remaining = 0
+                 AND r.ledger_reversed + r2.ledger_reversed = 1 AND v_status = 'REVERSED' AND v_type = 'PAYMENT_RESET' AND n_rev = 1 AND net = 0
+                 AND portal_left AND NOT leg_left AND kept_left AND saved = 2 AND unposted_after AND n_payment_journals = 1, false),
+        format('refused %s | batch 1: %s | batch 2: %s | journal %s/%s reversals %s net %s | portal kept %s legacy left %s linked kept %s | saved %s | reload unposted %s journals %s',
+               refused, r, r2, v_status, v_type, n_rev, net, portal_left, leg_left, kept_left, saved, unposted_after, n_payment_journals));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
