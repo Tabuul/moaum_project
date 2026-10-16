@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 346
+\set EXPECTED 347
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15908,6 +15908,98 @@ BEGIN
                c101.category, c101.added_as, coalesce(c101.refusal, '-'), left(c301.refusal, 20), left(c102.refusal, 30), left(cpassed.refusal, 20), left(cawait.refusal, 20),
                ccarry.category, coalesce(ccarry.refusal, '-'), cgst.category, cgst.added_as, left(coth.refusal, 20), dup, held, kept, approved, dropped, reg_order, menu_order,
                left(coff.refusal, 25), cmenu.category, coalesce(cmenu.refusal, '-')));
+END $$;
+-- ── V502. What the retired Payment History Upload recorded, put right. A student whose payments that door recorded its own way:
+--          the first semester as "SCHOOL FEES" dated the day of the upload (and posted to the ledger), the GST fee as "School
+--          fees <session>", a payment Old Fees History already has, two the export does not name ("SCHOOL FEES", "GST FEES"), and
+--          one a refund points at; and an Old Fees History record under a code a refund points at. The export loaded: the first
+--          two taken over (their item, semester and day; the ledger posting let go), the repeat left as a double, the one a refund
+--          points at left (its payment recorded beside it); the two the export does not name relabelled so they count, then
+--          listed as left; the coded record a refund points at relabelled, never renamed; the export again changes nothing.
+--          The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); m uuid := gen_random_uuid(); ses text := '9985/9986'; pa text;
+        mb text := 'MOAUM-LEG-MOAUMCHK859855-9985-9986'; j1 uuid; rows jsonb; first record; again record; done record;
+        taken text; reg text; renamed_m boolean; led text; rev_n int; free_new boolean; mis text; dbl text; left_m text; linked_f boolean; g_purpose text;
+        no_mis boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V502', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9985-10-01', date '9986-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (m, 'MOAUM/ADM/85/985501', 'MOAUM/CHK/85/9855', 'ZZCHKV502', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        PERFORM finance.legacy_item_codes_set('[{"pcode": 10048, "description": "SCHOOL FEES"}]'::jsonb);
+        -- what the retired door wrote (its channel and note, a receipt of its own, the day of the upload where it could not read one)
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+        SELECT m, ses, v.ref, v.purpose, v.amount, v.day::timestamptz, v.day::timestamptz + interval '1 day', v.day::timestamptz, who, 'MIGRATION', 'Migrated payment history', 'RCT-CHKV502-' || v.tag
+          FROM (VALUES ('PR202602100000001', 'SCHOOL FEES', 50000.00, '2026-10-16', 'A'),
+                       ('PR202602230000002', 'School fees ' || '9985/9986', 4000.00, '2026-10-16', 'B'),
+                       ('PR202603010000003', 'SCHOOL FEES', 20000.00, '2026-10-16', 'C'),
+                       ('MIGR-CHKV502-D', 'SCHOOL FEES', 30000.00, '2026-10-16', 'D'),
+                       ('PR202604040000005', 'GST FEES', 4500.00, '2026-10-16', 'E'),
+                       ('PR202605050000006', 'SCHOOL FEES', 10000.00, '2026-10-16', 'F')) v(ref, purpose, amount, day, tag);
+        -- Old Fees History already has the third payment, under its number; and a record under a code
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (m, ses, mb || '-S2', 'School fees (legacy) · semester 2', 20000.00, '2026-03-01', '2026-03-01', who, 'Legacy', 'LEG-' || mb || '-S2', 'Imported from the old portal · old ref PR202603010000003'),
+               (m, ses, mb || '-S3-10048', '10048 (legacy) · semester 3', 7000.00, '2026-06-01', '2026-06-01', who, 'Legacy', 'LEG-' || mb || '-S3-10048', 'Imported from the old portal');
+        INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PR202603010000003', mb || '-S2', 20000.00);
+        -- a refund points at the sixth and at the coded record
+        INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference)
+        VALUES ('RF-CHKV502-F', m, 'ZZCHKV502', 'check V502', 1000, who, 'PR202605050000006'),
+               ('RF-CHKV502-G', m, 'ZZCHKV502', 'check V502', 1000, who, mb || '-S3-10048');
+        -- the ledger had posted the first as the sync posts a payment
+        SELECT finance.gl_post(date '2026-10-16', 'Fee receipt PR202602100000001', 'AUTO', 'PAYMENT', 'PR202602100000001',
+                   jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 50000, 'narration', 'SCHOOL FEES', 'session', ses),
+                                     jsonb_build_object('account', finance.gl_income_account(finance.payment_category('SCHOOL FEES')), 'credit', 50000, 'narration', 'SCHOOL FEES', 'session', ses)))
+          INTO j1;
+
+        -- the old portal's export, as Old Fees History reads it
+        rows := jsonb_build_array(
+            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'First', 'amount', '50000', 'purpose', '10048', 'paidOn', '2026-02-10', 'payref', 'PR202602100000001'),
+            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'First', 'amount', '4000', 'purpose', 'GST FEES', 'paidOn', '2026-02-23', 'payref', 'PR202602230000002'),
+            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'Second', 'amount', '20000', 'purpose', 'SCHOOL FEES', 'paidOn', '2026-03-01', 'payref', 'PR202603010000003'),
+            jsonb_build_object('matno', 'MOAUM/CHK/85/9855', 'session', ses, 'semester', 'Second', 'amount', '10000', 'purpose', 'SCHOOL FEES MAKE UP', 'paidOn', '2026-05-05', 'payref', 'PR202605050000006'));
+        SELECT * INTO first FROM finance.import_legacy_payments(rows);
+        taken := (SELECT string_agg(replace(reference, mb, '') || '=' || amount::int || ':' || purpose || ':' || channel || ':' || (confirmed_at AT TIME ZONE 'Africa/Lagos')::date
+                                     || ':' || coalesce((SELECT k.payref FROM finance.legacy_payref k WHERE k.reference = p.reference), '-'), ',' ORDER BY reference COLLATE "C")
+                    FROM finance.payment_reference p WHERE p.student_id = m AND p.reference LIKE mb || '-S1%');
+        reg := (SELECT string_agg(c.old_reference || '>' || replace(c.new_reference, mb, ''), ',' ORDER BY c.old_reference COLLATE "C")
+                  FROM finance.legacy_item_corrected c WHERE c.action = 'TAKEN_OVER' AND c.new_reference LIKE mb || '%');
+        led := (SELECT g.source_type || ':' || g.status || ':' || split_part(g.source_ref, '#', 1) FROM finance.gl_journal g WHERE g.id = j1);
+        rev_n := (SELECT count(*) FROM finance.gl_journal g WHERE g.reverses = j1);
+        free_new := NOT EXISTS (SELECT 1 FROM finance.gl_journal g WHERE g.source_type = 'PAYMENT' AND g.source_ref IN (mb || '-S1', 'PR202602100000001'));
+        dbl := (SELECT string_agg(d.double_reference || '>' || replace(d.kept_reference, mb, '') || coalesce(':' || d.linked, ''), ',' ORDER BY d.double_reference COLLATE "C")
+                  FROM finance.old_payment_doubles() d WHERE d.student_id = m);
+        mis := (SELECT string_agg(replace(x.reference, mb, '') || '>' || x.action || '>' || x.target_purpose, ',' ORDER BY x.reference COLLATE "C")
+                  FROM finance.legacy_mislabelled() x WHERE x.student_id = m);
+        linked_f := finance.payment_reference_linked('PR202605050000006', NULL);
+        SELECT * INTO done FROM finance.put_right_legacy_items('CHECK V502: the retired door''s item names');
+        renamed_m := EXISTS (SELECT 1 FROM finance.legacy_item_corrected c WHERE c.old_reference LIKE mb || '%' AND c.action = 'RENAME');
+        no_mis := NOT EXISTS (SELECT 1 FROM finance.legacy_mislabelled() x WHERE x.student_id = m);
+        g_purpose := (SELECT p.purpose FROM finance.payment_reference p WHERE p.reference = mb || '-S3-10048');
+        left_m := (SELECT string_agg(l.reference || ':' || l.counts_as || ':' || l.purpose || ':' || coalesce(l.number_day::text, '-'), ',' ORDER BY l.reference COLLATE "C")
+                     FROM finance.payment_history_left() l WHERE l.student_id = m);
+        SELECT * INTO again FROM finance.import_legacy_payments(rows);
+        RAISE EXCEPTION 'the V502 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V502 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V502: Old Fees History takes over what the retired Payment History Upload recorded under the payment number (its item, semester and day; the ledger posting let go), leaves a repeat to the doubles and a record a refund points at alone, relabels what the export does not name so it counts, and never renames a record something points at',
+        coalesce(first.taken_over = 2 AND first.duplicates = 1 AND first.cleared = 1 AND again.taken_over = 0 AND again.duplicates = 4 AND again.cleared = 0
+                 AND taken = '-S1=50000:School fees (legacy) · semester 1:Legacy:2026-02-10:PR202602100000001,-S1-GST=4000:GST fee 9985/9986:Legacy:2026-02-23:PR202602230000002'
+                 AND reg = 'PR202602100000001>-S1,PR202602230000002>-S1-GST'
+                 AND led = 'PAYMENT_CORRECTED:REVERSED:PR202602100000001' AND rev_n = 1 AND free_new
+                 AND dbl = 'PR202603010000003>-S2,PR202605050000006>-S2-PR202605050000006:REFUND'
+                 AND mis = 'MIGR-CHKV502-D>RELABEL>School fees 9985/9986,-S3-10048>RELABEL>School fees (legacy) · semester 3,PR202604040000005>RELABEL>GST fee 9985/9986'
+                 AND linked_f AND done.relabelled >= 3 AND NOT renamed_m AND no_mis AND g_purpose = 'School fees (legacy) · semester 3'
+                 AND left_m = 'MIGR-CHKV502-D:SCHOOL_FEES:School fees 9985/9986:-,PR202604040000005:GST:GST fee 9985/9986:2026-04-04', false),
+        format('import %s taken, %s duplicates, %s cleared; again %s taken, %s duplicates, %s cleared | taken %s | register %s | ledger %s, %s reversals, free %s | doubles %s | to put right %s | linked %s | put right %s relabelled, renamed here %s, none left %s, coded %s | left %s',
+               first.taken_over, first.duplicates, first.cleared, again.taken_over, again.duplicates, again.cleared, taken, reg, led, rev_n, free_new, dbl, mis,
+               linked_f, done.relabelled, renamed_m, no_mis, g_purpose, left_m));
 END $$;
 
 -- ── V505: examination cards withheld, registrations below the minimum decided, students told of a new minimum ──

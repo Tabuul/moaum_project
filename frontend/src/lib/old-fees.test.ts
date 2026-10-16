@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DOUBLE_HEADERS, MISLABELLED_HEADERS, RECON_HEADERS, doubleRow, mislabelledRow, reconRow, withdrawDone, type DoubleRow, type ReconRow } from "./old-fees.ts";
+import { DOUBLE_HEADERS, LEFT_HEADERS, MISLABELLED_HEADERS, RECON_HEADERS, doubleRow, leftRow, mislabelledRow, reconRow, withdrawDone, type DoubleRow, type LeftRow, type ReconRow } from "./old-fees.ts";
 
 test("a reconciliation row reads in the order of its headers, amounts as numbers to the kobo", () => {
   const r: ReconRow = {
@@ -42,4 +42,14 @@ test("a record under a code says what it is and what putting it right does", () 
   assert.equal(row.length, MISLABELLED_HEADERS.length);
   assert.deepEqual(row.slice(4, 11), [156338, "10048 (legacy) · semester 1", "MOAUM-LEG-MOAUADPUB2500001-2025-2026-S1-10048", "SCHOOL FEES",
     "School fees (legacy) · semester 1", "MOAUM-LEG-MOAUADPUB2500001-2025-2026-S1", "Recorded as what it is"]);
+});
+
+test("a record the retired screen made, matched by nothing, says the day its number carries and what it counts as", () => {
+  const l: LeftRow = { reference: "PR202604040000005", number: "MOAU/AD/PUB/25/00001", name: "INVENTED, Student", session: "2025/2026",
+    amount: "4500.00", paid_on: "2026-10-16", number_day: "2026-04-04", purpose: "GST fee 2025/2026", counts_as: "GST" };
+  const row = leftRow(l);
+  assert.equal(row.length, LEFT_HEADERS.length);
+  assert.deepEqual(row, ["MOAU/AD/PUB/25/00001", "INVENTED, Student", "2025/2026", "2026-10-16", "2026-04-04", 4500, "PR202604040000005", "GST fee 2025/2026", "The GST fee"]);
+  assert.equal(leftRow({ ...l, number_day: null, counts_as: "SCHOOL_FEES" })[4], "");
+  assert.equal(leftRow({ ...l, counts_as: "SCHOOL_FEES" })[8], "School fees");
 });
