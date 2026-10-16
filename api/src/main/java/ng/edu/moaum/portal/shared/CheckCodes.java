@@ -37,8 +37,9 @@ public class CheckCodes {
     /** V375: CBT_SLIP — a candidate's CBT slip (the examination and the candidate), scanned at the door of the sitting;
      *  ID_CARD — a student identity card, by its card number (the card desk prints the address the code completes);
      *  STAFF_CARD — a staff identity card, by its card number (V439);
-     *  APPLICANT_RECEIPT — the receipt of an applicant's fee (application, admission checking, acceptance), by its reference */
-    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP, ID_CARD, STAFF_CARD, APPLICANT_RECEIPT }
+     *  APPLICANT_RECEIPT — the receipt of an applicant's fee (application, admission checking, acceptance), by its reference;
+     *  GST_EPS_PERMIT — a student's GST & EPS examination permit, by its reference (V492) */
+    public enum Kind { RECEIPT, EXAM, REG, RESULT, PG_OFFER, CBT_SLIP, ID_CARD, STAFF_CARD, APPLICANT_RECEIPT, GST_EPS_PERMIT }
 
     private final byte[] key;
 
@@ -75,6 +76,7 @@ public class CheckCodes {
             case CBT_SLIP -> null;   // V375: no slip was ever printed before the signed code
             case ID_CARD, STAFF_CARD -> null;    // no card ever carried a check code before the signed one
             case APPLICANT_RECEIPT -> null;      // an applicant's receipt carried no check code before the signed one
+            case GST_EPS_PERMIT -> null;         // V492: the permit was signed from the first
         };
         if (payload == null) return false;
         try {

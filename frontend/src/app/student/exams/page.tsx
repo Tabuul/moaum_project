@@ -5,6 +5,7 @@ import { loadStudent } from "../load";
 
 export const dynamic = "force-dynamic";
 import type { Docket, RegistrationView } from "@/lib/student-portal";
+import type { PermitState } from "@/lib/gst-eps-permit";
 import { semesterName } from "@/lib/student-portal";
 import { Exams } from "../Screens5";
 
@@ -24,6 +25,11 @@ export default async function Page() {
       current = now.ok && now.data.registration ? now.data : current;
     }
   }
+  // V492: the GST & EPS permit of each semester shown here — the registration's, and any examination session's released
+  const shown = d.ok ? [...new Set([current?.semester, ...d.data.examSessions.filter((x) => x.papers.length && x.session === d.data.session).map((x) => x.semester)]
+    .filter((x): x is number => typeof x === "number"))].sort() : [];
+  const permits = (await Promise.all((shown.length ? shown : [undefined]).map((n) => api<PermitState>(`/api/v1/me/gst-eps-permit${n ? `?semester=${n}` : ""}`))))
+    .flatMap((r) => (r.ok ? [r.data] : []));
   // a live subtitle for the header — the exam sitting the examination card actually shows, not a fixed month
   let sub: string | undefined;
   if (d.ok) {
@@ -35,7 +41,7 @@ export default async function Page() {
   }
   return (
     <Shell route="s/exams" me={loaded.me} sub={sub}>
-      {d.ok ? <Exams d={d.data} s={loaded.student} current={current} /> : <ProblemNotice problem={d.problem} />}
+      {d.ok ? <Exams d={d.data} s={loaded.student} current={current} permits={permits} /> : <ProblemNotice problem={d.problem} />}
     </Shell>
   );
 }

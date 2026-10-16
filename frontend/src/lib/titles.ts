@@ -68,6 +68,7 @@ export const TITLES: Record<string, string> = {
   "s/timetable": "Timetable",
   "s/attendance": "Attendance",
   "s/exams": "Examinations",
+  "s/gstpermit": "GST & EPS examination permit",
   "s/hostel": "Hostel",
   "t/hostel": "Accommodation",
   "t/hostel-window": "Application window",
@@ -297,6 +298,8 @@ export const TITLES: Record<string, string> = {
   "t/epscbt": "EPS CBT Examinations",
   "s/cbt": "CBT Examinations",
   "t/epsstudents": "EPS Students",
+  "t/gstpermits": "GST & EPS examination permits",
+  "t/epspermits": "GST & EPS examination permits",
   "t/epscourses": "EPS Courses",
   "t/pgsenate": "Results to Senate",
 };

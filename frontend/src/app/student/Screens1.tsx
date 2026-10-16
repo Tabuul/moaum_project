@@ -269,6 +269,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
             <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
               <span className="sub2">Course registration: <b>Approved</b></span>
               <LinkBtn kind="primary" size="sm" href="/student/exams">VIEW EXAM CARD</LinkBtn>
+              {(reg.entries ?? []).some((e) => e.kind === "GST" && e.status !== "DROPPED") ? <LinkBtn kind="secondary" size="sm" href="/student/exams/gst-eps-permit">VIEW GST & EPS PERMIT</LinkBtn> : null}
               <LinkBtn kind="ghost" size="sm" href="/student/register">VIEW REGISTRATION</LinkBtn>
             </div>
           ) : null}

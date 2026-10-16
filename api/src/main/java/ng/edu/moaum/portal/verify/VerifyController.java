@@ -269,8 +269,24 @@ class VerifyController {
                  ORDER BY c.code
                 """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
 
+        String photo = photo(sid, row.get("passport_id"));
+
+        out.put("genuine", true);
+        out.put("name", row.get("name"));
+        out.put("matricNo", row.get("matric_no"));
+        out.put("programme", row.get("programme"));
+        out.put("level", row.get("current_level"));
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("cleared", row.get("cleared"));
+        out.put("photo", photo);
+        out.put("courses", courses);
+        return out;
+    }
+
+    /** the student's passport photograph as a data URL: the admission document, else the JAMB/attachment store; null for none */
+    private String photo(java.util.UUID sid, Object pid) {
         String photo = null;
-        Object pid = row.get("passport_id");
         if (pid != null) {
             List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64, object_id FROM admissions.application_document_blob WHERE document_id = :d")
                     .param("d", pid).query().listOfRows();
@@ -289,19 +305,88 @@ class VerifyController {
                     """).param("s", sid).query().listOfRows();
             if (!at.isEmpty()) photo = files.dataUrl((String) at.get(0).get("url"), (UUID) at.get(0).get("object_id"));
         }
+        return photo;
+    }
 
+    /**
+     * V492: verify a student's GST & EPS examination permit by its reference. The permit's QR opens the public page, which asks
+     * this for the University's record now: VALID with the name, the PHOTO and the GST and EPS courses on the student's approved
+     * registration (an altered or stale permit is exposed by what it lists); REVOKED when the GST or EPS office withdrew it (the
+     * date, never the reason); INVALID when it may no longer be issued (the registration reset or not approved, no GST or EPS
+     * course, the GST fee or the Bursary's clearance not in order), in a few words; NOT_FOUND for no permit or a code that does
+     * not match. The code is signed by the API over the reference, so references cannot be walked.
+     */
+    @GetMapping("/gst-eps-permit")
+    @Transactional(readOnly = true)
+    Map<String, Object> gstEpsPermit(@RequestParam String r, @RequestParam(required = false) String c, HttpServletRequest request) {
+        return checked(request, () -> gstEpsPermitAnswer(r, c));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> gstEpsPermitAnswer(String reference, String c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String ref = reference == null ? "" : reference.trim().toUpperCase(java.util.Locale.ROOT);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT pm.reference, pm.student_id, pm.session, pm.semester, pm.revoked_at,
+                       registration.gst_eps_permit_state(pm.student_id, pm.session, pm.semester)::text AS state,
+                       (SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
+                         WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                         ORDER BY d.id LIMIT 1) AS passport_id
+                  FROM registration.gst_eps_permit pm JOIN people.student s ON s.id = pm.student_id
+                 WHERE pm.reference = :r
+                """).param("r", ref).query().listOfRows();
+        if (rows.isEmpty() || !codes.signed(c, CheckCodes.Kind.GST_EPS_PERMIT, ref)) {
+            out.put("genuine", false);
+            out.put("status", "NOT_FOUND");
+            return out;
+        }
+        Map<String, Object> row = rows.get(0);
+        Map<String, Object> state = PERMIT_JSON.readValue(String.valueOf(row.get("state")), Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> student = (Map<String, Object>) state.get("student");
+        boolean revoked = row.get("revoked_at") != null;
+        boolean valid = !revoked && Boolean.TRUE.equals(state.get("available"));
         out.put("genuine", true);
-        out.put("name", row.get("name"));
-        out.put("matricNo", row.get("matric_no"));
-        out.put("programme", row.get("programme"));
-        out.put("level", row.get("current_level"));
-        out.put("session", session);
-        out.put("semester", semester);
-        out.put("cleared", row.get("cleared"));
-        out.put("photo", photo);
-        out.put("courses", courses);
+        out.put("status", revoked ? "REVOKED" : valid ? "VALID" : "INVALID");
+        out.put("reference", row.get("reference"));
+        out.put("name", student.get("name"));
+        out.put("matricNo", student.get("matricNo"));
+        out.put("programme", student.get("programme"));
+        out.put("level", student.get("level"));
+        out.put("session", row.get("session"));
+        out.put("semester", row.get("semester"));
+        if (revoked) out.put("revokedAt", row.get("revoked_at"));
+        if (!valid && !revoked) out.put("reason", switch (String.valueOf(state.get("code"))) {
+            case "GST_EPS_PERMIT_NO_REGISTRATION", "GST_EPS_PERMIT_NOT_APPROVED" -> "The course registration it was issued for is no longer approved.";
+            case "GST_EPS_PERMIT_NO_COURSES" -> "The student's approved course registration carries no GST or EPS course.";
+            case "GST_EPS_PERMIT_GST_PAYMENT" -> "The student's GST fee is not confirmed as paid.";
+            case "GST_EPS_PERMIT_NOT_CLEARED" -> "The student is not cleared by the Bursary for the examination.";
+            case "GST_EPS_PERMIT_NOT_IN_STUDY" -> "The student is not in study.";
+            default -> "The permit may not be issued for this semester now.";
+        });
+        if (valid) {
+            // the record's courses, without the internal ids or the entry kinds: what the invigilator compares the paper with
+            List<Map<String, Object>> courses = new java.util.ArrayList<>();
+            for (Object o : (List<?>) state.get("courses")) {
+                Map<?, ?> x = (Map<?, ?>) o;
+                Map<String, Object> co = new LinkedHashMap<>();
+                for (String k : List.of("course_code", "title", "units", "course_type", "mode", "held_on", "starts_at", "ends_at", "venue")) co.put(k, x.get(k));
+                courses.add(co);
+            }
+            out.put("courses", courses);
+            // the photograph where the store answers; a permit is still verified, by its courses and name, when it does not
+            String face = null;
+            try {
+                face = photo((UUID) row.get("student_id"), row.get("passport_id"));
+            } catch (RuntimeException e) {
+                face = null;
+            }
+            out.put("photo", face);
+        }
         return out;
     }
+
+    private static final tools.jackson.databind.ObjectMapper PERMIT_JSON = new tools.jackson.databind.ObjectMapper();
 
     /**
      * Verify a course registration form. The form's QR opens the public page, which asks this for the

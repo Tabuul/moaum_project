@@ -145,6 +145,16 @@ public class StudentPortalService {
         }
     }
 
+    /** V492: the session a student's examinations stand in — the examination card's (a CCE or PG student's own calendar) — and
+     *  the semester open in it */
+    public String examSession(UUID id) {
+        return ownCalendar(id) ? sessionFor(id) : session();
+    }
+
+    public int openSemester(UUID id, String session) {
+        return repo.openSemester(id, session);
+    }
+
     /** the current session, or the latest one the Bursar has charged for */
     public String session() {
         return repo.currentSession().orElseGet(() -> repo.sessionsWithCharges().stream().findFirst().orElseGet(Sessions::byDate));

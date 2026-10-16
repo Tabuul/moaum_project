@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 330
+\set EXPECTED 332
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14951,6 +14951,106 @@ BEGIN
         coalesce(refused AND carried = 'CMON' AND loaded = 'SET,ALREADY,NO_STUDENT,NO_SPECIALISATION'
                  AND audit = 'ZQS 801:OUTSTANDING,ZQS 802:OUTSTANDING' AND stmt = 'Check monetary 488', false),
         format('other''s refused %s | carried %s | file %s | audit %s | transcript %s', refused, carried, loaded, audit, stmt));
+END $$;
+-- ── V492. The GST & EPS examination permit: exactly the GST and EPS courses on the student's approved registration for the semester
+--    (never a departmental course, another semester's or one the student did not register), no permit without one, a draft never;
+--    issued once with its reference and counted, a reset taking the courses off and a new registration putting the new ones on
+--    under the same number; withdrawn only by the office whose course it carries, with a reason; its log written once ──
+DO $$
+DECLARE S text := '9592/9593'; pa text := 'C00023'; acad uuid := gen_random_uuid(); dept text;
+        stu uuid := gen_random_uuid(); dep uuid := gen_random_uuid(); dra uuid := gen_random_uuid();
+        reg uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); reg3 uuid := gen_random_uuid(); reg4 uuid := gen_random_uuid();
+        st jsonb; st2 jsonb; st_dep jsonb; st_draft jsonb; st_unpaid jsonb; i1 jsonb; i2 jsonb; i3 jsonb; after_reset jsonb; ref text;
+        courses text; courses2 text; courses3 text; events text; n_permits int; short_reason text; once text; revoked jsonb; restored jsonb; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V492', true);
+    PERFORM set_config('moaum.actor_id', acad::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9592-10-01', date '9593-08-31') ON CONFLICT (name) DO NOTHING;
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('GST 929', 'Check permit English', 2, 1, 100, dept, 'GST', 'LIVE'), ('GST 928', 'Check permit Peoples', 2, 1, 100, dept, 'GST', 'LIVE'),
+        ('GST 927', 'Check permit never registered', 2, 1, 100, dept, 'GST', 'LIVE'), ('EPS 929', 'Check permit Entrepreneurship', 2, 1, 100, dept, 'GST', 'LIVE'),
+        ('ZZP 929', 'Check permit departmental', 3, 1, 100, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester)
+    SELECT gen_random_uuid(), c, S, sem FROM unnest(ARRAY['GST 929', 'GST 928', 'GST 927', 'EPS 929', 'ZZP 929']) c, unnest(ARRAY[1, 2]) sem;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (stu, 'MOAUM/ADM/59/592001', 'MOAUM/CHK/59/5921', 'ZZV492', 'Permit', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (dep, 'MOAUM/ADM/59/592002', 'MOAUM/CHK/59/5922', 'ZZV492', 'Departmental only', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (dra, 'MOAUM/ADM/59/592003', 'MOAUM/CHK/59/5923', 'ZZV492', 'Draft', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (reg, stu, S, 1, 100, 'APPROVED', now(), now()), (reg2, stu, S, 2, 100, 'APPROVED', now(), now()), (reg3, dep, S, 1, 100, 'APPROVED', now(), now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg4, dra, S, 1, 100, 'DRAFT');
+    -- the student: GST 929, EPS 929 and a departmental course in the first semester, GST 928 in the second; GST 927 runs, registered by nobody
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT x.r, o.id, 2, 'CURRENT', 'APPROVED' FROM (VALUES (reg, 'GST 929', 1), (reg, 'EPS 929', 1), (reg, 'ZZP 929', 1), (reg2, 'GST 928', 2),
+                                                              (reg3, 'ZZP 929', 1), (reg4, 'GST 929', 1)) x(r, c, sem)
+      JOIN catalogue.offering o ON o.course_code = x.c AND o.session = S AND o.semester = x.sem;
+    st := registration.gst_eps_permit_state(stu, S, 1);
+    SELECT string_agg((c->>'course_code') || ':' || (c->>'course_type'), ',' ORDER BY c->>'course_type' DESC, c->>'course_code') INTO courses FROM jsonb_array_elements(st->'courses') c;
+    st2 := registration.gst_eps_permit_state(stu, S, 2);
+    st_dep := registration.gst_eps_permit_state(dep, S, 1);
+    st_draft := registration.gst_eps_permit_state(dra, S, 1);
+    -- the school fees stated and not paid: the examination card's own condition holds the permit
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'School fees', 100000, 100);
+    st_unpaid := registration.gst_eps_permit_state(stu, S, 1);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(stu, S, 100000, NULL), 'Bank transfer', 'CHECK V492');
+    -- issued twice: one permit, counted twice, its courses logged
+    PERFORM set_config('moaum.actor_id', stu::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    i1 := registration.issue_gst_eps_permit(stu, S, 1, 'VIEW');
+    i2 := registration.issue_gst_eps_permit(stu, S, 1, 'PRINT');
+    ref := i1->'permit'->>'reference';
+    SELECT count(*) INTO n_permits FROM registration.gst_eps_permit WHERE student_id = stu;
+    SELECT string_agg(action, ',' ORDER BY action) INTO events FROM registration.gst_eps_permit_event e JOIN registration.gst_eps_permit p ON p.id = e.permit_id WHERE p.student_id = stu;
+    -- the log is written once
+    BEGIN
+        UPDATE registration.gst_eps_permit_event SET reason = 'changed' WHERE permit_id = (SELECT id FROM registration.gst_eps_permit WHERE student_id = stu);
+        once := 'updated';
+    EXCEPTION WHEN check_violation THEN once := 'refused';
+    END;
+    -- withdrawn only by the office whose course it carries (both offices here), restored with a reason
+    PERFORM set_config('moaum.actor_office', 'gst', true);
+    BEGIN
+        PERFORM registration.revoke_gst_eps_permit((SELECT id FROM registration.gst_eps_permit WHERE student_id = stu), 'GST', 'short');
+        short_reason := 'accepted';
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS short_reason = MESSAGE_TEXT;
+    END;
+    short_reason := split_part(short_reason, ':', 1);
+    revoked := registration.revoke_gst_eps_permit((SELECT id FROM registration.gst_eps_permit WHERE student_id = stu), 'GST', 'CHECK V492: presented by another candidate');
+    restored := registration.revoke_gst_eps_permit((SELECT id FROM registration.gst_eps_permit WHERE student_id = stu), 'EPS', 'CHECK V492: the office confirmed the candidate', true);
+    -- a reset takes the courses off; registered again with GST 928 instead, the same permit carries the new courses only
+    PERFORM registration.student_reset(stu, S, 1, 'CHECK V492: wrong courses', 'ICT_SUPPORT');
+    after_reset := registration.gst_eps_permit_state(stu, S, 1);
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT reg, o.id, 2, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.course_code = 'GST 928' AND o.session = S AND o.semester = 1;
+    UPDATE registration.course_registration SET status = 'APPROVED', submitted_at = now(), approved_at = now() WHERE id = reg;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    i3 := registration.issue_gst_eps_permit(stu, S, 1, 'DOWNLOAD');
+    SELECT string_agg(c->>'course_code', ',' ORDER BY c->>'course_code') INTO courses3 FROM jsonb_array_elements(i3->'courses') c;
+    SELECT string_agg(c->>'course_code', ',') INTO courses2 FROM jsonb_array_elements(st2->'courses') c;
+    RAISE EXCEPTION 'CHECK_V492_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V492_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V492: a GST & EPS permit carries exactly the GST and EPS courses on the approved registration for its semester — never a departmental course, another semester''s or one not registered; none without one, none for a draft, none until the examination card''s fees are cleared',
+        coalesce(courses = 'GST 929:GST,EPS 929:EPS' AND (st->>'gstCount')::int = 1 AND (st->>'epsCount')::int = 1 AND (st->>'units')::int = 4
+            AND courses2 = 'GST 928' AND st_dep->>'code' = 'GST_EPS_PERMIT_NO_COURSES' AND jsonb_array_length(st_dep->'courses') = 0
+            AND st_draft->>'code' = 'GST_EPS_PERMIT_NOT_APPROVED' AND jsonb_array_length(st_draft->'courses') = 0
+            AND st_unpaid->>'code' = 'GST_EPS_PERMIT_NOT_CLEARED', false),
+        format('first %s (%s) | second %s | departmental only %s | draft %s | unpaid %s', courses, st->>'units', courses2, st_dep->>'code', st_draft->>'code', st_unpaid->>'code'));
+    PERFORM pg_temp.assert('V492: a permit is issued once with its reference and counted; its log is written once; withdrawn only with a reason by an office whose course it carries, and restored; a reset takes its courses off and a new registration puts the new ones on under the same number',
+        coalesce(ref ~ '^GST-EPS/9592/[0-9]{6,}$' AND i2->'permit'->>'reference' = ref AND n_permits = 1 AND (i2->'permit'->>'viewed')::int = 1 AND (i2->'permit'->>'printed')::int = 1
+            AND events = 'GST_EPS_PERMIT_GENERATED,GST_EPS_PERMIT_PRINTED,GST_EPS_PERMIT_VIEWED' AND once = 'refused' AND short_reason = 'GST_EPS_PERMIT_REASON'
+            AND revoked->>'code' = 'GST_EPS_PERMIT_REVOKED' AND (restored->>'available')::boolean
+            AND after_reset->>'code' = 'GST_EPS_PERMIT_NOT_APPROVED' AND jsonb_array_length(after_reset->'courses') = 0
+            AND i3->'permit'->>'reference' = ref AND courses3 = 'GST 928', false),
+        format('reference %s / %s, permits %s, counts %s/%s | log %s, update %s | short reason %s | revoked %s, restored %s | after reset %s | again %s %s',
+               ref, i2->'permit'->>'reference', n_permits, i2->'permit'->>'viewed', i2->'permit'->>'printed', events, once, short_reason,
+               revoked->>'code', restored->>'available', after_reset->>'code', i3->'permit'->>'reference', courses3));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

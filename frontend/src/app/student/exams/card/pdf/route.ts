@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
-import {A4, Page, jpegSize} from "@/lib/pdf-write";
-import { crestImage } from "@/lib/pdf-crest";
-import { qrMatrix, examVerifyPath, studentCheckCode } from "@/lib/qr";
+import { A4, jpegSize } from "@/lib/pdf-write";
+import { examVerifyPath, studentCheckCode } from "@/lib/qr";
+import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardTableEnd, cardTableHead, cardVerify } from "@/lib/exam-card-pdf";
 import { semesterName } from "@/lib/student-portal";
 
 import { loadInstitution } from "@/lib/document/institution-server";
@@ -12,9 +12,6 @@ import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
-const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "..." : s);
 function originOf(req: Request): string {
   const h = req.headers;
   const host = h.get("x-forwarded-host") ?? h.get("host");
@@ -58,75 +55,16 @@ export async function GET(request: NextRequest) {
     if (res.ok) { const buf = new Uint8Array(await res.arrayBuffer()); const dim = jpegSize(buf); if (dim) photo = { width: dim.width, height: dim.height, data: buf }; }
   } catch { /* blank box */ }
 
-  const INSTRUCTIONS = [
-    "Do not write anything on your examination card.",
-    "Do not write anything on your question paper.",
-    "Do not exchange your examination card.",
-    "Do not impersonate or be impersonated.",
-    "Fill in your particulars accurately on the examination booklet.",
-    "Ensure your attendance slip is fully completed and submitted.",
-    "Submit your answer script before you leave the hall.",
-    "Have your student I.D. card on your person.",
-  ];
-  const REGULATIONS = [
-    "Only writing materials, or items specially allowed, may be introduced into the hall.",
-    "Candidates must be seated at least 10 minutes before the scheduled time.",
-    "No candidate is admitted 30 minutes after commencement, or may leave before the first 45 minutes or during the last 15.",
-    "Assisting, aiding or abetting cheating is prohibited.",
-    "Silence must be maintained; raise your hand to call the invigilator.",
-    "Smoking is prohibited in the examination hall.",
-    "No answer script or sheet may be taken out by any candidate.",
-    "Cheat-notes or any other material, relevant or not, are prohibited.",
-    "Mobile phones or similar devices, on or off, are prohibited in the hall.",
-    "No candidate may leave the hall unaccompanied and return to it.",
-    "Any infraction of this card constitutes an examination irregularity and is subject to sanctions.",
-    "Your examination card is a security document; protect it.",
-    "Exchange of the examination card is misconduct.",
-    "Avoid misplacement of your examination card.",
-  ];
-
-  const p = new Page();
-  const L = 56;
-  const crest = crestImage();
-  if (crest) p.imageWatermark((A4.w - 340) / 2, (A4.h - 360) / 2, 340, 340, crest);   // big faint centred crest
-  p.watermark(matric);   // the matric number, tiled faint at 45°, as a security watermark
-  p.bigDiagonalWatermark(matric);   // one bold matric number, large and diagonal, centred as the main watermark
-
-  // ── centred header ──
-  const cx = A4.w / 2;
-  const htop = A4.h - 38;
-  if (crest) p.jpeg(cx - 21, htop - 42, 42, 42, crest);
-  p.textCenter(cx, htop - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  p.textCenter(cx, htop - 68, "Office of the Registrar", 9, false, [0.35, 0.35, 0.35]);
-  p.textCenter(cx, htop - 84, "EXAMINATION CARD", 12, true, [0.1, 0.25, 0.4]);
-  let y = htop - 96;
-  p.rule(L, y, A4.w - L, y, 1, 0.2);
-  y -= 22;
-
-  // photo top-right
-  const pw = 74, ph = 88, px = A4.w - L - pw, ptop = y + 8;
-  if (photo) p.jpeg(px, ptop - ph, pw, ph, photo);
-  else { for (const [a, b, cc, d] of [[px, ptop, px + pw, ptop], [px, ptop - ph, px + pw, ptop - ph], [px, ptop, px, ptop - ph], [px + pw, ptop, px + pw, ptop - ph]]) p.rule(a, b, cc, d, 0.6, 0.7); p.text(px + 20, ptop - ph / 2, "PHOTO", 8, false, [0.6, 0.6, 0.6]); }
-  // the student's name centred under the photo (auto-fit to the photo's width), with "Original" beneath it
-  const nameCx = px + pw / 2;
-  const nm = clean(s.name) || matric;
-  const nmSize = Math.max(5, Math.min(7.5, pw / (Math.max(1, nm.length) * 0.54)));
-  p.textCenter(nameCx, ptop - ph - 9, nm, nmSize, true);
-  p.textCenter(nameCx, ptop - ph - 19, "Original", 6.5, false, [0.5, 0.5, 0.5]);
-
-  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)]]) {
-    p.text(L, y, k.toUpperCase(), 7, false, [0.4, 0.4, 0.4]);
-    p.text(L + 140, y, val, 10, true);
-    y -= 15;
-  }
-  y = Math.min(y, ptop - ph - 30) - 4;   // leave room under the photo for the name and the "Original" line
+  // ── the card's design (lib/exam-card-pdf, shared with the GST & EPS permit): header, photograph, particulars ──
+  const L = CARD_L;
+  const { p, y: top } = cardPage({ matric, institution: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", office: "Office of the Registrar", title: "EXAMINATION CARD" });
+  let y = cardIdentity(p, top, {
+    photo, name: clean(s.name) || matric,
+    details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
+  });
 
   const titleX = L + 92, unitX = A4.w - L - 150, signX = A4.w - L - 92;
-  p.fill(L, y - 4, A4.w - 2 * L, 16, 0.16);
-  p.text(L + 8, y, "COURSE CODE", 8, true, [1, 1, 1]);
-  p.text(titleX, y, "COURSE TITLE", 8, true, [1, 1, 1]);
-  p.text(unitX, y, "UNIT", 8, true, [1, 1, 1]);
-  p.text(signX, y, "SIGN / INVIGILATOR", 8, true, [1, 1, 1]);
+  cardTableHead(p, y, [[L + 8, "COURSE CODE"], [titleX, "COURSE TITLE"], [unitX, "UNIT"], [signX, "SIGN / INVIGILATOR"]]);
   y -= 19;
   const titleMax = Math.floor((unitX - titleX - 6) / 4.6);   // chars that fit the title column at 8.5pt
   for (const e of reg.entries) {
@@ -137,41 +75,18 @@ export async function GET(request: NextRequest) {
     else p.rule(signX, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
     y -= 16;
   }
-  p.rule(L, y + 7, A4.w - L, y + 7, 0.8, 0.55);
-  p.text(L + 8, y - 4, `${reg.entries.length} paper(s) · ${reg.units} credit units`, 9, true);
-  y -= 22;
+  y = cardTableEnd(p, y, `${reg.entries.length} paper(s) · ${reg.units} credit units`);
 
   // ── instructions and examination regulations, two compact columns ──
-  const colW = (A4.w - 2 * L - 16) / 2;
-  const colX2 = L + colW + 16;
-  const column = (x: number, top: number, title: string, items: string[]) => {
-    p.fill(x, top - 4, colW, 15, 0.16);
-    p.text(x + 6, top, title, 7.5, true, [1, 1, 1]);
-    let yy = top - 18;
-    items.forEach((t, i) => {
-      p.text(x, yy, `${i + 1}.`, 7, true);
-      yy = p.paragraph(x + 14, yy, t, colW - 14, 7, 1.25) - 2;
-    });
-    return yy;
-  };
-  const colTop = y;
-  const endL = column(L, colTop, "INSTRUCTIONS TO THE CANDIDATE", INSTRUCTIONS);
-  const endR = column(colX2, colTop, "EXAMINATION REGULATIONS", REGULATIONS);
-  y = Math.min(endL, endR) - 14;
+  y = cardRules(p, y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS);
 
   // ── a small verify QR, bottom-left, with the check code (no explanatory paragraph) ──
   const check = await studentCheckCode("EXAM", session, semester);
   if (!check) return NextResponse.json({ status: 503, title: "The card's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
   const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
-  const code = check.code;
-  const { size, dark } = qrMatrix(url);
-  const cell = 1.7, qDim = size * cell, qy = Math.max(y, 96);
-  for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(L + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
-  p.text(L + qDim + 12, qy - 10, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
-  p.text(L + qDim + 12, qy - 24, `Check code  ${code}`, 8.5, true);
-  p.text(L + qDim + 12, qy - 37, "Verified against the register — the invigilator checks the face against the photograph.", 7, false, [0.45, 0.45, 0.45]);
+  cardVerify(p, y, url, check.code);
 
-  p.text(L, 40, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`, 7, false, [0.45, 0.45, 0.45]);
+  cardFooter(p, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`);
 
   const bytes = finishPdf([p], `Exam card ${matric}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="exam-card-${session.replace("/", "-")}-${semester}.pdf"` } });

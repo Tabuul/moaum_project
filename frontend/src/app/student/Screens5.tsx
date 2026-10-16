@@ -17,7 +17,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
-import { CardActions } from "./exams/CardActions";
+import { CardActions, PermitActions } from "./exams/CardActions";
+import { permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
 
 /* ── result query ── */
 
@@ -108,7 +109,7 @@ export function Carryover({ r }: { r: Results }) {
 
 /* ── examinations (the examination card) ── */
 
-export function Exams({ d, current }: { d: Docket; s: Me; current?: RegistrationView | null }) {
+export function Exams({ d, current, permits = [] }: { d: Docket; s: Me; current?: RegistrationView | null; permits?: PermitState[] }) {
   const cleared = d.clearsExamination === true;
   const withPapers = d.examSessions.filter((x) => x.papers.length);
   // V491: the registration approved this semester carries its card at once (where the rule offers the card on approval), before
@@ -131,6 +132,18 @@ export function Exams({ d, current }: { d: Docket; s: Me; current?: Registration
           </PBody>
         </Panel>
       ) : null}
+      {/* V492: the GST & EPS examination permit, a document of its own beside the card: only the GST and EPS courses registered */}
+      {permits.filter((permit) => permit.courses.length || permit.permit).map((permit) => (
+        <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${semesterName(permit.semester)} semester`} right={permitStatusLabel(permit)}>
+          <PBody>
+            <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your approved registration.` : permit.reason}</div>
+            <div className="row row--inline mt-2" style={{ gap: 8, flexWrap: "wrap" }}>
+              {permit.available ? <PermitActions session={permit.session} semester={permit.semester} /> : null}
+              <LinkBtn kind="ghost" href={`/student/exams/gst-eps-permit?semester=${permit.semester}`}>VIEW GST & EPS PERMIT</LinkBtn>
+            </div>
+          </PBody>
+        </Panel>
+      ))}
       {!withPapers.length ? (
         curCard ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
