@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 361
+\set EXPECTED 362
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16926,6 +16926,57 @@ BEGIN
                  AND told_paid LIKE '%EMAIL:Your refund of NGN 30,000.00 has been paid%' AND once = 3
                  AND mine1 = 'CARRY:9980/9981:20000:-' AND mine2 = 'REFUND:-:30000:PAID', false),
         format('listed %s | carried %s | raised %s | paid %s | e-mails %s | fees page %s / %s', listed, told_carry, told_raised, told_paid, once, mine1, mine2));
+END $$;
+-- ── V521: ICT Support opens the student's portal, read-only ──
+-- Every agent in service holds the capability; the portal is opened by ICT Support alone, with a reason, as a portal session of the
+-- student's that ends after its minutes, on the support ledger and the view's log; a merged record is not opened; another agent does
+-- not end the view, the agent who opened it does, and the portal session ends with it. The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); merged uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+        sid bytea := gen_random_bytes(32); sid2 bytea := gen_random_bytes(32); msg text; prog text;
+        opened jsonb; by_bursar text; short_reason text; merged_refused text; by_other text; ended boolean; session_ended boolean; ledger int; minutes int;
+        in_baseline boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V521', true);
+        PERFORM set_config('moaum.actor_id', a1::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (a1, 'CHK-V521-A1', 'CHECKV521', 'AgentOne'), (a2, 'CHK-V521-A2', 'CHECKV521', 'AgentTwo');
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/97/970521', 'CHECKV521', 'Viewed', prog, 'UTME', '2020/2021', 100, 100, 'ADMITTED'),
+            (merged, 'MOAUM/ADM/97/970522', 'CHECKV521', 'Merged', prog, 'UTME', '2020/2021', 100, 100, 'ADMITTED');
+        UPDATE people.student SET duplicate_of = st WHERE id = merged;
+        in_baseline := 'VIEW_STUDENT_PORTAL' = ANY (helpdesk.agent_baseline()) AND 'VIEW_STUDENT_PORTAL' = ANY (helpdesk.support_capabilities());
+        -- another office is refused
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM helpdesk.open_portal_view(st, NULL, 'Checking the student''s portal', sid, 30); by_bursar := 'OPENED';
+        EXCEPTION WHEN insufficient_privilege THEN by_bursar := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        BEGIN PERFORM helpdesk.open_portal_view(st, NULL, 'short', sid, 30); short_reason := 'OPENED';
+        EXCEPTION WHEN check_violation THEN short_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM helpdesk.open_portal_view(merged, NULL, 'Checking the student''s portal', sid2, 30); merged_refused := 'OPENED';
+        EXCEPTION WHEN check_violation THEN merged_refused := split_part(SQLERRM, ':', 1); END;
+        opened := helpdesk.open_portal_view(st, NULL, 'The student says the registration page shows no courses', sid, 30);
+        minutes := (SELECT round(extract(epoch FROM absolute_end - issued_at) / 60) FROM platform.session WHERE id = sid AND person_id = st AND active_office = 'student');
+        ledger := (SELECT count(*) FROM helpdesk.support_action WHERE student_id = st AND action = 'STUDENT_PORTAL_VIEWED' AND agent_id = a1);
+        -- another agent does not end it
+        PERFORM set_config('moaum.actor_id', a2::text, true);
+        BEGIN PERFORM helpdesk.end_portal_view((opened->>'viewId')::uuid); by_other := 'ENDED';
+        EXCEPTION WHEN insufficient_privilege THEN by_other := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', a1::text, true);
+        ended := helpdesk.end_portal_view((opened->>'viewId')::uuid);
+        session_ended := (SELECT ended_at IS NOT NULL FROM platform.session WHERE id = sid);
+        RAISE EXCEPTION 'the V521 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V521 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V521: ICT Support alone opens a student''s portal, with a reason, as a portal session of the student''s that ends after its minutes, on the ledger; never a merged record; another agent does not end it, the agent does and the session ends',
+        coalesce(in_baseline AND by_bursar = 'SUPPORT_VIEW_OFFICE' AND short_reason = 'SUPPORT_VIEW_REASON' AND merged_refused = 'SUPPORT_VIEW_MERGED'
+                 AND opened ? 'viewId' AND minutes = 30 AND ledger = 1 AND by_other = 'SUPPORT_VIEW_NOT_YOURS' AND ended AND session_ended, false),
+        format('baseline %s | bursar %s | short %s | merged %s | opened %s, %s min, ledger %s | other %s | ended %s, session %s',
+               in_baseline, by_bursar, short_reason, merged_refused, opened ? 'viewId', minutes, ledger, by_other, ended, session_ended));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
