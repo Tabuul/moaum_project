@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 348
+\set EXPECTED 349
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16129,6 +16129,115 @@ BEGIN
         coalesce(own_codes = 'GST 397,ZQY 101,ZQY 201,ZQY 211' AND core_codes = 'ZQY 101:CORE,ZQY 201:CORE' AND gst_codes = 'GST 397' AND carry_n = 0
                  AND found_other = 'ZQZ 201:REG_NOT_AVAILABLE' AND listed_other IS NULL, false),
         format('own [%s] core [%s] gst [%s] carry %s | search %s listed %s', own_codes, core_codes, gst_codes, carry_n, found_other, listed_other));
+END $$;
+-- ── V506. Overpaid school fees decided, and a session's fees copied from another. Three students of one programme in a session
+--          charged ₦100,000 (and the next session): one paid ₦120,000 in two old-portal payments, one ₦130,000, one exactly.
+--          Refused without a person or a reason; the first carried into the next session (a CARRIED record there that its
+--          position counts, its journal moving ₦20,000 of school-fees income across, never cash, never posted again by the
+--          sync); the rest refunded (a refund raised against the payment that covers the excess); decided once; a rejected
+--          refund decided again. The fee lines copied: a preview, then the copy of what the next session lacks, a line it
+--          states kept; refused into an unknown session, from an empty one, or into itself. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
+        a text := '9983/9984'; b text := '9984/9985'; pa text; pb text; no_actor text; short_reason text; over_before text;
+        first record; carried_rec text; jlines text; unposted_free boolean; pos_b numeric; rec_after_carry text; second record; rf text;
+        rec_after_refund text; again record; redo record; refunds_s2 int; prev text; copied text; after_copy text;
+        e_unknown text; e_empty text; e_self text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V506', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), a, date '9983-10-01', date '9984-08-31'), (gen_random_uuid(), b, date '9984-10-01', date '9985-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        SELECT code INTO pb FROM ref.programme WHERE NOT coalesce(archived, false) AND code <> pa ORDER BY code LIMIT 1;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, kind) VALUES
+            (a, 'School fees', 100000, NULL, pa, 'FEE'), (b, 'School fees', 100000, NULL, pa, 'FEE'), (a, 'Late payment', 5000, NULL, pb, 'LATE_PAYMENT');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (s1, 'MOAUM/ADM/83/983101', 'MOAUM/CHK/83/9831', 'ZZCHKV506A', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now()),
+          (s2, 'MOAUM/ADM/83/983102', 'MOAUM/CHK/83/9832', 'ZZCHKV506B', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now()),
+          (s3, 'MOAUM/ADM/83/983103', 'MOAUM/CHK/83/9833', 'ZZCHKV506C', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        SELECT v.s, a, v.ref, v.purpose, v.amount, v.day::timestamptz, v.day::timestamptz, who, 'Legacy', 'LEG-' || v.ref, 'Imported from the old portal · old ref ' || v.payref
+          FROM (VALUES (s1, 'MOAUM-LEG-MOAUMCHK839831-9983-9984-S1', 'School fees (legacy) · semester 1', 70000.00, '9983-11-02', 'PRCHK5061'),
+                       (s1, 'MOAUM-LEG-MOAUMCHK839831-9983-9984-S2', 'School fees (legacy) · semester 2', 50000.00, '9984-03-02', 'PRCHK5062'),
+                       (s2, 'MOAUM-LEG-MOAUMCHK839832-9983-9984-S1', 'School fees (legacy) · semester 1', 130000.00, '9983-11-03', 'PRCHK5063'),
+                       (s3, 'MOAUM-LEG-MOAUMCHK839833-9983-9984-S1', 'School fees (legacy) · semester 1', 100000.00, '9983-11-04', 'PRCHK5064')) v(s, ref, purpose, amount, day, payref);
+
+        -- refused without a person, and without a reason
+        PERFORM set_config('moaum.actor_id', '', true);
+        BEGIN PERFORM * FROM finance.decide_overpayments(a, 'CARRY', NULL, 'carried into the next session');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS no_actor = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        BEGIN PERFORM * FROM finance.decide_overpayments(a, 'CARRY', NULL, 'short');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS short_reason = MESSAGE_TEXT; END;
+
+        over_before := (SELECT string_agg(x.number || ':' || x.excess::int || ':' || coalesce(x.decision, '-'), ',' ORDER BY x.number COLLATE "C")
+                          FROM finance.overpaid(a) x WHERE x.student_id IN (s1, s2, s3));
+        -- the first carried into the next session
+        SELECT * INTO first FROM finance.decide_overpayments(a, 'carry', ARRAY[s1], 'CHECK V506: carried into the next session');
+        carried_rec := (SELECT r.session || ':' || r.amount::int || ':' || r.channel || ':' || r.purpose FROM finance.payment_reference r
+                         WHERE r.student_id = s1 AND r.session = b);
+        jlines := (SELECT string_agg(p.account || ':' || p.debit::int || ':' || p.credit::int || ':' || p.session, ',' ORDER BY p.line)
+                     FROM finance.gl_posting p JOIN finance.gl_journal g ON g.id = p.journal_id
+                    WHERE g.source_type = 'PAYMENT' AND g.source_ref = (SELECT d.reference FROM finance.overpayment_decision d WHERE d.student_id = s1));
+        unposted_free := NOT EXISTS (SELECT 1 FROM finance.payment_reference r WHERE r.student_id = s1 AND r.session = b
+                                       AND NOT EXISTS (SELECT 1 FROM finance.gl_journal g WHERE g.source_type = 'PAYMENT' AND g.source_ref = r.reference));
+        SELECT p.paid INTO pos_b FROM finance.position(s1, b) p;
+        rec_after_carry := (SELECT string_agg(x.number || ':' || x.state || ':' || x.settled::int || ':' || coalesce(x.decision, '-'), ',' ORDER BY x.number COLLATE "C")
+                              FROM finance.old_fees_reconciliation(a) x WHERE x.student_id IN (s1, s2, s3));
+        -- the rest refunded, against the payment that covers the excess
+        SELECT * INTO second FROM finance.decide_overpayments(a, 'REFUND', NULL, 'CHECK V506: refunded to the student');
+        rf := (SELECT f.amount::int || ':' || f.state || ':' || coalesce(f.source_reference, '-') FROM finance.refund f
+                WHERE f.reference = (SELECT d.reference FROM finance.overpayment_decision d WHERE d.student_id = s2 AND d.superseded_at IS NULL));
+        rec_after_refund := (SELECT string_agg(x.number || ':' || x.state, ',' ORDER BY x.number COLLATE "C")
+                               FROM finance.old_fees_reconciliation(a) x WHERE x.student_id IN (s1, s2));
+        SELECT * INTO again FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s1, s2], 'CHECK V506: decided once only');
+        -- a refund the desk rejects leaves the excess to be decided again
+        UPDATE finance.refund SET state = 'REJECTED', rejected_why = 'check V506'
+         WHERE reference = (SELECT d.reference FROM finance.overpayment_decision d WHERE d.student_id = s2 AND d.superseded_at IS NULL);
+        SELECT * INTO redo FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V506: refunded again after the rejection');
+        refunds_s2 := (SELECT count(*) FROM finance.refund f WHERE f.student_id = s2);
+
+        -- the fees copied: a preview, then the copy of what the next session lacks
+        prev := (SELECT string_agg(c.kind || ':' || c.item || ':' || c.action || ':' || coalesce(c.target_amount::int::text, '-'), ',' ORDER BY c.kind, c.item)
+                   FROM finance.copy_session_fees(a, b, false) c WHERE c.programme_code IN (pa, pb));
+        copied := (SELECT string_agg(c.kind || ':' || c.action, ',' ORDER BY c.kind) FROM finance.copy_session_fees(a, b, true) c WHERE c.programme_code IN (pa, pb));
+        after_copy := (SELECT string_agg(f.kind || ':' || f.item || ':' || f.amount::int || ':' || f.programme_code, ',' ORDER BY f.kind)
+                         FROM finance.fee_schedule f WHERE f.session = b AND f.ended_at IS NULL AND f.programme_code IN (pa, pb))
+                      || '|' || (SELECT string_agg(c.action, ',' ORDER BY c.kind) FROM finance.copy_session_fees(a, b, false) c WHERE c.programme_code IN (pa, pb));
+        BEGIN PERFORM * FROM finance.copy_session_fees(a, '9971/9972', false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_unknown = MESSAGE_TEXT; END;
+        BEGIN PERFORM * FROM finance.copy_session_fees('9969/9970', b, false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_empty = MESSAGE_TEXT; END;
+        BEGIN PERFORM * FROM finance.copy_session_fees(a, a, false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_self = MESSAGE_TEXT; END;
+        RAISE EXCEPTION 'the V506 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V506 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V506: an overpaid student''s excess is carried into the next session (a CARRIED record its position counts, its journal moving the income across, never cash) or refunded through the Refunds desk, once, a rejected refund decided again; and a session''s fees are copied from another after a preview, a stated line never overwritten',
+        coalesce(no_actor LIKE 'OVERPAY_ACTOR%' AND short_reason LIKE 'OVERPAY_REASON%'
+                 AND over_before = 'MOAUM/CHK/83/9831:20000:-,MOAUM/CHK/83/9832:30000:-'
+                 AND first.carried = 1 AND first.refunds = 0 AND first.remaining = 0
+                 AND carried_rec = '9984/9985:20000:CARRIED:School fees 9984/9985 (carried from 9983/9984)'
+                 AND jlines = '4010:20000:0:9983/9984,4010:0:20000:9984/9985' AND unposted_free AND pos_b = 20000
+                 AND rec_after_carry = 'MOAUM/CHK/83/9831:OVER_SETTLED:20000:CARRY,MOAUM/CHK/83/9832:OVER:0:-,MOAUM/CHK/83/9833:MATCHED:0:-'
+                 AND second.carried = 0 AND second.refunds = 1 AND second.remaining = 0
+                 AND rf = '30000:PROPOSED:MOAUM-LEG-MOAUMCHK839832-9983-9984-S1'
+                 AND rec_after_refund = 'MOAUM/CHK/83/9831:OVER_SETTLED,MOAUM/CHK/83/9832:OVER_SETTLED'
+                 AND again.carried = 0 AND again.refunds = 0 AND redo.refunds = 1 AND refunds_s2 = 2
+                 AND prev = 'FEE:School fees:KEPT:100000,LATE_PAYMENT:Late payment:COPY:-'
+                 AND copied = 'FEE:KEPT,LATE_PAYMENT:COPY'
+                 AND after_copy = 'FEE:School fees:100000:' || pa || ',LATE_PAYMENT:Late payment:5000:' || pb || '|KEPT,KEPT'
+                 AND e_unknown LIKE 'FEE_COPY_SESSION:%' AND e_empty LIKE 'FEE_COPY_EMPTY%' AND e_self LIKE 'FEE_COPY_SESSIONS%', false),
+        format('no actor %s | short %s | overpaid %s | carry %s/%s/%s, record %s, journal %s, free %s, position %s | after carry %s | refund %s/%s/%s %s | after refund %s | again %s/%s, redo %s, refunds %s | preview %s | copied %s | after %s | errors %s / %s / %s',
+               left(no_actor, 20), left(short_reason, 20), over_before, first.carried, first.refunds, first.remaining, carried_rec, jlines, unposted_free, pos_b,
+               rec_after_carry, second.carried, second.refunds, second.remaining, rf, rec_after_refund, again.carried, again.refunds, redo.refunds, refunds_s2,
+               prev, copied, after_copy, left(e_unknown, 25), left(e_empty, 20), left(e_self, 22)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

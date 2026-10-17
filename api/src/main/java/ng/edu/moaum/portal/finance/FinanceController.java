@@ -255,8 +255,8 @@ class FinanceController {
                     'total', (SELECT count(*) FROM f),
                     'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
                         SELECT student_id, number, name, programme_code, faculty_code, level, due, paid, paid_old_s1, paid_old_s2, paid_old_session,
-                               paid_payment_history, paid_portal, old_payments, difference, state
-                          FROM f ORDER BY CASE f.state WHEN 'UNDER' THEN 0 WHEN 'OVER' THEN 1 WHEN 'NO_FEE_STATED' THEN 2 ELSE 3 END, abs(f.difference) DESC, f.number
+                               paid_payment_history, paid_portal, old_payments, difference, state, carried_in, settled, decision
+                          FROM f ORDER BY CASE f.state WHEN 'UNDER' THEN 0 WHEN 'OVER' THEN 1 WHEN 'NO_FEE_STATED' THEN 2 WHEN 'OVER_SETTLED' THEN 3 ELSE 4 END, abs(f.difference) DESC, f.number
                          LIMIT :n OFFSET :o) r))::text
                 """).param("s", ses).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("n", sz).param("o", (long) (pg - 1) * sz)
                 .query(String.class).single();
@@ -264,6 +264,56 @@ class FinanceController {
         out.put("page", pg);
         out.put("size", sz);
         return out;
+    }
+
+    /** V506: the students the reconciliation finds overpaid in a session — due, paid, the excess — with the decision that stands
+     *  (carried into the next session, or a refund raised), the counts, and the first rows (up to 100,000 for the Excel list) */
+    @GetMapping("/legacy-fees/overpaid")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> overpaid(@RequestParam(required = false) String session, @RequestParam(defaultValue = "200") int limit) {
+        String ses = session != null && session.matches("^[0-9]{4}/[0-9]{4}$") ? session
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).single();
+        int n = Math.max(1, Math.min(limit, 100_000));
+        String text = jdbc.sql("""
+                WITH o AS MATERIALIZED (SELECT * FROM finance.overpaid(:s))
+                SELECT json_build_object(
+                    'session', :s::text,
+                    'sessions', (SELECT coalesce(json_agg(t.session ORDER BY t.session DESC), '[]'::json)
+                                   FROM (SELECT DISTINCT r.session FROM finance.payment_reference r
+                                          WHERE (r.reference LIKE 'MOAUM-LEG-%' OR r.reference NOT LIKE 'MOAUM-%') AND r.purpose LIKE 'School fees%'
+                                            AND r.session ~ '^[0-9]{4}/[0-9]{4}$') t),
+                    'nextSession', finance.next_session(:s),
+                    'count', (SELECT count(*) FROM o),
+                    'excess', (SELECT coalesce(sum(excess), 0) FROM o),
+                    'undecided', (SELECT count(*) FROM o WHERE decision IS NULL),
+                    'undecidedExcess', (SELECT coalesce(sum(excess), 0) FROM o WHERE decision IS NULL),
+                    'decided', (SELECT coalesce(json_object_agg(t.decision, t.n), '{}'::json) FROM (SELECT decision, count(*) AS n FROM o WHERE decision IS NOT NULL GROUP BY decision) t),
+                    'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
+                        SELECT student_id, number, name, programme_code, faculty_code, level, due, paid, excess, decision, decided, reference, to_session,
+                               decided_at::text AS decided_at, refund_state
+                          FROM o ORDER BY (decision IS NULL) DESC, excess DESC, number LIMIT :n) r))::text
+                """).param("s", ses).param("n", n).query(String.class).single();
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    public record DecideOverpaid(@NotBlank @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String session,
+                                 @NotBlank @Pattern(regexp = "CARRY|REFUND") String decision, List<UUID> students,
+                                 @NotBlank @Size(min = 10, max = 500) String reason, Integer limit) { }
+
+    /** V506: the Bursary's decision for the overpaid of a session not yet decided — all of them, or the students named — in batches
+     *  the screen asks for until none is left: carried into the next session (a CARRIED record there, its journal moving the
+     *  income across) or refunded (a refund raised on the Refunds & Credits desk) */
+    @PostMapping("/legacy-fees/overpaid/decide")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> decideOverpaid(@Valid @RequestBody DecideOverpaid body) {
+        int n = body.limit() == null ? 2000 : Math.max(1, Math.min(body.limit(), 5000));
+        boolean all = body.students() == null || body.students().isEmpty();
+        var q = jdbc.sql("SELECT * FROM finance.decide_overpayments(:s, :d, " + (all ? "NULL::uuid[]" : "CAST(:w AS uuid[])") + ", :r, :n)")
+                .param("s", body.session()).param("d", body.decision()).param("r", body.reason().trim()).param("n", n);
+        if (!all) q = q.param("w", body.students().toArray(UUID[]::new));
+        return q.query().singleRow();
     }
 
     public record ResetLegacy(String session, String confirm) { }
@@ -482,6 +532,40 @@ class FinanceController {
                         + ("CCE".equals(k) ? " AND entry_mode = 'CCE'" : "FULL_TIME".equals(k) ? " AND entry_mode IS DISTINCT FROM 'CCE'" : ""))
                 .param("s", session + "/" + year).update();
         return schedule(session, year);
+    }
+
+    /** V506: what copying another session's live fee lines into this one would do — each line COPY (this session states none
+     *  of the same scope) or KEPT (it does, never overwritten; its amount shown) — the preview the Bursary reads first */
+    @GetMapping("/sessions/{session}/{year}/schedule/copy")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> copyPreview(@PathVariable String session, @PathVariable String year,
+                                    @RequestParam @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String from) {
+        return copied(from, session + "/" + year, false);
+    }
+
+    public record CopyFees(@NotBlank @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String from) { }
+
+    /** V506: another session's live fee lines copied into this one, where this one states none of the same scope; the Bursary
+     *  adjusts the amounts afterwards as for any line */
+    @PostMapping("/sessions/{session}/{year}/schedule/copy")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> copyFees(@PathVariable String session, @PathVariable String year, @Valid @RequestBody CopyFees body) {
+        return copied(body.from(), session + "/" + year, true);
+    }
+
+    private Map<String, Object> copied(String from, String to, boolean apply) {
+        List<Map<String, Object>> lines = jdbc.sql("SELECT * FROM finance.copy_session_fees(:f, :t, :a)").param("f", from).param("t", to).param("a", apply)
+                .query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("from", from);
+        out.put("to", to);
+        out.put("copy", lines.stream().filter(l -> "COPY".equals(l.get("action"))).count());
+        out.put("kept", lines.stream().filter(l -> "KEPT".equals(l.get("action"))).count());
+        out.put("applied", apply);
+        out.put("lines", lines);
+        return out;
     }
 
     /** edit a standing fee line in place — its amount and the filters it carries */

@@ -21,6 +21,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
 import { PgFees } from "./PgFees";
+import { FeeCopy } from "./FeeCopy";
 import { FeeWatch } from "./FeeWatch";
 import type { GstFeePage } from "@/lib/gst";
 
@@ -480,6 +481,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         ) : null}
       </Panel>
       <FeeWatch session={session} faculties={faculties} sessions={sessions} may={may} />
+      <FeeCopy session={session} sessions={sessions} may={may} />
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>

@@ -7,7 +7,8 @@ import { notifyProblem } from "@/components/proto/Toast";
  *  V498: the one way in for old payments (Payment History Upload is retired): the old portal's payment number tells one
  *  payment from another, the payments the retired screen recorded twice are listed and withdrawn, and the old payments are
  *  reconciled against the fee setup. V502: a payment the retired screen recorded under its number is taken over when the
- *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. */
+ *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. V506: the overpaid,
+ *  carried into the next session or refunded, and the ledger posted from here. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
@@ -17,7 +18,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
 import { OldFeesDoubles } from "./OldFeesDoubles";
+import { OldFeesLedger } from "./OldFeesLedger";
 import { OldFeesMislabelled } from "./OldFeesMislabelled";
+import { OldFeesOverpaid } from "./OldFeesOverpaid";
 import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
 const MAY = ["bursar", "super", "admin"];
@@ -308,11 +311,15 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
       <OldFeesReconciliation tick={changed} />
 
+      <OldFeesOverpaid may={may} tick={changed} onChanged={bump} />
+
       <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
 
       <OldFeesDoubles may={may} tick={changed} onChanged={bump} />
 
       <OldFeesPaymentHistoryLeft tick={changed} />
+
+      <OldFeesLedger may={may} tick={changed} />
 
       <Panel title="Start over" right="Delete what this import has loaded, then load it again">
         <PBody>

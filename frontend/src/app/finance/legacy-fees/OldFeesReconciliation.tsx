@@ -120,13 +120,15 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
             <Tiles items={[
               tile("UNDER", "var(--red-ink)"),
               tile("OVER", "var(--red-ink)"),
+              tile("OVER_SETTLED", null),
               tile("NO_FEE_STATED", "var(--red-ink)"),
               tile("MATCHED", "var(--green-ink)"),
             ]} />
             {by("NO_FEE_STATED")?.students ? (
               <Note kind="info" title="No fee stated">
                 The fee setup charges these students nothing for {data.session}: their programme, level or faculty has no fee line for the session.
-                State the fees on Fee Setup and the list reconciles; the payments are not the problem.
+                State the fees on Fee Setup (or copy them there from another session, then adjust) and the list reconciles; the payments
+                are not the problem.
               </Note>
             ) : null}
           </PBody>
@@ -144,9 +146,9 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
                   {Number(r.paid_old_session) ? <div>Session {money(Number(r.paid_old_session))}</div> : null}
                   {Number(r.paid_payment_history) ? <div>Payment History {money(Number(r.paid_payment_history))}</div> : null}
                 </span>,
-                <span key="pt" className="tnum sub2">{Number(r.paid_portal) ? money(Number(r.paid_portal)) : "—"}</span>,
+                <span key="pt" className="tnum sub2">{Number(r.paid_portal) ? money(Number(r.paid_portal)) : (Number(r.carried_in) ? null : "—")}{Number(r.carried_in) ? <div>Carried in {money(Number(r.carried_in))}</div> : null}</span>,
                 <b key="df" className="tnum" style={{ color: r.state === "UNDER" || r.state === "OVER" ? "var(--red-ink)" : undefined }}>{money(Number(r.difference))}</b>,
-                <Pil key="st" kind={RECON_STATE[r.state][1]}>{RECON_STATE[r.state][0]}</Pil>,
+                <span key="st"><Pil kind={RECON_STATE[r.state][1]}>{RECON_STATE[r.state][0]}</Pil>{Number(r.settled) ? <div className="sub2 tnum">{money(Number(r.settled))} {r.decision === "CARRY" ? "carried" : r.decision === "REFUND" ? "to be refunded" : "settled"}</div> : null}</span>,
               ])} />
           ) : <PBody><div className="sub2">No student {state ? `in "${RECON_STATE[state][0]}" ` : ""}has an old-portal school-fees payment in {data.session}{q.trim() ? " matching that" : ""}.</div></PBody>}
           {data.total > SIZE ? (

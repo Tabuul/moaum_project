@@ -87,6 +87,15 @@ class AccountingController {
         return out;
     }
 
+    /** V506: what is waiting to be posted, alone — the screens that change payments (Old Fees History) show it and post it,
+     *  without the overview's figures */
+    @GetMapping("/unposted")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> unposted() {
+        return jdbc.sql("SELECT payments, refunds, vouchers FROM finance.gl_unposted()").query().singleRow();
+    }
+
     @GetMapping("/trial-balance")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)

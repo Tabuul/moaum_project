@@ -2,11 +2,12 @@
  *  left by earlier uploads), and the reconciliation against the fee setup — as the screen and its Excel lists read them.
  *  Node-tested. */
 
-export type ReconState = "UNDER" | "OVER" | "NO_FEE_STATED" | "MATCHED";
+export type ReconState = "UNDER" | "OVER" | "OVER_SETTLED" | "NO_FEE_STATED" | "MATCHED";
 
 export const RECON_STATE: Record<ReconState, [string, "bad" | "warn" | "ok" | "info"]> = {
   UNDER: ["Paid less than due", "bad"],
   OVER: ["Paid more than due", "warn"],
+  OVER_SETTLED: ["Overpaid: carried or refunded", "info"],
   NO_FEE_STATED: ["No fee stated", "info"],
   MATCHED: ["Matched", "ok"],
 };
@@ -16,11 +17,13 @@ export interface ReconRow {
   student_id: string; number: string; name: string; programme_code: string; faculty_code: string | null; level: number | null;
   due: number | string; paid: number | string; paid_old_s1: number | string; paid_old_s2: number | string; paid_old_session: number | string;
   paid_payment_history: number | string; paid_portal: number | string; old_payments: number; difference: number | string; state: ReconState;
+  /** V506: carried in from the session before; what of an excess is settled, and how (CARRY, REFUND) */
+  carried_in?: number | string; settled?: number | string; decision?: string | null;
 }
 
 export const RECON_HEADERS = ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)",
   "Old portal, 1st semester (₦)", "Old portal, 2nd semester (₦)", "Old portal, whole session (₦)", "Payment History Upload (₦)", "Portal (₦)",
-  "Old-portal payments", "Difference (₦)", "State"];
+  "Old-portal payments", "Difference (₦)", "State", "Carried in (₦)", "Excess settled (₦)", "Settled by"];
 
 const n = (v: number | string | null | undefined): number => {
   const x = Number(v ?? 0);
@@ -30,7 +33,8 @@ const n = (v: number | string | null | undefined): number => {
 /** a reconciliation row as an Excel row, in the order of RECON_HEADERS */
 export function reconRow(r: ReconRow): (string | number)[] {
   return [r.number, r.name, r.programme_code, r.faculty_code ?? "", r.level ?? "", n(r.due), n(r.paid), n(r.paid_old_s1), n(r.paid_old_s2),
-    n(r.paid_old_session), n(r.paid_payment_history), n(r.paid_portal), Number(r.old_payments ?? 0), n(r.difference), RECON_STATE[r.state]?.[0] ?? r.state];
+    n(r.paid_old_session), n(r.paid_payment_history), n(r.paid_portal), Number(r.old_payments ?? 0), n(r.difference), RECON_STATE[r.state]?.[0] ?? r.state,
+    n(r.carried_in), n(r.settled), r.decision ? r.decision.split(", ").map((d) => DECISION[d as Decision] ?? d).join(", ") : ""];
 }
 
 export type DoubleKind = "PAYMENT_HISTORY" | "WHOLE_SESSION" | "UNNUMBERED";
@@ -114,4 +118,34 @@ export const LEFT_HEADERS = ["Matric/admission no.", "Name", "Session", "Day on 
 /** a left record as an Excel row, in the order of LEFT_HEADERS */
 export function leftRow(l: LeftRow): (string | number)[] {
   return [l.number, l.name, l.session, l.paid_on, l.number_day ?? "", n(l.amount), l.reference, l.purpose, COUNTS_AS[l.counts_as] ?? l.counts_as];
+}
+
+/** V506: what the Bursary decided for an overpaid student's excess (finance.overpayment_decision) */
+export type Decision = "CARRY" | "REFUND";
+
+export const DECISION: Record<Decision, string> = {
+  CARRY: "Carried into the next session",
+  REFUND: "Refund raised",
+};
+
+/** one overpaid student of a session (finance.overpaid) */
+export interface OverpaidRow {
+  student_id: string; number: string; name: string; programme_code: string; faculty_code: string | null; level: number | null;
+  due: number | string; paid: number | string; excess: number | string; decision: Decision | null; decided: number | string | null;
+  reference: string | null; to_session: string | null; decided_at: string | null; refund_state: string | null;
+}
+
+export const OVERPAID_HEADERS = ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)",
+  "Excess (₦)", "Decision", "Into session", "Reference", "Refund state", "Decided on"];
+
+/** an overpaid student as an Excel row, in the order of OVERPAID_HEADERS */
+export function overpaidRow(o: OverpaidRow): (string | number)[] {
+  return [o.number, o.name, o.programme_code, o.faculty_code ?? "", o.level ?? "", n(o.due), n(o.paid), n(o.excess),
+    o.decision ? DECISION[o.decision] ?? o.decision : "Not decided", o.to_session ?? "", o.reference ?? "", o.refund_state ?? "",
+    o.decided_at ? o.decided_at.slice(0, 10) : ""];
+}
+
+/** the decisions run in batches until nothing is decided or nothing is left (what the screen loops on) */
+export function decideDone(r: { carried: number; refunds: number; remaining: number }): boolean {
+  return Number(r.remaining) <= 0 || Number(r.carried) + Number(r.refunds) <= 0;
 }

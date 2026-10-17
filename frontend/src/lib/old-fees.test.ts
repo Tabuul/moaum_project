@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DOUBLE_HEADERS, LEFT_HEADERS, MISLABELLED_HEADERS, RECON_HEADERS, doubleRow, leftRow, mislabelledRow, reconRow, withdrawDone, type DoubleRow, type LeftRow, type ReconRow } from "./old-fees.ts";
+import { DOUBLE_HEADERS, LEFT_HEADERS, MISLABELLED_HEADERS, OVERPAID_HEADERS, RECON_HEADERS, decideDone, doubleRow, leftRow, mislabelledRow, overpaidRow, reconRow, withdrawDone, type DoubleRow, type LeftRow, type OverpaidRow, type ReconRow } from "./old-fees.ts";
 
 test("a reconciliation row reads in the order of its headers, amounts as numbers to the kobo", () => {
   const r: ReconRow = {
@@ -10,7 +10,9 @@ test("a reconciliation row reads in the order of its headers, amounts as numbers
   };
   const row = reconRow(r);
   assert.equal(row.length, RECON_HEADERS.length);
-  assert.deepEqual(row, ["MOAU/LAW/24/74545", "DOE, Jane", "LAW", "LW", 200, 158150, 120000, 110704, 9296, 0, 0, 0, 3, -38150, "Paid less than due"]);
+  assert.deepEqual(row, ["MOAU/LAW/24/74545", "DOE, Jane", "LAW", "LW", 200, 158150, 120000, 110704, 9296, 0, 0, 0, 3, -38150, "Paid less than due", 0, 0, ""]);
+  const settled = reconRow({ ...r, paid: "178150", difference: "20000", state: "OVER_SETTLED", carried_in: "5000", settled: "20000", decision: "CARRY" });
+  assert.deepEqual(settled.slice(14), ["Overpaid: carried or refunded", 5000, 20000, "Carried into the next session"]);
 });
 
 test("a payment on record twice says why and what was kept", () => {
@@ -52,4 +54,21 @@ test("a record the retired screen made, matched by nothing, says the day its num
   assert.deepEqual(row, ["MOAU/AD/PUB/25/00001", "INVENTED, Student", "2025/2026", "2026-10-16", "2026-04-04", 4500, "PR202604040000005", "GST fee 2025/2026", "The GST fee"]);
   assert.equal(leftRow({ ...l, number_day: null, counts_as: "SCHOOL_FEES" })[4], "");
   assert.equal(leftRow({ ...l, counts_as: "SCHOOL_FEES" })[8], "School fees");
+});
+
+test("an overpaid student says the excess and what was decided, or that nothing was", () => {
+  const o: OverpaidRow = { student_id: "s", number: "MOAU/AD/PUB/25/00001", name: "INVENTED, Student", programme_code: "PUB", faculty_code: "SS", level: 200,
+    due: "100000.00", paid: "130000.00", excess: "30000.00", decision: null, decided: null, reference: null, to_session: null, decided_at: null, refund_state: null };
+  const row = overpaidRow(o);
+  assert.equal(row.length, OVERPAID_HEADERS.length);
+  assert.deepEqual(row, ["MOAU/AD/PUB/25/00001", "INVENTED, Student", "PUB", "SS", 200, 100000, 130000, 30000, "Not decided", "", "", "", ""]);
+  assert.deepEqual(overpaidRow({ ...o, decision: "CARRY", decided: "30000", reference: "MOAUM-CF-X-2025-2026", to_session: "2026/2027", decided_at: "2026-10-17 09:12:00+01" }).slice(8),
+    ["Carried into the next session", "2026/2027", "MOAUM-CF-X-2025-2026", "", "2026-10-17"]);
+  assert.equal(overpaidRow({ ...o, decision: "REFUND", refund_state: "PROPOSED" })[11], "PROPOSED");
+});
+
+test("deciding stops when nothing is left or nothing more can be decided", () => {
+  assert.equal(decideDone({ carried: 2000, refunds: 0, remaining: 300 }), false);
+  assert.equal(decideDone({ carried: 300, refunds: 0, remaining: 0 }), true);
+  assert.equal(decideDone({ carried: 0, refunds: 0, remaining: 4 }), true);
 });
