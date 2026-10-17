@@ -30,14 +30,56 @@ class NoticesController {
     private final ng.edu.moaum.portal.shared.JobLock lock;
     private final org.springframework.transaction.support.TransactionTemplate tx;
     private final ProviderWatch providers;
+    private final MailService mail;
+    private final SmsService sms;
 
     NoticesController(NoticeRepository notices, NoticeDispatcher dispatcher, ng.edu.moaum.portal.shared.JobLock lock,
-                      org.springframework.transaction.PlatformTransactionManager transactions, ProviderWatch providers) {
+                      org.springframework.transaction.PlatformTransactionManager transactions, ProviderWatch providers,
+                      MailService mail, SmsService sms) {
         this.notices = notices;
         this.dispatcher = dispatcher;
         this.lock = lock;
         this.tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
         this.providers = providers;
+        this.mail = mail;
+        this.sms = sms;
+    }
+
+    private static String text(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
+    }
+
+    /**
+     * V532: what e-mail goes through, in words — the account on the Mail server screen (the dispatcher's first choice), else the
+     * relay; null when neither is set. The password is never read here.
+     */
+    private String emailVia() {
+        Map<String, Object> m = mail.config();
+        String host = text(m.get("smtp_host"));
+        String user = text(m.get("username"));
+        if (!host.isEmpty() && !user.isEmpty() && Boolean.TRUE.equals(m.get("password_set")) && Boolean.TRUE.equals(m.get("configKeyPresent"))) {
+            String from = text(m.get("from_address"));
+            return "SMTP " + host + ":" + (m.get("smtp_port") == null ? 587 : m.get("smtp_port")) + " " + (text(m.get("smtp_encryption")).isEmpty() ? "STARTTLS" : text(m.get("smtp_encryption")))
+                    + ", signed in as " + user + (from.isEmpty() || from.equalsIgnoreCase(user) ? "" : ", sending as " + from) + " (the Mail server screen)";
+        }
+        if (dispatcher.emailConfigured()) {
+            return "An HTTP relay (MOAUM_NOTICES_EMAIL_URL)";
+        }
+        return null;
+    }
+
+    /** V532: what SMS goes through, in words — the account on the SMS gateway screen, else the relay; null when neither */
+    private String smsVia() {
+        Map<String, Object> m = sms.config();
+        if (Boolean.TRUE.equals(m.get("enabled")) && Boolean.TRUE.equals(m.get("api_key_set")) && !text(m.get("username")).isEmpty()
+                && Boolean.TRUE.equals(m.get("configKeyPresent"))) {
+            return (text(m.get("provider")).isEmpty() ? "eBulkSMS" : text(m.get("provider"))) + ", as " + text(m.get("username"))
+                    + (text(m.get("sender")).isEmpty() ? "" : ", sender " + text(m.get("sender"))) + " (the SMS gateway screen)";
+        }
+        if (dispatcher.smsConfigured()) {
+            return "An HTTP relay (MOAUM_NOTICES_SMS_URL)";
+        }
+        return null;
     }
 
     /** the outbox, and (V425) the history searched: channel, state, what it is about, words, a day range; the picture by channel */
@@ -70,8 +112,14 @@ class NoticesController {
         out.put("jobs", notices.openJobs());
         List<Map<String, Object>> clearances = notices.clearances(1);
         out.put("lastClearance", clearances.isEmpty() ? null : clearances.get(0));
-        out.put("emailProvider", dispatcher.emailConfigured());
-        out.put("smsProvider", dispatcher.smsConfigured());
+        // V532: the provider in use named (the Mail server and SMS gateway screens counted, not only the relays), and the SMTP pace
+        String emailVia = emailVia();
+        String smsVia = smsVia();
+        out.put("emailProvider", emailVia != null);
+        out.put("smsProvider", smsVia != null);
+        out.put("emailVia", emailVia);
+        out.put("smsVia", smsVia);
+        out.put("smtpPace", notices.smtpPace());
         out.put("byChannel", notices.byChannel());
         boolean filtered = channel != null || state != null || kind != null || (q != null && !q.isBlank()) || from != null || to != null;
         out.put("recent", filtered
@@ -118,6 +166,18 @@ class NoticesController {
         AuditContext ctx = AuditContextHolder.required();
         notices.setDelivery(bool(body.get("dispatch")), bool(body.get("email")), bool(body.get("sms")), bool(body.get("portal")), ctx.actorId(), ctx.actorOffice());
         return notices.deliveryRow();
+    }
+
+    record PaceIn(Integer perMinute, Integer perDay) { }
+
+    /** V532: how fast e-mail goes over SMTP — a minute's and a day's most (empty: no limit); Microsoft 365 allows one mailbox 30 and 10,000 */
+    @PutMapping("/smtp-pace")
+    @PreAuthorize(OPERATORS)
+    @Transactional
+    NoticeRepository.SmtpPace setSmtpPace(@RequestBody PaceIn in) {
+        AuditContext ctx = AuditContextHolder.required();
+        notices.setSmtpPace(in.perMinute(), in.perDay(), ctx.actorId(), ctx.actorOffice());
+        return notices.smtpPace();
     }
 
     record ClearIn(List<String> channels, String reason) { }

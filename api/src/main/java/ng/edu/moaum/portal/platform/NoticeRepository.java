@@ -80,6 +80,54 @@ public class NoticeRepository {
                 """).param("email", d.email()).param("sms", d.sms()).param("n", limit).query(Queued.class).list();
     }
 
+    /** V532: the batch with no more e-mail than the SMTP pace allows now (SMS as before) */
+    public List<Queued> sendable(int limit, Delivery d, int emailCap) {
+        if (!d.dispatch() || (!d.email() && !d.sms())) {
+            return List.of();
+        }
+        return jdbc.sql("""
+                SELECT id, channel, recipient, subject, body, attempts FROM (
+                    (SELECT id, channel, recipient, subject, body, attempts, priority, created_at FROM platform.notice
+                      WHERE state = 'QUEUED' AND attempts < 5 AND channel = 'EMAIL' AND :email
+                      ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at
+                      LIMIT :cap)
+                    UNION ALL
+                    (SELECT id, channel, recipient, subject, body, attempts, priority, created_at FROM platform.notice
+                      WHERE state = 'QUEUED' AND attempts < 5 AND channel = 'SMS' AND :sms
+                      ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at
+                      LIMIT :n)) x
+                 ORDER BY CASE x.priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, x.created_at
+                 LIMIT :n
+                """).param("email", d.email() && emailCap > 0).param("sms", d.sms()).param("cap", Math.max(0, emailCap)).param("n", limit)
+                .query(Queued.class).list();
+    }
+
+    /** V532: the SMTP pace — the limits (null: none), the attempts in the last minute and 24 hours, how many more may go now (null: no limit) */
+    public record SmtpPace(Integer perMinute, Integer perDay, long lastMinute, long lastDay, Integer allowance) { }
+
+    public SmtpPace smtpPace() {
+        Map<String, Object> r = jdbc.sql("SELECT * FROM platform.smtp_pace()").query().singleRow();
+        return new SmtpPace(r.get("per_minute") == null ? null : ((Number) r.get("per_minute")).intValue(),
+                r.get("per_day") == null ? null : ((Number) r.get("per_day")).intValue(),
+                ((Number) r.get("last_minute")).longValue(), ((Number) r.get("last_day")).longValue(),
+                r.get("allowance") == null ? null : ((Number) r.get("allowance")).intValue());
+    }
+
+    public void smtpAttempted(boolean ok) {
+        jdbc.sql("SELECT platform.smtp_attempted(:ok)").param("ok", ok).query().singleRow();
+    }
+
+    public void setSmtpPace(Integer perMinute, Integer perDay, UUID actor, String office) {
+        jdbc.sql("SELECT platform.set_smtp_pace(:m, :d, :by, :office)").param("m", perMinute, Types.INTEGER).param("d", perDay, Types.INTEGER)
+                .param("by", actor, Types.OTHER).param("office", office, Types.VARCHAR).query().singleRow();
+    }
+
+    /** V532: a message the account's or server's failure kept from going — the error noted, the attempt not counted against it */
+    public void held(UUID id, String error) {
+        jdbc.sql("UPDATE platform.notice SET last_error = :e WHERE id = :id")
+                .param("e", error == null ? "" : error.substring(0, Math.min(error.length(), 400))).param("id", id).update();
+    }
+
     public Map<String, Object> deliveryRow() {
         return jdbc.sql("SELECT * FROM platform.delivery()").query().singleRow();
     }

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 371
+\set EXPECTED 372
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17496,6 +17496,45 @@ BEGIN
         format('not yours %s | short %s | asks %s | snapshot %s | page %s | changed %s | closed %s | second %s, again %s | told %s/%s/%s | counts %s | lowered %s',
                left(e_mine, 26), left(e_short, 24), asks, snap, page_shows, changed, left(e_closed, 24), second_given, left(e_closed2, 24),
                told_before, told_at, told_after, counts, lowered));
+END $$;
+-- ── V532: e-mail over SMTP at the mail provider's pace ──
+-- Microsoft 365's limits for one mailbox stand by default (30 a minute, 10,000 a day); each attempt over SMTP is counted and
+-- the allowance is what is left of the tighter limit, never below none; empty limits mean no limit; a limit out of range, or a
+-- day's below a minute's, is refused. The block undoes its writes.
+DO $$
+DECLARE msg text; d_min int; d_day int; a0 int; a1 int; tried_min bigint; at_limit int; none_left int; unlimited int; r_zero text; r_order text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V532', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        SELECT p.per_minute, p.per_day INTO d_min, d_day FROM platform.smtp_pace() p;
+        PERFORM platform.set_smtp_pace(5, 100, NULL, 'ict');
+        DELETE FROM platform.smtp_attempt;
+        a0 := (SELECT p.allowance FROM platform.smtp_pace() p);
+        PERFORM platform.smtp_attempted(true);
+        PERFORM platform.smtp_attempted(false);
+        SELECT p.allowance, p.last_minute INTO a1, tried_min FROM platform.smtp_pace() p;
+        PERFORM platform.smtp_attempted(true); PERFORM platform.smtp_attempted(true); PERFORM platform.smtp_attempted(true);
+        at_limit := (SELECT p.allowance FROM platform.smtp_pace() p);
+        PERFORM platform.smtp_attempted(true);
+        none_left := (SELECT p.allowance FROM platform.smtp_pace() p);
+        PERFORM platform.set_smtp_pace(NULL, NULL, NULL, 'ict');
+        unlimited := coalesce((SELECT p.allowance FROM platform.smtp_pace() p), -1);
+        BEGIN PERFORM platform.set_smtp_pace(0, 100, NULL, 'ict'); r_zero := 'SET';
+        EXCEPTION WHEN check_violation THEN r_zero := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM platform.set_smtp_pace(50, 10, NULL, 'ict'); r_order := 'SET';
+        EXCEPTION WHEN check_violation THEN r_order := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V532 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V532 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V532: e-mail over SMTP goes at the provider''s pace — Microsoft 365''s 30 a minute and 10,000 a day by default, each attempt counted, none past the tighter limit, empty for no limit, a limit out of range refused',
+        coalesce(d_min = 30 AND d_day = 10000 AND a0 = 5 AND a1 = 3 AND tried_min = 2 AND at_limit = 0 AND none_left = 0 AND unlimited = -1
+                 AND r_zero = 'NOTICE_PACE_RANGE' AND r_order = 'NOTICE_PACE_RANGE', false),
+        format('default %s/%s | allowance %s then %s (tried %s) | at limit %s, past %s | unlimited %s | zero %s order %s',
+               d_min, d_day, a0, a1, tried_min, at_limit, none_left, unlimited, r_zero, r_order));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

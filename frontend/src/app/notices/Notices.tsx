@@ -14,6 +14,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { QueueManagement, type Clearance, type Delivery, type OpenJob, type Pending, type Receipt } from "./QueueManagement";
 import { ProviderHealth, type ProviderRow, type ProviderSettings } from "./ProviderHealth";
+import type { SmtpPace } from "@/lib/mail-sending";
 
 export interface Recent {
   id: string; channel: string; recipient: string; subject: string; created_at: string; state: string; attempts: number; sent_at: string | null; last_error: string | null;
@@ -25,6 +26,8 @@ export interface Recent {
 export interface ByChannel { channel: string; total: number; sent: number; queued: number; failed: number; cancelled?: number; delivered?: number; bounced?: number; invalid: number; week: number; week_sent: number; week_failed: number }
 export interface Outbox {
   queued: number; sent: number; failed: number; cancelled?: number; sentToday: number; emailProvider: boolean; smsProvider: boolean; recent: Recent[]; byChannel?: ByChannel[];
+  /** V532: the provider each channel goes through, in words, and the SMTP pace */
+  emailVia?: string | null; smsVia?: string | null; smtpPace?: SmtpPace | null;
   /** V436: the delivery switches, what waits now, the jobs that would still write to the queue, the last clearance */
   delivery?: Delivery; pending?: Pending[]; jobs?: OpenJob[]; lastClearance?: Clearance | null;
   /** V438: the providers' delivery reports, and the receipt door's token (operators only) */
@@ -111,15 +114,16 @@ export function Notices({ d, actingOffice, filters }: { d: Outbox; actingOffice:
       <Panel title="Providers" right="Set on the Mail server and SMS gateway screens, or as service variables on the API">
         <PBody>
           <KvGrid cls="grid--2" pairs={[
-            ["Email provider", d.emailProvider ? <Pil kind="ok" key="e">Wired</Pil> : <span className="sub2" key="e">None — the Mail server screen, or MOAUM_NOTICES_EMAIL_URL</span>],
-            ["SMS provider", d.smsProvider ? <Pil kind="ok" key="s">Wired</Pil> : <span className="sub2" key="s">None — the SMS gateway screen, or MOAUM_NOTICES_SMS_URL</span>],
+            ["Email provider", d.emailProvider ? <span key="e"><Pil kind="ok">Wired</Pil> {d.emailVia ? <span className="sub2 tnum">{d.emailVia}</span> : null}</span> : <span className="sub2" key="e">None — the Mail server screen, or MOAUM_NOTICES_EMAIL_URL</span>],
+            ["SMS provider", d.smsProvider ? <span key="s"><Pil kind="ok">Wired</Pil> {d.smsVia ? <span className="sub2 tnum">{d.smsVia}</span> : null}</span> : <span className="sub2" key="s">None — the SMS gateway screen, or MOAUM_NOTICES_SMS_URL</span>],
           ]} />
         </PBody>
       </Panel>
 
       {d.providers?.length ? <ProviderHealth rows={d.providers} settings={d.providerSettings ?? null} may={may} /> : null}
 
-      {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} receipts={d.receipts ?? []} receiptToken={d.receiptToken ?? null} /> : null}
+      {d.delivery ? <QueueManagement delivery={d.delivery} pending={d.pending ?? []} jobs={d.jobs ?? []} last={d.lastClearance ?? null} may={may} mayClear={mayClear} receipts={d.receipts ?? []} receiptToken={d.receiptToken ?? null}
+        smtpPace={d.smtpPace ?? null} smtp={(d.emailVia ?? "").startsWith("SMTP")} /> : null}
 
       <Panel title="History" right={filtered ? `${d.recent.length} matching, newest first` : `${d.recent.length} most recent`}>
         <PBody style={{ borderBottom: "1px solid var(--line-2)" }}>

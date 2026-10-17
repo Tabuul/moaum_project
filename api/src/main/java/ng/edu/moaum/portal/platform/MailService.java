@@ -95,6 +95,33 @@ public class MailService {
         return java.util.Optional.of(new Smtp(host, port, enc, username, from, password));
     }
 
+    /**
+     * V532: the SMTP parameters for a test from the Mail server screen — the values on the screen, unsaved or not, and where one is
+     * left empty the saved one; the password typed, or else the saved one (never returned to the screen)
+     */
+    @Transactional(readOnly = true)
+    public Smtp smtpForTest(String host, Integer port, String encryption, String username, String from, String password) {
+        enc("SMTP", encryption);
+        Map<String, Object> m = jdbc.sql("SELECT smtp_host, smtp_port, smtp_encryption, username, from_address FROM platform.mail_settings WHERE id = true")
+                .query().listOfRows().stream().findFirst().orElse(Map.of());
+        String h = blank(host) != null ? host.trim() : str(m.get("smtp_host"));
+        int p = port != null ? port : m.get("smtp_port") == null ? 587 : ((Number) m.get("smtp_port")).intValue();
+        String e = up(encryption) != null ? up(encryption) : (str(m.get("smtp_encryption")).isEmpty() ? "STARTTLS" : str(m.get("smtp_encryption")));
+        String u = blank(username) != null ? username.trim() : str(m.get("username"));
+        // the From address as the screen holds it: empty means the mailbox itself
+        String f = from != null ? (from.isBlank() ? u : from.trim()) : (str(m.get("from_address")).isEmpty() ? u : str(m.get("from_address")));
+        String pw = blank(password) != null ? password : configKey.isEmpty() ? null
+                : jdbc.sql("SELECT platform.mail_password(:k)").param("k", configKey).query(String.class).optional().orElse(null);
+        if (h.isEmpty() || u.isEmpty() || pw == null || pw.isBlank()) {
+            throw new DomainRuleViolation("MAIL_TEST_INCOMPLETE", "A test needs the SMTP server, the username and a password (typed, or saved before).",
+                    new DomainRuleViolation.Remedy("Fill in the server and username, and type the password if none is saved.", "Directorate of ICT"));
+        }
+        if (p < 1 || p > 65535) {
+            throw new DomainRuleViolation("MAIL_TEST_INCOMPLETE", "The SMTP port is from 1 to 65535.", new DomainRuleViolation.Remedy("Microsoft 365 is 587.", "Directorate of ICT"));
+        }
+        return new Smtp(h, p, e, u, f, pw);
+    }
+
     private static String str(Object o) {
         return o == null ? "" : String.valueOf(o).trim();
     }

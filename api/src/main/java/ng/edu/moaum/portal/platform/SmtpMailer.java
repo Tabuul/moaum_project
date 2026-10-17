@@ -29,7 +29,8 @@ class SmtpMailer {
         send(s, to, subject, body, java.util.List.of());
     }
 
-    void send(MailService.Smtp s, String to, String subject, String body, java.util.List<NoticeRepository.Attachment> files) throws Exception {
+    /** a sender for the stored (or the screen's) parameters */
+    private static JavaMailSenderImpl sender(MailService.Smtp s) {
         JavaMailSenderImpl sender = new JavaMailSenderImpl();
         sender.setHost(s.host());
         sender.setPort(s.port());
@@ -47,6 +48,16 @@ class SmtpMailer {
         p.put("mail.smtp.connectiontimeout", "15000");
         p.put("mail.smtp.timeout", "20000");
         p.put("mail.smtp.writetimeout", "20000");
+        return sender;
+    }
+
+    /** V532: the server reached and the account signed in — nothing sent */
+    void test(MailService.Smtp s) throws Exception {
+        sender(s).testConnection();
+    }
+
+    void send(MailService.Smtp s, String to, String subject, String body, java.util.List<NoticeRepository.Attachment> files) throws Exception {
+        JavaMailSenderImpl sender = sender(s);
         MimeMessage mime = sender.createMimeMessage();
         MimeMessageHelper h = new MimeMessageHelper(mime, true, "UTF-8");   // multipart: text + HTML
         h.setFrom(s.from());

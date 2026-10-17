@@ -30,6 +30,9 @@ interface Outbox {
   sentToday: number;
   emailProvider: boolean;
   smsProvider: boolean;
+  /** V532: the provider each channel goes through, in words */
+  emailVia?: string | null;
+  smsVia?: string | null;
   recent: { id: string; channel: string; recipient: string; subject: string; created_at: string; state: string; attempts: number; sent_at: string | null; last_error: string | null }[];
 }
 
@@ -146,8 +149,8 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
       <Panel title="The outbox" right={ob ? `${ob.queued} waiting · ${ob.sentToday} sent today · ${ob.failed} failed` : "not answering"}>
         <PBody>
           <KvGrid cls="grid--3" pairs={[
-            ["Email provider", ob ? (ob.emailProvider ? "wired" : "none — MOAUM_NOTICES_EMAIL_URL is not set") : "—"],
-            ["SMS provider", ob ? (ob.smsProvider ? "wired" : "none — MOAUM_NOTICES_SMS_URL is not set") : "—"],
+            ["Email provider", ob ? (ob.emailProvider ? ob.emailVia ?? "wired" : "none — set on the Mail server screen, or MOAUM_NOTICES_EMAIL_URL") : "—"],
+            ["SMS provider", ob ? (ob.smsProvider ? ob.smsVia ?? "wired" : "none — set on the SMS gateway screen, or MOAUM_NOTICES_SMS_URL") : "—"],
             ["Waiting", ob ? String(ob.queued) : "—"],
             ["Sent", ob ? String(ob.sent) : "—"],
             ["Failed after five attempts", ob ? String(ob.failed) : "—"],

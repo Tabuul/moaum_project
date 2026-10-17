@@ -1,7 +1,8 @@
 "use client";
 
 /** tMail — the mail server settings: IMAP, POP and SMTP for Microsoft 365. The password is written
- *  once, encrypted, and never read back; the screen sees only that one is set. */
+ *  once, encrypted, and never read back; the screen sees only that one is set. V532: the settings tested
+ *  from the screen, a server that only receives mail and a From address on another domain warned of. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -10,6 +11,8 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { fromDomainWarning, smtpHostWarning } from "@/lib/mail-sending";
+import { MailTest } from "./MailTest";
 
 export interface MailConfig {
   smtp_host: string | null; smtp_port: number | null; smtp_encryption: string | null;
@@ -75,6 +78,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
       ) : null}
 
       {trio("SMTP — outgoing (sending)", "smtpHost", "smtpPort", "smtpEncryption", "smtp.office365.com · 587 · STARTTLS")}
+      {smtpHostWarning(f.smtpHost) ? <Note kind="bad" title="Not a server for sending">{smtpHostWarning(f.smtpHost)}</Note> : null}
       {trio("IMAP — incoming", "imapHost", "imapPort", "imapEncryption", "outlook.office365.com · 993 · SSL/TLS")}
       {trio("POP — incoming", "popHost", "popPort", "popEncryption", "outlook.office365.com · 995 · SSL/TLS")}
 
@@ -85,6 +89,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
             <Field id="username" label="Username" hint="The full email address"><input id="username" className="ctl tnum" value={f.username} onChange={(e) => set("username", e.target.value)} disabled={!may} autoComplete="off" placeholder="portal@moaum.edu.ng" /></Field>
             <Field id="fromAddress" label="From address" hint="What recipients see; blank uses the username"><input id="fromAddress" className="ctl tnum" value={f.fromAddress} onChange={(e) => set("fromAddress", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM Portal <portal@moaum.edu.ng>" /></Field>
           </div>
+          {fromDomainWarning(f.username, f.fromAddress) ? <Note kind="info" title="From address on another domain">{fromDomainWarning(f.username, f.fromAddress)}</Note> : null}
           <Field id="password" label="Password or app password" hint="Pasted once; it is never displayed after this. Microsoft 365 often needs an app password.">
             <input id="password" className="ctl tnum" type="password" value={f.password} onChange={(e) => set("password", e.target.value)} disabled={!may} autoComplete="off" placeholder={config.password_set ? "•••••••• (leave blank to keep)" : ""} />
           </Field>
@@ -103,8 +108,11 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
         </PBody>
       </Panel>
 
-      <Note kind="info" title="Sending over SMTP arrives with the mail transport">
-        Used once the SMTP transport is enabled on the API; until then the outbox holds each notice.
+      <MailTest f={f} may={may} />
+
+      <Note kind="info" title="How fast e-mail goes">
+        The portal sends from this account at the pace set on the Notices screen &mdash; by default Microsoft 365&rsquo;s own limits for one mailbox, 30 e-mails a minute
+        and 10,000 a day. Sending faster gets the mailbox throttled and then blocked from sending.
       </Note>
     </>
   );

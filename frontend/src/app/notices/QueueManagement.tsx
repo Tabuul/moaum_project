@@ -13,6 +13,8 @@ import type { Problem } from "@/lib/api";
 import { Btn, KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import type { SmtpPace } from "@/lib/mail-sending";
+import { SmtpPaceBlock } from "./SmtpPaceBlock";
 
 export interface Delivery {
   dispatch_enabled: boolean; email_delivery: boolean; sms_delivery: boolean; portal_delivery: boolean;
@@ -36,8 +38,10 @@ function when(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function QueueManagement({ delivery, pending, jobs, last, may, mayClear, receipts, receiptToken }: {
+export function QueueManagement({ delivery, pending, jobs, last, may, mayClear, receipts, receiptToken, smtpPace, smtp }: {
   delivery: Delivery; pending: Pending[]; jobs: OpenJob[]; last: Clearance | null; may: boolean; mayClear: boolean; receipts: Receipt[]; receiptToken: string | null;
+  /** V532: the SMTP pace, and whether e-mail goes over SMTP now */
+  smtpPace?: SmtpPace | null; smtp?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -87,6 +91,7 @@ export function QueueManagement({ delivery, pending, jobs, last, may, mayClear, 
             made, so the portal switch keeps it from being made at all. Queue processing paused holds every channel.
           </div>
         </PBody>
+        {smtpPace ? <SmtpPaceBlock pace={smtpPace} smtp={!!smtp} waiting={count("EMAIL")} may={may} /> : null}
         <PBody style={{ borderTop: "1px solid var(--line-2)" }}>
           <div className="row"><b>Delivery receipts</b>{receiptToken ? <Pil kind="ok">door open</Pil> : <Pil kind="grey">no token yet</Pil>}</div>
           <div className="sub2">

@@ -27,6 +27,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * by {@code MOAUM_NOTICES_EMAIL_URL} and {@code MOAUM_NOTICES_SMS_URL}. While
  * neither is set, nothing is sent and nothing is pretended: the notices stay
  * QUEUED, and the platform dashboard says so.
+ * V532: e-mail over SMTP goes at the pace set on the Notices screen (Microsoft
+ * 365's limits for one mailbox by default), and a failure of the account or the
+ * server — not of one message — stops e-mail for the rest of the batch without
+ * counting it against the messages that wait.
  */
 @Component
 public class NoticeDispatcher {
@@ -149,13 +153,27 @@ public class NoticeDispatcher {
             return;
         }
         saidNoProvider = false;
-        List<NoticeRepository.Queued> batch = notices.sendable(this.batch, delivery);
+        // V532: e-mail over SMTP goes at the mail provider's pace (Microsoft 365: 30 a minute, 10,000 a day for one mailbox), counted
+        // in the database across every instance; the batch takes no more e-mail than the pace allows now
+        int emailCap = this.batch;
+        if (smtp.isPresent()) {
+            NoticeRepository.SmtpPace pace = notices.smtpPace();
+            if (pace.allowance() != null) {
+                emailCap = Math.min(emailCap, pace.allowance());
+            }
+        }
+        List<NoticeRepository.Queued> batch = notices.sendable(this.batch, delivery, emailCap);
+        boolean emailStopped = false;
         for (NoticeRepository.Queued n : batch) {
             boolean email = "EMAIL".equals(n.channel());
+            if (email && emailStopped) {
+                continue;   // the account or the server failed: the rest wait, untouched, for the next batch
+            }
             String outcome = null;
             String error = null;
             String providerId = null;   // V438: what the provider's delivery report will name
             String via;                  // V442: the provider the attempt went to, counted with its outcome
+            boolean systemic = false;    // V532: a failure of the account or the server, not of this message
             List<NoticeRepository.Attachment> files = email ? notices.attachments(n.id()) : List.of();
             if (email && smtp.isPresent()) {
                 via = "smtp";
@@ -163,7 +181,13 @@ public class NoticeDispatcher {
                     smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body(), files);
                     outcome = "smtp " + smtp.get().host();
                 } catch (Exception e) {
-                    error = e.getClass().getSimpleName() + ": " + e.getMessage();
+                    SmtpFailure.Kind kind = SmtpFailure.of(e);
+                    systemic = SmtpFailure.systemic(kind);
+                    error = SmtpFailure.detail(e);
+                    if (systemic) {
+                        emailStopped = true;
+                        LOG.warn("notices: e-mail stopped for this batch — {} ({}): {}", kind, smtp.get().host(), error);
+                    }
                 }
             } else if (!email && smsCreds.isPresent()) {
                 via = "ebulksms";
@@ -202,13 +226,19 @@ public class NoticeDispatcher {
             final String err = error;
             final String pid = providerId;
             final String provider = via;
+            final boolean held = systemic;
             AuditContextHolder.with(new AuditContext(NOBODY, "ict", "notice dispatch", null, null), () -> tx.execute(status -> {
                 if (ref != null) {
                     notices.sent(n.id(), ref, pid);
+                } else if (held) {
+                    notices.held(n.id(), err);   // V532: the account's failure is not counted against the message
                 } else {
                     notices.failed(n.id(), err, n.attempts() + 1 >= 5);
                 }
                 notices.recordAttempt(n.channel(), provider, ref != null, err);
+                if ("smtp".equals(provider)) {
+                    notices.smtpAttempted(ref != null);
+                }
                 return null;
             }));
         }
