@@ -576,8 +576,9 @@ public class StudentPortalService {
     static final java.util.Set<String> COURSE_CATEGORIES = java.util.Set.of("CARRY_OVER", "GST", "CORE", "ELECTIVE");
     static final int COURSE_PAGE = 20;
 
-    /** V504: the Add Other Course search — the courses a code or title, a level, a department or a faculty finds, each judged by
-     *  the engine for this student and semester: the category it is registered in and why, or why it is not available */
+    /** V504: the Add Other Course search — the courses a code or title, a department or a faculty finds, or (V507) without them the
+     *  courses that concern the student, narrowed by the level and category; each judged by the engine for this student and semester:
+     *  the category it is registered in and why, or why it is not available */
     @Transactional(readOnly = true)
     public Map<String, Object> searchCourses(UUID id, String session, int semester, String q, Integer level, String dept, String faculty,
                                              String category, int page) {
@@ -604,7 +605,8 @@ public class StudentPortalService {
         out.put("size", COURSE_PAGE);
         out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
         out.put("results", rows.stream().map(r -> { Map<String, Object> m = new LinkedHashMap<>(r); m.remove("total"); return m; }).toList());
-        out.put("needsTerm", term == null && level == null && d == null && f == null && cat == null);
+        // V507: YOUR_COURSES — the programme's at every level, the University GST/EPS courses, the carry-overs; SEARCH — every course
+        out.put("listed", term == null && d == null && f == null ? "YOUR_COURSES" : "SEARCH");
         out.put("flex", repo.flexRule());
         return out;
     }

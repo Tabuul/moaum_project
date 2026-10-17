@@ -139,7 +139,9 @@ export interface FoundCourse {
   category: import("./course-order").CourseCategory | null; added_as: string | null; why: string | null; refusal: string | null;
   on_registration: boolean; recommended: boolean | null;
 }
-export interface CourseSearch { session: string; semester: number; page: number; size: number; total: number; results: FoundCourse[]; needsTerm: boolean; flex: FlexRule }
+export interface CourseSearch { session: string; semester: number; page: number; size: number; total: number; results: FoundCourse[];
+  /** V507: YOUR_COURSES (no code, title, department or faculty: the student's own courses) or SEARCH (every course) */
+  listed: "YOUR_COURSES" | "SEARCH"; flex: FlexRule }
 export interface ResultRow {
   session: string; semester: number; course_code: string; title: string; units: number; entry_type: string; stage: string;
   published: boolean; published_at: string | null; senate_minute: string | null;

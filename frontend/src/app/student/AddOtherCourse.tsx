@@ -5,7 +5,9 @@
  * level, an elective, a University-wide GST/EPS course, or the department's or faculty's where the Academic Office allows it — and
  * adds it. The server finds and judges every course (registration.course_check): the category it would be registered in and why,
  * or why it is not available (already passed, result pending, not offered this semester, a higher level, a prerequisite, not part
- * of the programme…). Nothing is loaded until the student types or chooses a filter, and only the page the server returns.
+ * of the programme…). Opened, it lists the student's own courses (V507: the programme's at every level, the University GST/EPS
+ * courses, the carry-overs), a level or category narrowing them; a code or title, or a department, searches every course. Only the
+ * page the server returns is loaded.
  */
 import { useEffect, useRef, useState } from "react";
 import type { CourseSearch, FoundCourse } from "@/lib/student-portal";
@@ -18,6 +20,25 @@ import { useAct } from "./common";
 interface Dept { code: string; name: string; faculty_code: string | null; faculty: string | null }
 
 const LEVELS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+
+/** what the list holds: the student's own courses (V507) or every course the search found, and how many */
+const OWN: Record<string, string> = {
+  "": "Your programme's courses, the University GST/EPS courses and your carry-overs",
+  CARRY_OVER: "Your carry-overs",
+  GST: "GST and EPS courses — your programme's and the University's",
+  CORE: "Core courses of your programme",
+  ELECTIVE: "Electives of your programme",
+};
+
+function listWords(found: CourseSearch, from: number, to: number, cat: string | null): string {
+  const range = `${from}–${to} of ${found.total.toLocaleString("en-GB")}, the ones you can add first`;
+  if (found.listed === "YOUR_COURSES") {
+    if (found.total) return `${OWN[cat ?? ""] ?? OWN[""]}: ${range}. Type a code or title, or choose a department, to search every course.`;
+    return cat === "CARRY_OVER" ? "You have no carry-over: no published result shows a course failed and not since passed."
+      : "None of these has a class this session. Type a code or title, or choose a department, to search every course.";
+  }
+  return found.total ? `Courses ${range}.` : "No course matches the search.";
+}
 
 export function AddOtherCourse({ session, semester, level, total, max, addDrop, onAdded, onClose }: {
   session: string; semester: number; level: number; total: number; max: number;
@@ -124,7 +145,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
       {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
       {failed ? <div className="mt-2"><Note kind="bad" title={failed} /></div> : null}
       <div className="sub2 mt-2" aria-live="polite">
-        {loading ? "Searching..." : found?.needsTerm ? "Type a course code or title, or choose a level, department or category." : found ? (found.total ? `Courses ${from}–${to} of ${found.total.toLocaleString("en-GB")}, the ones you can add first.` : "No course matches the search.") : null}
+        {loading ? "Searching..." : found ? listWords(found, from, to, cat) : null}
         {` Your registration: ${units} unit${units === 1 ? "" : "s"}, maximum ${max}.`}{addDrop ? " Your registration is submitted: a course is added by add and drop." : ""}
       </div>
       {rows.length ? (

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 347
+\set EXPECTED 348
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16082,6 +16082,53 @@ BEGIN
                  AND impact_draft = 1 AND told = 2 AND notices >= 2 AND notices_again = notices, false),
         format('withheld a %s b %s c %s (card a %s c %s, agree %s) | below %s -> %s, returned %s/%s, locked %s | impact draft %s, told %s then %s, notices %s then %s',
                w_a, w_b, w_c, st_a, st_c, agree, below_before, below_after, ret, ret_status, locked, impact_draft, told, told_again, notices, notices_again));
+END $$;
+-- ── V507: Add Other Course lists the student's own courses ──
+-- With nothing typed and no department chosen, the search lists the courses that concern the student — the programme's at every
+-- level with a class in the session, the University GST/EPS courses — and a category alone narrows them; another department's
+-- course is found only by searching for it. The block undoes its writes.
+DO $$
+DECLARE ses text := '2397/2398'; st uuid := gen_random_uuid(); prog text; dept text; other_dept text; msg text;
+        own_codes text; core_codes text; gst_codes text; carry_n bigint; found_other text; listed_other text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V507', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2397-10-01', DATE '2398-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 200, 1) IS NULL ORDER BY p.code LIMIT 1;
+        SELECT d.code INTO other_dept FROM ref.department d WHERE d.code <> dept ORDER BY d.code LIMIT 1;
+        PERFORM registration.set_flex_policy(true, 'PROGRAMME', false, 'check V507: the default rule');
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/97/970101', 'CHECKV507', 'Listed', prog, 'UTME', ses, 200, 200, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+            ('ZQY 101', 'Check List Lower', 2, 1, 100, dept, 'Core', 'LIVE', NULL), ('ZQY 201', 'Check List Current', 3, 1, 200, dept, 'Core', 'LIVE', NULL),
+            ('ZQY 211', 'Check List Elective', 2, 1, 200, dept, 'Elective', 'LIVE', NULL), ('GST 397', 'Check List University GST', 2, 1, 200, dept, 'GST', 'LIVE', 'GST'),
+            ('ZQZ 201', 'Check List Elsewhere', 2, 1, 200, other_dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('ZQY 101', prog, 100, 'Core'), ('ZQY 201', prog, 200, 'Core'), ('ZQY 211', prog, 200, 'Elective');
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, ses, 1 FROM unnest(ARRAY['ZQY 101', 'ZQY 201', 'ZQY 211', 'GST 397', 'ZQZ 201']) c;
+        own_codes := (SELECT string_agg(x.course_code, ',' ORDER BY x.course_code) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, NULL, 100, 0) x
+                       WHERE x.course_code LIKE 'ZQ%' OR x.course_code = 'GST 397');
+        core_codes := (SELECT string_agg(x.course_code || ':' || x.category, ',' ORDER BY x.course_code) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, 'CORE', 100, 0) x
+                        WHERE x.course_code LIKE 'ZQ%');
+        gst_codes := (SELECT string_agg(x.course_code, ',' ORDER BY x.course_code) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, 'GST', 100, 0) x
+                       WHERE x.course_code = 'GST 397' OR x.course_code LIKE 'ZQ%');
+        carry_n := (SELECT count(*) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, 'CARRY_OVER', 100, 0));
+        found_other := (SELECT x.course_code || ':' || split_part(x.refusal, ':', 1) FROM registration.course_search(st, ses, 1, 'ZQZ 201', NULL, NULL, NULL, NULL, 100, 0) x);
+        listed_other := (SELECT max(x.course_code) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, NULL, 100, 0) x WHERE x.course_code = 'ZQZ 201');
+        RAISE EXCEPTION 'the V507 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V507 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V507: with nothing typed the search lists the student''s own courses (programme at every level, University GST/EPS), a category alone narrows them; another department''s course is found only by a search',
+        coalesce(own_codes = 'GST 397,ZQY 101,ZQY 201,ZQY 211' AND core_codes = 'ZQY 101:CORE,ZQY 201:CORE' AND gst_codes = 'GST 397' AND carry_n = 0
+                 AND found_other = 'ZQZ 201:REG_NOT_AVAILABLE' AND listed_other IS NULL, false),
+        format('own [%s] core [%s] gst [%s] carry %s | search %s listed %s', own_codes, core_codes, gst_codes, carry_n, found_other, listed_other));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

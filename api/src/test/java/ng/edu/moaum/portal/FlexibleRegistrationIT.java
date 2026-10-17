@@ -158,7 +158,16 @@ class FlexibleRegistrationIT {
         assertThat(rows.get(rows.size() - 1).get("refusal")).isNotNull();
         assertThat(it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("category", "ANY").build()).getBody())
                 .containsEntry("code", "REG_SEARCH_CATEGORY");
-        assertThat(it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).build()).getBody()).containsEntry("needsTerm", true);
+        // V507: nothing typed, the student's own courses are listed; a category alone narrows them
+        Map<String, Object> own = it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1).build()).getBody();
+        assertThat(own).containsEntry("listed", "YOUR_COURSES");
+        assertThat((List<Map<String, Object>>) own.get("results")).extracting(x -> x.get("course_code")).contains("ITF 201", "ITF 101", "ITF 301").doesNotContain("ITX 201");
+        Map<String, Object> core = it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1)
+                .queryParam("category", "CORE").build()).getBody();
+        assertThat((List<Map<String, Object>>) core.get("results")).isNotEmpty().allSatisfy(x -> assertThat(x.get("category")).isEqualTo("CORE"));
+        assertThat((List<Map<String, Object>>) core.get("results")).extracting(x -> x.get("course_code")).contains("ITF 201", "ITF 101");
+        assertThat(((Number) it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1)
+                .queryParam("category", "CARRY_OVER").build()).getBody().get("total")).intValue()).isZero();
 
         // a higher-level course is refused with its reason; the lower-level one is added, once
         String o101 = String.valueOf(row(found, "ITF 101").get("offering_id"));
