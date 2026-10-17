@@ -63,7 +63,7 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
             <Field id="sender" label="Sender ID" hint="Shown on the handset; up to 11 characters"><input id="sender" className="ctl tnum" maxLength={11} value={f.sender} onChange={(e) => set("sender", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM" /></Field>
           </div>
           <Field id="apiKey" label="API key" hint="Pasted once; it is never displayed after this.">
-            <input id="apiKey" className="ctl tnum" type="password" value={f.apiKey} onChange={(e) => set("apiKey", e.target.value)} disabled={!may} autoComplete="off" placeholder={config.api_key_set ? "•••••••• (leave blank to keep)" : ""} />
+            <input id="apiKey" className="ctl tnum" type="password" value={f.apiKey} onChange={(e) => set("apiKey", e.target.value)} disabled={!may} autoComplete="new-password" placeholder={config.api_key_set ? "•••••••• (leave blank to keep)" : ""} />
           </Field>
           <label className="field row" style={{ flexDirection: "row" }}>
             <input type="checkbox" className="pchk" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} disabled={!may} />

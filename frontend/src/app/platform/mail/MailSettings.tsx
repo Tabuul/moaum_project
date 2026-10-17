@@ -91,7 +91,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
           </div>
           {fromDomainWarning(f.username, f.fromAddress) ? <Note kind="info" title="From address on another domain">{fromDomainWarning(f.username, f.fromAddress)}</Note> : null}
           <Field id="password" label="Password or app password" hint="Pasted once; it is never displayed after this. Microsoft 365 often needs an app password.">
-            <input id="password" className="ctl tnum" type="password" value={f.password} onChange={(e) => set("password", e.target.value)} disabled={!may} autoComplete="off" placeholder={config.password_set ? "•••••••• (leave blank to keep)" : ""} />
+            <input id="password" className="ctl tnum" type="password" value={f.password} onChange={(e) => set("password", e.target.value)} disabled={!may} autoComplete="new-password" placeholder={config.password_set ? "•••••••• (leave blank to keep)" : ""} />
           </Field>
           <div className="row">
             <Btn kind="primary" disabled={!may || busy} onClick={async () => {

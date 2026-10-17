@@ -186,13 +186,13 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                         <Field id="qt-mc" label="Merchant code (University)" hint="MX… from the Interswitch merchant profile; leave blank to use the product id below."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX…" /></Field>
                         <Field id="qt-pi" label="Pay item ID (University)" hint="The pay item on that merchant."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} /></Field>
                         <Field id="qt-pid" label="Product ID (University, older profile)" hint="Used only when no merchant code is given."><input id="qt-pid" className="ctl tnum" autoComplete="off" value={qt.productId} onChange={(e) => setQt({ ...qt, productId: e.target.value })} /></Field>
-                        <Field id="qt-mac" label="MAC key (University)" hint="Required with a product id; pasted once, never displayed after this."><input id="qt-mac" className="ctl tnum" type="password" autoComplete="off" value={qt.macKey} onChange={(e) => setQt({ ...qt, macKey: e.target.value })} /></Field>
+                        <Field id="qt-mac" label="MAC key (University)" hint="Required with a product id; pasted once, never displayed after this."><input id="qt-mac" className="ctl tnum" type="password" autoComplete="new-password" value={qt.macKey} onChange={(e) => setQt({ ...qt, macKey: e.target.value })} /></Field>
                       </div>
                       <div className="grid grid--2">
                         <Field id="qt-cmc" label="Merchant code (College of Health Sciences)" hint="Optional: leave the College's fields alone if it has no merchant of its own."><input id="qt-cmc" className="ctl tnum" autoComplete="off" value={qt.chsMerchantCode} onChange={(e) => setQt({ ...qt, chsMerchantCode: e.target.value })} placeholder="MX…" /></Field>
                         <Field id="qt-cpi" label="Pay item ID (College of Health Sciences)"><input id="qt-cpi" className="ctl tnum" autoComplete="off" value={qt.chsPayItemId} onChange={(e) => setQt({ ...qt, chsPayItemId: e.target.value })} /></Field>
                         <Field id="qt-cpid" label="Product ID (College, older profile)"><input id="qt-cpid" className="ctl tnum" autoComplete="off" value={qt.chsProductId} onChange={(e) => setQt({ ...qt, chsProductId: e.target.value })} /></Field>
-                        <Field id="qt-cmac" label="MAC key (College of Health Sciences)" hint="Required with the College's product id."><input id="qt-cmac" className="ctl tnum" type="password" autoComplete="off" value={qt.chsMacKey} onChange={(e) => setQt({ ...qt, chsMacKey: e.target.value })} /></Field>
+                        <Field id="qt-cmac" label="MAC key (College of Health Sciences)" hint="Required with the College's product id."><input id="qt-cmac" className="ctl tnum" type="password" autoComplete="new-password" value={qt.chsMacKey} onChange={(e) => setQt({ ...qt, chsMacKey: e.target.value })} /></Field>
                       </div>
                       <label className="sub2 row"><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; leave unchecked for the live Interswitch endpoints</label>
                       <div className="row">
@@ -203,11 +203,11 @@ export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: Pa
                   ) : (
                   <>
                   <Field id={"k-" + c.gateway} label="Secret key" hint="Pasted once; it is never displayed after this.">
-                    <input id={"k-" + c.gateway} className="ctl tnum" type="password" autoComplete="off" value={keys[c.gateway]?.secret ?? ""} onChange={(e) => setKeys({ ...keys, [c.gateway]: { secret: e.target.value, hash: keys[c.gateway]?.hash ?? "" } })} placeholder={c.gateway === "paystack" ? "sk_test_\u2026 or sk_live_\u2026" : "FLWSECK_TEST-\u2026 or FLWSECK-\u2026"} />
+                    <input id={"k-" + c.gateway} className="ctl tnum" type="password" autoComplete="new-password" value={keys[c.gateway]?.secret ?? ""} onChange={(e) => setKeys({ ...keys, [c.gateway]: { secret: e.target.value, hash: keys[c.gateway]?.hash ?? "" } })} placeholder={c.gateway === "paystack" ? "sk_test_\u2026 or sk_live_\u2026" : "FLWSECK_TEST-\u2026 or FLWSECK-\u2026"} />
                   </Field>
                   {c.gateway === "flutterwave" ? (
                     <Field id="k-flw-hash" label="Webhook secret hash" hint="The same value you set on the Flutterwave webhook page.">
-                      <input id="k-flw-hash" className="ctl tnum" type="password" autoComplete="off" value={keys.flutterwave?.hash ?? ""} onChange={(e) => setKeys({ ...keys, flutterwave: { secret: keys.flutterwave?.secret ?? "", hash: e.target.value } })} />
+                      <input id="k-flw-hash" className="ctl tnum" type="password" autoComplete="new-password" value={keys.flutterwave?.hash ?? ""} onChange={(e) => setKeys({ ...keys, flutterwave: { secret: keys.flutterwave?.secret ?? "", hash: e.target.value } })} />
                     </Field>
                   ) : null}
                   <div className="row">
