@@ -3,7 +3,7 @@
 /** t/templates — the notification engine's desk (V425): the templates every message comes from, edited by ICT and the
  *  administrators with a preview on sample values and a test to one address; the engine's settings (the portal address, the
  *  job batch, the weekly biodata reminder and the review period); the jobs it ran. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -22,8 +22,9 @@ export interface Settings {
   portal_url: string | null; job_batch: number; remind_enabled: boolean; review_days: number | null; gate_enabled: boolean; staff_contact_remind?: boolean;
   /** V438: the reminders three days and one day before a fees or registration window closes */
   closing_reminders?: boolean;
-  counts: { total: number; up_to_date: number; incomplete: number; review_required: number; outdated: number; no_email: number; no_phone: number; migrated: number } | null;
 }
+/** the register's biodata counts — every student's status worked out — read after the page opens, kept a few minutes by the API */
+export interface BiodataCounts { total: number; up_to_date: number; incomplete: number; review_required: number; outdated: number; no_email: number; no_phone: number; migrated: number }
 export interface Job { id: string; kind: string; payload: string; state: string; created_at: string; created_office: string | null; started_at: string | null; finished_at: string | null; reached: number; queued: number; runs: number; error: string | null }
 
 type Rendered = { subject: string | null; body: string | null } | null;
@@ -51,6 +52,18 @@ async function send<T>(path: string, method: string, body: unknown, reason: stri
 export function Templates({ templates, settings, jobs, actingOffice }: { templates: Template[]; settings: Settings | null; jobs: Job[]; actingOffice: string | null }) {
   const router = useRouter();
   const may = ["ict", "admin", "super"].includes(actingOffice ?? "");
+  // the counts are read after the page opens: working them out for the whole register takes several seconds (Oct 2026: the page
+  // waited for them and the edge gave up with a 504)
+  const [c, setC] = useState<BiodataCounts | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const r = await fetch("/api/bff/api/v1/notices/settings/counts", { cache: "no-store" }).catch(() => null);
+      const j = r && r.ok ? await r.json().catch(() => null) : null;
+      if (alive && j?.counts) setC(j.counts as BiodataCounts);
+    })();
+    return () => { alive = false; };
+  }, []);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -149,7 +162,6 @@ export function Templates({ templates, settings, jobs, actingOffice }: { templat
     } finally { setBusy(false); }
   }
 
-  const c = settings?.counts ?? null;
   const groups = new Map<string, Template[]>();
   for (const t of templates) {
     const base = t.key.split(":")[0];

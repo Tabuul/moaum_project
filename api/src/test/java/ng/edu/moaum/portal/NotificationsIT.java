@@ -164,7 +164,7 @@ class NotificationsIT {
         Map<String, Object> settings = body(it.call(ict, HttpMethod.PUT, "/api/v1/notices/settings", Map.of("remindEnabled", true, "reviewDays", 365)));
         assertThat(settings.get("remind_enabled")).isEqualTo(true);
         assertThat(((Number) settings.get("review_days")).intValue()).isEqualTo(365);
-        assertThat(((Map<String, Object>) settings.get("counts")).get("total")).isNotNull();
+        assertThat(((Map<String, Object>) body(it.get(ict, "/api/v1/notices/settings/counts")).get("counts")).get("total")).isNotNull();
         body(it.call(ict, HttpMethod.PUT, "/api/v1/notices/settings", Map.of("remindEnabled", false, "reviewDays", 0)));
         // a staff member's own contact: a bad phone refused, a good one kept on the person
         UUID staff = it.person("ZZNOT-STF-" + tag, "ZZNOTSTAFF");

@@ -10,6 +10,7 @@ import java.util.Map;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.FigureCache;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,12 +20,17 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * V425: the notification engine's desk — the templates every module's messages come from (read by ICT, the Registry and the
  * administrators; edited by ICT and the administrators), a preview with sample values, a test message to one address, the
  * engine's settings (the portal address, the job batch, the biodata reminder switch and review period) and the jobs it ran.
+ * Oct 2026: the page opened slower than the edge waits (a 504 from CloudFront on portal.moaum.edu.ng/notices/templates): the
+ * settings worked out the biodata counts of every student on the register while the page waited (about 10 s on the live-shaped
+ * copy), and each template counted its last 30 days' notices on its own. The counts are now their own read, kept a few minutes
+ * and shared (FigureCache) and loaded after the page, and the templates' notices are counted in one pass.
  */
 @RestController
 @RequestMapping("/api/v1/notices")
@@ -34,9 +40,11 @@ class NoticeTemplatesController {
     private static final String EDITORS = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final FigureCache figures;
 
-    NoticeTemplatesController(JdbcClient jdbc) {
+    NoticeTemplatesController(JdbcClient jdbc, FigureCache figures) {
         this.jdbc = jdbc;
+        this.figures = figures;
     }
 
     @GetMapping("/templates")
@@ -45,9 +53,11 @@ class NoticeTemplatesController {
     List<Map<String, Object>> templates() {
         return jdbc.sql("""
                 SELECT t.key, t.label, t.purpose, t.email_subject, t.email_body, t.sms_body, t.portal_title, t.portal_body, t.variables,
-                       t.mandatory, t.priority, t.enabled, t.updated_at, t.updated_office,
-                       (SELECT count(*) FROM platform.notice n WHERE n.template_key = t.key AND n.created_at > now() - interval '30 days') AS sent_30d
+                       t.mandatory, t.priority, t.enabled, t.updated_at, t.updated_office, coalesce(sent.n, 0) AS sent_30d
                   FROM platform.notice_template t
+                  -- the last 30 days' notices counted once for every template, not once a template
+                  LEFT JOIN (SELECT n.template_key, count(*) AS n FROM platform.notice n
+                              WHERE n.created_at > now() - interval '30 days' GROUP BY n.template_key) sent ON sent.template_key = t.key
                  ORDER BY CASE WHEN position(':' IN t.key) > 0 THEN split_part(t.key, ':', 1) || '~' || t.key ELSE t.key END
                 """).query().listOfRows();
     }
@@ -177,7 +187,20 @@ class NoticeTemplatesController {
                        coalesce((SELECT enabled FROM people.biodata_gate LIMIT 1), false) AS gate_enabled
                   FROM people.biodata_setting b WHERE b.id
                 """).query().singleRow());
-        out.put("counts", jdbc.sql("SELECT * FROM people.biodata_status_counts()").query().singleRow());
+        return out;
+    }
+
+    /** the register's biodata counts — every student's status worked out, about 10 s on the live-shaped copy — kept a few minutes
+     *  and shared (FigureCache), with when they were counted; the page asks for them after it opens */
+    @GetMapping("/settings/counts")
+    @PreAuthorize(READERS)
+    Map<String, Object> counts(@RequestParam(defaultValue = "false") boolean refresh) {
+        FigureCache.Answer<Map<String, Object>> a = figures.get("biodata-status-counts", refresh,
+                () -> jdbc.sql("SELECT * FROM people.biodata_status_counts()").query().singleRow());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", a.value());
+        out.put("computedAt", a.at());
+        out.put("refreshing", a.refreshing());
         return out;
     }
 
