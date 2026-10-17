@@ -136,8 +136,11 @@ class ProblemHandler {
             return problem;
         }
         if ("42501".equals(state)) {
-            ProblemDetail problem = problem(HttpStatus.FORBIDDEN, message, request);
-            problem.setProperty("code", "DATABASE_PERMISSION");
+            // V527: a refusal that names its own code ("SWAP_SAME_OFFICER: ...") carries it, as a rule's does above
+            java.util.regex.Matcher coded = message == null ? null : java.util.regex.Pattern.compile("^([A-Z][A-Z0-9_]{3,60}): (.+)$", java.util.regex.Pattern.DOTALL).matcher(message);
+            boolean named = coded != null && coded.matches();
+            ProblemDetail problem = problem(HttpStatus.FORBIDDEN, named ? coded.group(2) : message, request);
+            problem.setProperty("code", named ? coded.group(1) : "DATABASE_PERMISSION");
             return problem;
         }
         /* any other database error: surface its message rather than a blank 500, so a refusal is legible */
@@ -212,7 +215,14 @@ class ProblemHandler {
             Map.entry("COLLEGE_EXAM_RANGE", "Examination mark out of range"),
             Map.entry("STUDENT_RECORD_CLOSED", "This record is closed"),
             Map.entry("IAM_NO_SUCH_OFFICE", "No such office"),
-            Map.entry("IAM_GRANT_NEEDS_INSTRUMENT", "An instrument is needed"));
+            Map.entry("IAM_GRANT_NEEDS_INSTRUMENT", "An instrument is needed"),
+            // V527: the school fees payment swap
+            Map.entry("SWAP_OFFICE", "Not for your office"), Map.entry("SWAP_SAME_OFFICER", "Another officer decides this swap"),
+            Map.entry("SWAP_REASON", "A reason is needed"), Map.entry("SWAP_CONFIRM", "Your confirmation is needed"),
+            Map.entry("SWAP_OPEN", "A swap of this payment is waiting"), Map.entry("SWAP_ALREADY_SWAPPED", "Already reallocated"),
+            Map.entry("SWAP_SAME_STUDENT", "The same student"), Map.entry("SWAP_NOT_SCHOOL_FEES", "Not a school fees payment"),
+            Map.entry("SWAP_NOT_VERIFIED", "Payment not verified"), Map.entry("SWAP_DECIDED", "Already decided"),
+            Map.entry("SWAP_RECONCILIATION", "The accounts did not reconcile"), Map.entry("SWAP_SEARCH", "Type a little more"));
 
     static String titleOf(String code) {
         if (code == null || code.isBlank()) return "The request was refused";

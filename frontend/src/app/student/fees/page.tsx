@@ -6,6 +6,7 @@ import { loadStudent } from "../load";
 export const dynamic = "force-dynamic";
 import type { Fees } from "@/lib/student-portal";
 import { FeesScreen } from "../Screens2";
+import { PaymentCorrections, type PaymentCorrection } from "@/components/finance/PaymentCorrections";
 
 /** s/fees — the charge computed from the schedule, the payments, and what the scheme releases */
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -17,9 +18,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   if (typeof q.paid === "string" && q.paid) {
     await api("/api/v1/payments/verify", { method: "POST", body: { reference: q.paid }, reason: `Verify payment ${q.paid}` });
   }
-  const fees = await api<Fees>(`/api/v1/me/fees?session=${encodeURIComponent(session)}`);
+  const [fees, corrections] = await Promise.all([
+    api<Fees>(`/api/v1/me/fees?session=${encodeURIComponent(session)}`),
+    api<PaymentCorrection[]>("/api/v1/me/payment-corrections"),   // V527: payments the Bursary reallocated on this account
+  ]);
   return (
     <Shell route="s/fees" me={loaded.me} sub={`${fees.ok ? fees.data.session : session} session`}>
+      {corrections.ok ? <PaymentCorrections items={corrections.data} /> : null}
       {fees.ok ? <FeesScreen s={loaded.student} fees={fees.data} paid={typeof q.paid === "string" ? q.paid : null} /> : <ProblemNotice problem={fees.problem} />}
     </Shell>
   );

@@ -437,6 +437,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/auditrevenue", "icon": "chart", "label": "Revenue & Student Income", "badge": "9" },
           { "id": "t/ledger", "icon": "card", "label": "Ledger" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
+          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -490,6 +491,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/auditrevenue", "icon": "chart", "label": "Revenue & Student Income", "badge": "9" },
           { "id": "t/ledger", "icon": "card", "label": "Ledger" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
+          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -736,6 +738,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
           { "id": "t/refunds", "icon": "swap", "label": "Refunds & Credits" },
+          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/fundsources", "icon": "card", "label": "Funding Sources" },
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
@@ -795,6 +798,12 @@ export const MENUS: Record<string, Menu> = {
         "name": "School Fees",
         "items": [
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" }
+        ]
+      },
+      {
+        "name": "Payment Management",
+        "items": [
+          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" }
         ]
       },
       {

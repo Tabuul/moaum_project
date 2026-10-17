@@ -8,6 +8,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Student360 } from "./Student360";
 import type { Classification } from "./ClassificationPanel";
 import { MessagesPanel } from "@/components/MessagesPanel";
+import { PaymentCorrections, type PaymentCorrection } from "@/components/finance/PaymentCorrections";
 import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,9 @@ export default async function StudentPage({
   // V440: what the portal sent the student, for the offices that read the whole University's records
   const office = me.ok ? me.data.activeOffice ?? "" : "";
   const mayMessages = ["ict", "admin", "super", "registrar", "dregistrar", "records", "academic", "dsa"].includes(office);
+  // V527: the school-fees payments the Bursary reallocated on this account, for the offices that read them
+  const maySwaps = ["bursar", "studentaccounts", "audit", "deputyaudit", "super", "registrar", "dregistrar", "ict", "admin"].includes(office);
+  const swaps = maySwaps && record.ok ? await api<PaymentCorrection[]>(`/api/v1/finance/payment-swaps/of/${id}`) : null;
 
   return (
     <Shell route="t/student" me={me.ok ? me.data : null}>
@@ -43,6 +47,7 @@ export default async function StudentPage({
         <>
           <Student360 record={record.data} portal={portal.ok ? portal.data : null} session={scope.session} actingOffice={me.ok ? me.data.activeOffice : null}
             classification={classification.ok ? classification.data : null} />
+          {swaps && swaps.ok ? <PaymentCorrections items={swaps.data} staff /> : null}
           {mayMessages ? <MessagesPanel path={`/api/v1/students/${id}/messages`} /> : null}
         </>
       )}

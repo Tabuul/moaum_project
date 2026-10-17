@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 366
+\set EXPECTED 367
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17153,6 +17153,94 @@ BEGIN
     PERFORM pg_temp.assert('V526: ICT Support''s student password resets have no hourly limit unless one is stated (1 to 500)',
         coalesce(now_limit IS NULL AND nullable AND stated = 40 AND refused, false),
         format('limit now %s | nullable %s | stated %s | 0 refused %s', coalesce(now_limit::text, 'none'), nullable, stated, refused));
+END $$;
+-- ── V527: school fees payment swap ──
+-- A verified school-fees payment credited to student A is swapped to student B: only a confirmed school-fees payment, between two
+-- distinct students, with a reason and the confirmation; another officer decides (never the initiator, never the Students Account
+-- Officer); approved, the credit moves and nothing else — reference, amount and confirmation unchanged, A's paid down and B's up by
+-- the amount, the session's school fees received unchanged — with the whole timeline; the payment is not swapped twice; a reversal
+-- takes it back and marks the swap REVERSED. The block undoes its writes.
+DO $$
+DECLARE S text := '2471/2472'; prog text; o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); ref text; hostel text; pending text; pay uuid; sw uuid; rv uuid; msg text;
+        ok_check boolean; same text; not_fees text; not_verified text; short_reason text; no_confirm text; open_again text; self_decide text;
+        sao_decide text; done jsonb; a_paid numeric; b_paid numeric; owner uuid; unchanged boolean; events text; twice text; back jsonb;
+        owner_back uuid; first_status text; swaps_a int; fc text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V527', true);
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (o1, 'CHK-V527-1', 'CHECKV527', 'Accounts'), (o2, 'CHK-V527-2', 'CHECKV527', 'Bursar'), (o3, 'CHK-V527-3', 'CHECKV527', 'Deputy');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, DATE '2471-10-01', DATE '2472-08-31');
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/00/990271', 'CHECKV527', 'Credited', prog, 'UTME', S, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/00/990272', 'CHECKV527', 'Owner', prog, 'UTME', S, 100, 100, 'ADMITTED');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (S, 'School fees (check V527)', 300000, 100, prog);
+        ref := finance.new_purpose_reference(a, S, 200000, 'School fees ' || S);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V527');
+        SELECT id INTO pay FROM finance.payment_reference WHERE reference = ref;
+        hostel := finance.new_purpose_reference(a, S, 5000, 'Hostel fee ' || S);
+        PERFORM finance.confirm_payment(hostel, 'BANK_BRANCH', 'teller for check V527');
+        pending := finance.new_purpose_reference(a, S, 1000, 'School fees ' || S);
+        ok_check := (finance.payment_swap_check(pay, b)->>'ok')::boolean;
+        same := split_part(finance.payment_swap_check(pay, a)->'refusals'->>0, ':', 1);
+        not_fees := split_part(finance.payment_swap_check((SELECT id FROM finance.payment_reference WHERE reference = hostel), b)->'refusals'->>0, ':', 1);
+        not_verified := split_part(finance.payment_swap_check((SELECT id FROM finance.payment_reference WHERE reference = pending), b)->'refusals'->>0, ':', 1);
+        -- initiated by the Students Account Officer: a reason and the confirmation
+        PERFORM set_config('moaum.actor_id', o1::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM finance.initiate_payment_swap(pay, b, 'wrong', NULL, true); short_reason := 'MADE';
+        EXCEPTION WHEN check_violation THEN short_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.initiate_payment_swap(pay, b, 'Student B paid on student A''s account; teller confirmed', NULL, false); no_confirm := 'MADE';
+        EXCEPTION WHEN check_violation THEN no_confirm := split_part(SQLERRM, ':', 1); END;
+        sw := finance.initiate_payment_swap(pay, b, 'Student B paid on student A''s account; teller confirmed', 'Teller 0042', true);
+        BEGIN PERFORM finance.initiate_payment_swap(pay, b, 'Student B paid on student A''s account; teller confirmed', NULL, true); open_again := 'MADE';
+        EXCEPTION WHEN check_violation THEN open_again := split_part(SQLERRM, ':', 1); END;
+        -- never decided by the officer who initiated it, nor by the Students Account Officer
+        BEGIN PERFORM finance.decide_payment_swap(sw, true, NULL, true); sao_decide := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN sao_decide := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM finance.decide_payment_swap(sw, true, NULL, true); self_decide := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN self_decide := split_part(SQLERRM, ':', 1); END;
+        -- the Bursar approves: executed at once
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        done := finance.decide_payment_swap(sw, true, 'Teller seen', true);
+        SELECT student_id, (reference = ref AND amount = 200000 AND confirmed_at IS NOT NULL) INTO owner, unchanged FROM finance.payment_reference WHERE id = pay;
+        a_paid := (finance.position(a, S)).paid;
+        b_paid := (finance.position(b, S)).paid;
+        events := (SELECT string_agg(action, ',' ORDER BY at, action) FROM finance.payment_swap_event WHERE swap_id = sw);
+        BEGIN PERFORM finance.initiate_payment_swap(pay, a, 'Trying to swap the same payment again to see the refusal', NULL, true); twice := 'MADE';
+        EXCEPTION WHEN check_violation THEN twice := split_part(SQLERRM, ':', 1); END;
+        -- the College's Finance Controller neither initiates nor decides a swap
+        PERFORM set_config('moaum.actor_office', 'financecontroller', true);
+        BEGIN PERFORM finance.initiate_payment_swap(pay, a, 'The College Finance Controller tries to swap it back again', NULL, true); fc := 'MADE';
+        EXCEPTION WHEN insufficient_privilege THEN fc := split_part(SQLERRM, ':', 1); END;
+        -- the reversal, by the Bursar, decided by another Bursar officer
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        rv := finance.initiate_payment_swap(NULL, NULL, 'The first swap was made on the wrong student; taken back', NULL, true, sw);
+        PERFORM set_config('moaum.actor_id', o3::text, true);
+        back := finance.decide_payment_swap(rv, true, NULL, true);
+        SELECT student_id INTO owner_back FROM finance.payment_reference WHERE id = pay;
+        SELECT status INTO first_status FROM finance.payment_swap WHERE id = sw;
+        swaps_a := (SELECT count(*) FROM finance.payment_swaps_of(a));
+        RAISE EXCEPTION 'the V527 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V527 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V527: a verified school-fees payment is swapped to its owner only with a reason, the confirmation and another officer''s approval — the credit moves and nothing else, the accounts reconcile, never twice; a reversal takes it back',
+        coalesce(ok_check AND same = 'SWAP_SAME_STUDENT' AND not_fees = 'SWAP_NOT_SCHOOL_FEES' AND not_verified = 'SWAP_NOT_VERIFIED'
+                 AND short_reason = 'SWAP_REASON' AND no_confirm = 'SWAP_CONFIRM' AND open_again = 'SWAP_OPEN'
+                 AND sao_decide = 'SWAP_OFFICE' AND self_decide = 'SWAP_SAME_OFFICER'
+                 AND done->>'status' = 'COMPLETED' AND owner = b AND unchanged AND a_paid = 0 AND b_paid = 200000
+                 AND events = 'PAYMENT_SWAP_INITIATED,PAYMENT_SWAP_APPROVED,PAYMENT_SWAP_EXECUTION_STARTED,PAYMENT_ALLOCATION_REMOVED,PAYMENT_ALLOCATION_CREATED,PAYMENT_SWAP_COMPLETED'
+                 AND twice = 'SWAP_ALREADY_SWAPPED' AND fc = 'SWAP_OFFICE' AND back->>'status' = 'COMPLETED' AND owner_back = a AND first_status = 'REVERSED' AND swaps_a = 2, false),
+        format('check %s same %s fees %s verified %s | reason %s confirm %s open %s | sao %s self %s | done %s owner b %s unchanged %s paid %s/%s | events %s | twice %s fc %s | back %s owner a %s first %s swaps %s',
+               ok_check, same, not_fees, not_verified, short_reason, no_confirm, open_again, sao_decide, self_decide, done->>'status', owner = b, unchanged,
+               a_paid, b_paid, events, twice, fc, back->>'status', owner_back = a, first_status, swaps_a));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
