@@ -192,6 +192,7 @@ export const TITLES: Record<string, string> = {
   "r/exams": "Examinations Officer",
   "r/academic": "Academic Affairs",
   "r/bursar": "Bursary",
+  "r/studentaccounts": "Students Account Officer",
   "r/registrar": "Registry",
   "r/classlist": "Registered students",
   "r/allocate": "Teaching allocation",

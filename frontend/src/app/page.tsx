@@ -15,6 +15,7 @@ import { RegistrarDashboard } from "./dashboards/Registrar";
 import { OfficeDashboard } from "./dashboards/Office";
 import { LecturerDashboard } from "./dashboards/Lecturer";
 import { BursarDashboard } from "./dashboards/Bursar";
+import { StudentAccountsDashboard } from "./dashboards/StudentAccounts";
 import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
 import { ExamsDashboard } from "./dashboards/Exams";
@@ -148,6 +149,8 @@ export default async function DashboardPage() {
         <RegistrarDashboard session={session} />
       ) : office === "bursar" ? (
         <BursarDashboard session={session} />
+      ) : office === "studentaccounts" ? (
+        <StudentAccountsDashboard session={session} />
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} semester={teaching && teaching.ok ? teaching.data.openSemester ?? null : null} history={allocHistory && allocHistory.ok ? allocHistory.data : []} notices={myNotices && myNotices.ok ? myNotices.data : []} />
       ) : office === "hod" ? (

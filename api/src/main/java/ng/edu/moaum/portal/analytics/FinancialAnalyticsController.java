@@ -55,11 +55,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/analytics")
 class FinancialAnalyticsController {
 
-    private static final String SUMMARY_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
+    private static final String SUMMARY_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_provost','OFFICE_collegesecretary','OFFICE_dvc','OFFICE_vc','OFFICE_audit','OFFICE_deputyaudit',"
             + "'OFFICE_ict','OFFICE_dean','OFFICE_facultyofficer',"
             + "'OFFICE_jupeb','OFFICE_cce','OFFICE_gst','OFFICE_eps','OFFICE_housing')";   // the Head of Department and the Academic Office no longer read finance (Oct 2026)
-    private static final String TRANSACTION_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
+    private static final String TRANSACTION_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_provost','OFFICE_collegesecretary','OFFICE_dvc','OFFICE_vc','OFFICE_audit',"
             + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_jupeb','OFFICE_cce','OFFICE_gst','OFFICE_eps','OFFICE_housing')";
     /** V409: the offices that own a purpose read the payments they own — their own, amounts and transactions, nothing else */

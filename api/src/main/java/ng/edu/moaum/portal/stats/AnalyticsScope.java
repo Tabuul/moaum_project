@@ -23,7 +23,7 @@ public class AnalyticsScope {
     public static final Set<String> PG_OFFICES = Set.of("pgschool", "pgsecretary");
     public static final Set<String> CHS_OFFICES = Set.of("provost", "collegesecretary", "financecontroller");
     /** the offices that see amounts and individual transactions */
-    public static final Set<String> MONEY = Set.of("bursar", "financecontroller", "registrar", "dregistrar", "super", "admin",
+    public static final Set<String> MONEY = Set.of("bursar", "studentaccounts", "financecontroller", "registrar", "dregistrar", "super", "admin",
             "pgschool", "pgsecretary", "provost", "collegesecretary", "dvc", "vc", "audit");
     /** the offices that read the financial summary of their scope without the individual transactions */
     public static final Set<String> SUMMARY_ONLY = Set.of("ict", "academic");

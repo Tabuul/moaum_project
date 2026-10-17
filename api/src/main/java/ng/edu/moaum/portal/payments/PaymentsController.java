@@ -184,7 +184,10 @@ class PaymentsController {
     /* ── V037: the Bursary's side of the gateways ── */
 
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_vc','OFFICE_dvc')";
+    /** V520: the hanging payments desk's acts — the gateways asked again (sweep), an event resolved, a reported receipt marked not found
+     *  or reopened — the Bursary's and the Students Account Officer's; none confirms a payment or changes an amount */
+    private static final String HANGING_DESK = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_vc','OFFICE_dvc')";
 
     public record Verify(@NotBlank String reference) {
     }
@@ -228,14 +231,14 @@ class PaymentsController {
 
     /** V490: a reported receipt Interswitch has no payment for — the Bursary's note, which the payer is told and reads */
     @PostMapping("/claims/{reference}/not-found")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(HANGING_DESK)
     Map<String, Object> claimNotFound(@PathVariable String reference, @Valid @RequestBody NotFoundIn body) {
         return payments.markPaydirectClaim(reference, true, body.note());
     }
 
     /** V490: a receipt marked not found, reopened */
     @PostMapping("/claims/{reference}/reopen")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(HANGING_DESK)
     Map<String, Object> claimReopen(@PathVariable String reference) {
         return payments.markPaydirectClaim(reference, false, null);
     }
@@ -268,14 +271,14 @@ class PaymentsController {
     }
 
     @PostMapping("/sweep")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(HANGING_DESK)
     Map<String, Object> sweep() {
         payments.sweep();
         return Map.of("swept", true);
     }
 
     @PostMapping("/events/{id}/resolve")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(HANGING_DESK)
     Map<String, Object> resolve(@PathVariable UUID id, @Valid @RequestBody Resolution body) {
         return payments.resolveEvent(id, body.resolution());
     }

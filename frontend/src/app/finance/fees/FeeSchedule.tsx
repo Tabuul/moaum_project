@@ -22,6 +22,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
 import { PgFees } from "./PgFees";
 import { FeeCopy } from "./FeeCopy";
+import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
 import type { GstFeePage } from "@/lib/gst";
 
@@ -169,6 +170,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
+  // V520: the session's school fees (lines, the gap sheet, copies, the structure) are the Students Account Officer's to state too;
+  // the clearance scheme, confirmations and the other fees stay the Bursar's
+  const mayFees = may || actingOffice === "studentaccounts";
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [adding, setAdding] = useState(false);
@@ -401,7 +405,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
 
   return (
     <>
-      <RoleLine allowed={["bursar"]} actingOffice={actingOffice} canAct={may} action="Stating fees and the clearance scheme" />
+      <RoleLine allowed={["bursar", "studentaccounts"]} actingOffice={actingOffice} canAct={mayFees} action={may ? "Stating fees and the clearance scheme" : "Stating the session's school fees (the clearance scheme is the Bursar's)"} />
       <Tiles items={[
         ["Items stated", String(schedule.items.length), null, `${session} · every item applies where its filters match`],
         ["Charge to everybody", naira(total), null, "Items with no filter"],
@@ -422,7 +426,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         <select aria-label="Session" className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => { if (e.target.value !== session) queryNav(`/finance/fees?session=${encodeURIComponent(e.target.value)}`); }}>
           {(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <Btn kind="primary" disabled={!may} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
+        <Btn kind="primary" disabled={!mayFees} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
       </span>}>
         <PBody>
           <div className="row row--end">
@@ -464,8 +468,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <span className="sub2" key="a">{appliesTo(i)}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
           <span key="x" className="row row--tight row--right">
-            <IcoBtn key="e" icon="edit" label={`Edit ${i.item}`} disabled={!may || busy !== null} onClick={() => openEdit(i)} />
-            <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
+            <IcoBtn key="e" icon="edit" label={`Edit ${i.item}`} disabled={!mayFees || busy !== null} onClick={() => openEdit(i)} />
+            <Btn kind="ghost" disabled={!mayFees || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
           </span>,
         ])} />
         {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no reference can be generated and registration waits.</div></PBody>
@@ -480,9 +484,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </PBody>
         ) : null}
       </Panel>
-      <FeeWatch session={session} faculties={faculties} sessions={sessions} may={may} />
-      <FeeCopy session={session} sessions={sessions} may={may} />
-      {may ? (
+      <FeeWatch session={session} faculties={faculties} sessions={sessions} may={mayFees} />
+      <FeeCopy session={session} sessions={sessions} may={mayFees} />
+      {/* V520: every change to the session's fee lines, from the audit trail */}
+      <FeeHistory session={session} />
+      {mayFees ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
             <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv): a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i>. <b>Uploading replaces the {cceUpload ? "CCE" : "full-time"} structure for {session}</b>; the CCE and full-time structures never replace each other.</div>

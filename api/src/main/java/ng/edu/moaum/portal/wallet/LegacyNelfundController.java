@@ -38,7 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/nelfund/legacy")
 class LegacyNelfundController {
 
-    private static final String VIEWERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String VIEWERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_financecontroller','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_super')";
     private static final Set<String> STATUSES = Set.of("UNPROCESSED", "MATCHED", "POSTED", "REQUIRES_REVIEW", "REJECTED", "DUPLICATE", "UNMATCHED");
     private static final Set<String> ACTIONS = Set.of("match", "reject");

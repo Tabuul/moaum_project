@@ -34,8 +34,11 @@ import ng.edu.moaum.portal.shared.Sessions;
 @RequestMapping("/api/v1/finance")
 class FinanceController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
+    /** V520: the school fees setup and binding — the fee schedule, its lines, copies and fee sources — the Bursary's and the Students
+     *  Account Officer's; the officer holds none of the Bursary's other writes (confirmations, bank credits, old fees, clearance) */
+    private static final String FEE_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
     /** who may reconcile a transaction against the bank: the Bursary and the audit directorate */
     private static final String RECONCILERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')";
     private static final String MIGRATORS = "hasAnyAuthority('OFFICE_bursar','OFFICE_super','OFFICE_ict','OFFICE_admin')";
@@ -84,7 +87,7 @@ class FinanceController {
     /** upload the approved fees structure for a session — one row per faculty/level/semester/indigeneship cell;
      *  it replaces the session's structure. */
     @PostMapping("/sessions/{session}/{year}/fee-structure")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> importFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
         if (body.rows() == null || body.rows().isEmpty()) {
@@ -412,7 +415,7 @@ class FinanceController {
     /** V461: the Bursary's filled-in gap sheet, added as new lines of the session's schedule — never replacing the structure;
      *  a row with no amount is left out, one the schedule already holds is not added twice */
     @PostMapping("/sessions/{session}/{year}/fee-lines")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> addFeeLines(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
         if (body.rows() == null || body.rows().isEmpty()) {
@@ -448,7 +451,7 @@ class FinanceController {
     }
 
     @PutMapping("/fee-sources/{faculty}")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> setFeeSource(@PathVariable String faculty, @Valid @RequestBody FeeSource body) {
         jdbc.sql("SELECT finance.set_faculty_fee_source(:f, :src, :from, :note)")
@@ -458,7 +461,7 @@ class FinanceController {
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping("/fee-sources/{faculty}")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> endFeeSource(@PathVariable String faculty) {
         jdbc.sql("SELECT finance.set_faculty_fee_source(:f, NULL, NULL, NULL)").param("f", faculty).query().singleRow();
@@ -488,8 +491,58 @@ class FinanceController {
         return jdbc.sql("SELECT code, name, category, faculty_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows();
     }
 
+    /** V520: an active line of the session that already states this item for the same scope (the scope finance.fee_line_same_scope
+     *  compares: item, kind, level, entry mode, faculty, programme, group, semester; a line set by hand has no indigeneship and is not a
+     *  spill-over line) — the line added or edited by hand would charge it twice */
+    private void refuseDuplicateLine(String session, Item body, UUID except) {
+        String kind = body.kind() == null || body.kind().isBlank() ? "FEE" : body.kind();
+        java.util.Optional<Map<String, Object>> dup = jdbc.sql("""
+                SELECT x.id, x.item, x.amount FROM finance.fee_schedule x
+                 WHERE x.session = :s AND x.ended_at IS NULL AND (CAST(:id AS uuid) IS NULL OR x.id <> CAST(:id AS uuid))
+                   AND lower(btrim(x.item)) = lower(btrim(:i)) AND x.kind = :k
+                   AND x.level IS NOT DISTINCT FROM CAST(:l AS integer) AND x.entry_mode IS NOT DISTINCT FROM CAST(:m AS text)
+                   AND x.faculty_code IS NOT DISTINCT FROM CAST(:f AS text) AND x.programme_code IS NOT DISTINCT FROM CAST(:p AS text)
+                   AND x.fee_group IS NOT DISTINCT FROM CAST(:g AS text) AND x.semester IS NOT DISTINCT FROM CAST(:sem AS integer)
+                   AND x.indigene IS NULL AND NOT x.spillover
+                 LIMIT 1
+                """).param("s", session).param("id", except, Types.OTHER).param("i", body.item().trim()).param("k", kind)
+                .param("l", body.level(), Types.INTEGER).param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
+                .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR).param("sem", body.semester(), Types.INTEGER)
+                .query().listOfRows().stream().findFirst();
+        if (dup.isPresent()) {
+            throw new DomainRuleViolation("FEE_LINE_DUPLICATE", "The schedule already states " + dup.get().get("item") + " (" + dup.get().get("amount")
+                    + ") for the same session, level, entry mode, faculty, programme, group and semester; a second active line would charge it twice.",
+                    new DomainRuleViolation.Remedy("Edit that line, or end it first.", "Bursary"));
+        }
+    }
+
+    /** V520: the fee history of a session — every line added, changed or ended, from the audit trail (who, when, why, and the line
+     *  before and after); never rewritten, so an earlier amount is always on record */
+    @GetMapping("/sessions/{session}/{year}/schedule/history")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> scheduleHistory(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("""
+                SELECT e.occurred_at AS at, e.action, e.actor_office AS office, e.reason,
+                       (SELECT btrim(pe.surname || ', ' || pe.given_names) FROM iam.person pe WHERE pe.id = e.actor_id) AS by_name,
+                       coalesce(e.after_state ->> 'item', e.before_state ->> 'item') AS item,
+                       (e.before_state ->> 'amount')::numeric AS amount_before, (e.after_state ->> 'amount')::numeric AS amount_after,
+                       coalesce(e.after_state ->> 'level', e.before_state ->> 'level') AS level,
+                       coalesce(e.after_state ->> 'programme_code', e.before_state ->> 'programme_code') AS programme_code,
+                       coalesce(e.after_state ->> 'faculty_code', e.before_state ->> 'faculty_code') AS faculty_code,
+                       coalesce(e.after_state ->> 'entry_mode', e.before_state ->> 'entry_mode') AS entry_mode,
+                       coalesce(e.after_state ->> 'semester', e.before_state ->> 'semester') AS semester,
+                       (e.before_state ->> 'ended_at') IS NULL AND (e.after_state ->> 'ended_at') IS NOT NULL AS ended
+                  FROM audit.entries e
+                 WHERE e.subject_type = 'finance.fee_schedule'
+                   AND coalesce(e.after_state ->> 'session', e.before_state ->> 'session') = :s
+                 ORDER BY e.occurred_at DESC
+                 LIMIT 1000
+                """).param("s", session + "/" + year).query().listOfRows();
+    }
+
     @PostMapping("/sessions/{session}/{year}/schedule")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> addItem(@PathVariable String session, @PathVariable String year, @Valid @RequestBody Item body) {
         String s = session + "/" + year;
@@ -499,6 +552,7 @@ class FinanceController {
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
+        refuseDuplicateLine(s, body, null);
         jdbc.sql("""
                 INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind)
                 VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k)
@@ -511,7 +565,7 @@ class FinanceController {
     }
 
     @PostMapping("/sessions/{session}/{year}/schedule/{id}/end")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> endItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id) {
         jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE id = :id AND session = :s AND ended_at IS NULL")
@@ -522,7 +576,7 @@ class FinanceController {
     /** clear the whole schedule for a session — ends every standing line, so the Bursar can upload a clean
      *  structure (the same soft-end an upload does before it re-inserts). Charges ignore ended lines at once. */
     @PostMapping("/sessions/{session}/{year}/schedule/clear")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> clearSchedule(@PathVariable String session, @PathVariable String year,
                                       @RequestParam(required = false) @Pattern(regexp = "ALL|FULL_TIME|CCE") String kind) {
@@ -549,7 +603,7 @@ class FinanceController {
     /** V506: another session's live fee lines copied into this one, where this one states none of the same scope; the Bursary
      *  adjusts the amounts afterwards as for any line */
     @PostMapping("/sessions/{session}/{year}/schedule/copy")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> copyFees(@PathVariable String session, @PathVariable String year, @Valid @RequestBody CopyFees body) {
         return copied(body.from(), session + "/" + year, true);
@@ -570,7 +624,7 @@ class FinanceController {
 
     /** edit a standing fee line in place — its amount and the filters it carries */
     @PutMapping("/sessions/{session}/{year}/schedule/{id}")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> editItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody Item body) {
         if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
@@ -579,6 +633,7 @@ class FinanceController {
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
+        refuseDuplicateLine(session + "/" + year, body, id);
         int n = jdbc.sql("""
                 UPDATE finance.fee_schedule SET item = :i, amount = :a, level = :l, entry_mode = :m, faculty_code = :f,
                        programme_code = :p, fee_group = :g, semester = :sem, ord = :o, kind = coalesce(:k, kind)

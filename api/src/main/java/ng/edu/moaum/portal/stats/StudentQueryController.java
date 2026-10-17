@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 class StudentQueryController {
 
     static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records',"
-            + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc','OFFICE_bursar',"
+            + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc','OFFICE_bursar','OFFICE_studentaccounts',"
             + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod','OFFICE_exams',"
             + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_cce','OFFICE_jupeb','OFFICE_prelim','OFFICE_sandwich')";

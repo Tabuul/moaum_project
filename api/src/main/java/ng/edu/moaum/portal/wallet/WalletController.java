@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 class WalletController {
 
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_admin','OFFICE_super')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_vc','OFFICE_dvc')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_vc','OFFICE_dvc')";
 
     public record Amount(String session, BigDecimal amount) {
     }

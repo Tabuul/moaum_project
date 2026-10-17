@@ -772,6 +772,60 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "studentaccounts": {
+    "label": "Students Account Officer",
+    "home": "r/studentaccounts",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "r/studentaccounts", "icon": "home", "label": "Dashboard" }
+        ]
+      },
+      {
+        "name": "Payment Reports",
+        "items": [
+          { "id": "t/finanalytics", "icon": "chart", "label": "Payment Reports & Statistics" },
+          { "id": "t/payments", "icon": "card", "label": "Payments Query" }
+        ]
+      },
+      {
+        "name": "School Fees",
+        "items": [
+          { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" }
+        ]
+      },
+      {
+        "name": "NELFUND",
+        "items": [
+          { "id": "t/nelfund", "icon": "swap", "label": "NELFUND Reports & Wallets" },
+          { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Students" },
+          { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" }
+        ]
+      },
+      {
+        "name": "Students",
+        "items": [
+          { "id": "t/studentquery", "icon": "user", "label": "Student Accounts" },
+          { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
+          { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" }
+        ]
+      },
+      {
+        "name": "Hanging Payments",
+        "items": [
+          { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
   "library": {
     "label": "Librarian",
     "home": "t/idcards",

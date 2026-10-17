@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 44, n || ' offices (41 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446 and the Sandwich Programme Office V469; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 45, n || ' offices (42 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────

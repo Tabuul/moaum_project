@@ -39,7 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/registration/exam-cards/withheld")
 class ExamCardsWithheldController {
 
-    static final String READERS = "hasAnyAuthority('OFFICE_records','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    static final String READERS = "hasAnyAuthority('OFFICE_records','OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     static final String REMINDERS = "hasAnyAuthority('OFFICE_records','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
     static final Set<String> CODES = Set.of("EXAM_CARD_NOT_CLEARED", "EXAM_CARD_NOT_RELEASED", "EXAM_CARD_NO_COURSES", "EXAM_CARD_NOT_IN_STUDY");
 
