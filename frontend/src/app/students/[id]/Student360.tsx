@@ -28,6 +28,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { OpenStudentPortal } from "@/components/support/OpenStudentPortal";
 import { Biodata } from "./Biodata";
 import { MatriculationPanel } from "./MatriculationPanel";
 
@@ -92,6 +93,9 @@ export function Student360({
   const spill = spilloverWord(s.spilloverState);
   const may = actingOffice !== null && WRITERS.includes(actingOffice);
   const [changing, setChanging] = useState(false);
+  // V521: ICT Support opens the student's portal as the student, read-only (the server checks the agent's reach and capability)
+  const [portalOpen, setPortalOpen] = useState(false);
+  const mayViewPortal = ["ictagent", "helpdeskhead", "ict", "admin", "super"].includes(actingOffice ?? "");
   const [to, setTo] = useState("ACTIVE");
   const [instrument, setInstrument] = useState("");
   const [reason, setReason] = useState("");
@@ -164,6 +168,7 @@ export function Student360({
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {portalOpen ? <OpenStudentPortal studentId={s.id} name={fullName(s)} matricNo={s.matricNo ?? null} back={`/students/${s.id}`} onClose={() => setPortalOpen(false)} /> : null}
 
       <div className="card">
         <div className="card__body row" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
@@ -179,6 +184,11 @@ export function Student360({
             {classification ? <Pil kind={classification.programme_type_name ? "info" : "warn"}>{classification.programme_type_name ? `${classification.programme_type_name} Student` : "Requires classification"}</Pil> : null}
             {spill ? <Pil kind="warn" title="Past the programme's length, as the cohort engine counts it (each spillover year a session, both semesters)">{spill.long}</Pil> : null}
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
+            {mayViewPortal ? (
+              <Btn kind="primary" title="See the student's portal as the student sees it — read-only, without the student's password" onClick={() => setPortalOpen(true)}>
+                Open student portal
+              </Btn>
+            ) : null}
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
             </Btn>

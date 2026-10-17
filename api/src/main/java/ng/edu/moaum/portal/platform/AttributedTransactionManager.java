@@ -73,6 +73,17 @@ public class AttributedTransactionManager extends JdbcTransactionManager {
                 DataSourceUtils.releaseConnection(connection, obtainDataSource());
             }
         });
+        // V521: ICT Support viewing a student's portal — the database refuses any write the request attempts, even from a read
+        if (SupportView.active()) {
+            Connection connection = DataSourceUtils.getConnection(obtainDataSource());
+            try (PreparedStatement statement = connection.prepareStatement("SET TRANSACTION READ ONLY")) {
+                statement.execute();
+            } catch (SQLException e) {
+                throw new DataAccessResourceFailureException("could not make the support view read-only", e);
+            } finally {
+                DataSourceUtils.releaseConnection(connection, obtainDataSource());
+            }
+        }
     }
 
     private static void place(Connection connection, AuditContext context) throws SQLException {

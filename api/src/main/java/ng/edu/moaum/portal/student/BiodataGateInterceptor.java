@@ -80,6 +80,9 @@ class BiodataGateInterceptor implements HandlerInterceptor, WebMvcConfigurer {
         if (ctx.isEmpty() || !"student".equals(ctx.get().actorOffice())) {
             return true;   // the gate is the student's alone
         }
+        if (ng.edu.moaum.portal.platform.SupportView.agent(request) != null) {
+            return true;   // V521: ICT Support viewing the portal read-only completes no biodata
+        }
         UUID student = ctx.get().actorId();
         String state = compliance.gateState(student);
         response.setHeader(HEADER, state);

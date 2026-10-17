@@ -229,6 +229,7 @@ class StudentSupportController {
         if (a.has("OVERRIDE_REGISTRATION")) add.accept("OVERRIDE_REGISTRATION", "Support override");
         if (a.has("RESET_PASSWORD")) add.accept("RESET_PASSWORD", "Reset password");
         if (a.has("PROGRESS_LEVEL") || a.has("CORRECT_LEVEL")) add.accept("MANAGE_LEVEL", "Manage level");
+        if (a.has("VIEW_STUDENT_PORTAL")) add.accept("OPEN_PORTAL", "Open student portal");   // V521: as the student, read-only
         if (a.has("INVESTIGATE_PAYMENT") || a.has("VIEW_PAYMENTS")) add.accept("INVESTIGATE_PAYMENT", a.has("INVESTIGATE_PAYMENT") ? "Investigate payment" : "View payments");
         if (a.has("VERIFY_PAYMENT")) add.accept("VERIFY_PAYMENT", "Verify payment");
         if (a.has("SYNC_ENTITLEMENT")) add.accept("REFRESH_ENTITLEMENT", "Refresh payment entitlement");

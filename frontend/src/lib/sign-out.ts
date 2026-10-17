@@ -20,7 +20,13 @@ function forgetOnThisDevice(): void {
 
 /** ends the session and opens `to` (the sign-in page by default) in place of the current screen */
 export async function signOut(to = "/login"): Promise<void> {
-  await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => null);
+  const r = await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => null);
+  // V521: in a student view the agent leaves it — their own session is back, and they return to the support record
+  const left = r && r.ok ? ((await r.json().catch(() => null)) as { left?: boolean; redirect?: string } | null) : null;
+  if (left?.left && left.redirect) {
+    window.location.replace(left.redirect);
+    return;
+  }
   forgetOnThisDevice();
   window.location.replace(to);
 }

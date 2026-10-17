@@ -12,6 +12,7 @@
 import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
 import { IdleWatch } from "@/components/IdleWatch";
+import { SupportViewBanner, useSupportView } from "@/components/support/SupportViewBanner";
 import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
@@ -630,6 +631,7 @@ function initials(label: string): string {
 }
 
 export function Shell({ route, me, children, sub, title }: { route: string; me: Me | null; children: ReactNode; sub?: string; title?: string }) {
+  const viewing = useSupportView() !== null;
   const router = useRouter();
   const pathname = usePathname();
   // the next screen on its way (lib/activity): the one shown is stale until it arrives
@@ -904,8 +906,10 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
                 </div>
               </div>
             )}
-            {me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
-            {me?.privacyPrompt && me.privacyPrompt.documents.length ? <PolicyPrompt p={me.privacyPrompt} /> : null}
+            {/* V521: ICT Support viewing the student's portal: said on every screen; the student's own prompts are the student's to answer */}
+            <SupportViewBanner />
+            {!viewing && me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
+            {!viewing && me?.privacyPrompt && me.privacyPrompt.documents.length ? <PolicyPrompt p={me.privacyPrompt} /> : null}
             <IdleWatch />
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>
           </div>

@@ -38,19 +38,29 @@ public class TokenIssuer {
     }
 
     public String issue(UUID person, String name, List<String> offices, byte[] sessionId, Instant expires) {
+        return issue(person, name, offices, sessionId, expires, null);
+    }
+
+    /** V521: a student's portal opened by ICT Support — the student's token, naming the agent who views (read-only on the API) */
+    public String issueSupportView(UUID student, String name, byte[] sessionId, Instant expires, UUID agent) {
+        return issue(student, name, List.of("student"), sessionId, expires, agent);
+    }
+
+    private String issue(UUID person, String name, List<String> offices, byte[] sessionId, Instant expires, UUID viewer) {
         if (key == null) {
             throw new DomainRuleViolation("AUTH_SIGN_IN_ELSEWHERE", "This portal verifies tokens issued by the University's identity provider; sign in there.",
                     new DomainRuleViolation.Remedy("Use the single sign-on page.", "Directorate of ICT"));
         }
         try {
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
                     .subject(person.toString())
                     .issueTime(new Date())
                     .expirationTime(Date.from(expires))
                     .claim("offices", offices)
                     .claim("sid", HexFormat.of().formatHex(sessionId))
-                    .claim("name", name)
-                    .build();
+                    .claim("name", name);
+            if (viewer != null) builder.claim("support_view", viewer.toString());
+            JWTClaimsSet claims = builder.build();
             SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
             jwt.sign(new MACSigner(key));
             return jwt.serialize();

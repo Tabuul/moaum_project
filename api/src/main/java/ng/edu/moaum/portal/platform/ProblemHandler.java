@@ -115,6 +115,12 @@ class ProblemHandler {
             }
             return problem;
         }
+        if ("25006".equals(state)) {
+            // V521: a read-only transaction asked to write — ICT Support viewing a student's portal
+            ProblemDetail problem = problem(HttpStatus.FORBIDDEN, "ICT Support is viewing this student's portal read-only: this screen would record something for the student, so it is not opened from the student view.", request);
+            problem.setProperty("code", "SUPPORT_VIEW_READ_ONLY");
+            return problem;
+        }
         if ("57014".equals(state)) {
             // Oct 2026: a screen's read cut short at the limit (AttributedTransactionManager), so it never holds a connection for minutes
             ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE,

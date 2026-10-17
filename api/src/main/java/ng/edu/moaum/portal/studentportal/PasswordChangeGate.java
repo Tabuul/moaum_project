@@ -75,6 +75,9 @@ class PasswordChangeGate implements HandlerInterceptor, WebMvcConfigurer {
         if (ctx.isEmpty() || !"student".equals(ctx.get().actorOffice())) {
             return true;   // the student's alone
         }
+        if (ng.edu.moaum.portal.platform.SupportView.agent(request) != null) {
+            return true;   // V521: ICT Support viewing the portal read-only changes no password
+        }
         boolean required = jdbc.sql("SELECT must_change FROM iam.student_account WHERE student_id = :s")
                 .param("s", ctx.get().actorId()).query(Boolean.class).optional().orElse(false);
         response.setHeader(HEADER, required ? "REQUIRED" : "NONE");

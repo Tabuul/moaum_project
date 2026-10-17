@@ -77,6 +77,23 @@ public class AuditContextFilter extends OncePerRequestFilter {
                     longRequest = sid;
                 }
             }
+            // V521: ICT Support viewing a student's portal reads it and changes nothing — every change is refused here, and the
+            // reads run in read-only transactions (SupportView)
+            String viewer = jwt.getClaimAsString(SupportView.CLAIM);
+            if (viewer != null) {
+                String method = request.getMethod();
+                if (!"GET".equals(method) && !"HEAD".equals(method) && !"OPTIONS".equals(method)) {
+                    refuse(response, HttpStatus.FORBIDDEN, "SUPPORT_VIEW_READ_ONLY",
+                            "ICT Support is viewing this student's portal read-only: nothing is changed from it. Leave the student view to act on the support record.");
+                    return;
+                }
+                try {
+                    request.setAttribute(SupportView.ATTRIBUTE, UUID.fromString(viewer));
+                } catch (IllegalArgumentException notAUuid) {
+                    refuse(response, HttpStatus.UNAUTHORIZED, "The token names a viewer that is not a person id.");
+                    return;
+                }
+            }
             List<String> offices = offices(jwt);
             String active = request.getHeader(ACTIVE_OFFICE_HEADER);
             if (active != null && !active.isBlank()) {
