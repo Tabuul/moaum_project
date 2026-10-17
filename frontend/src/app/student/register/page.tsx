@@ -20,7 +20,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const sub = v.ok ? `${v.data.level} Level · ${semName(v.data.semester)}` : undefined;
   return (
     <Shell route="s/register" me={loaded.me} sub={sub}>
-      {v.ok ? <Register s={loaded.student} v={v.data} /> : <ProblemNotice problem={v.problem} />}
+      {/* V518: a fresh screen for each session and semester — switching semesters kept the first semester's choice, out of sight, and
+          the save sent it with the second semester's */}
+      {v.ok ? <Register key={`${v.data.session}|${v.data.semester}`} s={loaded.student} v={v.data} /> : <ProblemNotice problem={v.problem} />}
     </Shell>
   );
 }

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 359
+\set EXPECTED 360
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16817,6 +16817,52 @@ BEGIN
                  AND r->'student'->>'fees_cleared_for_registration' IN ('CLEARED', 'NOT_CLEARED', 'UNKNOWN') AND r->'student'->>'name' = 'CHECKVSEVENTEEN, S. S.'
                  AND NOT (r->'student' ? 'amount') AND NOT (r->'student' ? 'balance') AND noscope->>'outcome' = 'NO_SCOPE' AND logged = 2, false),
         format('r %s | noscope %s | logged %s', r, noscope, logged));
+END $$;
+
+-- ── V518: the save keeps only the semester's own courses ──
+-- A student registered for a first-semester course saves the second semester with that course still in the selection (and a
+-- course of another session): the save keeps the second semester's own course, leaves the others out, and refuses nothing. The
+-- block undoes its writes.
+DO $$
+DECLARE ses text := '2402/2403'; other text := '2403/2404'; prog text; dept text; st uuid := gen_random_uuid(); o1 uuid; o2 uuid; o3 uuid;
+        r1 uuid; r2 uuid; u2 int; codes text; refused text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V518', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), ses, DATE '2402-10-01', DATE '2403-08-31'), (gen_random_uuid(), other, DATE '2403-10-01', DATE '2404-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 100, 1) IS NULL AND registration.siwes_units(p.code, 100, 2) IS NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/02/951801', 'CHECKV518', 'Two Semesters', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('ZQS 101', 'Check Semester One', 3, 1, 100, dept, 'Core', 'LIVE'), ('ZQS 102', 'Check Semester Two', 3, 2, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQS 101', prog, 100, 'Core'), ('ZQS 102', prog, 100, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZQS 101', ses, 1), (gen_random_uuid(), 'ZQS 102', ses, 2),
+            (gen_random_uuid(), 'ZQS 102', other, 2);
+        SELECT id INTO o1 FROM catalogue.offering WHERE course_code = 'ZQS 101' AND session = ses;
+        SELECT id INTO o2 FROM catalogue.offering WHERE course_code = 'ZQS 102' AND session = ses;
+        SELECT id INTO o3 FROM catalogue.offering WHERE course_code = 'ZQS 102' AND session = other;
+        r1 := registration.student_draft(st, ses, 1);
+        PERFORM registration.student_choose(r1, ARRAY[o1]);
+        r2 := registration.student_draft(st, ses, 2);
+        BEGIN
+            u2 := registration.student_choose(r2, ARRAY[o1, o2, o3]);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; refused := split_part(msg, ':', 1);
+        END;
+        codes := (SELECT string_agg(o.course_code || '/' || o.semester, ',' ORDER BY o.course_code) FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id
+                   WHERE e.registration_id = r2 AND e.status <> 'DROPPED');
+        RAISE EXCEPTION 'the V518 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V518 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V518: a second-semester save that still carries the first semester''s course (and another session''s) keeps only its own, refusing nothing',
+        coalesce(refused IS NULL AND u2 = 3 AND codes = 'ZQS 102/2', false),
+        format('refused %s | units %s | entries %s', refused, u2, codes));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
