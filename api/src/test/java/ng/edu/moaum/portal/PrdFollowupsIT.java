@@ -39,13 +39,16 @@ class PrdFollowupsIT {
     PlatformTransactionManager transactions;
 
     ItSupport it;
-    final int n = 1000 + new Random().nextInt(8999);
-    final String instrument = "IT/LATE516/" + n;
+    /** one number for the people this run invents, none of them already on the database */
+    int n;
+    String instrument;
     String feeSession;
 
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        n = it.freeDraw(1000, 9999, k -> List.of("ZZ/NOEMP/" + k, "ZZNOEMP" + k, "ZZNOHEAD" + k, "ZZLATE" + k, "MOAUM/ENR/26/" + k, "ZZENROL" + k, "MOAUM/ADM/26/90" + k));
+        instrument = "IT/LATE516/" + n;
     }
 
     @AfterEach

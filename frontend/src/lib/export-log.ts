@@ -5,7 +5,8 @@
  * the record goes in the background (a keepalive request, so leaving the page does not drop it) and a failure is ignored.
  */
 
-export type ExportFormat = "XLSX" | "PRINT";
+/** XLSX and PRINT from the browser; PDF and CSV from the documents the server builds (V529) */
+export type ExportFormat = "XLSX" | "PRINT" | "PDF" | "CSV";
 
 export interface ExportRecord {
   report: string;

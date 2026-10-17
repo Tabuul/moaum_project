@@ -59,7 +59,7 @@ class PrivacyIT {
 
     @Test
     void thePolicyIsPublishedOnceReviewedAcceptedOncePerVersionAndRequestsReachTheLog() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/ADM/88/7" + k + "0", "MOAUM/PRV/88/" + k, "ITPRIVACY" + k));
         String ict = ItSupport.token("ict");
         String bursar = ItSupport.token("bursar");
         String registrar = ItSupport.token("registrar");

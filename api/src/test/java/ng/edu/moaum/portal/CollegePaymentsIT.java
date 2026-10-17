@@ -57,7 +57,7 @@ class CollegePaymentsIT {
 
     @Test
     void theReportReadsThePositionBySessionAndBySemester() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/92/00" + k, "MOAUM/MED/92/" + k, "ZZCHSPAY" + k));
         // a College student (MBBS, C00061, faculty of the College) at 300 Level with an account on the register
         UUID student = it.student("ZZCHSPAY" + n, "C00061", "MOAUM/ADM/92/00" + n, "MOAUM/MED/92/" + n, 300);
         it.db(() -> jdbc.sql("UPDATE people.student SET current_level = 300 WHERE id = :s").param("s", student).update());

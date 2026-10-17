@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { logServerExport } from "@/lib/export-log-server";
 import type { RollRow, SheetDetail } from "@/lib/results";
 import { buildXlsx } from "@/lib/xlsx";
 import { crestPng } from "@/lib/crest-server";
@@ -34,6 +35,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const programme = rows.find((r) => r.programmeCode === ownCode)?.programmeName ?? "";
   const semester = semesterName(s.semester);
   const base = `${s.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-marked-score-sheet-${s.session.replace("/", "-")}`;
+  await logServerExport({ report: `${s.courseCode} marked score sheet`, format: format === "pdf" ? "PDF" : "XLSX", rows: rows.length,
+    meta: [["Course", `${s.courseCode} — ${s.courseTitle}`], ["Session", `${s.session} · ${semester} semester`]] }, req);   // V529
 
   if (format === "pdf") {
     const bytes = markedSheetPdf({ sheet: s, programme, roll: rows }, semester.toLowerCase());

@@ -100,7 +100,7 @@ class NotificationsIT {
     void aWindowOpenedReachesTheSessionsStudentsOnceAsAJobAndTheStudentReadsItOnThePortal() {
         String ses = "2089/2090";
         it.session(ses, 2089);
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/89/00" + k, "MOAUM/NOT/89/" + k, "ITNOTIFY" + k));
         UUID student = it.student("ITNOTIFY" + n, "C00023", "MOAUM/ADM/89/00" + n, "MOAUM/NOT/89/" + n, 100);
         it.db(() -> {
             jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email) VALUES (:s, '0800000' || :n, 'notify-' || :n || '@example.test')").param("s", student).param("n", n).update();
@@ -150,7 +150,7 @@ class NotificationsIT {
     @SuppressWarnings("unchecked")
     @Test
     void theStudentsBiodataStatusIsReadAndConfirmedAndAStaffMemberKeepsTheirOwnContact() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/88/01" + k, "ITBIO" + k));
         UUID student = it.student("ITBIO" + n, "C00023", "MOAUM/ADM/88/01" + n, null, 100);
         String token = TestTokens.token(student, List.of("student"));
         Map<String, Object> status = body(it.get(token, "/api/v1/me/biodata-status"));

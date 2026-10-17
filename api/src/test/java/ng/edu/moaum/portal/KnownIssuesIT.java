@@ -63,7 +63,7 @@ class KnownIssuesIT {
         assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/pg-offer/PG-NOPE?t=ABCDEF012345", null).getBody().get("genuine")).isEqualTo(false);
 
         // a held candidate is told what holds them, by the unit that holds
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/97/" + String.format("%06d", k), "MOAUM/SCI/97/" + k, "ZZHELD" + k));
         UUID s = it.student("ZZHELD" + n, "C00023", "MOAUM/ADM/97/" + String.format("%06d", n), "MOAUM/SCI/97/" + n, 400);
         it.db(() -> jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (:s, '08044446666', :e, now()) ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email").param("s", s).param("e", "zzheld" + n + "@example.edu").update());
         ResponseEntity<Map> hold = it.call(bursar, HttpMethod.POST, "/api/v1/clearance/students/" + s + "/BURSARY/hold", Map.of("purpose", "CONVOCATION", "item", "Convocation fee", "note", "Unpaid"));

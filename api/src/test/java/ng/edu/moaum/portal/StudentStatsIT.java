@@ -63,7 +63,7 @@ class StudentStatsIT {
 
     @Test
     void theFiguresAndTheRowsBehindThemAgreeAndTheScopesHold() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/ADM/93/" + (100000 + k * 6), "MOAUM/ADM/93/" + (100000 + k * 6 + 1), "MOAUM/ADM/93/" + (100000 + k * 6 + 2), "MOAUM/ADM/93/" + (100000 + k * 6 + 3), "MOAUM/ADM/93/" + (100000 + k * 6 + 4), "MOAUM/ADM/93/" + (100000 + k * 6 + 5), "MOAUM/MTC/93/" + k, "MOAUM/MTC/93/" + (k + 1), "MOAUM/MTC/93/" + (k + 2), "MOAUM/MTC/93/" + (k + 3), "MOAUM/MTC/93/" + (k + 5), "MOAUM/MED/93/" + k));
         String tag = "ZZST" + n;
         // a fee of 100,000 for 200 Level of the mathematics programme C00023 (Faculty of Science), for this session
         it.db(() -> {

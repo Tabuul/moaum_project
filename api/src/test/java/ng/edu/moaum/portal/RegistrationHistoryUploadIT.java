@@ -72,7 +72,7 @@ class RegistrationHistoryUploadIT {
 
     @Test
     void theFileIsCheckedFirstAndWhatIsOnRecordIsNeverRewritten() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/MTC/97/" + (30000 + k), "MOAUM/ADM/97/" + (300000 + k), "ZZRH" + k));
         String matric = "MOAUM/MTC/97/" + (30000 + n);
         UUID student = it.student("ZZRH" + n, "C00023", "MOAUM/ADM/97/" + (300000 + n), matric, 100);
         List<Map<String, Object>> courses = jdbc.sql("""

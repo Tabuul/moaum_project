@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { logServerExport } from "@/lib/export-log-server";
 import type { RollRow, SheetDetail } from "@/lib/results";
 import { buildXlsx } from "@/lib/xlsx";
 import { crestPng } from "@/lib/crest-server";
@@ -46,6 +47,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : "",
   ]);
   const base = `${sheet.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-score-sheet-${sheet.session.replace("/", "-")}`;
+  await logServerExport({ report: `${sheet.courseCode} score sheet`, format: format === "csv" ? "CSV" : "XLSX", rows: rows.length, meta }, req);   // V529
 
   if (format === "csv") {
     const lines = [...meta.map(([k, v]) => [k, v]), [], header, ...rows].map((row) => row.map(cell).join(",")).join("\r\n");

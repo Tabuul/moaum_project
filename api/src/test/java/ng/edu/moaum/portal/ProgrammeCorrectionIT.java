@@ -282,7 +282,7 @@ class ProgrammeCorrectionIT {
 
         // matriculated: an inter-departmental transfer, not an admission correction
         Applicant mt = offered(CS, 214);
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/MTC/15/" + k + "7"));
         UUID st = it.db(() -> {
             UUID id = jdbc.sql("SELECT people.intake_one(:c)").param("c", mt.candidate()).query(UUID.class).single();
             jdbc.sql("UPDATE people.student SET matric_no = :m, matriculated_at = now() WHERE id = :id").param("m", "MOAUM/MTC/15/" + n + "7").param("id", id).update();

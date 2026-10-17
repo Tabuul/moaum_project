@@ -77,7 +77,7 @@ class CampaignsIT {
     @SuppressWarnings("unchecked")
     @Test
     void aCampaignIsPreviewedTestedSentAsAJobAndReported() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/87/00" + k, "MOAUM/CMP/87/" + k, "MOAUM/ADM/87/01" + k, "ITCMPA" + k, "ITCMPB" + k));
         UUID a = studentOfSession("ITCMPA" + n, "C00023", "MOAUM/ADM/87/00" + n, "MOAUM/CMP/87/" + n, "cmp-a-" + n + "@example.test", "0800" + (1000000 + n));
         UUID b = studentOfSession("ITCMPB" + n, "C00023", "MOAUM/ADM/87/01" + n, null, null, "0800" + (2000000 + n));
         // the form's lists come with the campaigns
@@ -195,7 +195,7 @@ class CampaignsIT {
     @SuppressWarnings("unchecked")
     @Test
     void aStudentsPreferenceSwitchesAnOptionalSmsOffButNeverAMandatoryOne() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/87/02" + k, "MOAUM/PRF/87/" + k, "ITPREF" + k));
         UUID a = studentOfSession("ITPREF" + n, "C00023", "MOAUM/ADM/87/02" + n, "MOAUM/PRF/87/" + n, "pref-" + n + "@example.test", "0800" + (3000000 + n));
         String token = TestTokens.token(a, List.of("student"));
         Map<String, Object> before = body(it.get(token, "/api/v1/me/notifications/preferences"));

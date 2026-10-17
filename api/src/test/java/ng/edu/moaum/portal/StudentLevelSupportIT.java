@@ -54,7 +54,7 @@ class StudentLevelSupportIT {
     void everyAgentInServiceProgressesAndCorrectsALevelAndResetsThePasswordAndTheTicketCarriesThePhone() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
         String tag = UUID.randomUUID().toString().substring(0, 4).toUpperCase().replaceAll("[^A-Z0-9]", "Q");
-        int n = 1000 + Math.abs(tag.hashCode() % 8999);
+        int n = it.freeDraw(1000, 9999, k -> List.of("MOAUM/ITL/26/" + k, "MOAUM/ADM/26/50" + k, "MOAUM/ADM/26/51" + k, "MOAUM/ITW/26/" + k));
         // an undergraduate programme four levels long, as the register states it
         String programme = jdbc.sql("""
                 SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1

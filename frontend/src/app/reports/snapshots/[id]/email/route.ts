@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { logServerExport } from "@/lib/export-log-server";
 import { buildXlsx } from "@/lib/xlsx";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -68,5 +69,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     },
   });
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
+  await logServerExport({ report: `${s.title} (kept copy e-mailed)`, format: "XLSX", rows: rows.length,
+    meta: [["Period", s.period], ["Sent to", to.join(", ")], ["Kept copy", s.verification_code]] }, req);   // V529
   return NextResponse.json(r.data);
 }

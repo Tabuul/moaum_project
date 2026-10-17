@@ -49,6 +49,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/cce")
 class CceClassesController {
 
+    /** V531: above this many CCE students the fee summary reads their positions at once (finance.fee_positions_of); below it each
+     *  student's own is quicker than the session-wide read, which costs a few seconds whatever the register's size */
+    static final int FEES_AT_ONCE = 3000;
+
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
 
@@ -660,14 +664,24 @@ class CceClassesController {
         out.put("fullTimeLines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND ended_at IS NULL AND entry_mode IS DISTINCT FROM 'CCE'")
                 .param("s", s).query(Long.class).single());
         out.put("window", jdbc.sql("SELECT configured, state, phase, closes_at, late_until, reason FROM policy.window_state('CCE_SCHOOL_FEES_PAYMENT', :s, NULL)").param("s", s).query().singleRow());
+        long register = jdbc.sql("SELECT count(*) FROM people.student st WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')")
+                .query(Long.class).single();
+        String positions = register > FEES_AT_ONCE
+                ? """
+                  (SELECT f.stated, f.due, f.paid, f.balance, f.paid_in_full
+                     FROM finance.fee_positions_of(:s, ARRAY(SELECT st.id FROM people.student st
+                                                             WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION'))) f) x
+                  """
+                : """
+                  (SELECT finance.fee_stated(st.id, :s) AS stated, pos.due, pos.paid, pos.balance, pos.paid_in_full
+                     FROM people.student st CROSS JOIN LATERAL finance.position(st.id, :s) pos
+                    WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')) x
+                  """;
         out.put("students", jdbc.sql("""
                 SELECT count(*) AS students, count(*) FILTER (WHERE x.stated) AS stated, count(*) FILTER (WHERE x.stated AND x.paid_in_full) AS paid_in_full,
                        count(*) FILTER (WHERE x.stated AND NOT x.paid_in_full AND x.paid > 0) AS part_paid, count(*) FILTER (WHERE x.stated AND x.paid = 0) AS unpaid,
                        coalesce(sum(x.due) FILTER (WHERE x.stated), 0) AS due, coalesce(sum(x.paid), 0) AS paid, coalesce(sum(x.balance) FILTER (WHERE x.stated), 0) AS balance
-                  FROM (SELECT finance.fee_stated(st.id, :s) AS stated, pos.due, pos.paid, pos.balance, pos.paid_in_full
-                          FROM people.student st CROSS JOIN LATERAL finance.position(st.id, :s) pos
-                         WHERE st.entry_mode = 'CCE' AND st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')) x
-                """).param("s", s).query().singleRow());
+                  FROM """ + positions).param("s", s).query().singleRow());
         out.put("payments", jdbc.sql("""
                 SELECT 'STUDENT' AS payer, CASE WHEN r.purpose LIKE 'School fees%' THEN 'School fees' ELSE r.purpose END AS purpose,
                        count(*) AS payments, sum(r.amount) AS amount

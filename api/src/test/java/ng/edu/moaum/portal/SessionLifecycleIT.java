@@ -95,7 +95,7 @@ class SessionLifecycleIT {
 
     @Test
     void aPlannedSessionIsARealContextAndTheTransitionIsOneGuardedAct() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/01/" + String.format("%06d", k), "MOAUM/ADM/01/" + String.format("%06d", k + 1), "MOAUM/SCI/01/" + k, "ZZLIFE" + k, "ZZLIFER" + k));
         // 1 · the Director of ICT sets both up (the Academic Office no longer may): A with its minute, B planned with a dated first
         //     semester and a fee schedule but no minute yet
         assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of("senateMinute", "SEN/T/2101/1"))).getStatusCode().value()).isEqualTo(403);

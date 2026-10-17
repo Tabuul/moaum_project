@@ -85,7 +85,7 @@ class ClosingRemindersIT {
 
     @Test
     void studentsNotYetRegisteredAreRemindedThreeDaysAndOneDayBeforeRegistrationCloses() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/88/00" + k, "MOAUM/ADM/88/01" + k, "ITCLRA" + k, "ITCLRB" + k));
         UUID a = studentOfSession("ITCLRA" + n, "MOAUM/ADM/88/00" + n, "clr-a-" + n + "@example.test", "0800" + (1000000 + n));
         UUID b = studentOfSession("ITCLRB" + n, "MOAUM/ADM/88/01" + n, "clr-b-" + n + "@example.test", "0800" + (2000000 + n));
         // the window closes at noon, Lagos, three days from today; B has submitted a registration, A has not

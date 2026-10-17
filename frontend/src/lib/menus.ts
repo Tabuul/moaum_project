@@ -454,7 +454,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
-          { "id": "t/exportlog", "icon": "doc", "label": "Export Log" }
+          { "id": "t/exportlog", "icon": "doc", "label": "Export Log" },
+          { "id": "t/recordviews", "icon": "user", "label": "Record Views" }
         ]
       },
       {
@@ -508,7 +509,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
-          { "id": "t/exportlog", "icon": "doc", "label": "Export Log" }
+          { "id": "t/exportlog", "icon": "doc", "label": "Export Log" },
+          { "id": "t/recordviews", "icon": "user", "label": "Record Views" }
         ]
       },
       {
@@ -1273,6 +1275,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/api", "icon": "swap", "label": "Integrations" },
           { "id": "t/audit", "icon": "shield", "label": "Audit Log" },
           { "id": "t/exportlog", "icon": "doc", "label": "Export Log" },
+          { "id": "t/recordviews", "icon": "user", "label": "Record Views" },
           { "id": "t/security", "icon": "shield", "label": "Security" },
           { "id": "t/dr", "icon": "box", "label": "Backups & Recovery" },
           { "id": "t/governance", "icon": "scale", "label": "Governance" },

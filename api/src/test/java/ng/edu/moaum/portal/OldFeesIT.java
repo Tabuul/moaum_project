@@ -71,7 +71,7 @@ class OldFeesIT {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void oldPaymentsComeInOneWayKeyedByTheirNumberNeverTwiceAndReconciled() {
         Random random = new Random();
-        String tag = String.format("%04d", random.nextInt(10_000));
+        String tag = String.format("%04d", it.freeDraw(0, 10_000, k -> List.of("MOAUM/ADM/88/88" + String.format("%04d", k), "MOAUM/OFH/88/" + String.format("%04d", k), "ZZOLDFEES" + String.format("%04d", k))));
         // a year no other test uses (2140–2199 met ApplicationWindowsIT's own 2139/2140–2143/2144: its current session, inserted
         // only when absent, was never made current when this test had made 2141/2142 first)
         int year = 2900 + random.nextInt(100);
@@ -175,7 +175,7 @@ class OldFeesIT {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void whatTheRetiredPaymentHistoryUploadRecordedIsTakenOverOrPutRight() {
         Random random = new Random();
-        String tag = String.format("%04d", random.nextInt(10_000));
+        String tag = String.format("%04d", it.freeDraw(0, 10_000, k -> List.of("MOAUM/ADM/87/87" + String.format("%04d", k), "MOAUM/OPH/87/" + String.format("%04d", k), "ZZOLDFEESPH" + String.format("%04d", k))));
         // a year no other test uses (2140–2199 met ApplicationWindowsIT's own 2139/2140–2143/2144: its current session, inserted
         // only when absent, was never made current when this test had made 2141/2142 first)
         int year = 2900 + random.nextInt(100);

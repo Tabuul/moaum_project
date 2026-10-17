@@ -53,18 +53,19 @@ class RecordsRepository {
         this.jdbc = jdbc;
     }
 
-    /** V360: the register, with each student's CGPA from the published results when the scope is narrow enough to read
-     *  them all (the GPA is computed per student, not stored) — otherwise the column is left empty and the screen says why */
-    List<Map<String, Object>> students(Scope scope, boolean withCgpa) {
+    /** V360: the register, with each student's CGPA from the published results (computed, not stored). V531: read for the whole
+     *  scope at once (assessment.scope_cgpa, the same CGPA as assessment.student_gpa for each of the live-shaped copy's 28,267
+     *  registered students) — the University in about 2 s, where each student in turn took 1 h 42 min and the column was left
+     *  empty above 1,500 students */
+    List<Map<String, Object>> students(Scope scope) {
         return jdbc.sql("""
                 SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
                        s.surname || ', ' || s.other_names AS "name",
-                       s.current_level AS "level", s.status AS "status",
-                       CASE WHEN CAST(:withCgpa AS boolean) THEN (SELECT g.cgpa FROM assessment.student_gpa(s.id) g
-                                                                   ORDER BY g.session DESC, g.semester DESC LIMIT 1) END AS "cgpa"
-                """ + STUDENT_FROM + STUDENT_WHERE + " ORDER BY s.surname, s.other_names")
+                       s.current_level AS "level", s.status AS "status", g.cgpa AS "cgpa"
+                """ + STUDENT_FROM + "  LEFT JOIN assessment.scope_cgpa(ARRAY(SELECT s.id" + STUDENT_FROM + STUDENT_WHERE + ")) g ON g.student_id = s.id\n"
+                + STUDENT_WHERE + " ORDER BY s.surname, s.other_names")
                 .param("fac", scope.fac(), Types.VARCHAR).param("dept", scope.dept(), Types.VARCHAR).param("prog", scope.prog(), Types.VARCHAR)
-                .param("level", scope.level(), Types.INTEGER).param("withCgpa", withCgpa)
+                .param("level", scope.level(), Types.INTEGER)
                 .query().listOfRows();
     }
 

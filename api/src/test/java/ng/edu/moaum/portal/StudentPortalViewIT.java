@@ -48,7 +48,7 @@ class StudentPortalViewIT {
     void anAgentOpensTheStudentsPortalReadOnlyAndLeavesIt() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
         String tag = UUID.randomUUID().toString().substring(0, 4).toUpperCase().replaceAll("[^A-Z0-9]", "Q");
-        int n = 1000 + Math.abs(tag.hashCode() % 8999);
+        int n = it.freeDraw(1000, 9999, k -> List.of("MOAUM/ITV/26/" + k, "MOAUM/ADM/26/52" + k));
         String matric = "MOAUM/ITV/26/" + n;
         UUID student = it.student("ZZVIEW" + tag, "C00023", "MOAUM/ADM/26/52" + n, matric, 100);
         // the Registry opens the student's account with a first password the student must change: the agent who only looks is not

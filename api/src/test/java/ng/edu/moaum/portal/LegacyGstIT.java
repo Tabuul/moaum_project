@@ -62,7 +62,7 @@ class LegacyGstIT {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2119);
         it.session(PREVIOUS, 2118);
-        n = new Random().nextInt(9000) + 1000;
+        n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/LGA/19/" + k, "MOAUM/LGB/19/" + k, "MOAUM/LGC/19/" + k, "MOAUM/LGD/19/" + k, "MOAUM/LGE/19/" + k, "MOAUM/ADM/19/" + String.format("%06d", k), "MOAUM/ADM/19/" + String.format("%06d", k + 1), "MOAUM/ADM/19/" + String.format("%06d", k + 2), "MOAUM/ADM/19/" + String.format("%06d", k + 3), "MOAUM/ADM/19/" + String.format("%06d", k + 4), "ZZLGA" + k, "ZZLGB" + k, "ZZLGC" + k, "ZZLGD" + k));
         matricA = "MOAUM/LGA/19/" + n; matricB = "MOAUM/LGB/19/" + n; matricC = "MOAUM/LGC/19/" + n; matricD = "MOAUM/LGD/19/" + n; matricE = "MOAUM/LGE/19/" + n;
         jambA = "19" + String.format("%06d", n) + "LA";
         a = it.student("ZZLGA" + n, PROGRAMME, "MOAUM/ADM/19/" + String.format("%06d", n), matricA, 100);

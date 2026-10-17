@@ -44,7 +44,7 @@ class PortalAuditIT {
 
     @Test
     void staffRecordsKeepToTheDepartmentAndDuplicatesAreTheRegistrys() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/ADM/29/8" + k + "0", "MOAUM/ADM/29/9" + k + "0", "ZZDUPAUDITA" + k, "ZZDUPAUDITB" + k));
         String dept = "MTC";
         String other = jdbc.sql("SELECT code FROM ref.department WHERE code <> 'MTC' AND faculty_code IS NOT NULL AND faculty_code <> (SELECT faculty_code FROM ref.department WHERE code = 'MTC') ORDER BY code LIMIT 1")
                 .query(String.class).single();

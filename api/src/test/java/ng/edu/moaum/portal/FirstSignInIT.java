@@ -2,6 +2,7 @@ package ng.edu.moaum.portal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
@@ -58,7 +59,7 @@ class FirstSignInIT {
 
     @Test
     void aPersonsOwnNumberOpensNoDoorAndTheFirstPasswordIsChosen() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/OWN/86/" + k, "MOAUM/ADM/86/7" + k + "0", "ITOWNNUMBER" + k));
         String matric = "MOAUM/OWN/86/" + n;
         UUID student = it.student("ITOWNNUMBER" + n, "C00061", "MOAUM/ADM/86/7" + n + "0", matric, 100);
         // a migrated account on a password nobody knows, still to be changed — as the import leaves it

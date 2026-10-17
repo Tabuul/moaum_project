@@ -169,6 +169,25 @@ final class ItSupport {
         throw new IllegalStateException("no free number after " + prefix + " in " + digits + " digits");
     }
 
+    /** a number in [min, bound) none of whose identifiers — as {@code identifiers} builds them from it: matriculation, admission and
+     *  staff numbers, the surnames of invented students and people — any student or person holds, so the people a test invents from
+     *  one random number are new on any database, however often the suite has run on it */
+    int freeDraw(int min, int bound, java.util.function.IntFunction<List<String>> identifiers) {
+        for (int i = 0; i < 500; i++) {
+            int n = java.util.concurrent.ThreadLocalRandom.current().nextInt(min, bound);
+            String ids = String.join("|", identifiers.apply(n));
+            boolean taken = jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM people.student s, string_to_array(:ids, '|') a
+                                    WHERE s.matric_no = ANY (a) OR s.admission_no = ANY (a) OR s.surname = ANY (a))
+                        OR EXISTS (SELECT 1 FROM iam.person p, string_to_array(:ids, '|') a WHERE p.staff_number = ANY (a) OR p.surname = ANY (a))
+                    """).param("ids", ids).query(Boolean.class).single();
+            if (!taken) {
+                return n;
+            }
+        }
+        throw new IllegalStateException("no free draw in [" + min + ", " + bound + ")");
+    }
+
     /** a surname no student holds: {@link #student} hands back the student of a surname already invented, so a surname drawn again
      *  would give the test an earlier run's student and its state */
     String freeSurname(String prefix) {

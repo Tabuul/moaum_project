@@ -591,7 +591,7 @@ class PaymentsIT {
     void aNotificationIsRecordedFirstAndAnsweredOnTimeWhenThePortalIsHeldUp() throws Exception {
         String bursar = ItSupport.token("bursar");
         String ict = ItSupport.token("ict");
-        String tag = String.format("%04d", new Random().nextInt(10_000));
+        String tag = String.format("%04d", it.freeDraw(0, 10_000, k -> List.of("MOAUM/ADM/99/99" + String.format("%04d", k), "MOAUM/ITR/99/" + String.format("%04d", k))));
         java.util.UUID payer = it.student("ZZPAYDIRECTONTIME", "C00023", "MOAUM/ADM/99/99" + tag, "MOAUM/ITR/99/" + tag, 100);
         // the student an earlier run made is found again by name with that run's number: ask with the number it carries
         String number = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", payer).query(String.class).single();

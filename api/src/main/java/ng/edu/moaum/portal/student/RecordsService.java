@@ -21,9 +21,6 @@ class RecordsService {
     static final Set<String> VIEWS = Set.of("students", "registration", "fees", "results",
             "exams", "allocation", "clearance", "attendance");
 
-    /** the largest scope whose CGPAs are read with the register — each is computed from the published results */
-    static final int CGPA_SCOPE = 1500;
-
     /** V524: above this many students the fees view reads the session's charges for everyone at once */
     static final int SESSION_WIDE = 2000;
 
@@ -48,8 +45,7 @@ class RecordsService {
         }
         int total = students.inScope(scope);
         return switch (view) {
-            case "students" -> new RecordsResult(view, records.students(scope, total <= CGPA_SCOPE), total, null,
-                    total <= CGPA_SCOPE ? null : "CGPA is shown for up to " + CGPA_SCOPE + " students; narrow to a department or programme.");
+            case "students" -> new RecordsResult(view, records.students(scope), total, null);
             case "registration" -> new RecordsResult(view, records.registration(scope), total, null);
             case "results" -> new RecordsResult(view, records.results(scope), total, null);
             case "exams" -> new RecordsResult(view, records.exams(scope), total, null);

@@ -52,7 +52,7 @@ class FeeLinesIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        tag = Integer.toString(new Random().nextInt(9_000) + 1_000);
+        tag = Integer.toString(it.freeDraw(1_000, 10_000, k -> List.of("MOAUM/ADM/75/" + k + "61", "MOAUM/FL/75/" + k, "ZZFL" + k)));
         bursar = TestTokens.token(it.person("ZZFL-BUR-" + tag, "ZZFLBUR"), List.of("bursar"));
         it.session(SES, 2075);
         it.db(() -> jdbc.sql("""

@@ -86,7 +86,7 @@ class PgSpecialisationsIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2153);
-        tag = Integer.toString(ThreadLocalRandom.current().nextInt(1000, 9999));
+        tag = Integer.toString(it.freeDraw(1000, 9999, k -> List.of("MOAUM/ADM/53/30" + k, "ZZPGSP3T" + k)));
         List<Map<String, Object>> pgs = jdbc.sql("""
                 SELECT p.code, p.dept_code FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 2
                 """).query().listOfRows();

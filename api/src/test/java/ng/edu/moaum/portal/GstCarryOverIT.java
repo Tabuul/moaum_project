@@ -54,7 +54,7 @@ class GstCarryOverIT {
         it = new ItSupport(port, jdbc, transactions);
         it.session(before, year - 1);
         it.session(session, year);
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/12/" + String.format("%06d", k), "MOAUM/GCO/12/" + k, "ZZGSTCO" + k));
         s = it.student("ZZGSTCO" + n, "C00023", "MOAUM/ADM/12/" + String.format("%06d", n), "MOAUM/GCO/12/" + n, 400);
         student = TestTokens.token(s, List.of("student"));
         // a GST code no earlier test or run holds

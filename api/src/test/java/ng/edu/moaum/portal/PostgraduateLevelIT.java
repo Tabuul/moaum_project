@@ -44,7 +44,7 @@ class PostgraduateLevelIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        tag = Integer.toString(new Random().nextInt(9_000) + 1_000);
+        tag = Integer.toString(it.freeDraw(1_000, 10_000, k -> List.of("MOAUM/ADM/79/" + k + "55", "ZZPGLUG" + k)));
         registrar = TestTokens.token(it.person("ZZPGL-REG-" + tag, "ZZPGLREG"), List.of("registrar"));
         pgProgramme = it.db(() -> jdbc.sql("SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1")
                 .query(String.class).single());

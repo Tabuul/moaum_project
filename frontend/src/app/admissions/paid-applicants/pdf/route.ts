@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { logServerExport } from "@/lib/export-log-server";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { formatDocDateTime } from "@/lib/document/institution";
 import { PdfDocument } from "@/lib/document/pdf";
@@ -46,6 +47,7 @@ export async function GET(req: Request) {
   pdf.space(8);
   pdf.paragraph(`${d.total.toLocaleString("en-GB")} applicant${d.total === 1 ? "" : "s"}. Paid means an application-fee payment the payment service confirmed; a reversal by the Bursary undoes it. The UTME aggregate is JAMB's, never computed; a Direct Entry candidate sat no UTME. A value the record does not hold reads NOT AVAILABLE.`, 8.5);
   const bytes = pdf.finish();
+  await logServerExport({ report: plain(h.title), format: "PDF", rows: d.rows.length, meta: h.meta.map(([k, v]) => [plain(k), plain(v)] as [string, string]), sub: plain(h.sub) }, req);   // V529
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${paidFileName(f, "pdf")}"`, "cache-control": "no-store" },

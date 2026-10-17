@@ -41,11 +41,13 @@ class PrdGapsIT {
     PlatformTransactionManager transactions;
 
     ItSupport it;
-    final int n = 1000 + new Random().nextInt(8999);
+    /** one number for the people this run invents, none of them already on the database */
+    int n;
 
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        n = it.freeDraw(1000, 9999, k -> List.of("ZZOVL" + k, "ZZPGS" + k, "MOAUM/ADM/24/86" + k, "ZZ/HR/" + k, "MOAUM/API/26/" + k, "ZZAPI" + k, "MOAUM/ADM/26/87" + k));
     }
 
     @Test

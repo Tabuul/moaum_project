@@ -63,7 +63,7 @@ class AcademicStandingIT {
     }
 
     private Seeded seed() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/STD/87/" + k, "MOAUM/STD/87/" + (k + 1), "MOAUM/ADM/87/10" + k, "MOAUM/ADM/87/20" + k, "ITSTANDNONE" + k, "ITSTANDLOW" + k));
         String missingMatric = "MOAUM/STD/87/" + n;
         String lowMatric = "MOAUM/STD/87/" + (n + 1);
         UUID missing = it.student("ITSTANDNONE" + n, "C00061", "MOAUM/ADM/87/10" + n, missingMatric, 100);
@@ -246,7 +246,7 @@ class AcademicStandingIT {
         assertThat(st.get("standing")).isEqualTo("NOT_AVAILABLE");
 
         // a result withheld: held for the Senate — not counted, not owed, nothing pronounced, the student told it is held
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/STD/87/3" + k, "MOAUM/ADM/87/30" + k, "ITSTANDHELD" + k));
         String heldMatric = "MOAUM/STD/87/3" + n;   // five digits: never one of seed()'s four
         UUID held = it.student("ITSTANDHELD" + n, "C00061", "MOAUM/ADM/87/30" + n, heldMatric, 100);
         it.db(() -> jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, 2, :rows::jsonb, true)").param("s", SESSION)
@@ -271,7 +271,7 @@ class AcademicStandingIT {
     @Test
     void heldResultsAreListedAndWhoTheAbsentRuleTouchesIsNamed() {
         seed();
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/STD/87/4" + k, "MOAUM/STD/87/5" + k, "MOAUM/ADM/87/40" + k, "MOAUM/ADM/87/50" + k, "ITSTANDHOLD" + k, "ITSTANDABS" + k));
         String heldMatric = "MOAUM/STD/87/4" + n;
         String absentMatric = "MOAUM/STD/87/5" + n;
         it.student("ITSTANDHOLD" + n, "C00061", "MOAUM/ADM/87/40" + n, heldMatric, 100);

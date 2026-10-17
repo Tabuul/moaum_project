@@ -58,7 +58,7 @@ class ExportLogIT {
                 .isEqualTo(1L);
 
         // a format the log does not keep, and nobody signed in
-        ResponseEntity<Map> csv = it.call(token, HttpMethod.POST, "/api/v1/exports", Map.of("report", "Class list", "format", "CSV", "rows", 1));
+        ResponseEntity<Map> csv = it.call(token, HttpMethod.POST, "/api/v1/exports", Map.of("report", "Class list", "format", "DOCX", "rows", 1));
         assertThat(csv.getStatusCode().value()).isEqualTo(422);
         assertThat(csv.getBody()).containsEntry("code", "EXPORT_LOG_FORMAT");
         assertThat(it.anon(HttpMethod.POST, "/api/v1/exports", Map.of("report", "Class list", "format", "XLSX", "rows", 1)).getStatusCode().value()).isEqualTo(401);
@@ -72,5 +72,35 @@ class ExportLogIT {
         assertThat(it.get(ItSupport.token("deputyaudit"), "/api/v1/exports?format=XLSX").getStatusCode().value()).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/exports").getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(ItSupport.token("studentaccounts"), "/api/v1/exports").getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
+    void aLargeExportIsMarkedUnusualAndOnlyInternalAuditOrSuperSetsTheWatch() {
+        String audit = ItSupport.token("audit");
+        Map<String, Object> watch = (Map<String, Object>) it.get(audit, "/api/v1/exports/watch").getBody();
+        int large = ((Number) watch.get("large_rows")).intValue();
+        String serial = "MOAUM/IT/" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String lecturer = TestTokens.token(UUID.randomUUID(), List.of("lecturer"));
+        assertThat(it.call(lecturer, HttpMethod.POST, "/api/v1/exports", Map.of("report", "Every class list", "format", "PDF", "rows", large + 1, "serial", serial))
+                .getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> unusual = it.get(audit, u -> u.path("/api/v1/exports").queryParam("q", serial).queryParam("unusual", "true").build());
+        assertThat(((Number) unusual.getBody().get("total")).intValue()).isEqualTo(1);
+        assertThat(((List<Map<String, Object>>) unusual.getBody().get("rows")).getFirst()).containsEntry("large", true).containsEntry("format", "PDF");
+
+        // the watch: the Deputy Director of Audit reads it, does not set it; Internal Audit sets it (and it is put back)
+        Map<String, Object> same = Map.of("enabled", watch.get("enabled"), "largeRows", large, "burstCount", watch.get("burst_count"), "burstMinutes", watch.get("burst_minutes"));
+        assertThat(it.get(ItSupport.token("deputyaudit"), "/api/v1/exports/watch").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(ItSupport.token("deputyaudit"), HttpMethod.PUT, "/api/v1/exports/watch", same).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("bursar"), HttpMethod.PUT, "/api/v1/exports/watch", same).getStatusCode().value()).isEqualTo(403);
+        Map<String, Object> raised = new java.util.HashMap<>(same);
+        raised.put("largeRows", large + 1000);
+        ResponseEntity<Map> set = it.call(audit, HttpMethod.PUT, "/api/v1/exports/watch", raised);
+        try {
+            assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+            assertThat(((Number) set.getBody().get("large_rows")).intValue()).isEqualTo(large + 1000);
+            assertThat(set.getBody()).containsEntry("updated_office", "audit");
+        } finally {
+            assertThat(it.call(audit, HttpMethod.PUT, "/api/v1/exports/watch", same).getStatusCode().value()).isEqualTo(200);
+        }
     }
 }

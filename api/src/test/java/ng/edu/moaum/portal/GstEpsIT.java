@@ -59,7 +59,7 @@ class GstEpsIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2110);
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/10/" + String.format("%06d", k), "MOAUM/GST/10/" + k, "ZZGST" + k));
         s = it.student("ZZGST" + n, PROGRAMME, "MOAUM/ADM/10/" + String.format("%06d", n), "MOAUM/GST/10/" + n, 100);
         student = TestTokens.token(s, List.of("student"));
         // a pair of course codes no earlier test or run holds: one left by another test (passed to another office, or bound

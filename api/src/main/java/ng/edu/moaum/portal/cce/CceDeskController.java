@@ -299,10 +299,11 @@ class CceDeskController {
         return m;
     }
 
-    /** the rows the list did not load, and why — or every row with what it did — for the office to correct and load again */
+    /** the rows the list did not load, and why — or every row with what it did — for the office to correct and load again; V529: on
+     *  the export log, as every report handed out is */
     @GetMapping("/batches/{id}/report.csv")
     @PreAuthorize(READ)
-    @Transactional(readOnly = true)
+    @Transactional
     ResponseEntity<byte[]> report(@PathVariable UUID id, @RequestParam(defaultValue = "false") boolean all) {
         Map<String, Object> b = batch(id);
         List<Map<String, Object>> rows = jdbc.sql(ROWS).param("b", id).param("cls", all ? "" : "DUPLICATE,REQUIRES_REVIEW,INVALID").query().listOfRows()
@@ -314,6 +315,9 @@ class CceDeskController {
                     cell(r.get("classification")), cell(join(r.get("issues"))), cell(join(r.get("notes")))))).append("\r\n");
         }
         String name = String.valueOf(b.get("filename")).replaceAll("\\.[A-Za-z0-9]+$", "").replaceAll("[^A-Za-z0-9._-]+", "-") + (all ? "-all-rows.csv" : "-not-loaded.csv");
+        jdbc.sql("SELECT platform.log_export(:r, 'CSV', :n, jsonb_build_object('Batch', CAST(:b AS text), 'Rows', CAST(:w AS text)), :s, NULL)")
+                .param("r", "CCE list load report — " + b.get("filename")).param("n", rows.size()).param("b", String.valueOf(b.get("filename")))
+                .param("w", all ? "every row" : "rows not loaded").param("s", "/api/v1/cce/batches/" + id + "/report.csv").query(Object.class).single();
         return ResponseEntity.ok().contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
                 .header("Cache-Control", "no-store").body(csv.toString().getBytes(StandardCharsets.UTF_8));

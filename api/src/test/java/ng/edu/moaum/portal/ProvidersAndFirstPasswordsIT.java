@@ -118,7 +118,7 @@ class ProvidersAndFirstPasswordsIT {
     @SuppressWarnings("unchecked")
     @Test
     void theFirstPasswordsAreCountedListedScopedAndReachedByACampaign() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/91/1" + k + "0", "MOAUM/ADM/91/2" + k + "0", "MOAUM/ADM/91/3" + k + "0", "ITFPW" + k + "A", "ITFPW" + k + "B", "ITFPW" + k + "C"));
         UUID a = studentWithAccount("ITFPW" + n + "A", "MOAUM/ADM/91/1" + n + "0", true, false);
         UUID b = studentWithAccount("ITFPW" + n + "B", "MOAUM/ADM/91/2" + n + "0", true, true);
         UUID c = studentWithAccount("ITFPW" + n + "C", "MOAUM/ADM/91/3" + n + "0", false, true);

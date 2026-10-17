@@ -53,7 +53,7 @@ class FinancialAnalyticsIT {
 
     @Test
     void theRevenueItsPayersAndItsBreakdownsAgreeAndTheScopesHold() {
-        int n = new Random().nextInt(8000) + 1000;
+        int n = it.freeDraw(1000, 9000, k -> List.of("MOAUM/ADM/94/" + (100000 + k * 6), "MOAUM/ADM/94/" + (100000 + k * 6 + 1), "MOAUM/ADM/94/" + (100000 + k * 6 + 2), "MOAUM/ADM/94/" + (100000 + k * 6 + 3), "MOAUM/MTC/94/" + k, "MOAUM/MTC/94/" + (k + 1), "MOAUM/MTC/94/" + (k + 3), "MOAUM/MED/94/" + k));
         String tag = "ZZFA" + n;
         it.db(() -> {
             jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();

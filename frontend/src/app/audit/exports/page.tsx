@@ -5,7 +5,7 @@ import { ExportLog, type ExportLogView } from "./ExportLog";
 
 export const dynamic = "force-dynamic";
 
-const KEYS = ["from", "to", "office", "format", "q", "page"] as const;
+const KEYS = ["from", "to", "office", "format", "q", "unusual", "page"] as const;
 
 /** t/exportlog — V523: who exported which report, for Internal Audit. */
 export default async function ExportLogPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -22,7 +22,7 @@ export default async function ExportLogPage({ searchParams }: { searchParams: Pr
   ]);
   return (
     <Shell route="t/exportlog" me={me.ok ? me.data : null}>
-      {view.ok ? <ExportLog d={view.data} filters={filters} /> : <ProblemNotice problem={view.problem} />}
+      {view.ok ? <ExportLog d={view.data} filters={filters} maySet={me.ok && ["audit", "super"].includes(me.data.activeOffice ?? "")} /> : <ProblemNotice problem={view.problem} />}
     </Shell>
   );
 }

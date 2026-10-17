@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 367
+\set EXPECTED 370
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17059,7 +17059,7 @@ BEGIN
         EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; upd := split_part(msg, ':', 1); END;
         BEGIN DELETE FROM platform.export_log WHERE id = id1;
         EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; del := split_part(msg, ':', 1); END;
-        BEGIN PERFORM platform.log_export('Payments', 'CSV', 1, '{}'::jsonb, NULL, NULL);
+        BEGIN PERFORM platform.log_export('Payments', 'DOCX', 1, '{}'::jsonb, NULL, NULL);   -- V529: CSV and PDF are kept; DOCX is not
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; badfmt := split_part(msg, ':', 1); END;
         PERFORM set_config('moaum.actor_id', '', true);
         BEGIN PERFORM platform.log_export('Payments', 'PRINT', 1, '{}'::jsonb, NULL, NULL);
@@ -17241,6 +17241,164 @@ BEGIN
         format('check %s same %s fees %s verified %s | reason %s confirm %s open %s | sao %s self %s | done %s owner b %s unchanged %s paid %s/%s | events %s | twice %s fc %s | back %s owner a %s first %s swaps %s',
                ok_check, same, not_fees, not_verified, short_reason, no_confirm, open_again, sao_decide, self_decide, done->>'status', owner = b, unchanged,
                a_paid, b_paid, events, twice, fc, back->>'status', owner_back = a, first_status, swaps_a));
+END $$;
+
+-- ── V529: unusual exports told to Internal Audit ──
+-- A lecturer's export of 1,200 rows is told to the Director and the Deputy Director of Audit, not to the lecturer; with the watch at
+-- three exports an hour, the third small export tells them once and the fourth does not; the Director's own large export is told to
+-- the Deputy only; a switched-off watch tells nobody; a server-built PDF is recorded and a DOCX refused; the flags read as told.
+-- The block undoes its writes.
+DO $$
+DECLARE lec uuid := gen_random_uuid(); aud uuid := gen_random_uuid(); dep uuid := gen_random_uuid(); big uuid; s3 uuid; s4 uuid; own uuid; off uuid; pdf uuid;
+        big_aud int; big_dep int; big_lec int; burst_told int; fourth_told int; own_aud int; own_dep int; off_told int; docx text;
+        f_large boolean; f_burst boolean; f_small boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', aud::text, true);
+        PERFORM set_config('moaum.actor_office', 'super', true);
+        PERFORM set_config('moaum.reason', 'check V529', true);
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES
+            (lec, 'CHECKV529', 'Lecturer', 'zz.check529.lec@example.com'),
+            (aud, 'CHECKV529', 'Auditor', 'zz.check529.aud@example.com'),
+            (dep, 'CHECKV529', 'Deputy', 'zz.check529.dep@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), aud, 'audit', 'institution', NULL, 'check V529', aud, current_date - 1),
+            (gen_random_uuid(), dep, 'deputyaudit', 'institution', NULL, 'check V529', aud, current_date - 1);
+        UPDATE platform.export_watch SET enabled = true, large_rows = 1000, burst_count = 3, burst_minutes = 60;
+        -- the lecturer: one large export, then small ones
+        PERFORM set_config('moaum.actor_id', lec::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        big := platform.log_export('Class lists (check V529)', 'XLSX', 1200, '{}'::jsonb, '/check', 'CHK/V529/1');
+        PERFORM platform.log_export('Small list (check V529)', 'PRINT', 5, '{}'::jsonb, '/check', 'CHK/V529/2');   -- the second within the hour
+        s3 := platform.log_export('Small list (check V529)', 'PRINT', 5, '{}'::jsonb, '/check', 'CHK/V529/3');     -- the third: the limit
+        s4 := platform.log_export('Small list (check V529)', 'PRINT', 5, '{}'::jsonb, '/check', 'CHK/V529/4');     -- the fourth: told already
+        pdf := platform.log_export('Paid applicants (check V529)', 'pdf', 30, '{}'::jsonb, '/admissions/paid-applicants/pdf', NULL);
+        BEGIN PERFORM platform.log_export('Letters (check V529)', 'DOCX', 1, '{}'::jsonb, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; docx := split_part(msg, ':', 1); END;
+        SELECT count(*) FILTER (WHERE n.about_id = aud), count(*) FILTER (WHERE n.about_id = dep), count(*) FILTER (WHERE n.about_id = lec)
+          INTO big_aud, big_dep, big_lec FROM platform.notice n WHERE n.template_key = 'EXPORT_UNUSUAL' AND n.event_key = 'export-large:' || big;
+        SELECT count(*) INTO burst_told FROM platform.notice n WHERE n.template_key = 'EXPORT_UNUSUAL' AND n.event_key = 'export-burst:' || s3 AND n.about_id = aud;
+        SELECT count(*) INTO fourth_told FROM platform.notice n WHERE n.template_key = 'EXPORT_UNUSUAL' AND n.event_key LIKE '%:' || s4;
+        -- the Director's own large export: the Deputy is told, the Director is not
+        PERFORM set_config('moaum.actor_id', aud::text, true);
+        PERFORM set_config('moaum.actor_office', 'audit', true);
+        own := platform.log_export('Export log (check V529)', 'XLSX', 5000, '{}'::jsonb, '/audit/exports', NULL);
+        SELECT count(*) FILTER (WHERE n.about_id = aud), count(*) FILTER (WHERE n.about_id = dep) INTO own_aud, own_dep
+          FROM platform.notice n WHERE n.template_key = 'EXPORT_UNUSUAL' AND n.event_key = 'export-large:' || own;
+        -- switched off: nobody is told
+        PERFORM set_config('moaum.actor_office', 'super', true);
+        UPDATE platform.export_watch SET enabled = false;
+        PERFORM set_config('moaum.actor_id', lec::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        off := platform.log_export('Class lists again (check V529)', 'XLSX', 9000, '{}'::jsonb, '/check', NULL);
+        SELECT count(*) INTO off_told FROM platform.notice n WHERE n.template_key = 'EXPORT_UNUSUAL' AND n.event_key LIKE '%:' || off;
+        SELECT u.large INTO f_large FROM platform.export_unusual(big) u;
+        SELECT u.burst INTO f_burst FROM platform.export_unusual(s3) u;
+        SELECT u.large OR u.burst INTO f_small FROM platform.export_unusual(pdf) u;   -- the fifth is in the window too
+        RAISE EXCEPTION 'the V529 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V529 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V529: a large export or many in an hour is told to Internal Audit once, never to the person who made it; a switched-off watch tells nobody; PDF recorded, DOCX refused',
+        coalesce(big_aud > 0 AND big_dep > 0 AND big_lec = 0 AND burst_told > 0 AND fourth_told = 0 AND own_aud = 0 AND own_dep > 0 AND off_told = 0
+                 AND pdf IS NOT NULL AND docx = 'EXPORT_LOG_FORMAT' AND f_large AND f_burst AND f_small, false),
+        format('large: auditor %s, deputy %s, lecturer %s | burst %s, fourth %s | own: auditor %s, deputy %s | off %s | pdf %s, docx %s | flags %s/%s/%s',
+               big_aud, big_dep, big_lec, burst_told, fourth_told, own_aud, own_dep, off_told, pdf IS NOT NULL, docx, f_large, f_burst, f_small));
+END $$;
+
+-- ── V530: who opened a student's record ──
+-- The Registrar opens a student's record twice within ten minutes: one view; ICT Support opens its record of the student: another;
+-- the student reading their own portal is no view; a view is not changed or removed, but goes with its student when the student
+-- record itself is removed. The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); prog text;
+        first_ boolean; second_ boolean; support_ boolean; own boolean; views int; offices text; upd text; del text; gone int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', reg::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V530', true);
+        SELECT p.code INTO prog FROM ref.programme p WHERE NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/98/953001', 'CHECKV530', 'Viewed', prog, 'UTME', '2020/2021', 100, 100, 'ADMITTED');
+        first_ := people.log_record_view(st, 'STUDENT_RECORD');
+        second_ := people.log_record_view(st, 'STUDENT_RECORD');   -- within ten minutes: the same view
+        PERFORM set_config('moaum.actor_id', agent::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        support_ := people.log_record_view(st, 'SUPPORT_RECORD');
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        own := people.log_record_view(st, 'STUDENT_RECORD');
+        SELECT count(*), string_agg(v.office || '/' || v.record, ',' ORDER BY v.office) INTO views, offices FROM people.record_view v WHERE v.student_id = st;
+        PERFORM set_config('moaum.actor_id', reg::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN UPDATE people.record_view SET office = 'super' WHERE student_id = st;
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; upd := split_part(msg, ':', 1); END;
+        BEGIN DELETE FROM people.record_view WHERE student_id = st;
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; del := split_part(msg, ':', 1); END;
+        DELETE FROM people.student WHERE id = st;
+        SELECT count(*) INTO gone FROM people.record_view v WHERE v.student_id = st;
+        RAISE EXCEPTION 'the V530 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V530 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V530: an office opening a student''s record is recorded once in ten minutes, the student''s own reading is not, and the log is append-only',
+        coalesce(first_ AND NOT second_ AND support_ AND NOT own AND views = 2 AND offices = 'ictagent/SUPPORT_RECORD,registrar/STUDENT_RECORD'
+                 AND upd = 'RECORD_VIEW_APPEND_ONLY' AND del = 'RECORD_VIEW_APPEND_ONLY' AND gone = 0, false),
+        format('first %s, again %s, support %s, own %s | %s views: %s | update %s, delete %s | with the student gone %s', first_, second_, support_, own, views, offices, upd, del, gone));
+END $$;
+
+-- ── V531: the CGPA and the fee positions read at once agree with each student's own ──
+-- assessment.scope_cgpa gives every student with an approved registration the CGPA assessment.student_gpa gives on the student's
+-- latest semester (the results block's student, two sessions with a repeated course, among them); finance.fee_positions_of gives
+-- each student named what finance.fee_stated and finance.position give, for a paid and an unpaid student of one profile and one of
+-- another level with no fee stated. The block undoes its writes.
+DO $$
+DECLARE ses text := '2412/2413'; prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); ref text;
+        students int; with_cgpa int; cgpa_differ int; chk_cgpa numeric; chk_each numeric; pos_differ int; pos_n int; a_full boolean; c_stated boolean; msg text;
+BEGIN
+    -- the CGPA: every registered student on the database
+    WITH s AS (SELECT DISTINCT r.student_id FROM registration.course_registration r WHERE r.status IN ('APPROVED', 'LOCKED')),
+    each_ AS (SELECT s.student_id, (SELECT g.cgpa FROM assessment.student_gpa(s.student_id) g ORDER BY g.session DESC, g.semester DESC LIMIT 1) AS cgpa FROM s),
+    once AS (SELECT * FROM assessment.scope_cgpa((SELECT array_agg(s.student_id) FROM s)))
+    SELECT count(*), count(e.cgpa), count(*) FILTER (WHERE e.cgpa IS DISTINCT FROM o.cgpa)
+      INTO students, with_cgpa, cgpa_differ
+      FROM each_ e LEFT JOIN once o ON o.student_id = e.student_id;
+    SELECT o.cgpa INTO chk_cgpa FROM people.student st CROSS JOIN LATERAL assessment.scope_cgpa(ARRAY[st.id]) o WHERE st.matric_no = 'MOAUM/CHK/99/0002';
+    SELECT g.cgpa INTO chk_each FROM people.student st CROSS JOIN LATERAL assessment.student_gpa(st.id) g
+     WHERE st.matric_no = 'MOAUM/CHK/99/0002' ORDER BY g.session DESC, g.semester DESC LIMIT 1;
+    -- the fee positions: a paid and an unpaid student of one profile, and one with no fee stated
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V531', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2412-10-01', DATE '2413-08-31');
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/98/953101', 'CHECKV531', 'Paid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/98/953102', 'CHECKV531', 'Unpaid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (c, 'MOAUM/ADM/98/953103', 'CHECKV531', 'Unstated', prog, 'UTME', ses, 100, 200, 'ADMITTED');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V531)', 40000, 100, prog);
+        ref := finance.new_purpose_reference(a, ses, 40000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V531');
+        SELECT count(*), count(*) FILTER (WHERE (finance.fee_stated(o.student_id, ses), p.due, p.paid, p.balance, p.instalments_paid, p.paid_in_full, p.has_arrears)
+                                                IS DISTINCT FROM (o.stated, o.due, o.paid, o.balance, o.instalments_paid, o.paid_in_full, o.has_arrears))
+          INTO pos_n, pos_differ
+          FROM finance.fee_positions_of(ses, ARRAY[a, b, c]) o CROSS JOIN LATERAL finance.position(o.student_id, ses) p;
+        SELECT o.paid_in_full INTO a_full FROM finance.fee_positions_of(ses, ARRAY[a]) o;
+        SELECT o.stated INTO c_stated FROM finance.fee_positions_of(ses, ARRAY[c]) o;
+        RAISE EXCEPTION 'the V531 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V531 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V531: the CGPA and the fee positions read at once agree with each student''s own',
+        coalesce(students > 0 AND with_cgpa > 0 AND cgpa_differ = 0 AND chk_cgpa IS NOT NULL AND chk_cgpa = chk_each
+                 AND pos_n = 3 AND pos_differ = 0 AND a_full AND NOT c_stated, false),
+        format('cgpa: %s students, %s with one, %s differ, results student %s/%s | positions: %s, %s differ, paid in full %s, unstated %s',
+               students, with_cgpa, cgpa_differ, chk_cgpa, chk_each, pos_n, pos_differ, a_full, c_stated));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -57,7 +57,7 @@ class SmsCostAndApplicationDeadlinesIT {
     @SuppressWarnings("unchecked")
     @Test
     void aCampaignsSmsIsCostedAndASendBeyondTheBalanceIsAskedFirst() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/93/1" + k + "0", "ITSMS" + k));
         UUID s = it.student("ITSMS" + n, "C00023", "MOAUM/ADM/93/1" + n + "0", null, 100);
         it.db(() -> {
             jdbc.sql("UPDATE people.student SET entry_session = :ses WHERE id = :s").param("ses", ses).param("s", s).update();

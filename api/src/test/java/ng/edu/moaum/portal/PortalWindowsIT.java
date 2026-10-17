@@ -76,7 +76,7 @@ class PortalWindowsIT {
     /** V466: the school-fees payment closure message is the Director of ICT's to write, and every student's Fees page reads it */
     @Test
     void theSchoolFeesClosureMessageIsTheDirectorsAndEveryStudentReadsIt() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/99/" + String.format("%06d", k), "MOAUM/SCI/99/" + k, "ZZMSG" + k));
         UUID s = it.student("ZZMSG" + n, "C00023", "MOAUM/ADM/99/" + String.format("%06d", n), "MOAUM/SCI/99/" + n, 100);
         String student = TestTokens.token(s, List.of("student"));
         Map<String, Object> before = m(it.get(ict, BASE + "?session=" + SESSION).getBody().get("feesMessage"));
@@ -103,7 +103,7 @@ class PortalWindowsIT {
 
     @Test
     void theDirectorOpensAndClosesTheWindowsAndTheGatesHold() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/99/" + String.format("%06d", k), "MOAUM/SCI/99/" + k, "ZZWIN" + k));
         UUID s = it.student("ZZWIN" + n, "C00023", "MOAUM/ADM/99/" + String.format("%06d", n), "MOAUM/SCI/99/" + n, 100);
         it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :ses WHERE id = :id").param("ses", SESSION).param("id", s).update());
         it.db(() -> jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (:s, '08055557777', :e, now()) ON CONFLICT (student_id) DO UPDATE SET email = EXCLUDED.email").param("s", s).param("e", "zzwin" + n + "@example.edu").update());

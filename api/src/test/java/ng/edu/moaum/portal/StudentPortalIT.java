@@ -103,7 +103,7 @@ class StudentPortalIT {
     @Test
     @SuppressWarnings("unchecked")
     void theRegistryOpensTheAccountAndTheStudentRegistersOnceTheBursaryClears() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ITP/90/" + k, "MOAUM/ADM/90/00" + k, "ITPORTAL" + k));
         String matric = "MOAUM/ITP/90/" + n;
         UUID student = it.student("ITPORTAL" + n, "C00061", "MOAUM/ADM/90/00" + n, matric, 100);
 
@@ -280,7 +280,7 @@ class StudentPortalIT {
     void resultsAreWithheldOnTheServerUntilTheSessionsFeesArePaidInFull() {
         final String ses = "2093/2094";
         it.session(ses, 2093);
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/GTE/93/" + k, "MOAUM/ADM/93/00" + k, "ITGATE" + k));
         String matric = "MOAUM/GTE/93/" + n;
         UUID student = it.student("ITGATE" + n, "C00061", "MOAUM/ADM/93/00" + n, matric, 100);
 
@@ -375,7 +375,7 @@ class StudentPortalIT {
     @Test
     @SuppressWarnings("unchecked")
     void anEntrantOfAPlannedSessionSeesThatSessionsFeesByDefault() {
-        int n = new Random().nextInt(9000) + 1000;
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/NEW/97/" + k, "MOAUM/ADM/97/00" + k, "ITNEWSESSION" + k));
         String ses = "2097/2098";
         it.session(ses, 2097);
         String matric = "MOAUM/NEW/97/" + n;

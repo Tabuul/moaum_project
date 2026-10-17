@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { logServerExport } from "@/lib/export-log-server";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument } from "@/lib/document/pdf";
 import { formatDocDate } from "@/lib/document/institution";
@@ -40,6 +41,7 @@ export async function GET(req: Request) {
   if (d.notRegistered) pdf.paragraph(`${d.notRegistered} active student${d.notRegistered === 1 ? " has" : "s have"} not yet registered their subjects and ${d.notRegistered === 1 ? "is" : "are"} not on this list.`, 9);
   pdf.signatures([{ designation: "Prepared by (JUPEB Office)" }, { designation: "Programme Director" }]);
   const bytes = pdf.finish();
+  await logServerExport({ report: "JUPEB candidates for examination numbers", format: "PDF", rows: d.rows.length, meta: [["Session", d.session], ["Which", which]] }, req);   // V529
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="jupeb-exam-number-list-${d.session.replace("/", "-")}.pdf"`, "cache-control": "no-store" },
