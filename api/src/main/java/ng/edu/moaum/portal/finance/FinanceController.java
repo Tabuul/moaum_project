@@ -269,7 +269,7 @@ class FinanceController {
         return out;
     }
 
-    /** V506: the students the reconciliation finds overpaid in a session — due, paid, the excess — with the decision that stands
+    /** V506, V519: every student overpaid in a session (old-portal or portal payments) — due, paid, the excess — with the decision that stands
      *  (carried into the next session, or a refund raised), the counts, and the first rows (up to 100,000 for the Excel list) */
     @GetMapping("/legacy-fees/overpaid")
     @PreAuthorize(READERS)
@@ -284,17 +284,18 @@ class FinanceController {
                     'session', :s::text,
                     'sessions', (SELECT coalesce(json_agg(t.session ORDER BY t.session DESC), '[]'::json)
                                    FROM (SELECT DISTINCT r.session FROM finance.payment_reference r
-                                          WHERE (r.reference LIKE 'MOAUM-LEG-%' OR r.reference NOT LIKE 'MOAUM-%') AND r.purpose LIKE 'School fees%'
+                                          WHERE r.confirmed_at IS NOT NULL AND r.purpose LIKE 'School fees%'
                                             AND r.session ~ '^[0-9]{4}/[0-9]{4}$') t),
                     'nextSession', finance.next_session(:s),
                     'count', (SELECT count(*) FROM o),
                     'excess', (SELECT coalesce(sum(excess), 0) FROM o),
                     'undecided', (SELECT count(*) FROM o WHERE decision IS NULL),
                     'undecidedExcess', (SELECT coalesce(sum(excess), 0) FROM o WHERE decision IS NULL),
+                    'oldPortal', (SELECT count(*) FROM o WHERE old_portal),
                     'decided', (SELECT coalesce(json_object_agg(t.decision, t.n), '{}'::json) FROM (SELECT decision, count(*) AS n FROM o WHERE decision IS NOT NULL GROUP BY decision) t),
                     'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
                         SELECT student_id, number, name, programme_code, faculty_code, level, due, paid, excess, decision, decided, reference, to_session,
-                               decided_at::text AS decided_at, refund_state
+                               decided_at::text AS decided_at, refund_state, old_portal
                           FROM o ORDER BY (decision IS NULL) DESC, excess DESC, number LIMIT :n) r))::text
                 """).param("s", ses).param("n", n).query(String.class).single();
         return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });

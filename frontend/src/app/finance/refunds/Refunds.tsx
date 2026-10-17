@@ -12,6 +12,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { JupebClaims } from "./JupebClaims";
+import { OldFeesOverpaid } from "../legacy-fees/OldFeesOverpaid";
 
 export interface Refund {
   id: string; reference: string; student_id: string | null; payer: string; reason: string; amount: number;
@@ -112,6 +113,8 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
 
       {said ? <Note kind="ok" title={said}>It waits for a second officer to approve it before any money leaves the University.</Note> : null}
       <JupebClaims may={may} onChanged={() => router.refresh()} />
+      {/* V519: overpaid school fees carried into the next session or refunded — a refund raised there joins the requests below */}
+      <OldFeesOverpaid may={may} onChanged={() => router.refresh()} />
       {err ? <ProblemNotice problem={err} /> : null}
 
       <Tiles items={[

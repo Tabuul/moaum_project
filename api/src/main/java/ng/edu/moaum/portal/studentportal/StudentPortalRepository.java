@@ -386,6 +386,15 @@ class StudentPortalRepository {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.fee_stated(:s, :ses)").param("s", student).param("ses", session).query(Boolean.class).single());
     }
 
+    /** V519: the student's overpaid school fees and what the Bursary decided — carried into the next session, or a refund raised
+     *  and how far it has gone */
+    List<Map<String, Object>> overpayments(UUID student) {
+        return jdbc.sql("""
+                SELECT session, amount, decision, to_session, reference, refund_state, decided_at::text AS decided_at
+                  FROM finance.student_overpayments(:s)
+                """).param("s", student).query().listOfRows();
+    }
+
     /** V451: the open semesters of the session whose school fees are not yet stated for the student, while another's are */
     List<Integer> unstatedSemesters(UUID student, String session) {
         return jdbc.sql("SELECT unnest(finance.fee_unstated_semesters(:s, :ses))").param("s", student).param("ses", session).query(Integer.class).list();

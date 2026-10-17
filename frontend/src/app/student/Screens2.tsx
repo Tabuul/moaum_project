@@ -10,6 +10,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { type Fees, type Me, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
+import { overpaymentWords } from "@/lib/overpayment";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
@@ -45,9 +46,14 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : null}
       <div className="grid grid--3">
         <div className="tile"><span className="eyebrow">Session charge</span><span className="n tnum">{noCharge ? "—" : naira(fees.due)}</span><span className="c">{fees.session} · {s.level} Level</span></div>
-        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{fees.paidInFull && !noCharge ? (unstated.length ? "Settled for what is stated" : "Settled in full") : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : "Nothing yet"}</span></div>
+        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{fees.paidInFull && !noCharge ? (unstated.length ? "Settled for what is stated" : "Settled in full") : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : fees.paid > 0 ? (noCharge ? "Counted once the charge is stated" : "Part paid") : "Nothing yet"}</span></div>
         <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : unstated.length ? `${semesterName(unstated[0])} semester not yet stated` : "Cleared"}</span></div>
       </div>
+      {(fees.overpayments ?? []).map((o) => {
+        // V519: school fees paid beyond a session's charge — carried into the next session, or refunded
+        const w = overpaymentWords(o);
+        return <Note key={o.reference} kind={o.decision === "CARRY" || o.refund_state === "PAID" ? "ok" : "info"} title={w.title}>{w.text}</Note>;
+      })}
       {unstated.length ? (
         <Note kind="info" title={`Your ${unstatedWords} semester school fees for ${fees.session} are not yet stated`}>
           What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.

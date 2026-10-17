@@ -1,9 +1,11 @@
 "use client";
 
-/** V506: the students the reconciliation finds overpaid in a session, and what the Bursary decides for each excess — carried into
+/** V506, V519: every student overpaid in a session — through old-portal payments or the portal's (a reference paid twice) — and
+ *  what the Bursary decides for each excess — carried into
  *  the next session (a CARRIED school-fees record there, which the fee gate counts; the ledger moves the income across, no new
  *  cash) or a refund raised on the Refunds & Credits desk (approved and paid there by two officers, as every refund). All the
- *  undecided at once or one student at a time, with a reason kept on each; the list as Excel. */
+ *  undecided at once or one student at a time, with a reason kept on each, the student told; the list as Excel. On Old Fees History
+ *  and on Refunds & Credits. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -16,7 +18,7 @@ import { DECISION, OVERPAID_HEADERS, decideDone, overpaidRow, type Decision, typ
 
 interface Overpaid {
   session: string; sessions: string[]; nextSession: string | null; count: number; excess: number | string; undecided: number;
-  undecidedExcess: number | string; decided: Partial<Record<Decision, number>>; rows: OverpaidRow[];
+  undecidedExcess: number | string; decided: Partial<Record<Decision, number>>; oldPortal?: number; rows: OverpaidRow[];
 }
 
 /** what is being decided: every undecided student of the session, or one */
@@ -108,7 +110,7 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
   const decided = data?.decided ?? {};
   const next = data?.nextSession ?? null;
   return (
-    <Panel title="Overpaid" right="Students who paid more than the fee setup says was due: carried into the next session, or refunded">
+    <Panel title="Overpaid" right="Students who paid more than the fee setup says was due, through the old portal or the portal: carried into the next session, or refunded">
       <PBody>
         <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", alignItems: "flex-end" }}>
           <Field id="ofo-session" label="Session" style={{ flex: "0 1 160px" }}>
@@ -124,12 +126,12 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
       {said ? <PBody><Note kind="ok" title="Decided">{said} Each decision is kept with your reason.</Note></PBody> : null}
       {!data ? <PBody><div className="sub2">{loading ? "Looking…" : ""}</div></PBody>
         : !data.count ? (
-          <PBody><div className="sub2">No student with an old-portal payment paid more than the fee setup says was due for {data.session}.</div></PBody>
+          <PBody><div className="sub2">No student paid more than the fee setup says was due for {data.session}.</div></PBody>
         ) : (
           <>
             <PBody>
               <Tiles items={[
-                ["Overpaid", data.count.toLocaleString(), "var(--red-ink)", `${money(Number(data.excess))} beyond what was due`],
+                ["Overpaid", data.count.toLocaleString(), "var(--red-ink)", `${money(Number(data.excess))} beyond what was due${data.oldPortal != null ? ` · ${Number(data.oldPortal).toLocaleString()} with old-portal payments` : ""}`],
                 ["Not decided", data.undecided.toLocaleString(), data.undecided ? "var(--red-ink)" : null, money(Number(data.undecidedExcess))],
                 ["Carried into the next session", (decided.CARRY ?? 0).toLocaleString(), null, next ? `Into ${next}` : "No next session on the calendar"],
                 ["Refund raised", (decided.REFUND ?? 0).toLocaleString(), null, "On the Refunds & Credits desk"],
@@ -146,7 +148,7 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
             </PBody>
             <DTable pageSize={0} cols={["Student", "Due|num", "Paid|num", "Excess|num", "Decided", ""]}
               rows={data.rows.map((o) => [
-                <Two key="s" a={o.name} b={o.number} />,
+                <span key="s"><Two a={o.name} b={o.number} />{o.old_portal ? <span className="sub2">Old-portal payment among them</span> : null}</span>,
                 <span key="d" className="tnum">{money(Number(o.due))}</span>,
                 <span key="p" className="tnum">{money(Number(o.paid))}</span>,
                 <b key="x" className="tnum">{money(Number(o.excess))}</b>,
@@ -176,13 +178,14 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
             <p>
               {asking.who ? `${asking.who.name}'s excess` : `The excess of every student not yet decided (${money(Number(data.undecidedExcess))} in all)`} is
               recorded as school fees paid in {next}, &ldquo;carried from {data.session}&rdquo;: the fee gate and the student&rsquo;s position count it there.
-              It is no new money: the ledger moves the school-fees income from {data.session} to {next}. The overpaid session reads settled.
+              It is no new money: the ledger moves the school-fees income from {data.session} to {next}. The overpaid session reads settled,
+              and the student is told by e-mail, text and on the portal.
             </p>
           ) : (
             <p>
               A refund of {asking.who ? `${asking.who.name}'s excess` : `each student's excess (${money(Number(data.undecidedExcess))} in all)`} is raised on the Refunds
               &amp; Credits desk, against the payment that covers it. It is approved and paid there by two officers, as every refund; a refund the desk
-              rejects comes back here to be decided again.
+              rejects comes back here to be decided again. The student is told when it is raised and when it is paid.
             </p>
           )}
           <Field id="ofo-reason" label="Why" required hint="At least ten characters; kept with each decision">

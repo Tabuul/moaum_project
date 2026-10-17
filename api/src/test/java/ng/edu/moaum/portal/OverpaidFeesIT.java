@@ -22,7 +22,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 /**
  * V506: the overpaid of a session decided by the Bursary — the excess carried into the next session (a CARRIED school-fees record
  * there) or a refund raised on the Refunds & Credits desk — the reconciliation reading it settled; a session's fee lines copied
- * from another after a preview, a line it states kept; and what waits for the ledger read on its own.
+ * from another after a preview, a line it states kept; and what waits for the ledger read on its own. V519: a student overpaid
+ * through portal payments alone is listed too, and the student is told and sees the decision on the fees page.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -70,6 +71,20 @@ class OverpaidFeesIT {
         return student;
     }
 
+    /** V519: a student who paid the session twice through the portal — no old-portal payment at all */
+    private UUID overpaidOnThePortal(String tag, String number) {
+        UUID student = it.student("ZZOVERPAIDP" + tag, "C00023", "MOAUM/ADM/86/83" + tag, number, 100);
+        for (int i = 1; i <= 2; i++) {
+            String ref = "MOAUM-ITOP-" + tag + "-" + a.replace("/", "-") + "-" + i;
+            it.db(() -> jdbc.sql("""
+                    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                    VALUES (:s, :ses, :r, 'School fees ' || :ses, 62500, now(), now(), :by, 'INTERSWITCH', 'RCT-' || :r, 'paid twice')
+                    ON CONFLICT (reference) DO NOTHING
+                    """).param("s", student).param("ses", a).param("r", ref).param("by", UUID.randomUUID()).update());
+        }
+        return student;
+    }
+
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void overpaidFeesAreCarriedOrRefundedAndASessionsFeesCopiedFromAnother() {
@@ -87,6 +102,9 @@ class OverpaidFeesIT {
         }
         UUID carry = overpaid(tag, "C", "MOAUM/OPC/86/" + tag, 70000, 50000);
         UUID refund = overpaid(tag, "R", "MOAUM/OPR/86/" + tag, 130000);
+        UUID portal = overpaidOnThePortal(tag, "MOAUM/OPP/86/" + tag);
+        it.db(() -> jdbc.sql("INSERT INTO people.student_contact (student_id, email, updated_at) VALUES (:s, :e, now()) ON CONFLICT (student_id) DO NOTHING")
+                .param("s", carry).param("e", "zzoverpaid" + tag + "@example.com").update());
         String bursar = ItSupport.token("bursar");
         String audit = ItSupport.token("audit");
 
@@ -95,6 +113,8 @@ class OverpaidFeesIT {
         assertThat(list.getBody()).containsEntry("session", a).containsEntry("nextSession", b);
         assertThat((List<Map>) list.getBody().get("rows")).filteredOn(r -> carry.toString().equals(r.get("student_id")) || refund.toString().equals(r.get("student_id")))
                 .extracting(r -> ((Number) r.get("excess")).intValue() + ":" + r.get("decision")).containsExactlyInAnyOrder("20000:null", "30000:null");
+        assertThat((List<Map>) list.getBody().get("rows")).as("V519: overpaid through the portal alone").filteredOn(r -> portal.toString().equals(r.get("student_id")))
+                .extracting(r -> ((Number) r.get("excess")).intValue() + ":" + r.get("old_portal")).containsExactly("25000:false");
 
         // the Bursary alone, with a reason
         Map<String, Object> carryIt = Map.of("session", a, "decision", "CARRY", "students", List.of(carry), "reason", "overpaid fees counted towards the next session");
@@ -107,6 +127,13 @@ class OverpaidFeesIT {
         Map<String, Object> inB = jdbc.sql("SELECT purpose, amount::int AS amount, channel FROM finance.payment_reference WHERE student_id = :s AND session = :b")
                 .param("s", carry).param("b", b).query().singleRow();
         assertThat(inB).containsEntry("purpose", "School fees " + b + " (carried from " + a + ")").containsEntry("amount", 20000).containsEntry("channel", "CARRIED");
+        // V519: told, and shown on the student's own fees page
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE template_key = 'OVERPAYMENT_CARRIED' AND about_id = :s AND channel = 'EMAIL' AND subject LIKE '%' || :a || '%'")
+                .param("s", carry).param("a", a).query(Long.class).single()).isEqualTo(1);
+        ResponseEntity<Map> mine = it.get(TestTokens.token(carry, List.of("student")), "/api/v1/me/fees?session=" + b);
+        assertThat(mine.getStatusCode().value()).as(String.valueOf(mine.getBody())).isEqualTo(200);
+        assertThat((List<Map>) mine.getBody().get("overpayments")).extracting(o -> o.get("decision") + ":" + o.get("session") + ">" + o.get("to_session"))
+                .containsExactly("CARRY:" + a + ">" + b);
 
         ResponseEntity<Map> refunded = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide",
                 Map.of("session", a, "decision", "REFUND", "students", List.of(refund), "reason", "overpaid fees returned to the student"));

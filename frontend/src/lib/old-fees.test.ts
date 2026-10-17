@@ -58,12 +58,14 @@ test("a record the retired screen made, matched by nothing, says the day its num
 
 test("an overpaid student says the excess and what was decided, or that nothing was", () => {
   const o: OverpaidRow = { student_id: "s", number: "MOAU/AD/PUB/25/00001", name: "INVENTED, Student", programme_code: "PUB", faculty_code: "SS", level: 200,
-    due: "100000.00", paid: "130000.00", excess: "30000.00", decision: null, decided: null, reference: null, to_session: null, decided_at: null, refund_state: null };
+    due: "100000.00", paid: "130000.00", excess: "30000.00", decision: null, decided: null, reference: null, to_session: null, decided_at: null, refund_state: null,
+    old_portal: true };
   const row = overpaidRow(o);
   assert.equal(row.length, OVERPAID_HEADERS.length);
-  assert.deepEqual(row, ["MOAU/AD/PUB/25/00001", "INVENTED, Student", "PUB", "SS", 200, 100000, 130000, 30000, "Not decided", "", "", "", ""]);
+  assert.deepEqual(row, ["MOAU/AD/PUB/25/00001", "INVENTED, Student", "PUB", "SS", 200, 100000, 130000, 30000, "Not decided", "", "", "", "", "Yes"]);
   assert.deepEqual(overpaidRow({ ...o, decision: "CARRY", decided: "30000", reference: "MOAUM-CF-X-2025-2026", to_session: "2026/2027", decided_at: "2026-10-17 09:12:00+01" }).slice(8),
-    ["Carried into the next session", "2026/2027", "MOAUM-CF-X-2025-2026", "", "2026-10-17"]);
+    ["Carried into the next session", "2026/2027", "MOAUM-CF-X-2025-2026", "", "2026-10-17", "Yes"]);
+  assert.equal(overpaidRow({ ...o, old_portal: false })[13], "No");
   assert.equal(overpaidRow({ ...o, decision: "REFUND", refund_state: "PROPOSED" })[11], "PROPOSED");
 });
 

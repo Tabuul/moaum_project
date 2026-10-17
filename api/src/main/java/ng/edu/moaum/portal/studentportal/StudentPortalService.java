@@ -395,6 +395,8 @@ public class StudentPortalService {
         String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination card, results and transcript are not yet released. Course registration opens on this semester's school fees, paid in full.";
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
+        // V519: what the Bursary decided for school fees the student paid beyond a session's charge
+        out.put("overpayments", repo.overpayments(id));
         // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
         out.put("sessions", ownCalendar(id) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());   // V389: and a PG student
         out.put("window", repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period (V380: the CCE window for a CCE student)

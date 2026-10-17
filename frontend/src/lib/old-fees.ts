@@ -133,16 +133,18 @@ export interface OverpaidRow {
   student_id: string; number: string; name: string; programme_code: string; faculty_code: string | null; level: number | null;
   due: number | string; paid: number | string; excess: number | string; decision: Decision | null; decided: number | string | null;
   reference: string | null; to_session: string | null; decided_at: string | null; refund_state: string | null;
+  /** V519: whether an old-portal payment is among the session's payments (the list holds every overpaid student) */
+  old_portal?: boolean;
 }
 
 export const OVERPAID_HEADERS = ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)",
-  "Excess (₦)", "Decision", "Into session", "Reference", "Refund state", "Decided on"];
+  "Excess (₦)", "Decision", "Into session", "Reference", "Refund state", "Decided on", "Old-portal payment among them"];
 
 /** an overpaid student as an Excel row, in the order of OVERPAID_HEADERS */
 export function overpaidRow(o: OverpaidRow): (string | number)[] {
   return [o.number, o.name, o.programme_code, o.faculty_code ?? "", o.level ?? "", n(o.due), n(o.paid), n(o.excess),
     o.decision ? DECISION[o.decision] ?? o.decision : "Not decided", o.to_session ?? "", o.reference ?? "", o.refund_state ?? "",
-    o.decided_at ? o.decided_at.slice(0, 10) : ""];
+    o.decided_at ? o.decided_at.slice(0, 10) : "", o.old_portal ? "Yes" : "No"];
 }
 
 /** the decisions run in batches until nothing is decided or nothing is left (what the screen loops on) */

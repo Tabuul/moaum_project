@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 360
+\set EXPECTED 361
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16863,6 +16863,69 @@ BEGIN
     PERFORM pg_temp.assert('V518: a second-semester save that still carries the first semester''s course (and another session''s) keeps only its own, refusing nothing',
         coalesce(refused IS NULL AND u2 = 3 AND codes = 'ZQS 102/2', false),
         format('refused %s | units %s | entries %s', refused, u2, codes));
+END $$;
+-- ── V519. The overpaid are told, and every overpaid student is listed. In a session charged ₦100,000: one student overpaid ₦20,000
+--          through old-portal payments, one ₦30,000 through two portal payments (no old-portal payment at all), one exactly.
+--          Both overpaid are listed (old_portal telling them apart); the first carried and told so, the second refunded and
+--          told the refund was raised, then told when the refunds desk paid it; each sees the decision on the fees page.
+--          The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); second uuid := gen_random_uuid(); s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+        s3 uuid := gen_random_uuid(); a text := '9979/9980'; b text := '9980/9981'; pa text; listed text; told_carry text; told_raised text;
+        told_paid text; rf uuid; mine1 text; mine2 text; once int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V519', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), a, date '9979-10-01', date '9980-08-31'), (gen_random_uuid(), b, date '9980-10-01', date '9981-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, kind) VALUES (a, 'School fees', 100000, NULL, pa, 'FEE'), (b, 'School fees', 100000, NULL, pa, 'FEE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (s1, 'MOAUM/ADM/79/979101', 'MOAUM/CHK/79/9791', 'ZZCHKV519A', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now()),
+          (s2, 'MOAUM/ADM/79/979102', 'MOAUM/CHK/79/9792', 'ZZCHKV519B', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now()),
+          (s3, 'MOAUM/ADM/79/979103', 'MOAUM/CHK/79/9793', 'ZZCHKV519C', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, email, phone, updated_at) VALUES
+          (s1, 'zzchkv519a@example.invalid', NULL, now()), (s2, 'zzchkv519b@example.invalid', NULL, now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        SELECT v.s, a, v.ref, v.purpose, v.amount, v.day::timestamptz, v.day::timestamptz, who, v.channel, 'RCT-' || v.ref, 'check V519'
+          FROM (VALUES (s1, 'MOAUM-LEG-MOAUMCHK799791-9979-9980-S1', 'School fees (legacy) · semester 1', 120000.00, '9979-11-02', 'Legacy'),
+                       (s2, 'MOAUM-CHKV519-B-1', 'School fees 9979/9980', 70000.00, '9979-11-03', 'INTERSWITCH'),
+                       (s2, 'MOAUM-CHKV519-B-2', 'School fees 9979/9980', 60000.00, '9979-11-05', 'INTERSWITCH'),
+                       (s3, 'MOAUM-LEG-MOAUMCHK799793-9979-9980-S1', 'School fees (legacy) · semester 1', 100000.00, '9979-11-04', 'Legacy')) v(s, ref, purpose, amount, day, channel);
+
+        listed := (SELECT string_agg(x.number || ':' || x.excess::int || ':' || x.old_portal, ',' ORDER BY x.number COLLATE "C")
+                     FROM finance.overpaid(a) x WHERE x.student_id IN (s1, s2, s3));
+        PERFORM * FROM finance.decide_overpayments(a, 'CARRY', ARRAY[s1], 'CHECK V519: carried into the next session');
+        told_carry := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
+                        WHERE n.template_key = 'OVERPAYMENT_CARRIED' AND n.about_id = s1);
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V519: refunded to the student');
+        told_raised := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
+                         WHERE n.template_key = 'OVERPAYMENT_REFUND_RAISED' AND n.about_id = s2);
+        -- the refunds desk: approved by a second officer, then paid
+        SELECT f.id INTO rf FROM finance.refund f WHERE f.student_id = s2;
+        PERFORM set_config('moaum.actor_id', second::text, true);
+        PERFORM finance.approve_refund(rf);
+        PERFORM finance.pay_refund(rf);
+        told_paid := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
+                       WHERE n.template_key = 'OVERPAYMENT_REFUND_PAID' AND n.about_id = s2);
+        once := (SELECT count(*) FROM platform.notice n WHERE n.template_key LIKE 'OVERPAYMENT_%' AND n.about_id IN (s1, s2) AND n.channel = 'EMAIL');
+        mine1 := (SELECT string_agg(x.decision || ':' || coalesce(x.to_session, '-') || ':' || x.amount::int || ':' || coalesce(x.refund_state, '-'), ',') FROM finance.student_overpayments(s1) x);
+        mine2 := (SELECT string_agg(x.decision || ':' || coalesce(x.to_session, '-') || ':' || x.amount::int || ':' || coalesce(x.refund_state, '-'), ',') FROM finance.student_overpayments(s2) x);
+        RAISE EXCEPTION 'the V519 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V519 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V519: every overpaid student of a session is listed (old-portal or portal payments), and the student is told when the excess is carried, when a refund is raised and when it is paid, and sees it on the fees page',
+        coalesce(listed = 'MOAUM/CHK/79/9791:20000:true,MOAUM/CHK/79/9792:30000:false'
+                 AND told_carry LIKE '%EMAIL:Your overpaid 9979/9980 school fees count towards 9980/9981%'
+                 AND told_raised LIKE '%EMAIL:A refund of your overpaid 9979/9980 school fees has been raised%'
+                 AND told_paid LIKE '%EMAIL:Your refund of NGN 30,000.00 has been paid%' AND once = 3
+                 AND mine1 = 'CARRY:9980/9981:20000:-' AND mine2 = 'REFUND:-:30000:PAID', false),
+        format('listed %s | carried %s | raised %s | paid %s | e-mails %s | fees page %s / %s', listed, told_carry, told_raised, told_paid, once, mine1, mine2));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

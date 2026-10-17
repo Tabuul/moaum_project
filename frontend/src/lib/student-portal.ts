@@ -4,6 +4,7 @@
  * student except the contact details and the choice of courses.
  */
 
+import type { StudentOverpayment } from "@/lib/overpayment";
 import type { GstEpsEligibility } from "@/lib/gst";
 
 export interface Charge { id: string; item: string; amount: number; ord: number }
@@ -41,6 +42,8 @@ export interface Fees {
   references: PaymentRef[];
   sessions: string[];
   reference?: string;
+  /** V519: what the Bursary decided for school fees paid beyond a session's charge (carried into the next session, or refunded) */
+  overpayments?: StudentOverpayment[];
 }
 export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number;
   cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null;
