@@ -198,17 +198,23 @@ class RegistrationApprovalController {
     }
 
     /** the examination cards available (an approved registration the student is cleared for) — read apart, it asks the Bursary's
-     *  clearance of each student */
+     *  clearance of the session's approved students. V524: in one pass (finance.session_clears_for, as V515's withheld list), not
+     *  finance.clears of each in turn — 27 s for 2025/2026 on the live-shaped copy */
     @GetMapping("/overview/cards")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> cards(@RequestParam String session, @RequestParam(required = false) Integer semester) {
+        boolean gated = jdbc.sql("SELECT policy.in_force('clearance', 'UNIVERSITY', current_date) IS NOT NULL").query(Boolean.class).single();
         return jdbc.sql("""
-                SELECT count(*) FILTER (WHERE policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL OR finance.clears(r.student_id, r.session, 'EXAMINATION')) AS available,
-                       count(*) AS approved
-                  FROM registration.course_registration r
-                 WHERE r.session = :s AND (CAST(:m AS integer) IS NULL OR r.semester = CAST(:m AS integer)) AND r.status IN ('APPROVED', 'LOCKED')
-                """).param("s", session(session)).param("m", semester(semester), Types.INTEGER).query().singleRow();
+                WITH r AS MATERIALIZED (
+                    SELECT r.student_id FROM registration.course_registration r
+                     WHERE r.session = :s AND (CAST(:m AS integer) IS NULL OR r.semester = CAST(:m AS integer)) AND r.status IN ('APPROVED', 'LOCKED')),
+                c AS MATERIALIZED (
+                    SELECT x.student_id, x.clears FROM finance.session_clears_for(:s, 'EXAMINATION', (SELECT array_agg(DISTINCT r.student_id) FROM r)) x
+                     WHERE CAST(:gated AS boolean))
+                SELECT count(*) FILTER (WHERE NOT CAST(:gated AS boolean) OR c.clears) AS available, count(*) AS approved
+                  FROM r LEFT JOIN c ON c.student_id = r.student_id
+                """).param("s", session(session)).param("m", semester(semester), Types.INTEGER).param("gated", gated).query().singleRow();
     }
 
     /** V505: how many submitted or approved registrations carry fewer units than the minimum that binds the student (read after

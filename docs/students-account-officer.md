@@ -29,7 +29,7 @@ carries only the offices the person holds today. The officer's powers are theref
 | School fees | Fee schedule, gaps, fee sources, structure, copy preview, **fee history** | Add, edit or end a fee line; the gap sheet; copy a session's fees; upload the approved structure; fee sources (`FinanceController.FEE_SETTERS`) |
 | NELFUND | Figures, students, statements, session funding report, old NELFUND rows and summary | — (credits, reversals, status, reset, batches, remittance matching and withdrawals stay the Bursar's) |
 | Students | Student Query, the student's record with its school fees and payment history, unpaid registrations, examination cards withheld | — |
-| Hanging payments | The desk, the claims, the Ask Interswitch list, the payment events | Recheck at the gateway (`/payments/verify`, `/payments/sweep`), resolve an event, mark a reported receipt not found or reopen it (`PaymentsController.HANGING_DESK`) |
+| Hanging payments | The desk, the claims, the Ask Interswitch list, the payment events | Recheck any payer's reference at the gateway (`/payments/verify`, `/payments/sweep`), resolve an event, mark a reported receipt not found or reopen it (`PaymentsController.HANGING_DESK`; V522 batch: `/payments/verify` and `/payments/state` treat the officer as an office, not as the payer) |
 
 **Never held by the officer:** confirming a payment by hand, refunds, bank credits, payment reversal, ledger and accounting,
 gateway keys and settings, the PAYDirect collections import, test payments, the clearance scheme, old fees and old GST uploads,
@@ -48,7 +48,7 @@ comes from the office check and not from the form.
 | NELFUND Reports & Wallets, NELFUND Students, Old NELFUND Payments | The NELFUND desk, read only |
 | Student Accounts | Student Query, which opens the student's record (fees, payment history) |
 | Unpaid Registrations, Examination Cards Withheld | As for the Bursary |
-| Hanging Payments | The hanging payments desk |
+| Hanging Payments | The hanging payments desk: Ask the gateway, Resolve, Not found and Reopen are the officer's; importing Interswitch's collections report stays on the Bursary's gateways screen, so the screen does not offer it |
 
 ## 4. Changes made
 
@@ -65,8 +65,9 @@ comes from the office check and not from the form.
 ## 5. Audit
 
 Every change the officer makes (fee lines, hanging payment events and claims) is written to the audit trail with the person,
-the office, the time and the reason, as every other change is. Student searches are audited as before. Reading a report and
-exporting it are not recorded: the audit trail records changes, not reads.
+the office, the time and the reason, as every other change is. Student searches are audited as before. Since V523 every report
+exported through the portal's export engine (Excel, or print / PDF) is on the export log with the person, office, report, rows,
+filters and the serial printed on the document; Internal Audit reads it on **Export Log**. Reading a screen is not recorded.
 
 ## 6. Limitations
 
@@ -74,5 +75,7 @@ exporting it are not recorded: the audit trail records changes, not reads.
 - **Permissions are per office:** one office cannot be split into separate permissions for different people.
 - **Fee changes need no approval:** the portal had no fee approval step, so the officer's fee changes take effect as the
   Bursar's do. The history keeps every earlier amount.
-- **Hanging-payment alerts:** the daily PAYDirect "unreported payments" e-mail still goes to the Bursar's office holders only.
+- **Alerts:** since V522 the daily "Quickteller payments not reported" e-mail and the "students with no fee stated" alert reach
+  the officer as well as the Bursar. The gateway alerts (the Quickteller door gone quiet, notifications not settled) stay with
+  the Bursary and ICT.
 - **Remittance matching:** NELFUND remittance matching stays with the offices that hold it today.

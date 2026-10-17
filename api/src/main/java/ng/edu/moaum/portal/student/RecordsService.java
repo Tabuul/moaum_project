@@ -24,6 +24,9 @@ class RecordsService {
     /** the largest scope whose CGPAs are read with the register — each is computed from the published results */
     static final int CGPA_SCOPE = 1500;
 
+    /** V524: above this many students the fees view reads the session's charges for everyone at once */
+    static final int SESSION_WIDE = 2000;
+
     private static final String FEES_NOTE =
             "School fees charged by the Bursary's fee schedule and confirmed school-fee payments. Earlier sessions' arrears are on each student's record.";
 
@@ -52,7 +55,7 @@ class RecordsService {
             case "exams" -> new RecordsResult(view, records.exams(scope), total, null);
             case "allocation" -> new RecordsResult(view, records.allocation(scope), total, null);
             case "clearance" -> new RecordsResult(view, records.clearance(scope), total, null);
-            case "fees" -> new RecordsResult(view, records.fees(scope), total, null, FEES_NOTE);
+            case "fees" -> new RecordsResult(view, records.fees(scope, total > SESSION_WIDE), total, null, FEES_NOTE);
             default -> new RecordsResult(view, records.attendance(scope), total, null, ATTENDANCE_NOTE);
         };
     }

@@ -157,7 +157,11 @@ class DefermentIT {
 
     @Test
     void theFeeTheSixDesksAndTheAcademicEffect() {
-        int n = new Random().nextInt(8000) + 1000;
+        // two numbers side by side that no student holds (the matriculation prefix is shared with other classes)
+        int n;
+        do {
+            n = new Random().nextInt(8000) + 1000;
+        } while (it.taken("MOAUM/MTC/95/" + n) || it.taken("MOAUM/MTC/95/" + (n + 1)) || it.taken("MOAUM/ADM/95/" + (100000 + n)) || it.taken("MOAUM/ADM/95/" + (100001 + n)));
         UUID student = student("A", n);
         UUID other = student("B", n + 1);
         String me = TestTokens.token(student, List.of("student"));

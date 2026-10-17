@@ -252,6 +252,7 @@ export const TITLES: Record<string, string> = {
   "t/users": "Users & roles",
   "t/lecturers": "Upload lecturers",
   "t/audit": "Audit trail",
+  "t/exportlog": "Export log",
   "t/governance": "Data governance",
   "t/platform": "Platform & integrations",
   "t/security": "Security posture",

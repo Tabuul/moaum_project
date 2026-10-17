@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { printElement } from "@/lib/document/html";
+import { logExport } from "@/lib/export-log";
 
 const PAGE = 10;
 
@@ -23,6 +24,8 @@ function printTable(tableEl: HTMLTableElement | null): Promise<void> {
   // V320: the table prints under the official document header, through the central print
   const heading = (tableEl.closest(".card")?.querySelector(".card__title")?.textContent
     ?? tableEl.getAttribute("data-title") ?? document.title ?? "").trim();
+  // V523: a table printed (or saved as PDF) is an export like any other, on the export log
+  logExport({ report: heading || "List", format: "PRINT", rows: tableEl.tBodies[0]?.rows.length ?? 0 });
   return printElement(tableEl, { title: heading || "List" });
 }
 

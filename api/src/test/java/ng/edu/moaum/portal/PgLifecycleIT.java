@@ -175,7 +175,7 @@ class PgLifecycleIT {
         assertThat(it.call(school, HttpMethod.POST, "/api/v1/pg/research/" + research + "/action", Map.of("action", "AWARD")).getStatusCode().value()).isEqualTo(422);
         assertThat(it.call(school, HttpMethod.POST, "/api/v1/pg/research/" + research + "/action", Map.of("action", "AWARD", "senateMinute", "SEN/TEST/EARLY")).getStatusCode().value()).isEqualTo(422);
         it.db(() -> jdbc.sql("UPDATE people.student SET matric_no = :m, status = 'ACTIVE', matriculated_at = now() WHERE id = :s")
-                .param("m", "MOAUM/PGT/26/" + String.format("%04d", (int) (Math.random() * 9000) + 1000)).param("s", student).update());
+                .param("m", it.freeNumber("MOAUM/PGT/26/", 4)).param("s", student).update());
         assertThat(act(research, Map.of("action", "AWARD", "senateMinute", "SEN/TEST/" + UUID.randomUUID().toString().substring(0, 4)))).isEqualTo("AWARDED");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("GRADUATED");
         assertThat(jdbc.sql("SELECT senate_state FROM records.graduand WHERE student_id = :s").param("s", student).query(String.class).single()).isEqualTo("APPROVED");

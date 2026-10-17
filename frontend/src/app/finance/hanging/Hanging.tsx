@@ -26,7 +26,10 @@ const IMPORT_HREF = `/finance/gateways#${COLLECTIONS_REPORT_ANCHOR}`;
 
 export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: string | null }) {
   const router = useRouter();
-  const may = ["bursar", "ict", "admin", "super"].includes(actingOffice ?? "");
+  // V520: the Students Account Officer works the desk (asks the gateway, resolves an event, marks a receipt not found or reopens it);
+  // the collections report is imported on the gateways screen, which stays the Bursary's and ICT's
+  const may = ["bursar", "studentaccounts", "ict", "admin", "super"].includes(actingOffice ?? "");
+  const mayImport = ["bursar", "ict", "admin", "super"].includes(actingOffice ?? "");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -113,7 +116,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
         <Note kind="info" title={onQuickteller ? `${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask` : `${claimsOpen} receipt${claimsOpen === 1 ? "" : "s"} reported by payers, not yet reported by Interswitch`}
           action={<div className="row row--tight">
             <Btn kind="ghost" disabled={busy !== null} onClick={() => void askInterswitch()}>{busy === "ask" ? "Preparing…" : "Ask Interswitch (Excel)"}</Btn>
-            {may ? <LinkBtn kind="primary" href={IMPORT_HREF}>Import the collections report</LinkBtn> : null}
+            {mayImport ? <LinkBtn kind="primary" href={IMPORT_HREF}>Import the collections report</LinkBtn> : null}
           </div>}>
           A payment made at a bank or on Quickteller (PayDirect) reaches the portal only when Interswitch sends its payment notification. If the payer
           paid and nothing arrived, import Interswitch&rsquo;s collections report (each reference is matched and confirmed, a short payment kept open), or
@@ -133,7 +136,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
               ? <span className="sub2" key="c">Not asked: Interswitch reports it{h.receipt_log_id ? <div>Receipt <b className="tnum" style={{ whiteSpace: "nowrap" }}>{h.receipt_log_id}</b>{h.receipt_paid_on ? ` · paid ${paidDay(h.receipt_paid_on)}` : ""}</div> : null}</span>
               : <span className="sub2 tnum" key="c">{h.checks ? `${h.checks}× · last ${when(h.checked_at)}` : "not yet"}</span>,
             !may ? <span className="sub2" key="v">—</span>
-              : reportedOnly(h.gateway) ? <LinkBtn key="v" href={IMPORT_HREF}>Collections report</LinkBtn>
+              : reportedOnly(h.gateway) ? (mayImport ? <LinkBtn key="v" href={IMPORT_HREF}>Collections report</LinkBtn> : <span className="sub2" key="v">Bursary imports</span>)
               : <Btn key="v" kind="primary" disabled={busy !== null} onClick={() => void verify(h.reference)}>{busy === h.reference ? "Asking…" : "Ask the gateway"}</Btn>,
           ])} texts={d.hanging.map((h) => `${h.reference} ${h.payer ?? ""} ${h.number ?? ""}`)} />
         ) : <PBody><div className="sub2">Nothing is hanging in the last three days.</div></PBody>}

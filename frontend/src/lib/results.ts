@@ -2,6 +2,7 @@ import { buildXlsx, loadCrest } from "@/lib/xlsx";
 
 import { currentInstitution } from "@/lib/document/institution-cache";
 import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
+import { logExport } from "@/lib/export-log";
 const SCHOOL = () => currentInstitution().name.toUpperCase();
 
 /** a filename base as a readable title: "ledger-2026-2027" → "Ledger 2026 2027" */
@@ -285,6 +286,7 @@ export function download(name: string, data: string | SheetData) {
     const base = name.replace(/\.(csv|xlsx|txt)$/i, "");
     const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
     const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    logExport({ report: humanize(base), format: "XLSX", rows: Math.max(rows.length - 1, 0), meta: data.__meta });   // V523
     void getInstitution().then(() => loadCrest(institutionLogoUrl()).catch(() => loadCrest())).then((logo) =>
       saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL(), title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta, validations: data.__validations })),
     );

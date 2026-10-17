@@ -249,7 +249,7 @@ class CourseTwinsIT {
         it.db(() -> jdbc.sql("""
                 INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
                 VALUES (:id, :adm, :mat, :s, 'Invented', 'C00023', 'UTME', :e, 100, 100, 'ACTIVE', now())
-                """).param("id", s).param("adm", "MOAUM/ADM/88/" + n).param("mat", "MOAUM/MTC/88/" + (1000 + n % 9000)).param("s", surname + n).param("e", entry).update());
+                """).param("id", s).param("adm", "MOAUM/ADM/88/" + n).param("mat", it.freeNumber("MOAUM/MTC/88/", 4)).param("s", surname + n).param("e", entry).update());
         return s;
     }
 

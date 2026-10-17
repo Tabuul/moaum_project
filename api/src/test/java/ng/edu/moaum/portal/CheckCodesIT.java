@@ -57,7 +57,7 @@ class CheckCodesIT {
         ItSupport it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2079);
         String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        String matric = "MOAUM/MTC/79/" + String.format("%04d", new java.util.Random().nextInt(9000) + 1000);
+        String matric = it.freeNumber("MOAUM/MTC/79/", 4);
         UUID student = it.student("ZZCHECK" + tag, "C00023", null, matric, 100);
         matric = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", student).query(String.class).single();
         String me = TestTokens.token(student, List.of("student"));

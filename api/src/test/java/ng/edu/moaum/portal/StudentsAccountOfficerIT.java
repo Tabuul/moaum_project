@@ -92,6 +92,13 @@ class StudentsAccountOfficerIT {
         // the hanging payments desk acts (an unknown event is not found, never forbidden)
         assertThat(status(sao, HttpMethod.POST, "/api/v1/payments/events/" + UUID.randomUUID() + "/resolve", Map.of("resolution", "Integration test: checked with the gateway")))
                 .isNotEqualTo(403);
+        // and asks the gateway about a payer's reference, as the Bursar does — a lecturer is answered as a payer, for whom it is not theirs
+        UUID payer = it.student(it.freeSurname("ZZSAOPAYER"), "C00061", it.freeNumber("MOAUM/ADM/60/", 6), null, 100);
+        String ref = "MOAUM-FEE-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        it.db(() -> jdbc.sql("INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES (:s, :ses, :r, 'School fees (SAO test)', 45000, now() + interval '1 day')")
+                .param("s", payer).param("ses", session).param("r", ref).update());
+        assertThat(status(sao, HttpMethod.POST, "/api/v1/payments/verify", Map.of("reference", ref))).isEqualTo(200);
+        assertThat(status(ItSupport.token("lecturer"), HttpMethod.POST, "/api/v1/payments/verify", Map.of("reference", ref))).isEqualTo(404);
 
         // none of the Bursar's other powers (each with a body that passes validation, so the answer is the office's, not the form's)
         assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/clearance-scheme", Map.of("instrument", "Integration test scheme"))).isEqualTo(403);

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -70,8 +69,7 @@ class HostelDisciplineIT {
 
     /** an invented female student with a contact, so notices queue */
     private UUID student(String surname) {
-        int n = new Random().nextInt(999_999);
-        UUID id = it.student(surname, "C00023", "MOAUM/ADM/07/" + String.format("%06d", n), "MOAUM/HU/07/" + String.format("%04d", n % 10000), 100);
+        UUID id = it.student(surname, "C00023", it.freeNumber("MOAUM/ADM/07/", 6), it.freeNumber("MOAUM/HU/07/", 4), 100);
         it.db(() -> {
             jdbc.sql("UPDATE people.student SET sex = 'F', current_level = 100 WHERE id = :id").param("id", id).update();
             return jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (:s, '08011115555', :e, now()) ON CONFLICT (student_id) DO NOTHING").param("s", id).param("e", surname.toLowerCase() + "@example.com").update();
@@ -94,7 +92,7 @@ class HostelDisciplineIT {
 
     /** reserved in the room, paid through the Bursary, and checked in when asked */
     private UUID housed(String surname, String roomNo, boolean checkIn) {
-        UUID s = student(surname + new Random().nextInt(9000));
+        UUID s = student(it.freeSurname(surname));
         String t = TestTokens.token(s, List.of("student"));
         ResponseEntity<Map> r = it.call(t, HttpMethod.POST, "/api/v1/me/hostel/reserve", Map.of("session", SESSION, "roomId", roomId(roomNo)));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);

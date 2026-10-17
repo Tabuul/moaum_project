@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import ng.edu.moaum.portal.hostel.HostelClock;
@@ -86,8 +85,7 @@ class HostelUpgradeIT {
 
     /** an invented female student of the programme, 100 Level, with a contact so notices queue */
     private UUID student(String surname) {
-        int n = new Random().nextInt(999_999);
-        UUID id = it.student(surname, "C00023", "MOAUM/ADM/05/" + String.format("%06d", n), "MOAUM/HU/05/" + String.format("%04d", n % 10000), 100);
+        UUID id = it.student(surname, "C00023", it.freeNumber("MOAUM/ADM/05/", 6), it.freeNumber("MOAUM/HU/05/", 4), 100);
         it.db(() -> {
             jdbc.sql("UPDATE people.student SET sex = 'F', current_level = 100, entry_session = :ses WHERE id = :id").param("ses", SESSION).param("id", id).update();
             return jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (:s, '08011114444', :e, now()) ON CONFLICT (student_id) DO NOTHING").param("s", id).param("e", surname.toLowerCase() + "@example.com").update();
@@ -175,7 +173,7 @@ class HostelUpgradeIT {
         it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 120000, 100, 'C00023')").param("s", SESSION).update());
 
         // ── 4 · the student: refused until school fees are paid and registration is in; the checklist says which ──
-        UUID a = student("ZZHUA" + new Random().nextInt(9000));
+        UUID a = student(it.freeSurname("ZZHUA"));
         String ta = TestTokens.token(a, List.of("student"));
         Map<String, Object> view = it.get(ta, "/api/v1/me/hostel/rooms?session=" + SESSION).getBody();
         Map<String, Object> check = m(view.get("checklist"));
@@ -206,7 +204,7 @@ class HostelUpgradeIT {
         assertThat(Duration.between(OffsetDateTime.now(), heldUntil).toMinutes()).isBetween(47 * 60L, 49 * 60L);
         assertThat(room("101").get("reserved")).isEqualTo(1);
         assertThat(room("101").get("available")).isEqualTo(3);
-        UUID b = ready("ZZHUB" + new Random().nextInt(9000), null);
+        UUID b = ready(it.freeSurname("ZZHUB"), null);
         String tb = TestTokens.token(b, List.of("student"));
         ResponseEntity<Map> protectedRoom = it.call(tb, HttpMethod.POST, "/api/v1/me/hostel/reserve", Map.of("session", SESSION, "roomId", roomId("205")));
         assertThat(protectedRoom.getStatusCode().value()).isEqualTo(422);
@@ -246,8 +244,8 @@ class HostelUpgradeIT {
         assertThat(room("101").get("available")).isEqualTo(2);
 
         // ── 8 · capacity: a one-bed room takes one; the second is told the room is no longer available ──
-        UUID d = ready("ZZHUD" + new Random().nextInt(9000), null);
-        UUID e = ready("ZZHUE" + new Random().nextInt(9000), null);
+        UUID d = ready(it.freeSurname("ZZHUD"), null);
+        UUID e = ready(it.freeSurname("ZZHUE"), null);
         assertThat(it.call(TestTokens.token(d, List.of("student")), HttpMethod.POST, "/api/v1/me/hostel/reserve", Map.of("session", SESSION, "roomId", roomId("102"))).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> full = it.call(TestTokens.token(e, List.of("student")), HttpMethod.POST, "/api/v1/me/hostel/reserve", Map.of("session", SESSION, "roomId", roomId("102")));
         assertThat(full.getStatusCode().value()).isEqualTo(422);
@@ -256,7 +254,7 @@ class HostelUpgradeIT {
         assertThat(l(it.get(TestTokens.token(e, List.of("student")), "/api/v1/me/hostel/rooms?session=" + SESSION).getBody().get("rooms")).stream().map(r -> String.valueOf(r.get("room_no")))).doesNotContain("102");
 
         // ── 9 · the Dean's allocations: special is payable at the Bursar's rule; Student Union and Security are no charge, and on the record ──
-        UUID f = student("ZZHUF" + new Random().nextInt(9000));
+        UUID f = student(it.freeSurname("ZZHUF"));
         String fNumber = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", f).query(String.class).single();
         assertThat(it.call(bursar, HttpMethod.POST, HS + "/allocate-special", Map.of("bedId", freeBed("205"), "studentNumber", fNumber, "reason", "Guest of the hall")).getStatusCode().value()).isEqualTo(403);
         assertThat(it.call(ta, HttpMethod.POST, HS + "/allocate-special", Map.of("bedId", freeBed("205"), "studentNumber", fNumber, "reason", "Guest of the hall")).getStatusCode().value()).isEqualTo(403);
@@ -271,7 +269,7 @@ class HostelUpgradeIT {
         assertThat(new BigDecimal(String.valueOf(fRef.getBody().get("amount")))).isEqualByComparingTo("150000");
         it.db(() -> jdbc.sql("SELECT finance.confirm_payment(:r, 'BANK', 'teller for the test')").param("r", String.valueOf(fRef.getBody().get("reference"))).query(String.class).single());
         assertThat(jdbc.sql("SELECT fee_status FROM hostel.allocation WHERE student_id = :s AND session = :ses AND ended_at IS NULL").param("s", f).param("ses", SESSION).query(String.class).single()).isEqualTo("PAID");
-        UUID g = student("ZZHUG" + new Random().nextInt(9000));
+        UUID g = student(it.freeSurname("ZZHUG"));
         String gNumber = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", g).query(String.class).single();
         ResponseEntity<Map> su = it.call(dsa, HttpMethod.POST, HS + "/allocate-special", Map.of("bedId", freeBed("SU-01"), "studentNumber", gNumber, "reason", "Student Union Welfare Director"));
         assertThat(su.getStatusCode().value()).as(String.valueOf(su.getBody())).isEqualTo(200);

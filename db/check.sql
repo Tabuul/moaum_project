@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 362
+\set EXPECTED 365
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16977,6 +16977,154 @@ BEGIN
                  AND opened ? 'viewId' AND minutes = 30 AND ledger = 1 AND by_other = 'SUPPORT_VIEW_NOT_YOURS' AND ended AND session_ended, false),
         format('baseline %s | bursar %s | short %s | merged %s | opened %s, %s min, ledger %s | other %s | ended %s, session %s',
                in_baseline, by_bursar, short_reason, merged_refused, opened ? 'viewId', minutes, ledger, by_other, ended, session_ended));
+END $$;
+
+-- ── V522: the hanging-payment and fee-gap alerts reach the Students Account Officer too ──
+-- A Students Account Officer, a Bursary office holder and the holder of another office: a Pay on Quickteller payment unreported
+-- after a day and a live undergraduate of a session whose open semester has no fee line. The officer is told of both, as the
+-- Bursar is; the other office is told of neither. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); sao uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); oth uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); payer uuid := gen_random_uuid(); v_ses text := '9939/9940'; v_prog text; v_any text;
+        at10 timestamptz := (date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        unrep_sao int; unrep_bur int; unrep_oth int; gaps_sao int; gaps_bur int; gaps_oth int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V522', true);
+        UPDATE finance.paydirect_setting SET watch_enabled = true;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES
+            (sao, 'CHECKV522', 'Students Account Officer', 'zz.check522.sao@example.com'),
+            (bur, 'CHECKV522', 'Bursar', 'zz.check522.bur@example.com'),
+            (oth, 'CHECKV522', 'Registrar', 'zz.check522.reg@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), sao, 'studentaccounts', 'institution', NULL, 'check V522', who, current_date - 1),
+            (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'check V522', who, current_date - 1),
+            (gen_random_uuid(), oth, 'registrar', 'institution', NULL, 'check V522', who, current_date - 1);
+        -- a Pay on Quickteller payment opened 30 hours before 10:00 and not reported
+        v_any := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (payer, 'MOAUM/ADM/60/952201', 'CHECKV522', 'Payer', (SELECT code FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1), 'UTME', v_any, 100, 100, 'ADMITTED');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (payer, v_any, 'MOAUM-FEE-952201-0001', 'check V522', 52200.00, now() + interval '30 days');
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at)
+        VALUES ('MOAUM-FEE-952201-0001', 'paydirect', 'FEE', payer, at10 - interval '30 hours');
+        PERFORM finance.watch_paydirect_unreported(at10);
+        -- a live undergraduate whose open semester has no fee line
+        SELECT p.code INTO v_prog FROM ref.programme p
+         WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND p.faculty_code IS NOT NULL
+           AND p.faculty_code NOT IN (SELECT r.faculty_code FROM finance.faculty_fee_source r)
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), v_ses, date '9939-10-01', date '9940-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), v_ses, 1, 'OPEN')
+            ON CONFLICT (session, number) DO UPDATE SET state = excluded.state;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, semester) VALUES (v_ses, 'Check V522: another level', 1000, 900, 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, study_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/39/952202', 'CHECKV522', 'No Fee', v_prog, 'UTME', 'FULL_TIME', v_ses, 100, 100, 'ADMITTED');
+        PERFORM finance.watch_fee_gaps(v_ses);
+        SELECT count(*) FILTER (WHERE n.about_id = sao), count(*) FILTER (WHERE n.about_id = bur), count(*) FILTER (WHERE n.about_id = oth)
+          INTO unrep_sao, unrep_bur, unrep_oth
+          FROM platform.notice n WHERE n.about_kind = 'person' AND n.template_key = 'PAYDIRECT_UNREPORTED' AND n.about_id IN (sao, bur, oth);
+        SELECT count(*) FILTER (WHERE n.about_id = sao), count(*) FILTER (WHERE n.about_id = bur), count(*) FILTER (WHERE n.about_id = oth)
+          INTO gaps_sao, gaps_bur, gaps_oth
+          FROM platform.notice n WHERE n.about_kind = 'person' AND n.template_key = 'FEE_GAPS' AND n.about_id IN (sao, bur, oth)
+           AND n.event_key LIKE 'fee-gaps:' || v_ses || ':%';
+        RAISE EXCEPTION 'the V522 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V522 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V522: the Students Account Officer is told of unreported Quickteller payments and of students with no fee stated, as the Bursar is; another office is not',
+        coalesce(unrep_sao > 0 AND unrep_bur > 0 AND unrep_oth = 0 AND gaps_sao > 0 AND gaps_bur > 0 AND gaps_oth = 0, false),
+        format('unreported: officer %s, bursar %s, other %s | no fee stated: officer %s, bursar %s, other %s', unrep_sao, unrep_bur, unrep_oth, gaps_sao, gaps_bur, gaps_oth));
+END $$;
+
+-- ── V523: the export log ──
+-- A lecturer exports a report: it is recorded for the person and the office acting (not what the screen says), with the report,
+-- format, rows, filters, screen and serial, and the audit spine holds the entry; the log is not changed or emptied; an export with
+-- no one acting, or in another format, is refused. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); id1 uuid; got text; spine int; upd text; del text; noactor text; badfmt text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        id1 := platform.log_export('  Class list — BIO 101 ', 'xlsx', 42, '{"Session": "2025/2026", "Course": "BIO 101"}'::jsonb,
+                                   '/lecturer/classes?course=BIO%20101', 'MOAUM/CLS/20261017/101500-07');
+        SELECT format('%s|%s|%s|%s|%s|%s|%s|%s', l.person_id = who, l.office, l.report, l.format, l.row_count, l.filters->>'Course', l.screen, l.serial)
+          INTO got FROM platform.export_log l WHERE l.id = id1;
+        SELECT count(*) INTO spine FROM audit.entries e WHERE e.subject_id = id1 AND e.actor_id = who AND e.actor_office = 'lecturer';
+        BEGIN UPDATE platform.export_log SET row_count = 1 WHERE id = id1;
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; upd := split_part(msg, ':', 1); END;
+        BEGIN DELETE FROM platform.export_log WHERE id = id1;
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; del := split_part(msg, ':', 1); END;
+        BEGIN PERFORM platform.log_export('Payments', 'CSV', 1, '{}'::jsonb, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; badfmt := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', '', true);
+        BEGIN PERFORM platform.log_export('Payments', 'PRINT', 1, '{}'::jsonb, NULL, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; noactor := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V523 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V523 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V523: an export is recorded for the person and office acting, with its report, rows, filters and serial, on the audit spine; the log is append-only',
+        coalesce(got = 't|lecturer|Class list — BIO 101|XLSX|42|BIO 101|/lecturer/classes?course=BIO%20101|MOAUM/CLS/20261017/101500-07'
+                 AND spine = 1 AND upd = 'EXPORT_LOG_APPEND_ONLY' AND del = 'EXPORT_LOG_APPEND_ONLY'
+                 AND badfmt = 'EXPORT_LOG_FORMAT' AND noactor = 'EXPORT_LOG_NO_ACTOR', false),
+        format('row %s | spine %s | update %s | delete %s | csv %s | no actor %s', got, spine, upd, del, badfmt, noactor));
+END $$;
+
+-- ── V524: the unpaid registrations read once for each fee profile agree with each registration's own ──
+-- Two students of one profile (one paid, one not) and one of another level with no fee stated, each on a submitted registration:
+-- the unpaid list names the unpaid and the unstated, not the paid, and for every registration of the session it agrees with
+-- finance.semester_cleared, finance.fee_stated and finance.due_for_semester of the student; the session's charges read at once
+-- (finance.session_charges, the Records fees view's wide read) agree with each student's own. The block undoes its writes.
+DO $$
+DECLARE ses text := '2410/2411'; prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); ref text;
+        has_a boolean; has_b boolean; has_c boolean; b_row text; c_row text; b_ok boolean; c_ok boolean; charges_agree boolean; disagree int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V524', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2410-10-01', DATE '2411-08-31');
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/98/952401', 'CHECKV524', 'Paid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/98/952402', 'CHECKV524', 'Unpaid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (c, 'MOAUM/ADM/98/952403', 'CHECKV524', 'Unstated', prog, 'UTME', ses, 100, 200, 'ADMITTED');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V524)', 40000, 100, prog);
+        ref := finance.new_purpose_reference(a, ses, 40000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V524');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES
+            (gen_random_uuid(), a, ses, 1, 100, 'SUBMITTED', now()),
+            (gen_random_uuid(), b, ses, 1, 100, 'SUBMITTED', now()),
+            (gen_random_uuid(), c, ses, 1, 200, 'SUBMITTED', now());
+        has_a := EXISTS (SELECT 1 FROM finance.registrations_without_fees(ses) x WHERE x.student_id = a);
+        has_b := EXISTS (SELECT 1 FROM finance.registrations_without_fees(ses) x WHERE x.student_id = b);
+        has_c := EXISTS (SELECT 1 FROM finance.registrations_without_fees(ses) x WHERE x.student_id = c);
+        SELECT format('%s/%s/%s', x.stated, x.due, x.paid), x.stated AND x.due = 40000 AND x.paid = 0 INTO b_row, b_ok FROM finance.registrations_without_fees(ses) x WHERE x.student_id = b;
+        SELECT format('%s/%s/%s', x.stated, x.due, x.paid), NOT x.stated AND x.due IS NULL AND x.paid = 0 INTO c_row, c_ok FROM finance.registrations_without_fees(ses) x WHERE x.student_id = c;
+        SELECT count(*) INTO disagree
+          FROM registration.course_registration r
+          LEFT JOIN finance.registrations_without_fees(ses) x ON x.registration_id = r.id
+         WHERE r.session = ses AND r.status IN ('SUBMITTED', 'APPROVED', 'LOCKED')
+           AND ((x.registration_id IS NOT NULL) IS DISTINCT FROM NOT finance.semester_cleared(r.student_id, ses, r.semester)
+                OR (x.registration_id IS NOT NULL AND (x.stated IS DISTINCT FROM finance.fee_stated(r.student_id, ses)
+                    OR x.due IS DISTINCT FROM CASE WHEN x.stated THEN finance.due_for_semester(r.student_id, ses, r.semester) END)));
+        charges_agree := NOT EXISTS (
+            SELECT 1 FROM unnest(ARRAY[a, b, c]) x(id) LEFT JOIN finance.session_charges(ses) sc ON sc.student_id = x.id
+             WHERE coalesce(sc.total, 0) <> (SELECT coalesce(sum(ch.amount), 0) FROM finance.charges(x.id, ses) ch));
+        RAISE EXCEPTION 'the V524 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V524 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V524: the unpaid registrations read once for each fee profile name the unpaid and the unstated, not the paid, and agree with each registration''s own clearance, statement and due; the session''s charges agree',
+        coalesce(NOT has_a AND has_b AND has_c AND b_ok AND c_ok AND disagree = 0 AND charges_agree, false),
+        format('paid %s | unpaid %s %s | unstated %s %s | disagree %s | charges agree %s', has_a, has_b, b_row, has_c, c_row, disagree, charges_agree));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

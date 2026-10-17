@@ -11,6 +11,7 @@ import { currentInstitution } from "@/lib/document/institution-cache";
 import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
 import { printDocument, withSerial, type Cell as DocCell } from "@/lib/document/html";
 import type { DocumentProfileId } from "@/lib/document/profiles";
+import { logExport } from "@/lib/export-log";
 
 /** the University's name as the code carried it; prefer currentInstitution().name, which follows the profile */
 export const SCHOOL = DEFAULT_INSTITUTION.name;
@@ -50,6 +51,8 @@ export async function brandedXlsx(
   const numbered = !opts.noSerialColumn && !leadsWithSerial(headers);
   const h = numbered ? ["S/N", ...headers] : headers;
   const r = numbered ? (withSerial(rows as DocCell[][]) as Cell[][]) : rows;
+  // V523: on the export log (in the browser; a workbook the server builds is not a person's export)
+  if (typeof window !== "undefined") logExport({ report: title, format: "XLSX", rows: rows.length, meta: opts.meta, sub: opts.sub, serial });
   return buildXlsx(h, r, sheet, {
     school: inst.name.toUpperCase(),
     title: opts.sub ? `${title} — ${opts.sub}` : title,
@@ -91,6 +94,7 @@ export function brandedPrint(
   opts: { profile?: DocumentProfileId; meta?: [string, string][]; generatedBy?: string | null; footnote?: string | null; orientation?: "portrait" | "landscape" } = {},
 ): void {
   const numbered = !leadsWithSerial(headers);
+  logExport({ report: title, format: "PRINT", rows: rows.length, meta: opts.meta, sub: subtitle, serial });   // V523
   void printDocument(opts.profile ?? "STANDARD_REPORT", {
     title,
     subtitle: subtitle || null,

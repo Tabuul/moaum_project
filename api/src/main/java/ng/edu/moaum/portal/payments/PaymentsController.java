@@ -198,11 +198,15 @@ class PaymentsController {
     public record Resolution(@NotBlank String resolution) {
     }
 
+    /** the offices that read and recheck any payer's reference (V520: the Students Account Officer, who works the hanging payments
+     *  desk, among them — not only the payer's own) */
+    private static final String OFFICE_DESK = "OFFICE_(bursar|studentaccounts|ict|admin|super|audit)";
+
     /** whether a reference stands confirmed on the University's record — the payer's own, or any for an office; nothing is asked of a gateway (V299) */
     @GetMapping("/state")
     @PreAuthorize("isAuthenticated()")
     Map<String, Object> state(Authentication authentication, @RequestParam String reference) {
-        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches("OFFICE_(bursar|ict|admin|super|audit)"));
+        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches(OFFICE_DESK));
         return payments.stateFor(UUID.fromString(authentication.getName()), office, reference);
     }
 
@@ -254,7 +258,7 @@ class PaymentsController {
     @PostMapping("/verify")
     @PreAuthorize("isAuthenticated()")
     Map<String, Object> verify(Authentication authentication, @Valid @RequestBody Verify body) {
-        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches("OFFICE_(bursar|ict|admin|super|audit)"));
+        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches(OFFICE_DESK));
         return payments.verifyFor(UUID.fromString(authentication.getName()), office, body.reference());
     }
 

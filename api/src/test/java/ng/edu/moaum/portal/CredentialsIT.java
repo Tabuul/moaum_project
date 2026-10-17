@@ -51,7 +51,7 @@ class CredentialsIT {
     void aTranscriptIsProducedByOneOfficerAndSignedByAnother() {
         // a student of this run's own: an earlier run on the same database left its student cleared, and a cleared record is not held
         String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        UUID student = it.student("ZZCTRANSCRIPT" + tag, "C00023", null, "MOAUM/MTC/95/" + (1000 + new java.util.Random().nextInt(8000)), 400);
+        UUID student = it.student("ZZCTRANSCRIPT" + tag, "C00023", null, it.freeNumber("MOAUM/MTC/95/", 4), 400);
         // a transcript is generated from the published record (V262): one published result stands on this student
         it.db(() -> {
             jdbc.sql("INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), :s, :sess, 400) ON CONFLICT (student_id, session) DO NOTHING").param("s", student).param("sess", SESSION).update();
@@ -104,7 +104,7 @@ class CredentialsIT {
     void aCertificateIsPrintedOnlyAgainstAnApprovedClearedGraduand() {
         // a student of this run's own: an earlier run on the same database left its graduand approved and cleared
         String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        UUID student = it.student("ZZCCERTIFICATE" + tag, "C00023", null, "MOAUM/MTC/95/" + (1000 + new java.util.Random().nextInt(8000)), 400);
+        UUID student = it.student("ZZCCERTIFICATE" + tag, "C00023", null, it.freeNumber("MOAUM/MTC/95/", 4), 400);
 
         ResponseEntity<Map> refused = it.call(academic, HttpMethod.POST, "/api/v1/credentials/certificates", Map.of("studentId", student.toString()));
         assertThat(refused.getStatusCode().value()).isEqualTo(422);

@@ -70,16 +70,21 @@ class RecordsRepository {
 
     /** V360: the session's school fees for each student in scope — what the fee schedule charges them and what they have
      *  paid against it, the Bursary's own figures (finance.charges and confirmed school-fee payments, as finance.position
-     *  reads them); arrears of earlier sessions are on each student's own record */
-    List<Map<String, Object>> fees(Scope scope) {
-        return rows("""
+     *  reads them); arrears of earlier sessions are on each student's own record. V524: a wide scope reads the session's
+     *  charges for everyone at once (finance.session_charges, the same total as finance.charges for each of the live-shaped
+     *  copy's 54,573 students) rather than finance.charges of each in turn — 89 s for the whole University, 9 s for the
+     *  largest faculty, as PostgreSQL 18 settles the per-student plans slower after some thousands of calls */
+    List<Map<String, Object>> fees(Scope scope, boolean wide) {
+        String with = wide ? "WITH ch AS MATERIALIZED (SELECT c.student_id, c.total AS due FROM finance.session_charges(CAST(:session AS text)) c)\n" : "";
+        String charges = wide ? "  LEFT JOIN ch ON ch.student_id = s.id\n"
+                : "  CROSS JOIN LATERAL (SELECT coalesce(sum(c.amount), 0) AS due FROM finance.charges(s.id, CAST(:session AS text)) c) ch\n";
+        return rows(with + """
                 SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
                        s.surname || ', ' || s.other_names AS "name", s.current_level AS "level",
-                       ch.due AS "due", coalesce(pd.paid, 0) AS "paid", greatest(ch.due - coalesce(pd.paid, 0), 0) AS "balance",
-                       CASE WHEN ch.due = 0 THEN 'NO_CHARGE' WHEN coalesce(pd.paid, 0) >= ch.due THEN 'PAID'
+                       coalesce(ch.due, 0) AS "due", coalesce(pd.paid, 0) AS "paid", greatest(coalesce(ch.due, 0) - coalesce(pd.paid, 0), 0) AS "balance",
+                       CASE WHEN coalesce(ch.due, 0) = 0 THEN 'NO_CHARGE' WHEN coalesce(pd.paid, 0) >= coalesce(ch.due, 0) THEN 'PAID'
                             WHEN coalesce(pd.paid, 0) > 0 THEN 'PART_PAID' ELSE 'UNPAID' END AS "state"
-                """ + STUDENT_FROM + """
-                  CROSS JOIN LATERAL (SELECT coalesce(sum(c.amount), 0) AS due FROM finance.charges(s.id, CAST(:session AS text)) c) ch
+                """ + STUDENT_FROM + charges + """
                   LEFT JOIN LATERAL (SELECT sum(r.amount) AS paid FROM finance.payment_reference r
                                       WHERE r.student_id = s.id AND r.session = CAST(:session AS text) AND r.confirmed_at IS NOT NULL
                                         AND r.purpose LIKE 'School fees%') pd ON true

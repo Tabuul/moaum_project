@@ -150,6 +150,37 @@ final class ItSupport {
                 """).param("s", session).query().listOfRows());
     }
 
+    /** whether a student holds the number, as admission or matriculation number */
+    boolean taken(String number) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student WHERE matric_no = :n OR admission_no = :n)")
+                .param("n", number).query(Boolean.class).single();
+    }
+
+    /** the prefix and a number of the width given that no student holds, as admission or matriculation number: a test's invented
+     *  student never draws the number of one an earlier run, or another class, left on the database (four random digits did) */
+    String freeNumber(String prefix, int digits) {
+        int bound = (int) Math.pow(10, digits);
+        for (int i = 0; i < 500; i++) {
+            String number = prefix + String.format("%0" + digits + "d", java.util.concurrent.ThreadLocalRandom.current().nextInt(bound / 10, bound));
+            if (!taken(number)) {
+                return number;
+            }
+        }
+        throw new IllegalStateException("no free number after " + prefix + " in " + digits + " digits");
+    }
+
+    /** a surname no student holds: {@link #student} hands back the student of a surname already invented, so a surname drawn again
+     *  would give the test an earlier run's student and its state */
+    String freeSurname(String prefix) {
+        for (int i = 0; i < 500; i++) {
+            String surname = prefix + java.util.concurrent.ThreadLocalRandom.current().nextInt(100_000, 1_000_000);
+            if (!jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student WHERE surname = :s)").param("s", surname).query(Boolean.class).single()) {
+                return surname;
+            }
+        }
+        throw new IllegalStateException("no free surname after " + prefix);
+    }
+
     /** an invented student, ACTIVE with a matriculation number when one is given, ADMITTED otherwise */
     UUID student(String surname, String programme, String admissionNo, String matricNo, int level) {
         return db(() -> {

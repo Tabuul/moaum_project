@@ -49,7 +49,7 @@ class ExaminersIT {
         it.session("2091/2092", 2091);
         // a student of this run's own: one project stands per student and session (uq_ee_project), and an earlier run on the same database registered one
         String tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        student = it.student("ZZEXPROJECT" + tag, "C00023", null, "MOAUM/MTC/95/" + (1000 + new java.util.Random().nextInt(8000)), 400);
+        student = it.student("ZZEXPROJECT" + tag, "C00023", null, it.freeNumber("MOAUM/MTC/95/", 4), 400);
     }
 
     private ResponseEntity<Map> anonymous(HttpMethod method, String path, Object body) {

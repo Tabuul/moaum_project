@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { Btn, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { buildXlsx, loadCrest } from "@/lib/xlsx";
+import { logExport } from "@/lib/export-log";
 import { staffSheetRow, studentSheetRow, type FilterSpec, type Opt, type StaffRow, type StudentRow } from "@/lib/registers";
 
 type Options = Record<string, unknown>;
@@ -89,6 +90,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
       const logo = await loadCrest();
       const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
       const filterLine = Object.entries(v).filter(([, val]) => val && val.trim()).map(([k, val]) => `${k}: ${val}`).join(" · ");
+      logExport({ report: title, format: "XLSX", rows: all.length, meta: Object.entries(v).filter(([, val]) => val && val.trim()) as [string, string][] });   // V523
       const blob = buildXlsx(headers, all, kind === "students" ? "Students" : "Staff", {
         school: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
         title: `${title}${filterLine ? ` — ${filterLine}` : ""} (${all.length.toLocaleString()} rows)`,
