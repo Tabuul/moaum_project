@@ -414,6 +414,12 @@ public class StudentPortalService {
         return out;
     }
 
+    /** V533: the banks a refund is paid into */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> banks() {
+        return repo.banks();
+    }
+
     /** the portal's school-fees window (V288): a new reference is generated only while it is open; one already generated is paid as before */
     private void assertFeesWindowOpen(UUID id, String session) {
         Map<String, Object> w = repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null);

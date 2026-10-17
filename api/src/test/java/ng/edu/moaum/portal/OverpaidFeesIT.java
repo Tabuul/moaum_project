@@ -156,21 +156,26 @@ class OverpaidFeesIT {
                 .containsEntry("code", "REFUND_ACCOUNT_NUMBER");
         assertThat(it.call(bursar, HttpMethod.POST, accountPath, Map.of("bank", "First Bank", "accountName", "Invented Student", "accountNumber", "0123456789"))
                 .getStatusCode().value()).as("the student's own").isEqualTo(403);
-        ResponseEntity<Map> given = it.call(owner, HttpMethod.POST, accountPath, Map.of("bank", "First Bank", "accountName", "Invented Student", "accountNumber", "0123 456 789"));
+        // V533: the number is checked against the bank (one digit off is refused); the bank from the list by its code
+        assertThat(it.call(owner, HttpMethod.POST, accountPath, Map.of("bank", "011", "accountName", "Invented Student", "accountNumber", "0123456789")).getBody())
+                .containsEntry("code", "REFUND_ACCOUNT_CHECK_DIGIT");
+        assertThat((List<Map>) it.getList(owner, "/api/v1/me/banks").getBody()).filteredOn(b -> "011".equals(b.get("code")))
+                .extracting(b -> b.get("name") + ":" + b.get("nuban_check")).containsExactly("First Bank of Nigeria:true");
+        ResponseEntity<Map> given = it.call(owner, HttpMethod.POST, accountPath, Map.of("bank", "011", "accountName", "Invented Student", "accountNumber", "0123 456 784"));
         assertThat(given.getStatusCode().value()).as(String.valueOf(given.getBody())).isEqualTo(200);
         assertThat((List<Map>) given.getBody().get("overpayments")).extracting(o -> o.get("bank_name") + ":" + o.get("account_last4") + ":" + o.get("account_open"))
-                .containsExactly("First Bank:6789:true");
+                .containsExactly("First Bank of Nigeria:6784:true");
         ResponseEntity<List> desk = it.getList(bursar, "/api/v1/finance/refunds?state=PROPOSED");
         assertThat((List<Map>) desk.getBody()).filteredOn(r -> rf.equals(r.get("reference")))
-                .extracting(r -> r.get("bank_name") + ":" + r.get("account_number") + ":" + r.get("account_last4") + ":" + r.get("from_overpayment"))
-                .containsExactly("First Bank:0123456789:6789:true");
+                .extracting(r -> r.get("bank_name") + ":" + r.get("account_number") + ":" + r.get("account_last4") + ":" + r.get("from_overpayment") + ":" + r.get("account_source"))
+                .containsExactly("First Bank of Nigeria:0123456784:6784:true:STUDENT");
         UUID refundId = jdbc.sql("SELECT id FROM finance.refund WHERE reference = :r").param("r", rf).query(UUID.class).single();
         ResponseEntity<Map> approved = it.call(ItSupport.token("bursar"), HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/approve", Map.of());
         assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
-        assertThat(it.call(owner, HttpMethod.POST, accountPath, Map.of("bank", "Access Bank", "accountName", "Invented Student", "accountNumber", "9876543210")).getBody())
+        assertThat(it.call(owner, HttpMethod.POST, accountPath, Map.of("bank", "Access Bank", "accountName", "Invented Student", "accountNumber", "9876543215")).getBody())
                 .containsEntry("code", "REFUND_ACCOUNT_CLOSED");
         assertThat((List<Map>) it.get(owner, "/api/v1/me/fees?session=" + a).getBody().get("overpayments"))
-                .extracting(o -> o.get("refund_state") + ":" + o.get("account_last4") + ":" + o.get("account_open")).containsExactly("APPROVED:6789:false");
+                .extracting(o -> o.get("refund_state") + ":" + o.get("account_last4") + ":" + o.get("account_open")).containsExactly("APPROVED:6784:false");
 
         Map<String, Object> rec = it.get(audit, "/api/v1/finance/legacy-fees/reconciliation?session=" + a + "&state=OVER_SETTLED&size=100000").getBody();
         assertThat((List<Map>) rec.get("rows")).filteredOn(r -> carry.toString().equals(r.get("student_id")) || refund.toString().equals(r.get("student_id")))

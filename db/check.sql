@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 372
+\set EXPECTED 373
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16904,10 +16904,11 @@ BEGIN
         PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V519: refunded to the student');
         told_raised := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
                          WHERE n.template_key = 'OVERPAYMENT_REFUND_RAISED' AND n.about_id = s2);
-        -- the refunds desk: approved by a second officer, then paid
+        -- the refunds desk: approved by a second officer, then paid (V533: into the account the student gave)
         SELECT f.id INTO rf FROM finance.refund f WHERE f.student_id = s2;
         PERFORM set_config('moaum.actor_id', second::text, true);
         PERFORM finance.approve_refund(rf);
+        PERFORM finance.give_refund_account(s2, (SELECT f.reference FROM finance.refund f WHERE f.id = rf), 'First Bank', 'ZZCHKV519B Invented', '0000014579');
         PERFORM finance.pay_refund(rf);
         told_paid := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
                        WHERE n.template_key = 'OVERPAYMENT_REFUND_PAID' AND n.about_id = s2);
@@ -17434,10 +17435,10 @@ BEGIN
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_mine = MESSAGE_TEXT; END;
         BEGIN PERFORM finance.give_refund_account(s, rf, 'First Bank', 'ZZCHKV528A Invented', '12345');
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_short = MESSAGE_TEXT; END;
-        PERFORM finance.give_refund_account(s, rf, 'First Bank', 'ZZCHKV528A Invented', '0123 456 789');
+        PERFORM finance.give_refund_account(s, rf, 'First Bank', 'ZZCHKV528A Invented', '0123 456 784');
         snap := (SELECT f.bank_name || ':' || f.account_name || ':' || f.account_last4 FROM finance.refund f WHERE f.reference = rf);
         page_shows := (SELECT x.bank_name || ':' || x.account_last4 || ':' || x.account_open FROM finance.student_overpayments(s) x WHERE x.reference = rf);
-        PERFORM finance.give_refund_account(s, rf, 'Access Bank', 'ZZCHKV528A Invented', '9876543210');
+        PERFORM finance.give_refund_account(s, rf, 'Access Bank', 'ZZCHKV528A Invented', '9876543215');
         changed := (SELECT f.bank_name || ':' || f.account_last4 || '|' || ra.account_number FROM finance.refund f JOIN finance.refund_account ra ON ra.refund_id = f.id WHERE f.reference = rf);
         -- approved by a second officer: the account is fixed
         PERFORM set_config('moaum.actor_id', second::text, true);
@@ -17449,7 +17450,7 @@ BEGIN
         rf2 := finance.propose_refund(s, 'ZZCHKV528A, Invented', 'check V528: a second refund', 1000, NULL, NULL, NULL, NULL);
         PERFORM set_config('moaum.actor_id', second::text, true);
         PERFORM finance.approve_refund((SELECT f.id FROM finance.refund f WHERE f.reference = rf2));
-        PERFORM finance.give_refund_account(s, rf2, 'GTBank', 'ZZCHKV528A Invented', '2222222222');
+        PERFORM finance.give_refund_account(s, rf2, 'GTBank', 'ZZCHKV528A Invented', '2222222223');
         second_given := (SELECT f.state || ':' || f.account_last4 FROM finance.refund f WHERE f.reference = rf2);
         BEGIN PERFORM finance.give_refund_account(s, rf2, 'GTBank', 'ZZCHKV528A Invented', '3333333333');
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_closed2 = MESSAGE_TEXT; END;
@@ -17488,9 +17489,9 @@ BEGIN
     END;
     PERFORM pg_temp.assert('V528: a student gives the bank account a refund is paid into (while it awaits approval, or once after approval with none), never redirecting approved money; and the Head of ICT Support is told, once, when an agent''s resets in a day reach the figure set, each agent''s counts read',
         coalesce(e_mine LIKE 'REFUND_ACCOUNT_NOT_YOURS%' AND e_short LIKE 'REFUND_ACCOUNT_NUMBER%' AND asks
-                 AND snap = 'First Bank:ZZCHKV528A Invented:6789' AND page_shows = 'First Bank:6789:true'
-                 AND changed = 'Access Bank:3210|9876543210' AND e_closed LIKE 'REFUND_ACCOUNT_CLOSED%'
-                 AND second_given = 'APPROVED:2222' AND e_closed2 LIKE 'REFUND_ACCOUNT_CLOSED%'
+                 AND snap = 'First Bank of Nigeria:ZZCHKV528A Invented:6784' AND page_shows = 'First Bank of Nigeria:6784:true'
+                 AND changed = 'Access Bank:3215|9876543215' AND e_closed LIKE 'REFUND_ACCOUNT_CLOSED%'
+                 AND second_given = 'APPROVED:2223' AND e_closed2 LIKE 'REFUND_ACCOUNT_CLOSED%'
                  AND told_before = 0 AND told_at = 1 AND told_after = 1 AND counts = 'ZZCHKV528AGENT, Invented:3:3:2'
                  AND lowered = 'ZZCHKV528AGENTB, Invented has reset 3 student passwords today', false),
         format('not yours %s | short %s | asks %s | snapshot %s | page %s | changed %s | closed %s | second %s, again %s | told %s/%s/%s | counts %s | lowered %s',
@@ -17535,6 +17536,78 @@ BEGIN
                  AND r_zero = 'NOTICE_PACE_RANGE' AND r_order = 'NOTICE_PACE_RANGE', false),
         format('default %s/%s | allowance %s then %s (tried %s) | at limit %s, past %s | unlimited %s | zero %s order %s',
                d_min, d_day, a0, a1, tried_min, at_limit, none_left, unlimited, r_zero, r_order));
+END $$;
+-- ── V533. Refunds paid only into a full, checked account. The CBN's own example holds (011 + 000001457 → 0000014579); a bank is
+--          found by its code, name or another name; a number one digit off at a checked bank is refused, a payment service
+--          bank's is not checked. A refund raised at the desk with no account is not paid (REFUND_NO_ACCOUNT); the account the desk
+--          records on it once approved sends it back for approval, which the officer who recorded it may not give; another
+--          approves and it is paid. A refund raised with the last four digits is completed by the desk without a new approval;
+--          a different account on an approved refund goes back. The student's rule stands. Names compared, a warning only. The
+--          block undoes its writes ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); third uuid := gen_random_uuid(); s uuid := gen_random_uuid();
+        example int; found text; slip text; opay text; rf1 text; rf2 text; id1 uuid; id2 uuid; e_nopay text; st_after text; e_same text;
+        paid1 text; st_complete text; paid2 text; st_change text; e_student text; e_digit text; src text; share_yes boolean; share_no boolean; mfb text := 'ALLOWED'; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V533', true);
+        example := finance.nuban_check_digit('011', '000001457');
+        found := (finance.bank_of('GTB')).code || ',' || (finance.bank_of('first bank of nigeria')).code || ',' || (finance.bank_of('057')).name;
+        slip := coalesce(finance.account_number_problem('First Bank', '0000014578'), 'none') || ',' || coalesce(finance.account_number_problem('First Bank', '0000014579'), 'none');
+        opay := coalesce(finance.account_number_problem('OPay', '8012345678'), 'none') || ',' || coalesce(finance.account_number_problem('Another bank', '123'), 'none');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/76/976101', 'MOAUM/CHK/76/9761', 'ZZCHKV533', 'Invented', code, 'UTME', policy.university_current_session(), 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        -- raised at the desk with no account: approved, never paid
+        rf1 := finance.propose_refund(s, 'ZZCHKV533, Invented', 'check V533: no account', 1000, NULL, NULL, NULL, NULL);
+        id1 := (SELECT id FROM finance.refund WHERE reference = rf1);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund(id1);
+        BEGIN PERFORM finance.pay_refund(id1);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_nopay := split_part(msg, ':', 1); END;
+        -- the account recorded by an officer on the approved refund: back for approval, not by that officer
+        st_after := finance.desk_refund_account(id1, 'GTB', 'ZZCHKV533 Invented', '2222222223');
+        BEGIN PERFORM finance.approve_refund(id1);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_same := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', third::text, true);
+        PERFORM finance.approve_refund(id1);
+        PERFORM finance.pay_refund(id1);
+        paid1 := (SELECT f.state || ':' || a.source || ':' || a.bank_code || ':' || f.account_last4 FROM finance.refund f JOIN finance.refund_account a ON a.refund_id = f.id WHERE f.id = id1);
+        -- raised with the last four digits: the desk completes the number without a new approval; a different account goes back
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        rf2 := finance.propose_refund(s, 'ZZCHKV533, Invented', 'check V533: last four', 1000, 'First Bank', 'ZZCHKV533 Invented', '6784', NULL);
+        id2 := (SELECT id FROM finance.refund WHERE reference = rf2);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund(id2);
+        BEGIN PERFORM finance.desk_refund_account(id2, 'First Bank', 'ZZCHKV533 Invented', '0123456789');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_digit := split_part(msg, ':', 1); END;
+        st_complete := finance.desk_refund_account(id2, 'First Bank', 'ZZCHKV533 Invented', '0123 456 784');
+        BEGIN PERFORM finance.give_refund_account(s, rf2, 'Access Bank', 'ZZCHKV533 Invented', '9876543215');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_student := split_part(msg, ':', 1); END;
+        st_change := finance.desk_refund_account(id2, 'Access Bank', 'ZZCHKV533 Invented', '9876543215');
+        PERFORM set_config('moaum.actor_id', third::text, true);
+        PERFORM finance.approve_refund(id2);
+        PERFORM finance.pay_refund(id2);
+        paid2 := (SELECT f.state || ':' || a.bank_name || ':' || a.account_number FROM finance.refund f JOIN finance.refund_account a ON a.refund_id = f.id WHERE f.id = id2);
+        -- a microfinance bank's numbers are never checked by the banks' check digit
+        BEGIN UPDATE finance.bank SET nuban_check = true WHERE code = '565';
+        EXCEPTION WHEN check_violation THEN mfb := 'REFUSED'; END;
+        share_yes := finance.names_share('ZZCHKV533 Invented', 'ZZCHKV533, Invented');
+        share_no := finance.names_share('Someone Else', 'ZZCHKV533, Invented');
+        RAISE EXCEPTION 'the V533 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V533 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V533: a refund is paid only into a full account on record, its number checked against the bank; the account the desk records on an approved refund goes back for another officer''s approval unless it completes the one approved',
+        coalesce(example = 9 AND found = '058,011,Zenith Bank' AND slip = 'REFUND_ACCOUNT_CHECK_DIGIT,none' AND opay = 'none,REFUND_ACCOUNT_NUMBER'
+                 AND e_nopay = 'REFUND_NO_ACCOUNT' AND st_after = 'PROPOSED' AND e_same = 'REFUND_ACCOUNT_SAME_OFFICER' AND paid1 = 'PAID:DESK:058:2223'
+                 AND e_digit = 'REFUND_ACCOUNT_CHECK_DIGIT' AND st_complete = 'APPROVED' AND e_student = 'REFUND_ACCOUNT_CLOSED' AND st_change = 'PROPOSED'
+                 AND paid2 = 'PAID:Access Bank:9876543215' AND share_yes AND NOT share_no AND mfb = 'REFUSED', false),
+        format('example %s found %s slip %s opay %s | no account %s, recorded %s, same %s, paid %s | digit %s complete %s student %s change %s paid %s | names %s/%s | microfinance %s',
+               example, found, slip, opay, e_nopay, st_after, e_same, paid1, e_digit, st_complete, e_student, st_change, paid2, share_yes, share_no, mfb));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

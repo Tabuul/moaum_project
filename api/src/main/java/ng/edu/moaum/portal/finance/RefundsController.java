@@ -37,9 +37,22 @@ class RefundsController {
         this.jdbc = jdbc;
     }
 
+    /** V533: accountNumber is the full ten-digit account, checked against the bank and recorded for the refund; accountLast4 is
+     *  read only when it is not given */
     public record Propose(UUID student, @NotBlank @Size(max = 200) String payer, @NotBlank @Size(max = 400) String reason,
                           @NotNull @DecimalMin("0.01") BigDecimal amount, @Size(max = 120) String bank,
-                          @Size(max = 200) String accountName, @Size(max = 8) String accountLast4, @Size(max = 60) String source) {
+                          @Size(max = 200) String accountName, @Size(max = 8) String accountLast4, @Size(max = 60) String source,
+                          @Size(max = 20) String accountNumber) {
+    }
+
+    /** V533: the account a refund is paid into, recorded at the desk */
+    public record Account(@NotBlank @Size(max = 120) String bank, @NotBlank @Size(max = 200) String accountName,
+                          @NotBlank @Size(max = 20) String accountNumber) {
+    }
+
+    /** V533: a bank on the list refunds are paid into */
+    public record Bank(@NotBlank @Size(max = 8) String code, @NotBlank @Size(max = 120) String name, @Size(max = 40) String kind,
+                       List<@Size(max = 60) String> aliases, Boolean nubanCheck, Boolean active) {
     }
 
     public record Why(@NotBlank @Size(max = 2000) String why) {
@@ -59,7 +72,12 @@ class RefundsController {
                        -- V528: the account the student gave for a refund of overpaid fees, and whether one is awaited from them
                        ra.account_number, ra.given_at AS account_given_at,
                        EXISTS (SELECT 1 FROM finance.overpayment_decision d
-                                WHERE d.reference = r.reference AND d.decision = 'REFUND' AND d.superseded_at IS NULL) AS from_overpayment
+                                WHERE d.reference = r.reference AND d.decision = 'REFUND' AND d.superseded_at IS NULL) AS from_overpayment,
+                       -- V533: where the account came from (STUDENT, DESK, JUPEB), and whether its name shares a word with the person's
+                       ra.bank_code, ra.source AS account_source,
+                       CASE WHEN r.account_name IS NULL THEN NULL
+                            ELSE finance.names_share(r.account_name, coalesce(st.surname || ' ' || st.other_names,
+                                                     ja.surname || ' ' || ja.first_name || coalesce(' ' || ja.middle_name, ''), r.payer)) END AS account_name_matches
                   FROM finance.refund r
                   LEFT JOIN finance.refund_account ra ON ra.refund_id = r.id
                   LEFT JOIN people.student st ON st.id = r.student_id
@@ -103,12 +121,62 @@ class RefundsController {
     @PreAuthorize(BURSARY)
     @Transactional
     Map<String, Object> propose(@Valid @RequestBody Propose body) {
+        // V533: with the full account, the refund is raised bare and the account recorded on it (checked against the bank)
+        boolean full = body.accountNumber() != null && !body.accountNumber().isBlank();
         String ref = jdbc.sql("SELECT finance.propose_refund(:s, :p, :r, :a, :b, :an, :l, :src)")
                 .param("s", body.student(), Types.OTHER).param("p", body.payer()).param("r", body.reason()).param("a", body.amount())
-                .param("b", body.bank(), Types.VARCHAR).param("an", body.accountName(), Types.VARCHAR).param("l", body.accountLast4(), Types.VARCHAR)
+                .param("b", full ? null : body.bank(), Types.VARCHAR).param("an", full ? null : body.accountName(), Types.VARCHAR)
+                .param("l", full ? null : body.accountLast4(), Types.VARCHAR)
                 .param("src", body.source(), Types.VARCHAR)
                 .query(String.class).single();
+        if (full) {
+            jdbc.sql("SELECT finance.desk_refund_account((SELECT id FROM finance.refund WHERE reference = :ref), :b, :n, :a)")
+                    .param("ref", ref).param("b", body.bank(), Types.VARCHAR).param("n", body.accountName(), Types.VARCHAR)
+                    .param("a", body.accountNumber()).query().singleRow();
+        }
         return Map.of("reference", ref, "state", "PROPOSED");
+    }
+
+    /** V533: the desk records (or changes) the account a refund is paid into; on an approved refund it goes back for another
+     *  officer's approval unless it completes the account the approver saw */
+    @PostMapping("/{id}/account")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> account(@PathVariable UUID id, @Valid @RequestBody Account body) {
+        String state = jdbc.sql("SELECT finance.desk_refund_account(:id, :b, :n, :a)")
+                .param("id", id).param("b", body.bank()).param("n", body.accountName()).param("a", body.accountNumber())
+                .query(String.class).single();
+        return Map.of("id", id, "state", state);
+    }
+
+    /** V533: the banks a refund is paid into, with whether a number at each is checked (the Bursary keeps the list) */
+    @GetMapping("/banks")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> banks() {
+        return jdbc.sql("SELECT code, name, array_to_string(aliases, ', ') AS aliases, kind, nuban_check, active FROM finance.bank ORDER BY active DESC, kind, name")
+                .query().listOfRows();
+    }
+
+    /** V533: a bank added to the list, or one on it renamed, its check switched or set aside */
+    @PostMapping("/banks")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    List<Map<String, Object>> saveBank(@Valid @RequestBody Bank body) {
+        // the other names in lower case; none given keeps those the bank has
+        String aliases = body.aliases() == null ? null
+                : String.join("|", body.aliases().stream().map(x -> x == null ? "" : x.trim().toLowerCase()).filter(x -> !x.isEmpty()).distinct().toList());
+        jdbc.sql("""
+                INSERT INTO finance.bank (code, name, aliases, kind, nuban_check, active)
+                VALUES (upper(btrim(:c)), btrim(:n), coalesce(string_to_array(nullif(:al, ''), '|'), '{}'), coalesce(:k, 'COMMERCIAL'), coalesce(:chk, false), coalesce(:act, true))
+                ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name,
+                       aliases = coalesce(string_to_array(nullif(:al, ''), '|'), finance.bank.aliases),
+                       kind = coalesce(:k, finance.bank.kind), nuban_check = coalesce(:chk, finance.bank.nuban_check),
+                       active = coalesce(:act, finance.bank.active)
+                """).param("c", body.code()).param("n", body.name()).param("al", aliases, Types.VARCHAR)
+                .param("k", body.kind() == null || body.kind().isBlank() ? null : body.kind().trim().toUpperCase(), Types.VARCHAR)
+                .param("chk", body.nubanCheck(), Types.BOOLEAN).param("act", body.active(), Types.BOOLEAN).update();
+        return banks();
     }
 
     @PostMapping("/{id}/approve")

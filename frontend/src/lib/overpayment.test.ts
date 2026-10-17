@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accountNumberProblem, overpaymentWords, refundAccountWords, type StudentOverpayment } from "./overpayment.ts";
+import { overpaymentWords, refundAccountWords, type StudentOverpayment } from "./overpayment.ts";
 
 const carried: StudentOverpayment = { session: "2026/2027", amount: "20000.00", decision: "CARRY", to_session: "2027/2028",
   reference: "MOAUM-CF-X-2026-2027", refund_state: null, decided_at: "2026-10-17 09:00:00+01" };
@@ -20,14 +20,10 @@ test("a refund says how far it has gone", () => {
   assert.match(overpaymentWords({ ...r, refund_state: "REJECTED" }).text, /will decide again/);
 });
 
-test("a refund's account is shown by its last four digits only, and a NUBAN is ten digits", () => {
+test("a refund's account is shown by its last four digits only", () => {
   const r: StudentOverpayment = { ...carried, decision: "REFUND", to_session: null, reference: "RF-2026-0002", refund_state: "PROPOSED" };
   assert.equal(refundAccountWords(r), null);
   assert.equal(refundAccountWords(carried), null);
   assert.equal(refundAccountWords({ ...r, bank_name: "First Bank", account_name: "Invented Student", account_last4: "6789" }),
     "To be paid into First Bank, Invented Student, account ending 6789.");
-  assert.equal(accountNumberProblem("0123 456-789"), null);
-  assert.match(accountNumberProblem("12345") ?? "", /ten digits; this has 5/);
-  assert.match(accountNumberProblem("01234abc89") ?? "", /digits only/);
-  assert.match(accountNumberProblem("") ?? "", /Give the ten-digit/);
 });

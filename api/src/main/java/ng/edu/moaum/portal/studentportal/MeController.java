@@ -81,6 +81,12 @@ class MeController {
         return portal.giveRefundAccount(id(auth), reference, body.bank(), body.accountName(), body.accountNumber());
     }
 
+    /** V533: the banks a refund is paid into, and whether a number at each is checked against the bank */
+    @GetMapping("/banks")
+    List<Map<String, Object>> banks() {
+        return portal.banks();
+    }
+
     @GetMapping("/fees/receipts/{reference}")
     Map<String, Object> receipt(Authentication auth, @PathVariable String reference) {
         return portal.receipt(id(auth), reference);

@@ -41,12 +41,3 @@ export function refundAccountWords(o: StudentOverpayment): string | null {
   const who = o.account_name ? `, ${o.account_name}` : "";
   return `To be paid into ${o.bank_name ?? "your bank"}${who}, account ending ${o.account_last4}.`;
 }
-
-/** V528: what is wrong with an account number as typed (a NUBAN is ten digits; spaces and dashes are ignored), or null */
-export function accountNumberProblem(v: string): string | null {
-  const d = v.replace(/[\s-]/g, "");
-  if (!d) return "Give the ten-digit account number.";
-  if (!/^\d+$/.test(d)) return "An account number is digits only.";
-  if (d.length !== 10) return `An account number is ten digits; this has ${d.length}.`;
-  return null;
-}

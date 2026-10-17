@@ -396,6 +396,12 @@ class StudentPortalRepository {
                 """).param("s", student).query().listOfRows();
     }
 
+    /** V533: the banks a refund is paid into, the commercial and non-interest banks first */
+    List<Map<String, Object>> banks() {
+        return jdbc.sql("SELECT code, name, nuban_check FROM finance.bank WHERE active ORDER BY (kind IN ('COMMERCIAL', 'NON_INTEREST')) DESC, name")
+                .query().listOfRows();
+    }
+
     /** V528: the student gives the bank account a refund raised to them is paid into (finance.give_refund_account refuses
      *  another student's refund, a number that is not ten digits, and an account fixed by approval or payment) */
     void giveRefundAccount(UUID student, String reference, String bank, String accountName, String accountNumber) {
